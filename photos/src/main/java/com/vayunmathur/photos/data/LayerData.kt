@@ -142,7 +142,9 @@ data class GradientMapAdj(val gradient: GradientMapAdjustment = GradientMapAdjus
     override val label: String get() = "Gradient Map"
 }
 
-data class BlackAndWhiteAdj(val bw: BlackAndWhiteAdjustment = BlackAndWhiteAdjustment(enabled = true)) : LayerAdjustment {
+data class BlackAndWhiteAdj(
+    val bw: BlackAndWhiteAdjustment = BlackAndWhiteAdjustment(enabled = true),
+) : LayerAdjustment {
     override fun isIdentity(): Boolean = bw.isIdentity()
     override fun applyToBitmap(bitmap: Bitmap): Bitmap = bw.applyToBitmap(bitmap)
     override val label: String get() = "Black & White"
@@ -193,7 +195,12 @@ data class PixelLayer(
 ) : Layer() {
     override fun copyBase(
         name: String, visible: Boolean, opacity: Float,
-        blendMode: LayerBlendMode, mask: LayerMask?, locked: Boolean, clipped: Boolean, style: LayerStyle, groupId: String?,
+        blendMode: LayerBlendMode,
+        mask: LayerMask?,
+        locked: Boolean,
+        clipped: Boolean,
+        style: LayerStyle,
+        groupId: String?,
     ): Layer = copy(
         name = name, visible = visible, opacity = opacity,
         blendMode = blendMode, mask = mask, locked = locked, clipped = clipped, style = style, groupId = groupId,
@@ -215,7 +222,12 @@ data class AdjustmentLayer(
 ) : Layer() {
     override fun copyBase(
         name: String, visible: Boolean, opacity: Float,
-        blendMode: LayerBlendMode, mask: LayerMask?, locked: Boolean, clipped: Boolean, style: LayerStyle, groupId: String?,
+        blendMode: LayerBlendMode,
+        mask: LayerMask?,
+        locked: Boolean,
+        clipped: Boolean,
+        style: LayerStyle,
+        groupId: String?,
     ): Layer = copy(
         name = name, visible = visible, opacity = opacity,
         blendMode = blendMode, mask = mask, locked = locked, clipped = clipped, style = style, groupId = groupId,
@@ -237,7 +249,12 @@ data class TextLayer(
 ) : Layer() {
     override fun copyBase(
         name: String, visible: Boolean, opacity: Float,
-        blendMode: LayerBlendMode, mask: LayerMask?, locked: Boolean, clipped: Boolean, style: LayerStyle, groupId: String?,
+        blendMode: LayerBlendMode,
+        mask: LayerMask?,
+        locked: Boolean,
+        clipped: Boolean,
+        style: LayerStyle,
+        groupId: String?,
     ): Layer = copy(
         name = name, visible = visible, opacity = opacity,
         blendMode = blendMode, mask = mask, locked = locked, clipped = clipped, style = style, groupId = groupId,
@@ -261,7 +278,12 @@ data class DrawingLayer(
 ) : Layer() {
     override fun copyBase(
         name: String, visible: Boolean, opacity: Float,
-        blendMode: LayerBlendMode, mask: LayerMask?, locked: Boolean, clipped: Boolean, style: LayerStyle, groupId: String?,
+        blendMode: LayerBlendMode,
+        mask: LayerMask?,
+        locked: Boolean,
+        clipped: Boolean,
+        style: LayerStyle,
+        groupId: String?,
     ): Layer = copy(
         name = name, visible = visible, opacity = opacity,
         blendMode = blendMode, mask = mask, locked = locked, clipped = clipped, style = style, groupId = groupId,

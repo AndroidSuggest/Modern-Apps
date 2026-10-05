@@ -31,9 +31,13 @@ object InviteFingerprint {
         return md.digest().copyOf(LENGTH)
     }
 
-    private fun u64be(v: Long): ByteArray {
-        val out = ByteArray(8)
-        for (i in 0 until 8) out[i] = (v ushr (56 - i * 8)).toByte()
+    private fun u64be(value: Long): ByteArray {
+        val out = ByteArray(U64_BYTES)
+        for (i in 0 until U64_BYTES) out[i] = (value ushr (U64_TOP_SHIFT - i * BYTE_BITS)).toByte()
         return out
     }
+
+    private const val U64_BYTES = 8
+    private const val U64_TOP_SHIFT = 56
+    private const val BYTE_BITS = 8
 }

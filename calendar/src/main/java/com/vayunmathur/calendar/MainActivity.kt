@@ -12,7 +12,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -24,8 +30,22 @@ import kotlinx.coroutines.withContext
 import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.data.Instance
 import com.vayunmathur.calendar.glance.CalendarGlanceWidgetReceiver
-import com.vayunmathur.calendar.ui.*
-import com.vayunmathur.calendar.ui.dialogs.*
+import com.vayunmathur.calendar.ui.CalendarScreen
+import com.vayunmathur.calendar.ui.EditEventScreen
+import com.vayunmathur.calendar.ui.EventScreen
+import com.vayunmathur.calendar.ui.HolidayCalendarsScreen
+import com.vayunmathur.calendar.ui.ImportIcsScreen
+import com.vayunmathur.calendar.ui.SettingsScreen
+import com.vayunmathur.calendar.ui.parseICSFile
+import com.vayunmathur.calendar.ui.dialogs.CalendarPickerDialog
+import com.vayunmathur.calendar.ui.dialogs.CalendarSetDateDialog
+import com.vayunmathur.calendar.ui.dialogs.RecurrenceDialog
+import com.vayunmathur.calendar.ui.dialogs.SettingsAddCalendarDialog
+import com.vayunmathur.calendar.ui.dialogs.SettingsChangeColorDialog
+import com.vayunmathur.calendar.ui.dialogs.SettingsDefaultRemindersDialog
+import com.vayunmathur.calendar.ui.dialogs.SettingsDeleteCalendarDialog
+import com.vayunmathur.calendar.ui.dialogs.SettingsRenameCalendarDialog
+import com.vayunmathur.calendar.ui.dialogs.TimezonePickerDialog
 import com.vayunmathur.calendar.util.CalendarViewModel
 import com.vayunmathur.calendar.util.RecurrenceParams
 import com.vayunmathur.library.ui.AppPermissionsGate
@@ -35,7 +55,18 @@ import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
 import com.vayunmathur.library.ui.dialog.TimePickerDialogContent
 import com.vayunmathur.library.util.openSettingsIfRequested
-import com.vayunmathur.library.util.*
+import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.library.util.DialogPage
+import com.vayunmathur.library.util.EntryProviderScope
+import com.vayunmathur.library.util.IntentHelper
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
+import com.vayunmathur.library.util.MainNavigation
+import com.vayunmathur.library.util.MorphPage
+import com.vayunmathur.library.util.NavBackStack
+import com.vayunmathur.library.util.NavKey
+import com.vayunmathur.library.util.onFileDrop
+import com.vayunmathur.library.util.rememberNavBackStack
 import com.vayunmathur.library.widgets.updateWidgetPreviews
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
@@ -57,83 +88,12 @@ class MainActivity : ComponentActivity() {
 
         handleIntent(intent)
         setContent {
-            val dataStore = remember { DataStoreUtils.getInstance(this) }
-            val themeName by dataStore.stringFlow("theme_mode").collectAsState(initial = dataStore.getString("theme_mode"))
-            val darkTheme = when (themeName?.let { runCatching { CalendarViewModel.ThemeMode.valueOf(it) }.getOrNull() }) {
-                CalendarViewModel.ThemeMode.Light -> false
-                CalendarViewModel.ThemeMode.Dark -> true
-                else -> null
-            }
-            DynamicTheme(darkTheme) {
-                AppPermissionsGate(
-                    spec = AppPermissionsSpec(
-                        title = stringResource(R.string.please_grant_calendar_permission),
-                        requirements = listOf(
-                            PermissionRequirement.Runtime(
-                                arrayOf(
-                                    Manifest.permission.READ_CALENDAR,
-                                    Manifest.permission.WRITE_CALENDAR
-                                )
-                            ),
-                            // Reminder notifications rely on exact alarms.
-                            PermissionRequirement.ExactAlarms,
-                            // Reminder notifications need POST_NOTIFICATIONS on
-                            // Android 13+; now blocking like everything else.
-                            PermissionRequirement.notifications(),
-                        )
-                    )
-                ) {
-                    val viewModel: CalendarViewModel = viewModel()
-
-                    val dateJump by pendingDate
-                    LaunchedEffect(intent, dateJump) {
-                        // The provider often sends time URIs with a null type, so match by
-                        // URI shape (see isTimeEpochIntent), not just type == "time/epoch".
-                        val target = dateJump ?: if (intent != null && intent.action == Intent.ACTION_VIEW && isTimeEpochIntent(intent)) {
-                            intent.data?.lastPathSegment?.toLongOrNull()?.let { timestamp ->
-                                runCatching {
-                                    Instant.fromEpochMilliseconds(timestamp)
-                                        .toLocalDateTime(TimeZone.currentSystemDefault()).date
-                                }.getOrNull()
-                            }
-                        } else null
-                        if (target != null) {
-                            viewModel.setSelectedDate(target)
-                            viewModel.setLastViewedDate(target)
-                            pendingDate.value = null
-                        }
-                    }
-                    
-                    val uris by importUris
-
-                    val pending by pendingRoute
-                    val initialRoute = when {
-                        uris.isNotEmpty() -> Route.Settings.ImportIcs(uris)
-                        pending != null -> pending
-                        // Exported activity: malformed "instance" extras fall back to no
-                        // route (calendar home) instead of crashing.
-                        intent.hasExtra("instance") ->
-                            intent.getStringExtra("instance")?.let { raw ->
-                                runCatching { Json.decodeFromString<Instance>(raw) }.getOrNull()
-                            }?.let { Route.Event(it) }
-                        intent.action == Intent.ACTION_INSERT && (intent.type == "vnd.android.cursor.dir/event" || intent.type == null) -> {
-                            Route.EditEvent(
-                                id = null,
-                                title = intent.getStringExtra(CalendarContract.Events.TITLE),
-                                description = intent.getStringExtra(CalendarContract.Events.DESCRIPTION),
-                                location = intent.getStringExtra(CalendarContract.Events.EVENT_LOCATION),
-                                beginTime = intent.getLongExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, -1L).takeIf { it != -1L },
-                                endTime = intent.getLongExtra(CalendarContract.EXTRA_EVENT_END_TIME, -1L).takeIf { it != -1L },
-                                allDay = intent.getBooleanExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, false).takeIf { intent.hasExtra(CalendarContract.EXTRA_EVENT_ALL_DAY) }
-                            )
-                        }
-                        else -> null
-                    }
-                    Box(Modifier.fillMaxSize().onFileDrop { uris -> importUris.value = uris.map { it.toString() } }) {
-                        Navigation(viewModel, initialRoute) { importUris.value = emptyList() }
-                    }
-                }
-            }
+            CalendarAppContent(
+                activityIntent = intent,
+                importUris = importUris,
+                pendingRoute = pendingRoute,
+                pendingDate = pendingDate,
+            )
         }
     }
 
@@ -143,62 +103,61 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
-    /**
-     * Time/date-jump VIEW intents. The provider often sends these with a null
-     * type, so the URI shape is matched too: without this the date-jump never
-     * runs and the URI falls into the ICS import path.
-     */
-    private fun isTimeEpochIntent(it: Intent): Boolean {
-        if (it.action != Intent.ACTION_VIEW) return false
-        if (it.type == "time/epoch") return true
-        if (it.type != null) return false
-        val data = it.data ?: return false
-        if (data.lastPathSegment?.toLongOrNull() == null) return false
-        return data.authority == "com.android.calendar" || data.path?.contains("time") == true
-    }
+    // isTimeEpochIntent lives at file level so resolveDateJumpTarget can share it.
 
     private fun handleIntent(intent: Intent?) {
         val it = intent ?: return
         // Date-jump intents never carry files; pendingDate drives the
         // LaunchedEffect above for onNewIntent (onCreate is covered there too).
-        if (isTimeEpochIntent(it)) {
-            it.data?.lastPathSegment?.toLongOrNull()?.let { timestamp ->
-                runCatching {
-                    Instant.fromEpochMilliseconds(timestamp)
-                        .toLocalDateTime(TimeZone.currentSystemDefault()).date
-                }.getOrNull()?.let { date -> pendingDate.value = date }
-            }
-            return
-        }
-
+        if (consumeTimeJumpIntent(it)) return
         // Instance deep-link: never crash on malformed extras (exported activity).
-        if (it.hasExtra("instance")) {
-            it.getStringExtra("instance")?.let { raw ->
-                runCatching { Json.decodeFromString<Instance>(raw) }.getOrNull()
-            }?.let { instance -> pendingRoute.value = Route.Event(instance) }
-            // Instance intents carry no stream data; avoid falling into ICS handling.
-            if (it.data == null && IntentHelper.getUrisFromIntent(it).isEmpty()) return
-        }
-
+        if (consumeInstanceLink(it)) return
         // ACTION_INSERT from other apps while already open (singleTask).
-        if (it.action == Intent.ACTION_INSERT &&
-            (it.type == "vnd.android.cursor.dir/event" || it.type == null)
-        ) {
-            pendingRoute.value = Route.EditEvent(
-                id = null,
-                title = it.getStringExtra(CalendarContract.Events.TITLE),
-                description = it.getStringExtra(CalendarContract.Events.DESCRIPTION),
-                location = it.getStringExtra(CalendarContract.Events.EVENT_LOCATION),
-                beginTime = it.getLongExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, -1L)
-                    .takeIf { value -> value != -1L },
-                endTime = it.getLongExtra(CalendarContract.EXTRA_EVENT_END_TIME, -1L)
-                    .takeIf { value -> value != -1L },
-                allDay = it.getBooleanExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, false)
-                    .takeIf { _ -> it.hasExtra(CalendarContract.EXTRA_EVENT_ALL_DAY) },
-            )
-            return
-        }
+        if (consumeInsertIntent(it)) return
+        consumeImportUris(it)
+    }
 
+    /**
+     * Handles a time/date-jump VIEW intent by stashing the date in [pendingDate].
+     * Returns true when the intent was a date jump (it never carries files).
+     */
+    private fun consumeTimeJumpIntent(it: Intent): Boolean {
+        if (!isTimeEpochIntent(it)) return false
+        it.data?.lastPathSegment?.toLongOrNull()?.let { timestamp ->
+            runCatching {
+                Instant.fromEpochMilliseconds(timestamp)
+                    .toLocalDateTime(TimeZone.currentSystemDefault()).date
+            }.getOrNull()?.let { date -> pendingDate.value = date }
+        }
+        return true
+    }
+
+    /**
+     * Handles an instance deep-link extra. Returns true when the intent carried no
+     * stream data, so it must not fall into ICS handling.
+     */
+    private fun consumeInstanceLink(it: Intent): Boolean {
+        if (!it.hasExtra("instance")) return false
+        it.getStringExtra("instance")?.let { raw ->
+            runCatching { Json.decodeFromString<Instance>(raw) }.getOrNull()
+        }?.let { instance -> pendingRoute.value = Route.Event(instance) }
+        // Instance intents carry no stream data; avoid falling into ICS handling.
+        return it.data == null && IntentHelper.getUrisFromIntent(it).isEmpty()
+    }
+
+    /** Handles an ACTION_INSERT event intent from another app. Returns true when consumed. */
+    private fun consumeInsertIntent(it: Intent): Boolean {
+        if (it.action != Intent.ACTION_INSERT ||
+            (it.type != "vnd.android.cursor.dir/event" && it.type != null)
+        ) {
+            return false
+        }
+        pendingRoute.value = editEventFromIntent(it)
+        return true
+    }
+
+    /** Routes file intents to the ICS import screen when they contain events. */
+    private fun consumeImportUris(it: Intent) {
         val uris = IntentHelper.getUrisFromIntent(it)
         if (uris.isEmpty()) return
         // Persist read access so the import screen can re-open the files later.
@@ -219,9 +178,11 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             val withEvents = uris.filter { uri ->
                 try {
-                    contentResolver.openInputStream(uri)?.use { iS -> parseICSFile(iS).isNotEmpty() } == true
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "Error reading ICS file: $uri", e)
+                    contentResolver.openInputStream(uri)?.use { iS ->
+                        parseICSFile(iS).isNotEmpty()
+                    } == true
+                } catch (expected: Exception) {
+                    Log.e("MainActivity", "Error reading ICS file: $uri", expected)
                     false
                 }
             }
@@ -232,6 +193,157 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+/** Builds a [Route.EditEvent] from an ACTION_INSERT intent's extras. */
+private fun editEventFromIntent(it: Intent): Route.EditEvent {
+    return Route.EditEvent(
+        id = null,
+        title = it.getStringExtra(CalendarContract.Events.TITLE),
+        description = it.getStringExtra(CalendarContract.Events.DESCRIPTION),
+        location = it.getStringExtra(CalendarContract.Events.EVENT_LOCATION),
+        beginTime = it.getLongExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, -1L)
+            .takeIf { value -> value != NO_TIME_MILLIS },
+        endTime = it.getLongExtra(CalendarContract.EXTRA_EVENT_END_TIME, -1L)
+            .takeIf { value -> value != NO_TIME_MILLIS },
+        allDay = it.getBooleanExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, false)
+            .takeIf { _ -> it.hasExtra(CalendarContract.EXTRA_EVENT_ALL_DAY) },
+    )
+}
+
+private const val NO_TIME_MILLIS = -1L
+
+/**
+ * The activity's content, extracted from [MainActivity.onCreate] so the activity
+ * method stays under the LongMethod/CyclomaticComplexMethod limits.
+ */
+@Composable
+private fun MainActivity.CalendarAppContent(
+    activityIntent: Intent?,
+    importUris: MutableState<List<String>>,
+    pendingRoute: MutableState<Route?>,
+    pendingDate: MutableState<LocalDate?>,
+) {
+    val dataStore = remember { DataStoreUtils.getInstance(this) }
+    val themeName by dataStore.stringFlow("theme_mode")
+        .collectAsState(initial = dataStore.getString("theme_mode"))
+    val darkTheme = when (
+        themeName?.let {
+            runCatching { CalendarViewModel.ThemeMode.valueOf(it) }.getOrNull()
+        }
+    ) {
+        CalendarViewModel.ThemeMode.Light -> false
+        CalendarViewModel.ThemeMode.Dark -> true
+        else -> null
+    }
+    DynamicTheme(darkTheme) {
+        AppPermissionsGate(
+            spec = AppPermissionsSpec(
+                title = stringResource(R.string.please_grant_calendar_permission),
+                requirements = listOf(
+                    PermissionRequirement.Runtime(
+                        arrayOf(
+                            Manifest.permission.READ_CALENDAR,
+                            Manifest.permission.WRITE_CALENDAR,
+                        ),
+                    ),
+                    // Reminder notifications rely on exact alarms.
+                    PermissionRequirement.ExactAlarms,
+                    // Reminder notifications need POST_NOTIFICATIONS on
+                    // Android 13+; now blocking like everything else.
+                    PermissionRequirement.notifications(),
+                ),
+            ),
+        ) {
+            val viewModel: CalendarViewModel = viewModel()
+            DateJumpEffect(activityIntent, pendingDate, viewModel)
+
+            val uris by importUris
+            val pending by pendingRoute
+            val initialRoute = resolveInitialRoute(activityIntent, uris, pending)
+            Box(
+                Modifier.fillMaxSize().onFileDrop { dropped ->
+                    importUris.value = dropped.map { it.toString() }
+                },
+            ) {
+                Navigation(viewModel, initialRoute) { importUris.value = emptyList() }
+            }
+        }
+    }
+}
+
+/**
+ * Time/date-jump VIEW intents. The provider often sends these with a null
+ * type, so the URI shape is matched too: without this the date-jump never
+ * runs and the URI falls into the ICS import path.
+ */
+private fun isTimeEpochIntent(it: Intent): Boolean {
+    if (it.action != Intent.ACTION_VIEW) return false
+    if (it.type == "time/epoch") return true
+    if (it.type != null) return false
+    val data = it.data ?: return false
+    if (data.lastPathSegment?.toLongOrNull() == null) return false
+    return data.authority == "com.android.calendar" || data.path?.contains("time") == true
+}
+
+/**
+ * Applies a pending date jump (or a time-epoch VIEW intent) to the ViewModel.
+ * The provider often sends time URIs with a null type, so URI shape is matched
+ * (see [MainActivity.isTimeEpochIntent]), not just type == "time/epoch".
+ */
+@Composable
+private fun DateJumpEffect(
+    activityIntent: Intent?,
+    pendingDate: MutableState<LocalDate?>,
+    viewModel: CalendarViewModel,
+) {
+    val dateJump by pendingDate
+    LaunchedEffect(activityIntent, dateJump) {
+        val target = dateJump ?: resolveDateJumpTarget(activityIntent)
+        if (target != null) {
+            viewModel.setSelectedDate(target)
+            viewModel.setLastViewedDate(target)
+            pendingDate.value = null
+        }
+    }
+}
+
+/** Extracts the jump-to date from a time-epoch VIEW intent, or null. */
+private fun resolveDateJumpTarget(activityIntent: Intent?): LocalDate? {
+    if (activityIntent == null) return null
+    if (!isTimeEpochIntent(activityIntent)) return null
+    return activityIntent.data?.lastPathSegment?.toLongOrNull()?.toJumpDate()
+}
+
+private fun Long.toJumpDate(): LocalDate? {
+    return runCatching {
+        Instant.fromEpochMilliseconds(this).toLocalDateTime(TimeZone.currentSystemDefault()).date
+    }.getOrNull()
+}
+
+/**
+ * Resolves which route the app opens on: an ICS import, a pending deep-link, an
+ * instance extra, or an ACTION_INSERT — else the calendar home (null).
+ * Exported activity: malformed "instance" extras fall back to no route instead
+ * of crashing.
+ */
+private fun resolveInitialRoute(
+    activityIntent: Intent?,
+    uris: List<String>,
+    pending: Route?,
+): Route? {
+    if (uris.isNotEmpty()) return Route.Settings.ImportIcs(uris)
+    if (pending != null) return pending
+    if (activityIntent == null) return null
+    activityIntent.getStringExtra("instance")?.let { raw ->
+        runCatching { Json.decodeFromString<Instance>(raw) }.getOrNull()
+    }?.let { return Route.Event(it) }
+    if (activityIntent.action == Intent.ACTION_INSERT &&
+        (activityIntent.type == "vnd.android.cursor.dir/event" || activityIntent.type == null)
+    ) {
+        return editEventFromIntent(activityIntent)
+    }
+    return null
 }
 
 
@@ -329,70 +441,87 @@ fun Navigation(viewModel: CalendarViewModel, initialRoute: Route?, onImportClear
     }
 
     MainNavigation(backStack) {
-        entry<Route.Calendar>(metadata = ListPage()) {
-            CalendarScreen(viewModel, backStack)
-        }
-        // Morph: the event's title travels out of the chip the user tapped on the grid.
-        entry<Route.Event>(metadata = ListDetailPage() + MorphPage()) { key ->
-            EventScreen(viewModel, key.instance, backStack)
-        }
-        entry<Route.Settings> {
-            SettingsScreen(viewModel, backStack)
-        }
-        entry<Route.Settings.HolidayCalendars> {
-            HolidayCalendarsScreen(viewModel, backStack)
-        }
-        // Morph: the event's location line grows into the location field.
-        entry<Route.EditEvent>(metadata = ListDetailPage() + MorphPage()) { key ->
-            EditEventScreen(viewModel, key, backStack)
-        }
+        mainEntries(viewModel, backStack)
+        dialogEntries(backStack)
+        settingsDialogEntries(viewModel, backStack)
+    }
+}
 
-        entry<Route.Calendar.GotoDialog>(metadata = DialogPage()) { key ->
-            CalendarSetDateDialog(backStack, key.dateViewing)
-        }
+private fun EntryProviderScope<Route>.mainEntries(
+    viewModel: CalendarViewModel,
+    backStack: NavBackStack<Route>,
+) {
+    entry<Route.Calendar>(metadata = ListPage()) {
+        CalendarScreen(viewModel, backStack)
+    }
+    // Morph: the event's title travels out of the chip the user tapped on the grid.
+    entry<Route.Event>(metadata = ListDetailPage() + MorphPage()) { key ->
+        EventScreen(viewModel, key.instance, backStack)
+    }
+    entry<Route.Settings> {
+        SettingsScreen(viewModel, backStack)
+    }
+    entry<Route.Settings.HolidayCalendars> {
+        HolidayCalendarsScreen(viewModel, backStack)
+    }
+    // Morph: the event's location line grows into the location field.
+    entry<Route.EditEvent>(metadata = ListDetailPage() + MorphPage()) { key ->
+        EditEventScreen(viewModel, key, backStack)
+    }
+    entry<Route.Settings.ImportIcs> { key ->
+        ImportIcsScreen(viewModel, backStack, key.uris)
+    }
+}
 
-        entry<Route.EditEvent.DatePickerDialog>(metadata = DialogPage()) { key ->
-            DatePickerDialog(backStack, key.key, key.initialDate, key.minDate)
-        }
+private fun EntryProviderScope<Route>.dialogEntries(
+    backStack: NavBackStack<Route>,
+) {
+    entry<Route.Calendar.GotoDialog>(metadata = DialogPage()) { key ->
+        CalendarSetDateDialog(backStack, key.dateViewing)
+    }
 
-        entry<Route.EditEvent.TimePickerDialog>(metadata = DialogPage()) { key ->
-            TimePickerDialogContent(backStack, key.key, key.initialTime, key.minTime)
-        }
+    entry<Route.EditEvent.DatePickerDialog>(metadata = DialogPage()) { key ->
+        DatePickerDialog(backStack, key.key, key.initialDate, key.minDate)
+    }
 
-        entry<Route.EditEvent.CalendarPickerDialog>(metadata = DialogPage()) { key ->
-            CalendarPickerDialog(backStack, key.key)
-        }
+    entry<Route.EditEvent.TimePickerDialog>(metadata = DialogPage()) { key ->
+        TimePickerDialogContent(backStack, key.key, key.initialTime, key.minTime)
+    }
 
-        entry<Route.EditEvent.TimezonePickerDialog>(metadata = DialogPage()) { key ->
-            TimezonePickerDialog(backStack, key.key)
-        }
+    entry<Route.EditEvent.CalendarPickerDialog>(metadata = DialogPage()) { key ->
+        CalendarPickerDialog(backStack, key.key)
+    }
 
-        entry<Route.EditEvent.RecurrenceDialog>(metadata = DialogPage()) { key ->
-            RecurrenceDialog(backStack, key.key, key.startDate, key.initial, key.initialDates)
-        }
+    entry<Route.EditEvent.TimezonePickerDialog>(metadata = DialogPage()) { key ->
+        TimezonePickerDialog(backStack, key.key)
+    }
 
-        entry<Route.Settings.ChangeColor>(metadata = DialogPage()) { key ->
-            SettingsChangeColorDialog(viewModel, backStack, key.id)
-        }
+    entry<Route.EditEvent.RecurrenceDialog>(metadata = DialogPage()) { key ->
+        RecurrenceDialog(backStack, key.key, key.startDate, key.initial, key.initialDates)
+    }
+}
 
-        entry<Route.Settings.AddCalendar>(metadata = DialogPage()) { _ ->
-            SettingsAddCalendarDialog(viewModel, backStack)
-        }
+private fun EntryProviderScope<Route>.settingsDialogEntries(
+    viewModel: CalendarViewModel,
+    backStack: NavBackStack<Route>,
+) {
+    entry<Route.Settings.ChangeColor>(metadata = DialogPage()) { key ->
+        SettingsChangeColorDialog(viewModel, backStack, key.id)
+    }
 
-        entry<Route.Settings.RenameCalendar>(metadata = DialogPage()) { key ->
-            SettingsRenameCalendarDialog(viewModel, backStack, key.id)
-        }
+    entry<Route.Settings.AddCalendar>(metadata = DialogPage()) { _ ->
+        SettingsAddCalendarDialog(viewModel, backStack)
+    }
 
-        entry<Route.Settings.DeleteCalendar>(metadata = DialogPage()) { key ->
-            SettingsDeleteCalendarDialog(viewModel, backStack, key.id)
-        }
+    entry<Route.Settings.RenameCalendar>(metadata = DialogPage()) { key ->
+        SettingsRenameCalendarDialog(viewModel, backStack, key.id)
+    }
 
-        entry<Route.Settings.DefaultReminders>(metadata = DialogPage()) { key ->
-            SettingsDefaultRemindersDialog(viewModel, backStack, key.id)
-        }
+    entry<Route.Settings.DeleteCalendar>(metadata = DialogPage()) { key ->
+        SettingsDeleteCalendarDialog(viewModel, backStack, key.id)
+    }
 
-        entry<Route.Settings.ImportIcs> { key ->
-            ImportIcsScreen(viewModel, backStack, key.uris)
-        }
+    entry<Route.Settings.DefaultReminders>(metadata = DialogPage()) { key ->
+        SettingsDefaultRemindersDialog(viewModel, backStack, key.id)
     }
 }

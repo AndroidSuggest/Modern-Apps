@@ -55,7 +55,7 @@ class GrapheneOSRepository(private val context: Context) {
         try {
             val (status, _, bytes) =
                 NetworkClient.performRequestBytesFull(GrapheneOSRepo.METADATA_URL)
-            if (status !in 200..299) {
+            if (status !in HTTP_OK_MIN..HTTP_OK_MAX) {
                 return@withLock Result.failure(
                     IllegalStateException("index fetch failed: HTTP $status")
                 )
@@ -89,9 +89,15 @@ class GrapheneOSRepository(private val context: Context) {
             val parsed = GrapheneOSIndex.packagesFor(context, index, wanted)
             cached = parsed
             Result.success(parsed)
-        } catch (e: Exception) {
-            Log.w(TAG, "index fetch/verify failed", e)
-            Result.failure(e)
+        } catch (expected: IllegalStateException) {
+            Log.w(TAG, "index fetch/verify failed", expected)
+            Result.failure(expected)
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "index fetch/verify failed", expected)
+            Result.failure(expected)
+        } catch (expected: SecurityException) {
+            Log.w(TAG, "index fetch/verify failed", expected)
+            Result.failure(expected)
         }
     }
 
@@ -113,14 +119,19 @@ class GrapheneOSRepository(private val context: Context) {
 
     private suspend fun readStoredTimestamp(): Long = try {
         context.grapheneOSDataStore.data.first()[INDEX_TIMESTAMP_KEY] ?: 0L
-    } catch (_: Exception) {
+    } catch (expected: java.io.IOException) {
+        Log.w(TAG, "read stored timestamp", expected)
+        0L
+    } catch (expected: IllegalStateException) {
+        Log.w(TAG, "read stored timestamp", expected)
         0L
     }
 
     private suspend fun persistTimestamp(timestamp: Long) {
         try {
             context.grapheneOSDataStore.edit { it[INDEX_TIMESTAMP_KEY] = timestamp }
-        } catch (_: Exception) {
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "persist timestamp", expected)
         }
     }
 
@@ -129,5 +140,7 @@ class GrapheneOSRepository(private val context: Context) {
 
         /** Newline + 100 base64 signature characters + newline. */
         const val TRAILER_BYTES = 102
+        private const val HTTP_OK_MIN = 200
+        private const val HTTP_OK_MAX = 299
     }
 }

@@ -53,6 +53,10 @@ import kotlinx.coroutines.delay
  */
 class AudioPreviewActivity : ComponentActivity() {
 
+    private companion object {
+        const val POSITION_POLL_MS = 250L
+    }
+
     private var player: ExoPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -155,7 +159,7 @@ private fun PreviewCard(player: ExoPlayer, title: String, onClose: () -> Unit) {
                 position = player.currentPosition.coerceAtLeast(0L).toFloat()
                 if (player.duration > 0) duration = player.duration
             }
-            delay(250)
+            delay(POSITION_POLL_MS)
         }
     }
 

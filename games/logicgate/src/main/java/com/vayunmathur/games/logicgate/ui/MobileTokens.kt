@@ -79,7 +79,7 @@ object MobileDimens {
     val termHit = 36.dp
     val pinOutside = 14.dp
     val gatePinOutside = 14.dp
-    val gridStep = 72f
+    const val gridStep = 72f
 }
 
 object MobileType {

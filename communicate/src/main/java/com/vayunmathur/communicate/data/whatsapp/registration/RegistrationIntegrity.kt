@@ -30,6 +30,8 @@ import java.util.Base64
  * [nativeSignalsJson]) use `java.util.Base64` (API 26+, minSdk 31) so they are JVM-unit-testable.
  */
 object RegistrationIntegrity {
+    private const val MS_PER_SECOND = 1000L
+    private const val LONG_BYTES = 8
 
     private val b64 = Base64.getEncoder()
 
@@ -47,7 +49,7 @@ object RegistrationIntegrity {
 
     /** `t` = base64(8-byte big-endian int64 seconds). */
     fun tField(epochSeconds: Long): String =
-        b64.encodeToString(ByteBuffer.allocate(8).putLong(epochSeconds).array())
+        b64.encodeToString(ByteBuffer.allocate(LONG_BYTES).putLong(epochSeconds).array())
 
     /** `_ge` emulation probe JSON `{"sv":<virtio>,"sb":<vboxsf>}` (stable key order). */
     fun emulationJson(virtio: Boolean, vboxsf: Boolean): String =
@@ -85,7 +87,7 @@ object RegistrationIntegrity {
      */
     fun collect(
         context: Context,
-        nowSeconds: Long = System.currentTimeMillis() / 1000,
+        nowSeconds: Long = System.currentTimeMillis() / MS_PER_SECOND,
         encryptQueryString: (String) -> String? = RegistrationAttestation::encryptQueryString,
     ): Signals {
         val androidId = runCatching {
@@ -205,12 +207,12 @@ object RegistrationIntegrity {
 
     @Suppress("DEPRECATION")
     private fun firstInstallTime(context: Context): Long = runCatching {
-        context.packageManager.getPackageInfo(context.packageName, 0).firstInstallTime / 1000
+        context.packageManager.getPackageInfo(context.packageName, 0).firstInstallTime / MS_PER_SECOND
     }.getOrDefault(0L)
 
     @Suppress("DEPRECATION")
     private fun lastUpdateTime(context: Context): Long = runCatching {
-        context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime / 1000
+        context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime / MS_PER_SECOND
     }.getOrDefault(0L)
 
     /**

@@ -153,24 +153,35 @@ private fun CameraScanner(onResult: (String) -> Unit) {
  * Case-insensitive `LPA:` gate (already correct), plus the structural checks the
  * native parser enforces: format `1`, non-blank SM-DP+ host with a dot, non-blank
  * `alnum|-` matching ID. A bare `lpa:` link body (no `$`) is accepted here and
- * resolved downstream — it is a deep link, not a full activation code.
+ * resolved downstream - it is a deep link, not a full activation code.
  */
 internal fun looksLikeActivationCode(code: String): Boolean {
     val trimmed = code.trim()
     if (trimmed.isEmpty()) return false
     // Deep link form: lpa:<anything> hands off to the download flow's parser.
     if (trimmed.startsWith("lpa:", ignoreCase = true)) return true
+    if (!hasActivationStructure(trimmed)) return false
     val body = trimmed.removePrefix("LPA:").removePrefix("lpa:")
-    if (!trimmed.startsWith("LPA:", ignoreCase = true) && '$' !in trimmed) return false
     val parts = body.split('$')
-    if (parts.size < 3) return false
-    if (parts[0].trim() != "1") return false
+    if (parts.size < MIN_ACTIVATION_PARTS) return false
+    if (parts[0].trim() != FORMAT_VERSION_1) return false
     val smdp = parts[1].trim()
     val matchingId = parts[2].trim()
-    if (smdp.isEmpty() || '.' !in smdp) return false
-    if (matchingId.isEmpty()) return false
-    return matchingId.all { it.isLetterOrDigit() || it == '-' }
+    return isValidSmdp(smdp) && isValidMatchingId(matchingId)
 }
+
+private fun hasActivationStructure(trimmed: String): Boolean {
+    if (trimmed.startsWith("LPA:", ignoreCase = true)) return true
+    return '$' in trimmed
+}
+
+private fun isValidSmdp(smdp: String): Boolean = smdp.isNotEmpty() && '.' in smdp
+
+private fun isValidMatchingId(matchingId: String): Boolean =
+    matchingId.isNotEmpty() && matchingId.all { it.isLetterOrDigit() || it == '-' }
+
+private const val MIN_ACTIVATION_PARTS = 3
+private const val FORMAT_VERSION_1 = "1"
 
 /** ImageAnalysis analyzer that decodes QR codes with ZXing. */
 private class QrCodeAnalyzer(private val onDecoded: (String) -> Unit) : ImageAnalysis.Analyzer {

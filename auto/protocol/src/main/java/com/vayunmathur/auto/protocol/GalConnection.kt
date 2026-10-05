@@ -134,7 +134,7 @@ class GalConnection(
         } catch (e: ExecutionException) {
             throw e.cause ?: e
         } catch (e: RejectedExecutionException) {
-            trace("drop send after close")
+            trace("drop send after close: $e")
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
             trace("send interrupted")
@@ -179,7 +179,7 @@ class GalConnection(
                     // log line comfortably holds ~1.5KB of hex, so log them whole: the
                     // 64-byte cap once hid the 569-byte service list we needed to see.
                     trace(
-                        "ctrl in 0x${decoded.type.toString(16)} (${decoded.payload.size}B) " +
+                        "ctrl in 0x${decoded.type.toString(HEX_RADIX)} (${decoded.payload.size}B) " +
                             "$before -> ${session.state}, ${replies.size} reply " +
                             decoded.payload.joinToString("") { "%02x".format(it) },
                     )
@@ -187,7 +187,7 @@ class GalConnection(
                     replies.forEach(::send)
                 } else {
                     trace(
-                        "ch${message.channelId} in 0x${decoded.type.toString(16)} " +
+                        "ch${message.channelId} in 0x${decoded.type.toString(HEX_RADIX)} " +
                             "(${decoded.payload.size}B) " +
                             decoded.payload.take(IN_PAYLOAD_LOG_BYTES).joinToString("") {
                                 "%02x".format(it)
@@ -290,8 +290,8 @@ class GalConnection(
     private fun write(channelId: Int, payload: ByteArray, isControl: Boolean, encrypted: Boolean) {
         trace(
             "out ch$channelId 0x${
-                ((payload[0].toInt() and 0xFF shl 8) or (payload[1].toInt() and 0xFF)).toString(16)
-            } ctrl=$isControl enc=$encrypted ${payload.take(48).joinToString("") {
+                extractWireType(payload).toString(HEX_RADIX)
+            } ctrl=$isControl enc=$encrypted ${payload.take(OUT_PAYLOAD_LOG_BYTES).joinToString("") {
                 "%02x".format(it)
             }}",
         )
@@ -314,6 +314,11 @@ class GalConnection(
         transport.close()
     }
 
+    /** Reads the 2-byte big-endian wire type at the head of an encoded payload. */
+    private fun extractWireType(payload: ByteArray): Int =
+        ((payload[0].toInt() and BYTE_MASK shl HIGH_BYTE_SHIFT) or
+            (payload[1].toInt() and BYTE_MASK))
+
     private companion object {
         const val CONTROL_CHANNEL = 0
 
@@ -322,5 +327,17 @@ class GalConnection(
 
         /** Bytes of each service-channel payload in the trace log. */
         const val IN_PAYLOAD_LOG_BYTES = 64
+
+        /** Bytes of each outbound payload in the trace log. */
+        private const val OUT_PAYLOAD_LOG_BYTES = 48
+
+        /** Radix for hex wire-type rendering in the trace log. */
+        private const val HEX_RADIX = 16
+
+        /** Masks one unsigned byte out of a signed Kotlin Byte. */
+        private const val BYTE_MASK = 0xFF
+
+        /** Shifts the high byte of a 2-byte big-endian wire type into place. */
+        private const val HIGH_BYTE_SHIFT = 8
     }
 }

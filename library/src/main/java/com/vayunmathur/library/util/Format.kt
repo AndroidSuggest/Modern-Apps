@@ -35,9 +35,9 @@ fun Float.formatSpeed(locale: Locale = Locale.getDefault()): String {
                      measurementSystem == LocaleData.MeasurementSystem.UK
 
     val (unit, value) = if (isImperial) {
-        MeasureUnit.MILE_PER_HOUR to (this * 2.23694f)
+        MeasureUnit.MILE_PER_HOUR to (this * MPH_PER_MPS)
     } else {
-        MeasureUnit.KILOMETER_PER_HOUR to (this * 3.6f)
+        MeasureUnit.KILOMETER_PER_HOUR to (this * KPH_PER_MPS)
     }
 
     return NumberFormatter.with()
@@ -48,3 +48,6 @@ fun Float.formatSpeed(locale: Locale = Locale.getDefault()): String {
         .format(value.toDouble())
         .toString()
 }
+
+private const val MPH_PER_MPS = 2.23694f
+private const val KPH_PER_MPS = 3.6f

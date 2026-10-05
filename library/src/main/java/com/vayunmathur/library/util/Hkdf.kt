@@ -14,14 +14,15 @@ import javax.crypto.spec.SecretKeySpec
 object Hkdf {
     private const val HMAC = "HmacSHA256"
     private const val HASH_LEN = 32
+    private const val MAX_BLOCKS = 255
 
     fun derive(ikm: ByteArray, info: ByteArray, length: Int, salt: ByteArray = ByteArray(HASH_LEN)): ByteArray {
         val prk = hmac(salt, ikm)
-        val n = (length + HASH_LEN - 1) / HASH_LEN
-        require(n <= 255) { "HKDF cannot derive more than 255 blocks" }
-        val output = ByteArray(n * HASH_LEN)
+        val blocks = (length + HASH_LEN - 1) / HASH_LEN
+        require(blocks <= MAX_BLOCKS) { "HKDF cannot derive more than 255 blocks" }
+        val output = ByteArray(blocks * HASH_LEN)
         var previous = ByteArray(0)
-        for (i in 1..n) {
+        for (i in 1..blocks) {
             val mac = Mac.getInstance(HMAC).apply { init(SecretKeySpec(prk, HMAC)) }
             mac.update(previous)
             mac.update(info)

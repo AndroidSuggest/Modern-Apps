@@ -14,7 +14,12 @@ import android.view.Surface
  * [handle] values are opaque pointers owned by the native side. Every method tolerates
  * `0`, which is what [create] returns on failure — so a device without a working Vulkan
  * driver degrades to a blank map rather than crashing the app.
+ *
+ * One declaration per native entry point (create/resize/render/pick/destroy plus a
+ * setter pair per piece of renderer state); the count is inherent to the JNI surface.
+ * FileLength (fatal lint) still caps file size.
  */
+@Suppress("TooManyFunctions")
 internal object MapNative {
 
     /**

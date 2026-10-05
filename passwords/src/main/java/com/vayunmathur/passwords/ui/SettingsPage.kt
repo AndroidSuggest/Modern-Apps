@@ -54,7 +54,6 @@ import java.util.Date
 fun SettingsPage(
     backStack: com.vayunmathur.library.util.NavBackStack<com.vayunmathur.passwords.Route>,
     passwordsViewModel: PasswordsViewModel,
-    passphrase: String,
 ) {
     val importing by passwordsViewModel.importing.collectAsState()
     val message by passwordsViewModel.importMessage.collectAsState()
@@ -244,20 +243,20 @@ private fun KdbxSyncSection() {
 @Composable
 private fun syncStatusText(lastSync: Long, status: String, error: String): String {
     val context = LocalContext.current
-    val when_ = if (lastSync == 0L) {
+    val whenText = if (lastSync == 0L) {
         stringResource(R.string.sync_never)
     } else {
         DateFormat.getMediumDateFormat(context).format(Date(lastSync)) + " " +
             DateFormat.getTimeFormat(context).format(Date(lastSync))
     }
-    if (status != KdbxSyncSettings.STATUS_ERROR) return when_
+    if (status != KdbxSyncSettings.STATUS_ERROR) return whenText
     val reason = when (error) {
         "file_missing" -> stringResource(R.string.sync_error_file_missing)
         "wrong_password" -> stringResource(R.string.sync_error_wrong_password)
         "verify_failed" -> stringResource(R.string.sync_error_verify_failed)
         else -> stringResource(R.string.sync_error_generic, error)
     }
-    return "$when_\n$reason"
+    return "$whenText\n$reason"
 }
 
 @Composable

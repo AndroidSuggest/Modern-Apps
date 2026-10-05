@@ -26,10 +26,26 @@ class ZipBackupFormat(
     override val needsPassword = false
 
     override suspend fun export(context: Context, password: String?, outputStream: OutputStream) {
-        BackupHelper.performFullBackup(context, dbConfigs, datastoreNames, prefNames, extraFiles, outputStream, dbCodec)
+        BackupHelper.performFullBackup(
+            context,
+            dbConfigs,
+            datastoreNames,
+            prefNames,
+            extraFiles,
+            outputStream,
+            dbCodec
+        )
     }
 
     override suspend fun import(context: Context, password: String?, inputStream: InputStream) {
-        BackupHelper.performFullRestore(context, dbConfigs, datastoreNames, prefNames, extraFilesMapping, inputStream, dbCodec)
+        BackupHelper.performFullRestore(
+            context,
+            dbConfigs,
+            datastoreNames,
+            prefNames,
+            extraFilesMapping,
+            inputStream,
+            dbCodec
+        )
     }
 }

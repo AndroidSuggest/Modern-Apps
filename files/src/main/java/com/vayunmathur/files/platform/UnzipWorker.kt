@@ -1,14 +1,19 @@
 package com.vayunmathur.files.platform
+
 import android.content.Context
+import android.util.Log
 import androidx.work.WorkerParameters
 import com.vayunmathur.files.R
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.FilterInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.zip.ZipInputStream
+
+private const val TAG_UNZIP = "UnzipWorker"
 
 class UnzipWorker(context: Context, params: WorkerParameters) : ProgressNotificationWorker(
     context,
@@ -26,10 +31,6 @@ class UnzipWorker(context: Context, params: WorkerParameters) : ProgressNotifica
         // from the archive and can lie, so the real ceiling is enforced here as bytes are written.
         val budget = inputData.getLong("size_budget", Long.MAX_VALUE)
 
-        val zipFile = File(zipPathString)
-        val destDir = File(destPathString)
-        val destDirCanonical = destDir.canonicalFile
-
         createNotificationChannel()
         setForeground(createForegroundInfo(0))
 
@@ -37,63 +38,78 @@ class UnzipWorker(context: Context, params: WorkerParameters) : ProgressNotifica
         val extracted = mutableListOf<File>()
 
         return try {
-            val zipFileSize = zipFile.length()
-            var totalBytesRead = 0L
-
-            FileInputStream(zipFile).use { fis ->
-                val countingInputStream = object : FilterInputStream(fis) {
-                    override fun read(): Int {
-                        val b = super.read()
-                        if (b != -1) {
-                            totalBytesRead++
-                            updateProgress(totalBytesRead, zipFileSize)
-                        }
-                        return b
-                    }
-
-                    override fun read(b: ByteArray, off: Int, len: Int): Int {
-                        val count = super.read(b, off, len)
-                        if (count != -1) {
-                            totalBytesRead += count
-                            updateProgress(totalBytesRead, zipFileSize)
-                        }
-                        return count
-                    }
-                }
-
-                ZipInputStream(countingInputStream).use { zipInputStream ->
-                    var totalWritten = 0L
-                    var entryCount = 0
-                    var entry = zipInputStream.nextEntry
-                    while (entry != null) {
-                        if (++entryCount > ArchiveLimits.MAX_ENTRIES) throw ArchiveTooLargeException()
-                        val entryFile = ArchiveLimits.resolveEntry(destDirCanonical, entry.name)
-                        if (entryFile == null) {
-                            entry = zipInputStream.nextEntry
-                            continue
-                        }
-                        if (entry.isDirectory) {
-                            entryFile.mkdirs()
-                        } else {
-                            entryFile.parentFile?.mkdirs()
-                            extracted.add(entryFile)
-                            FileOutputStream(entryFile).use { out ->
-                                totalWritten += copyBounded(zipInputStream, out, budget - totalWritten)
-                            }
-                        }
-                        zipInputStream.closeEntry()
-                        entry = zipInputStream.nextEntry
-                    }
-                }
-            }
+            extractArchive(File(zipPathString), File(destPathString), budget, extracted)
             Result.success()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            extracted.forEach { runCatching { it.delete() } }
+        } catch (e: ArchiveTooLargeException) {
+            Log.w(TAG_UNZIP, "archive exceeds its extraction budget", e)
+            cleanUpPartial(extracted)
+            Result.failure()
+        } catch (e: IOException) {
+            Log.w(TAG_UNZIP, "failed to extract archive", e)
+            cleanUpPartial(extracted)
             Result.failure()
         } finally {
             cancelNotification()
         }
+    }
+
+    private fun extractArchive(
+        zipFile: File,
+        destDir: File,
+        budget: Long,
+        extracted: MutableList<File>
+    ) {
+        val destDirCanonical = destDir.canonicalFile
+        val zipFileSize = zipFile.length()
+        val progress = ProgressTracker(zipFileSize)
+        FileInputStream(zipFile).use { fis ->
+            ZipInputStream(ProgressInputStream(fis, progress)).use { zipInputStream ->
+                var totalWritten = 0L
+                var entryCount = 0
+                var entry = zipInputStream.nextEntry
+                while (entry != null) {
+                    if (++entryCount > ArchiveLimits.MAX_ENTRIES) {
+                        throw ArchiveTooLargeException()
+                    }
+                    totalWritten = extractOneEntry(
+                        zipInputStream,
+                        destDirCanonical,
+                        entry.name,
+                        entry.isDirectory,
+                        extracted,
+                        budget,
+                        totalWritten
+                    )
+                    zipInputStream.closeEntry()
+                    entry = zipInputStream.nextEntry
+                }
+            }
+        }
+    }
+
+    private fun extractOneEntry(
+        zipInputStream: ZipInputStream,
+        destDirCanonical: File,
+        entryName: String,
+        isDirectory: Boolean,
+        extracted: MutableList<File>,
+        budget: Long,
+        totalWritten: Long
+    ): Long {
+        val entryFile = ArchiveLimits.resolveEntry(destDirCanonical, entryName) ?: return totalWritten
+        if (isDirectory) {
+            entryFile.mkdirs()
+            return totalWritten
+        }
+        entryFile.parentFile?.mkdirs()
+        extracted.add(entryFile)
+        FileOutputStream(entryFile).use { out ->
+            return totalWritten + copyBounded(zipInputStream, out, budget - totalWritten)
+        }
+    }
+
+    private fun cleanUpPartial(extracted: List<File>) {
+        extracted.forEach { runCatching { it.delete() } }
     }
 
     /**
@@ -114,5 +130,33 @@ class UnzipWorker(context: Context, params: WorkerParameters) : ProgressNotifica
             written += read
         }
         return written
+    }
+
+    /** Counts compressed bytes read so the notification shows real progress. */
+    private inner class ProgressTracker(private val total: Long) {
+        private var bytesRead = 0L
+
+        fun addBytes(count: Long) {
+            bytesRead += count
+            updateProgress(bytesRead, total)
+        }
+    }
+
+    /** Forwards reads while reporting compressed progress to [tracker]. */
+    private inner class ProgressInputStream(
+        input: FileInputStream,
+        private val tracker: ProgressTracker
+    ) : FilterInputStream(input) {
+        override fun read(): Int {
+            val byte = super.read()
+            if (byte != -1) tracker.addBytes(1)
+            return byte
+        }
+
+        override fun read(buffer: ByteArray, off: Int, len: Int): Int {
+            val count = super.read(buffer, off, len)
+            if (count != -1) tracker.addBytes(count.toLong())
+            return count
+        }
     }
 }

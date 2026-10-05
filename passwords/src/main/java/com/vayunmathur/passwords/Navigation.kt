@@ -17,7 +17,6 @@ import com.vayunmathur.passwords.ui.SettingsPage
 @Composable
 fun Navigation(
     passwordsViewModel: PasswordsViewModel,
-    passphrase: String,
 ) {
     val backStack = rememberNavBackStack<Route>(Route.Menu)
     // Land on settings when opened from the system App Info page.
@@ -36,7 +35,7 @@ fun Navigation(
             PasskeyPage(backStack, it.id, passwordsViewModel)
         }
         entry<Route.Settings>(metadata = ListDetailPage()) {
-            SettingsPage(backStack, passwordsViewModel, passphrase)
+            SettingsPage(backStack, passwordsViewModel)
         }
     }
 }

@@ -50,18 +50,14 @@ object RcsE2E {
     /** Content-Type marking a key-package request (peer auto-answers). */
     const val CT_KEY_REQUEST = "application/x-rcs-keyrequest"
 
-    private fun ByteArray.hex(): String = joinToString("") { "%02x".format(it) }
-
     /**
      * Per-conversation commit locks (§5.3): concurrent commits from two
      * members fork the epoch. Our own commits serialize per group so we
      * never fork ourselves; inbound epoch mismatches get one re-sync attempt
      * in [decryptFor] before the payload is dropped.
      */
-    private val commitLocks = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
-
-    private fun commitLockFor(conversationId: String): kotlinx.coroutines.sync.Mutex =
-        commitLocks.getOrPut(conversationId) { kotlinx.coroutines.sync.Mutex() }
+    internal val commitLocks =
+        java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
 
     /**
      * Safety-number fingerprint for a conversation peer (§5.4): SHA-256 of
@@ -72,7 +68,7 @@ object RcsE2E {
      * numbers mean no MITM on the key directory. Null when no package is
      * cached yet. For our own side see [mySafetyFingerprint].
      */
-    suspend fun safetyFingerprint(context: Context, peerE164: String): String? =
+    suspend fun safetyFingerprint(peerE164: String): String? =
         withContext(Dispatchers.IO) {
             if (!RcsFeature.enabled) return@withContext null
             val pkg = RcsPeerKeys.get(peerE164) ?: return@withContext null
@@ -84,17 +80,24 @@ object RcsE2E {
      * ([RcsKeyDirectory.lastPublishedFor]), same grouping. Null before our
      * first publication.
      */
-    suspend fun mySafetyFingerprint(context: Context, localE164: String): String? =
+    suspend fun mySafetyFingerprint(localE164: String): String? =
         withContext(Dispatchers.IO) {
             if (!RcsFeature.enabled) return@withContext null
             val pkg = RcsKeyDirectory.lastPublishedFor(localE164) ?: return@withContext null
             formatSafetyNumber(pkg)
         }
 
+    internal val PAYLOAD_KINDS = 0..1
+    private const val BYTE_MASK = 0xFF
+    internal const val HEX_RADIX = 16
+    internal const val HEX_PAIR = 2
+    private const val SAFETY_GROUP = 4
+    internal const val MIN_FRAME_BYTES = 8
+
     private fun formatSafetyNumber(bytes: ByteArray): String {
         val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
-        return digest.joinToString("") { "%02d".format(it.toInt() and 0xFF) }
-            .chunked(4).joinToString(" ")
+        return digest.joinToString("") { "%02d".format(it.toInt() and BYTE_MASK) }
+            .chunked(SAFETY_GROUP).joinToString(" ")
     }
 
     /**
@@ -241,7 +244,7 @@ object RcsE2E {
             val db = RcsDatabase.getDatabase(context)
             val group = db.mlsGroupDao().getByConversation(conversationId) ?: return@withLock false
             if (group.groupIdHex.startsWith("pending:")) return@withLock false
-            val groupId = group.groupIdHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            val groupId = group.groupIdHex.chunked(HEX_PAIR).map { it.toInt(HEX_RADIX).toByte() }.toByteArray()
             val csv = leafIndices.distinct().sorted().joinToString(",")
                 .toByteArray(Charsets.US_ASCII)
             val out = runCatching {
@@ -257,7 +260,7 @@ object RcsE2E {
                     members = pruneMembers(group.members, droppedIdx),
                 ),
             )
-            sendMlsEnvelope(context, conversationId, commit, CT_COMMIT)
+            sendMlsEnvelope(conversationId, commit, CT_COMMIT)
         }
     }
 
@@ -290,19 +293,7 @@ object RcsE2E {
             parseMembers(group.members)[peer.trim()]
         }
 
-    /** Parse the `e164=index` CSV member map. */
-    internal fun parseMembers(csv: String): Map<String, Int> {
-        if (csv.isBlank()) return emptyMap()
-        return csv.split(",").mapNotNull { entry ->
-            val (member, idx) = entry.split("=", limit = 2).takeIf { it.size == 2 } ?: return@mapNotNull null
-            val index = idx.trim().toIntOrNull() ?: return@mapNotNull null
-            member.trim().takeIf { it.isNotEmpty() }?.to(index)
-        }.toMap()
-    }
 
-    /** Drop [droppedIdx] leaves from a member map, re-encoding the CSV. */
-    internal fun pruneMembers(csv: String, droppedIdx: Set<Int>): String =
-        parseMembers(csv).filterValues { it !in droppedIdx }
             .entries.joinToString(",") { "${it.key}=${it.value}" }
 
     /**
@@ -408,7 +399,7 @@ object RcsE2E {
         val group = db.mlsGroupDao().getByConversation(conversationId) ?: return@withContext null
         if (group.groupIdHex.startsWith("pending:")) return@withContext null
         runCatching {
-            val groupId = group.groupIdHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            val groupId = group.groupIdHex.chunked(HEX_PAIR).map { it.toInt(HEX_RADIX).toByte() }.toByteArray()
             val out = RustMlsCrypto.encrypt(group.storage, identity, groupId, plaintext)
                 ?: return@runCatching null
             val storageOut = out.getOrNull(0) ?: group.storage
@@ -433,7 +424,7 @@ object RcsE2E {
         val group = db.mlsGroupDao().getByConversation(conversationId) ?: return@withContext null
         if (group.groupIdHex.startsWith("pending:")) return@withContext null
         runCatching {
-            val groupId = group.groupIdHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            val groupId = group.groupIdHex.chunked(HEX_PAIR).map { it.toInt(HEX_RADIX).toByte() }.toByteArray()
             val out = RustMlsCrypto.decrypt(group.storage, groupId, payload)
                 ?: return@runCatching null
             val storageOut = out.getOrNull(0) ?: group.storage
@@ -454,10 +445,10 @@ object RcsE2E {
         identityFor(context, localE164) ?: return false
         // Publish ours alongside the request so one round trip suffices.
         RcsKeyDirectory.publishTo(context, localE164, peerE164)
-        return sendKeyRequest(context, peerE164)
+        return sendKeyRequest(peerE164)
     }
 
-    private suspend fun sendKeyRequest(context: Context, peerE164: String): Boolean {
+    private suspend fun sendKeyRequest(peerE164: String): Boolean {
         if (!RcsSipTransport.canSend()) return false
         val body = "Content-Type: $CT_KEY_REQUEST\r\n\r\nrequest"
         val (startLine, headers, content) = RcsSipTransport.buildChatMessage(
@@ -474,9 +465,9 @@ object RcsE2E {
      * Request one peer's key package (public; the peer auto-publishes).
      * Used for N-peer group setup when cached packages are missing.
      */
-    suspend fun requestKeyPackage(context: Context, peerE164: String): Boolean {
+    suspend fun requestKeyPackage(peerE164: String): Boolean {
         if (!RcsFeature.enabled || !RustMlsCrypto.isAvailable) return false
-        return sendKeyRequest(context, peerE164)
+        return sendKeyRequest(peerE164)
     }
 
     /**
@@ -497,9 +488,9 @@ object RcsE2E {
         ) ?: return false
         // Track leaf indices for later removal (§5.2).
         trackGroupMembers(context, conversationId, peerPackages.keys.toList())
-        var ok = sendMlsEnvelope(context, conversationId, commit, CT_COMMIT)
+        var ok = sendMlsEnvelope(conversationId, commit, CT_COMMIT)
         for ((peer, _) in peerPackages) {
-            ok = sendMlsEnvelope(context, peer, welcome, CT_WELCOME) && ok
+            ok = sendMlsEnvelope(peer, welcome, CT_WELCOME) && ok
         }
         // Rotate our key package now that the previous one may be consumed.
         freshKeyPackage(context, localE164)
@@ -526,8 +517,8 @@ object RcsE2E {
             ?: return false
         trackGroupMembers(context, conversationId, listOf(peerE164))
         // Commit → the (new) group thread; Welcome → the peer 1:1.
-        val commitOk = sendMlsEnvelope(context, conversationId, commit, CT_COMMIT)
-        val welcomeOk = sendMlsEnvelope(context, peerE164, welcome, CT_WELCOME)
+        val commitOk = sendMlsEnvelope(conversationId, commit, CT_COMMIT)
+        val welcomeOk = sendMlsEnvelope(peerE164, welcome, CT_WELCOME)
         // Rotate our key package now that the previous one may be consumed.
         freshKeyPackage(context, localE164)
         replenishKeyPackages(context, listOf(peerE164), localE164)
@@ -565,7 +556,6 @@ object RcsE2E {
     }
 
     private suspend fun sendMlsEnvelope(
-        context: Context,
         recipient: String,
         framed: ByteArray,
         contentType: String,
@@ -584,49 +574,7 @@ object RcsE2E {
             .getOrDefault(false)
     }
 
-    /** Group id for [conversationId], or null when no E2EE group exists. */
-    suspend fun groupIdFor(context: Context, conversationId: String): ByteArray? =
-        withContext(Dispatchers.IO) {
-            if (!RcsFeature.enabled) return@withContext null
-            val group = RcsDatabase.getDatabase(context).mlsGroupDao().getByConversation(conversationId)
-                ?: return@withContext null
-            if (group.groupIdHex.startsWith("pending:")) return@withContext null
-            group.groupIdHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-        }
 
-    /**
-     * True when [body] (CPIM text or raw) carries an MLS payload: magic
-     * prefixes after base64 decode, or the MLS content types.
-     */
-    fun isMlsPayload(body: String): Boolean {
-        if (!RcsFeature.enabled || !RustMlsCrypto.isAvailable) return false
-        if (body.contains(CT_MLS, ignoreCase = true) ||
-            body.contains(CT_COMMIT, ignoreCase = true) ||
-            body.contains(CT_WELCOME, ignoreCase = true)
-        ) {
-            return true
-        }
-        val b64 = if (body.contains("\r\n\r\n")) {
-            body.substringAfter("\r\n\r\n", "").trim()
-        } else {
-            body.trim()
-        }.takeIf { it.isNotEmpty() } ?: return false
-        val bytes = runCatching {
-            android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
-        }.getOrNull() ?: return false
-        if (bytes.size < 8) return false
-        return runCatching { RustMlsCrypto.payloadKind(bytes) in 0..1 }.getOrDefault(false)
-    }
 
-    /** Our own E.164 (default SMS subscription's number when readable). */
-    fun localE164(context: Context): String? {
-        if (!RcsFeature.enabled) return null
-        return runCatching {
-            val tm = context.getSystemService(android.telephony.TelephonyManager::class.java)
-                ?: return null
-            tm.line1Number?.takeIf { it.isNotBlank() }
-        }.getOrNull()
-    }
 
-    private fun e2eThreadFor(e164: String): String = "e2e:$e164"
 }

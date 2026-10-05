@@ -93,6 +93,9 @@ class CalculatorGlanceWidget : GlanceAppWidget() {
         }
     }
 
+    // Broad catches are deliberate: a throwing providePreview takes down the widget picker on
+    // API 35+, so every failure mode here falls back to simpler UI (logged) instead.
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
         try {
             provideContent {

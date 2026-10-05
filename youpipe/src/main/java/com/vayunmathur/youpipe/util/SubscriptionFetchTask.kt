@@ -26,50 +26,69 @@ class SubscriptionFetchTask(context: Context, params: WorkerParameters) :
             Log.d("SubscriptionFetchTask", "Fetched ${subscriptions.size} subscriptions")
 
             subscriptions.forEachIndexed { index, sub ->
-                try {
-                    val actualChannelID = if (sub.channelID.startsWith("@")) {
-                        getChannelInfo(sub.channelID).channelID
-                    } else {
-                        sub.channelID
-                    }
-                    val channelVideos = getChannelVideos(actualChannelID).toList()
-                    val videosFromSub =
-                            channelVideos.map {
-                                SubscriptionVideo(
-                                        id = it.videoID,
-                                        name = it.name,
-                                        duration = it.duration,
-                                        views = it.views,
-                                        uploadDate = it.uploadDate,
-                                        thumbnailURL = it.thumbnailURL,
-                                        author = it.author,
-                                        channelID = sub.id
-                                )
-                            }
-
-                    repository.upsertSubscriptionVideos(videosFromSub)
-                } catch (e: Exception) {
-                    Log.e("SubscriptionFetchTask", "Failed to fetch videos for ${sub.name}", e)
-                    if (e is java.nio.channels.UnresolvedAddressException ||
-                                    e is java.net.UnknownHostException
-                    ) {
-                        throw e
-                    }
-                }
+                fetchAndStoreChannelVideos(repository, sub)
                 setProgress(workDataOf("progress" to (index + 1).toFloat() / subscriptions.size))
             }
             Result.success()
         } catch (e: CancellationException) {
             Log.d("SubscriptionFetchTask", "Task cancelled")
             throw e
-        } catch (e: Exception) {
+        } catch (e: java.net.UnknownHostException) {
+            Log.e("SubscriptionFetchTask", "Offline during fetch, retrying", e)
+            Result.retry()
+        } catch (e: IllegalStateException) {
             val message = e.message ?: e.javaClass.simpleName
             Log.e("SubscriptionFetchTask", "Error during fetch: $message", e)
+            Result.retry()
+        } catch (e: android.database.sqlite.SQLiteException) {
+            val message = e.message ?: e.javaClass.simpleName
+            Log.e("SubscriptionFetchTask", "Database error during fetch: $message", e)
             Result.retry()
         }
     }
 }
 
+private suspend fun fetchAndStoreChannelVideos(
+    repository: SubscriptionRepository,
+    sub: com.vayunmathur.youpipe.data.Subscription,
+) {
+    try {
+        val actualChannelID = if (sub.channelID.startsWith("@")) {
+            getChannelInfo(sub.channelID).channelID
+        } else {
+            sub.channelID
+        }
+        val channelVideos = getChannelVideos(actualChannelID).toList()
+        val videosFromSub = channelVideos.map {
+            SubscriptionVideo(
+                id = it.videoID,
+                name = it.name,
+                duration = it.duration,
+                views = it.views,
+                uploadDate = it.uploadDate,
+                thumbnailURL = it.thumbnailURL,
+                author = it.author,
+                channelID = sub.id
+            )
+        }
+        repository.upsertSubscriptionVideos(videosFromSub)
+    } catch (e: java.nio.channels.UnresolvedAddressException) {
+        throw offlineFetchException(sub.name, e)
+    } catch (e: java.net.UnknownHostException) {
+        throw offlineFetchException(sub.name, e)
+    } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+        // Best-effort per-channel fetch: one channel failing must not abort the rest.
+        android.util.Log.e("SubscriptionFetchTask", "Failed to fetch videos for ${sub.name}", e)
+    } catch (e: java.io.IOException) {
+        android.util.Log.e("SubscriptionFetchTask", "Failed to fetch videos for ${sub.name}", e)
+    }
+}
+
 fun setupHourlyTask(context: Context) {
     startRepeatedTask<SubscriptionFetchTask>(context, "subscription_fetch", 15.minutes)
+}
+
+private fun offlineFetchException(channelName: String, cause: java.io.IOException): java.io.IOException {
+    android.util.Log.e("SubscriptionFetchTask", "Offline, retrying fetch for $channelName", cause)
+    return cause
 }

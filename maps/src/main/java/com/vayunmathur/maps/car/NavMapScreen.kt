@@ -204,7 +204,7 @@ class NavMapScreen(carContext: CarContext) : Screen(carContext) {
 
     private fun buildTravelEstimate(progress: NavigationProgress): TravelEstimate? {
         val arrival = DateTimeWithZone.create(progress.etaEpochMs, TimeZone.getDefault())
-        val remainingSec = ((progress.etaEpochMs - System.currentTimeMillis()) / 1000)
+        val remainingSec = ((progress.etaEpochMs - System.currentTimeMillis()) / MILLIS_PER_SECOND)
             .coerceAtLeast(0)
         return TravelEstimate.Builder(metersToDistance(progress.distanceRemaining), arrival)
             .setRemainingTimeSeconds(remainingSec)
@@ -212,10 +212,10 @@ class NavMapScreen(carContext: CarContext) : Screen(carContext) {
     }
 
     private fun metersToDistance(meters: Double): Distance =
-        if (meters < 1000.0) {
+        if (meters < METERS_PER_KILOMETER) {
             Distance.create(meters.roundToInt().toDouble(), Distance.UNIT_METERS)
         } else {
-            Distance.create(meters / 1000.0, Distance.UNIT_KILOMETERS_P1)
+            Distance.create(meters / METERS_PER_KILOMETER, Distance.UNIT_KILOMETERS_P1)
         }
 
     // ----------------------------------------------------------------
@@ -248,5 +248,9 @@ class NavMapScreen(carContext: CarContext) : Screen(carContext) {
     private companion object {
         const val NAVIGATING_ZOOM = 17.0
         const val IDLE_ZOOM = 15.0
+        /** Millis per second, for the remaining-time estimate. */
+        const val MILLIS_PER_SECOND = 1000L
+        /** Metres per kilometre, for the car distance display. */
+        const val METERS_PER_KILOMETER = 1000.0
     }
 }

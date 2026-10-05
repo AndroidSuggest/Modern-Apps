@@ -15,9 +15,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 @Composable
 internal fun Minimap(
     lines: List<String>,
-    lineHeight: Float,
+    @Suppress("UNUSED_PARAMETER") lineHeight: Float,
     scrollY: Float,
-    maxScrollY: Float,
+    @Suppress("UNUSED_PARAMETER") maxScrollY: Float,
     viewportHeight: Float,
     totalHeight: Float,
     color: Color,

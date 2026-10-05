@@ -48,5 +48,13 @@ object TimeEngine {
 
 fun Double.toRad() = this * Math.PI / 180.0
 fun Double.toDeg() = this * 180.0 / Math.PI
-fun Double.normalize2Pi(): Double { var v = this % (2.0 * Math.PI); if (v < 0) v += 2.0 * Math.PI; return v }
-fun Double.normalizePi(): Double { var v = (this + Math.PI) % (2.0 * Math.PI); if (v < 0) v += 2.0 * Math.PI; return v - Math.PI }
+fun Double.normalize2Pi(): Double {
+    var v = this % (2.0 * Math.PI)
+    if (v < 0) { v += 2.0 * Math.PI }
+    return v
+}
+fun Double.normalizePi(): Double {
+    var v = (this + Math.PI) % (2.0 * Math.PI)
+    if (v < 0) { v += 2.0 * Math.PI }
+    return v - Math.PI
+}

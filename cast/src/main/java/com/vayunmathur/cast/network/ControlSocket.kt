@@ -67,8 +67,11 @@ class ControlSocket(private val host: String, private val port: Int) {
             output = DataOutputStream(plain.outputStream.buffered())
             socket = plain
             Log.i(TAG, "control channel open to $host:$port")
-        } catch (e: Exception) {
+        } catch (e: IOException) {
             // Nothing else holds `plain` yet, so a failure here would leak the descriptor.
+            runCatching { plain.close() }
+            throw e
+        } catch (e: IllegalArgumentException) {
             runCatching { plain.close() }
             throw e
         }
@@ -101,24 +104,26 @@ class ControlSocket(private val host: String, private val port: Int) {
      */
     fun receive(): Received? {
         val stream = input ?: return null
-        val body = try {
-            ControlFraming.read(stream)
-        } catch (e: SocketTimeoutException) {
-            Log.w(TAG, "no control frame for ${READ_TIMEOUT_MS}ms; treating the TV as gone", e)
-            return null
-        } catch (e: IOException) {
-            Log.i(TAG, "the TV closed the control channel", e)
-            return null
-        } catch (e: IllegalArgumentException) {
-            // A length prefix outside the bound. The stream cannot be resynchronised after one.
-            Log.w(TAG, "unframeable control traffic", e)
-            return null
-        } ?: return null
+        val body = readFrameBody(stream) ?: return null
         val message = codec.decode(body) ?: run {
             Log.w(TAG, "could not decode a ${body.size}-byte control frame")
             return null
         }
         return Received(message, body)
+    }
+
+    private fun readFrameBody(stream: DataInputStream): ByteArray? = try {
+        ControlFraming.read(stream)
+    } catch (e: SocketTimeoutException) {
+        Log.w(TAG, "no control frame for ${READ_TIMEOUT_MS}ms; treating the TV as gone", e)
+        null
+    } catch (e: IOException) {
+        Log.i(TAG, "the TV closed the control channel", e)
+        null
+    } catch (e: IllegalArgumentException) {
+        // A length prefix outside the bound. The stream cannot be resynchronised after one.
+        Log.w(TAG, "unframeable control traffic", e)
+        null
     }
 
     fun close() {

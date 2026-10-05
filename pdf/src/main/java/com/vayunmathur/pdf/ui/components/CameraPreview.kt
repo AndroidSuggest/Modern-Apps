@@ -55,8 +55,10 @@ fun CameraPreview(onImageCaptured: (Uri) -> Unit) {
                 preview,
                 imageCapture
             )
-        } catch (e: Exception) {
-            Log.e("CameraPreview", "Use case binding failed", e)
+        } catch (expected: IllegalStateException) {
+            Log.e("CameraPreview", "Use case binding failed", expected)
+        } catch (expected: IllegalArgumentException) {
+            Log.e("CameraPreview", "Use case binding failed", expected)
         }
     }
 

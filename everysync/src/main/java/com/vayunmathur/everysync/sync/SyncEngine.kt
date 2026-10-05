@@ -20,7 +20,11 @@ object SyncEngine {
     // adapter firing together) don't race and, e.g., create duplicate calendars.
     private val locks = ConcurrentHashMap<String, Mutex>()
 
-    suspend fun syncAccount(context: Context, accountName: String, direction: SyncDirection = SyncDirection.BOTH) {
+    suspend fun syncAccount(
+        context: Context,
+        accountName: String,
+        direction: SyncDirection = SyncDirection.BOTH,
+    ) {
         val mutex = locks.getOrPut(accountName) { Mutex() }
         if (!mutex.tryLock()) return // a sync for this account is already running
         try {
@@ -30,10 +34,20 @@ object SyncEngine {
             SyncStatus.begin(accountName)
             try {
                 provider.sync(context, config, direction)
-                store.upsert(config.copy(lastSyncEpochMs = System.currentTimeMillis(), lastSyncError = null))
-            } catch (e: Exception) {
-                Log.e(TAG, "Sync failed for $accountName", e)
-                store.upsert(config.copy(lastSyncEpochMs = System.currentTimeMillis(), lastSyncError = e.message ?: "Sync failed"))
+                store.upsert(
+                    config.copy(
+                        lastSyncEpochMs = System.currentTimeMillis(),
+                        lastSyncError = null,
+                    ),
+                )
+            } catch (expected: Exception) {
+                Log.e(TAG, "Sync failed for $accountName", expected)
+                store.upsert(
+                    config.copy(
+                        lastSyncEpochMs = System.currentTimeMillis(),
+                        lastSyncError = expected.message ?: "Sync failed",
+                    ),
+                )
             } finally {
                 SyncStatus.finish(accountName)
             }
@@ -43,6 +57,8 @@ object SyncEngine {
     }
 
     suspend fun syncAll(context: Context, direction: SyncDirection = SyncDirection.BOTH) {
-        AccountStore.getInstance(context).getAll().forEach { syncAccount(context, it.accountName, direction) }
+        AccountStore.getInstance(context).getAll().forEach {
+            syncAccount(context, it.accountName, direction)
+        }
     }
 }

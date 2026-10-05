@@ -67,7 +67,7 @@ class IdleReboot : JobService() {
             try {
                 Log.i(TAG, "rebooting into the updated slot")
                 power.reboot(null)
-            } catch (e: Exception) {
+            } catch (e: SecurityException) {
                 // SecurityException when REBOOT is not actually granted, which is what a
                 // mismatched privapp-permissions entry looks like from here.
                 Log.e(TAG, "reboot refused", e)

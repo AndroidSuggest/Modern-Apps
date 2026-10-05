@@ -12,6 +12,12 @@ import android.os.Bundle
 import com.vayunmathur.library.map.GeoPoint
 
 class FrameworkLocationManager(context: Context) : SensorEventListener {
+    companion object {
+        /** Fastest fix cadence asked of either provider. */
+        private const val LOCATION_MIN_TIME_MS = 1000L
+        /** No distance floor: the fix-acceptance policy filters, not the OS. */
+        private const val LOCATION_MIN_DISTANCE_M = 0f
+    }
     private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
@@ -74,10 +80,20 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
         registeredLocationListener = locationListener
 
         if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, locationListener)
+            locationManager.requestLocationUpdates(
+                LocationManager.GPS_PROVIDER,
+                LOCATION_MIN_TIME_MS,
+                LOCATION_MIN_DISTANCE_M,
+                locationListener,
+            )
         }
         if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-            locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000L, 0f, locationListener)
+            locationManager.requestLocationUpdates(
+                LocationManager.NETWORK_PROVIDER,
+                LOCATION_MIN_TIME_MS,
+                LOCATION_MIN_DISTANCE_M,
+                locationListener,
+            )
         }
 
         // 2. Setup Sensor Updates (Compass)
@@ -142,7 +158,8 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
             // (and wakes the renderer) at sensor rate even on a desk. Location
             // fixes bypass this — they always emit.
             lastLocation?.let {
-                if (!it.hasBearing() && headingDelta(lastEmittedHeading, currentHeading ?: newHeading) >= HEADING_EMIT_DEGREES) {
+                val moved = headingDelta(lastEmittedHeading, currentHeading ?: newHeading)
+                if (!it.hasBearing() && moved >= HEADING_EMIT_DEGREES) {
                     lastEmittedHeading = currentHeading
                     onUpdate?.invoke(GeoPoint(it.longitude, it.latitude), currentHeading)
                 }
@@ -174,8 +191,8 @@ internal fun smoothHeading(
     if (current == null) return target
     // +540 before the modulo so the operand is positive: Kotlin's Float `%` keeps the
     // sign of the dividend, which would leave this in -360..360 instead of -180..180.
-    val delta = (target - current + 540f) % 360f - 180f
-    return (current + delta * alpha + 360f) % 360f
+    val delta = (target - current + HALF_CIRCLE_WRAP) % FULL_CIRCLE_DEG - HALF_CIRCLE_DEG
+    return (current + delta * alpha + FULL_CIRCLE_DEG) % FULL_CIRCLE_DEG
 }
 
 /**
@@ -201,9 +218,15 @@ private const val HEADING_EMIT_DEGREES = 1.0f
  */
 internal fun headingDelta(current: Float?, target: Float): Float {
     if (current == null) return Float.MAX_VALUE
-    val delta = (target - current + 540f) % 360f - 180f
+    val delta = (target - current + HALF_CIRCLE_WRAP) % FULL_CIRCLE_DEG - HALF_CIRCLE_DEG
     return kotlin.math.abs(delta)
 }
+
+/** Full compass circle and its half, for the shortest-arc math. */
+private const val FULL_CIRCLE_DEG = 360f
+private const val HALF_CIRCLE_DEG = 180f
+/** 3 × half circle: makes the modulo operand positive. */
+private const val HALF_CIRCLE_WRAP = 540f
 
 /**
  * The part of a fix that decides whether it is worth taking, independent of `android.location`

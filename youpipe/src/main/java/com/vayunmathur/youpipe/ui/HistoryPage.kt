@@ -73,7 +73,6 @@ fun HistoryPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeViewMod
                     HistoryGridCell(
                         backStack = backStack,
                         youPipeViewModel = youPipeViewModel,
-                        historyItemId = historyItem.id,
                         videoInfo = historyItem.videoItem,
                         isSelected = historyItem.id in selectedIds,
                         inSelectionMode = inSelectionMode,
@@ -144,7 +143,6 @@ fun HistoryPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeViewMod
 private fun HistoryGridCell(
     backStack: NavBackStack<Route>,
     youPipeViewModel: YouPipeViewModel,
-    historyItemId: Long,
     videoInfo: VideoInfo,
     isSelected: Boolean,
     inSelectionMode: Boolean,

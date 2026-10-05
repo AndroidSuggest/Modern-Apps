@@ -34,6 +34,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.flashcards.R
 import com.vayunmathur.flashcards.Route
 import com.vayunmathur.flashcards.util.FlashcardsViewModel
+import com.vayunmathur.flashcards.util.startSessionImpl
+import com.vayunmathur.flashcards.util.gradeCurrentImpl
+import com.vayunmathur.flashcards.util.undoReviewImpl
+import com.vayunmathur.flashcards.util.suspendCurrentCardImpl
+import com.vayunmathur.flashcards.util.speakImpl
 import com.vayunmathur.flashcards.util.Grade
 import com.vayunmathur.flashcards.util.ReviewActions
 import com.vayunmathur.flashcards.util.ReviewUiState
@@ -75,7 +80,7 @@ fun ReviewPage(
             count = count,
             daysAhead = daysAhead,
         )
-        viewModel.startSession(deckId, params, tags.toSet())
+        viewModel.startSessionImpl(deckId, params, tags.toSet())
     }
     val state by viewModel.review.collectAsStateWithLifecycle()
 
@@ -83,10 +88,10 @@ fun ReviewPage(
         state = state,
         actions = object : ReviewActions {
             override fun back() { backStack.pop() }
-            override fun grade(grade: Grade) { viewModel.gradeCurrent(grade) }
-            override fun undo() { viewModel.undoReview() }
-            override fun suspend() { viewModel.suspendCurrentCard() }
-            override fun speak(text: String) { viewModel.speak(text) }
+            override fun grade(grade: Grade) { viewModel.gradeCurrentImpl(grade) }
+            override fun undo() { viewModel.undoReviewImpl() }
+            override fun suspend() { viewModel.suspendCurrentCardImpl() }
+            override fun speak(text: String) { viewModel.speakImpl(text) }
         },
     )
 }

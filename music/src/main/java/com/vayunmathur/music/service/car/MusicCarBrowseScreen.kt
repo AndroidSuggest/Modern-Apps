@@ -45,6 +45,12 @@ class MusicCarBrowseScreen(
     private val state: MusicCarState,
 ) : Screen(carContext) {
 
+    private companion object {
+        const val MIN_API_TABS = 6
+        const val MIN_API_SECTIONED = 8
+        const val MIN_API_CHIPS = 9
+    }
+
     init {
         state.observe { invalidate() }
     }
@@ -52,11 +58,11 @@ class MusicCarBrowseScreen(
     override fun onGetTemplate(): Template {
         // Root: tabs over sectioned content (API 6+). Fall back to the plain
         // list when the host is too old for tabs.
-        if (nodeId == MusicLibraryTree.ROOT && carContext.getCarAppApiLevel() >= 6) {
+        if (nodeId == MusicLibraryTree.ROOT && carContext.getCarAppApiLevel() >= MIN_API_TABS) {
             runCatching { return tabTemplate() }
         }
         // API 8+: sectioned content with a real section header per grouping.
-        if (carContext.getCarAppApiLevel() >= 8) {
+        if (carContext.getCarAppApiLevel() >= MIN_API_SECTIONED) {
             runCatching { return sectionedTemplate() }
         }
         return legacyListTemplate()
@@ -82,7 +88,7 @@ class MusicCarBrowseScreen(
     private fun tabTemplate(): Template {
         val tabs = rootTabs()
         val active = activeTabId(tabs)
-        val content: Template = if (carContext.getCarAppApiLevel() >= 8) {
+        val content: Template = if (carContext.getCarAppApiLevel() >= MIN_API_SECTIONED) {
             sectionedContent(active, tabs.toMap()[active] ?: active)
         } else {
             listContent(active, tabs.toMap()[active] ?: active)
@@ -127,7 +133,7 @@ class MusicCarBrowseScreen(
         val builder = SectionedItemTemplate.Builder()
         // API 9+: ChipSection first — quick actions (shuffle all, play all).
         // Chips are for exactly this: compact filter/trigger actions.
-        if (carContext.getCarAppApiLevel() >= 9) {
+        if (carContext.getCarAppApiLevel() >= MIN_API_CHIPS) {
             runCatching { builder.addSection(quickActionChips()) }
         }
         return builder

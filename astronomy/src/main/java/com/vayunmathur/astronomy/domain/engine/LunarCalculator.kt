@@ -1,6 +1,7 @@
 package com.vayunmathur.astronomy.domain.engine
 
-import kotlin.math.*
+import kotlin.math.cos
+import kotlin.math.sin
 
 object LunarCalculator {
     data class MoonResult(
@@ -15,14 +16,18 @@ object LunarCalculator {
 
     fun calc(jd: Double): MoonResult {
         val d = jd - TimeEngine.J2000
-        fun norm(v: Double): Double { var x = v % 360.0; if (x < 0) x += 360.0; return x }
+        fun norm(v: Double): Double = ((v % 360.0) + 360.0) % 360.0
         val Lp = norm(218.316 + 13.176396 * d)
         val Mm = norm(134.963 + 13.064993 * d)
         val Ms = norm(357.529 + 0.98560028 * d)
         val D2 = norm(297.850 + 12.190749 * d)
         val F2 = norm(93.272 + 13.229350 * d)
 
-        val LpRad = Lp.toRad(); val MmRad = Mm.toRad(); val MsRad = Ms.toRad(); val D2Rad = D2.toRad(); val F2Rad = F2.toRad()
+        val LpRad = Lp.toRad()
+        val MmRad = Mm.toRad()
+        val MsRad = Ms.toRad()
+        val D2Rad = D2.toRad()
+        val F2Rad = F2.toRad()
 
         var sigmaL = 0.0
         sigmaL += 6288774 * sin(MmRad)
@@ -63,7 +68,7 @@ object LunarCalculator {
         val raDec = CoordinateTransforms.eclipticToRaDec(Ecliptic(lonRad, latRad), obliq)
         val sun = SolarCalculator.calc(jd)
         val elongation = (lonRad - sun.eclipticLonRad).normalizePi()
-        val phase = (D2 / 360.0).let { var v = it % 1.0; if (v < 0) v += 1.0; v }
+        val phase = (((D2 / 360.0) % 1.0) + 1.0) % 1.0
         val illumination = (1 - cos(elongation)) / 2.0
         val age = phase * 29.53058867
         return MoonResult(raDec, distMeters / 1000.0, phase, illumination.coerceIn(0.0,1.0), age, lonRad, latRad)

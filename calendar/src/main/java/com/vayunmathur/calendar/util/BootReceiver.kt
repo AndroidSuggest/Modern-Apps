@@ -54,8 +54,8 @@ class BootReceiver : BroadcastReceiver() {
         try {
             val armed = ReminderScheduler.scheduleFromMirror(context)
             Log.i(TAG, "$action: armed $armed reminder(s) from the device-protected mirror")
-        } catch (e: Exception) {
-            Log.e(TAG, "$action: could not arm reminders from the mirror", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "$action: could not arm reminders from the mirror", expected)
         }
         // Widgets are deliberately skipped: Glance keeps its state in credential-encrypted
         // storage, and the launcher does not render before the first unlock anyway.
@@ -66,16 +66,16 @@ class BootReceiver : BroadcastReceiver() {
         // take out the other - a single blanket catch here is what hid the locked-boot bug.
         try {
             ReminderScheduler.reconcileAll(context)
-        } catch (e: Exception) {
-            Log.e(TAG, "$action: could not reschedule reminders from the calendar provider", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "$action: could not reschedule reminders from the calendar provider", expected)
         }
         try {
             context.scheduleHourlyUpdate(CalendarGlanceWidget::class)
             context.scheduleHourlyUpdate(CalendarMonthGlanceWidget::class)
             CalendarGlanceWidget().updateAll(context)
             CalendarMonthGlanceWidget().updateAll(context)
-        } catch (e: Exception) {
-            Log.e(TAG, "$action: could not refresh widgets", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "$action: could not refresh widgets", expected)
         }
     }
 

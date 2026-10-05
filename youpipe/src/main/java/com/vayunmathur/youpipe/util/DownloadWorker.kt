@@ -40,94 +40,114 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
     private val client = NetworkClient
 
     override suspend fun doWork(): Result = coroutineScope {
-        val videoID = inputData.getLong("videoID", -1L)
-        val videoUrl = inputData.getString("videoUrl") ?: return@coroutineScope Result.failure()
-        val audioUrl = inputData.getString("audioUrl")
-
-        val videoInfo =
-            VideoInfo(
-                name = inputData.getString("name") ?: "",
-                videoID = videoID,
-                duration = inputData.getLong("duration", 0L),
-                views = inputData.getLong("views", 0L),
-                uploadDate = Instant.fromEpochSeconds(inputData.getLong("uploadDate", 0L)),
-                thumbnailURL = inputData.getString("thumbnailURL") ?: "",
-                author = inputData.getString("author") ?: ""
-            )
-
-        val repository = SubscriptionRepository.get(applicationContext)
+        val input = readDownloadInput() ?: return@coroutineScope Result.failure()
         val dir = File(applicationContext.getExternalFilesDir(null), "downloads")
         if (!dir.exists()) dir.mkdirs()
 
         // SABR streams are encoded by the UI as "sabr://<videoId>?v=<itag>" (video) and
         // "sabr://<videoId>?a=<itag>" (audio). They cannot be fetched over plain HTTP; drive a
         // SABR session instead, muxing audio+video into a single mp4.
-        if (videoUrl.toUri().scheme == "sabr") {
-            return@coroutineScope runSabrDownload(videoID, videoUrl, audioUrl, videoInfo, repository, dir)
+        if (input.videoUrl.toUri().scheme == "sabr") {
+            return@coroutineScope runSabrDownload(input, dir)
         }
+        runProgressiveDownload(input, dir)
+    }
 
-        val videoFile = File(dir, "$videoID.mp4")
-        val audioFile = if (audioUrl != null) File(dir, "$videoID.m4a") else null
+    private data class DownloadInput(
+        val videoID: Long,
+        val videoUrl: String,
+        val audioUrl: String?,
+        val videoInfo: VideoInfo,
+        val repository: SubscriptionRepository,
+    )
 
-        val createdFiles = mutableListOf<File>()
-        createdFiles.add(videoFile)
-        audioFile?.let { createdFiles.add(it) }
+    private suspend fun readDownloadInput(): DownloadInput? {
+        val videoID = inputData.getLong("videoID", -1L)
+        val videoUrl = inputData.getString("videoUrl") ?: return null
+        val audioUrl = inputData.getString("audioUrl")
+        val videoInfo = VideoInfo(
+            name = inputData.getString("name") ?: "",
+            videoID = videoID,
+            duration = inputData.getLong("duration", 0L),
+            views = inputData.getLong("views", 0L),
+            uploadDate = Instant.fromEpochSeconds(inputData.getLong("uploadDate", 0L)),
+            thumbnailURL = inputData.getString("thumbnailURL") ?: "",
+            author = inputData.getString("author") ?: ""
+        )
+        return DownloadInput(
+            videoID, videoUrl, audioUrl, videoInfo,
+            SubscriptionRepository.get(applicationContext),
+        )
+    }
 
-        try {
-            val videoWeight = if (audioUrl != null) 0.5 else 1.0
+    private suspend fun runProgressiveDownload(input: DownloadInput, dir: File): Result =
+        coroutineScope {
+            val videoFile = File(dir, "${input.videoID}.mp4")
+            val audioFile = if (input.audioUrl != null) File(dir, "${input.videoID}.m4a") else null
 
-            // Simplified progress reporting for parallel:
-            var videoP = 0.0
-            var audioP = 0.0
+            val createdFiles = mutableListOf<File>()
+            createdFiles.add(videoFile)
+            audioFile?.let { createdFiles.add(it) }
 
-            val vJob =
-                async(Dispatchers.IO) {
-                    downloadFileChunked(videoUrl, videoFile) { p ->
-                        videoP = p
-                        DownloadManager.updateProgress(
-                            videoID,
-                            (videoP * videoWeight) + (audioP * (1.0 - videoWeight))
-                        )
-                    }
-                }
-
-            val aJob =
-                audioUrl?.let { url ->
-                    async(Dispatchers.IO) {
-                        downloadFileChunked(url, audioFile!!) { p ->
-                            audioP = p
-                            DownloadManager.updateProgress(
-                                videoID,
-                                (videoP * videoWeight) + (audioP * (1.0 - videoWeight))
-                            )
-                        }
-                    }
-                }
-
-            vJob.await()
-            aJob?.await()
-
-            val download =
-                DownloadedVideo(
-                    id = videoID,
-                    videoItem = videoInfo,
+            try {
+                downloadProgressiveTracks(input, videoFile, audioFile)
+                val download = DownloadedVideo(
+                    id = input.videoID,
+                    videoItem = input.videoInfo,
                     filePath = videoFile.absolutePath,
                     audioPath = audioFile?.absolutePath,
                     timestamp = Clock.System.now()
                 )
-
-            repository.upsertDownloadedVideo(download)
-            Result.success()
-        } catch (e: Exception) {
-            // Cleanup on error or cancellation
-            createdFiles.forEach { if (it.exists()) it.delete() }
-            Result.failure()
-        } finally {
-            if (isStopped) {
+                input.repository.upsertDownloadedVideo(download)
+                Result.success()
+            } catch (e: java.io.IOException) {
+                // Cleanup on error or cancellation
+                Log.e("DownloadWorker", "Progressive download failed for ${input.videoID}", e)
                 createdFiles.forEach { if (it.exists()) it.delete() }
+                Result.failure()
+            } finally {
+                if (isStopped) {
+                    createdFiles.forEach { if (it.exists()) it.delete() }
+                }
+                DownloadManager.finishDownload(input.videoID)
             }
-            DownloadManager.finishDownload(videoID)
         }
+
+    private suspend fun downloadProgressiveTracks(
+        input: DownloadInput,
+        videoFile: File,
+        audioFile: File?,
+    ) = coroutineScope {
+        val videoWeight = if (input.audioUrl != null) PROGRESS_VIDEO_WEIGHT else 1.0
+
+        // Simplified progress reporting for parallel:
+        var videoP = 0.0
+        var audioP = 0.0
+
+        val vJob = async(Dispatchers.IO) {
+            downloadFileChunked(input.videoUrl, videoFile) { p ->
+                videoP = p
+                DownloadManager.updateProgress(
+                    input.videoID,
+                    (videoP * videoWeight) + (audioP * (1.0 - videoWeight))
+                )
+            }
+        }
+
+        val aJob = input.audioUrl?.let { url ->
+            async(Dispatchers.IO) {
+                downloadFileChunked(url, audioFile!!) { p ->
+                    audioP = p
+                    DownloadManager.updateProgress(
+                        input.videoID,
+                        (videoP * videoWeight) + (audioP * (1.0 - videoWeight))
+                    )
+                }
+            }
+        }
+
+        vJob.await()
+        aJob?.await()
     }
 
     /**
@@ -135,26 +155,19 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
      * result as a single mp4. The [YoutubeSabrInfo] is not carried in WorkManager input data, so it
      * is re-obtained by re-extracting the stream page (mirroring [YouPipeViewModel] loadVideo).
      */
-    private suspend fun runSabrDownload(
-        videoID: Long,
-        videoUrl: String,
-        audioUrl: String?,
-        videoInfo: VideoInfo,
-        repository: SubscriptionRepository,
-        dir: File,
-    ): Result {
-        val videoUri = videoUrl.toUri()
+    private suspend fun runSabrDownload(input: DownloadInput, dir: File): Result {
+        val videoUri = input.videoUrl.toUri()
         val youtubeId = videoUri.host
         val videoItag = videoUri.getQueryParameter("v")?.toIntOrNull()
-        val audioItag = audioUrl?.let { it.toUri().getQueryParameter("a")?.toIntOrNull() }
+        val audioItag = input.audioUrl?.let { it.toUri().getQueryParameter("a")?.toIntOrNull() }
         if (youtubeId.isNullOrEmpty() || videoItag == null || audioItag == null) {
-            Log.e("DownloadWorker", "Malformed SABR request video=$videoUrl audio=$audioUrl")
-            DownloadManager.finishDownload(videoID)
+            Log.e("DownloadWorker", "Malformed SABR request video=${input.videoUrl} audio=${input.audioUrl}")
+            DownloadManager.finishDownload(input.videoID)
             return Result.failure()
         }
 
-        val outputFile = File(dir, "$videoID.mp4")
-        val workDir = File(dir, "sabr-tmp-$videoID")
+        val outputFile = File(dir, "${input.videoID}.mp4")
+        val workDir = File(dir, "sabr-tmp-${input.videoID}")
 
         return try {
             withContext(Dispatchers.IO) {
@@ -179,115 +192,47 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
                     info = info,
                     workDir = workDir,
                     outputFile = outputFile,
-                ) { p -> DownloadManager.updateProgress(videoID, p) }
+                ) { p -> DownloadManager.updateProgress(input.videoID, p) }
             }
 
             val download =
                 DownloadedVideo(
-                    id = videoID,
-                    videoItem = videoInfo,
+                    id = input.videoID,
+                    videoItem = input.videoInfo,
                     filePath = outputFile.absolutePath,
                     audioPath = null,
                     timestamp = Clock.System.now()
                 )
-            repository.upsertDownloadedVideo(download)
+            input.repository.upsertDownloadedVideo(download)
             Result.success()
-        } catch (e: Exception) {
-            Log.e("DownloadWorker", "SABR download failed for $videoID", e)
+        } catch (e: java.io.IOException) {
+            Log.e("DownloadWorker", "SABR download failed for ${input.videoID}", e)
+            if (outputFile.exists()) outputFile.delete()
+            Result.failure()
+        } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+            Log.e("DownloadWorker", "SABR download failed for ${input.videoID}", e)
             if (outputFile.exists()) outputFile.delete()
             Result.failure()
         } finally {
             workDir.deleteRecursively()
             if (isStopped && outputFile.exists()) outputFile.delete()
-            DownloadManager.finishDownload(videoID)
+            DownloadManager.finishDownload(input.videoID)
         }
     }
 
     private suspend fun downloadFileChunked(url: String, file: File, onProgress: (Double) -> Unit) =
         coroutineScope {
-            var totalBytes = client.getContentLength(url) ?: 0L
-
-            if (totalBytes <= 0) {
-                totalBytes =
-                    client.getContentLength(url, headers = mapOf("Range" to "bytes=0-0")) ?: 0L
-            }
-
+            val totalBytes = resolveContentLength(url)
             if (totalBytes <= 0) {
                 // Fallback to simple download if size unknown
                 downloadFileSimple(url, file, onProgress)
                 return@coroutineScope
             }
-
-            val numChunks = 4
-            val chunkSize = totalBytes / numChunks
+            preallocateFile(file, totalBytes)
             val downloadedBytes = AtomicLong(0)
-
-            // Pre-allocate file
-            withContext(Dispatchers.IO) {
-                RandomAccessFile(file, "rw").use { raf -> raf.setLength(totalBytes) }
-            }
-
-            // Throttled progress reporter: ONE coroutine polls the shared
-            // counter at PROGRESS_INTERVAL_MS instead of every download
-            // thread emitting on every 64KB write. Without this, a fast
-            // connection produces thousands of StateFlow emissions per
-            // second (each does an immutable Map copy of activeDownloads),
-            // pinning the dispatcher and starving the actual network reads.
-            val totalForReporter = totalBytes
-            val progressJob = launch(Dispatchers.Default) {
-                while (isActive) {
-                    val done = downloadedBytes.get()
-                    onProgress(done.toDouble() / totalForReporter)
-                    if (done >= totalForReporter) break
-                    delay(PROGRESS_INTERVAL_MS)
-                }
-            }
-
+            val progressJob = launchProgressReporter(downloadedBytes, totalBytes, onProgress)
             try {
-                val jobs =
-                    (0 until numChunks).map { i ->
-                        val start = i * chunkSize
-                        val end =
-                            if (i == numChunks - 1) totalBytes - 1
-                            else (i + 1) * chunkSize - 1
-
-                        async(Dispatchers.IO) {
-                            try {
-                                client.stream(
-                                    url,
-                                    headers = mapOf("Range" to "bytes=$start-$end")
-                                ) { stream, _ ->
-                                    if (stream == null) return@stream
-                                    // RandomAccessFile.write is unbuffered —
-                                    // wrap it via FileChannel so the 64KB
-                                    // socket reads are coalesced into 256KB
-                                    // disk syscalls. ~4× fewer write
-                                    // syscalls per chunk at high bandwidth.
-                                    RandomAccessFile(file, "rw").use { raf ->
-                                        raf.seek(start)
-                                        BufferedOutputStream(
-                                            Channels.newOutputStream(raf.channel),
-                                            WRITE_BUFFER_SIZE,
-                                        ).use { out ->
-                                            val buffer = ByteArray(READ_BUFFER_SIZE)
-                                            while (!stream.isClosedForRead) {
-                                                if (isStopped) return@stream
-                                                val bytesRead = stream.read(buffer)
-                                                if (bytesRead == -1) break
-                                                out.write(buffer, 0, bytesRead)
-                                                downloadedBytes.addAndGet(bytesRead.toLong())
-                                            }
-                                            out.flush()
-                                        }
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                Log.e("DownloadWorker", "Error downloading chunk $i", e)
-                            }
-                        }
-                    }
-
-                jobs.forEach { it.await() }
+                fetchChunksParallel(url, file, totalBytes, downloadedBytes)
             } finally {
                 progressJob.cancel()
                 // Final flush of progress so the UI doesn't appear stuck at
@@ -296,6 +241,106 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
                 onProgress(downloadedBytes.get().toDouble() / totalBytes)
             }
         }
+
+    private suspend fun resolveContentLength(url: String): Long {
+        var totalBytes = client.getContentLength(url) ?: 0L
+        if (totalBytes <= 0) {
+            totalBytes =
+                client.getContentLength(url, headers = mapOf("Range" to "bytes=0-0")) ?: 0L
+        }
+        return totalBytes
+    }
+
+    private suspend fun preallocateFile(file: File, totalBytes: Long) {
+        withContext(Dispatchers.IO) {
+            RandomAccessFile(file, "rw").use { raf -> raf.setLength(totalBytes) }
+        }
+    }
+
+    private fun CoroutineScope.launchProgressReporter(
+        downloadedBytes: AtomicLong,
+        totalBytes: Long,
+        onProgress: (Double) -> Unit,
+    ) = launch(Dispatchers.Default) {
+        // Throttled progress reporter: ONE coroutine polls the shared
+        // counter at PROGRESS_INTERVAL_MS instead of every download
+        // thread emitting on every 64KB write. Without this, a fast
+        // connection produces thousands of StateFlow emissions per
+        // second (each does an immutable Map copy of activeDownloads),
+        // pinning the dispatcher and starving the actual network reads.
+        while (isActive) {
+            val done = downloadedBytes.get()
+            onProgress(done.toDouble() / totalBytes)
+            if (done >= totalBytes) break
+            delay(PROGRESS_INTERVAL_MS)
+        }
+    }
+
+    private suspend fun fetchChunksParallel(
+        url: String,
+        file: File,
+        totalBytes: Long,
+        downloadedBytes: AtomicLong,
+    ) = coroutineScope {
+        val chunkSize = totalBytes / CHUNK_COUNT
+        val jobs = (0 until CHUNK_COUNT).map { i ->
+            val start = i * chunkSize
+            val end = if (i == CHUNK_COUNT - 1) totalBytes - 1 else (i + 1) * chunkSize - 1
+            async(Dispatchers.IO) {
+                try {
+                    fetchChunk(url, file, start, end, downloadedBytes)
+                } catch (e: java.io.IOException) {
+                    Log.e("DownloadWorker", "Error downloading chunk $i", e)
+                }
+            }
+        }
+        jobs.forEach { it.await() }
+    }
+
+    private suspend fun fetchChunk(
+        url: String,
+        file: File,
+        start: Long,
+        end: Long,
+        downloadedBytes: AtomicLong,
+    ) {
+        client.stream(
+            url,
+            headers = mapOf("Range" to "bytes=$start-$end")
+        ) { stream, _ ->
+            if (stream == null) return@stream
+            // RandomAccessFile.write is unbuffered —
+            // wrap it via FileChannel so the 64KB
+            // socket reads are coalesced into 256KB
+            // disk syscalls. ~4× fewer write
+            // syscalls per chunk at high bandwidth.
+            RandomAccessFile(file, "rw").use { raf ->
+                raf.seek(start)
+                BufferedOutputStream(
+                    Channels.newOutputStream(raf.channel),
+                    WRITE_BUFFER_SIZE,
+                ).use { out ->
+                    copyChunkStream(stream, out, downloadedBytes)
+                }
+            }
+        }
+    }
+
+    private suspend fun copyChunkStream(
+        stream: NetworkDataStream,
+        out: BufferedOutputStream,
+        downloadedBytes: AtomicLong,
+    ) {
+        val buffer = ByteArray(READ_BUFFER_SIZE)
+        while (!stream.isClosedForRead) {
+            if (isStopped) return
+            val bytesRead = stream.read(buffer)
+            if (bytesRead == -1) break
+            out.write(buffer, 0, bytesRead)
+            downloadedBytes.addAndGet(bytesRead.toLong())
+        }
+        out.flush()
+    }
 
     private suspend fun downloadFileSimple(url: String, file: File, onProgress: (Double) -> Unit) {
         try {
@@ -329,12 +374,14 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
                     }
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: java.io.IOException) {
             Log.e("DownloadWorker", "Error in simple download", e)
         }
     }
 
     companion object {
+        private const val CHUNK_COUNT = 4
+        private const val PROGRESS_VIDEO_WEIGHT = 0.5
         /**
          * Socket-read buffer. 64KB matches NewPipe's downloader and is large
          * enough that read/write syscall overhead is negligible compared to

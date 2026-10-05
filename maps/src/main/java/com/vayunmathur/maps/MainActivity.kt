@@ -40,7 +40,7 @@ import com.vayunmathur.maps.util.MapTileCache
 import com.vayunmathur.maps.util.MapsSearchViewModel
 import com.vayunmathur.maps.util.NavigationService
 import com.vayunmathur.maps.util.NavigationSessionManager
-import com.vayunmathur.maps.util.OfflineRouter
+import com.vayunmathur.maps.util.OfflineRouterRoadRoutes
 import com.vayunmathur.maps.util.RouteService
 import com.vayunmathur.maps.util.SavedPlacesViewModel
 import com.vayunmathur.maps.util.SelectedFeatureViewModel
@@ -58,6 +58,10 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "MapsIntent"
+
+        /** Fallback search-bias centre (downtown Los Angeles) when no GPS fix exists. */
+        private const val FALLBACK_LON = -118.243683
+        private const val FALLBACK_LAT = 34.052235
 
         // Hosts the cross-app AssistantIntent client for maps (mirrors taxi/openassistant
         // MainActivity.intentLauncher). WS-C's RideEstimate/OrderLookup clients launch taxi's
@@ -107,7 +111,11 @@ class MainActivity : ComponentActivity() {
                 // to the same filename satisfies the gate, which is how a
                 // locally built archive is sideloaded.
                 InitialDownloadChecker(ds, listOf(
-                    Triple(MapTileCache.BASEMAP_ARCHIVE_URL, MapTileCache.BASEMAP_ARCHIVE_FILE, getString(R.string.downloading_basemap))
+                    Triple(
+                        MapTileCache.BASEMAP_ARCHIVE_URL,
+                        MapTileCache.BASEMAP_ARCHIVE_FILE,
+                        getString(R.string.downloading_basemap),
+                    )
                 )) {
                     val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         // POST_NOTIFICATIONS is runtime-grantable on API 33+
@@ -218,7 +226,11 @@ class MainActivity : ComponentActivity() {
             }
 
             val destFeature = SpecificFeature.GenericPlace(
-                name = destName, phone = null, website = null, openingHours = null, position = destPos,
+                name = destName,
+                phone = null,
+                website = null,
+                openingHours = null,
+                position = destPos,
             )
             // A null first waypoint means "from current location".
             val route = SpecificFeature.Route(listOf(null, destFeature))
@@ -234,9 +246,9 @@ class MainActivity : ComponentActivity() {
             }
 
             val computed = try {
-                OfflineRouter.getRouteForMode(applicationContext, route, origin, mode)
-            } catch (e: Exception) {
-                Log.w(TAG, "navigateTo: routing failed", e); null
+                OfflineRouterRoadRoutes.getRouteForMode(applicationContext, route, origin, mode)
+            } catch (_: Exception) {
+                Log.w(TAG, "navigateTo: routing failed"); null
             }
             if (computed == null) {
                 Log.i(TAG, "navigateTo: no route ($mode) to $destName; opening place instead")
@@ -265,7 +277,7 @@ class MainActivity : ComponentActivity() {
     /** Search bias: the user's live position when known, else the map's default centre. */
     private fun biasPosition(): GeoPoint {
         val p = selectedVm.userPosition.value
-        return if (p.latitude != 0.0 || p.longitude != 0.0) p else GeoPoint(-118.243683, 34.052235)
+        return if (p.latitude != 0.0 || p.longitude != 0.0) p else GeoPoint(FALLBACK_LON, FALLBACK_LAT)
     }
 
     private fun genericPlace(name: String, lat: Double, lng: Double) =
@@ -302,7 +314,15 @@ fun Navigation(
         // and these entries carry no shared-element keys — there is nothing to
         // morph between a map surface and a settings form.
         entry<Route.MapPage>(metadata = ListPage()) {
-            MapPage(backStack, viewModel, savedPlacesViewModel, searchViewModel, settingsViewModel, parkingViewModel, transitViewModel)
+            MapPage(
+                backStack,
+                viewModel,
+                savedPlacesViewModel,
+                searchViewModel,
+                settingsViewModel,
+                parkingViewModel,
+                transitViewModel,
+            )
         }
         entry<Route.SettingsPage>(metadata = ListDetailPage()) {
             MapSettingsPage(backStack, settingsViewModel)

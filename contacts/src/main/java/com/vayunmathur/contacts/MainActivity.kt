@@ -16,10 +16,23 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.LocalActivity
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.rememberPagerState
-import com.vayunmathur.library.ui.*
-import androidx.compose.runtime.*
+import com.vayunmathur.library.ui.AppPermissionsGate
+import com.vayunmathur.library.ui.AppPermissionsSpec
+import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.PagerTab
+import com.vayunmathur.library.ui.PermissionRequirement
+import com.vayunmathur.library.ui.TabStyle
+import com.vayunmathur.library.ui.TabbedPagerScaffold
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -34,21 +47,45 @@ import com.vayunmathur.contacts.data.CDKSName
 import com.vayunmathur.contacts.data.CDKStructuredPostal
 import com.vayunmathur.contacts.data.ContactPrefill
 import com.vayunmathur.contacts.data.PrefillValue
-import com.vayunmathur.contacts.ui.*
-import com.vayunmathur.contacts.ui.dialogs.*
+import com.vayunmathur.contacts.ui.AddAccountDialog
+import com.vayunmathur.contacts.ui.AddToGroupDialog
+import com.vayunmathur.contacts.ui.ContactDetailsPage
+import com.vayunmathur.contacts.ui.ContactList
+import com.vayunmathur.contacts.ui.ContactListPick
+import com.vayunmathur.contacts.ui.CropPhotoScreen
+import com.vayunmathur.contacts.ui.EditContactPage
+import com.vayunmathur.contacts.ui.EventDeleteConfirmDialog
+import com.vayunmathur.contacts.ui.GroupsPage
+import com.vayunmathur.contacts.ui.IconGroup
+import com.vayunmathur.contacts.ui.IconPerson
+import com.vayunmathur.contacts.ui.IconSettings
+import com.vayunmathur.contacts.ui.ImportVcfScreen
+import com.vayunmathur.contacts.ui.InsertOrEditContactScreen
+import com.vayunmathur.contacts.ui.SettingsPage
+import com.vayunmathur.contacts.ui.dialogs.EventDatePickerDialog
 import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.contacts.util.setEditDraftPhotoFromBitmap
-import com.vayunmathur.library.ui.AppPermissionsGate
-import com.vayunmathur.library.ui.AppPermissionsSpec
-import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.ui.PermissionRequirement
-import com.vayunmathur.library.util.*
+import com.vayunmathur.library.util.DialogPage
+import com.vayunmathur.library.util.IntentHelper
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
+import com.vayunmathur.library.util.MainNavigation
+import com.vayunmathur.library.util.MorphPage
+import com.vayunmathur.library.util.NavBackStack
+import com.vayunmathur.library.util.NavKey
+import com.vayunmathur.library.util.onFileDrop
+import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.Serializable
 
 class MainActivity : ComponentActivity() {
     private val importUris = mutableStateOf<List<String>>(emptyList())
     private val externalRoute = mutableStateOf<Route?>(null)
+
+    companion object {
+        private const val QUICK_CONTACT_LEGACY_ACTION = "com.android.contacts.action.QUICK_CONTACT"
+        private const val GROUPS_PATH_SEGMENT = "/groups"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,49 +109,78 @@ class MainActivity : ComponentActivity() {
                     )
                 ) {
                     val viewModel: ContactViewModel = viewModel()
-                    
-                    val uris by importUris
-                    val importRoute = if (uris.isNotEmpty()) Route.ImportVcf(uris) else null
-
-                    // If the app was launched with ACTION_PICK/GET_CONTENT, forward to the picker flow.
-                    if (intent.action == Intent.ACTION_PICK || intent.action == Intent.ACTION_GET_CONTENT) {
-                        var type = intent.type
-                        if (intent.data?.toString()?.contains("phones") == true) {
-                            type = CDKPhone.CONTENT_ITEM_TYPE
-                        }
-                        val contacts by viewModel.contacts.collectAsStateWithLifecycle()
-                        val allowMultiple = intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
-                        if (allowMultiple) {
-                            val selected = remember { mutableStateListOf<Uri>() }
-                            ContactListPick(
-                                mimeType = type,
-                                contacts = contacts,
-                                allowMultiple = true,
-                                selectedUris = selected,
-                                onConfirm = { finishPickWithSelection(selected) },
-                                onClick = { uri -> if (!selected.remove(uri)) selected.add(uri) },
-                            )
-                        } else {
-                            ContactListPick(type, contacts) {
-                                val resultIntent = Intent().apply {
-                                    data = it
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                setResult(RESULT_OK, resultIntent)
-                                finish()
-                            }
-                        }
-                    } else {
-                        val route by externalRoute
-                        val initialRoute = importRoute ?: route
-                        Box(Modifier.fillMaxSize().onFileDrop { uris -> importUris.value = uris.map { it.toString() } }) {
-                            Navigation(viewModel, initialRoute, onExit = { finish() }) { importUris.value = emptyList() }
-                        }
-                    }
+                    MainContent(viewModel, intent, onFinishPick = { finishPick(it) })
                 }
             }
         }
     }
+
+    @Composable
+    private fun MainContent(
+        viewModel: ContactViewModel,
+        launchIntent: Intent,
+        onFinishPick: (List<Uri>) -> Unit,
+    ) {
+        val uris by importUris
+        val importRoute = if (uris.isNotEmpty()) Route.ImportVcf(uris) else null
+
+        // If the app was launched with ACTION_PICK/GET_CONTENT, forward to the picker flow.
+        val isPickAction =
+            launchIntent.action == Intent.ACTION_PICK ||
+                launchIntent.action == Intent.ACTION_GET_CONTENT
+        if (isPickAction) {
+            PickFlow(viewModel, launchIntent, onFinishPick)
+        } else {
+            val route by externalRoute
+            val initialRoute = importRoute ?: route
+            val dropModifier = Modifier
+                .fillMaxSize()
+                .onFileDrop { dropped -> importUris.value = dropped.map { it.toString() } }
+            Box(dropModifier) {
+                Navigation(
+                    viewModel,
+                    initialRoute,
+                    onExit = { finish() },
+                ) { importUris.value = emptyList() }
+            }
+        }
+    }
+
+    @Composable
+    private fun PickFlow(
+        viewModel: ContactViewModel,
+        launchIntent: Intent,
+        onFinishPick: (List<Uri>) -> Unit,
+    ) {
+        var type = launchIntent.type
+        if (launchIntent.data?.toString()?.contains("phones") == true) {
+            type = CDKPhone.CONTENT_ITEM_TYPE
+        }
+        val contacts by viewModel.contacts.collectAsStateWithLifecycle()
+        val allowMultiple = launchIntent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+        if (allowMultiple) {
+            val selected = remember { mutableStateListOf<Uri>() }
+            ContactListPick(
+                mimeType = type,
+                contacts = contacts,
+                allowMultiple = true,
+                selectedUris = selected,
+                onConfirm = { onFinishPick(selected) },
+                onClick = { uri -> if (!selected.remove(uri)) selected.add(uri) },
+            )
+        } else {
+            ContactListPick(type, contacts) { uri ->
+                val resultIntent = Intent().apply {
+                    data = uri
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                setResult(RESULT_OK, resultIntent)
+                finish()
+            }
+        }
+    }
+
+    private fun finishPick(uris: List<Uri>) = finishPickWithSelection(uris)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -138,10 +204,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent) {
-        val type = intent.type ?: ""
-        val isVcf = type.contains("vcard") || type.contains("vcf") || intent.data?.path?.endsWith(".vcf", ignoreCase = true) == true
-
-        if (isVcf) {
+        if (isVcfIntent(intent)) {
             val uris = IntentHelper.getUrisFromIntent(intent)
             if (uris.isNotEmpty()) {
                 importUris.value = uris.map { it.toString() }
@@ -149,53 +212,70 @@ class MainActivity : ComponentActivity() {
         }
 
         val action = intent.action
-        if (action == Intent.ACTION_VIEW
-            || action == Intent.ACTION_EDIT
-            || action == Intent.ACTION_INSERT
-            || action == Intent.ACTION_INSERT_OR_EDIT
-            || action == ContactsContract.Intents.SHOW_OR_CREATE_CONTACT
-            || action == ContactsContract.QuickContact.ACTION_QUICK_CONTACT
-            || action == "com.android.contacts.action.QUICK_CONTACT"
-        ) {
-            externalRoute.value = when (action) {
-                Intent.ACTION_INSERT -> {
-                    Route.EditContact(contactId = null, prefill = buildInsertPrefill(intent))
-                }
-                Intent.ACTION_INSERT_OR_EDIT, ContactsContract.Intents.SHOW_OR_CREATE_CONTACT -> {
-                    var prefill = buildInsertPrefill(intent)
-                    if (prefill.phones.isEmpty()) {
-                        uriPhoneNumber(intent)?.takeIf { it.isNotBlank() }?.let { number ->
-                            prefill = prefill.copy(phones = listOf(PrefillValue(number)))
-                        }
-                    }
-                    Route.InsertOrEditContact(prefill = prefill)
-                }
-                Intent.ACTION_EDIT -> {
-                    val contactId = resolveContactId(intent.data)
-                    Route.EditContact(contactId = contactId, prefill = buildInsertPrefill(intent))
-                }
-                else -> {
-                    val path = intent.data?.path ?: ""
-                    val mimeType = intent.type
-                    when {
-                        path.contains("/groups") || mimeType?.contains("group") == true -> {
-                            val groupId = intent.data?.lastPathSegment?.toLongOrNull()
-                            Route.GroupsList(groupId)
-                        }
-                        else -> {
-                            resolveContactId(intent.data)?.let { id -> Route.ContactDetail(id) }
-                                ?: uriPhoneNumber(intent)?.takeIf { it.isNotBlank() }?.let { number ->
-                                    Route.EditContact(
-                                        contactId = null,
-                                        prefill = ContactPrefill(phones = listOf(PrefillValue(number)))
-                                    )
-                                }
-                        }
-                    }
-                }
+        if (!isContactViewAction(action)) return
+        externalRoute.value = routeForAction(action, intent)
+    }
+
+    private fun isVcfIntent(intent: Intent): Boolean {
+        val type = intent.type ?: ""
+        return type.contains("vcard") ||
+            type.contains("vcf") ||
+            intent.data?.path?.endsWith(".vcf", ignoreCase = true) == true
+    }
+
+    private fun isContactViewAction(action: String?): Boolean =
+        action == Intent.ACTION_VIEW ||
+            action == Intent.ACTION_EDIT ||
+            action == Intent.ACTION_INSERT ||
+            action == Intent.ACTION_INSERT_OR_EDIT ||
+            action == ContactsContract.Intents.SHOW_OR_CREATE_CONTACT ||
+            action == ContactsContract.QuickContact.ACTION_QUICK_CONTACT ||
+            action == QUICK_CONTACT_LEGACY_ACTION
+
+    private fun routeForAction(action: String?, intent: Intent): Route? =
+        when (action) {
+            Intent.ACTION_INSERT ->
+                Route.EditContact(contactId = null, prefill = buildInsertPrefill(intent))
+            Intent.ACTION_INSERT_OR_EDIT, ContactsContract.Intents.SHOW_OR_CREATE_CONTACT ->
+                Route.InsertOrEditContact(prefill = prefillWithUriPhone(intent))
+            Intent.ACTION_EDIT ->
+                Route.EditContact(
+                    contactId = resolveContactId(intent.data),
+                    prefill = buildInsertPrefill(intent),
+                )
+            else -> routeForViewAction(intent)
+        }
+
+    private fun prefillWithUriPhone(intent: Intent): ContactPrefill {
+        var prefill = buildInsertPrefill(intent)
+        if (prefill.phones.isEmpty()) {
+            uriPhoneNumber(intent)?.takeIf { it.isNotBlank() }?.let { number ->
+                prefill = prefill.copy(phones = listOf(PrefillValue(number)))
             }
         }
+        return prefill
     }
+
+    private fun routeForViewAction(intent: Intent): Route? {
+        val path = intent.data?.path ?: ""
+        val mimeType = intent.type
+        val isGroupsTarget =
+            path.contains(GROUPS_PATH_SEGMENT) || mimeType?.contains("group") == true
+        if (isGroupsTarget) {
+            val groupId = intent.data?.lastPathSegment?.toLongOrNull()
+            return Route.GroupsList(groupId)
+        }
+        return resolveContactId(intent.data)?.let { id -> Route.ContactDetail(id) }
+            ?: routeForPhoneNumber(intent)
+    }
+
+    private fun routeForPhoneNumber(intent: Intent): Route.EditContact? =
+        uriPhoneNumber(intent)?.takeIf { it.isNotBlank() }?.let { number ->
+            Route.EditContact(
+                contactId = null,
+                prefill = ContactPrefill(phones = listOf(PrefillValue(number))),
+            )
+        }
 
     /**
      * Parses everything an ACTION_INSERT-style intent can carry into a [ContactPrefill].
@@ -208,47 +288,132 @@ class MainActivity : ComponentActivity() {
         fun text(key: String): String? =
             intent.getCharSequenceExtra(key)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
 
-        val phones = mutableListOf<PrefillValue>()
-        val emails = mutableListOf<PrefillValue>()
-        val postals = mutableListOf<PrefillValue>()
+        val phones = collectPrefillPhones(intent, ::text)
+        val emails = collectPrefillEmails(intent, ::text)
+        val postals = collectPrefillPostals(intent, ::text)
+        val names = collectPrefillNames(::text)
+        applyPrefillDataRows(intent, phones, emails, postals, names)
 
+        return ContactPrefill(
+            names.name,
+            names.company,
+            names.notes,
+            names.nickname,
+            phones,
+            emails,
+            postals,
+        )
+    }
+
+    private fun collectPrefillPhones(
+        intent: Intent,
+        text: (String) -> String?,
+    ): MutableList<PrefillValue> {
+        val phones = mutableListOf<PrefillValue>()
         val (phoneType, phoneLabel) = readType(intent, Insert.PHONE_TYPE)
         text(Insert.PHONE)?.let { phones += PrefillValue(it, phoneType, phoneLabel) }
         text(Insert.SECONDARY_PHONE)?.let { phones += PrefillValue(it) }
         text(Insert.TERTIARY_PHONE)?.let { phones += PrefillValue(it) }
+        return phones
+    }
 
+    private fun collectPrefillEmails(
+        intent: Intent,
+        text: (String) -> String?,
+    ): MutableList<PrefillValue> {
+        val emails = mutableListOf<PrefillValue>()
         val (emailType, emailLabel) = readType(intent, Insert.EMAIL_TYPE)
         text(Insert.EMAIL)?.let { emails += PrefillValue(it, emailType, emailLabel) }
         text(Insert.SECONDARY_EMAIL)?.let { emails += PrefillValue(it) }
         text(Insert.TERTIARY_EMAIL)?.let { emails += PrefillValue(it) }
+        return emails
+    }
 
+    private fun collectPrefillPostals(
+        intent: Intent,
+        text: (String) -> String?,
+    ): MutableList<PrefillValue> {
+        val postals = mutableListOf<PrefillValue>()
         val (postalType, postalLabel) = readType(intent, Insert.POSTAL_TYPE)
         text(Insert.POSTAL)?.let { postals += PrefillValue(it, postalType, postalLabel) }
+        return postals
+    }
 
-        var name = text(Insert.NAME)
-        var company = text(Insert.COMPANY)
-        var notes = text(Insert.NOTES)
-        var nickname: String? = null
+    private class PrefillNames(
+        var name: String? = null,
+        var company: String? = null,
+        var notes: String? = null,
+        var nickname: String? = null,
+    )
 
+    private fun collectPrefillNames(
+        text: (String) -> String?,
+    ): PrefillNames = PrefillNames(
+        name = text(Insert.NAME),
+        company = text(Insert.COMPANY),
+        notes = text(Insert.NOTES),
+    )
+
+    private fun applyPrefillDataRows(
+        intent: Intent,
+        phones: MutableList<PrefillValue>,
+        emails: MutableList<PrefillValue>,
+        postals: MutableList<PrefillValue>,
+        names: PrefillNames,
+    ) {
         // Insert.DATA: caller-provided rows, one ContentValues per data kind (typed).
-        val dataRows = IntentCompat.getParcelableArrayListExtra(intent, Insert.DATA, ContentValues::class.java)
+        val dataRows =
+            IntentCompat.getParcelableArrayListExtra(intent, Insert.DATA, ContentValues::class.java)
         dataRows?.forEach { cv ->
             fun value(key: String) = cv.getAsString(key)?.trim()?.takeIf { it.isNotEmpty() }
             when (cv.getAsString(ContactsContract.Data.MIMETYPE)) {
                 CDKPhone.CONTENT_ITEM_TYPE ->
-                    value(CDKPhone.NUMBER)?.let { phones += PrefillValue(it, cv.getAsInteger(CDKPhone.TYPE), cv.getAsString(CDKPhone.LABEL)) }
+                    applyPrefillPhoneRow(cv, ::value, phones)
                 CDKEmail.CONTENT_ITEM_TYPE ->
-                    value(CDKEmail.ADDRESS)?.let { emails += PrefillValue(it, cv.getAsInteger(CDKEmail.TYPE), cv.getAsString(CDKEmail.LABEL)) }
+                    applyPrefillEmailRow(cv, ::value, emails)
                 CDKStructuredPostal.CONTENT_ITEM_TYPE ->
-                    value(CDKStructuredPostal.FORMATTED_ADDRESS)?.let { postals += PrefillValue(it, cv.getAsInteger(CDKStructuredPostal.TYPE), cv.getAsString(CDKStructuredPostal.LABEL)) }
-                CDKSName.CONTENT_ITEM_TYPE -> if (name == null) name = value(CDKSName.DISPLAY_NAME)
-                CDKOrg.CONTENT_ITEM_TYPE -> if (company == null) company = value(CDKOrg.COMPANY)
-                CDKNote.CONTENT_ITEM_TYPE -> if (notes == null) notes = value(CDKNote.NOTE)
-                CDKNickname.CONTENT_ITEM_TYPE -> if (nickname == null) nickname = value(CDKNickname.NAME)
+                    applyPrefillPostalRow(cv, ::value, postals)
+                CDKSName.CONTENT_ITEM_TYPE ->
+                    if (names.name == null) names.name = value(CDKSName.DISPLAY_NAME)
+                CDKOrg.CONTENT_ITEM_TYPE ->
+                    if (names.company == null) names.company = value(CDKOrg.COMPANY)
+                CDKNote.CONTENT_ITEM_TYPE ->
+                    if (names.notes == null) names.notes = value(CDKNote.NOTE)
+                CDKNickname.CONTENT_ITEM_TYPE ->
+                    if (names.nickname == null) names.nickname = value(CDKNickname.NAME)
             }
         }
+    }
 
-        return ContactPrefill(name, company, notes, nickname, phones, emails, postals)
+    private fun applyPrefillPhoneRow(
+        cv: ContentValues,
+        value: (String) -> String?,
+        phones: MutableList<PrefillValue>,
+    ) {
+        val number = value(CDKPhone.NUMBER) ?: return
+        phones += PrefillValue(number, cv.getAsInteger(CDKPhone.TYPE), cv.getAsString(CDKPhone.LABEL))
+    }
+
+    private fun applyPrefillEmailRow(
+        cv: ContentValues,
+        value: (String) -> String?,
+        emails: MutableList<PrefillValue>,
+    ) {
+        val address = value(CDKEmail.ADDRESS) ?: return
+        emails += PrefillValue(address, cv.getAsInteger(CDKEmail.TYPE), cv.getAsString(CDKEmail.LABEL))
+    }
+
+    private fun applyPrefillPostalRow(
+        cv: ContentValues,
+        value: (String) -> String?,
+        postals: MutableList<PrefillValue>,
+    ) {
+        val formatted = value(CDKStructuredPostal.FORMATTED_ADDRESS) ?: return
+        postals += PrefillValue(
+            formatted,
+            cv.getAsInteger(CDKStructuredPostal.TYPE),
+            cv.getAsString(CDKStructuredPostal.LABEL),
+        )
     }
 
     /**
@@ -324,16 +489,17 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Navigation(viewModel: ContactViewModel, initialRoute: Route? = null, onExit: () -> Unit = {}, onImportClear: () -> Unit = {}) {
+fun Navigation(
+    viewModel: ContactViewModel,
+    initialRoute: Route? = null,
+    onExit: () -> Unit = {},
+    onImportClear: () -> Unit = {},
+) {
     // Deep-link handling: tab routes (ContactsList, GroupsList, Settings) now live inside the
     // pager host (Route.Main). A groups deep-link (Route.GroupsList(groupId)) is remembered
     // so the pager can expand that group; other tab routes just collapse to the host.
     val groupsExpandId = (initialRoute as? Route.GroupsList)?.expandGroupId
-    val resolvedInitial = initialRoute ?: Route.Main
-    val startRoute: Route = when (resolvedInitial) {
-        is Route.ContactsList, is Route.GroupsList, is Route.Settings -> Route.Main
-        else -> resolvedInitial
-    }
+    val startRoute: Route = initialRoute?.toHostRoute() ?: Route.Main
     val backStack = rememberNavBackStack<Route>(startRoute)
     // Route.Settings is now inside the pager host (Route.Main). The App Info entry-point
     // is handled by starting the pager on its Settings page; pushing Route.Main again would
@@ -342,12 +508,13 @@ fun Navigation(viewModel: ContactViewModel, initialRoute: Route? = null, onExit:
     // we ensure the back stack is at least the host (already is) and the pager shows Settings.
     val activity = LocalActivity.current
     val launchedFromAppInfo = activity?.intent?.action == Intent.ACTION_APPLICATION_PREFERENCES
+    val startOnSettings = launchedFromAppInfo || initialRoute is Route.Settings
 
     LaunchedEffect(initialRoute) {
         // Only push non-tab routes (detail/edit/import etc.) that are not already the host.
         // Tab routes are represented by the pager host and must not be pushed as separate entries
         // (GroupsList with an expand arg is handled via groupsExpandId above).
-        if (initialRoute != null && initialRoute !is Route.ContactsList && initialRoute !is Route.GroupsList && initialRoute !is Route.Settings && initialRoute != Route.Main && backStack.last() != initialRoute) {
+        if (initialRoute.shouldPushOnto(backStack)) {
             backStack.add(initialRoute)
         }
     }
@@ -376,26 +543,35 @@ fun Navigation(viewModel: ContactViewModel, initialRoute: Route? = null, onExit:
         }
     }
 
+    val tabsCallbacks = rememberTabsCallbacks(backStack)
+    NavGraphEntries(
+        viewModel = viewModel,
+        backStack = backStack,
+        tabsCallbacks = tabsCallbacks,
+        groupsExpandId = groupsExpandId,
+        startOnSettings = startOnSettings,
+        goBack = ::goBack,
+    )
+}
+
+@Composable
+private fun NavGraphEntries(
+    viewModel: ContactViewModel,
+    backStack: NavBackStack<Route>,
+    tabsCallbacks: TabsCallbacks,
+    groupsExpandId: Long?,
+    startOnSettings: Boolean,
+    goBack: () -> Unit,
+) {
     MainNavigation(backStack) {
         entry<Route.Main>(metadata = ListPage()) {
             ContactsTabs(
                 viewModel = viewModel,
                 backStack = backStack,
-                onContactClick = { contact ->
-                    if (backStack.last() is Route.ContactDetail || backStack.last() is Route.EditContact) {
-                        backStack.setLast(Route.ContactDetail(contact.id))
-                    } else {
-                        backStack.add(Route.ContactDetail(contact.id))
-                    }
-                },
-                onAddContactClick = {
-                    if (backStack.last() is Route.ContactDetail) {
-                        backStack.pop()
-                    }
-                    backStack.add(Route.EditContact(null))
-                },
+                onContactClick = tabsCallbacks.onContactClick,
+                onAddContactClick = tabsCallbacks.onAddContactClick,
                 initialGroupsExpandId = groupsExpandId,
-                startOnSettings = launchedFromAppInfo || initialRoute is Route.Settings,
+                startOnSettings = startOnSettings,
             )
         }
 
@@ -408,9 +584,11 @@ fun Navigation(viewModel: ContactViewModel, initialRoute: Route? = null, onExit:
                 onDelete = {
                     // Show the delete confirmation dialog using the contact id and name
                     val contact = viewModel.getContact(key.contactId)
-                    backStack.add(Route.EventDeleteConfirmDialog(key.contactId, contact?.name?.value))
+                    backStack.add(
+                        Route.EventDeleteConfirmDialog(key.contactId, contact?.name?.value),
+                    )
                 },
-                showBackButton = true
+                showBackButton = true,
             )
         }
         entry<Route.EditContact>(metadata = ListDetailPage() + MorphPage()) { key ->
@@ -422,7 +600,7 @@ fun Navigation(viewModel: ContactViewModel, initialRoute: Route? = null, onExit:
                 viewModel = viewModel,
                 backStack = backStack,
                 insertOrEditRoute = key,
-                onExit = { goBack() }
+                onExit = goBack,
             )
         }
 
@@ -435,14 +613,7 @@ fun Navigation(viewModel: ContactViewModel, initialRoute: Route? = null, onExit:
         }
 
         entry<Route.EventDeleteConfirmDialog>(metadata = DialogPage()) { key ->
-            EventDeleteConfirmDialog(key.contactId, key.contactName, viewModel, onConfirm = {
-                // After confirming deletion, pop the dialog and the detail page
-                backStack.pop()
-                backStack.pop()
-            }, onDismiss = {
-                // Only close the dialog
-                backStack.pop()
-            })
+            EventDeleteConfirmEntry(viewModel, backStack, key)
         }
 
         entry<Route.AddToGroupDialog>(metadata = DialogPage()) { key ->
@@ -450,21 +621,96 @@ fun Navigation(viewModel: ContactViewModel, initialRoute: Route? = null, onExit:
         }
 
         entry<Route.CropPhoto>(metadata = ListDetailPage()) { key ->
-            val decodedUri = java.net.URLDecoder.decode(key.uri, "UTF-8")
-            CropPhotoScreen(
-                uri = decodedUri,
-                onCropComplete = { bitmap ->
-                    viewModel.setEditDraftPhotoFromBitmap(bitmap)
-                    backStack.pop()
-                },
-                onCancel = { backStack.pop() }
-            )
+            CropPhotoEntry(backStack, viewModel, key)
         }
 
         entry<Route.ImportVcf> { key ->
             ImportVcfScreen(viewModel, backStack, key.uris)
         }
     }
+}
+
+@Composable
+private fun EventDeleteConfirmEntry(
+    viewModel: ContactViewModel,
+    backStack: NavBackStack<Route>,
+    key: Route.EventDeleteConfirmDialog,
+) {
+    EventDeleteConfirmDialog(
+        key.contactId,
+        key.contactName,
+        viewModel,
+        onConfirm = {
+            // After confirming deletion, pop the dialog and the detail page
+            backStack.pop()
+            backStack.pop()
+        },
+        onDismiss = {
+            // Only close the dialog
+            backStack.pop()
+        },
+    )
+}
+
+/** Tab routes collapse to the pager host; every other route pushes as-is. */
+private fun Route.toHostRoute(): Route =
+    when (this) {
+        is Route.ContactsList, is Route.GroupsList, is Route.Settings -> Route.Main
+        else -> this
+    }
+
+/** True for a non-tab deep-link that is not already on top of [backStack]. */
+private fun Route?.shouldPushOnto(backStack: NavBackStack<Route>): Boolean {
+    if (this == null || this == Route.Main) return false
+    if (this is Route.ContactsList || this is Route.GroupsList || this is Route.Settings) {
+        return false
+    }
+    return backStack.last() != this
+}
+
+private class TabsCallbacks(
+    val onContactClick: (com.vayunmathur.contacts.data.Contact) -> Unit,
+    val onAddContactClick: () -> Unit,
+)
+
+@Composable
+private fun rememberTabsCallbacks(
+    backStack: NavBackStack<Route>,
+): TabsCallbacks = remember(backStack) {
+    TabsCallbacks(
+        onContactClick = { contact ->
+            val last = backStack.last()
+            val isDetail = last is Route.ContactDetail || last is Route.EditContact
+            if (isDetail) {
+                backStack.setLast(Route.ContactDetail(contact.id))
+            } else {
+                backStack.add(Route.ContactDetail(contact.id))
+            }
+        },
+        onAddContactClick = {
+            if (backStack.last() is Route.ContactDetail) {
+                backStack.pop()
+            }
+            backStack.add(Route.EditContact(null))
+        },
+    )
+}
+
+@Composable
+private fun CropPhotoEntry(
+    backStack: NavBackStack<Route>,
+    viewModel: ContactViewModel,
+    key: Route.CropPhoto,
+) {
+    val decodedUri = java.net.URLDecoder.decode(key.uri, "UTF-8")
+    CropPhotoScreen(
+        uri = decodedUri,
+        onCropComplete = { bitmap ->
+            viewModel.setEditDraftPhotoFromBitmap(bitmap)
+            backStack.pop()
+        },
+        onCancel = { backStack.pop() },
+    )
 }
 
 /**

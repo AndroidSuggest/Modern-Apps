@@ -21,16 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import com.vayunmathur.library.ui.R as UiR
-import com.vayunmathur.library.ui.Card
-import com.vayunmathur.library.ui.CardDefaults
-import com.vayunmathur.library.ui.HorizontalDivider
-import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.Surface
-import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.TextButton
-import com.vayunmathur.library.ui.TextField
-import com.vayunmathur.library.ui.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,16 +33,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.vayunmathur.office.odf.*
-import com.vayunmathur.library.ui.odf.*
-import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.CardDefaults
+import com.vayunmathur.library.ui.HorizontalDivider
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
+import com.vayunmathur.library.ui.TextField
+import com.vayunmathur.library.ui.TextFieldDefaults
+import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.library.ui.odf.OdfSlide
+import com.vayunmathur.library.ui.odf.OdfSlideElement
 import com.vayunmathur.office.R
 
 @Composable
@@ -73,7 +74,9 @@ fun PresentationView(
     onElementSelected: (Int, Int) -> Unit = { _, _ -> },
     onCropImage: (Int, Int) -> Unit = { _, _ -> }
 ) {
-    if (doc.slides.isEmpty()) { Text(stringResource(R.string.empty_presentation), modifier = Modifier.padding(16.dp)); return }
+    if (doc.slides.isEmpty()) { Text(
+        stringResource(R.string.empty_presentation),
+        modifier = Modifier.padding(16.dp)); return }
 
     var currentSlide by remember { mutableIntStateOf(0) }
     var showGoToSlide by remember { mutableStateOf(false) }
@@ -114,13 +117,18 @@ fun PresentationView(
 
         // Slide editing controls
         if (isEditMode) {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { onAddSlide(currentSlide) }) { Text(stringResource(R.string.slide_1)) }
                 TextButton(onClick = { onAddTextBox(currentSlide) }) { Text(stringResource(R.string.text)) }
                 TextButton(onClick = { onDuplicateSlide(currentSlide) }) { Text(stringResource(R.string.dup)) }
                 TextButton(onClick = { onMoveSlideUp(currentSlide); if (currentSlide > 0) currentSlide-- }) { Text("↑") }
                 TextButton(onClick = { onMoveSlideDown(currentSlide); if (currentSlide < doc.slides.size - 1) currentSlide++ }) { Text("↓") }
-                if (doc.slides.size > 1) TextButton(onClick = { onDeleteSlide(currentSlide); currentSlide = minOf(currentSlide, doc.slides.size - 2).coerceAtLeast(0) }) {
+                if (doc.slides.size > 1) TextButton(onClick = { onDeleteSlide(currentSlide); currentSlide = minOf(
+                    currentSlide,
+                    doc.slides.size - 2).coerceAtLeast(0) }) {
                     Text(stringResource(UiR.string.delete), color = MaterialTheme.colorScheme.error)
                 }
             }
@@ -138,19 +146,35 @@ fun PresentationView(
 
         // Navigation bar
         Surface(tonalElevation = 3.dp) {
-            Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = { if (currentSlide > 0) currentSlide-- }, enabled = currentSlide > 0) { Text(stringResource(R.string.prev)) }
+            Row(
+                Modifier.fillMaxWidth().padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(
+                    onClick = { if (currentSlide > 0) currentSlide-- },
+                    enabled = currentSlide > 0) { Text(stringResource(R.string.prev)) }
                 TextButton(onClick = { showSlideshow = true }) { Text(stringResource(R.string.play)) }
                 TextButton(onClick = { showGoToSlide = true }) {
-                    Text(stringResource(R.string.slide_of, currentSlide + 1, doc.slides.size), style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        stringResource(R.string.slide_of, currentSlide + 1, doc.slides.size),
+                        style = MaterialTheme.typography.titleSmall)
                 }
-                TextButton(onClick = { if (currentSlide < doc.slides.size - 1) currentSlide++ }, enabled = currentSlide < doc.slides.size - 1) { Text(stringResource(R.string.next)) }
+                TextButton(
+                    onClick = { if (currentSlide < doc.slides.size - 1) currentSlide++ },
+                    enabled = currentSlide < doc.slides.size - 1) { Text(stringResource(R.string.next)) }
             }
         }
     }
 
-    if (showGoToSlide) GoToSlideDialog(doc.slides.size, onGo = { currentSlide = it }, onDismiss = { showGoToSlide = false })
-    if (showSlideshow) SlideshowDialog(doc.slides, currentSlide, onSlideChange = { currentSlide = it }, onDismiss = { showSlideshow = false })
+    if (showGoToSlide) GoToSlideDialog(
+        doc.slides.size,
+        onGo = { currentSlide = it },
+        onDismiss = { showGoToSlide = false })
+    if (showSlideshow) SlideshowDialog(
+        doc.slides,
+        currentSlide,
+        onSlideChange = { currentSlide = it },
+        onDismiss = { showSlideshow = false })
 }
 
 @Composable
@@ -161,18 +185,28 @@ private fun SlideElementTextField(key: String, initial: String, label: String, o
         onValueChange = { tfv = it; onChange(it.text) },
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-        colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant)
     )
 }
 
 @Composable
-private fun SlideshowDialog(slides: List<OdfSlide>, startIndex: Int, onSlideChange: (Int) -> Unit, onDismiss: () -> Unit) {
+private fun SlideshowDialog(
+    slides: List<OdfSlide>,
+    startIndex: Int,
+    onSlideChange: (Int) -> Unit,
+    onDismiss: () -> Unit) {
     var index by remember { mutableIntStateOf(startIndex.coerceIn(0, slides.size - 1)) }
-    Dialog(onDismissRequest = { onSlideChange(index); onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(
+        onDismissRequest = { onSlideChange(index); onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             val slide = slides[index]
             val (refW, refH) = slideBounds(slide)
-            Box(Modifier.fillMaxWidth().aspectRatio((refW / refH).coerceIn(0.5f, 3f)).align(Alignment.Center).background(Color.White)) {
+            Box(Modifier.fillMaxWidth().aspectRatio((refW / refH).coerceIn(
+                0.5f,
+                3f)).align(Alignment.Center).background(Color.White)) {
                 SlideCanvas(slide, refW, refH)
             }
             // Tap zones
@@ -180,8 +214,15 @@ private fun SlideshowDialog(slides: List<OdfSlide>, startIndex: Int, onSlideChan
                 Box(Modifier.weight(1f).fillMaxHeight().clickable { if (index > 0) { index--; onSlideChange(index) } })
                 Box(Modifier.weight(1f).fillMaxHeight().clickable { if (index < slides.size - 1) { index++; onSlideChange(index) } else { onSlideChange(index); onDismiss() } })
             }
-            Text("${index + 1} / ${slides.size}", color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp))
-            TextButton(onClick = { onSlideChange(index); onDismiss() }, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) { Text(stringResource(R.string.close_search), color = Color.White) }
+            Text(
+                "${index + 1} / ${slides.size}",
+                color = Color.White,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp))
+            TextButton(
+                onClick = { onSlideChange(index); onDismiss() },
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp))
+            { Text(stringResource(R.string.close_search), color = Color.White) }
         }
     }
 }
@@ -192,7 +233,9 @@ private fun SlideThumbnail(slide: OdfSlide, index: Int, isSelected: Boolean, onC
         modifier = Modifier.width(120.dp).aspectRatio(16f / 9f).clickable { onClick() },
         elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 1.dp),
         colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant),
-        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(
+            2.dp,
+            MaterialTheme.colorScheme.primary) else null
     ) {
         Box(Modifier.fillMaxSize().then(slide.backgroundColor?.let { Modifier.background(Color(it.toInt())) } ?: Modifier).padding(4.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -210,15 +253,26 @@ private fun SlideThumbnail(slide: OdfSlide, index: Int, isSelected: Boolean, onC
 
 @Composable
 fun DrawingView(doc: OdfDocument.Drawing) {
-    if (doc.pages.isEmpty()) { Text(stringResource(R.string.empty_drawing), modifier = Modifier.padding(16.dp)); return }
+    if (doc.pages.isEmpty()) { Text(
+        stringResource(R.string.empty_drawing),
+        modifier = Modifier.padding(16.dp)); return }
     var currentPage by remember { mutableIntStateOf(0) }
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(modifier = Modifier.weight(1f).padding(8.dp)) { item { SlideCard(doc.pages[currentPage]) } }
         if (doc.pages.size > 1) Surface(tonalElevation = 3.dp) {
-            Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = { if (currentPage > 0) currentPage-- }, enabled = currentPage > 0) { Text(stringResource(R.string.prev)) }
-                Text(stringResource(R.string.page_of, currentPage + 1, doc.pages.size), style = MaterialTheme.typography.titleSmall)
-                TextButton(onClick = { if (currentPage < doc.pages.size - 1) currentPage++ }, enabled = currentPage < doc.pages.size - 1) { Text(stringResource(R.string.next)) }
+            Row(
+                Modifier.fillMaxWidth().padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(
+                    onClick = { if (currentPage > 0) currentPage-- },
+                    enabled = currentPage > 0) { Text(stringResource(R.string.prev)) }
+                Text(
+                    stringResource(R.string.page_of, currentPage + 1, doc.pages.size),
+                    style = MaterialTheme.typography.titleSmall)
+                TextButton(
+                    onClick = { if (currentPage < doc.pages.size - 1) currentPage++ },
+                    enabled = currentPage < doc.pages.size - 1) { Text(stringResource(R.string.next)) }
             }
         }
     }
@@ -236,25 +290,59 @@ private fun SlideCard(
     onCropImage: (Int) -> Unit = {}
 ) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        Text(slide.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        Text(
+            slide.name,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         val (refW, refH) = slideBounds(slide)
         val ratio = (refW / refH).coerceIn(0.5f, 3f)
         if (editMode) {
             // Edit mode: render the canvas in a non-clipping Box so selection handles that sit at
             // negative offsets near the slide edges aren't cut off by the Card's clip. (C1)
             Box(Modifier.fillMaxWidth().aspectRatio(ratio).padding(horizontal = 8.dp)) {
-                Surface(Modifier.matchParentSize(), shape = RoundedCornerShape(4.dp), shadowElevation = 2.dp, color = MaterialTheme.colorScheme.surface) {}
-                SlideCanvas(slide, refW, refH, true, selectedIndex, onSelect, onElementTextChange, onBoundsChange, onDelete, onCropImage)
+                Surface(
+                    Modifier.matchParentSize(),
+                    shape = RoundedCornerShape(4.dp),
+                    shadowElevation = 2.dp,
+                    color = MaterialTheme.colorScheme.surface) {}
+                SlideCanvas(
+                    slide,
+                    refW,
+                    refH,
+                    true,
+                    selectedIndex,
+                    onSelect,
+                    onElementTextChange,
+                    onBoundsChange,
+                    onDelete,
+                    onCropImage)
             }
         } else {
-            Card(modifier = Modifier.fillMaxWidth().aspectRatio(ratio).padding(horizontal = 8.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
-                SlideCanvas(slide, refW, refH, false, selectedIndex, onSelect, onElementTextChange, onBoundsChange, onDelete, onCropImage)
+            Card(
+                modifier = Modifier.fillMaxWidth().aspectRatio(ratio).padding(horizontal = 8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+                SlideCanvas(
+                    slide,
+                    refW,
+                    refH,
+                    false,
+                    selectedIndex,
+                    onSelect,
+                    onElementTextChange,
+                    onBoundsChange,
+                    onDelete,
+                    onCropImage)
             }
         }
         if (slide.notes.isNotEmpty()) {
             var expanded by remember { mutableStateOf(false) }
-            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.padding(start = 8.dp)) { Text(if (expanded) stringResource(R.string.hide_notes) else stringResource(R.string.speaker_notes_2)) }
-            if (expanded) Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { for (note in slide.notes) ParagraphView(note) }
+            TextButton(
+                onClick = { expanded = !expanded },
+                modifier = Modifier.padding(start = 8.dp))
+            { Text(if (expanded) stringResource(R.string.hide_notes) else stringResource(R.string.speaker_notes_2)) }
+            if (expanded) Column(modifier = Modifier.padding(
+                horizontal = 16.dp,
+                vertical = 4.dp)) { for (note in slide.notes) ParagraphView(note) }
         }
     }
 }

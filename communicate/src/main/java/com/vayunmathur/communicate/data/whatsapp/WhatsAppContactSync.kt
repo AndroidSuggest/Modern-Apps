@@ -72,7 +72,8 @@ object WhatsAppContactSync {
                 ContactsContract.CommonDataKinds.Phone.CONTENT_URI, projection, null, null, null,
             )?.use { cursor ->
                 buildList {
-                    val nameIdx = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY)
+                    val nameIdx =
+                        cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY)
                     val numIdx = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
                     while (cursor.moveToNext()) {
                         val number = cursor.getString(numIdx).orEmpty().trim()

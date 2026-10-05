@@ -1,7 +1,13 @@
 package com.vayunmathur.astronomy.domain.engine
 
 import com.vayunmathur.astronomy.data.model.OrbitalElements
-import kotlin.math.*
+import kotlin.math.abs
+import kotlin.math.acos
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.log10
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 object PlanetaryCalculator {
     data class PlanetResult(
@@ -13,14 +19,16 @@ object PlanetaryCalculator {
         val magnitude: Double?
     )
 
-    fun solveKepler(Mrad: Double, e: Double): Double {
-        var E = Mrad
+    fun solveKepler(meanAnomalyRad: Double, e: Double): Double {
+        var eccentricAnomaly = meanAnomalyRad
         repeat(20) {
-            val delta = (E - e * sin(E) - Mrad) / (1 - e * cos(E))
-            E -= delta
+            val delta = (
+                eccentricAnomaly - e * sin(eccentricAnomaly) - meanAnomalyRad
+                ) / (1 - e * cos(eccentricAnomaly))
+            eccentricAnomaly -= delta
             if (abs(delta) < 1e-12) return@repeat
         }
-        return E
+        return eccentricAnomaly
     }
 
     fun heliocentricEcliptic(elements: OrbitalElements, jd: Double): Triple<Double, Double, Double> {
@@ -47,7 +55,12 @@ object PlanetaryCalculator {
         return Triple(x, y, z)
     }
 
-    private fun eclipticToEquatorial(x: Double, y: Double, z: Double, obliqRad: Double): Triple<Double, Double, Double> {
+    private fun eclipticToEquatorial(
+        x: Double,
+        y: Double,
+        z: Double,
+        obliqRad: Double,
+    ): Triple<Double, Double, Double> {
         val cosEps = cos(obliqRad); val sinEps = sin(obliqRad)
         return Triple(x, y * cosEps - z * sinEps, y * sinEps + z * cosEps)
     }
@@ -72,19 +85,37 @@ object PlanetaryCalculator {
         return PlanetResult(planetElements.id, planetElements.name, RaDec(ra, dec), dist, rHelio, mag)
     }
 
-    private fun estimateMagnitude(elem: OrbitalElements, r: Double, delta: Double, xp: Double, yp: Double, zp: Double, xe: Double, ye: Double, ze: Double): Double? {
+    private fun estimateMagnitude(
+        elem: OrbitalElements,
+        r: Double,
+        delta: Double,
+        xp: Double,
+        yp: Double,
+        zp: Double,
+        xe: Double,
+        ye: Double,
+        ze: Double,
+    ): Double? {
         val base = elem.magBase ?: return null
         val sunPlanet = sqrt(xp*xp + yp*yp + zp*zp)
         val earthPlanet = delta
         val sunEarth = sqrt(xe*xe + ye*ye + ze*ze)
         if (sunPlanet == 0.0 || earthPlanet == 0.0) return base
-        val cosPhase = ((sunPlanet*sunPlanet + earthPlanet*earthPlanet - sunEarth*sunEarth) / (2*sunPlanet*earthPlanet)).coerceIn(-1.0,1.0)
+        val cosPhase = (
+            (sunPlanet * sunPlanet + earthPlanet * earthPlanet - sunEarth * sunEarth) /
+                (2 * sunPlanet * earthPlanet)
+            ).coerceIn(-1.0, 1.0)
         val phaseDeg = acos(cosPhase).toDeg()
         return base + 5.0 * log10(r * delta) + 0.01 * phaseDeg
     }
 
-    fun calcAll(planets: List<OrbitalElements>, earth: OrbitalElements?, jd: Double): List<PlanetResult> {
+    fun calcAll(
+        planets: List<OrbitalElements>,
+        earth: OrbitalElements?,
+        jd: Double,
+    ): List<PlanetResult> {
         if (earth == null) return emptyList()
-        return planets.filter { it.id != "EARTH" && it.id != "SUN" && it.id != "MOON_SKIP" }.map { geocentricRaDec(it, earth, jd) }
+        return planets.filter { it.id != "EARTH" && it.id != "SUN" && it.id != "MOON_SKIP" }
+            .map { geocentricRaDec(it, earth, jd) }
     }
 }

@@ -40,7 +40,9 @@ class CableSession(
             val tun = CableTunnel.connectNew(domain, tunnelId).also { tunnel = it }
 
             val routingId = tun.routingId ?: ByteArray(CableEid.ROUTING_ID_SIZE)
-            if (tun.routingId == null) Log.w(TAG, "No routing id from tunnel; using zeros (browser likely won't connect back)")
+            if (tun.routingId == null) {
+                Log.w(TAG, "No routing id from tunnel; using zeros (browser likely won't connect back)")
+            }
             val nonce = CableEid.randomNonce()
             val plaintextEid = CableEid.buildPlaintext(nonce, routingId, domainId)
             onStatus(R.string.cable_status_advertising)
@@ -73,8 +75,8 @@ class CableSession(
 
             onStatus(R.string.cable_status_waiting)
             return ctapLoop(tun, crypter)
-        } catch (e: Exception) {
-            Log.e(TAG, "caBLE session error", e)
+        } catch (expected: IllegalStateException) {
+            Log.e(TAG, "caBLE session error", expected)
             onStatus(R.string.cable_status_failed)
             return false
         } finally {
@@ -85,41 +87,51 @@ class CableSession(
 
     private suspend fun ctapLoop(tun: CableTunnel, crypter: Crypter): Boolean {
         while (true) {
-            val plain = crypter.decrypt(tun.receive())
-            if (plain.isEmpty()) continue
-            Log.d(TAG, "Transport message: type=${plain[0].toInt() and 0xFF}, ${plain.size} bytes")
+            val outcome = handleTransportMessage(tun, crypter) ?: continue
+            return outcome
+        }
+    }
 
-            val messageType = plain[0].toInt() and 0xFF
-            val payload = plain.copyOfRange(1, plain.size)
-            when (messageType) {
-                MSG_SHUTDOWN -> {
-                    onStatus(R.string.cable_status_cancelled)
-                    return false
-                }
-                MSG_CTAP -> {
-                    val response = ctapProcessor.process(payload)
-                    tun.send(crypter.encrypt(byteArrayOf(MSG_CTAP.toByte()) + response))
-                    if (response.isEmpty() || response[0].toInt() != Ctap.OK) continue
-                    // Both a sign-in and a registration end the session; without the
-                    // makeCredential case the browser is done but we sit here until the timeout.
-                    when (payload.firstOrNull()?.toInt()?.and(0xFF)) {
-                        Ctap.CMD_GET_ASSERTION -> {
-                            onStatus(R.string.cable_status_signed_in)
-                            return true
-                        }
-                        Ctap.CMD_MAKE_CREDENTIAL -> {
-                            onStatus(R.string.cable_status_registered)
-                            return true
-                        }
-                    }
-                }
-                else -> Unit // kUpdate / kJSON: ignore for v1
+    private suspend fun handleTransportMessage(tun: CableTunnel, crypter: Crypter): Boolean? {
+        val plain = crypter.decrypt(tun.receive())
+        if (plain.isEmpty()) return null
+        Log.d(TAG, "Transport message: type=${plain[0].toInt() and BYTE_MASK}, ${plain.size} bytes")
+
+        val messageType = plain[0].toInt() and BYTE_MASK
+        val payload = plain.copyOfRange(1, plain.size)
+        return when (messageType) {
+            MSG_SHUTDOWN -> {
+                onStatus(R.string.cable_status_cancelled)
+                false
             }
+            MSG_CTAP -> handleCtapMessage(tun, crypter, payload)
+            // kUpdate / kJSON: ignore for v1
+            else -> null
+        }
+    }
+
+    private suspend fun handleCtapMessage(tun: CableTunnel, crypter: Crypter, payload: ByteArray): Boolean? {
+        val response = ctapProcessor.process(payload)
+        tun.send(crypter.encrypt(byteArrayOf(MSG_CTAP.toByte()) + response))
+        if (response.isEmpty() || response[0].toInt() != Ctap.OK) return null
+        // Both a sign-in and a registration end the session; without the
+        // makeCredential case the browser is done but we sit here until the timeout.
+        return when (payload.firstOrNull()?.toInt()?.and(BYTE_MASK)) {
+            Ctap.CMD_GET_ASSERTION -> {
+                onStatus(R.string.cable_status_signed_in)
+                true
+            }
+            Ctap.CMD_MAKE_CREDENTIAL -> {
+                onStatus(R.string.cable_status_registered)
+                true
+            }
+            else -> null
         }
     }
 
     companion object {
         private const val TAG = "CableSession"
+        private const val BYTE_MASK = 0xFF
 
         // caBLE MessageType (v2_constants.h).
         private const val MSG_SHUTDOWN = 0

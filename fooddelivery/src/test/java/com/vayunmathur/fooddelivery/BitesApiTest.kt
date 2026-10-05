@@ -12,8 +12,11 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.logging.Logger
 
 class BitesApiTest {
+
+    private val logger = Logger.getLogger(BitesApiTest::class.java.name)
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -136,8 +139,7 @@ class BitesApiTest {
             }
             assertTrue(merchants.isNotEmpty(), "No merchants parsed!")
         } catch (e: Exception) {
-            println("PARSE FAILED: ${e::class.simpleName}: ${e.message}")
-            e.printStackTrace()
+            logger.warning("PARSE FAILED: ${e::class.simpleName}: ${e.message}\n${e.stackTraceToString()}")
             // Try to parse just the first merchant to isolate the issue
             try {
                 val jsonElement = json.parseToJsonElement(raw)

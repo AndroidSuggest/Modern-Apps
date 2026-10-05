@@ -49,19 +49,19 @@ suspend fun CastController.startContentSession(
 ): ContentSessionResult = withContext(Dispatchers.IO) {
     val appContext = context.applicationContext
     val activeClient = client
-    val device = _device.value
-    val phase = _sessionState.value.phase
-    if (activeClient == null || device == null ||
-        (phase != ClientPhase.Paired && phase != ClientPhase.Streaming)
-    ) {
+    val device = deviceMutable.value
+    val phase = sessionStateMutable.value.phase
+    if (!isPairable(activeClient, device, phase)) {
         Log.w(TAG, "asked for an app-content session with no paired TV")
         return@withContext ContentSessionResult.Failed(CastContract.REASON_NO_SESSION)
     }
+    requireNotNull(activeClient)
+    requireNotNull(device)
     endContentSession(CastContract.REASON_PREEMPTED)
     stopEngine()
-    _mirrorPhase.value = MirrorPhase.Negotiating
-    _degradation.value = MirrorDegradation()
-    _failure.value = null
+    mirrorPhaseMutable.value = MirrorPhase.Negotiating
+    degradationMutable.value = MirrorDegradation()
+    failureMutable.value = null
 
     if (resources != null) {
         return@withContext startServedSession(
@@ -77,12 +77,43 @@ suspend fun CastController.startContentSession(
     val codec = when (val choice = chooseCodec(appContext, device, activeClient, width, height)) {
         is CodecOutcome.Refused -> {
             Log.w(TAG, "refusing an app-content session: ${choice.message}")
-            _mirrorPhase.value = MirrorPhase.Failed
-            _failure.value = choice.message
+            mirrorPhaseMutable.value = MirrorPhase.Failed
+            failureMutable.value = choice.message
             return@withContext ContentSessionResult.Failed(CastContract.REASON_FAILED)
         }
         is CodecOutcome.Chosen -> choice
     }
+    startEncodedContentSession(
+        appContext = appContext,
+        device = device,
+        activeClient = activeClient,
+        codec = codec,
+        width = width,
+        height = height,
+        wantAudio = wantAudio,
+        appLabel = appLabel,
+    )
+}
+
+private fun isPairable(
+    activeClient: MirrorClient?,
+    device: CastDevice?,
+    phase: ClientPhase,
+): Boolean = activeClient != null && device != null && isPairedPhase(phase)
+
+private fun isPairedPhase(phase: ClientPhase): Boolean =
+    phase == ClientPhase.Paired || phase == ClientPhase.Streaming
+
+private suspend fun CastController.startEncodedContentSession(
+    appContext: Context,
+    device: CastDevice,
+    activeClient: MirrorClient,
+    codec: CodecOutcome.Chosen,
+    width: Int,
+    height: Int,
+    wantAudio: Boolean,
+    appLabel: String,
+): ContentSessionResult {
     val geometry = MirrorGeometry.forContent(width, height, codec.selection)
     val frameRate = geometry.frameRate
     val outcome = mutex.withLock {
@@ -100,9 +131,9 @@ suspend fun CastController.startContentSession(
     val ready = outcome as? HandshakeOutcome.Ready
     if (ready == null) {
         Log.w(TAG, "the TV would not agree an app-content stream: $outcome")
-        _mirrorPhase.value = MirrorPhase.Failed
-        _failure.value = appContext.getString(R.string.cast_mirror_negotiation_failed)
-        return@withContext ContentSessionResult.Failed(CastContract.REASON_FAILED)
+        mirrorPhaseMutable.value = MirrorPhase.Failed
+        failureMutable.value = appContext.getString(R.string.cast_mirror_negotiation_failed)
+        return ContentSessionResult.Failed(CastContract.REASON_FAILED)
     }
 
     val newEngine = MirrorEngine(
@@ -113,7 +144,7 @@ suspend fun CastController.startContentSession(
         geometry = geometry,
         videoCodec = codec.codec,
         frameRate = frameRate,
-        onDegraded = { _degradation.value = it },
+        onDegraded = { degradationMutable.value = it },
         onStopped = { reason -> onEngineStopped(appContext, reason) },
         onCodecConfig = { csd -> sendCodecConfig(activeClient, csd) },
     ).apply { hexDump = verboseStreamLogging }
@@ -126,15 +157,15 @@ suspend fun CastController.startContentSession(
         newEngine.stop()
         engine = null
         activeCodec = null
-        _mirrorPhase.value = MirrorPhase.Failed
-        return@withContext ContentSessionResult.Failed(CastContract.REASON_FAILED)
+        mirrorPhaseMutable.value = MirrorPhase.Failed
+        return ContentSessionResult.Failed(CastContract.REASON_FAILED)
     }
-    _mirrorPhase.value = MirrorPhase.Mirroring
-    _sessionState.update {
+    mirrorPhaseMutable.value = MirrorPhase.Mirroring
+    sessionStateMutable.update {
         it.copy(phase = ClientPhase.Streaming, negotiation = ready.negotiation)
     }
     startWatch(appContext, activeClient, device, codec.codec, transportControls = true, keepAlive = true)
-    ContentSessionResult.Started(
+    return ContentSessionResult.Started(
         surface = surface,
         audioWriteEnd = newEngine.audioWriteEnd,
         width = geometry.width,
@@ -170,8 +201,8 @@ internal suspend fun CastController.startServedSession(
     val limits = activeClient.limits ?: DecoderLimits()
     if (!CodecNegotiation.canPlayAudio(limits)) {
         Log.w(TAG, "refusing a served session: '${device.friendlyName}' advertised no Opus decoder")
-        _failure.value = context.getString(R.string.cast_mirror_tv_no_audio)
-        _mirrorPhase.value = MirrorPhase.Failed
+        failureMutable.value = context.getString(R.string.cast_mirror_tv_no_audio)
+        mirrorPhaseMutable.value = MirrorPhase.Failed
         return ContentSessionResult.Failed(CastContract.REASON_FAILED)
     }
 
@@ -181,7 +212,7 @@ internal suspend fun CastController.startServedSession(
     val host = socket?.localAddress
     if (host == null || host.hostAddress == null) {
         Log.w(TAG, "no local address on the control channel; nothing could be served")
-        _mirrorPhase.value = MirrorPhase.Failed
+        mirrorPhaseMutable.value = MirrorPhase.Failed
         return ContentSessionResult.Failed(CastContract.REASON_FAILED)
     }
 
@@ -189,7 +220,7 @@ internal suspend fun CastController.startServedSession(
     val server = MediaProxyServer(token, resources)
     val endpoint = server.start(listOf(host))
     if (endpoint == null) {
-        _mirrorPhase.value = MirrorPhase.Failed
+        mirrorPhaseMutable.value = MirrorPhase.Failed
         return ContentSessionResult.Failed(CastContract.REASON_FAILED)
     }
     proxy = server
@@ -208,13 +239,13 @@ internal suspend fun CastController.startServedSession(
         // Nothing is going to fetch from it, and an open port outlives the session that needed it.
         server.stop()
         proxy = null
-        _failure.value = outcome.detail.ifBlank { context.getString(R.string.cast_mirror_tv_no_audio) }
-        _mirrorPhase.value = MirrorPhase.Failed
+        failureMutable.value = outcome.detail.ifBlank { context.getString(R.string.cast_mirror_tv_no_audio) }
+        mirrorPhaseMutable.value = MirrorPhase.Failed
         return ContentSessionResult.Failed(CastContract.REASON_FAILED)
     }
 
-    _mirrorPhase.value = MirrorPhase.Mirroring
-    _sessionState.update { it.copy(phase = ClientPhase.Streaming) }
+    mirrorPhaseMutable.value = MirrorPhase.Mirroring
+    sessionStateMutable.update { it.copy(phase = ClientPhase.Streaming) }
     startWatch(context, activeClient, device, codec = null, transportControls = true, keepAlive = true)
     return ContentSessionResult.Serving(
         receiverName = activeClient.receiverName ?: device.friendlyName,

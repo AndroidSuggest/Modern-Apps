@@ -46,12 +46,10 @@ internal fun phraseWalkLegs(
     }
 }
 
-/**
- * A walk leg's duration in whole minutes, rounded up and floored at one: every other
- * time the route sheet shows drops seconds, and "0 min" reads as no walk at all.
- */
+/** A walk leg's duration in whole minutes, rounded up and floored at one: every other
+ * time the route sheet shows drops seconds, and "0 min" reads as no walk at all. */
 internal fun walkLegMinutes(duration: Duration): Int =
-    ceil(duration.inWholeSeconds / 60.0).toInt().coerceAtLeast(1)
+    ceil(duration.inWholeSeconds / SECONDS_PER_MINUTE).toInt().coerceAtLeast(1)
 
 /**
  * When to set off: the first ride's departure less the walk that leads to it.
@@ -77,5 +75,10 @@ internal fun arriveAt(rawSteps: Array<OfflineRouter.RawStep>): String? {
 /** Walking seconds across [legs], counting neither rides nor waiting at a stop. */
 private fun walkSecs(legs: List<OfflineRouter.RawStep>): Int =
     legs.filter { !it.isTransit && it.maneuverId != RouteService.API.Maneuver.WAIT.ordinal }
-        .sumOf { it.duration10ms / 100 }
+        .sumOf { it.duration10ms / CENTISEC_PER_SECOND }
         .toInt()
+
+/** Seconds per minute, for the walk-leg wording. */
+private const val SECONDS_PER_MINUTE = 60.0
+/** Native durations are centiseconds (10 ms units). */
+private const val CENTISEC_PER_SECOND = 100

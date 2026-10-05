@@ -38,6 +38,15 @@ object NativeHttpBridge {
     private const val POST = 1
     private const val HEAD = 2
 
+    /** Wire-format field widths in bytes (see class KDoc). */
+    private const val U16_BYTES = 2
+    private const val U32_BYTES = 4
+    private const val REPLY_PREFIX_BYTES = U16_BYTES + U32_BYTES + U32_BYTES + U32_BYTES
+    private const val MAX_PAIR_BYTES = 0xFFFF
+    private const val BYTE_MASK = 0xFF
+    private const val BYTE_SHIFT = 8
+    private const val U32_BYTE_SHIFTS = 3
+
     /**
      * Called from Rust. Never throws.
      *
@@ -48,6 +57,12 @@ object NativeHttpBridge {
      */
     @JvmStatic
     fun request(method: Int, url: String, headers: ByteArray?, body: ByteArray?): ByteArray =
+        executeRequest(method, url, headers, body)
+
+    // Never-throws JNI boundary: any non-IO failure (interrupted runBlocking, packing bugs)
+    // must still become a status-0 reply rather than a pending JNI exception.
+    @Suppress("TooGenericExceptionCaught")
+    private fun executeRequest(method: Int, url: String, headers: ByteArray?, body: ByteArray?): ByteArray {
         try {
             val response = runBlocking {
                 NetworkClient.execute(
@@ -61,33 +76,53 @@ object NativeHttpBridge {
                     body = body,
                 )
             }
-            packReply(response.status, response.url, response.headers, response.bytes)
+            return packReply(response.status, response.url, response.headers, response.bytes)
         } catch (e: Exception) {
-            // Status 0 tells Rust the request never completed; the body carries the reason.
-            packReply(
-                status = 0,
-                url = url,
-                headers = emptyMap(),
-                body = (e.message ?: e::class.simpleName ?: "request failed").toByteArray(),
-            )
+            return packFailure(url, e.message ?: e::class.simpleName ?: "request failed")
         }
+    }
+
+    private fun packFailure(url: String, reason: String): ByteArray {
+        // Status 0 tells Rust the request never completed; the body carries the reason.
+        return packReply(
+            status = 0,
+            url = url,
+            headers = emptyMap(),
+            body = reason.toByteArray(),
+        )
+    }
 
     /** Packed pairs → the multimap [NetworkClient] expects. */
     private fun unpackHeaders(packed: ByteArray?): Map<String, List<String>> {
         if (packed == null || packed.isEmpty()) return emptyMap()
         val out = LinkedHashMap<String, MutableList<String>>()
-        var i = 0
-        while (i + 2 <= packed.size) {
-            val nameLen = readU16(packed, i); i += 2
-            if (i + nameLen > packed.size) break
-            val name = String(packed, i, nameLen, Charsets.UTF_8); i += nameLen
-            if (i + 2 > packed.size) break
-            val valueLen = readU16(packed, i); i += 2
-            if (i + valueLen > packed.size) break
-            val value = String(packed, i, valueLen, Charsets.UTF_8); i += valueLen
+        val cursor = HeaderCursor(packed)
+        while (true) {
+            val (name, value) = cursor.nextPair() ?: break
             out.getOrPut(name) { mutableListOf() }.add(value)
         }
         return out
+    }
+
+    /** Cursor over length-prefixed pairs; null marks truncation or exhaustion. */
+    private class HeaderCursor(private val packed: ByteArray) {
+        private var pos = 0
+
+        fun nextPair(): Pair<String, String>? {
+            val name = nextField() ?: return null
+            val value = nextField() ?: return null
+            return name to value
+        }
+
+        private fun nextField(): String? {
+            if (pos + U16_BYTES > packed.size) return null
+            val len = readU16(packed, pos)
+            pos += U16_BYTES
+            if (len < 0 || pos + len > packed.size) return null
+            val s = String(packed, pos, len, Charsets.UTF_8)
+            pos += len
+            return s
+        }
     }
 
     private fun packReply(
@@ -98,7 +133,7 @@ object NativeHttpBridge {
     ): ByteArray {
         val urlBytes = url.toByteArray(Charsets.UTF_8)
         val headerBytes = packHeaders(headers)
-        val out = java.io.ByteArrayOutputStream(14 + urlBytes.size + headerBytes.size + body.size)
+        val out = java.io.ByteArrayOutputStream(REPLY_PREFIX_BYTES + urlBytes.size + headerBytes.size + body.size)
         writeU16(out, status)
         writeU32(out, urlBytes.size); out.write(urlBytes)
         writeU32(out, headerBytes.size); out.write(headerBytes)
@@ -109,32 +144,47 @@ object NativeHttpBridge {
     private fun packHeaders(headers: Map<String, List<String>>): ByteArray {
         val out = java.io.ByteArrayOutputStream()
         for ((name, values) in headers) {
-            // HttpURLConnection uses a null key for the status line; Rust has no use for it.
-            if (name.isEmpty()) continue
-            val nameBytes = name.toByteArray(Charsets.UTF_8)
-            if (nameBytes.size > 0xFFFF) continue
-            for (value in values) {
-                val valueBytes = value.toByteArray(Charsets.UTF_8)
-                if (valueBytes.size > 0xFFFF) continue
-                writeU16(out, nameBytes.size); out.write(nameBytes)
-                writeU16(out, valueBytes.size); out.write(valueBytes)
-            }
+            packEntry(out, name, values)
         }
         return out.toByteArray()
     }
 
+    private fun packEntry(
+        out: java.io.ByteArrayOutputStream,
+        name: String,
+        values: List<String>,
+    ) {
+        // HttpURLConnection uses a null key for the status line; Rust has no use for it.
+        if (name.isEmpty()) return
+        val nameBytes = name.toByteArray(Charsets.UTF_8)
+        if (nameBytes.size > MAX_PAIR_BYTES) return
+        packValues(out, nameBytes, values)
+    }
+
+    private fun packValues(
+        out: java.io.ByteArrayOutputStream,
+        nameBytes: ByteArray,
+        values: List<String>,
+    ) {
+        for (value in values) {
+            val valueBytes = value.toByteArray(Charsets.UTF_8)
+            if (valueBytes.size > MAX_PAIR_BYTES) continue
+            writeU16(out, nameBytes.size); out.write(nameBytes)
+            writeU16(out, valueBytes.size); out.write(valueBytes)
+        }
+    }
+
     private fun readU16(b: ByteArray, at: Int): Int =
-        ((b[at].toInt() and 0xFF) shl 8) or (b[at + 1].toInt() and 0xFF)
+        ((b[at].toInt() and BYTE_MASK) shl BYTE_SHIFT) or (b[at + 1].toInt() and BYTE_MASK)
 
     private fun writeU16(out: java.io.ByteArrayOutputStream, v: Int) {
-        out.write((v ushr 8) and 0xFF)
-        out.write(v and 0xFF)
+        out.write((v ushr BYTE_SHIFT) and BYTE_MASK)
+        out.write(v and BYTE_MASK)
     }
 
     private fun writeU32(out: java.io.ByteArrayOutputStream, v: Int) {
-        out.write((v ushr 24) and 0xFF)
-        out.write((v ushr 16) and 0xFF)
-        out.write((v ushr 8) and 0xFF)
-        out.write(v and 0xFF)
+        for (shift in U32_BYTE_SHIFTS downTo 0) {
+            out.write((v ushr (shift * BYTE_SHIFT)) and BYTE_MASK)
+        }
     }
 }

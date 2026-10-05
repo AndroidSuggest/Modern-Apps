@@ -31,7 +31,12 @@ import android.os.UserManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.sqrt
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -70,9 +75,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -202,14 +204,14 @@ class LocationTrackingService : Service(), SensorEventListener {
             val y = event.values[1]
             val z = event.values[2]
             val accel = sqrt(x*x + y*y + z*z)
-            if (accel > 0.5f) {
+            if (accel > MOVEMENT_ACCELERATION_THRESHOLD) {
                 lastMovementTime = System.currentTimeMillis()
                 if (!isMoving) {
                     isMoving = true
                     setupLocationUpdates()
                 }
             } else {
-                if (isMoving && (System.currentTimeMillis() - lastMovementTime > 60_000L)) {
+                if (isMoving && (System.currentTimeMillis() - lastMovementTime > STILLNESS_TIMEOUT_MS)) {
                     isMoving = false
                     stopTrackingUpdates()
                     if (significantMotionSensor != null) {
@@ -291,10 +293,16 @@ class LocationTrackingService : Service(), SensorEventListener {
 
     // The unlock handover lives in LocationTrackingDirectBoot.kt.
 
+    // Broad catch is deliberate: mirror-seed failures must not kill the heartbeat loop.
+    @Suppress("TooGenericExceptionCaught")
     internal fun startTracking() {
         serviceScope.launch {
             if (!trackingInitialized) {
-                Networking.init(repository, DataStoreUtils.getInstance(this@LocationTrackingService), getString(R.string.me_label))
+                Networking.init(
+                    repository,
+                    DataStoreUtils.getInstance(this@LocationTrackingService),
+                    getString(R.string.me_label)
+                )
 
                 // Hoist the UWB ranging session into this foreground service
                 // so we can auto-accept incoming Find Nearby (UWB) requests
@@ -441,6 +449,24 @@ class LocationTrackingService : Service(), SensorEventListener {
         }
     }
 
+    /** One watchdog poll verdict: keep waiting, stop watching, or start GPS assist now. */
+    private enum class WatchdogVerdict { POLL, STOP, ASSIST }
+
+    private fun CoroutineScope.watchdogVerdict(): WatchdogVerdict {
+        // Stale evaluation guards: the watchdog only means something while
+        // network is still requested and the device is meant to be tracked.
+        if (!isActive) return WatchdogVerdict.STOP
+        if (!isMoving || !networkRequested) return WatchdogVerdict.STOP
+        val lastFix = lastNetworkFixElapsedMs
+        val reference = if (lastFix != 0L) lastFix else networkRequestElapsedMs
+        if (reference == 0L) return WatchdogVerdict.POLL
+        if (SystemClock.elapsedRealtime() - reference < NETWORK_NO_LOCK_TIMEOUT_MS) {
+            return WatchdogVerdict.POLL
+        }
+        if (isGpsRunning) return WatchdogVerdict.POLL
+        return WatchdogVerdict.ASSIST
+    }
+
     /**
      * Start GPS in parallel when NETWORK_PROVIDER is enabled but has not produced
      * a fix for a while — indoors, in a Faraday-like building, or while the radio
@@ -459,18 +485,18 @@ class LocationTrackingService : Service(), SensorEventListener {
         networkWatchdogJob = serviceScope.launch {
             while (isActive) {
                 delay(NETWORK_NO_LOCK_TIMEOUT_MS)
-                if (!isActive) break
-                // Stale evaluation guards: the watchdog only means something while
-                // network is still requested and the device is meant to be tracked.
-                if (!isMoving || !networkRequested) break
-                val lastFix = lastNetworkFixElapsedMs
-                val reference = if (lastFix != 0L) lastFix else networkRequestElapsedMs
-                if (reference == 0L) continue
-                if (SystemClock.elapsedRealtime() - reference < NETWORK_NO_LOCK_TIMEOUT_MS) continue
-                if (isGpsRunning) continue
-                Log.i(TAG_NETWORK_ASSIST, "no network fix for ${NETWORK_NO_LOCK_TIMEOUT_MS}ms, starting GPS in parallel")
-                withContext(Dispatchers.Main) {
-                    startGps()
+                when (watchdogVerdict()) {
+                    WatchdogVerdict.STOP -> break
+                    WatchdogVerdict.ASSIST -> {
+                        Log.i(
+                            TAG_NETWORK_ASSIST,
+                            "no network fix for ${NETWORK_NO_LOCK_TIMEOUT_MS}ms, starting GPS in parallel"
+                        )
+                        withContext(Dispatchers.Main) {
+                            startGps()
+                        }
+                    }
+                    WatchdogVerdict.POLL -> Unit
                 }
             }
         }
@@ -507,6 +533,12 @@ class LocationTrackingService : Service(), SensorEventListener {
          * device (no network provider at all) never arms this path.
          */
         internal const val NETWORK_NO_LOCK_TIMEOUT_MS = 60_000L
+
+        /** Acceleration magnitude that counts as movement on the linear-acceleration sensor. */
+        internal const val MOVEMENT_ACCELERATION_THRESHOLD = 0.5f
+
+        /** How long low acceleration must persist before the device counts as still. */
+        internal const val STILLNESS_TIMEOUT_MS = 60_000L
 
         /** How often to drain powered-off sightings. See [LocationTrackingService.pollPoweredOffSightings]. */
         internal const val POWERED_OFF_POLL_INTERVAL_MS = 5 * 60 * 1000L
@@ -696,12 +728,11 @@ object LocationServiceController {
         SharingTileService.requestRefresh(context)
     }
 
-    /** Whether the user has agreed to act as a finder. Defaults to **false** — opt-in. */
-    @Suppress("UNUSED_PARAMETER")
-    suspend fun isCrowdFindingEnabled(context: Context): Boolean = true
+    /** Finding is mandatory: every install acts as a finder, so this is always true. */
+    const val CROWD_FINDING_ENABLED = true
 
     /**
-     * [isCrowdFindingEnabled] as a stream. Constant now that finding is mandatory - kept as a
+     * [CROWD_FINDING_ENABLED] as a stream. Constant now that finding is mandatory - kept as a
      * Flow so the collector in the service is unchanged, and so a future re-introduction of a
      * user control does not have to re-plumb the call site.
      */

@@ -79,21 +79,54 @@ internal fun handleCommunication(
     packageName: String?
 ) {
     if (type == CommunicationType.CALL) {
-        if (packageName != null) placePlatformCall(context, number, packageName) else placeCall(context, number)
+        if (packageName != null) {
+            placePlatformCall(context, number, packageName)
+        } else {
+            placeCall(context, number)
+        }
         return
     }
-    val intent = when (packageName) {
-        PackageUtils.SIGNAL_PACKAGE -> Intent(Intent.ACTION_SENDTO, "smsto:$number".toUri()).apply { setPackage(PackageUtils.SIGNAL_PACKAGE) }
-        PackageUtils.WHATSAPP_PACKAGE -> Intent(Intent.ACTION_VIEW, "https://wa.me/${number.filter { it.isDigit() }}".toUri())
-        PackageUtils.TELEGRAM_PACKAGE -> Intent(Intent.ACTION_VIEW, "https://t.me/+${number.filter { it.isDigit() || it == '+' }}".toUri())
-        else -> Intent(Intent.ACTION_SENDTO, "sms:$number".toUri())
-    }
+    val intent = smsIntentFor(number, packageName)
+    // Broad catch is deliberate: startActivity crosses arbitrary handler apps
+    // and every failure mode falls back to the system SMS app below.
+    @Suppress("TooGenericExceptionCaught")
     try {
         context.startActivity(intent)
+    } catch (e: android.content.ActivityNotFoundException) {
+        android.util.Log.w("ContactDetailsComms", "SMS handler missing", e)
+        fallbackToSystemSms(context, number, type, packageName)
+    } catch (e: SecurityException) {
+        android.util.Log.w("ContactDetailsComms", "SMS handler missing", e)
+        fallbackToSystemSms(context, number, type, packageName)
     } catch (e: Exception) {
-        if (packageName != null) {
-            handleCommunication(context, number, CommunicationType.SMS, null)
-        }
+        android.util.Log.w("ContactDetailsComms", "SMS handler missing", e)
+        fallbackToSystemSms(context, number, type, packageName)
+    }
+}
+
+private fun smsIntentFor(number: String, packageName: String?): Intent =
+    when (packageName) {
+        PackageUtils.SIGNAL_PACKAGE ->
+            Intent(Intent.ACTION_SENDTO, "smsto:$number".toUri())
+                .apply { setPackage(PackageUtils.SIGNAL_PACKAGE) }
+        PackageUtils.WHATSAPP_PACKAGE ->
+            Intent(Intent.ACTION_VIEW, "https://wa.me/${number.filter { it.isDigit() }}".toUri())
+        PackageUtils.TELEGRAM_PACKAGE ->
+            Intent(
+                Intent.ACTION_VIEW,
+                "https://t.me/+${number.filter { it.isDigit() || it == '+' }}".toUri()
+            )
+        else -> Intent(Intent.ACTION_SENDTO, "sms:$number".toUri())
+    }
+
+private fun fallbackToSystemSms(
+    context: android.content.Context,
+    number: String,
+    type: CommunicationType,
+    packageName: String?,
+) {
+    if (packageName != null) {
+        handleCommunication(context, number, type, null)
     }
 }
 
@@ -159,18 +192,36 @@ internal fun placePlatformCall(
 }
 
 internal fun launchPlatformAction(context: android.content.Context, dataRowId: Long) {
+    // Broad catch is deliberate: the platform row's handler app is arbitrary
+    // and a missing handler must be a silent no-op from a row tap.
+    @Suppress("TooGenericExceptionCaught")
     try {
         val uri = ContentUris.withAppendedId(ContactsContract.Data.CONTENT_URI, dataRowId)
         context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-    } catch (_: Exception) {}
+    } catch (e: android.content.ActivityNotFoundException) {
+        android.util.Log.w("ContactDetailsComms", "Platform action handler missing", e)
+    } catch (e: SecurityException) {
+        android.util.Log.w("ContactDetailsComms", "Platform action handler missing", e)
+    } catch (e: Exception) {
+        android.util.Log.w("ContactDetailsComms", "Platform action handler missing", e)
+    }
 }
 
 internal fun launchGoogleMeet(context: android.content.Context, number: String) {
+    // Broad catch is deliberate: Meet may be absent and a missing handler
+    // must be a silent no-op from a row tap.
+    @Suppress("TooGenericExceptionCaught")
     try {
         val intent = Intent("com.google.android.apps.tachyon.action.CALL").apply {
             data = "tel:$number".toUri()
             setPackage(PackageUtils.GOOGLE_MEET_PACKAGE)
         }
         context.startActivity(intent)
-    } catch (_: Exception) {}
+    } catch (e: android.content.ActivityNotFoundException) {
+        android.util.Log.w("ContactDetailsComms", "Meet handler missing", e)
+    } catch (e: SecurityException) {
+        android.util.Log.w("ContactDetailsComms", "Meet handler missing", e)
+    } catch (e: Exception) {
+        android.util.Log.w("ContactDetailsComms", "Meet handler missing", e)
+    }
 }

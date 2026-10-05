@@ -5,7 +5,7 @@ import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.state.updateAppWidgetState
-import com.vayunmathur.calculator.util.CalculatorViewModel
+import com.vayunmathur.calculator.util.KEY_UNITS_CATEGORY
 import com.vayunmathur.library.util.DataStoreUtils
 
 /**
@@ -35,7 +35,7 @@ class SelectUnitsCategoryAction : ActionCallback {
         val name = parameters[CATEGORY_NAME] ?: return
         // The preference the app restores on launch, so the converter reopens on this category too.
         DataStoreUtils.getInstance(context)
-            .setString(CalculatorViewModel.KEY_UNITS_CATEGORY, name)
+            .setString(KEY_UNITS_CATEGORY, name)
         updateAppWidgetState(context, glanceId) { prefs ->
             prefs[UnitsGlanceWidget.EXPANDED] = false
         }

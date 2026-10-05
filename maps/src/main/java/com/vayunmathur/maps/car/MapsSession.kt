@@ -63,7 +63,7 @@ class MapsSession : Session() {
         // API 9 (experimental, AAOS only): declare voice-assistant capabilities
         // so the host can route voice actions to us. Guarded — old hosts and
         // non-automotive hosts throw/ignore.
-        if (carContext.getCarAppApiLevel() >= 9) {
+        if (carContext.getCarAppApiLevel() >= CAR_API_VOICE_ASSISTANT) {
             runCatching {
                 if (navigationManager.canSetVoiceAssistantCapabilities()) {
                     navigationManager.setVoiceAssistantCapabilities(
@@ -121,5 +121,7 @@ class MapsSession : Session() {
 
     private companion object {
         const val TAG = "MapsSession"
+        /** Car API level for voice-assistant capabilities (experimental, AAOS only). */
+        const val CAR_API_VOICE_ASSISTANT = 9
     }
 }

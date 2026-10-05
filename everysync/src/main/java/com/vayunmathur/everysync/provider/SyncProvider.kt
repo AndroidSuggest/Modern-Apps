@@ -33,7 +33,11 @@ interface SyncProvider {
      * tokens (e.g. the user's email). Default returns a short token fingerprint.
      */
     suspend fun resolveAccountName(context: Context, tokens: OAuthTokens): String =
-        "$displayName (${tokens.accessToken.take(6)})"
+        "$displayName (${tokens.accessToken.take(TOKEN_FINGERPRINT_LEN)})"
+
+    companion object {
+        private const val TOKEN_FINGERPRINT_LEN = 6
+    }
 
     /** Run one sync pass for [config] in the requested [direction]. */
     suspend fun sync(context: Context, config: AccountConfig, direction: SyncDirection)

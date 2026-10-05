@@ -1,6 +1,5 @@
 package com.vayunmathur.launcher.ui.components
 
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 
 /**
@@ -16,7 +15,3 @@ internal class Press(
     val totalDx: Float,
     val totalDy: Float,
 )
-
-@Composable
-fun LauncherDragInputSection() {
-}

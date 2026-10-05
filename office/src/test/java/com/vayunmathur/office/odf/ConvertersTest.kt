@@ -1,6 +1,20 @@
 package com.vayunmathur.office.odf
 
-import com.vayunmathur.library.ui.odf.*
+import com.vayunmathur.library.ui.odf.EpubExporter
+import com.vayunmathur.library.ui.odf.HtmlOdfConverter
+import com.vayunmathur.library.ui.odf.LatexExporter
+import com.vayunmathur.library.ui.odf.ListType
+import com.vayunmathur.library.ui.odf.OdfContentBlock
+import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.library.ui.odf.OdfParagraph
+import com.vayunmathur.library.ui.odf.OdfSerializer
+import com.vayunmathur.library.ui.odf.OdfSpan
+import com.vayunmathur.library.ui.odf.OdfTable
+import com.vayunmathur.library.ui.odf.OdfTableCell
+import com.vayunmathur.library.ui.odf.OdfTableRow
+import com.vayunmathur.library.ui.odf.ParagraphStyle
+import com.vayunmathur.library.ui.odf.PdfExporter
+import com.vayunmathur.library.ui.odf.RtfOdfConverter
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -13,11 +27,25 @@ class ConvertersTest {
 
     private fun textDoc() = OdfDocument.TextDocument("Doc", listOf(
         OdfContentBlock.Paragraph(OdfParagraph(listOf(OdfSpan("Title")), style = ParagraphStyle.HEADING1)),
-        OdfContentBlock.Paragraph(OdfParagraph(listOf(OdfSpan("hello "), OdfSpan("bold", bold = true), OdfSpan(" and "), OdfSpan("red", color = 0xFFFF0000)))),
-        OdfContentBlock.Paragraph(OdfParagraph(listOf(OdfSpan("first")), style = ParagraphStyle.LIST_ITEM, listType = ListType.NUMBERED, listItemIndex = 1)),
-        OdfContentBlock.Paragraph(OdfParagraph(listOf(OdfSpan("second")), style = ParagraphStyle.LIST_ITEM, listType = ListType.NUMBERED, listItemIndex = 2)),
+        OdfContentBlock.Paragraph(OdfParagraph(listOf(
+            OdfSpan("hello "),
+            OdfSpan("bold", bold = true),
+            OdfSpan(" and "),
+            OdfSpan("red", color = 0xFFFF0000)))),
+        OdfContentBlock.Paragraph(OdfParagraph(
+            listOf(OdfSpan("first")),
+            style = ParagraphStyle.LIST_ITEM,
+            listType = ListType.NUMBERED,
+            listItemIndex = 1)),
+        OdfContentBlock.Paragraph(OdfParagraph(
+            listOf(OdfSpan("second")),
+            style = ParagraphStyle.LIST_ITEM,
+            listType = ListType.NUMBERED,
+            listItemIndex = 2)),
         OdfContentBlock.Table(OdfTable(rows = listOf(
-            OdfTableRow(listOf(OdfTableCell(listOf(OdfParagraph(listOf(OdfSpan("A"))))), OdfTableCell(listOf(OdfParagraph(listOf(OdfSpan("B")))))))
+            OdfTableRow(listOf(
+                OdfTableCell(listOf(OdfParagraph(listOf(OdfSpan("A"))))),
+                OdfTableCell(listOf(OdfParagraph(listOf(OdfSpan("B")))))))
         )))
     ))
 

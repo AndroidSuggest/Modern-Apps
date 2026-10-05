@@ -68,30 +68,54 @@ object RealAudioHarness {
         var sumCos = 0.0
         var count = 0
         for (frame in hops(pcm, constantQ.requiredSamples, HOP)) {
-            val magnitudes = constantQ.magnitudes(frame)
-            val ceiling = magnitudes.max()
-            if (ceiling <= 0.0) continue
-            for (bin in 1 until CQT_BINS - 1) {
-                val here = magnitudes[bin]
-                if (here < PEAK_FRACTION * ceiling) continue
-                if (here <= magnitudes[bin - 1] || here <= magnitudes[bin + 1]) continue
-                val a = ln(magnitudes[bin - 1] + 1e-12)
-                val b = ln(here + 1e-12)
-                val c = ln(magnitudes[bin + 1] + 1e-12)
-                val denominator = a - 2.0 * b + c
-                if (abs(denominator) < 1e-12) continue
-                val shift = 0.5 * (a - c) / denominator
-                if (abs(shift) > 0.5) continue
-                val semitones = (bin + shift) / 3.0
-                val deviation = (semitones - semitones.roundToInt()) * 100.0
-                val angle = 2.0 * Math.PI * deviation / 100.0
-                sumSin += kotlin.math.sin(angle)
-                sumCos += kotlin.math.cos(angle)
-                count++
-            }
+            val result = accumulateFrameOffset(constantQ.magnitudes(frame), sumSin, sumCos, count)
+            sumSin = result.first
+            sumCos = result.second
+            count = result.third
         }
         if (count == 0) return 0.0
         return kotlin.math.atan2(sumSin, sumCos) * 100.0 / (2.0 * Math.PI)
+    }
+
+    private fun accumulateFrameOffset(
+        magnitudes: DoubleArray,
+        sumSin: Double,
+        sumCos: Double,
+        count: Int,
+    ): Triple<Double, Double, Int> {
+        var sinAcc = sumSin
+        var cosAcc = sumCos
+        var n = count
+        val ceiling = magnitudes.max()
+        if (ceiling <= 0.0) return Triple(sinAcc, cosAcc, n)
+        for (bin in 1 until CQT_BINS - 1) {
+            val angle = peakAngle(magnitudes, bin, ceiling) ?: continue
+            sinAcc += kotlin.math.sin(angle)
+            cosAcc += kotlin.math.cos(angle)
+            n++
+        }
+        return Triple(sinAcc, cosAcc, n)
+    }
+
+    private fun peakAngle(magnitudes: DoubleArray, bin: Int, ceiling: Double): Double? {
+        val here = magnitudes[bin]
+        if (here < PEAK_FRACTION * ceiling) return null
+        if (here <= magnitudes[bin - 1] || here <= magnitudes[bin + 1]) return null
+        val shift = parabolicShift(magnitudes[bin - 1], here, magnitudes[bin + 1]) ?: return null
+        val semitones = (bin + shift) / 3.0
+        val deviation = (semitones - semitones.roundToInt()) * 100.0
+        return 2.0 * Math.PI * deviation / 100.0
+    }
+
+    private fun parabolicShift(a: Double, b: Double, c: Double): Double? {
+        val la = ln(a + 1e-12)
+        val lb = ln(b + 1e-12)
+        val lc = ln(c + 1e-12)
+        val denominator = la - 2.0 * lb + lc
+        if (abs(denominator) < 1e-12) return null
+        val shift = 0.5 * (la - lc) / denominator
+        if (abs(shift) > 0.5) return null
+        return shift
     }
 
     /**
@@ -195,27 +219,34 @@ class Score(val label: String) {
         if (!levelDb.isNaN()) {
             levelsByPitchClass.getOrPut(distinct) { ArrayList() } += levelDb
         }
-        val outcome = when (reading.label) {
-            is ChordLabel.SingleNote -> "SingleNote (1 pitch class)"
-            is ChordLabel.Interval -> "Interval (2 pitch classes)"
-            is ChordLabel.Unnamed -> "Unnamed (scored, rejected)"
-            is ChordLabel.Ambiguous -> "Ambiguous (offered, not named)"
-            is ChordLabel.Chord -> "Chord (named)"
-            is ChordLabel.Silent -> "Silent"
-        }
+        val outcome = outcomeOf(reading.label)
         outcomes[outcome] = (outcomes[outcome] ?: 0) + 1
-        when (val label = reading.label) {
-            is ChordLabel.Chord -> {
-                named++
-                offered++
-                val name = label.name
-                names[name.toString()] = (names[name.toString()] ?: 0) + 1
-                if (name.root to name.quality in RealAudioHarness.GROUND_TRUTH) correct++
-            }
+        tallyNaming(reading.label)
+    }
 
+    private fun outcomeOf(label: ChordLabel): String = when (label) {
+        is ChordLabel.SingleNote -> "SingleNote (1 pitch class)"
+        is ChordLabel.Interval -> "Interval (2 pitch classes)"
+        is ChordLabel.Unnamed -> "Unnamed (scored, rejected)"
+        is ChordLabel.Ambiguous -> "Ambiguous (offered, not named)"
+        is ChordLabel.Chord -> "Chord (named)"
+        is ChordLabel.Silent -> "Silent"
+    }
+
+    private fun tallyNaming(label: ChordLabel) {
+        when (label) {
+            is ChordLabel.Chord -> tallyChord(label)
             is ChordLabel.Ambiguous -> offered++
             else -> Unit
         }
+    }
+
+    private fun tallyChord(label: ChordLabel.Chord) {
+        named++
+        offered++
+        val name = label.name
+        names[name.toString()] = (names[name.toString()] ?: 0) + 1
+        if (name.root to name.quality in RealAudioHarness.GROUND_TRUTH) correct++
     }
 
     private fun percent(part: Int) = if (frames == 0) 0.0 else 100.0 * part / frames

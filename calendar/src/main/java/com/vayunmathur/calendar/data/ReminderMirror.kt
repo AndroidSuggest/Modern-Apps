@@ -33,6 +33,9 @@ object ReminderMirror {
     private const val FORMAT_VERSION = "1"
     private const val KEY = "calendar_locked_boot_reminders"
 
+    /** Entries serialize as 4 comma-separated longs: eventId, minutes, start, end. */
+    private const val ENTRY_PART_COUNT = 4
+
     data class Entry(
         val eventId: Long,
         val minutes: Int,
@@ -52,7 +55,7 @@ object ReminderMirror {
         if (lines.firstOrNull() != FORMAT_VERSION) return emptyList()
         return lines.drop(1).mapNotNull { line ->
             val parts = line.split(',')
-            if (parts.size != 4) return@mapNotNull null
+            if (parts.size != ENTRY_PART_COUNT) return@mapNotNull null
             Entry(
                 eventId = parts[0].toLongOrNull() ?: return@mapNotNull null,
                 minutes = parts[1].toIntOrNull() ?: return@mapNotNull null,

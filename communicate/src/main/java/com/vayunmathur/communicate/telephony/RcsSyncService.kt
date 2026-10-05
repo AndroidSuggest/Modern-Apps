@@ -67,6 +67,9 @@ import kotlinx.coroutines.launch
 class RcsSyncService : Service() {
 
     internal val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private companion object {
+        private const val OUTBOX_POLL_MS = 5 * 60_000L
+    }
 
     /** MSRP connections per conversation, owned by this service's lifecycle. */
     internal val msrpConnections = java.util.concurrent.ConcurrentHashMap<String, RcsMsrp.MsrpConnection>()
@@ -101,112 +104,77 @@ class RcsSyncService : Service() {
             RcsSipTransport.onInboundMessage = { message ->
                 serviceScope.launch { handleInbound(message) }
             }
-            // Active-subscription switch (§7.2): tear down + re-register so
-            // the delegate, IMS network, and listener follow the new sub.
-            // ensureRegistered no-ops when the subId is unchanged, so this is
-            // cheap on unrelated subscription broadcasts.
-            runCatching {
-                val sm = getSystemService(android.telephony.SubscriptionManager::class.java)
-                if (sm != null && RcsFeature.enabled) {
-                    subListener = object : android.telephony.SubscriptionManager.OnSubscriptionsChangedListener() {
-                        override fun onSubscriptionsChanged() {
-                            serviceScope.launch {
-                                RcsSipTransport.ensureRegistered(this@RcsSyncService)
-                            }
-                        }
-                    }.also {
-                        sm.addOnSubscriptionsChangedListener(
-                            ContextCompat.getMainExecutor(this@RcsSyncService),
-                            it,
-                        )
-                    }
-                }
-            }
-            // Let the session manager offer/answer passive MSRP: the sync
-            // service owns the accept loop, so accepted sockets land here.
-            RcsSessionManager.listenContextProvider = { this@RcsSyncService }
-            RcsMsrpListen.ensureListening(this@RcsSyncService, ::onMsrpAccepted)
-            // Transient MSRP sockets (FT transfers) forward stray inbound
-            // chunks here so nothing is dropped outside the session map.
-            RcsMsrp.onInboundFallback = { conversationId, contentType, body ->
-                val session = RcsSessionManager.sessionFor(conversationId)
-                if (session != null) {
-                    serviceScope.launch { handleMsrpChunk(conversationId, session, contentType, body) }
-                }
-            }
-            // Deferred outbox pump + conference-subscription refresh (§4.3,
-            // §3.1): every 5 minutes while the service lives.
-            launch {
-                while (RcsFeature.enabled) {
-                    kotlinx.coroutines.delay(5 * 60_000L)
-                    runCatching {
-                        RcsOutbox.pumpDue(this@RcsSyncService, CommunicateRepository)
-                    }
-                    runCatching { RcsSessionManager.refreshEventSubscriptions() }
-                }
-            }
-            // Watch for teardown: when the transport goes unavailable, reflect it
-            // in the sync notification and stop if the gate flips off. On
-            // (re-)Availability, re-ensure the passive MSRP listener — a
-            // subId-switch teardown stops it (IMS PDN is per-sub).
-            launch {
-                RcsSipTransport.state.collect { state ->
-                    if (!RcsFeature.enabled) shutdown()
-                    updateSyncNotification(state)
-                    if (state is RcsRegistrationState.Available) {
-                        RcsSessionManager.listenContextProvider = { this@RcsSyncService }
-                        RcsMsrpListen.ensureListening(this@RcsSyncService, ::onMsrpAccepted)
-                    }
-                }
-            }
-            // Own MSRP connection lifecycle: when a session gains a usable
-            // remote path, connect out and feed inbound chunks to the inbox.
-            // Also sweep sessions that never completed or idled out, closing
-            // their connections so the map cannot leak. Re-INVITEs that move
-            // the bound path/setup swap the connection (§2.4 handover).
-            launch {
-                // conversationId → remote path the live connection serves.
-                val boundPaths = java.util.concurrent.ConcurrentHashMap<String, String>()
-                RcsSessionManager.sessions.collect { sessions ->
-                    val stale = RcsSessionManager.sweepStaleSessions()
-                    for ((conversationId, session) in sessions) {
-                        val path = session.msrpRemotePath
-                        if (path == null) {
-                            boundPaths.remove(conversationId)
-                            continue
-                        }
-                        val live = msrpConnections[conversationId]
-                        if (live != null && boundPaths[conversationId] == path &&
-                            live.isClosed().not()
-                        ) {
-                            continue
-                        }
-                        // New path, replaced path (handover), or dead conn.
-                        msrpConnections.remove(conversationId)?.close()
-                        val conn = RcsMsrp.connect(session, this@RcsSyncService) { contentType, body ->
-                            serviceScope.launch { handleMsrpChunk(conversationId, session, contentType, body) }
-                        }
-                        if (conn != null) {
-                            msrpConnections[conversationId] = conn
-                            boundPaths[conversationId] = path
-                        } else {
-                            boundPaths.remove(conversationId)
-                        }
-                    }
-                    // Drop connections whose sessions went away.
-                    val liveKeys = sessions.keys
-                    msrpConnections.keys.filter { it !in liveKeys || it in stale }.forEach { id ->
-                        msrpConnections.remove(id)?.close()
-                        boundPaths.remove(id)
-                    }
-                }
-            }
+            watchSubscriptions()
+            startAcceptLoop()
+            startMaintenanceLoops()
         }
 
         return START_STICKY
     }
 
+    /** Active-subscription switch (§7.2): re-register on sub changes. */
+    private fun watchSubscriptions() {
+        // Active-subscription switch (§7.2): tear down + re-register so
+        // the delegate, IMS network, and listener follow the new sub.
+        // ensureRegistered no-ops when the subId is unchanged, so this is
+        // cheap on unrelated subscription broadcasts.
+        runCatching {
+            val sm = getSystemService(android.telephony.SubscriptionManager::class.java)
+            if (sm != null && RcsFeature.enabled) {
+                subListener = object : android.telephony.SubscriptionManager.OnSubscriptionsChangedListener() {
+                    override fun onSubscriptionsChanged() {
+                        serviceScope.launch {
+                            RcsSipTransport.ensureRegistered(this@RcsSyncService)
+                        }
+                    }
+                }.also {
+                    sm.addOnSubscriptionsChangedListener(
+                        ContextCompat.getMainExecutor(this@RcsSyncService),
+                        it,
+                    )
+                }
+            }
+        }
+    }
+
+    /** Passive MSRP accept loop + transient-chunk fallback. */
+    private fun startAcceptLoop() {
+        // Let the session manager offer/answer passive MSRP: the sync
+        // service owns the accept loop, so accepted sockets land here.
+        RcsSessionManager.listenContextProvider = { this@RcsSyncService }
+        RcsMsrpListen.ensureListening(this@RcsSyncService, ::onMsrpAccepted)
+        // Transient MSRP sockets (FT transfers) forward stray inbound
+        // chunks here so nothing is dropped outside the session map.
+        RcsMsrp.onInboundFallback = { conversationId, contentType, body ->
+            val session = RcsSessionManager.sessionFor(conversationId)
+            if (session != null) {
+                serviceScope.launch { handleMsrpChunk(conversationId, session, contentType, body) }
+            }
+        }
+    }
+
+    /** Outbox pump, teardown watch, and MSRP lifecycle loops. */
+
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /** Ensure one live MSRP connection per session path (connect/replace/cleanup). */
+    private fun syncMsrpConnection(conversationId: String, session: RcsSession, path: String) {
+        val live = msrpConnections[conversationId]
+        if (live != null && boundPaths[conversationId] == path && live.isClosed().not()) {
+            return
+        }
+        // New path, replaced path (handover), or dead conn.
+        msrpConnections.remove(conversationId)?.close()
+        val conn = RcsMsrp.connect(session, this) { contentType, body ->
+            serviceScope.launch { handleMsrpChunk(conversationId, session, contentType, body) }
+        }
+        if (conn != null) {
+            msrpConnections[conversationId] = conn
+            boundPaths[conversationId] = path
+        } else {
+            boundPaths.remove(conversationId)
+        }
+    }
 
     override fun onDestroy() {
         RcsSipTransport.onInboundMessage = null
@@ -239,65 +207,58 @@ class RcsSyncService : Service() {
         }
         val method = startLine.substringBefore(" ").trim().uppercase()
         // Dialog-forming and dialog methods route before MESSAGE handling.
-        when (method) {
-            "INVITE" -> {
-                handleInboundInvite(message)
-                return
-            }
-            "BYE" -> {
-                handleInboundBye(message)
-                return
-            }
-            "REFER" -> {
-                handleInboundRefer(message)
-                return
-            }
-            "OPTIONS" -> {
-                handleInboundOptions(message)
-                return
-            }
-            "ACK" -> {
-                RcsSessionManager.onSipRequest(
-                    "ACK",
-                    message.getCallIdParameter().orEmpty(),
-                    "", null, "",
-                )
-                return
-            }
-            "NOTIFY" -> {
-                handleInboundNotify(message)
-                return
-            }
-            "SUBSCRIBE" -> {
-                handleInboundSubscribe(message)
-                return
-            }
-            "UPDATE" -> {
-                handleInboundUpdate(message)
-                return
-            }
-        }
+        if (handleDialogMethod(method, message)) return
         val envelope = parseEnvelope(message) ?: return
         // E2EE control + data payloads route before plaintext handling.
         handleE2EEInbound(envelope)?.let { e2ee ->
-            when (e2ee.kind) {
-                InboundKind.Text -> {
-                    CommunicateRepository.cacheInboundRcs(
-                        context = this,
-                        conversationId = e2ee.conversationId,
-                        body = e2ee.body,
-                        senderId = e2ee.senderId,
-                        messageId = e2ee.messageId,
-                        ftUrl = e2ee.ftUrl,
-                        ftMime = e2ee.ftMime,
-                    )
-                    showIncomingNotification(e2ee)
-                }
-                InboundKind.Receipt, InboundKind.Typing -> Unit
-            }
+            cacheE2eeInbound(e2ee)
             return
         }
         val parsed = parseInbound(envelope) ?: return
+        cachePlainInbound(parsed, envelope)
+    }
+
+    /** Route dialog methods; true when fully handled. */
+    private suspend fun handleDialogMethod(method: String, message: SipMessage): Boolean {
+        when (method) {
+            "INVITE" -> handleInboundInvite(message)
+            "BYE" -> handleInboundBye(message)
+            "REFER" -> handleInboundRefer(message)
+            "OPTIONS" -> handleInboundOptions(message)
+            "ACK" -> RcsSessionManager.onSipRequest(
+                "ACK",
+                message.getCallIdParameter().orEmpty(),
+                "", null, "",
+            )
+            "NOTIFY" -> handleInboundNotify(message)
+            "SUBSCRIBE" -> handleInboundSubscribe(message)
+            "UPDATE" -> handleInboundUpdate(message)
+            else -> return false
+        }
+        return true
+    }
+
+    /** Cache an E2EE inbound row + notify for text. */
+    private suspend fun cacheE2eeInbound(e2ee: InboundRcs) {
+        when (e2ee.kind) {
+            InboundKind.Text -> {
+                CommunicateRepository.cacheInboundRcs(
+                    context = this,
+                    conversationId = e2ee.conversationId,
+                    body = e2ee.body,
+                    senderId = e2ee.senderId,
+                    messageId = e2ee.messageId,
+                    ftUrl = e2ee.ftUrl,
+                    ftMime = e2ee.ftMime,
+                )
+                showIncomingNotification(e2ee)
+            }
+            InboundKind.Receipt, InboundKind.Typing -> Unit
+        }
+    }
+
+    /** Cache a plaintext inbound row + notify + relay + reports. */
+    private suspend fun cachePlainInbound(parsed: InboundRcs, envelope: Envelope) {
         when (parsed.kind) {
             InboundKind.Text -> {
                 CommunicateRepository.cacheInboundRcsWithImdn(

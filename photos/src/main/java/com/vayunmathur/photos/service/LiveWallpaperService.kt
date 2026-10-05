@@ -148,7 +148,9 @@ class LiveWallpaperService : WallpaperService() {
         private fun updateGifBounds(d: AnimatedImageDrawable) {
             val iw = d.intrinsicWidth
             val ih = d.intrinsicHeight
-            if (iw <= 0 || ih <= 0 || surfaceWidth <= 0 || surfaceHeight <= 0) return
+            val hasImage = iw > 0 && ih > 0
+            val hasSurface = surfaceWidth > 0 && surfaceHeight > 0
+            if (!hasImage || !hasSurface) return
             val scale = max(surfaceWidth.toFloat() / iw, surfaceHeight.toFloat() / ih)
             val dw = (iw * scale).toInt()
             val dh = (ih * scale).toInt()

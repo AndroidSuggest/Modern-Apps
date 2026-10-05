@@ -90,6 +90,15 @@ object RcsProvisioning {
             Log.i(TAG, "probe: invalid subId=$subscriptionId")
             return RcsRegistrationState.Unavailable(RcsUnavailableReason.NoSubscription)
         }
+        readConfigServerUrl(context, subscriptionId)?.let { return it }
+        provisioningGate(context, subscriptionId)?.let { return it }
+        singleRegGate(context, subscriptionId)?.let { return it }
+        Log.i(TAG, "probe: AVAILABLE for subId=$subscriptionId")
+        return RcsRegistrationState.Available
+    }
+
+    /** Carrier-config URL probe; returns a terminal state, or null to continue. */
+    private fun readConfigServerUrl(context: Context, subscriptionId: Int): RcsRegistrationState? {
         // Carrier config is the source of truth for "does this SIM do RCS".
         // Keyed query avoids the deprecated whole-bundle getter.
         val url = runCatching {
@@ -118,6 +127,11 @@ object RcsProvisioning {
                 "No carrier RCS config URL; attempting delegate creation anyway",
             )
         }
+        return null
+    }
+
+    /** Provisioning-manager gate; returns a terminal state, or null to continue. */
+    private fun provisioningGate(context: Context, subscriptionId: Int): RcsRegistrationState? {
         // Secondary signal: the provisioning manager's RCS status. Capability/tech
         // constants live in hidden ImsFeature/MmTelFeature surface, so this uses the
         // AOSP values directly (CAPABILITY_TYPE_CALL_COMPOSER = 1 << 4, NETWORK_TYPE_LTE = 0).
@@ -134,6 +148,11 @@ object RcsProvisioning {
             Log.i(TAG, "probe: carrier provisioning required (call-composer cap unprovisioned)")
             return RcsRegistrationState.Unavailable(RcsUnavailableReason.ProvisioningRequired)
         }
+        return null
+    }
+
+    /** Single-registration support gate; returns a terminal state, or null to continue. */
+    private fun singleRegGate(context: Context, subscriptionId: Int): RcsRegistrationState? {
         // Tertiary signal (TestRcsApp ProvisioningActivity): the hidden
         // isRcsVolteSingleRegistrationCapable() on the per-sub manager. Tri-state —
         // null (bridge failure, e.g. role not yet granted) means "unknown", not
@@ -168,8 +187,7 @@ object RcsProvisioning {
         if (!singleReg) {
             return RcsRegistrationState.Unavailable(RcsUnavailableReason.NotSupported)
         }
-        Log.i(TAG, "probe: AVAILABLE for subId=$subscriptionId")
-        return RcsRegistrationState.Available
+        return null
     }
 
     /**
@@ -179,7 +197,7 @@ object RcsProvisioning {
      * means entitled. Best-effort: any failure maps to false, never throws.
      * The carrier URL is dynamic, so system trust is used.
      */
-    suspend fun entitlementCheck(context: Context, url: String): Boolean {
+    suspend fun entitlementCheck(url: String): Boolean {
         if (!RcsFeature.enabled || url.isBlank()) return false
         return runCatching {
             val terminal = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"

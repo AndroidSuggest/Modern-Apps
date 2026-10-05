@@ -2,9 +2,9 @@ package com.vayunmathur.library.network
 
 import android.util.Base64
 import android.util.Log
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -54,48 +54,55 @@ class WebSocketClient private constructor(
     sealed class WsFrame {
         data class Text(val text: String) : WsFrame()
         data class Binary(val bytes: ByteArray) : WsFrame()
-        data class Close(val code: Int = 1000, val reason: String = "") : WsFrame()
+        data class Close(val code: Int = CLOSE_NORMAL, val reason: String = "") : WsFrame()
         object Ping : WsFrame()
         object Pong : WsFrame()
     }
 
     /** Blocking read loop exposed as Flow. Cancel coroutine to stop. Auto-replies PING with PONG. */
     fun incomingFlow(): Flow<WsFrame> = flow {
-        while (true) {
-            val frame = try {
-                readFrame()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (closed) break
-                Log.d(TAG, "ws read error ${e.message}")
-                break
-            }
-            when (frame) {
-                is WsFrame.Ping -> {
-                    try {
-                        sendPong()
-                    } catch (_: Exception) { }
-                }
-                is WsFrame.Close -> {
-                    closed = true
-                    emit(frame)
-                    break
-                }
-                else -> emit(frame)
-            }
+        var open = true
+        while (open) {
+            open = emitNextFrame()
         }
+    }
+
+    /**
+     * Reads one frame and emits it. Returns false when the stream is over
+     * (close frame seen or read error), true to keep going.
+     */
+    private suspend fun FlowCollector<WsFrame>.emitNextFrame(): Boolean {
+        val frame = try {
+            readFrame()
+        } catch (e: IOException) {
+            if (!closed) Log.d(TAG, "ws read error ${e.message}")
+            return false
+        }
+        when (frame) {
+            is WsFrame.Ping -> {
+                try {
+                    sendPong()
+                } catch (_: Exception) { }
+            }
+            is WsFrame.Close -> {
+                closed = true
+                emit(frame)
+                return false
+            }
+            else -> emit(frame)
+        }
+        return true
     }
 
     suspend fun send(text: String) = withContext(Dispatchers.IO) {
         if (closed) throw IOException("WebSocket closed")
         val payload = text.toByteArray(Charsets.UTF_8)
-        writeFrame(opcode = 0x1, payload = payload, mask = true)
+        writeFrame(opcode = OPCODE_TEXT, payload = payload, mask = true)
     }
 
     suspend fun send(bytes: ByteArray) = withContext(Dispatchers.IO) {
         if (closed) throw IOException("WebSocket closed")
-        writeFrame(opcode = 0x2, payload = bytes, mask = true)
+        writeFrame(opcode = OPCODE_BINARY, payload = bytes, mask = true)
     }
 
     /**
@@ -104,22 +111,22 @@ class WebSocketClient private constructor(
      */
     suspend fun ping() = withContext(Dispatchers.IO) {
         if (closed) throw IOException("WebSocket closed")
-        writeFrame(opcode = 0x9, payload = ByteArray(0), mask = true)
+        writeFrame(opcode = OPCODE_PING, payload = ByteArray(0), mask = true)
     }
 
     /** True once a CLOSE frame was seen or [close] was called. */
     val isClosed: Boolean get() = closed
 
-    suspend fun close(code: Int = 1000, reason: String = "") {
+    suspend fun close(code: Int = CLOSE_NORMAL, reason: String = "") {
         if (closed) return
         closed = true
         try {
             withContext(Dispatchers.IO) {
                 val buf = ByteArrayOutputStream()
-                buf.write((code shr 8) and 0xFF)
-                buf.write(code and 0xFF)
+                buf.write((code shr BYTE_SHIFT) and BYTE_MASK)
+                buf.write(code and BYTE_MASK)
                 if (reason.isNotEmpty()) buf.write(reason.toByteArray(Charsets.UTF_8))
-                runCatching { writeFrame(opcode = 0x8, payload = buf.toByteArray(), mask = true) }
+                runCatching { writeFrame(opcode = OPCODE_CLOSE, payload = buf.toByteArray(), mask = true) }
                 runCatching { output.flush() }
                 runCatching { socket.close() }
             }
@@ -140,37 +147,37 @@ class WebSocketClient private constructor(
     }
 
     private fun sendPong() {
-        writeFrame(opcode = 0xA, payload = ByteArray(0), mask = true)
+        writeFrame(opcode = OPCODE_PONG, payload = ByteArray(0), mask = true)
         output.flush()
     }
 
     private fun writeFrame(opcode: Int, payload: ByteArray, mask: Boolean) {
         val maskKey = if (mask) {
-            val k = ByteArray(4)
+            val k = ByteArray(MASK_KEY_BYTES)
             SecureRandom().nextBytes(k)
             k
         } else null
 
         val out = ByteArrayOutputStream()
-        out.write((0x80 or opcode) and 0xFF)
+        out.write((FIN_BIT or opcode) and BYTE_MASK)
 
         val len = payload.size
-        var second = if (mask) 0x80 else 0x00
+        var second = if (mask) MASK_BIT else 0x00
         when {
-            len < 126 -> {
+            len < PAYLOAD_LEN_16 -> {
                 second = second or len
                 out.write(second)
             }
-            len <= 0xFFFF -> {
-                second = second or 126
+            len <= EXTENDED_PAYLOAD_16_MAX -> {
+                second = second or PAYLOAD_LEN_16
                 out.write(second)
-                out.write((len shr 8) and 0xFF)
-                out.write(len and 0xFF)
+                out.write((len shr BYTE_SHIFT) and BYTE_MASK)
+                out.write(len and BYTE_MASK)
             }
             else -> {
-                second = second or 127
+                second = second or PAYLOAD_LEN_64
                 out.write(second)
-                val bb = ByteBuffer.allocate(8).putLong(len.toLong())
+                val bb = ByteBuffer.allocate(LENGTH_64_BYTES).putLong(len.toLong())
                 out.write(bb.array())
             }
         }
@@ -179,7 +186,7 @@ class WebSocketClient private constructor(
 
         if (maskKey != null) {
             for (i in payload.indices) {
-                out.write((payload[i].toInt() xor maskKey[i % 4].toInt()) and 0xFF)
+                out.write((payload[i].toInt() xor maskKey[i % MASK_KEY_BYTES].toInt()) and BYTE_MASK)
             }
         } else {
             out.write(payload)
@@ -191,79 +198,129 @@ class WebSocketClient private constructor(
         }
     }
 
+    /** Header fields parsed off the wire before the payload is read. */
+    private data class FrameHeader(
+        val opcode: Int,
+        val payloadLen: Long,
+        val maskKey: ByteArray?,
+    )
+
     private fun readFrame(): WsFrame {
+        val header = readFrameHeader()
+        val payload = readFramePayload(header)
+        return decodeFrame(header.opcode, payload)
+    }
+
+    private fun readFrameHeader(): FrameHeader {
         val b1 = input.read()
         if (b1 == -1) throw EOFException("ws closed")
         val b2 = input.read()
         if (b2 == -1) throw EOFException("ws closed")
 
-        val opcode = b1 and 0x0F
-        val masked = (b2 and 0x80) != 0
-        var payloadLen = (b2 and 0x7F).toLong()
+        val opcode = b1 and OPCODE_MASK
+        val masked = (b2 and MASK_BIT) != 0
+        val payloadLen = readPayloadLength(b2 and PAYLOAD_LEN_MASK)
+        val maskKey = if (masked) readExactBytes(MASK_KEY_BYTES, "ws mask EOF") else null
+        return FrameHeader(opcode, payloadLen, maskKey)
+    }
 
-        if (payloadLen == 126L) {
+    private fun readPayloadLength(marker: Int): Long {
+        if (marker < PAYLOAD_LEN_16) return marker.toLong()
+        if (marker == PAYLOAD_LEN_16) {
             val hi = input.read()
             val lo = input.read()
             if (hi == -1 || lo == -1) throw EOFException("ws len EOF")
-            payloadLen = ((hi.toLong() shl 8) or lo.toLong())
-        } else if (payloadLen == 127L) {
-            val buf = ByteArray(8)
-            var off = 0
-            while (off < 8) {
-                val r = input.read(buf, off, 8 - off)
-                if (r == -1) throw EOFException("ws len64 EOF")
-                off += r
-            }
-            payloadLen = ByteBuffer.wrap(buf).long
+            return (hi.toLong() shl BYTE_SHIFT) or lo.toLong()
         }
+        val buf = readExactBytes(LENGTH_64_BYTES, "ws len64 EOF")
+        return ByteBuffer.wrap(buf).long
+    }
 
-        val maskKey = if (masked) {
-            val k = ByteArray(4)
-            var off = 0
-            while (off < 4) {
-                val r = input.read(k, off, 4 - off)
-                if (r == -1) throw EOFException("ws mask EOF")
-                off += r
-            }
-            k
-        } else null
-
-        if (payloadLen > Int.MAX_VALUE) throw IOException("ws frame too large $payloadLen")
-
-        val payload = ByteArray(payloadLen.toInt())
-        var read = 0
-        while (read < payload.size) {
-            val n = input.read(payload, read, payload.size - read)
-            if (n == -1) throw EOFException("ws truncated frame")
-            read += n
+    private fun readExactBytes(count: Int, eofMessage: String): ByteArray {
+        val buf = ByteArray(count)
+        var off = 0
+        while (off < count) {
+            val r = input.read(buf, off, count - off)
+            if (r == -1) throw EOFException(eofMessage)
+            off += r
         }
+        return buf
+    }
 
-        if (maskKey != null) {
-            for (i in payload.indices) {
-                payload[i] = (payload[i].toInt() xor maskKey[i % 4].toInt()).toByte()
-            }
+    private fun readFramePayload(header: FrameHeader): ByteArray {
+        if (header.payloadLen > Int.MAX_VALUE) throw IOException("ws frame too large ${header.payloadLen}")
+        val payload = readExactBytes(header.payloadLen.toInt(), "ws truncated frame")
+        val maskKey = header.maskKey ?: return payload
+        for (i in payload.indices) {
+            payload[i] = (payload[i].toInt() xor maskKey[i % MASK_KEY_BYTES].toInt()).toByte()
         }
+        return payload
+    }
 
-        return when (opcode) {
-            0x1 -> WsFrame.Text(payload.toString(Charsets.UTF_8))
-            0x2 -> WsFrame.Binary(payload)
-            0x8 -> {
-                val code = if (payload.size >= 2)
-                    ((payload[0].toInt() and 0xFF shl 8) or (payload[1].toInt() and 0xFF))
-                else 1000
-                val reason = if (payload.size > 2) payload.copyOfRange(2, payload.size).toString(Charsets.UTF_8) else ""
-                WsFrame.Close(code, reason)
-            }
-            0x9 -> WsFrame.Ping
-            0xA -> WsFrame.Pong
-            0x0 -> WsFrame.Text(payload.toString(Charsets.UTF_8))
-            else -> WsFrame.Ping
+    private fun decodeFrame(opcode: Int, payload: ByteArray): WsFrame = when (opcode) {
+        OPCODE_TEXT -> WsFrame.Text(payload.toString(Charsets.UTF_8))
+        OPCODE_BINARY -> WsFrame.Binary(payload)
+        OPCODE_CLOSE -> decodeClose(payload)
+        OPCODE_PING -> WsFrame.Ping
+        OPCODE_PONG -> WsFrame.Pong
+        OPCODE_CONTINUATION -> WsFrame.Text(payload.toString(Charsets.UTF_8))
+        else -> WsFrame.Ping
+    }
+
+    private fun decodeClose(payload: ByteArray): WsFrame.Close {
+        val code = if (payload.size >= CLOSE_CODE_BYTES) {
+            ((payload[0].toInt() and BYTE_MASK) shl BYTE_SHIFT) or (payload[1].toInt() and BYTE_MASK)
+        } else {
+            CLOSE_NORMAL
         }
+        val reason = if (payload.size > CLOSE_CODE_BYTES) {
+            payload.copyOfRange(CLOSE_CODE_BYTES, payload.size).toString(Charsets.UTF_8)
+        } else {
+            ""
+        }
+        return WsFrame.Close(code, reason)
     }
 
     companion object {
         private const val TAG = "WebSocketClient"
         private const val GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+        /** RFC 6455 frame codec constants. */
+        private const val FIN_BIT = 0x80
+        private const val MASK_BIT = 0x80
+        private const val OPCODE_MASK = 0x0F
+        private const val PAYLOAD_LEN_MASK = 0x7F
+        private const val PAYLOAD_LEN_16 = 126
+        private const val PAYLOAD_LEN_64 = 127
+        private const val EXTENDED_PAYLOAD_16_MAX = 0xFFFF
+        private const val BYTE_MASK = 0xFF
+        private const val BYTE_SHIFT = 8
+        private const val MASK_KEY_BYTES = 4
+        private const val LENGTH_64_BYTES = 8
+        private const val CLOSE_CODE_BYTES = 2
+        private const val OPCODE_CONTINUATION = 0x0
+        private const val OPCODE_TEXT = 0x1
+        private const val OPCODE_BINARY = 0x2
+        private const val OPCODE_CLOSE = 0x8
+        private const val OPCODE_PING = 0x9
+        private const val OPCODE_PONG = 0xA
+        private const val CLOSE_NORMAL = 1000
+
+        /** Handshake constants. */
+        private const val WS_KEY_BYTES = 16
+        private const val DEFAULT_WSS_PORT = 443
+        private const val DEFAULT_WS_PORT = 80
+        private const val MAX_HANDSHAKE_HEADER_BYTES = 8192
+        private const val HANDSHAKE_ERROR_LINES = 10
+
+        /** Parsed endpoint pieces for one connection attempt. */
+        private data class WsEndpoint(
+            val uri: URI,
+            val scheme: String,
+            val host: String,
+            val port: Int,
+            val path: String,
+        )
 
         /**
          * Opens a WebSocket to [urlStr] with optional [headers] (e.g. Sec-WebSocket-Protocol).
@@ -277,50 +334,98 @@ class WebSocketClient private constructor(
             sslSocketFactory: SSLSocketFactory? = null,
             useSystemTrust: Boolean = false,
         ): WebSocketClient = withContext(Dispatchers.IO) {
+            val endpoint = parseEndpoint(urlStr)
+            val sock = openSocket(endpoint, sslSocketFactory, useSystemTrust)
+            try {
+                val expectedAccept = sendHandshake(sock, endpoint, headers)
+                val responseLines = readHandshakeResponse(sock)
+                val respHeaders = parseHandshakeHeaders(responseLines)
+                checkAccept(respHeaders, expectedAccept)
+                val captured = captureHeaders(respHeaders, captureResponseHeaders)
+                WebSocketClient(sock, sock.getInputStream(), sock.getOutputStream(), respHeaders.multi, captured)
+            } catch (e: IOException) {
+                runCatching { sock.close() }
+                throw e
+            } catch (e: IllegalArgumentException) {
+                runCatching { sock.close() }
+                throw IOException("ws invalid handshake data: ${e.message}", e)
+            }
+        }
+
+        /** Response headers in both multi-value and lowercase-single forms. */
+        private data class HandshakeHeaders(
+            val multi: Map<String, List<String>>,
+            val lower: Map<String, String>,
+        )
+
+        private fun parseEndpoint(urlStr: String): WsEndpoint {
             val uri = try { URI(urlStr) } catch (_: Exception) { URI(URL(urlStr).toString()) }
             val scheme = uri.scheme?.lowercase() ?: if (urlStr.startsWith("wss")) "wss" else "ws"
             val host = uri.host ?: URL(urlStr).host
-            val port = when {
-                uri.port != -1 -> uri.port
-                scheme == "wss" || scheme == "https" -> 443
-                scheme == "ws" || scheme == "http" -> 80
-                else -> 80
-            }
+            val port = resolvePort(uri, scheme)
             val path = buildString {
                 val rp = uri.rawPath
                 append(if (rp.isNullOrBlank()) "/" else rp)
                 uri.rawQuery?.let { if (it.isNotBlank()) append("?").append(it) }
             }
+            return WsEndpoint(uri, scheme, host, port, path)
+        }
 
-            val sock: Socket = if (scheme == "wss" || scheme == "https") {
-                val factory: javax.net.SocketFactory = if (useSystemTrust) SSLSocketFactory.getDefault() else sslSocketFactory ?: NetworkClient.defaultSslSocketFactory ?: SSLSocketFactory.getDefault()
-                val s = factory.createSocket(host, port) as Socket
-                if (s is SSLSocket) {
-                    try { s.startHandshake() } catch (_: Exception) { }
-                }
-                s
+        private fun resolvePort(uri: URI, scheme: String): Int {
+            if (uri.port != -1) return uri.port
+            return when (scheme) {
+                "wss", "https" -> DEFAULT_WSS_PORT
+                else -> DEFAULT_WS_PORT
+            }
+        }
+
+        private fun openSocket(
+            endpoint: WsEndpoint,
+            sslSocketFactory: SSLSocketFactory?,
+            useSystemTrust: Boolean,
+        ): Socket {
+            val secure = endpoint.scheme == "wss" || endpoint.scheme == "https"
+            val sock: Socket = if (secure) {
+                openTlsSocket(endpoint, sslSocketFactory, useSystemTrust)
             } else {
-                Socket(host, port)
+                Socket(endpoint.host, endpoint.port)
             }
             sock.soTimeout = 0
             sock.tcpNoDelay = true
+            return sock
+        }
 
-            val keyBytes = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        private fun openTlsSocket(
+            endpoint: WsEndpoint,
+            sslSocketFactory: SSLSocketFactory?,
+            useSystemTrust: Boolean,
+        ): Socket {
+            val defaultFactory = NetworkClient.defaultSslSocketFactory ?: SSLSocketFactory.getDefault()
+            val factory: javax.net.SocketFactory =
+                if (useSystemTrust) SSLSocketFactory.getDefault() else sslSocketFactory ?: defaultFactory
+            val sock = factory.createSocket(endpoint.host, endpoint.port) as Socket
+            if (sock is SSLSocket) {
+                try { sock.startHandshake() } catch (_: Exception) { }
+            }
+            return sock
+        }
+
+        private fun sendHandshake(sock: Socket, endpoint: WsEndpoint, headers: Map<String, String>): String {
+            val keyBytes = ByteArray(WS_KEY_BYTES).also { SecureRandom().nextBytes(it) }
             val key = Base64.encodeToString(keyBytes, Base64.NO_WRAP)
             val expectedAccept = Base64.encodeToString(
                 MessageDigest.getInstance("SHA-1").digest((key + GUID).toByteArray(Charsets.US_ASCII)),
-                Base64.NO_WRAP
+                Base64.NO_WRAP,
             )
 
             val out = sock.getOutputStream()
             val writer = out.bufferedWriter(Charsets.US_ASCII)
 
-            val hostHeader = when {
-                (scheme == "wss" && port != 443) || (scheme == "ws" && port != 80) -> "$host:$port"
-                else -> host
-            }
+            val nonDefaultPort = (endpoint.scheme == "wss" && endpoint.port != DEFAULT_WSS_PORT) ||
+                (endpoint.scheme == "ws" && endpoint.port != DEFAULT_WS_PORT)
+            val hostHeader = if (nonDefaultPort) "${endpoint.host}:${endpoint.port}" else endpoint.host
 
-            writer.write("GET $path HTTP/1.1\r\n")
+            writer.write("GET ${endpoint.path} HTTP/1.1\r\n")
             writer.write("Host: $hostHeader\r\n")
             writer.write("Upgrade: websocket\r\n")
             writer.write("Connection: Upgrade\r\n")
@@ -329,8 +434,19 @@ class WebSocketClient private constructor(
             headers.forEach { (k, v) -> writer.write("$k: $v\r\n") }
             writer.write("\r\n")
             writer.flush()
+            return expectedAccept
+        }
 
+        private fun readHandshakeResponse(sock: Socket): List<String> {
             val rawIn = sock.getInputStream()
+            val responseLines = readHeaderLines(rawIn)
+
+            if (responseLines.isEmpty()) throw IOException("ws empty handshake response")
+            checkHandshakeStatus(responseLines)
+            return responseLines
+        }
+
+        private fun readHeaderLines(rawIn: InputStream): List<String> {
             val responseLines = mutableListOf<String>()
             val lineBuf = ByteArrayOutputStream()
             while (true) {
@@ -343,19 +459,26 @@ class WebSocketClient private constructor(
                     if (line.isEmpty()) break
                     responseLines.add(line)
                 }
-                if (lineBuf.size() > 8192) throw IOException("ws handshake header too long")
+                if (lineBuf.size() > MAX_HANDSHAKE_HEADER_BYTES) throw IOException("ws handshake header too long")
             }
+            return responseLines
+        }
 
-            if (responseLines.isEmpty()) throw IOException("ws empty handshake response")
+        private fun checkHandshakeStatus(responseLines: List<String>) {
             val statusLine = responseLines.first()
             if (!statusLine.contains("101")) {
-                runCatching { sock.close() }
                 throw WebSocketHandshakeException(
                     statusCode = statusLine.split(' ').getOrNull(1)?.toIntOrNull() ?: 0,
-                    message = "ws handshake failed: $statusLine; ${responseLines.take(10)}",
+                    message = buildHandshakeError(statusLine, responseLines),
                 )
             }
+        }
 
+        private fun buildHandshakeError(statusLine: String, responseLines: List<String>): String {
+            return "ws handshake failed: $statusLine; ${responseLines.take(HANDSHAKE_ERROR_LINES)}"
+        }
+
+        private fun parseHandshakeHeaders(responseLines: List<String>): HandshakeHeaders {
             val respHeaders = mutableMapOf<String, MutableList<String>>()
             val respHeadersLower = mutableMapOf<String, String>()
             for (i in 1 until responseLines.size) {
@@ -368,19 +491,26 @@ class WebSocketClient private constructor(
                     respHeadersLower[k.lowercase()] = v
                 }
             }
+            return HandshakeHeaders(respHeaders, respHeadersLower)
+        }
 
-            val accept = respHeadersLower["sec-websocket-accept"]
+        private fun checkAccept(respHeaders: HandshakeHeaders, expectedAccept: String) {
+            val accept = respHeaders.lower["sec-websocket-accept"]
             if (accept == null || accept != expectedAccept) {
                 Log.w(TAG, "ws accept mismatch expected=$expectedAccept got=$accept (continuing)")
             }
+        }
 
+        private fun captureHeaders(
+            respHeaders: HandshakeHeaders,
+            captureResponseHeaders: List<String>,
+        ): Map<String, String> {
             val captured = mutableMapOf<String, String>()
             for (h in captureResponseHeaders) {
-                respHeadersLower[h.lowercase()]?.let { captured[h] = it }
-                respHeaders[h]?.firstOrNull()?.let { captured[h] = it }
+                respHeaders.lower[h.lowercase()]?.let { captured[h] = it }
+                respHeaders.multi[h]?.firstOrNull()?.let { captured[h] = it }
             }
-
-            WebSocketClient(sock, rawIn, out, respHeaders, captured)
+            return captured
         }
     }
 }

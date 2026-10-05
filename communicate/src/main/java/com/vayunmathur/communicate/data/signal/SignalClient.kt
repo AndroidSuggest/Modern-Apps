@@ -64,6 +64,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 object SignalClient {
 
     internal const val TAG = "SignalClient"
+    private const val PHONE_SUFFIX_LENGTH = 4
 
     /**
      * Production sealed-sender trust roots, mirroring the official client's
@@ -96,13 +97,13 @@ object SignalClient {
 
     val source: SignalSource = SignalSource.SIGNAL
 
-    fun isConnected(): Boolean = _state.value is State.Connected
+    fun isConnected(): Boolean = stateMutable.value is State.Connected
 
-    internal val _state = MutableStateFlow<State>(State.Idle)
-    val state: StateFlow<State> = _state.asStateFlow()
+    internal val stateMutable = MutableStateFlow<State>(State.Idle)
+    val state: StateFlow<State> = stateMutable.asStateFlow()
 
-    internal val _events = MutableSharedFlow<SignalEvent>(extraBufferCapacity = 256)
-    val events: SharedFlow<SignalEvent> = _events.asSharedFlow()
+    internal val eventsMutable = MutableSharedFlow<SignalEvent>(extraBufferCapacity = 256)
+    val events: SharedFlow<SignalEvent> = eventsMutable.asSharedFlow()
 
     private val initialized = AtomicBoolean(false)
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -136,49 +137,60 @@ object SignalClient {
         try {
             db = SignalDatabase.getDatabase(context.applicationContext)
             if (auth != null) e2e = SignalE2E(db!!, auth)
-        } catch (t: Throwable) {
-            Log.w(TAG, "db/e2e init failed", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "db/e2e init failed", expected)
         }
-        _state.value = if (auth?.registered == true) State.Connecting else State.NeedsSetup
+        stateMutable.value = if (auth?.registered == true) State.Connecting else State.NeedsSetup
         try {
             val database = db
             if (database != null) {
                 processor = SignalEventProcessor(database).also { it.start(events) }
             }
-        } catch (t: Throwable) {
-            Log.w(TAG, "processor start failed", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "processor start failed", expected)
         }
     }
 
     fun start() {
         if (!initialized.get()) return
-        if (_state.value is State.Connected) return
+        if (stateMutable.value is State.Connected) return
         val ctx = appContext ?: return
         val auth = authData ?: SignalAuthData.load(ctx)?.also { authData = it }
         if (auth == null || !auth.registered) {
-            _state.value = State.NeedsSetup
+            stateMutable.value = State.NeedsSetup
             return
         }
-        if (db == null) try { db = SignalDatabase.getDatabase(ctx) } catch (_: Exception) {}
-        if (e2e == null && db != null) try {
-            e2e = SignalE2E(db!!, auth) { peerAci, newKey -> reportIdentityChange(peerAci, newKey) }
-        } catch (t: Throwable) {
-            Log.e(TAG, "could not build the protocol store", t)
-        }
-        if (e2e == null) {
-            // Connecting without a protocol store would pull messages we cannot decrypt and, since
-            // they are only acked once handled, leave them cycling on the server queue.
-            _state.value = State.Disconnected("no protocol store")
-            return
-        }
+        if (!ensureStore(ctx, auth)) return
         if (processor == null && db != null) try {
             processor = SignalEventProcessor(db!!).also { it.start(events) }
         } catch (_: Exception) {}
 
-        _state.value = State.Connecting
+        stateMutable.value = State.Connecting
         // Tear down anything from a previous start(); otherwise the old instances keep their own
         // reconnect loops running with no reference left to stop them.
         disconnectSockets()
+        connectSockets(ctx, auth)
+    }
+
+    /** Build the protocol store; false when unavailable (caller disconnects). */
+    private fun ensureStore(ctx: android.content.Context, auth: SignalAuthData): Boolean {
+        if (db == null) try { db = SignalDatabase.getDatabase(ctx) } catch (_: Exception) {}
+        if (e2e == null && db != null) try {
+            e2e = SignalE2E(db!!, auth) { peerAci, newKey -> reportIdentityChange(peerAci, newKey) }
+        } catch (expected: Throwable) {
+            Log.e(TAG, "could not build the protocol store", expected)
+        }
+        if (e2e == null) {
+            // Connecting without a protocol store would pull messages we cannot decrypt and, since
+            // they are only acked once handled, leave them cycling on the server queue.
+            stateMutable.value = State.Disconnected("no protocol store")
+            return false
+        }
+        return true
+    }
+
+    /** Connect the authenticated + sealed-sender sockets and their collectors. */
+    private fun connectSockets(ctx: android.content.Context, auth: SignalAuthData) {
         val sock = SignalSocket(ctx, auth)
         socket = sock
         // Sealed-sender sends go over a second socket with no credentials. It carries no inbound queue,
@@ -196,16 +208,18 @@ object SignalClient {
             sock.connectionState.collect { cs ->
                 when (cs) {
                     is SignalSocket.ConnectionState.Connected -> {
-                        _state.value = State.Connected
-                        _events.emit(SignalEvent.StateChanged(state = SignalState.Connected))
+                        stateMutable.value = State.Connected
+                        eventsMutable.emit(SignalEvent.StateChanged(state = SignalState.Connected))
                     }
                     is SignalSocket.ConnectionState.Connecting -> {
-                        _state.value = State.Connecting
-                        _events.emit(SignalEvent.StateChanged(state = SignalState.Connecting))
+                        stateMutable.value = State.Connecting
+                        eventsMutable.emit(SignalEvent.StateChanged(state = SignalState.Connecting))
                     }
                     is SignalSocket.ConnectionState.Disconnected -> {
-                        _state.value = State.Disconnected(cs.reason)
-                        _events.emit(SignalEvent.StateChanged(state = SignalState.Disconnected, detail = cs.reason))
+                        stateMutable.value = State.Disconnected(cs.reason)
+                        eventsMutable.emit(SignalEvent.StateChanged(
+                            state = SignalState.Disconnected,
+                            detail = cs.reason))
                     }
                 }
             }
@@ -232,7 +246,8 @@ object SignalClient {
         // have no ACI and cannot be sent to at all. Deliberately not in socketJobs: those are cancelled on
         // every reconnect, which would kill a discovery request mid-flight.
         scope.launch { runContactDiscovery(ctx) }
-        Log.i(TAG, "start: socket connecting for ${auth.phoneNumber.takeLast(4)} host=${SignalSocket.DEFAULT_HOST}")
+        Log.i(TAG, "start: socket connecting for ${auth.phoneNumber.takeLast(PHONE_SUFFIX_LENGTH)}" +
+            " host=${SignalSocket.DEFAULT_HOST}")
     }
 
     fun stop() {
@@ -240,8 +255,10 @@ object SignalClient {
         socketJobs.forEach { it.cancel() }
         socketJobs.clear()
         disconnectSockets()
-        _state.value = State.NeedsSetup
-        scope.launch { _events.emit(SignalEvent.StateChanged(state = SignalState.Disconnected, detail = "client stop")) }
+        stateMutable.value = State.NeedsSetup
+        scope.launch { eventsMutable.emit(SignalEvent.StateChanged(
+            state = SignalState.Disconnected,
+            detail = "client stop")) }
     }
 
     fun forceResync() {
@@ -259,7 +276,8 @@ object SignalClient {
         unauthSocket = null
     }
 
-    // ---- send path (envelopeTimestampFor/groupContextFor/sendContent): see SignalSendPipeline.kt (split for file length) ----
+    // ---- send path (envelopeTimestampFor/groupContextFor/sendContent): see SignalSendPipeline.kt (split for file
+    // length) ----
 
     /**
      * Encrypt [padded] for every device of [aci] we have a session with and PUT them as one request.
@@ -278,7 +296,8 @@ object SignalClient {
      * Seed our own pre-keys into the protocol store and register anything the server does not yet have.
      * Runs once per start; without it a peer's first message cannot be decrypted.
      */
-    // ---- pre-keys/discovery (ensureLocalPreKeys/signedPreKeyMatchesServer): see SignalSendPipeline.kt (split for file length) ----
+    // ---- pre-keys/discovery (ensureLocalPreKeys/signedPreKeyMatchesServer): see SignalSendPipeline.kt (split for
+    // file length) ----
 
     /** Guards against overlapping discovery runs; `start()` can fire more than once. */
     internal val discoveryRunning = AtomicBoolean(false)
@@ -296,9 +315,11 @@ object SignalClient {
     /** Same reason as [discoveryRunning]: without it, each start generates and uploads another batch. */
     internal val preKeysPrepared = AtomicBoolean(false)
 
-    // ---- discovery/resolution (runContactDiscovery/resolveDestinationAci/knownServiceIdFor): see SignalSendPipeline.kt (split for file length) ----
+    // ---- discovery/resolution (runContactDiscovery/resolveDestinationAci/knownServiceIdFor): see
+    // SignalSendPipeline.kt (split for file length) ----
 
-    // ---- encrypt/PUT (sendEncryptedTo/sealedSenderFor/putMessages/reconcileDevices/establishSession): see SignalSendPipeline.kt (split for file length) ----
+    // ---- encrypt/PUT (sendEncryptedTo/sealedSenderFor/putMessages/reconcileDevices/establishSession): see
+    // SignalSendPipeline.kt (split for file length) ----
 
     internal sealed interface SendOutcome {
         data object Success : SendOutcome
@@ -306,7 +327,8 @@ object SignalClient {
         data class DeviceSetChanged(val status: Int, val body: ByteArray) : SendOutcome
     }
 
-    // ---- identity (profileKeyFrom/reportIdentityChange/pendingIdentityChange/safetyNumber/acceptIdentityChange): see SignalIdentity.kt (split for file length) ----
+    // ---- identity (profileKeyFrom/reportIdentityChange/pendingIdentityChange/safetyNumber/acceptIdentityChange): see
+    // SignalIdentity.kt (split for file length) ----
 
     internal data class SealedSenderAccess(val certificate: SenderCertificate, val accessKey: ByteArray)
 
@@ -351,11 +373,14 @@ object SignalClient {
 
     // ---- Messaging (sendMediaFailed): see SignalMessaging.kt (split for file length) ----
 
-    // ---- Messaging (sendReaction/removeReaction/editMessage/revoke/poll/sendPollVote/readReceipt/markRead): see SignalMessaging.kt (split for file length) ----
+    // ---- Messaging (sendReaction/removeReaction/editMessage/revoke/poll/sendPollVote/readReceipt/markRead): see
+    // SignalMessaging.kt (split for file length) ----
 
-    // ---- Groups (createGroup/setGroupName/groupChange/updateGroupParticipants): see SignalGroupOps.kt (split for file length) ----
+    // ---- Groups (createGroup/setGroupName/groupChange/updateGroupParticipants): see SignalGroupOps.kt (split for
+    // file length) ----
 
-    // ---- Messaging (sendTyping/isLoggedIn/downloadMedia/refreshPresence): see SignalMessaging.kt (split for file length) ----
+    // ---- Messaging (sendTyping/isLoggedIn/downloadMedia/refreshPresence): see SignalMessaging.kt (split for file
+    // length) ----
 
     /**
      * The RingRTC bridge. Created lazily because it loads native libraries and only matters once a call
@@ -365,7 +390,7 @@ object SignalClient {
         val ctx = appContext ?: return@lazy null
         SignalCallManager(
             appContext = ctx,
-            signaling = object : SignalCallManager.Signaling {
+            signaling = object : SignalCallSignaling {
                 override suspend fun sendCallMessage(
                     aci: String,
                     deviceId: Int?,
@@ -373,7 +398,7 @@ object SignalClient {
                     urgent: Boolean,
                 ): Boolean = sendContent(aci, message.toContent(deviceId), urgent = urgent)
 
-                override suspend fun identityKeys(aci: String): SignalCallManager.IdentityKeyPairBytes? {
+                override suspend fun identityKeys(aci: String): IdentityKeyPairBytes? {
                     val e = e2e ?: return null
                     // RingRTC binds the SRTP key derivation to both identity keys, so a call cannot be
                     // set up before a session with this peer exists.
@@ -385,10 +410,11 @@ object SignalClient {
                     // peer's, which looks like a connected call that never progresses.
                     Log.i(
                         TAG,
-                        "call identity keys for $aci: local=${local.size}B(0x${"%02x".format(local.firstOrNull() ?: 0)}) " +
+                        "call identity keys for $aci:" +
+                            "local=${local.size}B(0x${"%02x".format(local.firstOrNull() ?: 0)}) " +
                             "remote=${remote.size}B(0x${"%02x".format(remote.firstOrNull() ?: 0)})",
                     )
-                    return SignalCallManager.IdentityKeyPairBytes(local = local, remote = remote)
+                    return IdentityKeyPairBytes(local = local, remote = remote)
                 }
 
                 override suspend fun iceServers(): List<PeerConnection.IceServer> =
@@ -409,8 +435,8 @@ object SignalClient {
                     isVideo: Boolean,
                 ) {
                     scope.launch {
-                        publishCallState(aci, callId, state, isVideo)
-                        emitCallState(aci, callId, state, isVideo)
+                        publishCallState(aci, state, isVideo)
+                        emitCallState(callId, state, isVideo)
                     }
                 }
             },
@@ -475,7 +501,8 @@ object SignalClient {
         }
     }
 
-    // ---- Calls (emitCallState/placeCall/acceptCall/rejectCall/endCall/setCallAudioEnabled): see SignalCalls.kt (split for file length) ----
+    // ---- Calls (emitCallState/placeCall/acceptCall/rejectCall/endCall/setCallAudioEnabled): see SignalCalls.kt
+    // (split for file length) ----
 
     // ---- Inbound (handleInboundFrame/ackEnvelope): see SignalInbound.kt (split for file length) ----
 
@@ -485,7 +512,8 @@ object SignalClient {
 
     // ---- Inbound (sendRetryReceipt): see SignalInbound.kt (split for file length) ----
 
-    // ---- Identity/contacts (linkPniToAci/contactFor/displayNameFor/conversationIdFor): see SignalIdentity.kt (split for file length) ----
+    // ---- Identity/contacts (linkPniToAci/contactFor/displayNameFor/conversationIdFor): see SignalIdentity.kt (split
+    // for file length) ----
 
     // ---- Groups (refreshGroup): see SignalGroupOps.kt (split for file length) ----
 
@@ -542,7 +570,8 @@ object SignalClient {
 
     // ---- Groups (rememberInboundGroup): see SignalGroupOps.kt (split for file length) ----
 
-    // ---- Inbound (emitReadSync/emitDecryptionError/unidentifiedSenderTrustRoots/groupIdFor): see SignalInbound.kt (split for file length) ----
+    // ---- Inbound (emitReadSync/emitDecryptionError/unidentifiedSenderTrustRoots/groupIdFor): see SignalInbound.kt
+    // (split for file length) ----
 
     // ---- Messaging helper (uuidStringToBytes): see SignalMessaging.kt (split for file length) ----
 }

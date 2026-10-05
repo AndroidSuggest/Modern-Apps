@@ -96,7 +96,6 @@ internal fun ForecastColumn(
                 (selected ?: lastSelection)?.let { sel ->
                     SelectedDateTimeHeader(
                         selection = sel,
-                        forecast = forecast,
                         use24Hour = units.use24Hour,
                         onClear = { actions.clearSelection() },
                     )

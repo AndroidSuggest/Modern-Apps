@@ -1,6 +1,6 @@
 package com.vayunmathur.fooddelivery.intents
 
-import com.vayunmathur.fooddelivery.api.BitesApi
+import com.vayunmathur.fooddelivery.api.BitesMerchants
 import com.vayunmathur.fooddelivery.data.Merchant
 import com.vayunmathur.fooddelivery.ipc.OrderLookupContract
 import com.vayunmathur.fooddelivery.platform.AppInit
@@ -20,7 +20,7 @@ import kotlin.math.sqrt
  *
  * Replaces the old `OrderLookupProvider` cursor: a live catalog match is time-varying data, so a
  * request/response [AssistantIntent] fits it better than a ContentProvider. It fetches the merchant
- * catalog near the queried point ([BitesApi.getMerchants]) and does a tolerant name-normalise +
+ * catalog near the queried point ([BitesMerchants.getMerchants]) and does a tolerant name-normalise +
  * proximity match, returning the nearest match within [MATCH_RADIUS_METERS] as `available=true`
  * with its id and `fooddelivery://restaurant/<id>` deep link, or `available=false` otherwise.
  * A network/parse failure degrades to a not-orderable result rather than crossing the binder.
@@ -53,7 +53,7 @@ class OrderLookupIntent : AssistantIntent<OrderLookupRequest, OrderLookupResult>
         // warmed up off the main thread by AppInit (idempotent), which we await before the fetch.
         AppInit.start(applicationContext)
         AppInit.awaitReady()
-        val merchants = BitesApi.getMerchants(input.lat, input.lng)
+        val merchants = BitesMerchants.getMerchants(input.lat, input.lng)
         if (merchants.isEmpty()) return null
 
         // Keep only merchants that are plausibly the same place: close enough AND whose normalised

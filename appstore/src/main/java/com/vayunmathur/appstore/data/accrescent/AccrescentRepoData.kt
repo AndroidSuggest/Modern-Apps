@@ -53,7 +53,7 @@ class AccrescentRepoDataFetcher(private val context: Context) {
         return try {
             val (jsonStatus, _, jsonBytes) =
                 NetworkClient.performRequestBytesFull(AccrescentRepo.REPODATA_JSON_URL)
-            if (jsonStatus !in 200..299 || jsonBytes.isEmpty()) {
+            if (jsonStatus !in HTTP_OK_MIN..HTTP_OK_MAX || jsonBytes.isEmpty()) {
                 return Result.failure(IllegalStateException("repodata fetch failed: HTTP $jsonStatus"))
             }
 
@@ -82,27 +82,40 @@ class AccrescentRepoDataFetcher(private val context: Context) {
             persistTimestamp(repoData.timestamp)
 
             Result.success(repoData)
-        } catch (e: Exception) {
-            Log.w(TAG, "repodata fetch/verify failed", e)
-            Result.failure(e)
+        } catch (expected: IllegalStateException) {
+            Log.w(TAG, "repodata fetch/verify failed", expected)
+            Result.failure(expected)
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "repodata fetch/verify failed", expected)
+            Result.failure(expected)
+        } catch (expected: SecurityException) {
+            Log.w(TAG, "repodata fetch/verify failed", expected)
+            Result.failure(expected)
         }
     }
 
     private suspend fun readStoredTimestamp(): Long =
         try {
             context.accrescentDataStore.data.first()[REPODATA_TIMESTAMP_KEY] ?: 0L
-        } catch (_: Exception) {
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "read stored timestamp", expected)
+            0L
+        } catch (expected: IllegalStateException) {
+            Log.w(TAG, "read stored timestamp", expected)
             0L
         }
 
     private suspend fun persistTimestamp(timestamp: Long) {
         try {
             context.accrescentDataStore.edit { it[REPODATA_TIMESTAMP_KEY] = timestamp }
-        } catch (_: Exception) {
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "persist timestamp", expected)
         }
     }
 
     private companion object {
         const val TAG = "AccrescentRepoData"
+        private const val HTTP_OK_MIN = 200
+        private const val HTTP_OK_MAX = 299
     }
 }

@@ -1,6 +1,7 @@
 package com.vayunmathur.fooddelivery.data
 
 import kotlin.math.max
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -474,10 +475,10 @@ data class Customer(
 
 @Serializable
 data class AuthToken(
-    val access_token: String = "",
-    val refresh_token: String = "",
-    val token_type: String = "",
-    val expires_in: Long = 0,
+    @SerialName("access_token") val accessToken: String = "",
+    @SerialName("refresh_token") val refreshToken: String = "",
+    @SerialName("token_type") val tokenType: String = "",
+    @SerialName("expires_in") val expiresIn: Long = 0,
 )
 
 /** POST /orders/{uuid}/feedback — rating + optional note and extra tip (cents). */
@@ -694,44 +695,143 @@ internal fun parseIsoMillis(iso: String?): Long? {
 
 /** `yyyy-MM-ddTHH:mm:ss[.fff][Z]`, UTC, with no exceptions on the way through. */
 private fun fastParseIsoMillis(iso: String): Long? {
-    if (iso.length < 19) return null
-    if (iso[4] != '-' || iso[7] != '-' || iso[10] != 'T' || iso[13] != ':' || iso[16] != ':') return null
-    val year = iso.digits(0, 4) ?: return null
-    val month = iso.digits(5, 7) ?: return null
-    val day = iso.digits(8, 10) ?: return null
-    val hour = iso.digits(11, 13) ?: return null
-    val minute = iso.digits(14, 16) ?: return null
-    val second = iso.digits(17, 19) ?: return null
-    if (month !in 1..12 || hour !in 0..23 || minute !in 0..59 || second !in 0..59) return null
-    val isLeap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
-    val daysInMonth = when (month) {
-        1, 3, 5, 7, 8, 10, 12 -> 31
-        4, 6, 9, 11 -> 30
-        else -> if (isLeap) 29 else 28
-    }
-    if (day !in 1..daysInMonth) return null
-
-    var millis = 0
-    var rest = iso.substring(19)
-    if (rest.startsWith('.')) {
-        val fraction = rest.drop(1).takeWhile { it in '0'..'9' }
-        if (fraction.isEmpty()) return null
-        millis = fraction.take(3).padEnd(3, '0').toInt()
-        rest = rest.drop(1 + fraction.length)
-    }
-    // Only UTC (or an absent zone, which the API means as UTC) takes the fast path.
-    if (rest.isNotEmpty() && rest != "Z") return null
-
-    val epochDay = java.time.LocalDate.of(year, month, day).toEpochDay()
-    return (epochDay * 86_400L + hour * 3_600L + minute * 60L + second) * 1_000L + millis
+    val dateTime = parseDateTimePrefix(iso) ?: return null
+    val rest = parseFraction(iso, dateTime) ?: return null
+    if (rest.isNotEmpty() && rest != ISO_UTC_SUFFIX) return null
+    return dateTime.toEpochMillis()
 }
+
+/** The fixed-shape `yyyy-MM-ddTHH:mm:ss` prefix: positions, separators and ranges. */
+private fun parseDateTimePrefix(iso: String): IsoDateTime? {
+    if (iso.length < ISO_DATETIME_LENGTH || !hasIsoSeparators(iso)) return null
+    val n = parseDateTimeNumbers(iso) ?: return null
+    val year = n[YEAR_INDEX]
+    val month = n[MONTH_INDEX]
+    val day = n[DAY_INDEX]
+    val hour = n[HOUR_INDEX]
+    val minute = n[MINUTE_INDEX]
+    val second = n[SECOND_INDEX]
+    if (!isValidTime(year, month, hour, minute, second) || !isValidDay(year, month, day)) {
+        return null
+    }
+    return IsoDateTime(year, month, day, hour, minute, second)
+}
+
+private fun parseDateTimeNumbers(iso: String): IntArray? {
+    val out = IntArray(DATE_TIME_PART_COUNT)
+    for (i in DATE_TIME_RANGES.indices) {
+        val range = DATE_TIME_RANGES[i]
+        out[i] = iso.digits(range.first, range.second) ?: return null
+    }
+    return out
+}
+
+private fun hasIsoSeparators(iso: String): Boolean =
+    hasDateSeparators(iso) && hasTimeSeparators(iso) && iso[DATE_TIME_SEP_POS] == ISO_DATE_TIME_SEP
+
+private fun hasDateSeparators(iso: String): Boolean =
+    iso[YEAR_SEP_POS] == ISO_DATE_SEP && iso[MONTH_SEP_POS] == ISO_DATE_SEP
+
+private fun hasTimeSeparators(iso: String): Boolean =
+    iso[HOUR_SEP_POS] == ISO_TIME_SEP && iso[MINUTE_SEP_POS] == ISO_TIME_SEP
+
+private fun isValidTime(year: Int, month: Int, hour: Int, minute: Int, second: Int): Boolean =
+    month in 1..MONTHS_PER_YEAR && isValidClock(hour, minute, second) && year >= 0
+
+private fun isValidClock(hour: Int, minute: Int, second: Int): Boolean =
+    hour in 0..HOURS_PER_DAY_LAST && minute in 0..MINUTES_PER_HOUR_LAST &&
+        second in 0..SECONDS_PER_MINUTE_LAST
+
+private fun isValidDay(year: Int, month: Int, day: Int): Boolean =
+    day in 1..daysInMonth(year, month)
+
+private fun daysInMonth(year: Int, month: Int): Int {
+    if (month == FEBRUARY && isLeapYear(year)) return FEBRUARY_LEAP_DAYS
+    return DAYS_IN_MONTH[month - 1]
+}
+
+private fun isLeapYear(year: Int): Boolean =
+    year % LEAP_CYCLE == 0 && (year % CENTURY != 0 || year % LEAP_CENTURY == 0)
+
+/**
+ * The optional `.fff` fractional part. Returns the unconsumed tail, or null when a `.`
+ * is present but no digits follow it.
+ */
+private fun parseFraction(iso: String, dateTime: IsoDateTime): String? {
+    var rest = iso.substring(ISO_DATETIME_LENGTH)
+    if (!rest.startsWith('.')) return rest
+    val fraction = rest.drop(1).takeWhile { it in '0'..'9' }
+    if (fraction.isEmpty()) return null
+    dateTime.millis = fraction.take(MAX_FRACTION_DIGITS).padEnd(MAX_FRACTION_DIGITS, '0').toInt()
+    return rest.drop(1 + fraction.length)
+}
+
+private data class IsoDateTime(
+    val year: Int,
+    val month: Int,
+    val day: Int,
+    val hour: Int,
+    val minute: Int,
+    val second: Int,
+    var millis: Int = 0,
+) {
+    fun toEpochMillis(): Long {
+        val epochDay = java.time.LocalDate.of(year, month, day).toEpochDay()
+        return (epochDay * SECONDS_PER_DAY + hour * SECONDS_PER_HOUR +
+            minute * SECONDS_PER_MINUTE + second) * MILLIS_PER_SECOND + millis
+    }
+}
+
+private const val ISO_DATETIME_LENGTH = 19
+private const val ISO_DATE_SEP = '-'
+private const val ISO_DATE_TIME_SEP = 'T'
+private const val ISO_TIME_SEP = ':'
+private const val ISO_UTC_SUFFIX = "Z"
+private const val MONTHS_PER_YEAR = 12
+private const val HOURS_PER_DAY_LAST = 23
+private const val MINUTES_PER_HOUR_LAST = 59
+private const val SECONDS_PER_MINUTE_LAST = 59
+private const val FEBRUARY = 2
+private const val FEBRUARY_LEAP_DAYS = 29
+private const val LEAP_CYCLE = 4
+private const val CENTURY = 100
+private const val LEAP_CENTURY = 400
+private const val MAX_FRACTION_DIGITS = 3
+private const val SECONDS_PER_DAY = 86_400L
+private const val SECONDS_PER_HOUR = 3_600L
+private const val SECONDS_PER_MINUTE = 60L
+private const val MILLIS_PER_SECOND = 1_000L
+private const val DATE_TIME_PART_COUNT = 6
+private const val YEAR_INDEX = 0
+private const val MONTH_INDEX = 1
+private const val DAY_INDEX = 2
+private const val HOUR_INDEX = 3
+private const val MINUTE_INDEX = 4
+private const val SECOND_INDEX = 5
+private const val YEAR_SEP_POS = 4
+private const val MONTH_SEP_POS = 7
+private const val DATE_TIME_SEP_POS = 10
+private const val HOUR_SEP_POS = 13
+private const val MINUTE_SEP_POS = 16
+private const val DECIMAL_RADIX = 10
+private val DATE_TIME_RANGES = arrayOf(
+    0 to 4,
+    5 to 7,
+    8 to 10,
+    11 to 13,
+    14 to 16,
+    17 to 19,
+)
+private val DAYS_IN_MONTH = intArrayOf(
+    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+)
 
 private fun String.digits(from: Int, to: Int): Int? {
     var value = 0
     for (i in from until to) {
         val c = this[i]
         if (c < '0' || c > '9') return null
-        value = value * 10 + (c - '0')
+        value = value * DECIMAL_RADIX + (c - '0')
     }
     return value
 }

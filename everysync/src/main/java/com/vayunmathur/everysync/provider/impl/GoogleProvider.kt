@@ -74,8 +74,8 @@ class GoogleProvider : SyncProvider {
         )
         (JSON.parseToJsonElement(resp.body) as? JsonObject)
             ?.get("email")?.jsonPrimitive?.content?.ifBlank { null }
-    } catch (e: Exception) {
-        Log.e(TAG, "fetchEmail failed", e)
+    } catch (expected: Exception) {
+        Log.e(TAG, "fetchEmail failed", expected)
         null
     }
 

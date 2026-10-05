@@ -65,7 +65,7 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
     val reminderMinutesOfDay: StateFlow<Long> = reminderSettings.minutesOfDay
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DailyPuzzleReminder.DEFAULT_MINUTES_OF_DAY)
 
-    private val _hintCooldownEnd = MutableStateFlow(System.currentTimeMillis() + 30_000L)
+    private val _hintCooldownEnd = MutableStateFlow(System.currentTimeMillis() + HINT_COOLDOWN_MILLIS)
     val hintCooldownEnd: StateFlow<Long> = _hintCooldownEnd.asStateFlow()
 
     // ---- Competitive mode state ----
@@ -136,7 +136,12 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     val crosswordData: StateFlow<CrosswordData?> =
-        combine(gameMode, _casualCrossword, _competitiveCrossword, _dailyCrossword) { mode, casual, competitive, daily ->
+        combine(
+            gameMode,
+            _casualCrossword,
+            _competitiveCrossword,
+            _dailyCrossword,
+        ) { mode, casual, competitive, daily ->
             when (mode) {
                 GameMode.COMPETITIVE -> competitive
                 GameMode.DAILY -> daily
@@ -145,7 +150,12 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val foundWords: StateFlow<Set<String>> =
-        combine(gameMode, casualFoundWords, _competitiveFoundWords, dailyFoundWords) { mode, casual, competitive, daily ->
+        combine(
+            gameMode,
+            casualFoundWords,
+            _competitiveFoundWords,
+            dailyFoundWords,
+        ) { mode, casual, competitive, daily ->
             when (mode) {
                 GameMode.COMPETITIVE -> competitive
                 GameMode.DAILY -> daily
@@ -221,13 +231,12 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
      * mode uses, so the two never generate the same puzzle.
      */
     private fun generateDailyLevel(ctx: Context, day: Long): CrosswordData? {
-        val generator = levelGenerator
-            ?: CompetitiveLevelGenerator.fromAssets(ctx).also { levelGenerator = it }
-        val seed = DAILY_SEED_OFFSET + day * 100
+        val generator = resolveGenerator(ctx)
+        val seed = DAILY_SEED_OFFSET + day * DAY_SEED_SCALE
         var data = generator.generate(Random(seed))
         var attempt = 1
-        while (data == null && attempt < 5) {
-            data = generator.generate(Random(seed + attempt * 1_000_000L))
+        while (data == null && attempt < GENERATION_ATTEMPTS) {
+            data = generator.generate(Random(seed + attempt * SEED_RETRY_BUMP))
             attempt++
         }
         return data
@@ -261,15 +270,21 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
 
     /** Deterministically generates the board for a level beyond the designed set (seeded by level). */
     private fun generateSeededLevel(ctx: Context, level: Int): CrosswordData? {
-        val generator = levelGenerator
-            ?: CompetitiveLevelGenerator.fromAssets(ctx).also { levelGenerator = it }
+        val generator = resolveGenerator(ctx)
         var data = generator.generate(Random(level.toLong()))
         var attempt = 1
-        while (data == null && attempt < 5) {
-            data = generator.generate(Random(level.toLong() + attempt * 1_000_000L))
+        while (data == null && attempt < GENERATION_ATTEMPTS) {
+            data = generator.generate(Random(level.toLong() + attempt * SEED_RETRY_BUMP))
             attempt++
         }
         return data
+    }
+
+    /** Cached on first use: loading the word list from assets is done once per process. */
+    private fun resolveGenerator(ctx: Context): CompetitiveLevelGenerator {
+        val existing = levelGenerator
+        if (existing != null) return existing
+        return CompetitiveLevelGenerator.fromAssets(ctx).also { levelGenerator = it }
     }
 
     /** Generates a fresh competitive layout on the fly, resets its found words and restarts the timer. */
@@ -282,9 +297,7 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
             _competitiveCrossword.value = null
             _competitiveFoundWords.value = emptySet()
             val data = withContext(Dispatchers.Default) {
-                val generator = levelGenerator ?: CompetitiveLevelGenerator.fromAssets(ctx)
-                    .also { levelGenerator = it }
-                generator.generate()
+                resolveGenerator(ctx).generate()
             }
             _competitiveCrossword.value = data
             if (gameMode.value == GameMode.COMPETITIVE) {
@@ -292,7 +305,7 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
             }
             _competitiveLevelNumber.value = _competitiveLevelNumber.value + 1
             _competitiveDeadline.value =
-                System.currentTimeMillis() + difficulty.value.timeLimitSeconds * 1000L
+                System.currentTimeMillis() + difficulty.value.timeLimitSeconds * MILLIS_PER_SECOND
         }
     }
 
@@ -382,8 +395,8 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
             keyPrefix = DAILY_KEY_PREFIX,
             notificationId = REMINDER_NOTIFICATION_ID,
             enabled = enabled,
-            hour = (minutesOfDay / 60).toInt(),
-            minute = (minutesOfDay % 60).toInt(),
+            hour = (minutesOfDay / MINUTES_PER_HOUR).toInt(),
+            minute = (minutesOfDay % MINUTES_PER_HOUR).toInt(),
         )
     }
 
@@ -397,7 +410,7 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
         if (unrevealed.isEmpty()) return
 
         val target = unrevealed.random()
-        _hintCooldownEnd.value = System.currentTimeMillis() + 30_000L
+        _hintCooldownEnd.value = System.currentTimeMillis() + HINT_COOLDOWN_MILLIS
         val daily = gameMode.value == GameMode.DAILY
         viewModelScope.launch {
             if (daily) {
@@ -424,7 +437,14 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
         /** Highest level shipped as a designed asset; higher levels are generated at runtime. */
         const val MAX_DESIGNED_LEVEL = 8000
 
-        /** Keeps date-derived daily seeds far away from the level-number seeds casual mode uses. */
+    /** Keeps date-derived daily seeds far away from the level-number seeds casual mode uses. */
         private const val DAILY_SEED_OFFSET = 700_000_000L
+
+        private const val DAY_SEED_SCALE = 100
+        private const val GENERATION_ATTEMPTS = 5
+        private const val SEED_RETRY_BUMP = 1_000_000L
+        private const val MILLIS_PER_SECOND = 1000L
+        private const val MINUTES_PER_HOUR = 60
+        private const val HINT_COOLDOWN_MILLIS = 30_000L
     }
 }

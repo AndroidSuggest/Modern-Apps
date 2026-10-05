@@ -30,6 +30,7 @@ import com.vayunmathur.health.ui.HealthMetricConfig
 import com.vayunmathur.health.ui.HistoryItem
 import com.vayunmathur.health.ui.MetricDashboardData
 import com.vayunmathur.library.util.Tuple4
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -84,8 +85,11 @@ class HealthViewModel(
     fun sumInRange(type: RecordType, start: kotlin.time.Instant, end: kotlin.time.Instant): Flow<Double> =
         repository.sumInRange(type, start, end)
 
-    fun sumNutritionInRange(type: RecordType, start: kotlin.time.Instant, end: kotlin.time.Instant): Flow<NutritionData> =
-        repository.sumNutritionInRange(type, start, end)
+    fun sumNutritionInRange(
+        type: RecordType,
+        start: kotlin.time.Instant,
+        end: kotlin.time.Instant,
+    ): Flow<NutritionData> = repository.sumNutritionInRange(type, start, end)
 
     fun maxInRange(type: RecordType, start: kotlin.time.Instant, end: kotlin.time.Instant): Flow<Double?> =
         repository.maxInRange(type, start, end)
@@ -93,8 +97,11 @@ class HealthViewModel(
     fun minInRange(type: RecordType, start: kotlin.time.Instant, end: kotlin.time.Instant): Flow<Double?> =
         repository.minInRange(type, start, end)
 
-    fun getAllRecordsInRange(type: RecordType, start: kotlin.time.Instant, end: kotlin.time.Instant): Flow<List<Record>> =
-        repository.getAllInRange(type, start, end)
+    fun getAllRecordsInRange(
+        type: RecordType,
+        start: kotlin.time.Instant,
+        end: kotlin.time.Instant,
+    ): Flow<List<Record>> = repository.getAllInRange(type, start, end)
 
     fun getAllRecordsOfType(type: RecordType): Flow<List<Record>> =
         repository.getRecordsFlow(type)
@@ -143,73 +150,77 @@ class HealthViewModel(
             // field, so the visible vitals appear as soon as they're read and the
             // rest fill in progressively. The final aggregate state is unchanged.
             coroutineScope {
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.OxygenSaturation)?.value
-                    _mainPageMetrics.update { it.copy(spo2 = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.RespiratoryRate)?.value
-                    _mainPageMetrics.update { it.copy(br = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.HeartRateVariabilityRmssd)?.value
-                    _mainPageMetrics.update { it.copy(hrv = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.RestingHeartRate)?.value?.toLong()
-                    _mainPageMetrics.update { it.copy(rhr = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.SkinTemperature)?.value
-                    _mainPageMetrics.update { it.copy(skinTemp = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.Vo2Max)?.value
-                    _mainPageMetrics.update { it.copy(vo2Max = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.BloodGlucose)?.value
-                    _mainPageMetrics.update { it.copy(bloodGlucose = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.BloodPressure)?.let { it.value to it.secondaryValue }
-                    _mainPageMetrics.update { it.copy(bloodPressure = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.Sleep)?.let { record ->
-                        val todayStart = java.time.LocalDate.now()
-                            .atStartOfDay(ZoneId.systemDefault()).toInstant()
-                        if (record.endTime.isAfter(todayStart.minus(java.time.Duration.ofHours(12)))) {
-                            (record.value * 60).toLong()
-                        } else null
-                    }
-                    _mainPageMetrics.update { it.copy(sleepMinutes = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.Height)?.value
-                    _mainPageMetrics.update { it.copy(height = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.Weight)?.value
-                    _mainPageMetrics.update { it.copy(weight = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.BodyFat)?.value
-                    _mainPageMetrics.update { it.copy(bodyFat = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.BoneMass)?.value
-                    _mainPageMetrics.update { it.copy(boneMass = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.LeanBodyMass)?.value
-                    _mainPageMetrics.update { it.copy(leanBodyMass = v) }
-                }
-                launch {
-                    val v = HealthAPI.lastRecord(RecordType.BodyWaterMass)?.value
-                    _mainPageMetrics.update { it.copy(bodyWaterMass = v) }
-                }
+                loadVitalsMetrics()
+                loadBodyMetrics()
             }
+        }
+    }
+
+    /** Dashboard vitals: the four Today shows plus the other point-in-time vitals. */
+    private suspend fun CoroutineScope.loadVitalsMetrics() {
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.OxygenSaturation)?.value
+            _mainPageMetrics.update { it.copy(spo2 = v) }
+        }
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.RespiratoryRate)?.value
+            _mainPageMetrics.update { it.copy(br = v) }
+        }
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.HeartRateVariabilityRmssd)?.value
+            _mainPageMetrics.update { it.copy(hrv = v) }
+        }
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.RestingHeartRate)?.value?.toLong()
+            _mainPageMetrics.update { it.copy(rhr = v) }
+        }
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.SkinTemperature)?.value
+            _mainPageMetrics.update { it.copy(skinTemp = v) }
+        }
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.Vo2Max)?.value
+            _mainPageMetrics.update { it.copy(vo2Max = v) }
+        }
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.BloodGlucose)?.value
+            _mainPageMetrics.update { it.copy(bloodGlucose = v) }
+        }
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.BloodPressure)?.let { it.value to it.secondaryValue }
+            _mainPageMetrics.update { it.copy(bloodPressure = v) }
+        }
+        launch {
+            val v = HealthChartData.lastNightSleepMinutes(SLEEP_LOOKBACK, MINUTES_PER_HOUR)
+            _mainPageMetrics.update { it.copy(sleepMinutes = v) }
+        }
+    }
+
+    /** Body page point-in-time metrics: height, weight and body composition. */
+    private suspend fun CoroutineScope.loadBodyMetrics() {
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.Height)?.value
+            _mainPageMetrics.update { it.copy(height = v) }
+        }
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.Weight)?.value
+            _mainPageMetrics.update { it.copy(weight = v) }
+        }
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.BodyFat)?.value
+            _mainPageMetrics.update { it.copy(bodyFat = v) }
+        }
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.BoneMass)?.value
+            _mainPageMetrics.update { it.copy(boneMass = v) }
+        }
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.LeanBodyMass)?.value
+            _mainPageMetrics.update { it.copy(leanBodyMass = v) }
+        }
+        launch {
+            val v = HealthAPI.lastRecord(RecordType.BodyWaterMass)?.value
+            _mainPageMetrics.update { it.copy(bodyWaterMass = v) }
         }
     }
 
@@ -229,178 +240,25 @@ class HealthViewModel(
             val tz = TimeZone.currentSystemDefault()
             val resources = getApplication<Application>().resources
 
-            val (startDate, endDate, periodType, periodType2) = when (selectedTab) {
-                0 -> Tuple4(
-                    anchorDate,
-                    anchorDate.plus(1, DateTimeUnit.DAY),
-                    HealthAPI.PeriodType.Hourly,
-                    HealthAPI.PeriodType.Hourly,
-                )
-                1 -> {
-                    val start = anchorDate.minus((anchorDate.dayOfWeek.ordinal + 1) % 7, DateTimeUnit.DAY)
-                    Tuple4(
-                        start,
-                        start.plus(7, DateTimeUnit.DAY),
-                        HealthAPI.PeriodType.Daily,
-                        HealthAPI.PeriodType.Daily,
-                    )
-                }
-                2 -> {
-                    val start = LocalDate(anchorDate.year, anchorDate.month, 1)
-                    val end = start.plus(1, DateTimeUnit.MONTH)
-                    Tuple4(start, end, HealthAPI.PeriodType.Daily, HealthAPI.PeriodType.Weekly)
-                }
-                else -> {
-                    val start = LocalDate(anchorDate.year, 1, 1)
-                    val end = start.plus(1, DateTimeUnit.YEAR)
-                    Tuple4(start, end, HealthAPI.PeriodType.Monthly, HealthAPI.PeriodType.Monthly)
-                }
-            }
+            val (startDate, endDate, periodType, periodType2) =
+                HealthChartData.resolveChartRange(anchorDate, selectedTab)
             val startTime = startDate.atStartOfDayIn(tz)
             val endTime = endDate.atStartOfDayIn(tz)
             val endTimeNow = if (Clock.System.now() < endTime) Clock.System.now() else endTime
 
-            val rawPairs = if (config.isLineChart) {
-                HealthAPI.getListOfAverages(config.recordType, startTime, endTimeNow, periodType)
-            } else {
-                HealthAPI.getListOfSums(config.recordType, startTime, endTimeNow, periodType)
-            }
-            val rawPairsHistory = if (config.isLineChart) {
-                HealthAPI.getListOfAverages(config.recordType, startTime, endTimeNow, periodType2)
-            } else {
-                HealthAPI.getListOfSums(config.recordType, startTime, endTimeNow, periodType2)
-            }
-
-            // Week tab must always show 7 Sunday..Saturday slots. The DAO only
-            // returns days that have records, so mapping it directly collapses
-            // the series left: Tuesday's bar lands in Sunday's slot (#727).
-            // Missing days become null (bar chart renders zero, line chart a
-            // gap) so each value keeps its own weekday slot.
-            val weekSeries = if (selectedTab == 1) {
-                fillWeekSeries(
-                    startDate,
-                    rawPairs.associate { it.first to (it.second to it.third) },
-                )
-            } else null
-            val mappedChart: List<Pair<String, Double?>> = weekSeries?.map { (date, value, _) ->
-                labelFor(selectedTab, date.toEpochDays().toLong()) to value
-            } ?: rawPairs.map { p ->
-                labelFor(selectedTab, p.first) to p.second
-            }
-            val mappedSecondaryChart: List<Pair<String, Double?>>? = if (config.isDualSeries) {
-                weekSeries?.map { (date, _, secondary) ->
-                    labelFor(selectedTab, date.toEpochDays().toLong()) to secondary
-                } ?: rawPairs.map { p -> labelFor(selectedTab, p.first) to p.third }
-            } else null
-
-            // Same collapse bug as the chart: label each row by its own date,
-            // not by position. Bar metrics show all 7 days (missing = 0);
-            // line metrics list only days with readings so gaps don't
-            // drag the average to zero.
-            val weekHistorySeries = if (selectedTab == 1) {
-                fillWeekSeries(
-                    startDate,
-                    rawPairsHistory.associate { it.first to (it.second to it.third) },
-                )
-            } else null
-            val history = if (selectedTab == 1 && weekHistorySeries != null) {
-                weekHistorySeries.mapNotNull { (date, value, secondary) ->
-                    if (value == null && config.isLineChart) return@mapNotNull null
-                    val label = localizedDayOfWeekNames(DateNameStyle.FULL)[
-                        date.dayOfWeek.isoDayNumber - 1
-                    ]
-                    HistoryItem(
-                        label = label,
-                        value = value ?: 0.0,
-                        secondaryValue = if (config.isDualSeries) secondary else null,
-                        unit = config.unit,
-                        isGoalMet = (value ?: 0.0) >= config.dailyGoal,
-                        useDecimals = config.useDecimals,
-                    )
-                }.reversed()
-            } else if (selectedTab != 0) rawPairsHistory.mapIndexed { index, triple ->
-                val label = when (selectedTab) {
-                    0 -> ""
-                    1 -> localizedDayOfWeekNames(DateNameStyle.FULL)[
-                        startTime.plus(index.toLong(), DateTimeUnit.DAY, tz)
-                            .toLocalDateTime(tz).dayOfWeek.isoDayNumber - 1
-                    ]
-                    2 -> {
-                        val date = startTime.plus(index.toLong(), DateTimeUnit.DAY, tz)
-                            .toLocalDateTime(tz).date
-                        resources.getString(
-                            R.string.month_year_format,
-                            localizedMonthNames(DateNameStyle.SHORT)[date.month.number - 1],
-                            date.day,
-                        )
-                    }
-                    else -> {
-                        val date = startTime.plus(index.toLong(), DateTimeUnit.MONTH, tz)
-                            .toLocalDateTime(tz).date
-                        localizedMonthNames(DateNameStyle.FULL)[date.month.number - 1]
-                    }
-                }
-                HistoryItem(
-                    label = label,
-                    value = triple.second,
-                    secondaryValue = if (config.isDualSeries) triple.third else null,
-                    unit = config.unit,
-                    isGoalMet = triple.second >= config.dailyGoal,
-                    useDecimals = config.useDecimals,
-                )
-            }.reversed() else listOf()
-
-            val nonNullPrimary =
-                if (selectedTab == 0) rawPairs.map { it.second } else history.map { it.value }
-            val nonNullSecondary = if (selectedTab == 0) {
-                if (config.isDualSeries) rawPairs.map { it.third } else emptyList()
-            } else {
-                if (config.isDualSeries) history.mapNotNull { it.secondaryValue } else emptyList()
-            }
-
-            _barChartData.value = MetricDashboardData(
-                totalValue = nonNullPrimary.sum(),
-                dailyAverage = if (nonNullPrimary.isEmpty()) 0.0
-                else (if (selectedTab == 0) nonNullPrimary.sum() else nonNullPrimary.average()),
-                secondaryAverage = if (nonNullSecondary.isEmpty()) null
-                else (if (selectedTab == 0) nonNullSecondary.sum() else nonNullSecondary.average()),
-                chartData = mappedChart,
-                secondaryChartData = mappedSecondaryChart,
-                historyItems = history,
-                // Fixed 7 for the week tab: spacing math must divide by all 7
-                // slots even when only some days have data.
-                totalBarCount = if (selectedTab == 1) 7 else rawPairs.size,
-                primaryRange = mappedChart.mapNotNull { it.second }.let { vals ->
-                    if (vals.isEmpty()) null
-                    else vals.minOrNull()!!.let { min ->
-                        vals.maxOrNull()!!.let { max ->
-                            if (min < max) min..max else if (min > max) max..min else min..min + 1.0
-                        }
-                    }
-                },
+            val (rawPairs, rawPairsHistory) = HealthChartData.queryChartPairs(
+                config, startTime, endTimeNow, periodType, periodType2,
             )
-        }
-    }
+            val (mappedChart, mappedSecondaryChart) = HealthChartData.mapChartSeries(
+                config, selectedTab, startDate, rawPairs, is24Hour(getApplication()),
+            )
+            val history = HealthChartData.buildHistoryItems(
+                config, selectedTab, startDate, startTime, tz, resources, rawPairsHistory,
+            )
 
-    private fun labelFor(
-        selectedTab: Int,
-        firstKey: Long,
-    ): String = when (selectedTab) {
-        0 -> {
-            val hour = (firstKey % 24).toInt()
-            if (hour % 6 == 0) DateString.hourLabel(hour, is24Hour(getApplication())) else ""
-        }
-        1 -> {
-            val date = LocalDate.fromEpochDays(firstKey.toInt())
-            localizedDayOfWeekNames(DateNameStyle.SHORT)[date.dayOfWeek.isoDayNumber - 1]
-        }
-        2 -> {
-            val date = LocalDate.fromEpochDays(firstKey.toInt())
-            if (date.day % 7 == 1) date.day.toString() else ""
-        }
-        else -> {
-            val date = LocalDate.fromEpochDays(firstKey.toInt())
-            localizedMonthNames(DateNameStyle.SHORT)[date.month.number - 1]
+            _barChartData.value = HealthChartData.buildDashboardData(
+                config, selectedTab, rawPairs, mappedChart, mappedSecondaryChart, history,
+            )
         }
     }
 
@@ -453,7 +311,8 @@ class HealthViewModel(
     fun logMeal(target: LogMealTarget, quantity: Double, time: java.time.Instant) {
         viewModelScope.launch {
             val nutrition: NutritionData = when (target) {
-                is LogMealTarget.FromRecipe -> computeRecipeNutrition(target.recipeId, quantity)
+                is LogMealTarget.FromRecipe ->
+                    HealthChartData.computeRecipeNutrition(repository, target.recipeId, quantity)
                 is LogMealTarget.FromIngredient -> {
                     val ing = target.ingredient
                     NutritionData(
@@ -486,33 +345,6 @@ class HealthViewModel(
         }
     }
 
-    private suspend fun computeRecipeNutrition(recipeId: String, quantity: Double): NutritionData {
-        val ingredients = repository.getIngredientsForRecipe(recipeId)
-        var protein = 0.0
-        var carbs = 0.0
-        var fat = 0.0
-        var fiber = 0.0
-        var sugar = 0.0
-        var sodium = 0.0
-        var kcal = 0.0
-
-        ingredients.forEach { ri ->
-            val ing = repository.getIngredient(ri.ingredientId) ?: return@forEach
-            val units = repository.getUnitsForIngredient(ing.id)
-            val unit = units.find { it.id == ri.unitId }
-            val grams = unit?.grams ?: 1.0
-            val totalGrams = ri.quantity * grams * quantity
-            protein += (ing.nutritionData.protein / 100.0) * totalGrams
-            carbs += (ing.nutritionData.carbohydrates / 100.0) * totalGrams
-            fat += (ing.nutritionData.fat / 100.0) * totalGrams
-            fiber += (ing.nutritionData.fiber / 100.0) * totalGrams
-            sugar += (ing.nutritionData.sugar / 100.0) * totalGrams
-            sodium += (ing.nutritionData.sodium / 100.0) * totalGrams
-            kcal += (ing.nutritionData.calories / 100.0) * totalGrams
-        }
-        return NutritionData(protein, carbs, fat, fiber, sugar, sodium, calories = kcal)
-    }
-
     // ============================================================================================
     //  Recipe / Ingredient CRUD.
     // ============================================================================================
@@ -529,8 +361,7 @@ class HealthViewModel(
         viewModelScope.launch {
             try {
                 repository.deleteIngredient(ingredient)
-            } catch (e: Exception) {
-                // SQLiteConstraintException if used in a recipe.
+            } catch (e: android.database.sqlite.SQLiteConstraintException) {
                 Log.w(TAG, "Failed to delete ingredient ${ingredient.id}: ${e.message}")
             }
         }
@@ -636,6 +467,12 @@ class HealthViewModel(
     companion object {
         private const val TAG = "HealthViewModel"
 
+        /** How far back a sleep record may end and still count as "last night". */
+        private val SLEEP_LOOKBACK = java.time.Duration.ofHours(12)
+
+        /** Sleep is stored in hours; the dashboard shows minutes. */
+        private const val MINUTES_PER_HOUR = 60L
+
         /**
          * Week-tab slot fill: returns all 7 Sunday..Saturday days of the week
          * containing [weekStart], each paired with its value (or null when that
@@ -645,7 +482,7 @@ class HealthViewModel(
             weekStart: LocalDate,
             valuesByEpochDay: Map<Long, Pair<Double?, Double?>>,
         ): List<Triple<LocalDate, Double?, Double?>> =
-            (0..6).map { offset ->
+            (0 until HealthChartData.DAYS_PER_WEEK).map { offset ->
                 val date = weekStart.plus(offset, DateTimeUnit.DAY)
                 val pair = valuesByEpochDay[date.toEpochDays().toLong()]
                 Triple(date, pair?.first, pair?.second)

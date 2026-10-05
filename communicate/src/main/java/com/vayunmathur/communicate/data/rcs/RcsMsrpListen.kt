@@ -39,7 +39,10 @@ import kotlinx.coroutines.withContext
  * connection map. Never throws; null/false on any failure.
  */
 object RcsMsrpListen {
+    private const val TLS_HANDSHAKE_BYTE = 0x16
+    private const val HEAD_GUARD = 32
     private const val TAG = "RcsMsrpListen"
+    private const val ACCEPT_TIMEOUT_MS = 15_000
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -188,14 +191,14 @@ object RcsMsrpListen {
         onAccepted: (String, java.net.Socket, AcceptedHead) -> Unit,
     ) {
         runCatching {
-            socket.soTimeout = 15_000
+            socket.soTimeout = ACCEPT_TIMEOUT_MS
             val raw = socket.getInputStream()
             val firstByte = raw.read()
             if (firstByte < 0) {
                 runCatching { socket.close() }
                 return
             }
-            if (firstByte == 0x16) {
+            if (firstByte == TLS_HANDSHAKE_BYTE) {
                 routeTls(socket, raw, firstByte, onAccepted)
                 return
             }
@@ -220,7 +223,7 @@ object RcsMsrpListen {
         val headLines = mutableListOf<String>()
         var line = runCatching { input.readLine() }.getOrNull()
         var guard = 0
-        while (line != null && line.isNotEmpty() && guard++ < 32) {
+        while (line != null && line.isNotEmpty() && guard++ < HEAD_GUARD) {
             headLines.add(line)
             line = runCatching { input.readLine() }.getOrNull()
         }
@@ -299,7 +302,7 @@ object RcsMsrpListen {
         val headLines = mutableListOf<String>()
         var line = runCatching { input.readLine() }.getOrNull()
         var guard = 0
-        while (line != null && line.isNotEmpty() && guard++ < 32) {
+        while (line != null && line.isNotEmpty() && guard++ < HEAD_GUARD) {
             headLines.add(line)
             line = runCatching { input.readLine() }.getOrNull()
         }
@@ -364,7 +367,7 @@ object RcsMsrpListen {
             ) as javax.net.ssl.SSLSocket
             ssl.useClientMode = false
             ssl.wantClientAuth = true
-            ssl.soTimeout = 15_000
+            ssl.soTimeout = ACCEPT_TIMEOUT_MS
             ssl.startHandshake()
             ssl.soTimeout = 0
             Log.i(TAG, "TLS accept established")

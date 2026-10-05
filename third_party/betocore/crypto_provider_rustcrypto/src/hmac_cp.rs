@@ -13,28 +13,13 @@
 // limitations under the License.
 
 use crypto_provider::hmac::{InvalidLength, MacError};
-use hmac::digest::block_buffer::Eager;
-use hmac::digest::consts::U256;
-use hmac::digest::core_api::{
-    BlockSizeUser, BufferKindUser, CoreProxy, FixedOutputCore, UpdateCore,
-};
-use hmac::digest::typenum::{IsLess, Le, NonZero};
-use hmac::digest::{HashMarker, OutputSizeUser};
-use hmac::Mac;
+use hmac::digest::{KeyInit, Mac};
+use hmac::EagerHash;
 
 /// RustCrypto based hmac implementation
 pub struct Hmac<D>(hmac::Hmac<D>)
 where
-    D: OutputSizeUser,
-    D: CoreProxy,
-    D::Core: HashMarker
-        + UpdateCore
-        + FixedOutputCore
-        + BufferKindUser<BufferKind = Eager>
-        + Default
-        + Clone,
-    <D::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<D::Core as BlockSizeUser>::BlockSize, U256>: NonZero;
+    D: EagerHash;
 
 impl crypto_provider::hmac::Hmac<32> for Hmac<sha2::Sha256> {
     #[allow(clippy::expect_used)]

@@ -33,7 +33,6 @@ import com.vayunmathur.library.ui.DynamicTheme
 internal class CarPresentation(
     private val appContext: Context,
     display: android.view.Display,
-    private val onCardBounds: (Int, Int, Int, Int) -> Unit,
 ) : Presentation(appContext, display) {
 
     // Real wall-clock time, ticking every second. A driver needs to know
@@ -63,7 +62,6 @@ internal class CarPresentation(
                 DynamicTheme(darkTheme = null) {
                     LauncherRoot(
                         modifier = Modifier.fillMaxSize(),
-                        onCardBounds = onCardBounds,
                     )
                 }
             }
@@ -194,32 +192,12 @@ internal class CarPresentation(
     // collects flows instead. These stay so CarDisplay compiles unchanged
     // until Phase C replaces the imperative pushes with flow collects.
 
-    fun hideNowPlaying() = Unit
-
-    fun updateNowPlaying(info: NowPlayingInfo) = Unit
-
     fun updateNavSnapshot(snapshot: com.vayunmathur.auto.protocol.NavSnapshot) =
         CarLauncherState.setNavSnapshot(snapshot)
-
-    fun updateCallCard(info: ActiveCallInfo?) = Unit
-
-    fun openDrawer() = Unit
 
     fun closeDrawer() = Unit
 
     fun setDrivingRestricted(restricted: Boolean) {
         CarLauncherState.setDrivingRestricted(restricted)
     }
-
-    fun setDrawerLoading(loading: Boolean) = Unit
-
-    fun setDrawerTruncated(truncated: Boolean) = Unit
-
-    fun setParkedBrowsing(active: Boolean) = Unit
-
-    fun setAlphaJumpVisible(visible: Boolean) = Unit
-
-    fun startFrameInvalidation(fps: Int) = Unit
-
-    fun stopFrameInvalidation() = Unit
 }

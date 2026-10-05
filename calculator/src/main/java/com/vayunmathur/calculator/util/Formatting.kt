@@ -8,6 +8,15 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import kotlin.math.abs
 
+/** Significant digits kept when rounding away binary-floating-point artefacts. */
+private const val SIGNIFICANT_DIGITS = 12
+
+/** Magnitudes at or above this use scientific notation. */
+private const val SCIENTIFIC_UPPER = 1e12
+
+/** Magnitudes below this use scientific notation. */
+private const val SCIENTIFIC_LOWER = 1e-6
+
 /**
  * Formats a computed [Double] for display: trims floating-point noise, uses plain
  * decimal notation for "normal" magnitudes and scientific notation for very large or
@@ -19,11 +28,10 @@ fun formatResult(value: Double): String {
     if (value == 0.0) return "0"
 
     val magnitude = abs(value)
-    // Round to 12 significant digits to hide binary-floating-point artefacts
-    // (e.g. 0.1 + 0.2 → 0.30000000000000004).
-    val rounded = BigDecimal(value).round(MathContext(12)).stripTrailingZeros()
+    // Round to hide binary-floating-point artefacts (e.g. 0.1 + 0.2 → 0.30000000000000004).
+    val rounded = BigDecimal(value).round(MathContext(SIGNIFICANT_DIGITS)).stripTrailingZeros()
 
-    return if (magnitude >= 1e12 || magnitude < 1e-6) {
+    return if (magnitude >= SCIENTIFIC_UPPER || magnitude < SCIENTIFIC_LOWER) {
         // Scientific notation, e.g. 1.23e+15.
         rounded.toString().replace("E", "e")
     } else {

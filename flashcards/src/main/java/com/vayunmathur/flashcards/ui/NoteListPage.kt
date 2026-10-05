@@ -14,7 +14,21 @@ import com.vayunmathur.flashcards.Route
 import com.vayunmathur.flashcards.data.Note
 import com.vayunmathur.flashcards.util.DeckOption
 import com.vayunmathur.flashcards.util.FlashcardsViewModel
+import com.vayunmathur.flashcards.util.exportApkgImpl
+import com.vayunmathur.flashcards.util.importApkgImpl
+import com.vayunmathur.flashcards.util.importCsvImpl
+import com.vayunmathur.flashcards.util.deleteNoteImpl
+import com.vayunmathur.flashcards.util.reorderNotesImpl
+import com.vayunmathur.flashcards.util.exportCsvImpl
+import com.vayunmathur.flashcards.util.deleteNotesImpl
 import com.vayunmathur.flashcards.util.NoteListActions
+import com.vayunmathur.flashcards.util.cardsForImpl
+import com.vayunmathur.flashcards.util.notesForImpl
+import com.vayunmathur.flashcards.util.moveNotesImpl
+import com.vayunmathur.flashcards.util.addTagImpl
+import com.vayunmathur.flashcards.util.removeTagImpl
+import com.vayunmathur.flashcards.util.setNotesSuspendedImpl
+import com.vayunmathur.flashcards.util.resetSchedulingForNotesImpl
 import com.vayunmathur.flashcards.util.NoteListUiState
 import com.vayunmathur.flashcards.util.NoteRow
 import com.vayunmathur.flashcards.util.StudyParams
@@ -29,9 +43,9 @@ fun NoteListPage(
 ) {
     val context = LocalContext.current
     val decks by viewModel.decks.collectAsStateWithLifecycle()
-    val notes by remember(deckId) { viewModel.notesFor(deckId) }
+    val notes by remember(deckId) { viewModel.notesForImpl(deckId) }
         .collectAsStateWithLifecycle(emptyList())
-    val cards by remember(deckId) { viewModel.cardsFor(deckId) }
+    val cards by remember(deckId) { viewModel.cardsForImpl(deckId) }
         .collectAsStateWithLifecycle(emptyList())
 
     val deckName = decks.firstOrNull { it.id == deckId }?.name ?: ""
@@ -44,9 +58,9 @@ fun NoteListPage(
         uri?.let {
             val name = queryFileName(context, it).orEmpty()
             if (name.endsWith(".apkg", true) || isZip(context, it)) {
-                viewModel.importApkg(it)
+                viewModel.importApkgImpl(it)
             } else {
-                viewModel.importCsv(deckId, it)
+                viewModel.importCsvImpl(deckId, it)
             }
         }
     }
@@ -77,7 +91,7 @@ fun NoteListPage(
                 val route = Route.NoteEdit(deckId, 0)
                 if (backStack.last() is Route.NoteEdit) backStack.setLast(route) else backStack.add(route)
             }
-            override fun deleteNote(note: Note) { viewModel.deleteNote(note) }
+            override fun deleteNote(note: Note) { viewModel.deleteNoteImpl(note) }
             override fun study(tags: Set<String>) {
                 backStack.add(Route.Review(deckId, tags = tags.toList()))
             }
@@ -92,18 +106,18 @@ fun NoteListPage(
                     ),
                 )
             }
-            override fun reorder(notes: List<Note>) { viewModel.reorderNotes(notes) }
+            override fun reorder(notes: List<Note>) { viewModel.reorderNotesImpl(notes) }
             override fun openStats() { backStack.add(Route.Stats) }
-            override fun share() { viewModel.exportApkg(deckId) }
-            override fun exportCsv() { viewModel.exportCsv(deckId) }
-            override fun deleteNotes(ids: List<Long>) { viewModel.deleteNotes(ids) }
-            override fun moveNotes(ids: List<Long>, deckId: Long) { viewModel.moveNotes(ids, deckId) }
-            override fun addTag(ids: List<Long>, tag: String) { viewModel.addTag(ids, tag) }
-            override fun removeTag(ids: List<Long>, tag: String) { viewModel.removeTag(ids, tag) }
+            override fun share() { viewModel.exportApkgImpl(deckId) }
+            override fun exportCsv() { viewModel.exportCsvImpl(deckId) }
+            override fun deleteNotes(ids: List<Long>) { viewModel.deleteNotesImpl(ids) }
+            override fun moveNotes(ids: List<Long>, deckId: Long) { viewModel.moveNotesImpl(ids, deckId) }
+            override fun addTag(ids: List<Long>, tag: String) { viewModel.addTagImpl(ids, tag) }
+            override fun removeTag(ids: List<Long>, tag: String) { viewModel.removeTagImpl(ids, tag) }
             override fun setSuspended(ids: List<Long>, suspended: Boolean) {
-                viewModel.setNotesSuspended(ids, suspended)
+                viewModel.setNotesSuspendedImpl(ids, suspended)
             }
-            override fun resetScheduling(ids: List<Long>) { viewModel.resetSchedulingForNotes(ids) }
+            override fun resetScheduling(ids: List<Long>) { viewModel.resetSchedulingForNotesImpl(ids) }
         }
     }
 

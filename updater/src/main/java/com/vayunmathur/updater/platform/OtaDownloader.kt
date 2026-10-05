@@ -63,10 +63,14 @@ object OtaDownloader {
     /**
      * Download the best available artifact for [targetBuild].
      *
-     * Tries the incremental, falling back to the full package on a 404 — the normal outcome
+     * Tries the incremental, falling back to the full package on a 404 - the normal outcome
      * after skipping a release. An incremental update_engine has already refused to initialise
      * from is skipped outright; see [UpdaterPreferences.FAILED_INCREMENTAL].
+     *
+     * Broad catch is deliberate: the download path throws undocumented RuntimeExceptions
+     * (not just IOException), which read as "download failed" rather than a worker crash.
      */
+    @Suppress("TooGenericExceptionCaught")
     suspend fun download(
         context: Context,
         device: String,
@@ -83,46 +87,13 @@ object OtaDownloader {
             UPDATE_PATH.parentFile?.mkdirs()
             val remembered = store.getStringAwait(UpdaterPreferences.DOWNLOAD_FILE)
             // Only a partial file whose artifact we can still name is worth resuming.
-            val resumable = remembered != null &&
-                (remembered == incremental || remembered == artifacts.full)
-            var wanted = if (resumable) remembered!! else incremental ?: artifacts.full
-            var offset = if (resumable) UPDATE_PATH.length() else 0L
-            if (!resumable) UPDATE_PATH.delete()
+            val target = resolveTarget(remembered, incremental, artifacts.full)
+            if (!target.resumable) UPDATE_PATH.delete()
 
-            var connection = open(wanted, offset)
-            var code = connection.responseCode
-
-            // A resumed request the server says is already complete. verifyPackage is next and
-            // will catch the file if it is not in fact whole, so trusting this costs nothing.
-            if (code == HTTP_RANGE_NOT_SATISFIABLE) {
-                connection.disconnect()
-                Log.i(TAG, "$wanted was already downloaded")
-                return@withContext Result.Downloaded(wanted == artifacts.incremental)
-            }
-
-            // No incremental for this exact source build — the usual case after skipping a
-            // release. Start the full package from scratch; the bytes we have are not a prefix
-            // of it.
-            if (code == HttpURLConnection.HTTP_NOT_FOUND && wanted != artifacts.full) {
-                connection.errorStream?.close()
-                connection.disconnect()
-                Log.i(TAG, "$wanted is not published; falling back to ${artifacts.full}")
-                wanted = artifacts.full
-                offset = 0L
-                UPDATE_PATH.delete()
-                connection = open(wanted, offset)
-                code = connection.responseCode
-            }
-
-            if (code == HttpURLConnection.HTTP_NOT_FOUND) {
-                connection.errorStream?.close()
-                connection.disconnect()
-                return@withContext Result.NotFound
-            }
-
-            when (val outcome = stream(context, store, connection, code, wanted, offset, onProgress)) {
-                is Stream.Error -> Result.Failed(outcome.reason)
-                Stream.Ok -> Result.Downloaded(wanted == artifacts.incremental)
+            return@withContext when (val request = requestArtifact(artifacts, target)) {
+                is ArtifactRequest.Complete -> Result.Downloaded(request.wanted == artifacts.incremental)
+                ArtifactRequest.NotFound -> Result.NotFound
+                is ArtifactRequest.Stream -> streamResult(context, store, request, artifacts, onProgress)
             }
         } catch (e: CancellationException) {
             // The partial file and the remembered name both stay, so the next run resumes.
@@ -131,6 +102,106 @@ object OtaDownloader {
             Log.w(TAG, "download failed", e)
             Result.Failed("the update could not be downloaded")
         }
+    }
+
+    /** Stream an open artifact body and map the outcome onto [Result]. */
+    private suspend fun streamResult(
+        context: Context,
+        store: DataStoreUtils,
+        request: ArtifactRequest.Stream,
+        artifacts: OtaDownloadPlan.Artifacts,
+        onProgress: (bytes: Long, total: Long) -> Unit,
+    ): Result {
+        val outcome = stream(
+            context, store, request.connection, request.code,
+            request.wanted, request.offset, onProgress,
+        )
+        return when (outcome) {
+            is Stream.Error -> Result.Failed(outcome.reason)
+            Stream.Ok -> Result.Downloaded(request.wanted == artifacts.incremental)
+        }
+    }
+
+    /** Which artifact to request and from what byte offset. */
+    private data class DownloadTarget(val wanted: String, val offset: Long, val resumable: Boolean)
+
+    private fun resolveTarget(
+        remembered: String?,
+        incremental: String?,
+        full: String,
+    ): DownloadTarget {
+        val resumable = remembered != null && (remembered == incremental || remembered == full)
+        val wanted = if (resumable) remembered!! else incremental ?: full
+        val offset = if (resumable) UPDATE_PATH.length() else 0L
+        return DownloadTarget(wanted, offset, resumable)
+    }
+
+    /** An open connection plus the request it answers, after 416/404 handling. */
+    private sealed interface ArtifactRequest {
+        /** The server says the resumed file is already complete — no body to stream. */
+        data class Complete(val wanted: String) : ArtifactRequest
+
+        /** Neither artifact is published for this build. Ordinary, not an error. */
+        data object NotFound : ArtifactRequest
+
+        data class Stream(
+            val connection: HttpsURLConnection,
+            val code: Int,
+            val wanted: String,
+            val offset: Long,
+        ) : ArtifactRequest
+    }
+
+    /**
+     * Open [target] and handle the two non-body answers.
+     */
+    private fun requestArtifact(
+        artifacts: OtaDownloadPlan.Artifacts,
+        target: DownloadTarget,
+    ): ArtifactRequest {
+        // A resumed request the server says is already complete. verifyPackage is next and
+        // will catch the file if it is not in fact whole, so trusting this costs nothing.
+        val first = open(target.wanted, target.offset)
+        val firstCode = first.responseCode
+        if (firstCode == HTTP_RANGE_NOT_SATISFIABLE) {
+            first.disconnect()
+            Log.i(TAG, "${target.wanted} was already downloaded")
+            return ArtifactRequest.Complete(target.wanted)
+        }
+        val fallback = maybeFallbackToFull(first, firstCode, artifacts, target)
+        if (fallback != null) return fallback
+        if (firstCode == HttpURLConnection.HTTP_NOT_FOUND) {
+            first.errorStream?.close()
+            first.disconnect()
+            return ArtifactRequest.NotFound
+        }
+        return ArtifactRequest.Stream(first, firstCode, target.wanted, target.offset)
+    }
+
+    /**
+     * No incremental for this exact source build — the usual case after skipping a
+     * release. Start the full package from scratch; the bytes we have are not a prefix
+     * of it. Null when no fallback applies (the caller handles other codes).
+     */
+    private fun maybeFallbackToFull(
+        connection: HttpsURLConnection,
+        code: Int,
+        artifacts: OtaDownloadPlan.Artifacts,
+        target: DownloadTarget,
+    ): ArtifactRequest? {
+        if (code != HttpURLConnection.HTTP_NOT_FOUND || target.wanted == artifacts.full) return null
+        connection.errorStream?.close()
+        connection.disconnect()
+        Log.i(TAG, "${target.wanted} is not published; falling back to ${artifacts.full}")
+        UPDATE_PATH.delete()
+        val retry = open(artifacts.full, 0L)
+        val retryCode = retry.responseCode
+        if (retryCode == HttpURLConnection.HTTP_NOT_FOUND) {
+            retry.errorStream?.close()
+            retry.disconnect()
+            return ArtifactRequest.NotFound
+        }
+        return ArtifactRequest.Stream(retry, retryCode, artifacts.full, 0L)
     }
 
     /** Forget the staged package entirely, so the next run starts clean rather than resuming. */
@@ -167,13 +238,7 @@ object OtaDownloader {
         onProgress: (bytes: Long, total: Long) -> Unit,
     ): Stream {
         try {
-            val append = when (code) {
-                HttpURLConnection.HTTP_PARTIAL -> true
-                // The server ignored the Range and is sending the whole file, so what we have is
-                // not a prefix of what is arriving. Start over.
-                HttpURLConnection.HTTP_OK -> false
-                else -> return Stream.Error("the OTA server returned HTTP $code")
-            }
+            val append = appendModeFor(code) ?: return Stream.Error("the OTA server returned HTTP $code")
             val offset = if (append) requestedOffset else 0L
 
             // contentLengthLong is the REMAINING bytes on a 206, not the file size.
@@ -185,29 +250,7 @@ object OtaDownloader {
             // whatever is actually in the file, not the name of the last completed one.
             store.setString(UpdaterPreferences.DOWNLOAD_FILE, fileName)
 
-            var soFar = offset
-            var lastReport = 0L
-            onProgress(soFar, total)
-
-            FileOutputStream(UPDATE_PATH, append).use { output ->
-                connection.inputStream.use { input ->
-                    val buffer = ByteArray(BUFFER_SIZE)
-                    while (true) {
-                        coroutineContext.ensureActive()
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                        soFar += read
-                        val now = System.currentTimeMillis()
-                        if (now - lastReport >= PROGRESS_INTERVAL_MS) {
-                            lastReport = now
-                            onProgress(soFar, total)
-                        }
-                    }
-                }
-                // Force the bytes out before the file is handed to verifyPackage.
-                output.fd.sync()
-            }
+            val soFar = copyStream(connection, append, offset, total, onProgress)
             if (total > 0 && soFar != total) {
                 return Stream.Error("the download ended early ($soFar of $total bytes)")
             }
@@ -216,6 +259,51 @@ object OtaDownloader {
         } finally {
             connection.disconnect()
         }
+    }
+
+    /**
+     * Whether the body appends to the partial file. Null when [code] is not a body at all.
+     * The server ignoring the Range and sending the whole file means what we have is not
+     * a prefix of what is arriving, so start over.
+     */
+    private fun appendModeFor(code: Int): Boolean? = when (code) {
+        HttpURLConnection.HTTP_PARTIAL -> true
+        HttpURLConnection.HTTP_OK -> false
+        else -> null
+    }
+
+    /** Stream the body to [UPDATE_PATH], reporting progress; returns the total bytes on disk. */
+    private suspend fun copyStream(
+        connection: HttpsURLConnection,
+        append: Boolean,
+        offset: Long,
+        total: Long,
+        onProgress: (bytes: Long, total: Long) -> Unit,
+    ): Long {
+        var soFar = offset
+        var lastReport = 0L
+        onProgress(soFar, total)
+
+        FileOutputStream(UPDATE_PATH, append).use { output ->
+            connection.inputStream.use { input ->
+                val buffer = ByteArray(BUFFER_SIZE)
+                while (true) {
+                    coroutineContext.ensureActive()
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    output.write(buffer, 0, read)
+                    soFar += read
+                    val now = System.currentTimeMillis()
+                    if (now - lastReport >= PROGRESS_INTERVAL_MS) {
+                        lastReport = now
+                        onProgress(soFar, total)
+                    }
+                }
+            }
+            // Force the bytes out before the file is handed to verifyPackage.
+            output.fd.sync()
+        }
+        return soFar
     }
 
     /**

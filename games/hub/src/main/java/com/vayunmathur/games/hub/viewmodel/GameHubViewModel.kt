@@ -42,31 +42,31 @@ class GameHubViewModel(
 ) : AndroidViewModel(application), ProfileActions {
 
     val gamesFlow: StateFlow<List<HubGameEntity>> =
-        repository.gamesFlow()
+        repository.games.gamesFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val totalPlaytimeFromGamesFlow: StateFlow<Long> =
-        repository.totalPlaytimeFlow()
+        repository.games.totalPlaytimeFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
     val totalPlaytimeSessionsFlow: StateFlow<Long> =
-        repository.totalPlaytimeSessionsFlow()
+        repository.sessions.totalPlaytimeSessionsFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
     val totalSessionsFlow: StateFlow<Int> =
-        repository.totalSessionsFlow()
+        repository.games.totalSessionsFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     val allAchievementsFlow: StateFlow<List<AchievementWithProgress>> =
-        repository.allWithProgressFlow()
+        repository.achievements.allWithProgressFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val unlockedAchievementsFlow: StateFlow<List<AchievementWithProgress>> =
-        repository.unlockedWithProgressFlow()
+        repository.achievements.unlockedWithProgressFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val totalXpFlow: StateFlow<Int> =
-        repository.totalXpFlow()
+        repository.achievements.totalXpFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     val levelFlow: StateFlow<Int> =
@@ -82,34 +82,34 @@ class GameHubViewModel(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Beginner")
 
     val profileFlow: StateFlow<PlayerProfileEntity?> =
-        repository.profileFlow()
+        repository.profile.profileFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            val existing = repository.getProfile()
+            val existing = repository.profile.getProfile()
             if (existing == null) {
-                repository.upsertProfile(PlayerProfileEntity(displayName = "Player"))
+                repository.profile.upsertProfile(PlayerProfileEntity(displayName = "Player"))
             }
         }
     }
 
     override fun updateDisplayName(name: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val current = repository.getProfile() ?: PlayerProfileEntity()
-            repository.upsertProfile(current.copy(displayName = name))
+            val current = repository.profile.getProfile() ?: PlayerProfileEntity()
+            repository.profile.upsertProfile(current.copy(displayName = name))
         }
     }
 
     override fun updateAvatarSymbol(symbol: String?) {
         viewModelScope.launch(Dispatchers.IO) {
-            val current = repository.getProfile() ?: PlayerProfileEntity()
-            repository.upsertProfile(current.copy(avatarSymbol = symbol))
+            val current = repository.profile.getProfile() ?: PlayerProfileEntity()
+            repository.profile.upsertProfile(current.copy(avatarSymbol = symbol))
         }
     }
 
     val sessionsFlow: StateFlow<List<PlaySessionEntity>> =
-        repository.allSessionsFlow()
+        repository.sessions.allSessionsFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val streakFlow: StateFlow<StreakCalculator.StreakResult> =
@@ -118,16 +118,16 @@ class GameHubViewModel(
 
     /** gameId -> (current, longest) daily-puzzle streak, as pushed by each game. */
     val dailyStreaksFlow: StateFlow<Map<String, Pair<Int, Int>>> =
-        repository.allStreaksFlow()
+        repository.streaks.allStreaksFlow()
             .map { streaks -> streaks.associate { it.gameId to (it.currentStreak to it.longestStreak) } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     val recentActivityFlow: StateFlow<List<ActivityEventEntity>> =
-        repository.recentActivityFlow(50)
+        repository.activity.recentActivityFlow(RECENT_ACTIVITY_LIMIT)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val allActivityFlow: StateFlow<List<ActivityEventEntity>> =
-        repository.allActivityFlow()
+        repository.activity.allActivityFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     // Cross-game stats
@@ -169,7 +169,7 @@ class GameHubViewModel(
     val crossGameStatsFlowWithDefs: StateFlow<CrossGameStats> =
         combine(
             crossGameStatsFlow,
-            repository.totalDefsCountFlow()
+            repository.achievements.totalDefsCountFlow()
         ) { stats, totalDefs ->
             stats.copy(totalAchievements = totalDefs)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CrossGameStats())
@@ -177,28 +177,33 @@ class GameHubViewModel(
     val statsFlow: StateFlow<CrossGameStats> = crossGameStatsFlowWithDefs
 
     // Per-game flows
-    fun getGameFlow(gameId: String): Flow<HubGameEntity?> = repository.gameByIdFlow(gameId)
+    fun getGameFlow(gameId: String): Flow<HubGameEntity?> = repository.games.gameByIdFlow(gameId)
 
     fun getAchievementsForGameFlow(gameId: String): Flow<List<AchievementWithProgress>> =
-        repository.byGameWithProgressFlow(gameId)
+        repository.achievements.byGameWithProgressFlow(gameId)
 
     fun getSessionsForGameFlow(gameId: String): Flow<List<PlaySessionEntity>> =
-        repository.sessionsByGameFlow(gameId)
+        repository.sessions.sessionsByGameFlow(gameId)
 
     fun getDailyStreakForGameFlow(gameId: String): Flow<DailyStreakEntity?> =
-        repository.streakByGameFlow(gameId)
+        repository.streaks.streakByGameFlow(gameId)
 
     fun getActivityForGameFlow(gameId: String): Flow<List<ActivityEventEntity>> =
-        repository.activityByGameFlow(gameId, 30)
+        repository.activity.activityByGameFlow(gameId, GAME_ACTIVITY_LIMIT)
+
+    companion object {
+        private const val RECENT_ACTIVITY_LIMIT = 50
+        private const val GAME_ACTIVITY_LIMIT = 30
+    }
 
     fun clearAllData() {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.clearGames()
-            repository.clearDefs()
-            repository.clearProgress()
-            repository.clearSessions()
-            repository.clearStreaks()
-            repository.clearActivities()
+            repository.games.clearGames()
+            repository.achievements.clearDefs()
+            repository.achievements.clearProgress()
+            repository.sessions.clearSessions()
+            repository.streaks.clearStreaks()
+            repository.activity.clearActivities()
         }
     }
 }

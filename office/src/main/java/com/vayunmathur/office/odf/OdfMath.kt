@@ -29,7 +29,12 @@ sealed class MathNode {
     data class Table(val rows: List<TableRow>) : MathNode()
     data class TableRow(val cells: List<MathNode>) : MathNode()
     /** mmultiscripts (best-effort): pre/post sub/sup scripts flattened around the base. */
-    data class Multiscripts(val base: MathNode, val postSub: MathNode?, val postSup: MathNode?, val preSub: MathNode?, val preSup: MathNode?) : MathNode()
+    data class Multiscripts(
+        val base: MathNode,
+        val postSub: MathNode?,
+        val postSup: MathNode?,
+        val preSub: MathNode?,
+        val preSup: MathNode?) : MathNode()
 }
 
 object OdfMath {
@@ -53,7 +58,9 @@ object OdfMath {
     }
 
     private fun attr(parser: XmlPullParser, name: String): String? {
-        for (i in 0 until parser.attributeCount) if (parser.getAttributeName(i) == name) return parser.getAttributeValue(i)
+        for (i in 0 until parser.attributeCount) {
+            if (parser.getAttributeName(i) == name) return parser.getAttributeValue(i)
+        }
         return null
     }
 
@@ -72,6 +79,13 @@ object OdfMath {
 
     /** Parses a single element (assumes parser positioned at its START_TAG). Consumes through its END_TAG. */
     private fun parseElement(parser: XmlPullParser): MathNode? {
+        parseLeaf(parser)?.let { return it }
+        parseScript(parser)?.let { return it }
+        return parseLayout(parser)
+    }
+
+    /** Leaf/token/row-group elements; null when [parser] is not on one. */
+    private fun parseLeaf(parser: XmlPullParser): MathNode? {
         return when (parser.name) {
             "mi", "mn", "mo", "mtext", "ms" -> {
                 val isOp = parser.name == "mo"
@@ -82,21 +96,22 @@ object OdfMath {
                 val tag = parser.name
                 Row(parseChildren(parser, tag))
             }
-            "mfrac" -> {
-                val kids = parseChildren(parser, "mfrac")
-                Frac(kids.getOrElse(0) { Row(emptyList()) }, kids.getOrElse(1) { Row(emptyList()) })
-            }
-            "msup" -> {
-                val kids = parseChildren(parser, "msup")
-                Sup(kids.getOrElse(0) { Row(emptyList()) }, kids.getOrElse(1) { Row(emptyList()) })
-            }
-            "msub" -> {
-                val kids = parseChildren(parser, "msub")
-                Sub(kids.getOrElse(0) { Row(emptyList()) }, kids.getOrElse(1) { Row(emptyList()) })
-            }
+            else -> null
+        }
+    }
+
+    /** Script/fraction/radical elements; null when [parser] is not on one. */
+    private fun parseScript(parser: XmlPullParser): MathNode? {
+        return when (parser.name) {
+            "mfrac" -> binaryNode(parser, "mfrac") { a, b -> Frac(a, b) }
+            "msup" -> binaryNode(parser, "msup") { a, b -> Sup(a, b) }
+            "msub" -> binaryNode(parser, "msub") { a, b -> Sub(a, b) }
             "msubsup" -> {
                 val kids = parseChildren(parser, "msubsup")
-                SubSup(kids.getOrElse(0) { Row(emptyList()) }, kids.getOrElse(1) { Row(emptyList()) }, kids.getOrElse(2) { Row(emptyList()) })
+                SubSup(
+                    kids.getOrElse(0) { Row(emptyList()) },
+                    kids.getOrElse(1) { Row(emptyList()) },
+                    kids.getOrElse(2) { Row(emptyList()) })
             }
             "msqrt" -> Sqrt(Row(parseChildren(parser, "msqrt")))
             "mroot" -> {
@@ -108,39 +123,64 @@ object OdfMath {
                 val close = attr(parser, "close") ?: ")"
                 Fenced(open, close, Row(parseChildren(parser, "mfenced")))
             }
-            "munder" -> {
-                val kids = parseChildren(parser, "munder")
-                MathNode.Under(kids.getOrElse(0) { Row(emptyList()) }, kids.getOrElse(1) { Row(emptyList()) })
-            }
-            "mover" -> {
-                val kids = parseChildren(parser, "mover")
-                MathNode.Over(kids.getOrElse(0) { Row(emptyList()) }, kids.getOrElse(1) { Row(emptyList()) })
-            }
-            "munderover" -> {
-                val kids = parseChildren(parser, "munderover")
-                MathNode.UnderOver(kids.getOrElse(0) { Row(emptyList()) }, kids.getOrElse(1) { Row(emptyList()) }, kids.getOrElse(2) { Row(emptyList()) })
-            }
-            "mtable" -> {
-                val rows = parseChildren(parser, "mtable").filterIsInstance<MathNode.TableRow>()
-                MathNode.Table(rows)
-            }
+            else -> null
+        }
+    }
+
+    /** Layout/table/semantics elements (plus unknown-tag fallback). */
+    private fun parseLayout(parser: XmlPullParser): MathNode? {
+        return when (parser.name) {
+            "munder" -> binaryNode(parser, "munder") { a, b -> MathNode.Under(a, b) }
+            "mover" -> binaryNode(parser, "mover") { a, b -> MathNode.Over(a, b) }
+            "munderover" -> parseUnderOver(parser)
+            "mtable" -> parseTable(parser)
             "mtr", "mlabeledtr" -> {
                 val cells = parseChildren(parser, parser.name)
                 MathNode.TableRow(cells)
             }
             "mtd" -> Row(parseChildren(parser, "mtd"))
-            "mmultiscripts" -> {
-                val kids = parseChildren(parser, "mmultiscripts")
-                // base, then (postsub, postsup) pairs; <mprescripts/> is dropped so pre-scripts fold in after it.
-                val base = kids.getOrElse(0) { Row(emptyList()) }
-                val postSub = kids.getOrNull(1)
-                val postSup = kids.getOrNull(2)
-                MathNode.Multiscripts(base, postSub, postSup, null, null)
-            }
+            "mmultiscripts" -> parseMultiscripts(parser)
             "semantics" -> Row(parseChildren(parser, "semantics"))
             "annotation", "annotation-xml" -> { skip(parser); null }
             else -> { val tag = parser.name; Row(parseChildren(parser, tag)) }
         }
+    }
+
+    /** munderover element. */
+    private fun parseUnderOver(parser: XmlPullParser): MathNode.UnderOver {
+        val kids = parseChildren(parser, "munderover")
+        return MathNode.UnderOver(
+            kids.getOrElse(0) { Row(emptyList()) },
+            kids.getOrElse(1) { Row(emptyList()) },
+            kids.getOrElse(2) { Row(emptyList()) })
+    }
+
+    /** mtable element (keeps only row children). */
+    private fun parseTable(parser: XmlPullParser): MathNode.Table {
+        val rows = parseChildren(parser, "mtable").filterIsInstance<MathNode.TableRow>()
+        return MathNode.Table(rows)
+    }
+
+    /** mmultiscripts element (best-effort post-scripts only). */
+    private fun parseMultiscripts(parser: XmlPullParser): MathNode.Multiscripts {
+        val kids = parseChildren(parser, "mmultiscripts")
+        // base, then (postsub, postsup) pairs; <mprescripts/> is dropped so pre-scripts fold in after it.
+        val base = kids.getOrElse(0) { Row(emptyList()) }
+        val postSub = kids.getOrNull(1)
+        val postSup = kids.getOrNull(2)
+        return MathNode.Multiscripts(base, postSub, postSup, null, null)
+    }
+
+    /** Binary math node from the first two children. */
+    private fun binaryNode(
+        parser: XmlPullParser,
+        tag: String,
+        build: (MathNode, MathNode) -> MathNode,
+    ): MathNode {
+        val kids = parseChildren(parser, tag)
+        return build(
+            kids.getOrElse(0) { Row(emptyList()) },
+            kids.getOrElse(1) { Row(emptyList()) })
     }
 
     private fun readText(parser: XmlPullParser, endTag: String): String {
@@ -165,31 +205,58 @@ object OdfMath {
     }
 
     /** Flattens a node to plain text (fallback when layout isn't desired). */
-    fun toText(node: MathNode): String = when (node) {
-        is MathNode.Row -> node.children.joinToString("") { toText(it) }
-        is MathNode.Token -> node.text
+    fun toText(node: MathNode): String {
+        if (node is MathNode.Row) return node.children.joinToString("") { toText(it) }
+        if (node is MathNode.Token) return node.text
+        if (node is MathNode.Table) return node.rows.joinToString("; ") { toText(it) }
+        if (node is MathNode.TableRow) return node.cells.joinToString(", ") { toText(it) }
+        if (node is MathNode.Multiscripts) return multiscriptsText(node)
+        return scriptText(node) ?: layoutText(node) ?: containerText(node) ?: ""
+    }
+
+    /** Script nodes (frac/sup/sub/subsup). */
+    private fun scriptText(node: MathNode): String? = when (node) {
         is MathNode.Frac -> "(${toText(node.numerator)})/(${toText(node.denominator)})"
         is MathNode.Sup -> "${toText(node.base)}^${toText(node.exponent)}"
         is MathNode.Sub -> "${toText(node.base)}_${toText(node.subscript)}"
-        is MathNode.SubSup -> "${toText(node.base)}_${toText(node.subscript)}^${toText(node.superscript)}"
+        is MathNode.SubSup -> textOfSubSup(node)
+        else -> null
+    }
+
+    /** Layout nodes (sqrt/root/fenced). */
+    private fun layoutText(node: MathNode): String? = when (node) {
         is MathNode.Sqrt -> "\u221A(${toText(node.radicand)})"
         is MathNode.Root -> "root[${toText(node.index)}](${toText(node.radicand)})"
         is MathNode.Fenced -> "${node.open}${toText(node.body)}${node.close}"
+        else -> null
+    }
+
+    /** Container nodes (under/over/underover). */
+    private fun containerText(node: MathNode): String? = when (node) {
         is MathNode.Under -> "${toText(node.base)}_${toText(node.under)}"
         is MathNode.Over -> "${toText(node.base)}^${toText(node.over)}"
-        is MathNode.UnderOver -> "${toText(node.base)}_${toText(node.under)}^${toText(node.over)}"
-        is MathNode.Table -> node.rows.joinToString("; ") { toText(it) }
-        is MathNode.TableRow -> node.cells.joinToString(", ") { toText(it) }
-        is MathNode.Multiscripts -> {
-            val pre = buildString {
-                node.preSub?.let { append("_").append(toText(it)) }
-                node.preSup?.let { append("^").append(toText(it)) }
-            }
-            val post = buildString {
-                node.postSub?.let { append("_").append(toText(it)) }
-                node.postSup?.let { append("^").append(toText(it)) }
-            }
-            "$pre${toText(node.base)}$post"
+        is MathNode.UnderOver -> textOfUnderOver(node)
+        else -> null
+    }
+
+    /** SubSup annotation text. */
+    private fun textOfSubSup(node: MathNode.SubSup): String =
+        "${toText(node.base)}_${toText(node.subscript)}^${toText(node.superscript)}"
+
+    /** UnderOver annotation text. */
+    private fun textOfUnderOver(node: MathNode.UnderOver): String =
+        "${toText(node.base)}_${toText(node.under)}^${toText(node.over)}"
+
+    /** Multiscripts pre/post annotation text. */
+    private fun multiscriptsText(node: MathNode.Multiscripts): String {
+        val pre = buildString {
+            node.preSub?.let { append("_").append(toText(it)) }
+            node.preSup?.let { append("^").append(toText(it)) }
         }
+        val post = buildString {
+            node.postSub?.let { append("_").append(toText(it)) }
+            node.postSup?.let { append("^").append(toText(it)) }
+        }
+        return "$pre${toText(node.base)}$post"
     }
 }

@@ -62,7 +62,7 @@ class ClipTokenizer private constructor(
             // Map the piece's UTF-8 bytes to reversible unicode chars.
             val sb = StringBuilder()
             for (b in piece.toByteArray(Charsets.UTF_8)) {
-                sb.append(byteEncoder[b.toInt() and 0xFF] ?: continue)
+                sb.append(byteEncoder[b.toInt() and BYTE_MASK] ?: continue)
             }
             val token = sb.toString()
             if (token.isEmpty()) continue
@@ -78,43 +78,50 @@ class ClipTokenizer private constructor(
         cache[token]?.let { return it }
 
         // Start with each char as its own symbol; the last carries `</w>`.
-        var word = ArrayList<String>(token.length)
+        val word = ArrayList<String>(token.length)
         for (i in token.indices) {
             word.add(if (i == token.length - 1) token[i] + "</w>" else token[i].toString())
         }
         if (word.size == 1) return (token + "</w>").also { cache[token] = it }
 
-        while (true) {
-            // Find the adjacent pair with the best (lowest) merge rank.
-            var bestRank = Int.MAX_VALUE
-            var bestPair: Pair<String, String>? = null
-            for (i in 0 until word.size - 1) {
-                val pair = word[i] to word[i + 1]
-                val rank = bpeRanks[pair] ?: continue
-                if (rank < bestRank) {
-                    bestRank = rank
-                    bestPair = pair
-                }
-            }
-            val (first, second) = bestPair ?: break
-
-            // Merge every non-overlapping occurrence of the pair.
-            val merged = ArrayList<String>(word.size)
-            var i = 0
-            while (i < word.size) {
-                if (i < word.size - 1 && word[i] == first && word[i + 1] == second) {
-                    merged.add(first + second)
-                    i += 2
-                } else {
-                    merged.add(word[i])
-                    i += 1
-                }
-            }
-            word = merged
-            if (word.size == 1) break
+        var current = word
+        while (current.size > 1) {
+            val (first, second) = bestMergePair(current) ?: break
+            current = mergePairOccurrences(current, first, second)
         }
 
-        return word.joinToString(" ").also { cache[token] = it }
+        return current.joinToString(" ").also { cache[token] = it }
+    }
+
+    /** Adjacent pair with the best (lowest) merge rank, or null if none merges. */
+    private fun bestMergePair(word: List<String>): Pair<String, String>? {
+        var bestRank = Int.MAX_VALUE
+        var bestPair: Pair<String, String>? = null
+        for (i in 0 until word.size - 1) {
+            val pair = word[i] to word[i + 1]
+            val rank = bpeRanks[pair] ?: continue
+            if (rank < bestRank) {
+                bestRank = rank
+                bestPair = pair
+            }
+        }
+        return bestPair
+    }
+
+    /** Merge every non-overlapping occurrence of ([first], [second]) in [word]. */
+    private fun mergePairOccurrences(word: List<String>, first: String, second: String): ArrayList<String> {
+        val merged = ArrayList<String>(word.size)
+        var i = 0
+        while (i < word.size) {
+            if (i < word.size - 1 && word[i] == first && word[i + 1] == second) {
+                merged.add(first + second)
+                i += 2
+            } else {
+                merged.add(word[i])
+                i += 1
+            }
+        }
+        return merged
     }
 
     companion object {
@@ -127,9 +134,12 @@ class ClipTokenizer private constructor(
         const val START_TOKEN = 49406 // <|startoftext|>
         const val END_TOKEN = 49407 // <|endoftext|>
 
+        private const val BYTE_ALPHABET = 256
+        private const val BYTE_MAX = BYTE_ALPHABET - 1
+        private const val BYTE_MASK = 0xFF
         // Number of merge lines to read (matches CLIP: 49152 - 256 - 2 + 1),
         // taken after skipping the first header line.
-        private const val MERGE_COUNT = 49152 - 256 - 2 + 1
+        private const val MERGE_COUNT = 49152 - BYTE_ALPHABET - 2 + 1
 
         // CLIP's word-splitting regex. \p{L}=letters, \p{N}=numbers.
         private val PATTERN = java.util.regex.Pattern.compile(
@@ -192,15 +202,15 @@ class ClipTokenizer private constructor(
             for (i in '\u00AE'.code..'\u00FF'.code) bs.add(i)
             val cs = ArrayList<Int>(bs)
             var n = 0
-            for (b in 0..255) {
+            for (b in 0..BYTE_MAX) {
                 if (b !in bs) {
                     bs.add(b)
-                    cs.add(256 + n)
+                    cs.add(BYTE_ALPHABET + n)
                     n++
                 }
             }
-            val byteToStr = HashMap<Int, String>(256)
-            val ordered = ArrayList<String>(256)
+            val byteToStr = HashMap<Int, String>(BYTE_ALPHABET)
+            val ordered = ArrayList<String>(BYTE_ALPHABET)
             for (i in bs.indices) {
                 val s = cs[i].toChar().toString()
                 byteToStr[bs[i]] = s

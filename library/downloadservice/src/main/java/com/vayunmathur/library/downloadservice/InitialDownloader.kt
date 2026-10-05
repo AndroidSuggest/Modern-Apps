@@ -4,11 +4,29 @@ import android.app.DownloadManager
 import android.content.Context
 import android.util.Log
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.downloadservice.R
@@ -107,6 +125,7 @@ private fun allFilesPresent(
 }
 
 @Composable
+@Suppress("LongMethod")
 private fun InitialDownloadScreen(
     ds: DataStoreUtils,
     specs: List<DownloadSpec>,
@@ -190,6 +209,8 @@ private fun InitialDownloadScreen(
 }
 
 private const val SPEED_WINDOW_MS = 4000L
+private const val BYTES_PER_MEGABIT = 1_000_000.0
+private const val MIN_SPEED_SPAN_SEC = 0.5
 
 /** How often to publish progress/speed to DataStore while streaming. */
 private const val PUBLISH_INTERVAL_MS = 500L
@@ -199,6 +220,8 @@ private const val MAX_ATTEMPTS = 4
 private const val RETRY_DELAY_MS = 2000L
 
 private const val DOWNLOAD_BUFFER_SIZE = 1 shl 16
+private const val MILLIS_PER_SECOND = 1000.0
+private const val BITS_PER_BYTE = 8.0
 private const val CONNECT_TIMEOUT_MS = 30_000
 private const val READ_TIMEOUT_MS = 30_000
 
@@ -295,9 +318,9 @@ private suspend fun downloadSpec(
             // Cooperative cancellation (worker stopped): keep the `.part` so the
             // next run resumes via the Range header.
             throw e
-        } catch (e: Exception) {
+        } catch (expected: IOException) {
             // Transient network error — keep the `.part` for resume and back off.
-            Log.w(TAG, "attempt ${attempt + 1}/$MAX_ATTEMPTS failed for ${spec.fileName}", e)
+            Log.w(TAG, "attempt ${attempt + 1}/$MAX_ATTEMPTS failed for ${spec.fileName}", expected)
             if (attempt < MAX_ATTEMPTS - 1) delay(RETRY_DELAY_MS)
         }
     }
@@ -310,6 +333,7 @@ private suspend fun downloadSpec(
  * with a `Range` request, appending on HTTP 206 and restarting (truncating) on
  * 200. Publishes throttled `progress_*` / `speed_*` while streaming.
  */
+@Suppress("CyclomaticComplexMethod", "LongMethod", "NestedBlockDepth")
 private suspend fun streamToPart(
     ds: DataStoreUtils,
     spec: DownloadSpec,
@@ -342,55 +366,97 @@ private suspend fun streamToPart(
         val remaining = conn.contentLengthLong
         val total = if (remaining >= 0) startOffset + remaining else -1L
 
-        val samples = ArrayDeque<Pair<Long, Long>>()
-        var soFar = startOffset
-        var lastPublish = 0L
+        publishInitialProgress(ds, spec, total, startOffset)
 
+        FileOutputStream(partFile, append).use { output ->
+            conn.inputStream.use { input ->
+                copyStreamed(input, output, ds, spec, total, startOffset)
+            }
+            output.fd.sync()
+        }
+    } finally {
+        conn.disconnect()
+    }
+}
+
+/** Publishes the resume offset as initial progress before streaming starts. */
+private suspend fun publishInitialProgress(
+    ds: DataStoreUtils,
+    spec: DownloadSpec,
+    total: Long,
+    startOffset: Long
+) {
+    if (total > 0) {
+        ds.setDouble(
+            "progress_${spec.fileName}",
+            (startOffset.toDouble() / total).coerceIn(0.0, 1.0)
+        )
+    }
+}
+
+/** Copies [input] to [output], publishing throttled progress/speed to [ds]. */
+private suspend fun copyStreamed(
+    input: java.io.InputStream,
+    output: FileOutputStream,
+    ds: DataStoreUtils,
+    spec: DownloadSpec,
+    total: Long,
+    startOffset: Long
+) {
+    val tracker = ProgressTracker(ds, spec, total, startOffset)
+    val buf = ByteArray(DOWNLOAD_BUFFER_SIZE)
+    while (true) {
+        coroutineContext.ensureActive()
+        val n = input.read(buf)
+        if (n < 0) break
+        output.write(buf, 0, n)
+        tracker.advance(n)
+    }
+}
+
+/** Throttled progress/speed publisher for one streaming download. */
+private class ProgressTracker(
+    private val ds: DataStoreUtils,
+    private val spec: DownloadSpec,
+    private val total: Long,
+    startOffset: Long
+) {
+    private val samples = ArrayDeque<Pair<Long, Long>>()
+    private var soFar = startOffset
+    private var lastPublish = 0L
+
+    suspend fun advance(bytes: Int) {
+        soFar += bytes
+        val now = System.currentTimeMillis()
+        if (now - lastPublish < PUBLISH_INTERVAL_MS) return
+        lastPublish = now
+        publishProgress()
+        publishSpeed(now)
+    }
+
+    private suspend fun publishProgress() {
         if (total > 0) {
             ds.setDouble(
                 "progress_${spec.fileName}",
                 (soFar.toDouble() / total).coerceIn(0.0, 1.0)
             )
         }
+    }
 
-        FileOutputStream(partFile, append).use { output ->
-            conn.inputStream.use { input ->
-                val buf = ByteArray(DOWNLOAD_BUFFER_SIZE)
-                while (true) {
-                    coroutineContext.ensureActive()
-                    val n = input.read(buf)
-                    if (n < 0) break
-                    output.write(buf, 0, n)
-                    soFar += n
-
-                    val now = System.currentTimeMillis()
-                    if (now - lastPublish >= PUBLISH_INTERVAL_MS) {
-                        lastPublish = now
-                        if (total > 0) {
-                            ds.setDouble(
-                                "progress_${spec.fileName}",
-                                (soFar.toDouble() / total).coerceIn(0.0, 1.0)
-                            )
-                        }
-                        // Moving-average speed over the last SPEED_WINDOW_MS so the
-                        // reading stays stable across bursty reads.
-                        samples.addLast(now to soFar)
-                        while (samples.size > 1 && now - samples.first().first > SPEED_WINDOW_MS) {
-                            samples.removeFirst()
-                        }
-                        val (oldestTime, oldestBytes) = samples.first()
-                        val spanSec = (now - oldestTime) / 1000.0
-                        if (spanSec >= 0.5) {
-                            val speedMbps = ((soFar - oldestBytes) * 8.0) / 1_000_000.0 / spanSec
-                            ds.setDouble("speed_${spec.fileName}", speedMbps.coerceAtLeast(0.0))
-                        }
-                    }
-                }
-            }
-            output.fd.sync()
+    // Moving-average speed over the last SPEED_WINDOW_MS so the
+    // reading stays stable across bursty reads.
+    private suspend fun publishSpeed(now: Long) {
+        samples.addLast(now to soFar)
+        while (samples.size > 1 && now - samples.first().first > SPEED_WINDOW_MS) {
+            samples.removeFirst()
         }
-    } finally {
-        conn.disconnect()
+        val (oldestTime, oldestBytes) = samples.first()
+        val spanSec = (now - oldestTime) / MILLIS_PER_SECOND
+        if (spanSec >= MIN_SPEED_SPAN_SEC) {
+            val bits = (soFar - oldestBytes) * BITS_PER_BYTE
+            val speedMbps = bits / BYTES_PER_MEGABIT / spanSec
+            ds.setDouble("speed_${spec.fileName}", speedMbps.coerceAtLeast(0.0))
+        }
     }
 }
 

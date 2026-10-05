@@ -121,12 +121,12 @@ class SabrNgDashMediaSource(
                 builtSession.start()
                 prepareChildSource(0, builtChild)
             }
-        } catch (e: Throwable) {
-            buildError = if (e is IOException) {
-                e
-            } else {
-                IOException("Failed to open SABR media source for $videoId", e)
-            }
+        } catch (e: java.io.IOException) {
+            buildError = e
+        } catch (e: IllegalStateException) {
+            buildError = IOException("Failed to open SABR media source for $videoId", e)
+        } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+            buildError = IOException("Failed to open SABR media source for $videoId", e)
         }
     }
 
@@ -151,7 +151,7 @@ class SabrNgDashMediaSource(
     ): MediaPeriod {
         val child = checkNotNull(childSource)
         if (startPositionUs > 0) {
-            session?.requestSeek(startPositionUs / 1000L)
+            session?.requestSeek(startPositionUs / MICROS_PER_MILLISECOND)
         }
         val childPeriod = child.createPeriod(id, allocator, startPositionUs)
         return SabrNgMediaPeriod(childPeriod)
@@ -218,8 +218,8 @@ class SabrNgDashMediaSource(
 
         override fun readDiscontinuity(): Long = child.readDiscontinuity()
 
-        override fun seekToUs(positionUs: Long): Long {
-            session?.requestSeek(maxOf(0, positionUs) / 1000L)
+            override fun seekToUs(positionUs: Long): Long {
+            session?.requestSeek(maxOf(0, positionUs) / MICROS_PER_MILLISECOND)
             return child.seekToUs(positionUs)
         }
 
@@ -241,6 +241,10 @@ class SabrNgDashMediaSource(
     }
 
     private companion object {
+        private const val MICROS_PER_MILLISECOND = 1000L
+        private const val MILLIS_PER_SECOND = 1000L
+        private const val DASH_TIMESCALE = 1000
+        private const val MAX_EXACT_SEGMENT_COUNT = 10_000
         private const val SEGMENT_TIMEOUT_MS = 30_000L
 
         @Throws(IOException::class)
@@ -300,11 +304,11 @@ class SabrNgDashMediaSource(
             format: YoutubeSabrInfo.Format
         ): String {
             val endSegment = timeline.getEndSequence()
-            check(endSegment in 1..10_000) {
+            check(endSegment in 1..MAX_EXACT_SEGMENT_COUNT) {
                 "Invalid exact SABR segment count: itag=${format.getItag()}, count=$endSegment"
             }
             val builder = StringBuilder()
-                .append("<SegmentTemplate timescale=\"1000\" startNumber=\"1\" ")
+                .append("<SegmentTemplate timescale=\"$DASH_TIMESCALE\" startNumber=\"1\" ")
                 .append("initialization=\"init\" media=\"\$Number\$\">")
                 .append("<SegmentTimeline>")
             for (sequence in 1..endSegment) {
@@ -319,8 +323,8 @@ class SabrNgDashMediaSource(
 
         private fun formatDuration(durationMs: Long): String {
             val safeDurationMs = maxOf(1, durationMs)
-            return "PT" + (safeDurationMs / 1000) + "." +
-                String.format(Locale.US, "%03d", safeDurationMs % 1000) + "S"
+            return "PT" + (safeDurationMs / MILLIS_PER_SECOND) + "." +
+                String.format(Locale.US, "%03d", safeDurationMs % MILLIS_PER_SECOND) + "S"
         }
 
         private fun containerMimeType(format: YoutubeSabrInfo.Format): String {

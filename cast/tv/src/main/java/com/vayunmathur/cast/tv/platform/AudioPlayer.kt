@@ -9,6 +9,7 @@ import android.media.MediaFormat
 import android.util.Log
 import com.vayunmathur.cast.protocol.AudioCodec
 import com.vayunmathur.cast.protocol.StreamConstants
+import java.io.IOException
 
 private const val TAG = "AudioPlayer"
 
@@ -124,11 +125,27 @@ class AudioPlayer {
             track = output
             output.play()
             true
-        } catch (e: Exception) {
-            Log.w(TAG, "could not start audio playback", e)
-            release()
-            false
+        } catch (e: IOException) {
+            return failStart(e)
+        } catch (e: IllegalArgumentException) {
+            return failStart(e)
+        } catch (e: IllegalStateException) {
+            return failStart(e)
+        } catch (e: UnsupportedOperationException) {
+            return failStart(e)
         }
+    }
+
+    /**
+     * Start failed after the fields may have been partly published: log, release, report failure.
+     *
+     * One helper rather than four identical catch bodies for the four specific failures
+     * `MediaCodec.createByCodecName`, `configure` and the `AudioTrack` builder report.
+     */
+    private fun failStart(cause: Exception): Boolean {
+        Log.w(TAG, "could not start audio playback", cause)
+        release()
+        return false
     }
 
     /**
@@ -181,7 +198,9 @@ class AudioPlayer {
                 }
                 activeCodec.releaseOutputBuffer(out, false)
             }
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
+            recover(e)
+        } catch (e: IllegalArgumentException) {
             recover(e)
         }
     }
@@ -243,6 +262,20 @@ class AudioPlayer {
          */
         private const val MAX_RESTARTS = 3
 
+        /** Bits in a byte: the shift step when packing or unpacking little-endian bytes. */
+        private const val BITS_PER_BYTE = 8
+
+        /** One byte of a little-endian word, as an Int for the Opus header packing below. */
+        private const val BYTE_MASK = 0xFF
+
+        /** One byte of a little-endian word, as a Long for the nanosecond packing below. */
+        private const val BYTE_MASK_LONG = 0xFFL
+
+        /** Shift of the second, third and fourth bytes of a little-endian 32-bit word. */
+        private const val SECOND_BYTE_SHIFT = 8
+        private const val THIRD_BYTE_SHIFT = 16
+        private const val FOURTH_BYTE_SHIFT = 24
+
         /**
          * `csd-1` and `csd-2`: the codec delay and the seek pre-roll, in little-endian nanoseconds.
          *
@@ -251,12 +284,15 @@ class AudioPlayer {
          * them. They are supplied rather than omitted because the decoder reads three csd buffers and
          * silently tolerates being given one.
          */
-        private fun nanosecondsLe(value: Long): ByteArray = ByteArray(8) { i ->
-            ((value ushr (8 * i)) and 0xff).toByte()
+        private fun nanosecondsLe(value: Long): ByteArray = ByteArray(NANOSECONDS_SIZE) { i ->
+            ((value ushr (BITS_PER_BYTE * i)) and BYTE_MASK_LONG).toByte()
         }
 
+        /** `csd-1` and `csd-2` are little-endian nanoseconds: 8 bytes each. */
+        private const val NANOSECONDS_SIZE = 8
+
         /**
-         * The 19-byte `OpusHead`, per RFC 7845 §5.1.
+         * The `OpusHead` identification header is 19 bytes, per RFC 7845 §5.1.
          *
          * ```
          * "OpusHead" | version=1 | channels | pre-skip(LE16) | sample rate(LE32) | gain(LE16) | map=0
@@ -273,10 +309,10 @@ class AudioPlayer {
                 1,
                 StreamConstants.AUDIO_CHANNELS.toByte(),
                 0, 0,
-                (rate and 0xff).toByte(),
-                ((rate ushr 8) and 0xff).toByte(),
-                ((rate ushr 16) and 0xff).toByte(),
-                ((rate ushr 24) and 0xff).toByte(),
+                (rate and BYTE_MASK).toByte(),
+                ((rate ushr SECOND_BYTE_SHIFT) and BYTE_MASK).toByte(),
+                ((rate ushr THIRD_BYTE_SHIFT) and BYTE_MASK).toByte(),
+                ((rate ushr FOURTH_BYTE_SHIFT) and BYTE_MASK).toByte(),
                 0, 0,
                 0,
             )

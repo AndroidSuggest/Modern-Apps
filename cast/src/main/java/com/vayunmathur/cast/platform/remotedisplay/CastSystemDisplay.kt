@@ -198,6 +198,10 @@ class CastSystemDisplay(context: Context) {
                 .invoke(this, uniqueId)
         } catch (e: ReflectiveOperationException) {
             Log.w(TAG, "setUniqueId unavailable; display preferences will not persist", e)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "setUniqueId unavailable; display preferences will not persist", e)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "setUniqueId unavailable; display preferences will not persist", e)
         }
     }
 
@@ -221,9 +225,17 @@ class CastSystemDisplay(context: Context) {
             VirtualDisplayConfig.Builder::class.java
                 .getMethod("setSupportedModes", List::class.java)
                 .invoke(this, displayModes)
-        } catch (e: Throwable) {
-            Log.w(TAG, "setSupportedModes unavailable; the resolution picker will show one mode", e)
+        } catch (e: ReflectiveOperationException) {
+            failSupportedModes(e)
+        } catch (e: SecurityException) {
+            failSupportedModes(e)
+        } catch (e: IllegalArgumentException) {
+            failSupportedModes(e)
         }
+    }
+
+    private fun failSupportedModes(e: Exception) {
+        Log.w(TAG, "setSupportedModes unavailable; the resolution picker will show one mode", e)
     }
 
     /**
@@ -240,10 +252,18 @@ class CastSystemDisplay(context: Context) {
                 )
                 .apply { isAccessible = true }
                 .newInstance(width, height, refreshRate)
-        } catch (e: Throwable) {
-            Log.w(TAG, "Display.Mode(int, int, float) unavailable; cannot declare ${width}x$height", e)
-            null
+        } catch (e: ReflectiveOperationException) {
+            failDisplayMode(width, height, e)
+        } catch (e: SecurityException) {
+            failDisplayMode(width, height, e)
+        } catch (e: IllegalArgumentException) {
+            failDisplayMode(width, height, e)
         }
+
+    private fun failDisplayMode(width: Int, height: Int, e: Exception): Display.Mode? {
+        Log.w(TAG, "Display.Mode(int, int, float) unavailable; cannot declare ${width}x$height", e)
+        return null
+    }
 
     /**
      * Point the existing display at a new encoder surface.

@@ -36,30 +36,43 @@ object SafTree {
             DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocumentId)
         val result = ArrayList<DocEntry>()
         context.contentResolver.query(childrenUri, PROJECTION, null, null, null)?.use { cursor ->
-            val idCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-            val nameCol =
-                cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-            val mimeCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
-            val sizeCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_SIZE)
-            val modCol =
-                cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+            val columns = ChildColumns(cursor)
             while (cursor.moveToNext()) {
-                val docId = cursor.getString(idCol) ?: continue
-                val name = cursor.getString(nameCol) ?: continue
-                val mime = cursor.getString(mimeCol)
-                result.add(
-                    DocEntry(
-                        documentId = docId,
-                        name = name,
-                        uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId),
-                        isDirectory = mime == DocumentsContract.Document.MIME_TYPE_DIR,
-                        size = if (cursor.isNull(sizeCol)) 0L else cursor.getLong(sizeCol),
-                        lastModified = if (cursor.isNull(modCol)) 0L else cursor.getLong(modCol),
-                    ),
-                )
+                readChild(cursor, columns, treeUri)?.let { result.add(it) }
             }
         }
         return result
+    }
+
+    private class ChildColumns(cursor: android.database.Cursor) {
+        val id = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+        val name = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+        val mime = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+        val size = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_SIZE)
+        val modified =
+            cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+    }
+
+    private fun readChild(
+        cursor: android.database.Cursor,
+        columns: ChildColumns,
+        treeUri: Uri,
+    ): DocEntry? {
+        val docId = cursor.getString(columns.id) ?: return null
+        val name = cursor.getString(columns.name) ?: return null
+        val mime = cursor.getString(columns.mime)
+        return DocEntry(
+            documentId = docId,
+            name = name,
+            uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId),
+            isDirectory = mime == DocumentsContract.Document.MIME_TYPE_DIR,
+            size = if (cursor.isNull(columns.size)) 0L else cursor.getLong(columns.size),
+            lastModified = if (cursor.isNull(columns.modified)) {
+                0L
+            } else {
+                cursor.getLong(columns.modified)
+            },
+        )
     }
 
     fun rootDocumentId(treeUri: Uri): String = DocumentsContract.getTreeDocumentId(treeUri)
@@ -82,12 +95,24 @@ object SafTree {
         queue.add(rootDocumentId(treeUri) to 0)
         while (queue.isNotEmpty()) {
             val (docId, depth) = queue.removeFirst()
-            for (entry in listChildren(context, treeUri, docId)) {
-                if (entry.isDirectory) {
-                    if (depth < maxDepth) queue.add(entry.documentId to depth + 1)
-                } else {
-                    onFile(entry)
-                }
+            collectFiles(context, treeUri, docId, depth, maxDepth, queue, onFile)
+        }
+    }
+
+    private fun collectFiles(
+        context: Context,
+        treeUri: Uri,
+        docId: String,
+        depth: Int,
+        maxDepth: Int,
+        queue: ArrayDeque<Pair<String, Int>>,
+        onFile: (DocEntry) -> Unit,
+    ) {
+        for (entry in listChildren(context, treeUri, docId)) {
+            if (!entry.isDirectory) {
+                onFile(entry)
+            } else if (depth < maxDepth) {
+                queue.add(entry.documentId to depth + 1)
             }
         }
     }
@@ -143,6 +168,10 @@ object SafTree {
             .replace(Regex("\\s+"), " ")
             .trim()
             .trimEnd('.')
-            .take(120)
+            .take(MAX_FILENAME_LENGTH)
             .ifEmpty { "Unknown" }
+
+    private companion object {
+        const val MAX_FILENAME_LENGTH = 120
+    }
 }

@@ -121,7 +121,9 @@ fun ConversationScreen(
             groupTitle = groupTitle,
         )
     }
-    val title = produceState(initialValue = address.ifBlank { context.getString(R.string.conversation_title) }, address) {
+    val title = produceState(
+        initialValue = address.ifBlank { context.getString(R.string.conversation_title) },
+        address) {
         value = withContext(Dispatchers.IO) {
             CommunicateRepository.findContactName(context, address)
                 ?: address.ifBlank { context.getString(R.string.conversation_title) }
@@ -198,7 +200,7 @@ fun ConversationScreen(
                     draft = it
                     // Outbound typing (§4.1): throttled active/idle reports
                     // on the RCS 1:1 line only.
-                    scope.sendRcsTyping(context, line, isGroup, remoteId, address, it)
+                    scope.sendRcsTyping(line, isGroup, remoteId, address, it)
                 },
                 attachments = selectedAttachments,
                 // Media and documents both: every line's send path already accepts an arbitrary content type,
@@ -339,7 +341,12 @@ fun ConversationScreen(
                 message = stringResource(R.string.permission_sms_message),
                 modifier = Modifier.padding(padding),
             ) { permissionRevision ->
-                val messages = produceState<List<SmsMessage>?>(initialValue = null, threadId, roleRevision, permissionRevision, refresh) {
+                val messages = produceState<List<SmsMessage>?>(
+                    initialValue = null,
+                    threadId,
+                    roleRevision,
+                    permissionRevision,
+                    refresh) {
                     value = withContext(Dispatchers.IO) { CommunicateRepository.loadSmsMessagesMerged(context, thread) }
                 }
                 MessagesContent(padding, messages.value)

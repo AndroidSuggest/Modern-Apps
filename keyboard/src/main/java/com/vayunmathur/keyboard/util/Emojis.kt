@@ -66,21 +66,49 @@ class EmojiData(
         val name = ArrayList<String>()
         val word = ArrayList<String>()
         val keyword = ArrayList<String>()
-        for (entry in entries) {
-            val bucket = when {
-                entry.name.startsWith(q) -> name
-                entry.laterNameWords.any { it.startsWith(q) } -> word
-                entry.keywords.any { it.startsWith(q) } -> keyword
-                else -> continue
-            }
-            bucket.add(entry.char)
-            // The best bucket alone can fill the results; nothing after this can beat it.
-            if (name.size >= limit) break
-        }
+        collectMatches(q, limit, name, word, keyword)
         return (name + word + keyword).take(limit)
     }
 
+    /** Rank of an entry against [q]: name-start beats later-word-start beats keyword-only. */
+    private enum class MatchBucket { NAME, WORD, KEYWORD }
+
+    private fun bucketFor(entry: EmojiEntry, q: String): MatchBucket? = when {
+        entry.name.startsWith(q) -> MatchBucket.NAME
+        entry.laterNameWords.any { it.startsWith(q) } -> MatchBucket.WORD
+        entry.keywords.any { it.startsWith(q) } -> MatchBucket.KEYWORD
+        else -> null
+    }
+
+    private fun collectMatches(
+        q: String,
+        limit: Int,
+        name: MutableList<String>,
+        word: MutableList<String>,
+        keyword: MutableList<String>,
+    ) {
+        for (entry in entries) {
+            when (bucketFor(entry, q)) {
+                MatchBucket.NAME -> name.add(entry.char)
+                MatchBucket.WORD -> word.add(entry.char)
+                MatchBucket.KEYWORD -> keyword.add(entry.char)
+                null -> {}
+            }
+            // The best bucket alone can fill the results; nothing after this can beat it.
+            if (name.size >= limit) return
+        }
+    }
+
     companion object {
+        /** Minimum TSV columns for a valid emoji row (emoji, group, name). */
+        private const val MIN_PARTS = 3
+
+        /** TSV column indices: emoji, group, name, keywords. */
+        private const val EMOJI_INDEX = 0
+        private const val GROUP_INDEX = 1
+        private const val NAME_INDEX = 2
+        private const val KEYWORDS_INDEX = 3
+
         /**
          * The curated fallback set: what the keyboard showed before the generated asset
          * existed. Still what the screenshot previews render, since they have no service
@@ -170,18 +198,29 @@ class EmojiData(
         internal fun parse(lines: Sequence<String>): List<Pair<String, EmojiEntry>> {
             val parsed = ArrayList<Pair<String, EmojiEntry>>()
             for (raw in lines) {
-                val line = raw.trim()
-                if (line.isEmpty() || line.startsWith("#")) continue
-                val parts = line.split('\t')
-                if (parts.size < 3) continue
-                val keywords = parts.getOrNull(3)
-                    ?.split('|')
-                    ?.filter { it.isNotBlank() }
-                    .orEmpty()
-                parsed.add(parts[1] to EmojiEntry(parts[0], parts[2].lowercase(), keywords))
+                parseLine(raw)?.let { parsed.add(it) }
             }
             return parsed
         }
+
+        private fun parseLine(raw: String): Pair<String, EmojiEntry>? {
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("#")) return null
+            val parts = line.split('\t')
+            if (parts.size < MIN_PARTS) return null
+            val keywords = extractKeywords(parts)
+            return parts[GROUP_INDEX] to EmojiEntry(
+                parts[EMOJI_INDEX],
+                parts[NAME_INDEX].lowercase(),
+                keywords,
+            )
+        }
+
+        private fun extractKeywords(parts: List<String>): List<String> =
+            parts.getOrNull(KEYWORDS_INDEX)
+                ?.split('|')
+                ?.filter { it.isNotBlank() }
+                .orEmpty()
 
         internal fun build(parsed: List<Pair<String, EmojiEntry>>): EmojiData {
             // Grouped by tab rather than by Unicode group, so the two people groups land

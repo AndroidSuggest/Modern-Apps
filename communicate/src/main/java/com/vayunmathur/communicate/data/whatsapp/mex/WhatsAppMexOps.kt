@@ -34,10 +34,14 @@ import java.util.Base64 as JavaBase64
 object WhatsAppMexOps {
 
     private const val TAG = "WAMex"
+    private const val PREKEY_VERSION_BYTE = 0x05
+    private const val SHIFT_BYTE2 = 16
+    private const val SHIFT_BYTE1 = 8
 
     // -- GraphQL operation names (persist-ids JSON keys) ---------------------------------------
 
-    /** Seeded id 27462649126753603. `query QueryGroupInfo($group_input:XWA2GroupQueryInput!){xwa2_group_query_by_id…}`. */
+    /* * Seeded id 27462649126753603. `query
+    /* QueryGroupInfo($group_input:XWA2GroupQueryInput!){xwa2_group_query_by_id…}`.
     const val OP_GROUP_QUERY = "QueryGroupInfo"
     /** Uncaptured. `xwa2_group_query_participating_groups`. */
     const val OP_GROUP_PARTICIPATING = "QueryParticipatingGroups"
@@ -83,7 +87,10 @@ object WhatsAppMexOps {
         WhatsAppMex.call(context, OP_GROUP_PARTICIPATING, buildParticipatingGroupsVariables(userJid), "get")
 
     /** `xwa2_group_batch_query_by_id` — batch group metadata read. */
-    suspend fun groupBatchQueryById(context: Context, groupJids: List<String>, queryContext: String = "INTERACTIVE"): MexResult =
+    suspend fun groupBatchQueryById(
+        context: Context,
+        groupJids: List<String>,
+        queryContext: String = "INTERACTIVE"): MexResult =
         WhatsAppMex.call(context, OP_GROUP_BATCH, buildGroupBatchQueryVariables(groupJids, queryContext), "get")
 
     fun buildGroupQueryByIdVariables(groupJid: String, queryContext: String): String =
@@ -127,8 +134,15 @@ object WhatsAppMexOps {
     // ============================================================ Contacts (§8.3)
 
     /** `xwa2_contact_discovery` — resolve raw phone numbers to LIDs. [context] = SEARCH|QR_SCAN. */
-    suspend fun contactDiscovery(context: Context, rawPhoneNumbers: List<String>, discoveryContext: String = "SEARCH"): MexResult =
-        WhatsAppMex.call(context, OP_CONTACT_DISCOVERY, buildContactDiscoveryVariables(rawPhoneNumbers, discoveryContext), "get")
+    suspend fun contactDiscovery(
+        context: Context,
+        rawPhoneNumbers: List<String>,
+        discoveryContext: String = "SEARCH"): MexResult =
+        WhatsAppMex.call(
+            context,
+            OP_CONTACT_DISCOVERY,
+            buildContactDiscoveryVariables(rawPhoneNumbers, discoveryContext),
+            "get")
 
     /** `xwa2_primary_contacts_full_sync` — single/multi-page primary-contact sync. */
     suspend fun primaryContactsFullSync(
@@ -219,7 +233,11 @@ object WhatsAppMexOps {
         "set",
     )
 
-    fun buildUsernameCheckVariables(username: String, includeSuggestions: Boolean, source: String, sessionId: String?): String =
+    fun buildUsernameCheckVariables(
+        username: String,
+        includeSuggestions: Boolean,
+        source: String,
+        sessionId: String?): String =
         json.encodeToString(
             JsonObject.serializer(),
             buildJsonObject {
@@ -296,8 +314,15 @@ object WhatsAppMexOps {
      * `xwa2_presence_data_platform_get_online_or_last_status` — online/last-seen for LID users.
      * [lastActiveFilter] = LAST_MINUTE|LAST_HOUR|LAST_DAY (optional).
      */
-    suspend fun getOnlineOrLastStatus(context: Context, lidJids: List<String>, lastActiveFilter: String? = null): MexResult =
-        WhatsAppMex.call(context, OP_PRESENCE_ONLINE_OR_LAST, buildOnlineOrLastStatusVariables(lidJids, lastActiveFilter), "get")
+    suspend fun getOnlineOrLastStatus(
+        context: Context,
+        lidJids: List<String>,
+        lastActiveFilter: String? = null): MexResult =
+        WhatsAppMex.call(
+            context,
+            OP_PRESENCE_ONLINE_OR_LAST,
+            buildOnlineOrLastStatusVariables(lidJids, lastActiveFilter),
+            "get")
 
     fun buildOnlineOrLastStatusVariables(lidJids: List<String>, lastActiveFilter: String?): String =
         json.encodeToString(
@@ -315,7 +340,11 @@ object WhatsAppMexOps {
     // ============================================================ Newsletters (§8.4)
 
     /** `xwa2_newsletter` — read a channel. [keyType] = JID|INVITE; [viewRole] = SUBSCRIBER|GUEST|ADMIN. */
-    suspend fun newsletter(context: Context, key: String, keyType: String = "JID", viewRole: String? = null): MexResult =
+    suspend fun newsletter(
+        context: Context,
+        key: String,
+        keyType: String = "JID",
+        viewRole: String? = null): MexResult =
         WhatsAppMex.call(context, OP_NEWSLETTER, buildNewsletterVariables(key, keyType, viewRole), "get")
 
     /** `xwa2_newsletter_join_v2`. */
@@ -389,7 +418,9 @@ object WhatsAppMexOps {
             minted.add(id to kp.publicKey)
         }
         db.e2ePreKeyDao().insertAll(entities)
-        WhatsAppDiag.log(TAG, "setMessagingKeys: minted ${minted.size} one-time prekeys (ids ${maxId + 1}..${maxId + minted.size})")
+        WhatsAppDiag.log(
+            TAG,
+            "setMessagingKeys: minted ${minted.size} one-time prekeys (ids ${maxId + 1}..${maxId + minted.size})")
 
         val variables = buildSetMessagingKeysVariables(
             identity = identity,
@@ -415,7 +446,7 @@ object WhatsAppMexOps {
         JsonObject.serializer(),
         buildJsonObject {
             putJsonObject("input") {
-                put("type", b64(byteArrayOf(0x05)))
+                put("type", b64(byteArrayOf(PREKEY_VERSION_BYTE)))
                 put("identity", b64(identity))
                 putJsonObject("skey") {
                     put("id", b64(int3BE(skeyId)))
@@ -444,8 +475,8 @@ object WhatsAppMexOps {
 
     /** 3-byte big-endian encoding of a prekey/skey id (matches the classic wire encoding). */
     private fun int3BE(id: Int): ByteArray = byteArrayOf(
-        (id ushr 16).toByte(),
-        (id ushr 8).toByte(),
+        (id ushr SHIFT_BYTE2).toByte(),
+        (id ushr SHIFT_BYTE1).toByte(),
         id.toByte(),
     )
 }

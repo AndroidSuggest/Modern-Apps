@@ -34,6 +34,20 @@ object WhisperFeatures {
 
     /** Real-FFT bin count: `N_FFT / 2 + 1`. */
     const val N_BINS = N_FFT / 2 + 1
+    /** int16 full-scale peak for normalising PCM to [-1, 1]. */
+    private const val PCM_PEAK = 32768.0
+    /** Log floor below which mel energy is treated as silence. */
+    private const val LOG_FLOOR = 1e-10
+    /** Decades of dynamic range kept above the loudest bin. */
+    private const val DECADES_RANGE = 8.0
+    /** Offset/scale mapping the clamped log range onto roughly [-1, 1]. */
+    private const val LOG_OFFSET = 4.0
+    /** Hann window scale (0.5 - 0.5 * cos). */
+    private const val HANN_SCALE = 0.5
+    /** Two pi, for the Hann window phase. */
+    private const val TWO_PI = 2.0 * PI
+    /** Slaney normalisation numerator (unit area per filter). */
+    private const val NORM_NUM = 2.0
 
     /**
      * `[80, 3000]` row-major (`mel * N_FRAMES + frame`) log-mel for [pcm16k], 16 kHz mono.
@@ -42,7 +56,7 @@ object WhisperFeatures {
     fun logMel(pcm16k: ShortArray): FloatArray {
         val samples = DoubleArray(N_SAMPLES)
         val count = min(pcm16k.size, N_SAMPLES)
-        for (i in 0 until count) samples[i] = pcm16k[i] / 32768.0
+        for (i in 0 until count) samples[i] = pcm16k[i] / PCM_PEAK
         return logMel(samples)
     }
 
@@ -82,16 +96,16 @@ object WhisperFeatures {
         }
 
         // log10 with a floor, then clamp to within 8 decades of the loudest bin and rescale
-        // to roughly [-1, 1] — the exact reference post-processing.
+        // to roughly [-1, 1] - the exact reference post-processing.
         var maxLog = -Double.MAX_VALUE
         for (i in mel.indices) {
-            val v = log10(max(mel[i], 1e-10))
+            val v = log10(max(mel[i], LOG_FLOOR))
             mel[i] = v
             if (v > maxLog) maxLog = v
         }
-        val floor = maxLog - 8.0
+        val floor = maxLog - DECADES_RANGE
         val out = FloatArray(mel.size)
-        for (i in mel.indices) out[i] = ((max(mel[i], floor) + 4.0) / 4.0).toFloat()
+        for (i in mel.indices) out[i] = ((max(mel[i], floor) + LOG_OFFSET) / LOG_OFFSET).toFloat()
         return out
     }
 
@@ -108,25 +122,30 @@ object WhisperFeatures {
 
     /** Periodic (not symmetric) Hann, i.e. `numpy.hanning(n + 1)[:-1]`. */
     private fun hannPeriodic(n: Int): DoubleArray =
-        DoubleArray(n) { 0.5 - 0.5 * cos(2.0 * PI * it / n) }
+        DoubleArray(n) { HANN_SCALE - HANN_SCALE * cos(TWO_PI * it / n) }
 
     // ---- slaney mel filterbank ----
-
     private const val MEL_MIN_LOG_HZ = 1000.0
     private const val MEL_MIN_LOG_MEL = 15.0
-
+    /** Slaney log denominator: mel above 15 uses natural-log scaling. */
+    private const val MEL_LOG_BASE = 6.4
+    /** Slaney log slope factor. */
+    private const val MEL_LOG_SLOPE = 27.0
+    /** Linear-region slope numerator (3 Hz per 200 mel below the log knee). */
+    private const val MEL_LINEAR_NUM = 3.0
+    /** Linear-region scale denominator. */
+    private const val MEL_LINEAR_DEN = 200.0
     private fun hzToMel(hz: Double): Double {
         if (hz >= MEL_MIN_LOG_HZ) {
-            return MEL_MIN_LOG_MEL + ln(hz / MEL_MIN_LOG_HZ) * (27.0 / ln(6.4))
+            return MEL_MIN_LOG_MEL + ln(hz / MEL_MIN_LOG_HZ) * (MEL_LOG_SLOPE / ln(MEL_LOG_BASE))
         }
-        return 3.0 * hz / 200.0
+        return MEL_LINEAR_NUM * hz / MEL_LINEAR_DEN
     }
-
     private fun melToHz(mel: Double): Double {
         if (mel >= MEL_MIN_LOG_MEL) {
-            return MEL_MIN_LOG_HZ * exp((ln(6.4) / 27.0) * (mel - MEL_MIN_LOG_MEL))
+            return MEL_MIN_LOG_HZ * exp((ln(MEL_LOG_BASE) / MEL_LOG_SLOPE) * (mel - MEL_MIN_LOG_MEL))
         }
-        return 200.0 * mel / 3.0
+        return MEL_LINEAR_DEN * mel / MEL_LINEAR_NUM
     }
 
     /**
@@ -151,7 +170,7 @@ object WhisperFeatures {
             val center = edges[m + 1]
             val right = edges[m + 2]
             // Slaney normalisation: unit area per filter rather than unit peak.
-            val enorm = 2.0 / (right - left)
+            val enorm = NORM_NUM / (right - left)
             for (b in 0 until N_BINS) {
                 val f = binHz[b]
                 val up = (f - left) / (center - left)

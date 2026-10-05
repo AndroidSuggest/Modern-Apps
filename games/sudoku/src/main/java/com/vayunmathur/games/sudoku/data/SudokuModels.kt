@@ -12,9 +12,9 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 enum class BoardSize(val side: Int, val boxRows: Int, val boxCols: Int) {
-    SIX(6, 2, 3),
-    NINE(9, 3, 3),
-    TWELVE(12, 3, 4);
+    SIX(side = 6, boxRows = 2, boxCols = 3),
+    NINE(side = 9, boxRows = 3, boxCols = 3),
+    TWELVE(side = 12, boxRows = 3, boxCols = 4);
 
     val cellCount: Int get() = side * side
 
@@ -34,7 +34,11 @@ enum class BoardSize(val side: Int, val boxRows: Int, val boxCols: Int) {
  * entered digit and the marks readable. The solver and generator only ever deal in the numbers.
  */
 fun sudokuSymbol(digit: Int): String =
-    if (digit <= 9) digit.toString() else ('A' + digit - 10).toString()
+    if (digit <= MAX_NUMERIC_DIGIT) digit.toString()
+    else ('A' + digit - LETTER_BASE_DIGIT).toString()
+
+private const val MAX_NUMERIC_DIGIT = 9
+private const val LETTER_BASE_DIGIT = 10
 
 /**
  * How many cells the generator leaves filled in.
@@ -47,10 +51,10 @@ fun sudokuSymbol(digit: Int): String =
  */
 @Serializable
 enum class Difficulty(val clueFraction: Double) {
-    EASY(0.60),
-    MEDIUM(0.46),
-    HARD(0.36),
-    EXPERT(0.28);
+    EASY(clueFraction = 0.60),
+    MEDIUM(clueFraction = 0.46),
+    HARD(clueFraction = 0.36),
+    EXPERT(clueFraction = 0.28);
 
     /** Target number of givens for [size]. Never below the point where digging is pointless. */
     fun targetClues(size: BoardSize): Int =

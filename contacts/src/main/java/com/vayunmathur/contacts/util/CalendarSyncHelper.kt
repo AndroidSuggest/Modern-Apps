@@ -12,7 +12,10 @@ import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.data.CDKEvent
 import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.data.hasYear
-import kotlinx.datetime.*
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atTime
+import kotlinx.datetime.toInstant
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.vayunmathur.contacts.data.Event as ContactEvent
@@ -21,6 +24,11 @@ object CalendarSyncHelper {
     private const val ACCOUNT_NAME = "Contacts"
     private const val ACCOUNT_TYPE = "com.vayunmathur.contacts"
     private const val CALENDAR_NAME = "Contacts"
+    private const val CALENDAR_COLOR_ARGB = 0xFF4285F4
+    private const val MILLIS_PER_DAY = 24 * 60 * 60 * 1000L
+    private const val NO_YEAR_ANCHOR_YEAR = 2000
+    private const val MIDNIGHT_HOUR = 0
+    private const val MIDNIGHT_MINUTE = 0
     
     private val syncMutex = Mutex()
 
@@ -41,98 +49,178 @@ object CalendarSyncHelper {
         }
     }
 
+    // Broad catch is deliberate: calendar providers vary by OEM and any
+    // failure here must not block calendar creation.
+    @Suppress("TooGenericExceptionCaught")
     fun getOrCreateCalendarId(context: Context): Long {
         ensureAccountExists(context)
-        
-        // Cleanup old local calendar if it exists to prevent duplicates from migration
-        try {
-            val oldUri = CalendarContract.Calendars.CONTENT_URI.asSyncAdapter(ACCOUNT_NAME, CalendarContract.ACCOUNT_TYPE_LOCAL)
-            context.contentResolver.delete(oldUri, null, null)
-        } catch (_: Exception) {}
+        deleteLegacyLocalCalendar(context)
 
-        val projection = arrayOf(CalendarContract.Calendars._ID)
-        val selection = "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ?"
-        val selectionArgs = arrayOf(ACCOUNT_NAME, ACCOUNT_TYPE)
-        
+        val calendarIds = queryCalendarIds(context)
+        val syncAdapterUri =
+            CalendarContract.Calendars.CONTENT_URI.asSyncAdapter(ACCOUNT_NAME, ACCOUNT_TYPE)
+
+        if (calendarIds.isNotEmpty()) {
+            calendarIds.drop(1).forEach { extraId ->
+                deleteCalendarById(context, syncAdapterUri, extraId)
+            }
+            return calendarIds[0]
+        }
+
+        return insertCalendar(context, syncAdapterUri)
+    }
+
+    // Cleanup old local calendar if it exists to prevent duplicates from migration.
+    // Broad catch is deliberate: calendar providers vary by OEM and any
+    // failure here must not block calendar creation.
+    @Suppress("TooGenericExceptionCaught")
+    private fun deleteLegacyLocalCalendar(context: Context) {
+        try {
+            val oldUri = CalendarContract.Calendars.CONTENT_URI.asSyncAdapter(
+                ACCOUNT_NAME,
+                CalendarContract.ACCOUNT_TYPE_LOCAL
+            )
+            context.contentResolver.delete(oldUri, null, null)
+        } catch (_: Exception) {
+        }
+    }
+
+    // Broad catch is deliberate: calendar providers vary by OEM and any
+    // failure here must not block calendar creation.
+    @Suppress("TooGenericExceptionCaught")
+    private fun queryCalendarIds(context: Context): List<Long> {
         val calendarIds = mutableListOf<Long>()
         try {
             context.contentResolver.query(
                 CalendarContract.Calendars.CONTENT_URI,
-                projection,
-                selection,
-                selectionArgs,
+                arrayOf(CalendarContract.Calendars._ID),
+                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? " +
+                    "AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ?",
+                arrayOf(ACCOUNT_NAME, ACCOUNT_TYPE),
                 null
             )?.use { cursor ->
                 while (cursor.moveToNext()) {
                     calendarIds.add(cursor.getLong(0))
                 }
             }
+        } catch (e: android.database.SQLException) {
+            Log.e("CalendarSyncHelper", "Error querying calendar", e)
+        } catch (e: SecurityException) {
+            Log.e("CalendarSyncHelper", "Error querying calendar", e)
+        } catch (e: IllegalArgumentException) {
+            Log.e("CalendarSyncHelper", "Error querying calendar", e)
         } catch (e: Exception) {
             Log.e("CalendarSyncHelper", "Error querying calendar", e)
         }
+        return calendarIds
+    }
 
-        val syncAdapterUri = CalendarContract.Calendars.CONTENT_URI.asSyncAdapter(ACCOUNT_NAME, ACCOUNT_TYPE)
-
-        if (calendarIds.isNotEmpty()) {
-            calendarIds.drop(1).forEach { extraId ->
-                try {
-                    context.contentResolver.delete(syncAdapterUri, "${CalendarContract.Calendars._ID} = ?", arrayOf(extraId.toString()))
-                } catch (_: Exception) {}
-            }
-            return calendarIds[0]
-        }
-
+    // Broad catch is deliberate: calendar providers vary by OEM and any
+    // failure here must not block calendar creation.
+    @Suppress("TooGenericExceptionCaught")
+    private fun insertCalendar(context: Context, syncAdapterUri: Uri): Long {
         val values = ContentValues().apply {
             put(CalendarContract.Calendars.ACCOUNT_NAME, ACCOUNT_NAME)
             put(CalendarContract.Calendars.ACCOUNT_TYPE, ACCOUNT_TYPE)
             put(CalendarContract.Calendars.OWNER_ACCOUNT, ACCOUNT_NAME)
-            put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, context.getString(R.string.contacts_calendar_name))
+            put(
+                CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+                context.getString(R.string.contacts_calendar_name)
+            )
             put(CalendarContract.Calendars.NAME, CALENDAR_NAME)
-            put(CalendarContract.Calendars.CALENDAR_COLOR, 0xFF4285F4.toInt())
+            put(CalendarContract.Calendars.CALENDAR_COLOR, CALENDAR_COLOR_ARGB.toInt())
             put(CalendarContract.Calendars.VISIBLE, 1)
-            put(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.CAL_ACCESS_READ)
+            put(
+                CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,
+                CalendarContract.Calendars.CAL_ACCESS_READ
+            )
             put(CalendarContract.Calendars.SYNC_EVENTS, 1)
-            put(CalendarContract.Calendars.CALENDAR_TIME_ZONE, TimeZone.currentSystemDefault().id)
+            put(
+                CalendarContract.Calendars.CALENDAR_TIME_ZONE,
+                TimeZone.currentSystemDefault().id
+            )
         }
 
         return try {
             val newUri = context.contentResolver.insert(syncAdapterUri, values)
             newUri?.lastPathSegment?.toLong() ?: -1L
-        } catch (e: Exception) {
+        } catch (e: android.content.OperationApplicationException) {
+            Log.e("CalendarSyncHelper", "Error creating calendar", e)
+            -1L
+        } catch (e: android.os.RemoteException) {
+            Log.e("CalendarSyncHelper", "Error creating calendar", e)
+            -1L
+        } catch (e: SecurityException) {
+            Log.e("CalendarSyncHelper", "Error creating calendar", e)
+            -1L
+        } catch (e: IllegalArgumentException) {
             Log.e("CalendarSyncHelper", "Error creating calendar", e)
             -1L
         }
     }
 
+    // Broad catch is deliberate: calendar providers vary by OEM and any
+    // failure here must not block calendar creation.
+    @Suppress("TooGenericExceptionCaught")
+    private fun deleteCalendarById(context: Context, syncAdapterUri: Uri, calendarId: Long) {
+        try {
+            context.contentResolver.delete(
+                syncAdapterUri,
+                "${CalendarContract.Calendars._ID} = ?",
+                arrayOf(calendarId.toString())
+            )
+        } catch (_: Exception) {
+        }
+    }
+
+    // Broad catch is deliberate: calendar providers vary by OEM and any
+    // failure here must not block calendar creation.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun syncContact(context: Context, contact: Contact) {
         syncMutex.withLock {
             val calendarId = getOrCreateCalendarId(context)
             if (calendarId == -1L) return
 
+            val eventUri =
+                CalendarContract.Events.CONTENT_URI.asSyncAdapter(ACCOUNT_NAME, ACCOUNT_TYPE)
+
             val ops = ArrayList<ContentProviderOperation>()
-            
-            val eventUri = CalendarContract.Events.CONTENT_URI.asSyncAdapter(ACCOUNT_NAME, ACCOUNT_TYPE)
-                
-            ops.add(ContentProviderOperation.newDelete(eventUri)
-                .withSelection("${CalendarContract.Events.CALENDAR_ID} = ? AND ${CalendarContract.Events.SYNC_DATA1} = ?", 
-                    arrayOf(calendarId.toString(), contact.id.toString()))
-                .build())
+            ops.add(
+                ContentProviderOperation.newDelete(eventUri)
+                    .withSelection(
+                        "${CalendarContract.Events.CALENDAR_ID} = ? " +
+                            "AND ${CalendarContract.Events.SYNC_DATA1} = ?",
+                        arrayOf(calendarId.toString(), contact.id.toString())
+                    )
+                    .build()
+            )
 
             contact.details.dates.forEach { dateEvent ->
-                if (dateEvent.type == CDKEvent.TYPE_BIRTHDAY || dateEvent.type == CDKEvent.TYPE_ANNIVERSARY) {
-                    ops.addAll(buildAddEventOperations(context, calendarId, contact, dateEvent, eventUri))
+                if (isCalendarDateType(dateEvent.type)) {
+                    ops.addAll(
+                        buildAddEventOperations(context, calendarId, contact, dateEvent, eventUri)
+                    )
                 }
             }
-            
+
             try {
                 if (ops.isNotEmpty()) {
                     context.contentResolver.applyBatch(CalendarContract.AUTHORITY, ops)
                 }
-            } catch (e: Exception) {
+            } catch (e: android.content.OperationApplicationException) {
+                Log.e("CalendarSyncHelper", "Error applying batch sync for contact", e)
+            } catch (e: android.os.RemoteException) {
+                Log.e("CalendarSyncHelper", "Error applying batch sync for contact", e)
+            } catch (e: SecurityException) {
+                Log.e("CalendarSyncHelper", "Error applying batch sync for contact", e)
+            } catch (e: IllegalArgumentException) {
                 Log.e("CalendarSyncHelper", "Error applying batch sync for contact", e)
             }
         }
     }
+
+    private fun isCalendarDateType(type: Int): Boolean =
+        type == CDKEvent.TYPE_BIRTHDAY || type == CDKEvent.TYPE_ANNIVERSARY
 
     private fun buildAddEventOperations(
         context: Context,
@@ -163,7 +251,7 @@ object CalendarSyncHelper {
         // NOTE: a yearly RRULE starting Feb 29 fires only on leap years on most
         // providers — accepted as correct rather than shifting to Feb 28, which
         // would show the birthday on the wrong day in leap years.
-        val anchorYear = if (hasYear) originalDate.year else 2000
+        val anchorYear = if (hasYear) originalDate.year else NO_YEAR_ANCHOR_YEAR
         val anchorDate = try {
             LocalDate(anchorYear, originalDate.month, originalDate.day)
         } catch (_: IllegalArgumentException) {
@@ -172,15 +260,16 @@ object CalendarSyncHelper {
 
         // All-day events must be anchored at local midnight in the device timezone.
         // Using 00:00 UTC shifts the displayed day for negative-offset zones (US).
-        val startMillis =
-            anchorDate.atTime(0, 0).toInstant(deviceTimeZone).toEpochMilliseconds()
+        val startMillis = anchorDate.atTime(MIDNIGHT_HOUR, MIDNIGHT_MINUTE)
+            .toInstant(deviceTimeZone)
+            .toEpochMilliseconds()
 
         return listOf(
             ContentProviderOperation.newInsert(eventUri)
                 .withValue(CalendarContract.Events.CALENDAR_ID, calendarId)
                 .withValue(CalendarContract.Events.TITLE, title)
                 .withValue(CalendarContract.Events.DTSTART, startMillis)
-                .withValue(CalendarContract.Events.DTEND, startMillis + 24 * 60 * 60 * 1000)
+                .withValue(CalendarContract.Events.DTEND, startMillis + MILLIS_PER_DAY)
                 .withValue(CalendarContract.Events.ALL_DAY, 1)
                 .withValue(CalendarContract.Events.EVENT_TIMEZONE, deviceTimeZone.id)
                 .withValue(CalendarContract.Events.RRULE, "FREQ=YEARLY")
@@ -189,51 +278,94 @@ object CalendarSyncHelper {
         )
     }
     
+    // Broad catch is deliberate: calendar providers vary by OEM and any
+    // failure here must not block calendar creation.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun syncAll(context: Context) {
         syncMutex.withLock {
             val calendarId = getOrCreateCalendarId(context)
             if (calendarId == -1L) return
-            
-            val eventUri = CalendarContract.Events.CONTENT_URI.asSyncAdapter(ACCOUNT_NAME, ACCOUNT_TYPE)
+
+            val eventUri =
+                CalendarContract.Events.CONTENT_URI.asSyncAdapter(ACCOUNT_NAME, ACCOUNT_TYPE)
 
             try {
-                context.contentResolver.delete(eventUri, "${CalendarContract.Events.CALENDAR_ID} = ?", arrayOf(calendarId.toString()))
-            } catch (e: Exception) {
+                context.contentResolver.delete(
+                    eventUri,
+                    "${CalendarContract.Events.CALENDAR_ID} = ?",
+                    arrayOf(calendarId.toString())
+                )
+            } catch (e: android.database.SQLException) {
+                Log.e("CalendarSyncHelper", "Error clearing calendar", e)
+            } catch (e: SecurityException) {
+                Log.e("CalendarSyncHelper", "Error clearing calendar", e)
+            } catch (e: IllegalArgumentException) {
                 Log.e("CalendarSyncHelper", "Error clearing calendar", e)
             }
-            
+
             val contacts = Contact.getAllContacts(context)
             for (contact in contacts) {
-                val ops = ArrayList<ContentProviderOperation>()
-                contact.details.dates.forEach { dateEvent ->
-                    if (dateEvent.type == CDKEvent.TYPE_BIRTHDAY || dateEvent.type == CDKEvent.TYPE_ANNIVERSARY) {
-                        ops.addAll(buildAddEventOperations(context, calendarId, contact, dateEvent, eventUri))
-                    }
-                }
-                if (ops.isNotEmpty()) {
-                    try {
-                        context.contentResolver.applyBatch(CalendarContract.AUTHORITY, ops)
-                    } catch (e: Exception) {
-                        Log.e("CalendarSyncHelper", "Error in syncAll batch", e)
-                    }
-                }
+                syncSingleContactInAll(context, calendarId, contact, eventUri)
             }
         }
     }
+
+    // Broad catch is deliberate: calendar providers vary by OEM and any
+    // failure here must not block calendar creation.
+    @Suppress("TooGenericExceptionCaught")
+    private fun syncSingleContactInAll(
+        context: Context,
+        calendarId: Long,
+        contact: Contact,
+        eventUri: Uri,
+    ) {
+        val ops = ArrayList<ContentProviderOperation>()
+        contact.details.dates.forEach { dateEvent ->
+            if (isCalendarDateType(dateEvent.type)) {
+                ops.addAll(
+                    buildAddEventOperations(context, calendarId, contact, dateEvent, eventUri)
+                )
+            }
+        }
+        if (ops.isEmpty()) return
+        try {
+            context.contentResolver.applyBatch(CalendarContract.AUTHORITY, ops)
+        } catch (e: android.content.OperationApplicationException) {
+            Log.e("CalendarSyncHelper", "Error in syncAll batch", e)
+        } catch (e: android.os.RemoteException) {
+            Log.e("CalendarSyncHelper", "Error in syncAll batch", e)
+        } catch (e: SecurityException) {
+            Log.e("CalendarSyncHelper", "Error in syncAll batch", e)
+        } catch (e: IllegalArgumentException) {
+            Log.e("CalendarSyncHelper", "Error in syncAll batch", e)
+        }
+    }
     
+    // Broad catch is deliberate: calendar providers vary by OEM and any
+    // failure here must not block calendar creation.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun removeCalendar(context: Context) {
         syncMutex.withLock {
-            val uri = CalendarContract.Calendars.CONTENT_URI.asSyncAdapter(ACCOUNT_NAME, ACCOUNT_TYPE)
+            val uri =
+                CalendarContract.Calendars.CONTENT_URI.asSyncAdapter(ACCOUNT_NAME, ACCOUNT_TYPE)
             try {
                 context.contentResolver.delete(uri, null, null)
-            } catch (e: Exception) {
+            } catch (e: android.database.SQLException) {
+                Log.e("CalendarSyncHelper", "Error removing calendar", e)
+            } catch (e: SecurityException) {
+                Log.e("CalendarSyncHelper", "Error removing calendar", e)
+            } catch (e: IllegalArgumentException) {
                 Log.e("CalendarSyncHelper", "Error removing calendar", e)
             }
-            
+
             try {
-                val oldUri = CalendarContract.Calendars.CONTENT_URI.asSyncAdapter(ACCOUNT_NAME, CalendarContract.ACCOUNT_TYPE_LOCAL)
+                val oldUri = CalendarContract.Calendars.CONTENT_URI.asSyncAdapter(
+                    ACCOUNT_NAME,
+                    CalendarContract.ACCOUNT_TYPE_LOCAL
+                )
                 context.contentResolver.delete(oldUri, null, null)
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
         }
     }
 }

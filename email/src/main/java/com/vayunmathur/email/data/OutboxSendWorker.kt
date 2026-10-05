@@ -18,6 +18,7 @@ import com.vayunmathur.email.platform.loginUser
 import com.vayunmathur.email.platform.resolveAuth
 import com.vayunmathur.email.platform.smtpServer
 import com.vayunmathur.email.ui.composer.InlineAttachment
+import java.io.IOException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -30,69 +31,88 @@ class OutboxSendWorker(
 
     override suspend fun doWork(): Result {
         val repository = EmailRepository.get(applicationContext)
-        val dao = repository.getDatabase().emailDao()
-        val pending = dao.getOutbox()
+        val pending = repository.getOutbox()
 
         if (pending.isEmpty()) {
             Log.d(TAG, "Outbox empty; nothing to flush")
             return Result.success()
         }
 
-        val accounts = dao.getAccounts().associateBy { it.email }
+        val accounts = repository.getAccounts().associateBy { it.email }
         val manager = EmailManager()
-        var anyFailed = false
-        var soonestFutureMs = Long.MAX_VALUE
         val now = System.currentTimeMillis()
 
+        var anyFailed = false
+        var soonestFutureMs = Long.MAX_VALUE
         for (entry in pending) {
-            if (entry.scheduledAt > now) {
-                soonestFutureMs = minOf(soonestFutureMs, entry.scheduledAt - now)
-                continue
+            val outcome = processEntry(repository, manager, accounts, entry, now)
+            anyFailed = anyFailed || outcome.failed
+            soonestFutureMs = minOf(soonestFutureMs, outcome.deferMs)
+        }
+
+        maybeReschedule(repository, anyFailed, soonestFutureMs)
+        return Result.success()
+    }
+
+    private data class EntryOutcome(val failed: Boolean, val deferMs: Long)
+
+    private suspend fun processEntry(
+        repository: EmailRepository,
+        manager: EmailManager,
+        accounts: Map<String, EmailAccount>,
+        entry: OutboxEntry,
+        now: Long,
+    ): EntryOutcome {
+        if (entry.scheduledAt > now) {
+            return EntryOutcome(false, entry.scheduledAt - now)
+        }
+        val account = accounts[entry.accountEmail]
+        if (account == null) {
+            repository.updateOutboxAttempt(
+                id = entry.id,
+                error = "No account ${entry.accountEmail} found locally",
+                attempts = entry.attemptCount + 1,
+                at = now,
+            )
+            return EntryOutcome(true, Long.MAX_VALUE)
+        }
+        val uris = decodePaths(entry.attachmentLocalPaths).map { Uri.fromFile(File(it)) }
+        val inline = decodeInline(entry.inlineImageJson).map {
+            InlineAttachment(cid = it.cid, uri = Uri.fromFile(File(it.path)), mimeType = it.mime, fileName = it.name)
+        }
+        return when (val sendResult = trySend(manager, account, entry, uris, inline)) {
+            is SendResult.Success -> {
+                Log.d(TAG, "Sent outbox entry #${entry.id} to ${entry.to}")
+                attachmentDirFor(applicationContext, entry.id).deleteRecursively()
+                repository.deleteOutboxEntry(entry)
+                EntryOutcome(false, Long.MAX_VALUE)
             }
-            val account = accounts[entry.accountEmail]
-            if (account == null) {
-                anyFailed = true
-                dao.updateOutboxAttempt(
+            is SendResult.Failure -> {
+                Log.w(TAG, "Failed to send outbox entry #${entry.id}: ${sendResult.message}", sendResult.cause)
+                repository.updateOutboxAttempt(
                     id = entry.id,
-                    error = "No account ${entry.accountEmail} found locally",
+                    error = sendResult.message,
                     attempts = entry.attemptCount + 1,
                     at = now,
                 )
-                continue
-            }
-            val uris = decodePaths(entry.attachmentLocalPaths).map { Uri.fromFile(File(it)) }
-            val inline = decodeInline(entry.inlineImageJson).map {
-                InlineAttachment(cid = it.cid, uri = Uri.fromFile(File(it.path)), mimeType = it.mime, fileName = it.name)
-            }
-            when (val sendResult = trySend(manager, account, entry, uris, inline)) {
-                is SendResult.Success -> {
-                    Log.d(TAG, "Sent outbox entry #${entry.id} to ${entry.to}")
-                    attachmentDirFor(applicationContext, entry.id).deleteRecursively()
-                    dao.deleteOutboxEntry(entry)
-                }
-                is SendResult.Failure -> {
-                    anyFailed = true
-                    Log.w(TAG, "Failed to send outbox entry #${entry.id}: ${sendResult.message}", sendResult.cause)
-                    dao.updateOutboxAttempt(
-                        id = entry.id,
-                        error = sendResult.message,
-                        attempts = entry.attemptCount + 1,
-                        at = now,
-                    )
-                }
+                EntryOutcome(true, Long.MAX_VALUE)
             }
         }
+    }
 
-        val retryDue = anyFailed && dao.getOutboxCount() > 0
-        if (retryDue || soonestFutureMs != Long.MAX_VALUE) {
-            val delayMs = when {
-                soonestFutureMs == Long.MAX_VALUE -> RETRY_INTERVAL_MINUTES * 60_000L
-                retryDue -> minOf(soonestFutureMs, RETRY_INTERVAL_MINUTES * 60_000L)
-                else -> soonestFutureMs
-            }.coerceAtLeast(1_000L)
-            scheduleNext(applicationContext, delay = delayMs, unit = TimeUnit.MILLISECONDS)
-        }
-        return Result.success()
+    private suspend fun maybeReschedule(
+        repository: EmailRepository,
+        anyFailed: Boolean,
+        soonestFutureMs: Long,
+    ) {
+        val retryDue = anyFailed && repository.getOutboxCount() > 0
+        if (!retryDue && soonestFutureMs == Long.MAX_VALUE) return
+        val delayMs = if (!retryDue) {
+            soonestFutureMs
+        } else {
+            minOf(soonestFutureMs, RETRY_INTERVAL_MINUTES * 60_000L)
+        }.coerceAtLeast(MIN_RESCHEDULE_DELAY_MS)
+        scheduleNext(applicationContext, delay = delayMs, unit = TimeUnit.MILLISECONDS)
     }
 
     private sealed class SendResult {
@@ -139,6 +159,7 @@ class OutboxSendWorker(
         private const val TAG = "OutboxSender"
         const val WORK_NAME = "OutboxSendWorker"
         const val RETRY_INTERVAL_MINUTES = 5L
+        internal const val MIN_RESCHEDULE_DELAY_MS = 1_000L
 
         private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -204,7 +225,7 @@ object OutboxManager {
         scheduledAt: Long = 0,
         isHtml: Boolean = false,
     ): OutboxEntry {
-        val dao = EmailRepository.get(context).getDatabase().emailDao()
+        val dao = EmailRepository.get(context).getDatabase().outboxDao()
         val base = OutboxEntry(
             accountEmail = accountEmail,
             to = to,
@@ -232,7 +253,8 @@ object OutboxManager {
         if (scheduledAt > System.currentTimeMillis()) {
             OutboxSendWorker.scheduleNext(
                 context,
-                delay = (scheduledAt - System.currentTimeMillis()).coerceAtLeast(1_000L),
+                delay = (scheduledAt - System.currentTimeMillis())
+                    .coerceAtLeast(OutboxSendWorker.MIN_RESCHEDULE_DELAY_MS),
                 unit = java.util.concurrent.TimeUnit.MILLISECONDS,
             )
         } else {
@@ -242,7 +264,7 @@ object OutboxManager {
     }
 
     suspend fun delete(context: Context, entry: OutboxEntry) {
-        val dao = EmailRepository.get(context).getDatabase().emailDao()
+        val dao = EmailRepository.get(context).getDatabase().outboxDao()
         OutboxSendWorker.attachmentDirFor(context, entry.id).deleteRecursively()
         dao.deleteOutboxEntry(entry)
         if (dao.getOutboxCount() == 0) {
@@ -266,7 +288,7 @@ object OutboxManager {
                     outFile.outputStream().use { output -> input.copyTo(output) }
                 } ?: copyFromFilePath(uri, outFile)
                 if (outFile.exists() && outFile.length() > 0) outFile.absolutePath else null
-            } catch (e: Exception) {
+            } catch (e: IOException) {
                 Log.w("OutboxManager", "Could not copy attachment $uri", e)
                 null
             }
@@ -293,9 +315,14 @@ object OutboxManager {
                     copyFromFilePath(att.uri, outFile)
                 }
                 if (outFile.exists() && outFile.length() > 0) {
-                    OutboxSendWorker.Companion.InlineJsonEntry(cid = att.cid, path = outFile.absolutePath, mime = att.mimeType, name = att.fileName)
+                    OutboxSendWorker.Companion.InlineJsonEntry(
+                        cid = att.cid,
+                        path = outFile.absolutePath,
+                        mime = att.mimeType,
+                        name = att.fileName,
+                    )
                 } else null
-            } catch (e: Exception) {
+            } catch (e: IOException) {
                 Log.w("OutboxManager", "Could not copy inline $att", e)
                 null
             }

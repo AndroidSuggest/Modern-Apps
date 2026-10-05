@@ -47,73 +47,103 @@ class PhaseSlope(
 
         // The wrap is unambiguous only while |f - f_target| < fs / (2D); half of that is the
         // guard, because a larger implied correction means the harmonic was misassigned.
-        val unwrapGuard = sampleRate / (4.0 * separation)
-        val scale = sampleRate / (2.0 * PI * separation)
         val maxHarmonics = minOf(MAX_HARMONICS, floor(0.40 * sampleRate / coarseHz).toInt())
         if (maxHarmonics < 1) return null
 
-        val partials = ArrayList<Partial>(maxHarmonics)
-        for (n in 1..maxHarmonics) {
-            val target = n * coarseHz
-            if (target >= 0.45 * sampleRate) break
-
-            var a1r = 0.0
-            var a1i = 0.0
-            var a2r = 0.0
-            var a2i = 0.0
-            val step = -2.0 * PI * target / sampleRate
-            val kc = cos(step)
-            val ks = sin(step)
-            var cr = 1.0
-            var ci = 0.0
-            for (m in 0 until subWindow) {
-                val w = window[m]
-                val s1 = w * x[offset + m]
-                val s2 = w * x[offset + m + separation]
-                a1r += s1 * cr
-                a1i += s1 * ci
-                a2r += s2 * cr
-                a2i += s2 * ci
-                val nr = cr * kc - ci * ks
-                ci = cr * ks + ci * kc
-                cr = nr
-                // The incremental rotator drifts off the unit circle over thousands of steps;
-                // renormalising periodically is cheaper than a trig call per sample.
-                if (m and 0xFF == 0xFF) {
-                    val norm = hypot(cr, ci)
-                    if (norm > 0.0) {
-                        cr /= norm
-                        ci /= norm
-                    }
-                }
-            }
-
-            val magnitude = sqrt(hypot(a1r, a1i) * hypot(a2r, a2i))
-            if (magnitude <= 0.0) continue
-            // The second window must be de-rotated by the phase the *target* frequency itself
-            // advances over D samples. Without this the product carries arg(2*pi*f*D/fs) rather
-            // than the offset from the target, and the estimate is wrong by whole wraps unless
-            // f_t*D/fs happens to land on an integer. (TUNER_SPEC A.3 states the formula without
-            // this term; taking it literally puts the fast band tens of cents out.)
-            val referenceAngle = -2.0 * PI * target * separation / sampleRate
-            val rr = cos(referenceAngle)
-            val ri = sin(referenceAngle)
-            val d2r = a2r * rr - a2i * ri
-            val d2i = a2r * ri + a2i * rr
-            // arg(X2 * conj(X1)), already wrapped to +/-pi by atan2.
-            val crossR = d2r * a1r + d2i * a1i
-            val crossI = d2i * a1r - d2r * a1i
-            val deltaPhi = atan2(crossI, crossR)
-            val correction = deltaPhi * scale
-            if (abs(correction) > unwrapGuard) continue
-            partials += Partial(n, target + correction, magnitude)
-        }
+        val partials = collectPartials(x, offset, coarseHz, maxHarmonics)
 
         if (partials.isEmpty()) return null
         val strongest = partials.maxOf { it.magnitude }
         val usable = partials.filter { it.magnitude >= HARMONIC_FLOOR * strongest }
         if (usable.isEmpty()) return null
         return fit(usable)
+    }
+
+    private fun collectPartials(
+        x: DoubleArray,
+        offset: Int,
+        coarseHz: Double,
+        maxHarmonics: Int,
+    ): List<Partial> {
+        val unwrapGuard = sampleRate / (4.0 * separation)
+        val scale = sampleRate / (2.0 * PI * separation)
+        val partials = ArrayList<Partial>(maxHarmonics)
+        for (n in 1..maxHarmonics) {
+            val target = n * coarseHz
+            if (target >= 0.45 * sampleRate) break
+            partialFor(n, target, x, offset, scale, unwrapGuard)?.let { partials += it }
+        }
+        return partials
+    }
+
+    private fun partialFor(
+        n: Int,
+        target: Double,
+        x: DoubleArray,
+        offset: Int,
+        scale: Double,
+        unwrapGuard: Double,
+    ): Partial? {
+        val (a1r, a1i, a2r, a2i) = correlateHarmonic(x, offset, target)
+        val magnitude = sqrt(hypot(a1r, a1i) * hypot(a2r, a2i))
+        if (magnitude <= 0.0) return null
+        // The second window must be de-rotated by the phase the *target* frequency itself
+        // advances over D samples. Without this the product carries arg(2*pi*f*D/fs) rather
+        // than the offset from the target, and the estimate is wrong by whole wraps unless
+        // f_t*D/fs happens to land on an integer. (TUNER_SPEC A.3 states the formula without
+        // this term; taking it literally puts the fast band tens of cents out.)
+        val referenceAngle = -2.0 * PI * target * separation / sampleRate
+        val rr = cos(referenceAngle)
+        val ri = sin(referenceAngle)
+        val d2r = a2r * rr - a2i * ri
+        val d2i = a2r * ri + a2i * rr
+        // arg(X2 * conj(X1)), already wrapped to +/-pi by atan2.
+        val crossR = d2r * a1r + d2i * a1i
+        val crossI = d2i * a1r - d2r * a1i
+        val deltaPhi = atan2(crossI, crossR)
+        val correction = deltaPhi * scale
+        if (abs(correction) > unwrapGuard) return null
+        return Partial(n, target + correction, magnitude)
+    }
+
+    private data class Correlation(val a1r: Double, val a1i: Double, val a2r: Double, val a2i: Double)
+
+    private fun correlateHarmonic(
+        x: DoubleArray,
+        offset: Int,
+        target: Double,
+    ): Correlation {
+        var a1r = 0.0
+        var a1i = 0.0
+        var a2r = 0.0
+        var a2i = 0.0
+        val step = -2.0 * PI * target / sampleRate
+        val kc = cos(step)
+        val ks = sin(step)
+        var cr = 1.0
+        var ci = 0.0
+        for (m in 0 until subWindow) {
+            val w = window[m]
+            val s1 = w * x[offset + m]
+            val s2 = w * x[offset + m + separation]
+            a1r += s1 * cr
+            a1i += s1 * ci
+            a2r += s2 * cr
+            a2i += s2 * ci
+            val nr = cr * kc - ci * ks
+            ci = cr * ks + ci * kc
+            cr = nr
+            // The incremental rotator drifts off the unit circle over thousands of steps;
+            // renormalising periodically is cheaper than a trig call per sample.
+            if (m and 0xFF == 0xFF) {
+                val norm = hypot(cr, ci)
+                if (norm > 0.0) {
+                    cr /= norm
+                    ci /= norm
+                }
+            }
+        }
+        return Correlation(a1r, a1i, a2r, a2i)
     }
 
     /**

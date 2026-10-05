@@ -2,14 +2,11 @@ package com.vayunmathur.office.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import com.vayunmathur.library.ui.HorizontalDivider
-import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -18,8 +15,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vayunmathur.office.odf.*
-import com.vayunmathur.library.ui.odf.*
+import com.vayunmathur.library.ui.HorizontalDivider
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.office.odf.MathNode
+import com.vayunmathur.office.odf.OdfMath
 
 @Composable
 fun MathView(mathml: String) {
@@ -46,7 +46,9 @@ private fun MathNodeView(node: MathNode, sizeSp: Float, color: Color) {
             fontStyle = if (!node.isOperator && node.text.length == 1 && node.text[0].isLetter()) FontStyle.Italic else FontStyle.Normal,
             modifier = Modifier.padding(horizontal = if (node.isOperator) 3.dp else 0.5.dp)
         )
-        is MathNode.Frac -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 3.dp).width(IntrinsicSize.Max)) {
+        is MathNode.Frac -> Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 3.dp).width(IntrinsicSize.Max)) {
             MathNodeView(node.numerator, sizeSp * 0.95f, color)
             HorizontalDivider(color = color, thickness = 1.5.dp, modifier = Modifier.fillMaxWidth())
             MathNodeView(node.denominator, sizeSp * 0.95f, color)
@@ -68,12 +70,16 @@ private fun MathNodeView(node: MathNode, sizeSp: Float, color: Color) {
         }
         is MathNode.Sqrt -> Row(verticalAlignment = Alignment.CenterVertically) {
             Text("\u221A", fontSize = sizeSp.sp, color = color)
-            Column { HorizontalDivider(color = color, thickness = 1.dp); Box(Modifier.padding(top = 1.dp)) { MathNodeView(node.radicand, sizeSp, color) } }
+            Column { HorizontalDivider(
+                color = color,
+                thickness = 1.dp); Box(Modifier.padding(top = 1.dp)) { MathNodeView(node.radicand, sizeSp, color) } }
         }
         is MathNode.Root -> Row(verticalAlignment = Alignment.CenterVertically) {
             MathNodeView(node.index, sizeSp * 0.6f, color)
             Text("\u221A", fontSize = sizeSp.sp, color = color)
-            Column { HorizontalDivider(color = color, thickness = 1.dp); Box(Modifier.padding(top = 1.dp)) { MathNodeView(node.radicand, sizeSp, color) } }
+            Column { HorizontalDivider(
+                color = color,
+                thickness = 1.dp); Box(Modifier.padding(top = 1.dp)) { MathNodeView(node.radicand, sizeSp, color) } }
         }
         is MathNode.Fenced -> Row(verticalAlignment = Alignment.CenterVertically) {
             Text(node.open, fontSize = sizeSp.sp, color = color)

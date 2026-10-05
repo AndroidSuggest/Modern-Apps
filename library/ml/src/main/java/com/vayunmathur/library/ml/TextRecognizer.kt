@@ -74,8 +74,8 @@ class TextRecognizer(
                 val recognition = assets.open(recognitionAsset).use { it.readBytes() }
                 val keys = assets.open(dictionaryAsset).use { it.readBytes() }.decodeToString()
                 MlNative.createPpocr(detection, recognition, keys)
-            } catch (e: Throwable) {
-                Log.e(TAG, "cannot open the PP-OCRv5 assets", e)
+            } catch (expected: Exception) {
+                Log.e(TAG, "cannot open the PP-OCRv5 assets", expected)
                 0L
             }
         }
@@ -143,12 +143,20 @@ class TextRecognizer(
                 if (fields.size != FIELDS) return@mapNotNull null
                 val numbers = fields.drop(1).map { it.toFloatOrNull() ?: return@mapNotNull null }
                 RecognizedLine(
-                    text = fields[0],
-                    confidence = numbers[8],
-                    corners = List(4) { Pair(numbers[it * 2], numbers[it * 2 + 1]) },
-                    vertical = numbers[9] != 0f,
+                    text = fields[TEXT_INDEX],
+                    confidence = numbers[CONFIDENCE_INDEX],
+                    corners = List(CORNER_COUNT) {
+                        Pair(numbers[it * COORDS_PER_CORNER], numbers[it * COORDS_PER_CORNER + 1])
+                    },
+                    vertical = numbers[VERTICAL_INDEX] != 0f,
                 )
             }
         }
+
+        private const val TEXT_INDEX = 0
+        private const val CONFIDENCE_INDEX = 8
+        private const val VERTICAL_INDEX = 9
+        private const val CORNER_COUNT = 4
+        private const val COORDS_PER_CORNER = 2
     }
 }

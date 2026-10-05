@@ -30,26 +30,41 @@ class EmailNotificationActionReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val dao = EmailRepository.get(context).getDatabase().emailDao()
-                val account = dao.getAccountByEmail(accountEmail)
+                val db = EmailRepository.get(context).getDatabase()
+                val accountDao = db.accountDao()
+                val messageDao = db.messageDao()
+                val account = accountDao.getAccountByEmail(accountEmail)
                 val manager = EmailManager()
                 when (action) {
                     ACTION_MARK_READ -> {
-                        dao.updateReadStatus(accountEmail, folderName, uid, true)
+                        messageDao.updateReadStatus(accountEmail, folderName, uid, true)
                         account?.let {
-                            manager.setSeenFlag(it.imapServer(), it.loginUser(), it.resolveAuth(context), folderName, uid, true)
+                            manager.setSeenFlag(
+                                it.imapServer(),
+                                it.loginUser(),
+                                it.resolveAuth(context),
+                                folderName,
+                                uid,
+                                true,
+                            )
                         }
                     }
                     ACTION_DELETE -> {
-                        dao.deleteMessageRow(accountEmail, folderName, uid)
+                        messageDao.deleteMessageRow(accountEmail, folderName, uid)
                         account?.let {
-                            manager.deleteMessage(it.imapServer(), it.loginUser(), it.resolveAuth(context), folderName, uid)
+                            manager.deleteMessage(
+                                it.imapServer(),
+                                it.loginUser(),
+                                it.resolveAuth(context),
+                                folderName,
+                                uid,
+                            )
                         }
                     }
                 }
                 NotificationManagerCompat.from(context).cancel(notifId)
-            } catch (e: Exception) {
-                Log.w("EmailNotifAction", "Action $action failed: ${e.message}")
+            } catch (_: Exception) {
+                Log.w("EmailNotifAction", "Action $action failed")
             } finally {
                 pending.finish()
             }
@@ -65,7 +80,14 @@ class EmailNotificationActionReceiver : BroadcastReceiver() {
         const val EXTRA_UID = "uid"
         const val EXTRA_NOTIF_ID = "notifId"
 
-        fun intent(context: Context, action: String, accountEmail: String, folderName: String, uid: Long, notifId: Int): Intent =
+        fun intent(
+            context: Context,
+            action: String,
+            accountEmail: String,
+            folderName: String,
+            uid: Long,
+            notifId: Int,
+        ): Intent =
             Intent(context, EmailNotificationActionReceiver::class.java).apply {
                 this.action = action
                 putExtra(EXTRA_ACTION, action)

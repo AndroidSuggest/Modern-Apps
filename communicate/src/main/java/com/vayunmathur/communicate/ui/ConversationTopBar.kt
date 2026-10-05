@@ -61,7 +61,7 @@ internal fun ConversationTitle(
         }
         if (isPeerTyping && !isGroup) {
             Text(
-                stringResource(com.vayunmathur.communicate.R.string.rcs_typing),
+                stringResource(R.string.rcs_typing),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.labelSmall,
@@ -108,8 +108,8 @@ internal fun ConversationActions(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     if (showDeleteConfirm) {
         com.vayunmathur.library.ui.ConfirmDialog(
-            title = stringResource(com.vayunmathur.communicate.R.string.delete_conversation_title),
-            message = stringResource(com.vayunmathur.communicate.R.string.delete_conversation_message),
+            title = stringResource(R.string.delete_conversation_title),
+            message = stringResource(R.string.delete_conversation_message),
             confirmLabel = stringResource(com.vayunmathur.library.ui.R.string.delete),
             dismissLabel = stringResource(com.vayunmathur.library.ui.R.string.cancel),
             destructive = true,
@@ -134,7 +134,7 @@ internal fun ConversationActions(
                             ),
                         )
                     }
-                    if (ok) onBack() else AppMessages.show(context.getString(com.vayunmathur.communicate.R.string.delete_failed))
+                    if (ok) onBack() else AppMessages.show(context.getString(R.string.delete_failed))
                 }
             },
             onDismiss = { showDeleteConfirm = false },

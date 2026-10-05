@@ -41,15 +41,16 @@ internal fun transitClock(
     return TransitClock(
         depSecs = at.toLocalTime().toSecondOfDay(),
         // DayOfWeek is Mon=1..Sun=7.
-        weekday = today.dayOfWeek.value - 1,
+        weekday = today.dayOfWeek.value - DAY_OF_WEEK_OFFSET,
         date = yyyymmdd(today),
-        prevWeekday = yesterday.dayOfWeek.value - 1,
+        prevWeekday = yesterday.dayOfWeek.value - DAY_OF_WEEK_OFFSET,
         prevDate = yyyymmdd(yesterday),
         midnightMillis = today.atStartOfDay(zone).toInstant().toEpochMilli(),
     )
 }
 
-private fun yyyymmdd(d: LocalDate): Int = d.year * 10000 + d.monthValue * 100 + d.dayOfMonth
+private fun yyyymmdd(d: LocalDate): Int =
+    d.year * YEAR_MULTIPLIER + d.monthValue * MONTH_MULTIPLIER + d.dayOfMonth
 
 /**
  * Format a GTFS service-day time (which may exceed 86400 for a trip running
@@ -57,6 +58,14 @@ private fun yyyymmdd(d: LocalDate): Int = d.year * 10000 + d.monthValue * 100 + 
  */
 internal fun formatServiceTime(secs: Int): String {
     if (secs <= 0) return ""
-    val s = secs % 86_400
-    return "%02d:%02d".format(Locale.ROOT, s / 3600, (s % 3600) / 60)
+    val s = secs % SECONDS_PER_DAY
+    return "%02d:%02d".format(Locale.ROOT, s / SECONDS_PER_HOUR, (s % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE)
 }
+
+/** DayOfWeek is Mon=1..Sun=7; the index wants Mon=0..Sun=6. */
+private const val DAY_OF_WEEK_OFFSET = 1
+private const val YEAR_MULTIPLIER = 10000
+private const val MONTH_MULTIPLIER = 100
+private const val SECONDS_PER_DAY = 86_400
+private const val SECONDS_PER_HOUR = 3600
+private const val SECONDS_PER_MINUTE = 60

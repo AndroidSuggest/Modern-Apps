@@ -14,7 +14,10 @@ object Alchemist {
     @Synchronized
     fun init(context: Context) {
         if (initialized) return
-        val jsonItems = Json.decodeFromString<List<JsonItem>>(context.assets.open("items.json").bufferedReader().readText())
+        val itemsJson = context.assets.open("items.json")
+            .bufferedReader()
+            .readText()
+        val jsonItems = Json.decodeFromString<List<JsonItem>>(itemsJson)
         recipes = jsonItems.flatMap { item ->
             item.recipes.map { recipe ->
                 AlchemyRecipe(

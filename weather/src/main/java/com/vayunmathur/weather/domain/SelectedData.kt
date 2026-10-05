@@ -47,104 +47,127 @@ fun resolveConditions(
     selected: SelectedDateOrTime?,
 ): ResolvedConditions? {
     val current = forecast.current ?: return null
+    val outcome: ResolvedConditions? = when (selected) {
+        null -> resolveCurrent(forecast, current)
+        is SelectedDateOrTime.Time -> resolveHour(forecast, current, selected)
+        is SelectedDateOrTime.Day -> resolveDay(forecast, current, selected)
+    }
+    return outcome
+}
+
+private fun resolveCurrent(
+    forecast: ForecastResponse,
+    current: Current,
+): ResolvedConditions {
+    val daily = forecast.daily
+    val t = todayIndex(daily, current.time)
+    return ResolvedConditions(
+        weatherCode = current.weatherCode,
+        isDay = current.isDay == 1,
+        temperature = current.temperature,
+        apparentTemperature = current.apparentTemperature,
+        high = daily?.temperatureMax?.getOrNull(t),
+        low = daily?.temperatureMin?.getOrNull(t),
+        uvIndexMax = daily?.uvIndexMax?.getOrNull(t),
+        sunriseIso = daily?.sunrise?.getOrNull(t),
+        sunsetIso = daily?.sunset?.getOrNull(t),
+        precipitationSum = daily?.precipitationSum?.getOrNull(t),
+        daylightDurationSec = daily?.daylightDuration?.getOrNull(t),
+        moonPhase = daily?.moonPhase?.getOrNull(t),
+        moonriseIso = daily?.moonrise?.getOrNull(t),
+        moonsetIso = daily?.moonset?.getOrNull(t),
+        blockCurrent = current,
+    )
+}
+
+private fun resolveHour(
+    forecast: ForecastResponse,
+    current: Current,
+    selected: SelectedDateOrTime.Time,
+): ResolvedConditions {
     val daily = forecast.daily
     val hourly = forecast.hourly
-
-    fun dailyIndexFor(isoDate: String): Int? =
-        daily?.time?.indexOf(isoDate)?.takeIf { it >= 0 }
-
-    return when (selected) {
-        null -> {
-            val t = todayIndex(daily, current.time)
-            ResolvedConditions(
-                weatherCode = current.weatherCode,
-                isDay = current.isDay == 1,
-                temperature = current.temperature,
-                apparentTemperature = current.apparentTemperature,
-                high = daily?.temperatureMax?.getOrNull(t),
-                low = daily?.temperatureMin?.getOrNull(t),
-                uvIndexMax = daily?.uvIndexMax?.getOrNull(t),
-                sunriseIso = daily?.sunrise?.getOrNull(t),
-                sunsetIso = daily?.sunset?.getOrNull(t),
-                precipitationSum = daily?.precipitationSum?.getOrNull(t),
-                daylightDurationSec = daily?.daylightDuration?.getOrNull(t),
-                moonPhase = daily?.moonPhase?.getOrNull(t),
-                moonriseIso = daily?.moonrise?.getOrNull(t),
-                moonsetIso = daily?.moonset?.getOrNull(t),
-                blockCurrent = current,
-            )
-        }
-
-        is SelectedDateOrTime.Time -> {
-            val h = hourly?.time?.indexOf(selected.isoTime)?.takeIf { it >= 0 }
-            if (hourly == null || h == null) {
-                // Selection no longer present (e.g. after a refresh) — behave
-                // as if nothing is selected.
-                return resolveConditions(forecast, null)
-            }
-            val d = dailyIndexFor(selected.isoTime.substringBefore('T'))
-            val hourCurrent = current.copy(
-                time = hourly.time.getOrNull(h) ?: current.time,
-                temperature = hourly.temperature.getOrNull(h) ?: current.temperature,
-                apparentTemperature = hourly.apparentTemperature.getOrNull(h) ?: current.apparentTemperature,
-                relativeHumidity = hourly.relativeHumidity.getOrNull(h) ?: current.relativeHumidity,
-                dewPoint = hourly.dewPoint.getOrNull(h) ?: current.dewPoint,
-                weatherCode = hourly.weatherCode.getOrNull(h) ?: current.weatherCode,
-                windSpeed = hourly.windSpeed.getOrNull(h) ?: current.windSpeed,
-                windDirection = hourly.windDirection.getOrNull(h) ?: current.windDirection,
-                pressureMsl = hourly.pressureMsl.getOrNull(h) ?: current.pressureMsl,
-                visibility = hourly.visibility.getOrNull(h) ?: current.visibility,
-                cloudCover = hourly.cloudCover.getOrNull(h) ?: current.cloudCover,
-                windGusts = hourly.windGusts.getOrNull(h) ?: current.windGusts,
-                isDay = hourly.isDay.getOrNull(h) ?: current.isDay,
-            )
-            ResolvedConditions(
-                weatherCode = hourCurrent.weatherCode,
-                isDay = hourCurrent.isDay == 1,
-                temperature = hourCurrent.temperature,
-                apparentTemperature = hourly.apparentTemperature.getOrNull(h),
-                high = d?.let { daily?.temperatureMax?.getOrNull(it) },
-                low = d?.let { daily?.temperatureMin?.getOrNull(it) },
-                uvIndexMax = hourly.uvIndex.getOrNull(h)
-                    ?: d?.let { daily?.uvIndexMax?.getOrNull(it) },
-                sunriseIso = d?.let { daily?.sunrise?.getOrNull(it) },
-                sunsetIso = d?.let { daily?.sunset?.getOrNull(it) },
-                precipitationSum = hourly.precipitation.getOrNull(h),
-                daylightDurationSec = d?.let { daily?.daylightDuration?.getOrNull(it) },
-                moonPhase = d?.let { daily?.moonPhase?.getOrNull(it) },
-                moonriseIso = d?.let { daily?.moonrise?.getOrNull(it) },
-                moonsetIso = d?.let { daily?.moonset?.getOrNull(it) },
-                blockCurrent = hourCurrent,
-            )
-        }
-
-        is SelectedDateOrTime.Day -> {
-            val d = dailyIndexFor(selected.isoDate)
-            if (daily == null || d == null) {
-                return resolveConditions(forecast, null)
-            }
-            ResolvedConditions(
-                weatherCode = daily.weatherCode.getOrNull(d) ?: current.weatherCode,
-                isDay = true,
-                temperature = daily.temperatureMax.getOrNull(d) ?: current.temperature,
-                apparentTemperature = daily.apparentTemperatureMax.getOrNull(d),
-                high = daily.temperatureMax.getOrNull(d),
-                low = daily.temperatureMin.getOrNull(d),
-                uvIndexMax = daily.uvIndexMax.getOrNull(d),
-                sunriseIso = daily.sunrise.getOrNull(d),
-                sunsetIso = daily.sunset.getOrNull(d),
-                precipitationSum = daily.precipitationSum.getOrNull(d),
-                daylightDurationSec = daily.daylightDuration.getOrNull(d),
-                moonPhase = daily.moonPhase.getOrNull(d),
-                moonriseIso = daily.moonrise.getOrNull(d),
-                moonsetIso = daily.moonset.getOrNull(d),
-                // Humidity/wind/pressure/visibility/cloud have no daily summary
-                // field, so aggregate the day's hourly values instead.
-                blockCurrent = hourly?.let { aggregateDay(it, selected.isoDate, current) } ?: current,
-            )
-        }
+    val h = hourly?.time?.indexOf(selected.isoTime)?.takeIf { it >= 0 }
+    if (hourly == null || h == null) {
+        // Selection no longer present (e.g. after a refresh) — behave
+        // as if nothing is selected.
+        return resolveCurrent(forecast, current)
     }
+    val d = dailyIndexFor(daily, selected.isoTime.substringBefore('T'))
+    val hourCurrent = buildHourCurrent(hourly, h, current)
+    return ResolvedConditions(
+        weatherCode = hourCurrent.weatherCode,
+        isDay = hourCurrent.isDay == 1,
+        temperature = hourCurrent.temperature,
+        apparentTemperature = hourly.apparentTemperature.getOrNull(h),
+        high = d?.let { daily?.temperatureMax?.getOrNull(it) },
+        low = d?.let { daily?.temperatureMin?.getOrNull(it) },
+        uvIndexMax = hourly.uvIndex.getOrNull(h)
+            ?: d?.let { daily?.uvIndexMax?.getOrNull(it) },
+        sunriseIso = d?.let { daily?.sunrise?.getOrNull(it) },
+        sunsetIso = d?.let { daily?.sunset?.getOrNull(it) },
+        precipitationSum = hourly.precipitation.getOrNull(h),
+        daylightDurationSec = d?.let { daily?.daylightDuration?.getOrNull(it) },
+        moonPhase = d?.let { daily?.moonPhase?.getOrNull(it) },
+        moonriseIso = d?.let { daily?.moonrise?.getOrNull(it) },
+        moonsetIso = d?.let { daily?.moonset?.getOrNull(it) },
+        blockCurrent = hourCurrent,
+    )
 }
+
+private fun resolveDay(
+    forecast: ForecastResponse,
+    current: Current,
+    selected: SelectedDateOrTime.Day,
+): ResolvedConditions {
+    val daily = forecast.daily
+    val d = dailyIndexFor(daily, selected.isoDate)
+    if (daily == null || d == null) {
+        return resolveCurrent(forecast, current)
+    }
+    return ResolvedConditions(
+        weatherCode = daily.weatherCode.getOrNull(d) ?: current.weatherCode,
+        isDay = true,
+        temperature = daily.temperatureMax.getOrNull(d) ?: current.temperature,
+        apparentTemperature = daily.apparentTemperatureMax.getOrNull(d),
+        high = daily.temperatureMax.getOrNull(d),
+        low = daily.temperatureMin.getOrNull(d),
+        uvIndexMax = daily.uvIndexMax.getOrNull(d),
+        sunriseIso = daily.sunrise.getOrNull(d),
+        sunsetIso = daily.sunset.getOrNull(d),
+        precipitationSum = daily.precipitationSum.getOrNull(d),
+        daylightDurationSec = daily.daylightDuration.getOrNull(d),
+        moonPhase = daily.moonPhase.getOrNull(d),
+        moonriseIso = daily.moonrise.getOrNull(d),
+        moonsetIso = daily.moonset.getOrNull(d),
+        // Humidity/wind/pressure/visibility/cloud have no daily summary
+        // field, so aggregate the day's hourly values instead.
+        blockCurrent = forecast.hourly?.let { aggregateDay(it, selected.isoDate, current) } ?: current,
+    )
+}
+
+private fun dailyIndexFor(daily: com.vayunmathur.weather.network.Daily?, isoDate: String): Int? =
+    daily?.time?.indexOf(isoDate)?.takeIf { it >= 0 }
+
+private fun buildHourCurrent(
+    hourly: Hourly,
+    h: Int,
+    current: Current,
+): Current = current.copy(
+    time = hourly.time.getOrNull(h) ?: current.time,
+    temperature = hourly.temperature.getOrNull(h) ?: current.temperature,
+    apparentTemperature = hourly.apparentTemperature.getOrNull(h) ?: current.apparentTemperature,
+    relativeHumidity = hourly.relativeHumidity.getOrNull(h) ?: current.relativeHumidity,
+    dewPoint = hourly.dewPoint.getOrNull(h) ?: current.dewPoint,
+    weatherCode = hourly.weatherCode.getOrNull(h) ?: current.weatherCode,
+    windSpeed = hourly.windSpeed.getOrNull(h) ?: current.windSpeed,
+    windDirection = hourly.windDirection.getOrNull(h) ?: current.windDirection,
+    pressureMsl = hourly.pressureMsl.getOrNull(h) ?: current.pressureMsl,
+    visibility = hourly.visibility.getOrNull(h) ?: current.visibility,
+    cloudCover = hourly.cloudCover.getOrNull(h) ?: current.cloudCover,
+    windGusts = hourly.windGusts.getOrNull(h) ?: current.windGusts,
+    isDay = hourly.isDay.getOrNull(h) ?: current.isDay,
+)
 
 /**
  * Build a synthetic [Current] representing a whole day by aggregating that

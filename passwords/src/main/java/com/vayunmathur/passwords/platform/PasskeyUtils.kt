@@ -13,6 +13,15 @@ object PasskeyUtils {
 
     private const val TAG = "PasskeyUtils"
 
+    private const val FLAG_USER_PRESENT = 0x01
+    private const val FLAG_USER_VERIFIED = 0x04
+    private const val FLAG_BACKUP_ELIGIBLE = 0x08
+    private const val FLAG_BACKUP_STATE = 0x10
+    private const val FLAG_ATTESTED_CREDENTIAL = 0x40
+    private const val SIGN_COUNT_SHIFT_3 = 24
+    private const val SIGN_COUNT_SHIFT_2 = 16
+    private const val SIGN_COUNT_SHIFT_1 = 8
+
     private val secureRandom = SecureRandom()
 
     /**
@@ -57,8 +66,8 @@ object PasskeyUtils {
                 Log.d(TAG, "Resolved privileged browser origin: $origin")
                 origin.removeSuffix("/")
             } else null
-        } catch (e: Exception) {
-            Log.d(TAG, "No privileged browser match: ${e.message}")
+        } catch (expected: IllegalArgumentException) {
+            Log.d(TAG, "No privileged browser match: ${expected.message}")
             null
         }
     }
@@ -87,19 +96,19 @@ object PasskeyUtils {
         signCount: Int = 0,
     ): ByteArray {
         var flags = 0
-        if (userPresent) flags = flags or 0x01
-        if (userVerified) flags = flags or 0x04
-        if (backupEligible) flags = flags or 0x08
-        if (backupState) flags = flags or 0x10
-        if (attestedCredentialData) flags = flags or 0x40
+        if (userPresent) flags = flags or FLAG_USER_PRESENT
+        if (userVerified) flags = flags or FLAG_USER_VERIFIED
+        if (backupEligible) flags = flags or FLAG_BACKUP_ELIGIBLE
+        if (backupState) flags = flags or FLAG_BACKUP_STATE
+        if (attestedCredentialData) flags = flags or FLAG_ATTESTED_CREDENTIAL
 
         val rpIdHash = MessageDigest.getInstance("SHA-256").digest(rpId.toByteArray())
         return rpIdHash +
             byteArrayOf(flags.toByte()) +
             byteArrayOf(
-                (signCount shr 24).toByte(),
-                (signCount shr 16).toByte(),
-                (signCount shr 8).toByte(),
+                (signCount shr SIGN_COUNT_SHIFT_3).toByte(),
+                (signCount shr SIGN_COUNT_SHIFT_2).toByte(),
+                (signCount shr SIGN_COUNT_SHIFT_1).toByte(),
                 signCount.toByte()
             )
     }

@@ -51,11 +51,11 @@ class SipClient(
     private var socket: WebSocketClient? = null
     private var readJob: Job? = null
 
-    private val localHost = "${randomToken(12)}.invalid"
-    private val callId = UUID.randomUUID().toString()
-    private val fromTag = randomToken(8)
+    internal val localHost = "${randomToken(12)}.invalid"
+    internal val callId = UUID.randomUUID().toString()
+    internal val fromTag = randomToken(8)
     private var toTag: String? = null
-    private var cseq = 1
+    internal var cseq = 1
     private var lastInviteSdp: String? = null
     private var inviteTarget: String? = null
     private var inviteCseq = 0
@@ -68,10 +68,10 @@ class SipClient(
 
     // The SIP AOR/username is credential[0]; the digest password is credential[1] (from
     // sipregisterinfo/get). The AOR user is credential[0] URL-encoded ("=" -> "%3D").
-    private val authUsername = registerInfo.credentials.getOrNull(0) ?: gvNumber
-    private val authPassword = registerInfo.credentials.getOrNull(1) ?: ""
-    private val aorUser = authUsername.replace("=", "%3D")
-    private val contactUser = randomToken(8)
+    internal val authUsername = registerInfo.credentials.getOrNull(0) ?: gvNumber
+    internal val authPassword = registerInfo.credentials.getOrNull(1) ?: ""
+    internal val aorUser = authUsername.replace("=", "%3D")
+    internal val contactUser = randomToken(8)
 
     suspend fun connect() {
         if (socket != null) return
@@ -88,7 +88,8 @@ class SipClient(
                 val text = when (frame) {
                     is WebSocketClient.WsFrame.Text -> frame.text
                     // Inbound frames were binary/compressed in the HAR; try a UTF-8 view.
-                    is WebSocketClient.WsFrame.Binary -> runCatching { frame.bytes.toString(Charsets.UTF_8) }.getOrNull()
+                    is WebSocketClient.WsFrame.Binary ->
+                        runCatching { frame.bytes.toString(Charsets.UTF_8) }.getOrNull()
                     is WebSocketClient.WsFrame.Close -> { listener.onEnded(); null }
                     else -> null
                 }
@@ -166,13 +167,13 @@ class SipClient(
     /** Answer an inbound INVITE with our answer SDP (200 OK). */
     suspend fun answerInbound(answerSdp: String) {
         val invite = inboundInvite ?: return
-        send(buildInboundResponse(invite, 200, "OK", body = answerSdp, contentType = "application/sdp"))
+        send(buildInboundResponse(invite, OK, "OK", body = answerSdp, contentType = "application/sdp"))
     }
 
     /** Decline an inbound INVITE (603). */
     suspend fun declineInbound() {
         val invite = inboundInvite ?: return
-        send(buildInboundResponse(invite, 603, "Decline"))
+        send(buildInboundResponse(invite, DECLINE, "Decline"))
         inboundInvite = null
     }
 
@@ -199,278 +200,174 @@ class SipClient(
         headers["to"]?.let { extractTag(it)?.let { t -> toTag = t } }
         val body = message.substringAfter("\r\n\r\n", "").ifBlank { message.substringAfter("\n\n", "") }
 
-        // Capture the dialog remote target + route set from INVITE responses (183/200), needed
-        // so in-dialog ACK/BYE route correctly and actually tear the call down.
+        captureInviteDialog(message, headers, firstLine)
+
+        when {
+            firstLine.startsWith("SIP/2.0") -> handleResponse(headers, firstLine, body)
+            firstLine.startsWith("INVITE", true) -> handleInvite(message, headers, body)
+            firstLine.startsWith("CANCEL", true) -> handleCancel(message, headers)
+            firstLine.startsWith("BYE", true) -> handleBye(message, headers)
+        }
+    }
+
+    /**
+     * Capture the dialog remote target + route set from INVITE responses (183/200), needed
+     * so in-dialog ACK/BYE route correctly and actually tear the call down.
+     */
+    private fun captureInviteDialog(message: String, headers: Map<String, String>, firstLine: String) {
         val cseqHeaderTop = headers["cseq"].orEmpty()
-        val codeTop = if (firstLine.startsWith("SIP/2.0")) firstLine.split(' ').getOrNull(1)?.toIntOrNull() ?: 0 else -1
-        if (cseqHeaderTop.contains("INVITE", true) && codeTop in 180..299) {
+        val codeTop = if (firstLine.startsWith("SIP/2.0")) {
+            firstLine.split(' ').getOrNull(1)?.toIntOrNull() ?: 0
+        } else {
+            -1
+        }
+        if (cseqHeaderTop.contains("INVITE", true) && codeTop in DIALOG_CODES) {
             if (remoteContact == null) extractContact(message)?.let { remoteContact = it }
             if (routeSet.isEmpty()) {
                 val rr = extractRecordRoutes(message)
                 if (rr.isNotEmpty()) routeSet = rr.reversed()
             }
         }
-
-        when {
-            firstLine.startsWith("SIP/2.0") -> {
-                val code = firstLine.split(' ').getOrNull(1)?.toIntOrNull() ?: 0
-                val cseqHeader = headers["cseq"].orEmpty()
-                when {
-                    // Registrar wants a longer registration interval; retry once at Min-Expires.
-                    code == 423 && cseqHeader.contains("REGISTER", true) && !registerRetried -> {
-                        registerRetried = true
-                        val min = headers["min-expires"]?.toIntOrNull() ?: (lastExpires * 2)
-                        scope.launch { runCatching { register(min) } }
-                    }
-                    // Digest challenge: compute the response and re-REGISTER with Authorization.
-                    (code == 401 || code == 407) && cseqHeader.contains("REGISTER", true) && !authRetried -> {
-                        authRetried = true
-                        val challenge = headers["www-authenticate"] ?: headers["proxy-authenticate"] ?: ""
-                        val nonce = extractParam(challenge, "nonce") ?: ""
-                        val realm = extractParam(challenge, "realm") ?: SIP_DOMAIN
-                        val auth = digestAuth("REGISTER", "sip:$SIP_DOMAIN", nonce, realm)
-                        scope.launch { runCatching { register(lastExpires, auth) } }
-                    }
-                    code == 200 && cseqHeader.contains("REGISTER", true) -> listener.onRegistered()
-                    code == 200 && cseqHeader.contains("INVITE", true) -> listener.onAnswered(body)
-                    code in 100..199 -> {
-                        listener.onProvisional(code)
-                        // Reliable provisional (100rel) carries the SDP answer + RSeq; apply the
-                        // early media and PRACK it, or the registrar drops the call with 504.
-                        if (body.contains("m=", ignoreCase = true)) listener.onEarlyMedia(body)
-                        val rseq = headers["rseq"]?.toIntOrNull()
-                        val tgt = inviteTarget
-                        if (rseq != null && tgt != null) {
-                            scope.launch { runCatching { prack(tgt, rseq) } }
-                        }
-                    }
-                    code == 487 || code == 603 || code == 486 -> listener.onEnded()
-                    code in 400..699 -> listener.onFailed("SIP $firstLine")
-                }
-            }
-            firstLine.startsWith("INVITE", true) -> {
-                val invite = InboundInvite.from(message, headers)
-                inboundInvite = invite
-                scope.launch {
-                    runCatching { send(buildInboundResponse(invite, 100, "Trying")) }
-                    runCatching { send(buildInboundResponse(invite, 180, "Ringing")) }
-                }
-                val from = headers["from"]?.let { extractUserFromHeader(it) } ?: "Unknown"
-                listener.onIncomingInvite(body, from)
-            }
-            firstLine.startsWith("CANCEL", true) -> {
-                val invite = inboundInvite
-                scope.launch {
-                    runCatching { send(buildCancelOk(message, headers)) }
-                    if (invite != null) {
-                        runCatching { send(buildInboundResponse(invite, 487, "Request Terminated")) }
-                    }
-                }
-                inboundInvite = null
-                listener.onEnded()
-            }
-            firstLine.startsWith("BYE", true) -> {
-                scope.launch { runCatching { send(buildByeOk(message, headers)) } }
-                inboundInvite = null
-                listener.onEnded()
-            }
-        }
     }
 
-    private fun buildRequest(
-        method: String,
-        requestUri: String,
-        to: String,
-        body: String? = null,
-        contentType: String? = null,
-        extraHeaders: List<String> = emptyList(),
-        incrementCseq: Boolean = true,
-        cseqOverride: Int? = null,
-    ): String {
-        val seq = cseqOverride ?: if (incrementCseq) ++cseq else cseq
-        val branch = "z9hG4bK${randomToken(16)}"
-        val bodyBytes = body?.toByteArray()?.size ?: 0
-        return buildString {
-            append("$method $requestUri SIP/2.0\r\n")
-            append("Via: SIP/2.0/wss $localHost;branch=$branch\r\n")
-            append("Max-Forwards: 70\r\n")
-            append("From: ${fromUri()};tag=$fromTag\r\n")
-            append("To: $to\r\n")
-            append("Call-ID: $callId\r\n")
-            append("CSeq: $seq $method\r\n")
-            append("Contact: <sip:$contactUser@$localHost;transport=wss>;+sip.ice;reg-id=1\r\n")
-            append("Supported: 100rel,ice,replaces,outbound,timer\r\n")
-            append("Allow: INVITE,ACK,CANCEL,BYE,UPDATE,MESSAGE,OPTIONS,REFER,INFO,PRACK\r\n")
-            append("User-Agent: Communicate GoogleVoice\r\n")
-            extraHeaders.forEach { append("$it\r\n") }
-            if (contentType != null) append("Content-Type: $contentType\r\n")
-            append("Content-Length: $bodyBytes\r\n")
-            append("\r\n")
-            if (body != null) append(body)
-        }
-    }
-
-    private fun buildInboundResponse(
-        invite: InboundInvite,
-        code: Int,
-        reason: String,
-        body: String? = null,
-        contentType: String? = null,
-    ): String {
-        val bytes = body?.toByteArray()?.size ?: 0
-        return buildString {
-            append("SIP/2.0 $code $reason\r\n")
-            invite.viaLines.forEach { append("$it\r\n") }
-            append("From: ${invite.from}\r\n")
-            append("To: ${invite.to}${invite.toTagForResponse(code)}\r\n")
-            append("Call-ID: ${invite.callId}\r\n")
-            append("CSeq: ${invite.cseq}\r\n")
-            invite.recordRouteLines.forEach { append("$it\r\n") }
-            if (code == 200) append("Contact: <sip:$contactUser@$localHost;transport=wss>\r\n")
-            if (contentType != null) append("Content-Type: $contentType\r\n")
-            append("Content-Length: $bytes\r\n")
-            append("\r\n")
-            if (body != null) append(body)
-        }
-    }
-
-    private fun buildCancelOk(message: String, headers: Map<String, String>): String {
-        val viaLines = headerLines(message, "Via")
-        val from = headers["from"].orEmpty()
-        val to = headers["to"].orEmpty()
-        val callId = headers["call-id"].orEmpty()
-        val cseq = headers["cseq"].orEmpty()
-        return buildString {
-            append("SIP/2.0 200 OK\r\n")
-            viaLines.forEach { append("$it\r\n") }
-            append("From: $from\r\n")
-            append("To: $to\r\n")
-            append("Call-ID: $callId\r\n")
-            append("CSeq: $cseq\r\n")
-            append("Content-Length: 0\r\n\r\n")
-        }
-    }
-
-    private fun buildByeOk(message: String, headers: Map<String, String>): String {
-        val viaLines = headerLines(message, "Via")
-        val from = headers["from"].orEmpty()
-        val to = headers["to"].orEmpty()
-        val callId = headers["call-id"].orEmpty()
-        val cseq = headers["cseq"].orEmpty()
-        return buildString {
-            append("SIP/2.0 200 OK\r\n")
-            viaLines.forEach { append("$it\r\n") }
-            append("From: $from\r\n")
-            append("To: $to\r\n")
-            append("Call-ID: $callId\r\n")
-            append("CSeq: $cseq\r\n")
-            append("Content-Length: 0\r\n\r\n")
-        }
-    }
-
-    /** The remote target URI from a response's Contact header (used for in-dialog ACK/BYE). */
-    private fun extractContact(message: String): String? {
-        val line = message.lineSequence().firstOrNull { it.trim().startsWith("Contact:", true) } ?: return null
-        return Regex("<([^>]+)>").find(line)?.groupValues?.getOrNull(1)
-            ?: line.substringAfter(":").trim().ifBlank { null }
-    }
-
-    /** All Record-Route URIs (in order) from a response; the dialog route set is their reverse. */
-    private fun extractRecordRoutes(message: String): List<String> =
-        message.lineSequence()
-            .filter { it.trim().startsWith("Record-Route:", true) }
-            .mapNotNull { Regex("<([^>]+)>").find(it)?.groupValues?.getOrNull(1)?.let { u -> "<$u>" } }
-            .toList()
-
-    private fun fromUri() = "<sip:$aorUser@$SIP_DOMAIN>"
-
-    private fun headerLines(message: String, name: String): List<String> {
-        val prefix = "$name:"
-        return message.lineSequence()
-            .map { it.trimEnd() }
-            .takeWhile { it.isNotEmpty() }
-            .filter { it.startsWith(prefix, ignoreCase = true) }
-            .toList()
-    }
-
-    private fun parseHeaders(message: String): Map<String, String> {
-        val out = mutableMapOf<String, String>()
-        for (line in message.lineSequence()) {
-            val trimmed = line.trimEnd()
-            if (trimmed.isEmpty()) break
-            val idx = trimmed.indexOf(':')
-            if (idx > 0) {
-                out[trimmed.substring(0, idx).trim().lowercase()] = trimmed.substring(idx + 1).trim()
-            }
-        }
-        return out
-    }
-
-    private fun extractTag(headerValue: String): String? =
-        Regex(";tag=([^;\\s]+)").find(headerValue)?.groupValues?.getOrNull(1)
-
-    /** Extract a quoted or bare param (e.g. nonce, realm) from a WWW-Authenticate header. */
-    private fun extractParam(header: String, name: String): String? =
-        Regex("$name=\"([^\"]*)\"").find(header)?.groupValues?.getOrNull(1)
-            ?: Regex("$name=([^,\\s]+)").find(header)?.groupValues?.getOrNull(1)
-
-    /** RFC 2069-style MD5 SIP digest (no qop), matching Google's registrar challenge. */
-    private fun digestAuth(method: String, uri: String, nonce: String, realm: String): String {
-        val ha1 = md5("$authUsername:$realm:$authPassword")
-        val ha2 = md5("$method:$uri")
-        val response = md5("$ha1:$nonce:$ha2")
-        return "Digest algorithm=MD5, username=\"$authUsername\", realm=\"$realm\", " +
-            "nonce=\"$nonce\", uri=\"$uri\", response=\"$response\""
-    }
-
-    private fun md5(input: String): String {
-        val bytes = java.security.MessageDigest.getInstance("MD5").digest(input.toByteArray(Charsets.UTF_8))
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
-
-    private fun extractUserFromHeader(headerValue: String): String? =
-        Regex("sip:([^@>;\\s]+)@").find(headerValue)?.groupValues?.getOrNull(1)
-
-    private data class InboundInvite(
-        val viaLines: List<String>,
-        val recordRouteLines: List<String>,
-        val from: String,
-        val to: String,
-        val callId: String,
-        val cseq: String,
-        val responseToTag: String = randomToken(8),
+    /** Route a SIP response by status code + CSeq method. */
+    private fun handleResponse(
+        headers: Map<String, String>,
+        firstLine: String,
+        body: String,
     ) {
-        fun toTagForResponse(code: Int): String {
-            if (to.contains(";tag=", ignoreCase = true)) return ""
-            return if (code > 100) ";tag=$responseToTag" else ""
-        }
-
-        companion object {
-            fun from(message: String, headers: Map<String, String>) = InboundInvite(
-                viaLines = headerLinesStatic(message, "Via"),
-                recordRouteLines = headerLinesStatic(message, "Record-Route"),
-                from = headers["from"].orEmpty(),
-                to = headers["to"].orEmpty(),
-                callId = headers["call-id"].orEmpty(),
-                cseq = headers["cseq"].orEmpty(),
-            )
-
-            private fun headerLinesStatic(message: String, name: String): List<String> {
-                val prefix = "$name:"
-                return message.lineSequence()
-                    .map { it.trimEnd() }
-                    .takeWhile { it.isNotEmpty() }
-                    .filter { it.startsWith(prefix, ignoreCase = true) }
-                    .toList()
-            }
+        val code = firstLine.split(' ').getOrNull(1)?.toIntOrNull() ?: 0
+        val cseqHeader = headers["cseq"].orEmpty()
+        if (handleRegisterResponse(code, cseqHeader, headers)) return
+        val isInvite = cseqHeader.contains("INVITE", true)
+        when {
+            code == OK && isInvite -> listener.onAnswered(body)
+            else -> handleTerminalResponse(code, headers, body, firstLine)
         }
     }
+
+    /** REGISTER lifecycle (interval retry, digest challenge, success). True when consumed. */
+    private fun handleRegisterResponse(
+        code: Int,
+        cseqHeader: String,
+        headers: Map<String, String>,
+    ): Boolean {
+        if (!cseqHeader.contains("REGISTER", true)) return false
+        when {
+            // Registrar wants a longer registration interval; retry once at Min-Expires.
+            code == INTERVAL_TOO_BRIEF && !registerRetried -> {
+                registerRetried = true
+                val min = headers["min-expires"]?.toIntOrNull() ?: (lastExpires * 2)
+                scope.launch { runCatching { register(min) } }
+            }
+            // Digest challenge: compute the response and re-REGISTER with Authorization.
+            isAuthChallenge(code) && !authRetried -> {
+                authRetried = true
+                respondToChallenge(headers)
+            }
+            code == OK -> listener.onRegistered()
+            else -> return false
+        }
+        return true
+    }
+
+    private fun isAuthChallenge(code: Int): Boolean =
+        code == UNAUTHORIZED || code == PROXY_AUTH_REQUIRED
+
+    /** Provisional, terminal-error and failure responses, independent of the CSeq method. */
+    private fun handleTerminalResponse(
+        code: Int,
+        headers: Map<String, String>,
+        body: String,
+        firstLine: String,
+    ) {
+        when {
+            code in PROVISIONAL_CODES -> handleProvisional(headers, body, code)
+            code == REQUEST_TERMINATED || code == DECLINE || code == BUSY_HERE -> listener.onEnded()
+            code in FAILURE_CODES -> listener.onFailed("SIP $firstLine")
+        }
+    }
+
+    /** Answer a digest challenge with an authorized re-REGISTER. */
+    private fun respondToChallenge(headers: Map<String, String>) {
+        val challenge = headers["www-authenticate"] ?: headers["proxy-authenticate"] ?: ""
+        val nonce = extractParam(challenge, "nonce") ?: ""
+        val realm = extractParam(challenge, "realm") ?: SIP_DOMAIN
+        val auth = digestAuth("REGISTER", "sip:$SIP_DOMAIN", nonce, realm)
+        scope.launch { runCatching { register(lastExpires, auth) } }
+    }
+
+    /** Provisional response: emit + handle reliable (100rel) early media. */
+    private fun handleProvisional(
+        headers: Map<String, String>,
+        body: String,
+        code: Int,
+    ) {
+        listener.onProvisional(code)
+        // Reliable provisional (100rel) carries the SDP answer + RSeq; apply the
+        // early media and PRACK it, or the registrar drops the call with 504.
+        if (body.contains("m=", ignoreCase = true)) listener.onEarlyMedia(body)
+        val rseq = headers["rseq"]?.toIntOrNull()
+        val tgt = inviteTarget
+        if (rseq != null && tgt != null) {
+            scope.launch { runCatching { prack(tgt, rseq) } }
+        }
+    }
+
+    /** Inbound INVITE: acknowledge + ring + notify. */
+    private fun handleInvite(message: String, headers: Map<String, String>, body: String) {
+        val invite = InboundInvite.from(message, headers)
+        inboundInvite = invite
+        scope.launch {
+            runCatching { send(buildInboundResponse(invite, TRYING, "Trying")) }
+            runCatching { send(buildInboundResponse(invite, RINGING, "Ringing")) }
+        }
+        val from = headers["from"]?.let { extractUserFromHeader(it) } ?: "Unknown"
+        listener.onIncomingInvite(body, from)
+    }
+
+    /** Inbound CANCEL: acknowledge + terminate the pending invite. */
+    private fun handleCancel(message: String, headers: Map<String, String>) {
+        val invite = inboundInvite
+        scope.launch {
+            runCatching { send(buildCancelOk(message, headers)) }
+            if (invite != null) {
+                runCatching { send(buildInboundResponse(invite, REQUEST_TERMINATED, "Request Terminated")) }
+            }
+        }
+        inboundInvite = null
+        listener.onEnded()
+    }
+
+    /** Inbound BYE: acknowledge + end. */
+    private fun handleBye(message: String, headers: Map<String, String>) {
+        scope.launch { runCatching { send(buildByeOk(message, headers)) } }
+        inboundInvite = null
+        listener.onEnded()
+    }
+
+
 
     companion object {
         private const val TAG = "SipClient"
         private const val WS_URL = "wss://web.voice.telephony.goog/websocket"
         // Registrar/domain observed in capture 2 (User-Agent: GoogleVoice; PBX host).
-        private const val SIP_DOMAIN = "web.c.pbx.voice.sip.google.com"
+        internal const val SIP_DOMAIN = "web.c.pbx.voice.sip.google.com"
+
+        // SIP status codes.
+        private const val TRYING = 100
+        private const val RINGING = 180
+        private const val OK = 200
+        private const val UNAUTHORIZED = 401
+        private const val PROXY_AUTH_REQUIRED = 407
+        private const val INTERVAL_TOO_BRIEF = 423
+        private const val REQUEST_TERMINATED = 487
+        private const val BUSY_HERE = 486
+        private const val DECLINE = 603
+        private const val TAG_TOKEN_LENGTH = 8
+        private val DIALOG_CODES = RINGING..299
+        private val PROVISIONAL_CODES = TRYING..199
+        private val FAILURE_CODES = 400..699
     }
 }
 

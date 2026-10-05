@@ -53,7 +53,7 @@ internal fun evaluateForWidget(input: String, ans: Double): WidgetResult? {
     if (input.isBlank()) return null
     val quantity = try {
         Expression.parse(input).evalQuantity(ans = ans)
-    } catch (e: ExpressionError) {
+    } catch (ignored: ExpressionError) {
         return null
     }
     if (quantity.value.isNaN()) return null

@@ -33,36 +33,39 @@ fun parseConflicts(text: String): List<Conflict> {
             i++
             continue
         }
-        val start = i
-        var sep = -1
-        var end = -1
-        var j = i + 1
-        while (j < lines.size) {
-            when {
-                sep == -1 && lines[j].startsWith(SEPARATOR_MARKER) -> sep = j
-                lines[j].startsWith(THEIRS_MARKER) -> {
-                    end = j
-                    break
-                }
-                lines[j].startsWith(OURS_MARKER) -> break // a new conflict started; this one is malformed
-            }
-            j++
-        }
-        if (sep != -1 && end != -1) {
-            out.add(
-                Conflict(
-                    startLine = start,
-                    endLine = end,
-                    ours = lines.subList(start + 1, sep).toList(),
-                    theirs = lines.subList(sep + 1, end).toList(),
-                ),
-            )
-            i = end + 1
-        } else {
-            i = start + 1
-        }
+        i = consumeConflict(lines, i, out)
     }
     return out
+}
+
+private class ConflictBounds(val separator: Int, val end: Int)
+
+private fun consumeConflict(lines: List<String>, start: Int, out: MutableList<Conflict>): Int {
+    val bounds = findConflictBounds(lines, start) ?: return start + 1
+    out.add(
+        Conflict(
+            startLine = start,
+            endLine = bounds.end,
+            ours = lines.subList(start + 1, bounds.separator).toList(),
+            theirs = lines.subList(bounds.separator + 1, bounds.end).toList(),
+        ),
+    )
+    return bounds.end + 1
+}
+
+private fun findConflictBounds(lines: List<String>, start: Int): ConflictBounds? {
+    var sep = -1
+    var j = start + 1
+    while (j < lines.size) {
+        if (sep == -1 && lines[j].startsWith(SEPARATOR_MARKER)) sep = j
+        if (lines[j].startsWith(THEIRS_MARKER)) {
+            return if (sep == -1) null else ConflictBounds(sep, j)
+        }
+        // A new conflict started; this one is malformed.
+        if (lines[j].startsWith(OURS_MARKER)) return null
+        j++
+    }
+    return null
 }
 
 /**

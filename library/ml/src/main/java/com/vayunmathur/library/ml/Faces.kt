@@ -61,8 +61,8 @@ class FaceDetector(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
     } else {
         try {
             MlNative.createScrfd(context.assets.open(assetName).use { it.readBytes() })
-        } catch (e: Throwable) {
-            Log.e(TAG, "cannot load $assetName", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "cannot load $assetName", expected)
             0L
         }
     }

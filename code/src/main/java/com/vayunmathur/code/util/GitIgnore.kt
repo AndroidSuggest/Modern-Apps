@@ -55,30 +55,34 @@ class GitIgnore internal constructor(private val rules: List<Rule>) {
 fun parseGitIgnore(text: String): GitIgnore {
     val rules = ArrayList<GitIgnore.Rule>()
     for (raw in text.lineSequence()) {
-        var line = raw.trimEnd()
-        if (line.isEmpty() || line.startsWith("#")) continue
-
-        var negate = false
-        if (line.startsWith("!")) {
-            negate = true
-            line = line.substring(1)
-        }
-        // An escaped leading '#' or '!' is a literal.
-        if (line.startsWith("\\#") || line.startsWith("\\!")) line = line.substring(1)
-
-        var dirOnly = false
-        if (line.endsWith("/")) {
-            dirOnly = true
-            line = line.dropLast(1)
-        }
-        if (line.isEmpty()) continue
-
-        val anchored = line.contains('/')
-        val pat = if (line.startsWith("/")) line.substring(1) else line
-        if (pat.isEmpty()) continue
-        rules.add(GitIgnore.Rule(globToRegex(pat), negate, dirOnly, anchored))
+        parseRule(raw)?.let { rules.add(it) }
     }
     return GitIgnore(rules)
+}
+
+private fun parseRule(raw: String): GitIgnore.Rule? {
+    var line = raw.trimEnd()
+    if (line.isEmpty() || line.startsWith("#")) return null
+
+    var negate = false
+    if (line.startsWith("!")) {
+        negate = true
+        line = line.substring(1)
+    }
+    // An escaped leading '#' or '!' is a literal.
+    if (line.startsWith("\\#") || line.startsWith("\\!")) line = line.substring(1)
+
+    var dirOnly = false
+    if (line.endsWith("/")) {
+        dirOnly = true
+        line = line.dropLast(1)
+    }
+    if (line.isEmpty()) return null
+
+    val anchored = line.contains('/')
+    val pat = if (line.startsWith("/")) line.substring(1) else line
+    if (pat.isEmpty()) return null
+    return GitIgnore.Rule(globToRegex(pat), negate, dirOnly, anchored)
 }
 
 /** Translates a gitignore glob into a [Regex] matching a whole path segment (or full path). */

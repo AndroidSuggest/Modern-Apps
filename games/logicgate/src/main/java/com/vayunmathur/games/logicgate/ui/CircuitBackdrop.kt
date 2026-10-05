@@ -14,7 +14,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
-import com.vayunmathur.games.logicgate.data.*
+import com.vayunmathur.games.logicgate.data.ChipDef
+import com.vayunmathur.games.logicgate.data.ChipLibrary
+import com.vayunmathur.games.logicgate.data.OutputMapping
+import com.vayunmathur.games.logicgate.data.Wire
+import com.vayunmathur.games.logicgate.data.WireEnd
 import kotlin.math.max
 
 /** Values the wire layer reads; built per composition in [CircuitCanvas]. */

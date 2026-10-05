@@ -27,7 +27,7 @@ object RcsPeerKeys {
 
     private val cache = java.util.concurrent.ConcurrentHashMap<String, Entry>()
 
-    fun store(context: Context, peerE164: String, keyPackage: ByteArray) {
+    fun store(peerE164: String, keyPackage: ByteArray) {
         if (!RcsFeature.enabled || peerE164.isBlank() || keyPackage.isEmpty()) return
         cache[peerE164] = Entry(keyPackage, System.currentTimeMillis())
     }

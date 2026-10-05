@@ -82,11 +82,11 @@ private fun packFromJson(json: String): LevelPack {
     val obj = Json.parseToJsonElement(json).jsonObject
     val name = obj["name"]!!.jsonPrimitive.content
     val shape = obj["shape"]!!.jsonPrimitive.content
-    val levels = obj["levels"]!!.jsonArray.map { levelFromJson(it.jsonObject, shape) }
+    val levels = obj["levels"]!!.jsonArray.map { levelFromJson(it.jsonObject) }
     return LevelPack(name, shape, levels)
 }
 
-private fun levelFromJson(json: kotlinx.serialization.json.JsonObject, shape: String): LevelData {
+private fun levelFromJson(json: kotlinx.serialization.json.JsonObject): LevelData {
     val id = json["id"]!!.jsonPrimitive.content
     val rows = json["rows"]!!.jsonPrimitive.int
     val cols = json["cols"]!!.jsonPrimitive.int
@@ -114,8 +114,8 @@ private fun levelFromJson(json: kotlinx.serialization.json.JsonObject, shape: St
         cell to pos
     }?.toMap()
 
-    val endpoints = json["endpoints"]!!.jsonArray.mapIndexed { index, it ->
-        val epObj = it.jsonObject
+    val endpoints = json["endpoints"]!!.jsonArray.mapIndexed { index, endpoint ->
+        val epObj = endpoint.jsonObject
         val colorIndex = epObj["color"]?.jsonPrimitive?.intOrNull ?: index
         val epCells = epObj["cells"]!!.jsonArray.map { c ->
             val arr = c.jsonArray

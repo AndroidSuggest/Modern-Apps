@@ -24,6 +24,10 @@ import com.vayunmathur.library.widgets.updateWidgetPreviews
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        private const val REQUEST_POST_NOTIFICATIONS = 7331
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NetworkClient.init(this, TrustBundle.SYSTEM)
@@ -35,8 +39,13 @@ class MainActivity : ComponentActivity() {
         DateMillisBackfill.runIfNeeded(lifecycleScope, this)
         PeekContentBackfill.runIfNeeded(lifecycleScope, this)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 7331)
+            val permission = android.Manifest.permission.POST_NOTIFICATIONS
+            val granted = android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (checkSelfPermission(permission) != granted) {
+                requestPermissions(
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    REQUEST_POST_NOTIFICATIONS,
+                )
             }
         }
         enableEdgeToEdge()
@@ -71,31 +80,42 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
-        if (intent.action == Intent.ACTION_VIEW) {
-            val dataUri = intent.data
-            if (dataUri != null) {
-                val mime = intent.type
-                val lastSeg = dataUri.lastPathSegment ?: ""
-                val lowerMime = mime?.lowercase() ?: ""
-                val isEmlMime = lowerMime.contains("rfc822") || lowerMime.contains("mbox")
-                var isEmlExtension = lastSeg.endsWith(".eml", ignoreCase = true)
-                if (!isEmlExtension && dataUri.scheme == "content") {
-                    try {
-                        contentResolver.query(dataUri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-                            if (c.moveToFirst()) {
-                                val name = c.getString(0) ?: ""
-                                if (name.endsWith(".eml", ignoreCase = true)) isEmlExtension = true
-                            }
-                        }
-                    } catch (_: Exception) { /* best-effort */ }
-                }
-                val looksLikeEml = isEmlMime || isEmlExtension
-                if (looksLikeEml) {
-                    IntentState.navigationRoute = Route.EmlViewer(dataUri.toString())
-                    return
-                }
+        if (tryHandleEmlView(intent)) return
+        handleDeepLinkOrShare(intent)
+    }
+
+    private fun tryHandleEmlView(intent: Intent): Boolean {
+        if (intent.action != Intent.ACTION_VIEW) return false
+        val dataUri = intent.data ?: return false
+        if (!looksLikeEml(intent, dataUri)) return false
+        IntentState.navigationRoute = Route.EmlViewer(dataUri.toString())
+        return true
+    }
+
+    private fun looksLikeEml(intent: Intent, dataUri: android.net.Uri): Boolean {
+        val lowerMime = intent.type?.lowercase() ?: ""
+        if (lowerMime.contains("rfc822") || lowerMime.contains("mbox")) return true
+        val lastSeg = dataUri.lastPathSegment ?: ""
+        if (lastSeg.endsWith(".eml", ignoreCase = true)) return true
+        if (dataUri.scheme != "content") return false
+        return queryDisplayName(dataUri)?.endsWith(".eml", ignoreCase = true) == true
+    }
+
+    private fun queryDisplayName(dataUri: android.net.Uri): String? {
+        return try {
+            contentResolver.query(
+                dataUri,
+                arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
             }
-        }
+        } catch (_: Exception) { /* best-effort */ null }
+    }
+
+    private fun handleDeepLinkOrShare(intent: Intent) {
         val accountEmail = intent.getStringExtra("accountEmail")
         val threadId = intent.getStringExtra("threadId")
         when {
@@ -103,14 +123,21 @@ class MainActivity : ComponentActivity() {
                 IntentState.navigationRoute = Route.MessageThread(accountEmail, threadId)
             intent.getBooleanExtra("compose", false) ->
                 IntentState.navigationRoute = Route.Composer()
-            intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SENDTO -> {
-                val to = if (intent.action == Intent.ACTION_SENDTO) intent.data?.schemeSpecificPart ?: "" else ""
-                IntentState.navigationRoute = Route.Composer(
-                    to = to,
-                    subject = intent.getStringExtra(Intent.EXTRA_SUBJECT) ?: "",
-                    body = intent.getStringExtra(Intent.EXTRA_TEXT) ?: "",
-                )
-            }
+            intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SENDTO ->
+                handleShareIntent(intent)
         }
+    }
+
+    private fun handleShareIntent(intent: Intent) {
+        val to = if (intent.action == Intent.ACTION_SENDTO) {
+            intent.data?.schemeSpecificPart ?: ""
+        } else {
+            ""
+        }
+        IntentState.navigationRoute = Route.Composer(
+            to = to,
+            subject = intent.getStringExtra(Intent.EXTRA_SUBJECT) ?: "",
+            body = intent.getStringExtra(Intent.EXTRA_TEXT) ?: "",
+        )
     }
 }

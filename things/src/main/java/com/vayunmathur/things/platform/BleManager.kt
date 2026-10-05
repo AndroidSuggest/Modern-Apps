@@ -15,7 +15,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import java.util.Calendar
 import java.util.UUID
 
 /** One drained drink log read from the bottle's offline history (or live). */
@@ -46,7 +45,7 @@ data class BottleStatus(
 @SuppressLint("MissingPermission")
 class BleManager {
     companion object {
-        private const val TAG = "WaterHBle"
+        internal const val TAG = "WaterHBle"
         val NOTIFY_SERVICE_UUID: UUID = UUID.fromString("0000FFE0-0000-1000-8000-00805F9B34FB")
         val NOTIFY_CHAR_UUID: UUID = UUID.fromString("0000FFE4-0000-1000-8000-00805F9B34FB")
         val WRITE_SERVICE_UUID: UUID = UUID.fromString("0000FFE5-0000-1000-8000-00805F9B34FB")
@@ -111,9 +110,9 @@ class BleManager {
     private var curVolumePct: Int? = null
 
     // Water-log accumulation across PT packets.
-    private var expectedLogs = 0
-    private var parsedRecords = 0
-    private val collected = ArrayList<HydrationReading>()
+    internal var expectedLogs = 0
+    internal var parsedRecords = 0
+    internal val collected = ArrayList<HydrationReading>()
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -214,7 +213,7 @@ class BleManager {
         collected.clear()
     }
 
-    private fun enqueueCommand(hex: String, delayMs: Long = COMMAND_DELAY_MS) {
+    internal fun enqueueCommand(hex: String, delayMs: Long = COMMAND_DELAY_MS) {
         DeviceController.runOnMain {
             commandQueue.addLast(Command(hex, delayMs))
             if (!writing) writeNext()
@@ -256,13 +255,13 @@ class BleManager {
         } else {
             BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         }
-        Log.d(TAG, "-> write $hex (props=0x${char.properties.toString(16)} type=$writeType)")
+        Log.d(TAG, "-> write $hex (props=0x${char.properties.toString(BOTTLE_HEX_RADIX)} type=$writeType)")
         val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             g.writeCharacteristic(char, bytes, writeType)
         } else {
             char.setValue(bytes)
             char.writeType = writeType
-            if (g.writeCharacteristic(char)) 0 else 1
+            if (g.writeCharacteristic(char)) WRITE_OK else WRITE_REJECTED
         }
         if (result != 0) {
             Log.w(TAG, "write of $hex rejected by the stack (code $result)")
@@ -375,173 +374,178 @@ class BleManager {
     }
 
     private fun dispatch(value: ByteArray) {
-        val b0 = value[0].toInt() and 0xFF
-        val b1 = value[1].toInt() and 0xFF
+        val b0 = value[0].toInt() and BYTE_MASK
+        val b1 = value[1].toInt() and BYTE_MASK
         when {
             // RP snapshot / ack (bottle -> phone data reports).
-            b0 == 0x52 && b1 == 0x50 -> handleRp(value)
+            b0 == RP_MARKER_B0 && b1 == RP_MARKER_B1 -> handleRp(value)
             // RT incremental sensor update.
-            b0 == 0x52 && b1 == 0x54 -> handleRt(value)
+            b0 == RP_MARKER_B0 && b1 == RT_MARKER_B1 -> handleRt(value)
             // PT water-log stream (first packet).
-            b0 == 0x50 && b1 == 0x54 -> handlePtFirst(value)
+            b0 == PT_MARKER_B0 && b1 == PT_MARKER_B1 -> handlePtFirst(value)
             // Water-log continuation packet.
-            b1 == 0x06 -> handlePtContinuation(value)
+            b1 == PT_CONTINUATION_B1 -> handlePtContinuation(value)
             else -> Log.w(TAG, "dispatch: unhandled packet ${value.toHex()}")
         }
     }
 
     private fun handleRp(value: ByteArray) {
-        if (value.size < 6) return
-        val b2 = value[2].toInt() and 0xFF
-        val b3 = value[3].toInt() and 0xFF
-        val b5 = value[5].toInt() and 0xFF
+        if (value.size < RP_MIN_SIZE) return
+        val b2 = value[2].toInt() and BYTE_MASK
+        val b3 = value[3].toInt() and BYTE_MASK
+        val b5 = value[RP_SELECTOR_INDEX].toInt() and BYTE_MASK
 
         // Response to a written text/LED signature (BleGattCallback → onSignatureResponse). It
         // has nothing to do with registration, and this app never writes a signature.
-        if (b5 == 0x20) {
+        if (b5 == RP_SIGNATURE_RESPONSE) {
             Log.d(TAG, "RP: signature response, ignored")
             return
         }
 
-        if (b2 == 0x00 && b3 == 0x31 && value.size > 50) {
+        if (handleRpSnapshot(value, b2, b3)) return
+        if (handleRpSyncAck(b2, b3)) return
+        if (handleRpLogAvailability(value, b5)) return
+        handleRpRegistration(value, b5)
+    }
+
+    /** Full Vita / Boost snapshots; true when the packet was one of them. */
+    private fun handleRpSnapshot(value: ByteArray, b2: Int, b3: Int): Boolean {
+        if (b2 == RP_SNAPSHOT_B2 && b3 == RP_VITA_B3 && value.size > RP_VITA_MIN_SIZE) {
             // Vita full snapshot.
-            curTemp = value[6].toInt()
-            curBattery = value[9].toInt() and 0xFF
-            curCharging = value[34].toInt() and 0xFF in intArrayOf(1, 2)
-            curTds = beInt(value, 45)
-            curVolumePct = volumePct(beInt(value, 49))
-            Log.d(TAG, "RP Vita: temp=$curTemp batt=$curBattery charging=$curCharging tds=$curTds vol%=$curVolumePct")
+            curTemp = value[VITA_TEMP_INDEX].toInt()
+            curBattery = value[VITA_BATTERY_INDEX].toInt() and BYTE_MASK
+            curCharging = value[VITA_CHARGING_INDEX].toInt() and BYTE_MASK in CHARGING_STATES
+            curTds = beInt(value, VITA_TDS_OFFSET)
+            curVolumePct = volumePct(beInt(value, VITA_VOLUME_OFFSET))
+            logRpSnapshot("Vita")
             emitStatus()
             enqueueSyncAndLanguage()
-            return
+            return true
         }
-        if (b2 == 0x00 && b3 == 0x27 && value.size > 31) {
+        if (b2 == RP_SNAPSHOT_B2 && b3 == RP_BOOST_B3 && value.size > RP_BOOST_MIN_SIZE) {
             // Boost full snapshot (temp/tds/volume arrive later via RT).
-            curBattery = value[6].toInt() and 0xFF
-            curCharging = value[31].toInt() and 0xFF in intArrayOf(1, 2)
-            Log.d(TAG, "RP Boost: batt=$curBattery charging=$curCharging")
+            curBattery = value[BOOST_BATTERY_INDEX].toInt() and BYTE_MASK
+            curCharging = value[BOOST_CHARGING_INDEX].toInt() and BYTE_MASK in CHARGING_STATES
+            logRpSnapshot("Boost")
             emitStatus()
             enqueueSyncAndLanguage()
-            return
+            return true
         }
-        if (b2 == 0x00 && b3 == 0x0F) {
-            // Sync setting acknowledged; now request the water logs.
+        return false
+    }
+
+    private fun logRpSnapshot(kind: String) {
+        Log.d(
+            TAG,
+            "RP $kind: temp=$curTemp batt=$curBattery charging=$curCharging " +
+                "tds=$curTds vol%=$curVolumePct",
+        )
+    }
+
+    /** Sync setting acknowledged; now request the water logs. True when handled. */
+    private fun handleRpSyncAck(b2: Int, b3: Int): Boolean {
+        if (b2 == RP_SNAPSHOT_B2 && b3 == RP_SYNC_ACK_B3) {
             Log.d(TAG, "RP: sync ack → request logs")
             enqueueCommand(CMD_REQUEST_LOGS, REQUEST_DELAY_MS)
-            return
+            return true
         }
-        // Water-log availability flag: value[6]==1 means PT packets follow, 0 means nothing to
-        // drain (the official app's onNoNewWaterLog).
-        if (b5 == 0x06) {
-            val available = if (value.size > 6) value[6].toInt() and 0xFF else -1
-            Log.d(TAG, "RP: water-log availability=$available")
-            if (available == 0) {
-                expectedLogs = 0
-                parsedRecords = 0
-                collected.clear()
-            }
-            return
+        return false
+    }
+
+    // Water-log availability flag: value[6]==1 means PT packets follow, 0 means nothing to
+    // drain (the official app's onNoNewWaterLog). True when handled.
+    private fun handleRpLogAvailability(value: ByteArray, b5: Int): Boolean {
+        if (b5 != RP_LOG_AVAILABILITY) return false
+        val available = if (value.size > RP_FLAG_INDEX) value[RP_FLAG_INDEX].toInt() and BYTE_MASK else -1
+        Log.d(TAG, "RP: water-log availability=$available")
+        if (available == 0) {
+            expectedLogs = 0
+            parsedRecords = 0
+            collected.clear()
         }
-        // Registration state: value[6]==2 = user must press the bottle button; ==6 = done.
-        if (b5 == 0x1C) {
-            if (!pendingRegistration) return
-            val step = if (value.size > 6) value[6].toInt() and 0xFF else -1
-            Log.d(TAG, "RP: registration step=$step")
-            when (step) {
-                0x02 -> DeviceController.connectionState.value = "Press the bottle button"
-                0x06 -> {
-                    // Registration successful (and offline data cleared). Leave registration mode
-                    // and proceed to the normal data flow so status/logs start syncing.
-                    Log.d(TAG, "RP: registration successful → requesting bottle data")
-                    pendingRegistration = false
-                    DeviceController.connectionState.value = "Connected"
-                    enqueueCommand(CMD_REQUEST_DATA, REQUEST_DELAY_MS)
-                }
+        return true
+    }
+
+    // Registration state: value[6]==2 = user must press the bottle button; ==6 = done.
+    private fun handleRpRegistration(value: ByteArray, b5: Int) {
+        if (b5 != RP_REGISTRATION_STATE || !pendingRegistration) return
+        val step = if (value.size > RP_FLAG_INDEX) value[RP_FLAG_INDEX].toInt() and BYTE_MASK else -1
+        Log.d(TAG, "RP: registration step=$step")
+        when (step) {
+            RP_REG_PRESS_BUTTON -> DeviceController.connectionState.value = "Press the bottle button"
+            RP_REG_DONE -> {
+                // Registration successful (and offline data cleared). Leave registration mode
+                // and proceed to the normal data flow so status/logs start syncing.
+                Log.d(TAG, "RP: registration successful → requesting bottle data")
+                pendingRegistration = false
+                DeviceController.connectionState.value = "Connected"
+                enqueueCommand(CMD_REQUEST_DATA, REQUEST_DELAY_MS)
             }
         }
     }
 
     private fun handleRt(value: ByteArray) {
-        if (value.size < 7) return
-        when (val sel = value[5].toInt() and 0xFF) {
-            0x01 -> curTemp = value[6].toInt()
-            0x02 -> curBattery = value[6].toInt() and 0xFF
-            0x17 -> curCharging = value[6].toInt() and 0xFF in intArrayOf(1, 2)
-            0x08 -> {
-                // Volume changed (the user drank). The bottle reports the new fill level here;
-                // offline drink logs are drained separately during the sync handshake.
-                if (value.size < 8) return
-                curVolumePct = volumePct(beInt(value, 6))
-            }
-            0x28 -> {
-                if (value.size < 8) return
-                curTds = beInt(value, 6)
-            }
-            0x1C -> {
-                // Registration: user confirmed on the bottle (6==3) or it failed (6==4).
-                // Ignore once registration is done — the bottle keeps re-sending "confirmed".
-                if (!pendingRegistration) return
-                val result = value[6].toInt() and 0xFF
-                Log.d(TAG, "RT: registration result=$result")
-                when (result) {
-                    0x03 -> {
-                        DeviceController.connectionState.value = "Registering…"
-                        // Finalize registration: the bottle replies with "successful" (RP 1C/06),
-                        // which then proceeds to the normal data flow. Send once (it repeats 03).
-                        if (!registrationClearSent) {
-                            registrationClearSent = true
-                            enqueueCommand(CMD_CLEAR_OFFLINE_DATA, REQUEST_DELAY_MS)
-                        }
-                    }
-                    0x04 -> DeviceController.connectionState.value = "Registration failed"
-                }
+        if (value.size < RT_MIN_SIZE) return
+        when (val sel = value[RT_SELECTOR_INDEX].toInt() and BYTE_MASK) {
+            RT_TEMP_SELECTOR -> curTemp = value[RT_VALUE_INDEX].toInt()
+            RT_BATTERY_SELECTOR -> curBattery = value[RT_VALUE_INDEX].toInt() and BYTE_MASK
+            RT_CHARGING_SELECTOR -> curCharging = value[RT_VALUE_INDEX].toInt() and BYTE_MASK in CHARGING_STATES
+            RT_VOLUME_SELECTOR -> handleRtVolume(value)
+            RT_TDS_SELECTOR -> handleRtTds(value)
+            RT_REGISTRATION_SELECTOR -> {
+                handleRtRegistration(value)
                 return
             }
-            0xA1 -> {
-                Log.d(TAG, "RT: recalibrate result=${value[6].toInt() and 0xFF}")
+            RT_RECALIBRATE_SELECTOR -> {
+                Log.d(TAG, "RT: recalibrate result=${value[RT_VALUE_INDEX].toInt() and BYTE_MASK}")
                 return
             }
             else -> {
-                Log.d(TAG, "RT: unhandled selector=0x${sel.toString(16)}")
+                Log.d(TAG, "RT: unhandled selector=0x${sel.toString(BOTTLE_HEX_RADIX)}")
                 return
             }
         }
-        Log.d(TAG, "RT sel=0x${(value[5].toInt() and 0xFF).toString(16)} → temp=$curTemp batt=$curBattery charging=$curCharging tds=$curTds vol%=$curVolumePct")
+        logRtState(value)
         emitStatus()
     }
 
-    private fun handlePtFirst(value: ByteArray) {
-        if (value.size < 6 || (value[5].toInt() and 0xFF) != 0x06) return
-        expectedLogs = beInt(value, 2) / RECORD_SIZE
-        collected.clear()
-        parsedRecords = 0
-        Log.d(TAG, "logs: expecting $expectedLogs records")
-        accumulate(value, 6)
+    private fun logRtState(value: ByteArray) {
+        Log.d(
+            TAG,
+            "RT sel=0x${(value[RT_SELECTOR_INDEX].toInt() and BYTE_MASK).toString(BOTTLE_HEX_RADIX)} " +
+                "→ temp=$curTemp batt=$curBattery charging=$curCharging tds=$curTds vol%=$curVolumePct",
+        )
     }
 
-    private fun handlePtContinuation(value: ByteArray) {
-        accumulate(value, 2)
+    // Volume changed (the user drank). The bottle reports the new fill level here;
+    // offline drink logs are drained separately during the sync handshake.
+    private fun handleRtVolume(value: ByteArray) {
+        if (value.size < RT_WORD_MIN_SIZE) return
+        curVolumePct = volumePct(beInt(value, RT_VOLUME_OFFSET))
     }
 
-    private fun accumulate(value: ByteArray, start: Int) {
-        var i = start
-        while (i + RECORD_SIZE <= value.size) {
-            parsedRecords++
-            // Byte 12 is a validity flag; only 0 is a real drink record (matches the WaterH app,
-            // which counts non-zero records separately and never builds a log entry for them).
-            if ((value[i + 12].toInt() and 0xFF) == 0) {
-                collected.add(parseLogRecord(value, i))
+    private fun handleRtTds(value: ByteArray) {
+        if (value.size < RT_WORD_MIN_SIZE) return
+        curTds = beInt(value, RT_TDS_OFFSET)
+    }
+
+    // Registration: user confirmed on the bottle (6==3) or it failed (6==4).
+    // Ignore once registration is done — the bottle keeps re-sending "confirmed".
+    private fun handleRtRegistration(value: ByteArray) {
+        if (!pendingRegistration) return
+        val result = value[RT_VALUE_INDEX].toInt() and BYTE_MASK
+        Log.d(TAG, "RT: registration result=$result")
+        when (result) {
+            RT_REG_CONFIRMED -> {
+                DeviceController.connectionState.value = "Registering…"
+                // Finalize registration: the bottle replies with "successful" (RP 1C/06),
+                // which then proceeds to the normal data flow. Send once (it repeats 03).
+                if (!registrationClearSent) {
+                    registrationClearSent = true
+                    enqueueCommand(CMD_CLEAR_OFFLINE_DATA, REQUEST_DELAY_MS)
+                }
             }
-            i += RECORD_SIZE
-        }
-        if (expectedLogs > 0 && parsedRecords >= expectedLogs) {
-            Log.d(TAG, "logs: drained parsed=$parsedRecords drinks=${collected.size}")
-            collected.forEach { DeviceController.onDrinkLog(it) }
-            // Acknowledge/clear the drained logs from the bottle so each is counted once.
-            enqueueCommand("525000040306" + toHex(expectedLogs * RECORD_SIZE, 4))
-            expectedLogs = 0
-            parsedRecords = 0
-            collected.clear()
+            RT_REG_FAILED -> DeviceController.connectionState.value = "Registration failed"
         }
     }
 
@@ -550,65 +554,8 @@ class BleManager {
         enqueueCommand(CMD_SET_LANGUAGE)
     }
 
-    private fun buildSyncCommand(): String {
-        val cal = Calendar.getInstance()
-        val yy = cal.get(Calendar.YEAR) % 100
-        val mo = cal.get(Calendar.MONTH) + 1
-        val dd = cal.get(Calendar.DAY_OF_MONTH)
-        val hh = cal.get(Calendar.HOUR_OF_DAY)
-        val mi = cal.get(Calendar.MINUTE)
-        val ss = cal.get(Calendar.SECOND)
-        // 505400140305 + goal(2B) + 0703 + YYMMDDHHmmss + 0726 + reminder(6B), defaults kept.
-        return "505400140305" + "0000" + "0703" +
-            toHex(yy, 2) + toHex(mo, 2) + toHex(dd, 2) +
-            toHex(hh, 2) + toHex(mi, 2) + toHex(ss, 2) +
-            "0726" + "00080014003C"
-    }
-
     private fun emitStatus() {
         DeviceController.onBottleStatus(BottleStatus(curTemp, curTds, curBattery, curCharging, curVolumePct))
-    }
-
-    private fun parseLogRecord(b: ByteArray, off: Int): HydrationReading {
-        val year = 2000 + (b[off].toInt() and 0xFF)
-        val month = b[off + 1].toInt() and 0xFF
-        val day = b[off + 2].toInt() and 0xFF
-        val hour = b[off + 3].toInt() and 0xFF
-        val min = b[off + 4].toInt() and 0xFF
-        val sec = b[off + 5].toInt() and 0xFF
-        val amount = beInt(b, off + 6)
-        // TDS is a 2-byte big-endian value at [8..9] (confirmed via parseWaterLog bytecode).
-        val tds = beInt(b, off + 8)
-        // Raw whole-degree temperature; the WaterH app stores it as temp*10 (tenths).
-        val temp = b[off + 10].toInt()
-        val cal = Calendar.getInstance()
-        cal.clear()
-        cal.set(year, month - 1, day, hour, min, sec)
-        return HydrationReading(amount, cal.timeInMillis, tds, temp)
-    }
-
-    /** Fill level as a percentage, matching the WaterH app's `volume / 530 * 100`. */
-    private fun volumePct(raw: Int): Int = Math.round(raw / 530f * 100).coerceIn(0, 100)
-
-    private fun ByteArray.toHex(): String =
-        joinToString("") { "%02x".format(it.toInt() and 0xFF) }
-
-    private fun beInt(b: ByteArray, off: Int): Int =
-        ((b[off].toInt() and 0xFF) shl 8) or (b[off + 1].toInt() and 0xFF)
-
-    private fun toHex(value: Int, padLen: Int): String {
-        var h = Integer.toHexString(value)
-        while (h.length < padLen) h = "0$h"
-        return h
-    }
-
-    private fun hexToByteArray(hex: String): ByteArray {
-        val clean = hex.replace(Regex("\\s+"), "")
-        val out = ByteArray(clean.length / 2)
-        for (i in out.indices) {
-            out[i] = clean.substring(i * 2, i * 2 + 2).toInt(16).toByte()
-        }
-        return out
     }
 
     private fun refreshDeviceCache(g: BluetoothGatt) {

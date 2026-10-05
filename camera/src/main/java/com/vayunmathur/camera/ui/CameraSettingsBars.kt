@@ -43,7 +43,6 @@ internal fun HorizontalSettingSlider(
     value: Float,
     onValueChange: (Float) -> Unit,
     icon: @Composable (Modifier, Color) -> Unit,
-    label: String,
     modifier: Modifier = Modifier,
     valueRange: ClosedFloatingPointRange<Float> = -1f..1f,
     activeWhen: (Float) -> Boolean = { it != 0f },

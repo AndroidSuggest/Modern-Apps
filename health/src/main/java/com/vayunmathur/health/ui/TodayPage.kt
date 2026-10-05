@@ -20,6 +20,7 @@ import com.vayunmathur.library.ui.IconDirectionsWalk
 import com.vayunmathur.library.ui.IconFavorite
 import com.vayunmathur.library.ui.IconFire
 import com.vayunmathur.library.ui.IconLocationOn
+import com.vayunmathur.library.ui.IconRain
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Surface
@@ -312,7 +313,7 @@ fun TodayScreen(state: TodayUiState, actions: TodayActions) {
                         label = stringResource(R.string.label_hydration),
                         value = state.hydrationMl.toInt().toString(),
                         unit = stringResource(R.string.unit_ml),
-                        leadingIcon = { m, c -> IconBedtime(m, c) }, // TODO: replace with a water-drop icon
+                        leadingIcon = { m, c -> IconRain(m, c) },
                         leadingTint = hydrationColor,
                         labelModifier = Modifier.sharedText("health-metric-label-HYDRATION"),
                         onClick = { actions.openMetric(HealthMetricConfig.HYDRATION) },

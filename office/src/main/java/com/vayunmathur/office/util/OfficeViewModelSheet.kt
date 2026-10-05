@@ -8,25 +8,28 @@ import android.net.Uri
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.library.ui.odf.OdfCell
+import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.library.ui.odf.OdfNumberFormat
+import com.vayunmathur.library.ui.odf.OdfRow
+import com.vayunmathur.library.ui.odf.OdfSheet
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.office.R
 import kotlin.io.encoding.Base64
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import com.vayunmathur.office.odf.*
-import com.vayunmathur.library.ui.odf.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import com.vayunmathur.office.R
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 // --- Spreadsheet editing (split from OfficeViewModel.kt for file length) ---
 
@@ -139,7 +142,11 @@ fun OfficeViewModel.setCellBgColor(sheetIndex: Int, rowIndex: Int, cellIndex: In
     modifyCell(doc, sheetIndex, rowIndex, cellIndex) { it.copy(backgroundColor = color) }
 }
 
-fun OfficeViewModel.setCellAlignment(sheetIndex: Int, rowIndex: Int, cellIndex: Int, alignment: androidx.compose.ui.text.style.TextAlign?) {
+fun OfficeViewModel.setCellAlignment(
+    sheetIndex: Int,
+    rowIndex: Int,
+    cellIndex: Int,
+    alignment: androidx.compose.ui.text.style.TextAlign?) {
     val doc = (state.value as? OfficeViewModel.ViewState.Loaded)?.document as? OdfDocument.Spreadsheet ?: return
     modifyCell(doc, sheetIndex, rowIndex, cellIndex) { it.copy(alignment = alignment) }
 }
@@ -189,16 +196,17 @@ fun OfficeViewModel.fillDown(sheetIndex: Int, srcRow: Int, col: Int, toRow: Int)
     if (toRow <= srcRow) return
     val rows = sheet.rows.toMutableList()
     for (r in (srcRow + 1)..toRow) {
-        val row = rows.getOrNull(r) ?: continue
-        if (col !in row.cells.indices) continue
-        val cells = row.cells.toMutableList()
-        cells[col] = cells[col].copy(
-            text = src.text, formula = src.formula, valueType = src.valueType,
-            numberValue = src.numberValue, numberFormat = src.numberFormat,
-            bold = src.bold, italic = src.italic, textColor = src.textColor,
-            backgroundColor = src.backgroundColor, alignment = src.alignment
-        )
-        rows[r] = OdfRow(cells)
+        val row = rows.getOrNull(r)
+        if (row != null && col in row.cells.indices) {
+            val cells = row.cells.toMutableList()
+            cells[col] = cells[col].copy(
+                text = src.text, formula = src.formula, valueType = src.valueType,
+                numberValue = src.numberValue, numberFormat = src.numberFormat,
+                bold = src.bold, italic = src.italic, textColor = src.textColor,
+                backgroundColor = src.backgroundColor, alignment = src.alignment
+            )
+            rows[r] = OdfRow(cells)
+        }
     }
     sheets[sheetIndex] = sheet.copy(rows = rows)
     updateDocument(doc.copy(sheets = sheets))
@@ -212,10 +220,10 @@ fun OfficeViewModel.mergeCells(sheetIndex: Int, startRow: Int, startCol: Int, en
     val colSpan = endCol - startCol + 1
     val rowSpan = endRow - startRow + 1
     for (r in startRow..endRow) {
-        if (r >= rows.size) continue
+        if (r >= rows.size) break
         val cells = rows[r].cells.toMutableList()
         for (c in startCol..endCol) {
-            if (c >= cells.size) continue
+            if (c >= cells.size) break
             cells[c] = if (r == startRow && c == startCol) {
                 cells[c].copy(spannedColumns = colSpan, rowSpan = rowSpan)
             } else {
@@ -238,7 +246,9 @@ fun OfficeViewModel.unmergeCells(sheetIndex: Int, rowIndex: Int, cellIndex: Int)
     for (r in rowIndex until minOf(rowIndex + cell.rowSpan, rows.size)) {
         val cells = rows[r].cells.toMutableList()
         for (c in cellIndex until minOf(cellIndex + cell.spannedColumns, cells.size)) {
-            cells[c] = if (r == rowIndex && c == cellIndex) cells[c].copy(spannedColumns = 1, rowSpan = 1) else cells[c].copy(isCovered = false)
+            cells[c] = if (r == rowIndex && c == cellIndex) cells[c].copy(
+                spannedColumns = 1,
+                rowSpan = 1) else cells[c].copy(isCovered = false)
         }
         rows[r] = OdfRow(cells)
     }
@@ -258,7 +268,12 @@ fun OfficeViewModel.sortRows(sheetIndex: Int, colIndex: Int, ascending: Boolean)
     updateDocument(doc.copy(sheets = sheets))
 }
 
-internal fun OfficeViewModel.modifyCell(doc: OdfDocument.Spreadsheet, sheetIndex: Int, rowIndex: Int, cellIndex: Int, transform: (OdfCell) -> OdfCell) {
+internal fun OfficeViewModel.modifyCell(
+    doc: OdfDocument.Spreadsheet,
+    sheetIndex: Int,
+    rowIndex: Int,
+    cellIndex: Int,
+    transform: (OdfCell) -> OdfCell) {
     val sheets = doc.sheets.toMutableList()
     val sheet = sheets.getOrNull(sheetIndex) ?: return
     val rows = sheet.rows.toMutableList()

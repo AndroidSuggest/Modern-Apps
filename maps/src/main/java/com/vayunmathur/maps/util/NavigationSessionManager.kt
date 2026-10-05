@@ -1,8 +1,6 @@
-@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
-
 package com.vayunmathur.maps.util
 
-import kotlin.concurrent.atomics.*
+import java.util.concurrent.atomic.AtomicBoolean
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
@@ -60,6 +58,15 @@ object NavigationSessionManager {
 
     /** Speed (m/s) above which we trust GPS course-over-ground for bearing. */
     private const val GPS_COURSE_MIN_SPEED_MPS = 1.0f
+
+    /** Fastest fix cadence asked of either provider. */
+    private const val LOCATION_MIN_TIME_MS = 1000L
+    /** No distance floor: the off-route policy filters, not the OS. */
+    private const val LOCATION_MIN_DISTANCE_M = 0f
+    /** Full compass circle (degrees), for normalising the fused bearing. */
+    private const val FULL_CIRCLE_DEG = 360f
+    /** Max recalculation attempts before the session fails. */
+    private const val MAX_RECALC_ATTEMPTS = 3
 
     /** UI / notification state for the navigation session. */
     sealed interface NavState {
@@ -150,7 +157,7 @@ object NavigationSessionManager {
         destination: GeoPoint,
         destinationLabel: String,
     ) {
-        if (!initialized.load()) {
+        if (!initialized.get()) {
             Log.w(TAG, "start() called before init()")
             return
         }
@@ -158,7 +165,11 @@ object NavigationSessionManager {
             Log.w(TAG, "start() called while already in state ${_state.value}; ignoring")
             return
         }
-        Log.i(TAG, "start(mode=$mode, label=$destinationLabel, steps=${route.step.size}, dist=${route.distanceMeters})")
+        Log.i(
+            TAG,
+            "start(mode=$mode, label=$destinationLabel, " +
+                "steps=${route.step.size}, dist=${route.distanceMeters})",
+        )
         // One emission, so an observer never sees a route from this session paired with a
         // destination from the last one.
         _session.value = NavSession(route = route, travelMode = mode, destinationName = destinationLabel)
@@ -174,8 +185,10 @@ object NavigationSessionManager {
     /** End the navigation session. Cancels jobs, stops location, resets state. */
     fun stop() {
         Log.i(TAG, "stop")
-        locationJob?.cancel(); locationJob = null
-        recalcJob?.cancel(); recalcJob = null
+        locationJob?.cancel()
+        locationJob = null
+        recalcJob?.cancel()
+        recalcJob = null
         stopLocationCollection()
         // Drop TTS bookkeeping so a follow-up start() doesn't suppress
         // threshold cues whose stepIndex happens to collide with the old
@@ -222,16 +235,28 @@ object NavigationSessionManager {
             override fun onLocationChanged(location: Location) {
                 handleLocation(location)
             }
-            @Deprecated("Required by old LocationListener interface; status callbacks are no longer delivered on API 29+.")
+            // Required by old LocationListener interface: status callbacks are
+            // no longer delivered on API 29+.
+            @Deprecated("Unused; kept for the old LocationListener interface.")
             override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
         }
         registeredLocationListener = locListener
         runCatching {
             if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, locListener)
+                lm.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER,
+                    LOCATION_MIN_TIME_MS,
+                    LOCATION_MIN_DISTANCE_M,
+                    locListener,
+                )
             }
             if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000L, 0f, locListener)
+                lm.requestLocationUpdates(
+                    LocationManager.NETWORK_PROVIDER,
+                    LOCATION_MIN_TIME_MS,
+                    LOCATION_MIN_DISTANCE_M,
+                    locListener,
+                )
             }
         }.onFailure { Log.e(TAG, "requestLocationUpdates failed", it) }
 
@@ -249,7 +274,7 @@ object NavigationSessionManager {
                 if (SensorManager.getRotationMatrix(rot, null, accel, mag)) {
                     SensorManager.getOrientation(rot, angles)
                     val az = Math.toDegrees(angles[0].toDouble()).toFloat()
-                    compassBearing = (az + 360f) % 360f
+                    compassBearing = (az + FULL_CIRCLE_DEG) % FULL_CIRCLE_DEG
                 }
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -326,7 +351,7 @@ object NavigationSessionManager {
                 now
             }
             val elapsed = now - since
-            val canRecalc = (now - lastRecalcMs) >= RECALC_COOLDOWN_MS && recalcAttempts < 3
+            val canRecalc = (now - lastRecalcMs) >= RECALC_COOLDOWN_MS && recalcAttempts < MAX_RECALC_ATTEMPTS
             if (elapsed >= OFF_ROUTE_DEBOUNCE_MS && canRecalc && _state.value !is NavState.Recalculating) {
                 triggerRecalculate(position)
                 return
@@ -375,12 +400,12 @@ object NavigationSessionManager {
                     position = dest,
                 )
                 val routeFeature = SpecificFeature.Route(listOf(fromFeature, toFeature))
-                OfflineRouter.getRouteMulti(appContext, routeFeature, from, mode)
+                OfflineRouterRoadRoutes.getRouteMulti(appContext, routeFeature, from, mode)
             }.getOrNull()
 
             if (newRoute == null) {
                 Log.w(TAG, "recalc failed")
-                if (recalcAttempts >= 3) {
+                if (recalcAttempts >= MAX_RECALC_ATTEMPTS) {
                     _state.value = NavState.Failed("Could not recalculate route")
                 } else {
                     // Don't immediately rip the user back to Failed — drop

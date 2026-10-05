@@ -50,7 +50,7 @@ internal suspend fun WhatsAppClient.fetchAndEmitGroupInfo(groupJid: String) {
             .put("participantNames", org.json.JSONArray(participantNames))
             .toString()
     } else null
-    _events.emit(WhatsAppEvent.ConversationUpdate(
+    eventsMutable.emit(WhatsAppEvent.ConversationUpdate(
         source = MessageSource.WHATSAPP,
         conversationId = "wa:$groupJid",
         peerName = subject,
@@ -82,7 +82,7 @@ internal suspend fun WhatsAppClient.enrichGroupFromMex(groupJid: String, partici
     val group = data.optJSONObject("xwa2_group_query_by_id") ?: return
     val subject = group.optJSONObject("subject")?.optString("subject")?.ifEmpty { null }
         ?: group.optString("subject").ifEmpty { null } ?: return
-    _events.emit(WhatsAppEvent.ConversationUpdate(
+    eventsMutable.emit(WhatsAppEvent.ConversationUpdate(
         source = MessageSource.WHATSAPP,
         conversationId = "wa:$groupJid",
         peerName = subject,
@@ -101,7 +101,7 @@ internal suspend fun WhatsAppClient.enrichGroupFromMex(groupJid: String, partici
  * From Go HandleMatrixRoomName / SetGroupName.
  */
 suspend fun WhatsAppClient.setGroupName(conversationId: String, name: String): Boolean {
-    if (_state.value !is State.Connected) return false
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val groupJid = extractJid(conversationId) ?: return false
     if (!groupJid.contains("@g.us")) return false
@@ -120,7 +120,7 @@ suspend fun WhatsAppClient.setGroupTopic(
     topic: String,
     previousTopicId: String? = null,
 ): Boolean {
-    if (_state.value !is State.Connected) return false
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val groupJid = extractJid(conversationId) ?: return false
     if (!groupJid.contains("@g.us")) return false
@@ -136,7 +136,7 @@ suspend fun WhatsAppClient.setGroupTopic(
  * From Go HandleMatrixRoomAvatar / convertRoomAvatar.
  */
 suspend fun WhatsAppClient.setGroupAvatar(conversationId: String, imageBytes: ByteArray): Boolean {
-    if (_state.value !is State.Connected) return false
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val groupJid = extractJid(conversationId) ?: return false
     if (!groupJid.contains("@g.us")) return false
@@ -165,6 +165,10 @@ suspend fun WhatsAppClient.setGroupAvatar(conversationId: String, imageBytes: By
     return ws.send(WhatsAppProtocol.encodeNode(node))
 }
 
+private const val GROUP_ICON_MIN_DIM = 190
+private const val GROUP_ICON_MAX_DIM = 720
+private const val GROUP_ICON_JPEG_QUALITY = 75
+
 internal fun WhatsAppClient.cropResizeAvatar(imageBytes: ByteArray): ByteArray? {
     val original = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size) ?: return null
     val size = minOf(original.width, original.height)
@@ -172,16 +176,14 @@ internal fun WhatsAppClient.cropResizeAvatar(imageBytes: ByteArray): ByteArray? 
     val y = (original.height - size) / 2
     val cropped = Bitmap.createBitmap(original, x, y, size, size)
     // Go: min=190, max=720, BiLinear scaling
-    val minDim = 190
-    val maxDim = 720
-    val targetDim = size.coerceIn(minDim, maxDim)
+    val targetDim = size.coerceIn(GROUP_ICON_MIN_DIM, GROUP_ICON_MAX_DIM)
     val scaled = if (size != targetDim) {
         cropped.scale(targetDim, targetDim).also {
             if (it !== cropped) cropped.recycle()
         }
     } else cropped
     val out = ByteArrayOutputStream()
-    scaled.compress(Bitmap.CompressFormat.JPEG, 75, out)
+    scaled.compress(Bitmap.CompressFormat.JPEG, GROUP_ICON_JPEG_QUALITY, out)
     if (scaled !== original) scaled.recycle()
     if (original !== cropped && original !== scaled) original.recycle()
     return out.toByteArray()
@@ -196,7 +198,7 @@ suspend fun WhatsAppClient.updateGroupParticipants(
     participantJids: List<String>,
     action: String,
 ): Boolean {
-    if (_state.value !is State.Connected) return false
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val groupJid = extractJid(conversationId) ?: return false
     if (!groupJid.contains("@g.us")) return false
@@ -217,7 +219,7 @@ suspend fun WhatsAppClient.updateGroupParticipants(
  * Ref whatsmeow group.go CreateGroup.
  */
 suspend fun WhatsAppClient.createGroup(subject: String, participantJids: List<String>): String? {
-    if (_state.value !is State.Connected) { WhatsAppDiag.log(TAG, "createGroup: not connected"); return null }
+    if (stateMutable.value !is State.Connected) { WhatsAppDiag.log(TAG, "createGroup: not connected"); return null }
     if (participantJids.isEmpty()) { WhatsAppDiag.log(TAG, "createGroup: no participants"); return null }
 
     val id = generateMessageId()
@@ -226,13 +228,23 @@ suspend fun WhatsAppClient.createGroup(subject: String, participantJids: List<St
     val iq = WhatsAppProtocol.buildCreateGroup(subject, participantJids, id, key)
     val resp = sendIqAndWait(iq) ?: run { WhatsAppDiag.log(TAG, "createGroup: no response"); return null }
     if (resp.attrs["type"] == "error") {
-        val err = resp.getChildByTag("error")
-        WhatsAppDiag.log(
-            TAG,
-            "createGroup: server error code=${err?.attrs?.get("code")} text=${err?.attrs?.get("text")}",
-        )
+        logGroupError(resp)
         return null
     }
+    return extractGroupJid(resp)
+}
+
+/** Log a group-management server error. */
+private fun WhatsAppClient.logGroupError(resp: WhatsAppProtocol.Node) {
+    val err = resp.getChildByTag("error")
+    WhatsAppDiag.log(
+        TAG,
+        "createGroup: server error code=${err?.attrs?.get("code")} text=${err?.attrs?.get("text")}",
+    )
+}
+
+/** New group JID from a create response, or null (logged) when absent. */
+private fun WhatsAppClient.extractGroupJid(resp: WhatsAppProtocol.Node): String? {
     val group = resp.getChildByTag("group") ?: run { WhatsAppDiag.log(TAG, "createGroup: no <group>"); return null }
     // Response group node carries the new JID either as `jid` or as a bare `id` local-part.
     val groupJid = group.attrs["jid"]

@@ -97,10 +97,16 @@ data class NonogramGameState(
  * head, and so a new player is not handed a 15x15 as their introduction.
  */
 fun sizeForLevel(level: Int): Int = when {
-    level <= 8 -> 5
-    level <= 20 -> 10
-    else -> 15
+    level <= SMALL_MAX_LEVEL -> SMALL_SIZE
+    level <= MEDIUM_MAX_LEVEL -> MEDIUM_SIZE
+    else -> LARGE_SIZE
 }
+
+private const val SMALL_MAX_LEVEL = 8
+private const val MEDIUM_MAX_LEVEL = 20
+private const val SMALL_SIZE = 5
+private const val MEDIUM_SIZE = 10
+private const val LARGE_SIZE = 15
 
 /** Daily puzzles are a fixed size, so the challenge is comparable from one day to the next. */
 const val DAILY_SIZE = 10

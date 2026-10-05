@@ -124,7 +124,10 @@ private fun contactDisplayName(context: Context, uri: Uri): String? = try {
     )?.use { cursor ->
         if (cursor.moveToFirst()) cursor.getString(0)?.takeIf { it.isNotBlank() } else null
     }
-} catch (e: Exception) {
+} catch (e: SecurityException) {
+    Log.w("PeoplePage", "Could not read the picked contact's name", e)
+    null
+} catch (e: IllegalArgumentException) {
     Log.w("PeoplePage", "Could not read the picked contact's name", e)
     null
 }

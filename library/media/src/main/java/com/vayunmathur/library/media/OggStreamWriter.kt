@@ -18,6 +18,22 @@ internal object OggPages {
     const val FLAG_BEGIN_OF_STREAM = 0x02
     const val FLAG_END_OF_STREAM = 0x04
 
+    private const val CHECKSUM_OFFSET = 22
+    private const val CHECKSUM_END = 25
+    private const val CHECKSUM_SIZE_BYTES = 4
+    private const val BYTE_OFFSET_1 = 1
+    private const val BYTE_OFFSET_2 = 2
+    private const val BYTE_OFFSET_3 = 3
+    private const val LONG_SIZE_BYTES = 8
+    private const val BITS_PER_BYTE = 8
+    private const val BYTE_SHIFT_1 = 8
+    private const val BYTE_SHIFT_2 = 16
+    private const val BYTE_SHIFT_3 = 24
+    private const val BYTE_MASK = 0xff
+    private const val CRC_TOP_SHIFT = 8
+    private const val CRC_TABLE_BITS = 8
+    private const val CRC_TABLE_TOP = 24
+
     /**
      * The lacing values for one packet: 255 for every full segment, then a final value under
      * 255 that marks the packet's end. A packet whose length is a multiple of 255 therefore
@@ -51,7 +67,7 @@ internal object OggPages {
         out.write(longLe(granulePosition))
         out.write(VorbisComments.intLe(serialNumber))
         out.write(VorbisComments.intLe(sequence))
-        out.write(ByteArray(4)) // CRC placeholder, filled in below
+        out.write(ByteArray(CHECKSUM_SIZE_BYTES)) // CRC placeholder, filled in below
         out.write(segments.size)
         segments.forEach { out.write(it) }
         out.write(payload, payloadOffset, payloadSize)
@@ -103,22 +119,22 @@ internal object OggPages {
 
     /** Zeroes the checksum field, computes the Ogg CRC over the whole page, and writes it back. */
     fun setChecksum(page: ByteArray) {
-        for (i in 22..25) page[i] = 0
-        writeIntLe(page, 22, crc(page))
+        for (i in CHECKSUM_OFFSET..CHECKSUM_END) page[i] = 0
+        writeIntLe(page, CHECKSUM_OFFSET, crc(page))
     }
 
     fun writeIntLe(buffer: ByteArray, offset: Int, value: Int) {
         buffer[offset] = value.toByte()
-        buffer[offset + 1] = (value ushr 8).toByte()
-        buffer[offset + 2] = (value ushr 16).toByte()
-        buffer[offset + 3] = (value ushr 24).toByte()
+        buffer[offset + BYTE_OFFSET_1] = (value ushr BYTE_SHIFT_1).toByte()
+        buffer[offset + BYTE_OFFSET_2] = (value ushr BYTE_SHIFT_2).toByte()
+        buffer[offset + BYTE_OFFSET_3] = (value ushr BYTE_SHIFT_3).toByte()
     }
 
     fun writeLongLe(buffer: ByteArray, offset: Int, value: Long) {
-        for (i in 0 until 8) buffer[offset + i] = (value ushr (8 * i)).toByte()
+        for (i in 0 until LONG_SIZE_BYTES) buffer[offset + i] = (value ushr (BITS_PER_BYTE * i)).toByte()
     }
 
-    fun longLe(value: Long): ByteArray = ByteArray(8).also { writeLongLe(it, 0, value) }
+    fun longLe(value: Long): ByteArray = ByteArray(LONG_SIZE_BYTES).also { writeLongLe(it, 0, value) }
 
     // ------------------------------------------------------------------
     // Ogg CRC-32 (poly 0x04C11DB7, no reflection, no initial or final xor)
@@ -126,8 +142,8 @@ internal object OggPages {
 
     private val crcTable = IntArray(256).also { table ->
         for (i in 0 until 256) {
-            var crc = i shl 24
-            repeat(8) {
+            var crc = i shl CRC_TABLE_TOP
+            repeat(CRC_TABLE_BITS) {
                 crc = if (crc and 0x80000000.toInt() != 0) {
                     (crc shl 1) xor 0x04c11db7
                 } else {
@@ -141,8 +157,8 @@ internal object OggPages {
     fun crc(data: ByteArray): Int {
         var crc = 0
         for (b in data) {
-            val index = ((crc ushr 24) xor (b.toInt() and 0xff)) and 0xff
-            crc = (crc shl 8) xor crcTable[index]
+            val index = ((crc ushr CRC_TABLE_TOP) xor (b.toInt() and BYTE_MASK)) and BYTE_MASK
+            crc = (crc shl CRC_TOP_SHIFT) xor crcTable[index]
         }
         return crc
     }

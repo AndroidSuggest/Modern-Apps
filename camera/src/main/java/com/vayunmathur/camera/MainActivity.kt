@@ -111,10 +111,7 @@ class MainActivity : ComponentActivity() {
     // Gated on the camera route being foreground so keys pressed in Settings don't take a
     // photo behind your back (and volume keeps adjusting volume there).
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        return if ((keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN ||
-            keyCode == KeyEvent.KEYCODE_SPACE || keyCode == KeyEvent.KEYCODE_ESCAPE) &&
-            viewModel.foregroundRoute == "camera"
-        ) {
+        return if (isShutterKey(keyCode) && viewModel.foregroundRoute == "camera") {
             viewModel.triggerShutter()
             true
         } else {
@@ -124,11 +121,18 @@ class MainActivity : ComponentActivity() {
 
     // Consume the matching key-up so the system volume UI doesn't appear (camera route only).
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        return if ((keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) &&
-            viewModel.foregroundRoute == "camera") {
+        return if (isVolumeKey(keyCode) && viewModel.foregroundRoute == "camera") {
             true
         } else {
             super.onKeyUp(keyCode, event)
         }
     }
+
+    private fun isVolumeKey(keyCode: Int): Boolean =
+        keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+
+    private fun isShutterKey(keyCode: Int): Boolean =
+        isVolumeKey(keyCode) ||
+            keyCode == KeyEvent.KEYCODE_SPACE ||
+            keyCode == KeyEvent.KEYCODE_ESCAPE
 }

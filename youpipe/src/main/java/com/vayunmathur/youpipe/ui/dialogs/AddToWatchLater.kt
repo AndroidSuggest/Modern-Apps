@@ -53,7 +53,7 @@ fun AddToWatchLater(
         }
         if (data != null && watchLater != null) {
             handled = true
-            youPipeViewModel.addVideoToPlaylist(
+            youPipeViewModel.playlistOps.addVideoToPlaylist(
                 watchLater.id,
                 VideoInfo(
                     data.title, videoID, data.duration, data.views,

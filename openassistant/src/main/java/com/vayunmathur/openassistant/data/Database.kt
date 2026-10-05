@@ -109,7 +109,12 @@ abstract class AppDatabase: RoomDatabase() {
     companion object : com.vayunmathur.library.util.DatabaseMigrations {
         override val migrations = listOf(
             Migration(1, 2) { it.execSQL("ALTER TABLE Message ADD COLUMN missingAppPackage TEXT") },
-            Migration(2, 3) { it.execSQL("CREATE TABLE IF NOT EXISTS `Memory` (`content` TEXT NOT NULL, `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL)") },
+            Migration(2, 3) {
+                it.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `Memory` " +
+                        "(`content` TEXT NOT NULL, `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL)",
+                )
+            },
         )
     }
 }

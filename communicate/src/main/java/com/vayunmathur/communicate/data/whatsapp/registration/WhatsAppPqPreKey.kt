@@ -56,7 +56,7 @@ object WhatsAppPqPreKey {
         val pub = stripTypeTag(kp.publicKey.serialize())
         val secret = kp.secretKey.serialize()
         val signature = RustWhatsAppCrypto.sign(identityPrivate32, signingInput(pub))
-            ?: throw RuntimeException("Rust sign returned null for PQ prekey")
+            ?: throw IllegalStateException("Rust sign returned null for PQ prekey")
         return Generated(keyId = keyId, publicKey = pub, secretKey = secret, signature = signature)
     }
 }

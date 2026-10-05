@@ -550,7 +550,7 @@ object CastPlayback {
         context.contentResolver.openInputStream(uri)?.use { input ->
             val head = ByteArray(SNIFF_BYTES)
             val read = input.read(head)
-            if (read < 36) return@use false
+            if (read < MIN_OPUS_HEADER_BYTES) return@use false
             val magic = String(head, 0, 4, Charsets.ISO_8859_1)
             magic == "OggS" && String(head, 0, read, Charsets.ISO_8859_1).contains("OpusHead")
         } == true
@@ -573,8 +573,13 @@ object CastPlayback {
         runCatching { File(context.cacheDir, ARTWORK_CACHE_DIR).deleteRecursively() }
     }
 
-    /** Enough to cover an Ogg page header and the `OpusHead` packet that follows it. */
+    /**
+     * Enough to cover an Ogg page header and the `OpusHead` packet that follows it.
+     */
     private const val SNIFF_BYTES = 64
+
+    /** Minimum bytes to check for the Ogg magic plus OpusHead marker. */
+    private const val MIN_OPUS_HEADER_BYTES = 36
 
     private const val CACHE_DIR = "cast-opus"
 

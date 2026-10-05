@@ -45,12 +45,12 @@ class OAuthActivity : ComponentActivity() {
         lifecycleScope.launch {
             val result: OutlookOAuth.OAuthResult = try {
                 OutlookOAuth.complete(applicationContext, raw)
-            } catch (t: Throwable) {
-                Log.e(TAG, "complete threw", t)
+            } catch (ignored: Exception) {
+                Log.e(TAG, "complete threw", ignored)
                 OutlookOAuth.OAuthResult.Failure(
-                    reason = t.message ?: "${t.javaClass.simpleName} during sign-in",
-                    error = t.javaClass.simpleName,
-                    errorDescription = t.message
+                    reason = ignored.message ?: "${ignored.javaClass.simpleName} during sign-in",
+                    error = ignored.javaClass.simpleName,
+                    errorDescription = ignored.message
                 )
             }
 

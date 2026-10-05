@@ -39,26 +39,43 @@ class GameCenterLegacy(private val context: android.content.Context, private val
             try {
                 resolver.query(uri, null, null, null, null)?.use { cursor ->
                     while (cursor.moveToNext()) {
-                        val achievement = Achievement(
-                            id = cursor.getString(cursor.getColumnIndexOrThrow("achievement_id")),
-                            name = cursor.getString(cursor.getColumnIndexOrThrow("name")),
-                            description = cursor.getString(cursor.getColumnIndexOrThrow("description")),
-                            iconResName = cursor.getString(cursor.getColumnIndexOrThrow("icon_res_name"))
-                        )
-                        val unlocked = cursor.getInt(cursor.getColumnIndexOrThrow("unlocked")) == 1
-                        val unlockedAt = if (unlocked) cursor.getLong(cursor.getColumnIndexOrThrow("unlocked_at")) else null
-                        results.add(AchievementStatus(achievement, unlocked, unlockedAt))
+                        results.add(readStatusRow(cursor))
                     }
                 }
-            } catch (_: Exception) { }
+            } catch (_: Exception) {
+                // Best-effort legacy read; hub absence or schema drift yields empty list.
+            }
             results
         }
 
+    private fun readStatusRow(cursor: android.database.Cursor): AchievementStatus {
+        val achievement = Achievement(
+            id = cursor.getString(cursor.getColumnIndexOrThrow("achievement_id")),
+            name = cursor.getString(cursor.getColumnIndexOrThrow("name")),
+            description = cursor.getString(cursor.getColumnIndexOrThrow("description")),
+            iconResName = cursor.getString(cursor.getColumnIndexOrThrow("icon_res_name")),
+        )
+        val unlocked = cursor.getInt(cursor.getColumnIndexOrThrow("unlocked")) == 1
+        val unlockedAt = if (unlocked) {
+            cursor.getLong(cursor.getColumnIndexOrThrow("unlocked_at"))
+        } else {
+            null
+        }
+        return AchievementStatus(achievement, unlocked, unlockedAt)
+    }
+
     // No-op: leaderboards removed
-    suspend fun reportScore(category: String, score: Long) { }
+    suspend fun reportScore(
+        @Suppress("UNUSED_PARAMETER") category: String,
+        @Suppress("UNUSED_PARAMETER") score: Long,
+    ) {
+        // Intentionally empty: leaderboards removed, API retained for callers.
+    }
 
     // Always empty: leaderboards removed
-    suspend fun getScores(category: String): List<ScoreEntry> = emptyList()
+    suspend fun getScores(
+        @Suppress("UNUSED_PARAMETER") category: String,
+    ): List<ScoreEntry> = emptyList()
 
     fun isHubInstalled(): Boolean = client.isHubInstalled()
 }

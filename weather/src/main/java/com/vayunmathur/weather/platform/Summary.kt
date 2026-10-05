@@ -39,12 +39,26 @@ fun computeDaySummary(context: Context, forecast: ForecastResponse, tempUnit: Te
         )
     }
     when {
-        precip >= 70 -> parts.add(context.getString(R.string.summary_rain_likely))
-        precip >= 40 -> parts.add(context.getString(R.string.summary_showers_possible))
-        precip >= 20 -> parts.add(context.getString(R.string.summary_slight_chance_rain))
+        precip >= RAIN_LIKELY_PERCENT -> parts.add(context.getString(R.string.summary_rain_likely))
+        precip >= SHOWERS_POSSIBLE_PERCENT ->
+            parts.add(context.getString(R.string.summary_showers_possible))
+        precip >= SLIGHT_CHANCE_PERCENT ->
+            parts.add(context.getString(R.string.summary_slight_chance_rain))
     }
-    if (wind != null && wind >= 30) {
+    if (wind != null && wind >= WINDY_KMH) {
         parts.add(context.getString(R.string.summary_winds_noticeable))
     }
     return parts.joinToString(" ")
 }
+
+/** Precipitation probability (%) at or above which rain is "likely". */
+private const val RAIN_LIKELY_PERCENT = 70
+
+/** Precipitation probability (%) at or above which showers are "possible". */
+private const val SHOWERS_POSSIBLE_PERCENT = 40
+
+/** Precipitation probability (%) at or above which rain gets a "slight chance" mention. */
+private const val SLIGHT_CHANCE_PERCENT = 20
+
+/** Wind speed (km/h) at or above which the summary mentions noticeable winds. */
+private const val WINDY_KMH = 30.0

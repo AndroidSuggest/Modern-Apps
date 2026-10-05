@@ -1,8 +1,35 @@
 package com.vayunmathur.health.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import com.vayunmathur.library.ui.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
+import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.ExperimentalMaterial3ExpressiveApi
+import com.vayunmathur.library.ui.FloatingActionButtonMenu
+import com.vayunmathur.library.ui.IconAdd
+import com.vayunmathur.library.ui.IconArrowForward
+import com.vayunmathur.library.ui.IconClose
+import com.vayunmathur.library.ui.IconFire
+import com.vayunmathur.library.ui.LazyListScaffold
+import com.vayunmathur.library.ui.LinearProgressIndicator
+import com.vayunmathur.library.ui.ListItem
+import com.vayunmathur.library.ui.ListItemDefaults
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.ToggleFloatingActionButton
+import com.vayunmathur.library.ui.appBarScrollBehavior
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.plus
+import kotlinx.datetime.todayIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,10 +55,8 @@ import com.vayunmathur.health.util.NutritionActions
 import com.vayunmathur.health.util.NutritionUiState
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.round
-import com.vayunmathur.library.ui.*
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
-import kotlinx.datetime.*
 
 data class NutrientDV(
     val name: String,

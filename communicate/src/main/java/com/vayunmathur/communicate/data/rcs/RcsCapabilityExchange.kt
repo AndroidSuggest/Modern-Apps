@@ -90,11 +90,11 @@ object RcsCapabilityExchange {
                         }
                     },
                 )
-            } catch (e: SecurityException) {
+            } catch (expected: SecurityException) {
                 uceAvailable = false
                 if (cont.isActive) cont.resume(emptyList())
                 false
-            } catch (e: ImsException) {
+            } catch (expected: ImsException) {
                 if (cont.isActive) cont.resume(emptyList())
                 false
             }
@@ -126,42 +126,7 @@ object RcsCapabilityExchange {
         val adapter = runCatching { ims.getImsRcsManager(subId).getUceAdapter() }.getOrNull()
             ?: return emptyMap()
         val uris = numbers.map { Uri.fromParts("tel", it, null) }
-        val caps: List<Map<String, Any?>> = suspendCancellableCoroutine { cont ->
-            val collected = mutableListOf<Map<String, Any?>>()
-            val bridged: Boolean = try {
-                RcsHiddenApi.requestUceCapabilities(
-                    adapter = adapter,
-                    contactUris = uris,
-                    executor = executor,
-                    callback = object : RcsHiddenApi.UceCallback {
-                        override fun onCapabilitiesReceived(caps: List<*>) {
-                            for (cap in caps) {
-                                readCapability(cap)?.let { collected += it }
-                            }
-                        }
-
-                        override fun onComplete() {
-                            if (cont.isActive) cont.resume(collected.toList())
-                        }
-
-                        override fun onError(errorCode: Int, retryAfterMillis: Long) {
-                            Log.w(TAG, "UCE error code=$errorCode")
-                            if (cont.isActive) cont.resume(collected.toList())
-                        }
-                    },
-                )
-            } catch (e: SecurityException) {
-                Log.w(TAG, "No UCE permission", e)
-                uceAvailable = false
-                if (cont.isActive) cont.resume(emptyList())
-                false
-            } catch (e: ImsException) {
-                Log.w(TAG, "UCE service unavailable", e)
-                if (cont.isActive) cont.resume(emptyList())
-                false
-            }
-            if (!bridged && cont.isActive) cont.resume(collected.toList())
-        }
+        val caps: List<Map<String, Any?>> = requestCapabilities(adapter, uris)
         val result = mutableMapOf<String, Boolean>()
         for (cap in caps) {
             val contact = cap["contact"] as? String ?: continue
@@ -172,6 +137,47 @@ object RcsCapabilityExchange {
             _updates.value = _updates.value + result
         }
         return result
+    }
+
+    /** Request capabilities via the hidden UCE API, collecting results. */
+    private suspend fun requestCapabilities(
+        adapter: Any,
+        uris: List<Uri>,
+    ): List<Map<String, Any?>> = suspendCancellableCoroutine { cont ->
+        val collected = mutableListOf<Map<String, Any?>>()
+        val bridged: Boolean = try {
+            RcsHiddenApi.requestUceCapabilities(
+                adapter = adapter,
+                contactUris = uris,
+                executor = executor,
+                callback = object : RcsHiddenApi.UceCallback {
+                    override fun onCapabilitiesReceived(caps: List<*>) {
+                        for (cap in caps) {
+                            readCapability(cap)?.let { collected += it }
+                        }
+                    }
+
+                    override fun onComplete() {
+                        if (cont.isActive) cont.resume(collected.toList())
+                    }
+
+                    override fun onError(errorCode: Int, retryAfterMillis: Long) {
+                        Log.w(TAG, "UCE error code=$errorCode")
+                        if (cont.isActive) cont.resume(collected.toList())
+                    }
+                },
+            )
+        } catch (e: SecurityException) {
+            Log.w(TAG, "No UCE permission", e)
+            uceAvailable = false
+            if (cont.isActive) cont.resume(emptyList())
+            false
+        } catch (e: ImsException) {
+            Log.w(TAG, "UCE service unavailable", e)
+            if (cont.isActive) cont.resume(emptyList())
+            false
+        }
+        if (!bridged && cont.isActive) cont.resume(collected.toList())
     }
 
     /**

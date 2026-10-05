@@ -3,7 +3,10 @@ package com.vayunmathur.games.solitaire.platform
 import com.vayunmathur.games.solitaire.data.Card
 import com.vayunmathur.games.solitaire.data.GameConfig
 import com.vayunmathur.games.solitaire.data.GameMode
+import com.vayunmathur.games.solitaire.data.PYRAMID_ROWS
+import com.vayunmathur.games.solitaire.data.PAIR_TARGET
 import com.vayunmathur.games.solitaire.data.PyramidState
+import com.vayunmathur.games.solitaire.data.Rank
 import com.vayunmathur.games.solitaire.data.SolitaireUiState
 import com.vayunmathur.games.solitaire.data.createShuffledDeck
 import kotlinx.coroutines.flow.update
@@ -11,11 +14,13 @@ import kotlinx.coroutines.flow.update
 // ---- Pyramid ----
 // Moved from SolitaireViewModel.kt (FileLength split); behavior identical.
 
+fun SolitaireViewModel.newPyramidGame(config: GameConfig) = newPyramidGameImpl(config)
+
 internal fun SolitaireViewModel.newPyramidGameImpl(config: GameConfig) {
     val deck = createShuffledDeck()
     var index = 0
     val rows = mutableListOf<List<Card?>>()
-    for (r in 0 until 7) {
+    for (r in 0 until PYRAMID_ROWS) {
         val row = mutableListOf<Card?>()
         for (c in 0..r) {
             row.add(deck[index]); index++
@@ -24,7 +29,7 @@ internal fun SolitaireViewModel.newPyramidGameImpl(config: GameConfig) {
     }
     val stock = deck.subList(index, deck.size).toList()
     val variant = if (config.relaxed) "RELAXED" else "ORIGINAL"
-    _uiState.value = SolitaireUiState(
+    uiStateInternal.value = SolitaireUiState(
         gameMode = GameMode.PYRAMID,
         pyramid = PyramidState(
             pyramid = rows,
@@ -81,15 +86,18 @@ internal fun SolitaireViewModel.canPyramidRemovePair(state: PyramidState, idA: S
     if (idA == idB) return false
     val a = pyramidCardAt(state, idA) ?: return false
     val b = pyramidCardAt(state, idB) ?: return false
-    if (a.rank.value + b.rank.value != 13) return false
+    if (a.rank.value + b.rank.value != PAIR_TARGET) return false
+    return isPairRemovable(state, idA, idB)
+}
+
+private fun SolitaireViewModel.isPairRemovable(state: PyramidState, idA: String, idB: String): Boolean {
     val aExposed = isPyramidPlayable(state, idA)
     val bExposed = isPyramidPlayable(state, idB)
     if (aExposed && bExposed) return true
     // Partially-covered variation (always allowed): one card is exposed and
     // is the sole remaining cover of the other.
     if (aExposed && isPyramidSoleCover(state, idA, idB)) return true
-    if (bExposed && isPyramidSoleCover(state, idB, idA)) return true
-    return false
+    return bExposed && isPyramidSoleCover(state, idB, idA)
 }
 
 internal fun SolitaireViewModel.parsePyramidId(id: String): Pair<Int, Int> {
@@ -125,52 +133,60 @@ internal fun SolitaireViewModel.pyramidRemove(state: PyramidState, id: String): 
  * own. Otherwise an exposed tap becomes the new selection.
  */
 internal fun SolitaireViewModel.pyramidTapCardImpl(id: String) {
-    val state = _uiState.value.pyramid ?: return
+    val state = uiStateInternal.value.pyramid ?: return
     if (state.isWon) return
     pyramidCardAt(state, id) ?: return
 
+    if (tryRemovePair(state, id)) return
+    selectOrClearKing(state, id)
+}
+
+private fun SolitaireViewModel.tryRemovePair(state: PyramidState, id: String): Boolean {
     // If a selection exists and this tap completes a pair, remove both.
     val selected = state.selectedId
-    if (selected != null && canPyramidRemovePair(state, selected, id)) {
-        saveHistory()
-        val afterFirst = pyramidRemove(state, id)
-        val afterSecond = pyramidRemove(afterFirst, selected).copy(
-            selectedId = null,
-            moveCount = state.moveCount + 1
-        )
-        _uiState.update { it.copy(pyramid = afterSecond) }
-        checkPyramidWin()
-        return
-    }
+    if (selected == null || !canPyramidRemovePair(state, selected, id)) return false
+    saveHistory()
+    val afterFirst = pyramidRemove(state, id)
+    val afterSecond = pyramidRemove(afterFirst, selected).copy(
+        selectedId = null,
+        moveCount = state.moveCount + 1
+    )
+    uiStateInternal.update { it.copy(pyramid = afterSecond) }
+    checkPyramidWin()
+    return true
+}
 
+private fun SolitaireViewModel.selectOrClearKing(state: PyramidState, id: String) {
     // Otherwise the tapped card must be exposed to select it or remove a King.
     if (!isPyramidPlayable(state, id)) return
     val card = pyramidCardAt(state, id) ?: return
-
-    if (card.rank.value == 13) {
-        saveHistory()
-        val removed = pyramidRemove(state, id).copy(
-            selectedId = null,
-            moveCount = state.moveCount + 1
-        )
-        _uiState.update { it.copy(pyramid = removed) }
-        checkPyramidWin()
+    if (card.rank.value == Rank.KING.value) {
+        removeSingleKing(state, id)
         return
     }
-
-    _uiState.update {
-        it.copy(pyramid = state.copy(selectedId = if (selected == id) null else id))
+    uiStateInternal.update {
+        it.copy(pyramid = state.copy(selectedId = if (state.selectedId == id) null else id))
     }
 }
 
+private fun SolitaireViewModel.removeSingleKing(state: PyramidState, id: String) {
+    saveHistory()
+    val removed = pyramidRemove(state, id).copy(
+        selectedId = null,
+        moveCount = state.moveCount + 1
+    )
+    uiStateInternal.update { it.copy(pyramid = removed) }
+    checkPyramidWin()
+}
+
 internal fun SolitaireViewModel.pyramidDealStockImpl() {
-    val state = _uiState.value.pyramid ?: return
+    val state = uiStateInternal.value.pyramid ?: return
     if (state.isWon) return
     if (state.stock.isEmpty()) {
         // Original mode is a single pass (no recycle); relaxed is unlimited.
         if (!state.relaxed || state.waste.isEmpty()) return
         saveHistory()
-        _uiState.update {
+        uiStateInternal.update {
             it.copy(pyramid = state.copy(
                 stock = state.waste.reversed(),
                 waste = emptyList(),
@@ -181,7 +197,7 @@ internal fun SolitaireViewModel.pyramidDealStockImpl() {
         return
     }
     saveHistory()
-    _uiState.update {
+    uiStateInternal.update {
         it.copy(pyramid = state.copy(
             stock = state.stock.dropLast(1),
             waste = state.waste + state.stock.last(),
@@ -191,9 +207,9 @@ internal fun SolitaireViewModel.pyramidDealStockImpl() {
 }
 
 internal fun SolitaireViewModel.checkPyramidWin() {
-    val state = _uiState.value.pyramid ?: return
+    val state = uiStateInternal.value.pyramid ?: return
     if (state.pyramid.all { row -> row.all { it == null } }) {
-        _uiState.update { it.copy(pyramid = state.copy(isWon = true)) }
-        onGameWon(GameMode.PYRAMID, state.elapsedSeconds, state.moveCount, state.usedUndo)
+        uiStateInternal.update { it.copy(pyramid = state.copy(isWon = true)) }
+        onGameWon(GameMode.PYRAMID, state.elapsedSeconds, state.usedUndo)
     }
 }

@@ -58,9 +58,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.net.DatagramSocket
 import java.net.ServerSocket
-import java.security.SecureRandom
 
 private const val TAG = "ReceiverController"
 
@@ -83,8 +83,8 @@ object ReceiverController {
 
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    internal val _state = MutableStateFlow(ReceiverUiState())
-    val state: StateFlow<ReceiverUiState> = _state.asStateFlow()
+    internal val mutableState = MutableStateFlow(ReceiverUiState())
+    val state: StateFlow<ReceiverUiState> = mutableState.asStateFlow()
 
     internal var advertiser: ReceiverAdvertiser? = null
     internal var serverSocket: ServerSocket? = null
@@ -202,7 +202,7 @@ object ReceiverController {
      * Returns false with no session, so the key falls through to the box's own volume control.
      */
     fun nudgeVolume(up: Boolean): Boolean {
-        val current = _state.value.playback?.state?.volume ?: return false
+        val current = mutableState.value.playback?.state?.volume ?: return false
         val level = (current + if (up) VOLUME_STEP else -VOLUME_STEP).coerceIn(0f, 1f)
         send(PlaybackCommand(PlaybackAction.SetVolume, value = level.toDouble()))
         return true
@@ -226,7 +226,7 @@ object ReceiverController {
         runCatching { serverSocket?.close() }
         serverSocket = null
         forgetPlayback()
-        _state.update { it.copy(phase = ReceiverPhase.Starting) }
+        mutableState.update { it.copy(phase = ReceiverPhase.Starting) }
     }
 
     /**
@@ -242,7 +242,7 @@ object ReceiverController {
      */
     internal fun forgetPlayback() {
         castVolume = 1f
-        _state.update {
+        mutableState.update {
             it.copy(
                 playback = null,
                 nowPlaying = null,
@@ -289,9 +289,13 @@ object ReceiverController {
 
         val server = try {
             ServerSocket(0)
-        } catch (e: Exception) {
+        } catch (e: IOException) {
             Log.e(TAG, "could not bind a control socket", e)
-            _state.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
+            mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
+            return
+        } catch (e: SecurityException) {
+            Log.e(TAG, "could not bind a control socket", e)
+            mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
             return
         }
         serverSocket = server
@@ -299,17 +303,39 @@ object ReceiverController {
         val nsd = ReceiverAdvertiser(context)
         advertiser = nsd
         nsd.advertise(friendlyName = name, deviceId = deviceId, port = server.localPort, limits = limits)
-        _state.value = ReceiverUiState(
+        mutableState.value = ReceiverUiState(
             phase = ReceiverPhase.Advertising,
             deviceName = name,
             localNetworkBlocked = nsd.localNetworkBlocked,
         )
         Log.i(TAG, "receiving as '$name' ($deviceId) on control port ${server.localPort}")
 
+        acceptLoop(server, context, store, identity, deviceId, name, limits, nsd)
+    }
+
+    /**
+     * Accept phones one at a time for as long as this receiver runs.
+     *
+     * Extracted from [listen] so that function stays within the method-length budget; everything
+     * about one connection still lives in [launchSession].
+     */
+    private suspend fun acceptLoop(
+        server: ServerSocket,
+        context: Context,
+        store: PairingStore,
+        identity: PqcIdentity,
+        deviceId: String,
+        name: String,
+        limits: DecoderLimits,
+        nsd: ReceiverAdvertiser,
+    ) {
         while (scope.isActive) {
             val socket = try {
                 server.accept()
-            } catch (e: Exception) {
+            } catch (e: IOException) {
+                if (scope.isActive) Log.w(TAG, "accept failed", e)
+                return
+            } catch (e: SecurityException) {
                 if (scope.isActive) Log.w(TAG, "accept failed", e)
                 return
             }
@@ -320,41 +346,62 @@ object ReceiverController {
                 runCatching { socket.close() }
                 continue
             }
-            val channel = ControlChannel(socket)
-            // A failure from the previous session has been on screen long enough; the phone connecting
-            // now is what the user cares about. The previous session's playback goes with it, or the
-            // next phone would inherit a seek bar describing something that is no longer playing.
-            forgetPlayback()
-            _state.update {
-                if (it.phase is ReceiverPhase.Failed) {
-                    it.copy(phase = ReceiverPhase.Advertising)
-                } else {
-                    it
-                }
+            launchSession(socket, context, store, identity, deviceId, name, limits, nsd)
+        }
+    }
+
+    /**
+     * Hand one accepted socket to a session coroutine.
+     *
+     * A failure from the previous session has been on screen long enough; the phone connecting
+     * now is what the user cares about. The previous session's playback goes with it, or the
+     * next phone would inherit a seek bar describing something that is no longer playing.
+     */
+    private fun launchSession(
+        socket: java.net.Socket,
+        context: Context,
+        store: PairingStore,
+        identity: PqcIdentity,
+        deviceId: String,
+        name: String,
+        limits: DecoderLimits,
+        nsd: ReceiverAdvertiser,
+    ) {
+        val channel = ControlChannel(socket)
+        forgetPlayback()
+        mutableState.update {
+            if (it.phase is ReceiverPhase.Failed) {
+                it.copy(phase = ReceiverPhase.Advertising)
+            } else {
+                it
             }
-            this@ReceiverController.channel = channel
-            sessionJob = scope.launch {
-                try {
-                    runSession(context, channel, store, identity, deviceId, name, limits)
-                } catch (e: Exception) {
-                    Log.w(TAG, "session ended", e)
-                } finally {
-                    channel.close()
-                    this@ReceiverController.channel = null
-                    endMedia()
-                    forgetPlayback()
-                    // A failure the user has to read is *not* overwritten with "ready" - it stays until
-                    // the next phone tries, which is when it stops being the useful thing to show.
-                    if (scope.isActive) {
-                        _state.update {
-                            if (it.phase is ReceiverPhase.Failed) {
-                                it
-                            } else {
-                                it.copy(
-                                    phase = ReceiverPhase.Advertising,
-                                    localNetworkBlocked = nsd.localNetworkBlocked,
-                                )
-                            }
+        }
+        this@ReceiverController.channel = channel
+        sessionJob = scope.launch {
+            try {
+                runSession(context, channel, store, identity, deviceId, name, limits)
+            } catch (e: IOException) {
+                Log.w(TAG, "session ended", e)
+            } catch (e: IllegalStateException) {
+                Log.w(TAG, "session ended", e)
+            } catch (e: IllegalArgumentException) {
+                Log.w(TAG, "session ended", e)
+            } finally {
+                channel.close()
+                this@ReceiverController.channel = null
+                endMedia()
+                forgetPlayback()
+                // A failure the user has to read is *not* overwritten with "ready" - it stays until
+                // the next phone tries, which is when it stops being the useful thing to show.
+                if (scope.isActive) {
+                    mutableState.update {
+                        if (it.phase is ReceiverPhase.Failed) {
+                            it
+                        } else {
+                            it.copy(
+                                phase = ReceiverPhase.Advertising,
+                                localNetworkBlocked = nsd.localNetworkBlocked,
+                            )
                         }
                     }
                 }
@@ -364,7 +411,14 @@ object ReceiverController {
 
     // ---- one session ----
 
-    private suspend fun runSession(
+    /**
+     * Everything agreed before either kind of session starts: the greeting, our identity, the
+     * sealed secret and the pairing proof.
+     *
+     * Null when the phone went away or offered something unusable, which ends the session the
+     * same way in every case - so the callers share one early return instead of five.
+     */
+    private suspend fun handshake(
         context: Context,
         channel: ControlChannel,
         store: PairingStore,
@@ -372,17 +426,15 @@ object ReceiverController {
         deviceId: String,
         deviceName: String,
         limits: DecoderLimits,
-    ) {
+    ): Handshake? {
         val transcript = Transcript()
 
-        val hello = channel.receive() ?: return
-        val greeting = hello.message as? Hello ?: return
+        val greeting = receiveGreeting(channel, transcript) ?: return null
         if (greeting.version != PROTOCOL_VERSION) {
             Log.w(TAG, "refusing protocol version ${greeting.version}, we speak $PROTOCOL_VERSION")
-            _state.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
-            return
+            mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
+            return null
         }
-        transcript.add(hello.body)
         Log.i(TAG, "'${greeting.senderName}' connected from ${channel.remoteAddress}")
 
         transcript.add(
@@ -397,33 +449,82 @@ object ReceiverController {
             ),
         )
 
-        val sealed = channel.receive() ?: return
-        val sealedSecret = sealed.message as? SealedSecret ?: return
-        transcript.add(sealed.body)
-        val secret = ProtocolBase64.decode(sealedSecret.sealed)
-            ?.let { SecretSealing.open(identity, it) }
-        if (secret == null) {
-            // The phone sealed to a bundle that is not ours - a stale one from before a reset, or an
-            // attacker's. Either way there is no shared secret and nothing to do but close.
-            Log.w(TAG, "could not open the sealed secret; the phone has a stale identity for us")
-            _state.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
-            return
-        }
+        val secret = openSealedSecret(channel, transcript, identity) ?: return null
         val keys = SessionKeys.of(secret)
         // From here on the control channel is AES-256-GCM. Both ends install the cipher at exactly
         // this point, which is what keeps them in step without a per-frame flag an attacker could
         // clear.
         channel.codec.useSessionKey(keys.control)
-        val transcriptValue = transcript.value()
 
-        if (!authenticate(channel, store, keys, transcriptValue, greeting)) return
-        _state.update { it.copy(phase = ReceiverPhase.Connected(greeting.senderName)) }
+        if (!authenticate(channel, store, keys, transcript.value(), greeting)) return null
+        mutableState.update { it.copy(phase = ReceiverPhase.Connected(greeting.senderName)) }
+        return Handshake(keys = keys, senderName = greeting.senderName)
+    }
 
-        // **A loop rather than one configuration, because a content session gives the channel back.**
-        // Ending a cast is far more common than disconnecting a television, and the pairing is exactly
-        // what the user just spent time on - so `CONTENT_ENDED` returns here and the next cast starts
-        // without re-picking the TV. Screen mirroring never comes back: its session lives in the UDP
-        // loop until the socket dies.
+    /** The phone's greeting, with its wire bytes added to the pairing transcript. */
+    private suspend fun receiveGreeting(
+        channel: ControlChannel,
+        transcript: Transcript,
+    ): Hello? {
+        val hello = channel.receive() ?: return null
+        val greeting = hello.message as? Hello ?: return null
+        transcript.add(hello.body)
+        return greeting
+    }
+
+    /**
+     * The session secret, unsealed with our identity.
+     *
+     * Null when the phone sealed to a bundle that is not ours - a stale one from before a reset,
+     * or an attacker's. Either way there is no shared secret and nothing to do but close, so the
+     * failure is put on screen here and the caller just ends the session.
+     */
+    private suspend fun openSealedSecret(
+        channel: ControlChannel,
+        transcript: Transcript,
+        identity: PqcIdentity,
+    ): ByteArray? {
+        val sealed = channel.receive() ?: return null
+        val sealedSecret = sealed.message as? SealedSecret ?: return null
+        transcript.add(sealed.body)
+        val secret = ProtocolBase64.decode(sealedSecret.sealed)
+            ?.let { SecretSealing.open(identity, it) }
+        if (secret != null) return secret
+        Log.w(TAG, "could not open the sealed secret; the phone has a stale identity for us")
+        mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
+        return null
+    }
+
+    /** What a completed handshake agrees: the session keys and who is on the other end. */
+    private data class Handshake(val keys: SessionKeys, val senderName: String)
+
+    private suspend fun runSession(
+        context: Context,
+        channel: ControlChannel,
+        store: PairingStore,
+        identity: PqcIdentity,
+        deviceId: String,
+        deviceName: String,
+        limits: DecoderLimits,
+    ) {
+        val agreed = handshake(context, channel, store, identity, deviceId, deviceName, limits)
+            ?: return
+        configurationLoop(context, channel, agreed.keys, agreed.senderName)
+    }
+
+    /**
+     * **A loop rather than one configuration, because a content session gives the channel back.**
+     * Ending a cast is far more common than disconnecting a television, and the pairing is exactly
+     * what the user just spent time on - so `CONTENT_ENDED` returns here and the next cast starts
+     * without re-picking the TV. Screen mirroring never comes back: its session lives in the UDP
+     * loop until the socket dies.
+     */
+    private suspend fun configurationLoop(
+        context: Context,
+        channel: ControlChannel,
+        keys: SessionKeys,
+        senderName: String,
+    ) {
         while (true) {
             val configured = channel.receive() ?: return
             // The fork between the two kinds of session. Screen mirroring has no file behind it and
@@ -431,17 +532,17 @@ object ReceiverController {
             // why seeking becomes an offset and a pause is nobody's business but this end's.
             when (val first = configured.message) {
                 is StreamConfig -> {
-                    startStreaming(channel, keys, first, greeting.senderName)
-                    mirrorSession(channel, keys, first, greeting.senderName)
+                    startStreaming(channel, keys, first, senderName)
+                    mirrorSession(channel, keys, first, senderName)
                     return
                 }
                 is ContentSession -> {
-                    if (!serveContent(context, channel, first, greeting.senderName)) return
-                    _state.update { it.copy(phase = ReceiverPhase.Connected(greeting.senderName)) }
+                    if (!serveContent(context, channel, first, senderName)) return
+                    mutableState.update { it.copy(phase = ReceiverPhase.Connected(senderName)) }
                     forgetPlayback()
                 }
                 is Bye -> {
-                    Log.i(TAG, "'${greeting.senderName}' said goodbye")
+                    Log.i(TAG, "'$senderName' said goodbye")
                     return
                 }
                 // Echoed rather than treated as a surprise, so a keep-alive cannot end the very channel
@@ -505,7 +606,7 @@ object ReceiverController {
                 // What the encoded picture is of. Names no resource - nothing is being served here -
                 // so the gate in `ReceiverUiState.nowPlayingForCurrentItem` passes it straight
                 // through: this end holds no player, so the phone's latest word is the only word.
-                is NowPlaying -> _state.update { it.copy(nowPlaying = message) }
+                is NowPlaying -> mutableState.update { it.copy(nowPlaying = message) }
                 // As in the content-session loop below: echoed so the phone's read deadline moves
                 // too. Screen mirroring never sends one, so this only fires for app content.
                 is Ping -> runCatching { channel.send(Ping) }
@@ -529,7 +630,7 @@ object ReceiverController {
      */
     internal fun onPlaybackState(message: PlaybackState) {
         castVolume = message.volume
-        _state.update {
+        mutableState.update {
             it.copy(
                 playback = PlaybackSnapshot(
                     state = message,
@@ -569,7 +670,7 @@ object ReceiverController {
         Log.i(
             TAG,
             "codec config for ${codec.label}: ${csd.size} bytes, $shape, " +
-                "[${csd.take(16).joinToString(" ") { "%02x".format(it) }}]; " +
+                "[${csd.take(CSD_LOG_BYTES).joinToString(" ") { "%02x".format(it) }}]; " +
                 "the stream is ${config.width}x${config.height}",
         )
         videoCodecConfig = csd
@@ -584,7 +685,7 @@ object ReceiverController {
      * mirroring, which never reports playback and can never be paused, so its behaviour is unchanged.
      */
     internal fun senderIdle(): Boolean =
-        _state.value.playback?.state?.let { !it.playing && !it.buffering } == true
+        mutableState.value.playback?.state?.let { !it.playing && !it.buffering } == true
 
     /**
      * Stop the media loop.
@@ -616,7 +717,7 @@ object ReceiverController {
 
     /** Video RTP timestamps are 90 kHz; `MediaCodec` wants microseconds. */
     internal fun rtpToMicros(rtpTimestamp: Long): Long =
-        rtpTimestamp * 1_000_000L / StreamConstants.VIDEO_TIMEBASE
+        rtpTimestamp * MICROS_PER_SECOND / StreamConstants.VIDEO_TIMEBASE
 
     /**
      * What the audio path is doing, in the one line that reports everything else.
@@ -634,9 +735,13 @@ object ReceiverController {
 
     /** Audio is timestamped in samples, so its divisor is the sample rate. */
     internal fun audioRtpToMicros(rtpTimestamp: Long): Long =
-        rtpTimestamp * 1_000_000L / StreamConstants.AUDIO_TIMEBASE
+        rtpTimestamp * MICROS_PER_SECOND / StreamConstants.AUDIO_TIMEBASE
 
-    private fun SecureRandom.ssrc(min: Int, max: Int): Long = (min + nextInt(max - min + 1)).toLong()
+    /** Microseconds per second: RTP timestamps become `MediaCodec` presentation times. */
+    private const val MICROS_PER_SECOND = 1_000_000L
+
+    /** Leading bytes of `csd-0` in the codec-config log line: enough to name its shape. */
+    private const val CSD_LOG_BYTES = 16
 
     /** What the TV calls itself, before the user renames it. */
     private fun defaultName(): String =

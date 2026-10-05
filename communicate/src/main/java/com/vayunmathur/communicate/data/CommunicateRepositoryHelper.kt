@@ -46,7 +46,11 @@ fun CommunicateRepository.placeCall(context: Context, choice: LineChoice?, numbe
 }
 
 /** Virtual (network-backed) lines that don't map to a physical SIM subscription. */
-val CommunicateRepository.isVirtualLine get() = setOf(CommunicateLine.GoogleVoice, CommunicateLine.WhatsApp, CommunicateLine.Signal, CommunicateLine.Rcs)
+val CommunicateRepository.isVirtualLine get() = setOf(
+    CommunicateLine.GoogleVoice,
+    CommunicateLine.WhatsApp,
+    CommunicateLine.Signal,
+    CommunicateLine.Rcs)
 
 /**
  * Place a voice call on [line] for a conversation.

@@ -57,6 +57,15 @@ class WhatsAppSocket(
         private const val KEEPALIVE_INTERVAL_MAX_MS = 30_000L
         private const val KEEPALIVE_MAX_FAIL_MS = 180_000L
         private const val READ_BUFFER = 64 * 1024
+        private const val EPHEMERAL_KEY_SIZE = 32
+        private const val STATIC_KEY_SIZE = 32
+        private const val GCM_TAG_BITS = 128
+        private const val GCM_IV_BYTES = 12
+        private const val GCM_IV_OFFSET = 8
+        private const val GCM_IV_LENGTH = 4
+        private const val BYTE_MASK = 0xFF
+        private const val SHIFT_BYTE2 = 16
+        private const val SHIFT_BYTE1 = 8
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -105,9 +114,9 @@ class WhatsAppSocket(
                 WhatsAppDiag.log(TAG, "TCP connected $host:$port → starting Noise handshake")
                 startNoiseHandshake()
                 startReadLoop()
-            } catch (t: Throwable) {
-                WhatsAppDiag.log(TAG, "connect failed: ${t.message}")
-                _connectionState.emit(ConnectionState.Disconnected("connect: ${t.message}"))
+            } catch (expected: Throwable) {
+                WhatsAppDiag.log(TAG, "connect failed: ${expected.message}")
+                _connectionState.emit(ConnectionState.Disconnected("connect: ${expected.message}"))
             }
         }
     }
@@ -153,9 +162,9 @@ class WhatsAppSocket(
             val framed = WhatsAppProtocol.buildFramedMessage(clientHello, WhatsAppProtocol.WA_CONN_HEADER)
             writeRaw(framed)
             WhatsAppDiag.log(TAG, "→ ClientHello (${clientHello.size}B payload, ${framed.size}B framed)")
-        } catch (e: Exception) {
-            WhatsAppDiag.log(TAG, "handshake start failed: ${e.message}")
-            scope.launch { closeInternal("handshake start: ${e.message}") }
+        } catch (expected: Exception) {
+            WhatsAppDiag.log(TAG, "handshake start failed: ${expected.message}")
+            scope.launch { closeInternal("handshake start: ${expected.message}") }
         }
     }
 
@@ -169,9 +178,12 @@ class WhatsAppSocket(
             val serverEphemeral = serverHello.ephemeral.toByteArray()
             val serverStaticCiphertext = serverHello.getStatic().toByteArray()
             val certificateCiphertext = serverHello.payload.toByteArray()
-            WhatsAppDiag.log(TAG, "← ServerHello eph=${serverEphemeral.size} static=${serverStaticCiphertext.size} cert=${certificateCiphertext.size}")
+            WhatsAppDiag.log(TAG, "← ServerHello eph=${serverEphemeral.size}" +
+                "static=${serverStaticCiphertext.size} cert=${certificateCiphertext.size}")
 
-            if (serverEphemeral.size != 32 || serverStaticCiphertext.isEmpty() || certificateCiphertext.isEmpty()) {
+            if (serverEphemeral.size != EPHEMERAL_KEY_SIZE || serverStaticCiphertext.isEmpty() ||
+                certificateCiphertext.isEmpty()
+            ) {
                 scope.launch { closeInternal("invalid ServerHello") }
                 return
             }
@@ -180,7 +192,7 @@ class WhatsAppSocket(
             handshake.mixSharedSecretIntoKey(ephPriv, serverEphemeral)
 
             val staticDecrypted = handshake.decrypt(serverStaticCiphertext)
-            if (staticDecrypted.size != 32) {
+            if (staticDecrypted.size != STATIC_KEY_SIZE) {
                 scope.launch { closeInternal("bad static len ${staticDecrypted.size}") }
                 return
             }
@@ -193,41 +205,48 @@ class WhatsAppSocket(
                 return
             }
             WhatsAppDiag.log(TAG, "server cert verified OK")
-
-            // ClientFinish with the persisted primary noise static key + the primary ClientPayload.
-            val noisePriv = android.util.Base64.decode(authData.noisePrivateKey, android.util.Base64.NO_WRAP)
-            val noisePub = android.util.Base64.decode(authData.noisePublicKey, android.util.Base64.NO_WRAP)
-
-            val encryptedPubkey = handshake.encrypt(noisePub)
-            handshake.mixSharedSecretIntoKey(noisePriv, serverEphemeral)
-
-            val payload = PrimaryClientPayload.build(authData)
-            val encryptedPayload = handshake.encrypt(payload)
-
-            val clientFinish = WhatsAppHandshakeProto.HandshakeMessage.newBuilder()
-                .setClientFinish(
-                    WhatsAppHandshakeProto.HandshakeMessage.ClientFinish.newBuilder()
-                        .setStatic(com.google.protobuf.ByteString.copyFrom(encryptedPubkey))
-                        .setPayload(com.google.protobuf.ByteString.copyFrom(encryptedPayload))
-                        .build(),
-                )
-                .build()
-                .toByteArray()
-
-            writeRaw(WhatsAppProtocol.buildFramedMessage(clientFinish, null))
-            WhatsAppDiag.log(TAG, "→ ClientFinish (payload=${payload.size}B)")
-
-            val (writeKey, readKey) = handshake.finish()
-            noiseSocket = NoiseSocket(writeKey, readKey)
-            isHandshakeComplete = true
-            isConnected = true
-            WhatsAppDiag.log(TAG, "Noise handshake COMPLETE")
-            scope.launch { _connectionState.emit(ConnectionState.Connected) }
-            startKeepalive()
-        } catch (e: Exception) {
-            WhatsAppDiag.log(TAG, "handshake processing failed: ${e.javaClass.simpleName}: ${e.message}")
-            scope.launch { closeInternal("handshake: ${e.message}") }
+            sendClientFinish(handshake, serverEphemeral)
+        } catch (expected: Exception) {
+            WhatsAppDiag.log(TAG, "handshake processing failed: ${expected.javaClass.simpleName}: ${expected.message}")
+            scope.launch { closeInternal("handshake: ${expected.message}") }
         }
+    }
+
+    /** ClientFinish with the persisted primary noise static key + primary ClientPayload. */
+    private fun sendClientFinish(
+        handshake: WhatsAppProtocol.NoiseHandshake,
+        serverEphemeral: ByteArray,
+    ) {
+        // ClientFinish with the persisted primary noise static key + the primary ClientPayload.
+        val noisePriv = android.util.Base64.decode(authData.noisePrivateKey, android.util.Base64.NO_WRAP)
+        val noisePub = android.util.Base64.decode(authData.noisePublicKey, android.util.Base64.NO_WRAP)
+
+        val encryptedPubkey = handshake.encrypt(noisePub)
+        handshake.mixSharedSecretIntoKey(noisePriv, serverEphemeral)
+
+        val payload = PrimaryClientPayload.build(authData)
+        val encryptedPayload = handshake.encrypt(payload)
+
+        val clientFinish = WhatsAppHandshakeProto.HandshakeMessage.newBuilder()
+            .setClientFinish(
+                WhatsAppHandshakeProto.HandshakeMessage.ClientFinish.newBuilder()
+                    .setStatic(com.google.protobuf.ByteString.copyFrom(encryptedPubkey))
+                    .setPayload(com.google.protobuf.ByteString.copyFrom(encryptedPayload))
+                    .build(),
+            )
+            .build()
+            .toByteArray()
+
+        writeRaw(WhatsAppProtocol.buildFramedMessage(clientFinish, null))
+        WhatsAppDiag.log(TAG, "→ ClientFinish (payload=${payload.size}B)")
+
+        val (writeKey, readKey) = handshake.finish()
+        noiseSocket = NoiseSocket(writeKey, readKey)
+        isHandshakeComplete = true
+        isConnected = true
+        WhatsAppDiag.log(TAG, "Noise handshake COMPLETE")
+        scope.launch { _connectionState.emit(ConnectionState.Connected) }
+        startKeepalive()
     }
 
     // ---------------------------------------------------------------------------- read/write
@@ -243,9 +262,9 @@ class WhatsAppSocket(
                     if (n < 0) break
                     if (n > 0) ingestBytes(buf.copyOfRange(0, n))
                 }
-            } catch (e: Exception) {
+            } catch (expected: Exception) {
                 if (isConnected || !isHandshakeComplete) {
-                    WhatsAppDiag.log(TAG, "read loop ended: ${e.message}")
+                    WhatsAppDiag.log(TAG, "read loop ended: ${expected.message}")
                 }
             } finally {
                 closeInternal("socket closed")
@@ -271,9 +290,9 @@ class WhatsAppSocket(
         recvBuffer = if (recvBuffer.isEmpty()) data else recvBuffer + data
 
         while (recvBuffer.size >= WhatsAppProtocol.FRAME_LENGTH_SIZE) {
-            val length = ((recvBuffer[0].toInt() and 0xFF) shl 16) or
-                ((recvBuffer[1].toInt() and 0xFF) shl 8) or
-                (recvBuffer[2].toInt() and 0xFF)
+            val length = ((recvBuffer[0].toInt() and BYTE_MASK) shl SHIFT_BYTE2) or
+                ((recvBuffer[1].toInt() and BYTE_MASK) shl SHIFT_BYTE1) or
+                (recvBuffer[2].toInt() and BYTE_MASK)
             if (recvBuffer.size < WhatsAppProtocol.FRAME_LENGTH_SIZE + length) break
 
             val frame = recvBuffer.copyOfRange(
@@ -291,8 +310,8 @@ class WhatsAppSocket(
                 noiseSocket?.let { s ->
                     try {
                         _messages.emit(s.decrypt(frame))
-                    } catch (e: Exception) {
-                        Log.e(TAG, "frame decrypt failed", e)
+                    } catch (expected: Exception) {
+                        Log.e(TAG, "frame decrypt failed", expected)
                     }
                 }
             }
@@ -309,8 +328,8 @@ class WhatsAppSocket(
                 out.flush()
             }
             true
-        } catch (e: Exception) {
-            Log.e(TAG, "writeRaw failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "writeRaw failed", expected)
             false
         }
     }
@@ -327,8 +346,8 @@ class WhatsAppSocket(
                 val encrypted = socket.encrypt(data)
                 writeRaw(WhatsAppProtocol.buildFramedMessage(encrypted, null))
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "send failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "send failed", expected)
             false
         }
     }
@@ -338,7 +357,8 @@ class WhatsAppSocket(
         lastKeepaliveSuccess = System.currentTimeMillis()
         keepaliveJob = scope.launch {
             while (true) {
-                delay(KEEPALIVE_INTERVAL_MIN_MS + (Math.random() * (KEEPALIVE_INTERVAL_MAX_MS - KEEPALIVE_INTERVAL_MIN_MS)).toLong())
+                val jitter = Math.random() * (KEEPALIVE_INTERVAL_MAX_MS - KEEPALIVE_INTERVAL_MIN_MS)
+                delay(KEEPALIVE_INTERVAL_MIN_MS + jitter.toLong())
                 val id = "keepalive-${iqCounter.incrementAndFetch()}"
                 val encoded = WhatsAppProtocol.encodeNode(WhatsAppProtocol.buildKeepalive(id))
                 if (send(encoded)) {
@@ -364,14 +384,18 @@ class WhatsAppSocket(
         private var readCounter: UInt = 0u
 
         private fun iv(counter: UInt): ByteArray {
-            val iv = ByteArray(12)
-            java.nio.ByteBuffer.wrap(iv, 8, 4).order(java.nio.ByteOrder.BIG_ENDIAN).putInt(counter.toInt())
+            val iv = ByteArray(GCM_IV_BYTES)
+            java.nio.ByteBuffer.wrap(iv, GCM_IV_OFFSET, GCM_IV_LENGTH)
+                .order(java.nio.ByteOrder.BIG_ENDIAN).putInt(counter.toInt())
             return iv
         }
 
         fun encrypt(plaintext: ByteArray): ByteArray {
             val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, writeKey, javax.crypto.spec.GCMParameterSpec(128, iv(writeCounter)))
+            cipher.init(
+                javax.crypto.Cipher.ENCRYPT_MODE,
+                writeKey,
+                javax.crypto.spec.GCMParameterSpec(GCM_TAG_BITS, iv(writeCounter)))
             val ct = cipher.doFinal(plaintext)
             writeCounter++
             return ct
@@ -379,7 +403,10 @@ class WhatsAppSocket(
 
         fun decrypt(ciphertext: ByteArray): ByteArray {
             val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, readKey, javax.crypto.spec.GCMParameterSpec(128, iv(readCounter)))
+            cipher.init(
+                javax.crypto.Cipher.DECRYPT_MODE,
+                readKey,
+                javax.crypto.spec.GCMParameterSpec(GCM_TAG_BITS, iv(readCounter)))
             val pt = cipher.doFinal(ciphertext)
             readCounter++
             return pt

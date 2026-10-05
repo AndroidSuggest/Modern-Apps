@@ -31,7 +31,7 @@ import com.vayunmathur.maps.data.google.GoogleSearchDataSource
 import com.vayunmathur.maps.data.google.GoogleSearchResult
 import com.vayunmathur.maps.util.NavigationService
 import com.vayunmathur.maps.util.NavigationSessionManager
-import com.vayunmathur.maps.util.OfflineRouter
+import com.vayunmathur.maps.util.OfflineRouterRoadRoutes
 import com.vayunmathur.maps.util.RouteService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -231,7 +231,7 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
                     ),
                 )
             )
-            val route = OfflineRouter.getRouteMulti(
+            val route = OfflineRouterRoadRoutes.getRouteMulti(
                 carContext, routeFeature, userPos, RouteService.TravelMode.DRIVE
             )
             if (route == null) {

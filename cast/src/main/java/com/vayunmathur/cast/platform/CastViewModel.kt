@@ -115,7 +115,11 @@ class CastViewModel(application: Application) : AndroidViewModel(application), C
             }
             try {
                 discovery.discover().collect { }
-            } catch (e: Exception) {
+            } catch (e: SecurityException) {
+                Log.w(TAG, "discovery ended", e)
+            } catch (e: IllegalStateException) {
+                Log.w(TAG, "discovery ended", e)
+            } catch (e: IllegalArgumentException) {
                 Log.w(TAG, "discovery ended", e)
             }
             _isScanning.value = false

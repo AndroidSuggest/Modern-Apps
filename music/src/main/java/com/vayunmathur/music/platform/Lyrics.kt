@@ -72,26 +72,51 @@ fun currentLyricIndex(lines: List<LyricLine>, positionMs: Long): Int =
  * as and belong in their own change.
  */
 fun parseLyrics(lrcContent: String): List<LyricLine> {
+    val parsed = lrcContent.lines()
+        .mapNotNull { parseLyricLine(it) }
+        .take(CastContract.MAX_LYRIC_LINES)
     val lines = mutableListOf<LyricLine>()
     var chars = 0
-    for (line in lrcContent.lines()) {
-        if (lines.size >= CastContract.MAX_LYRIC_LINES) break
-        val match = LYRIC_PATTERN.find(line) ?: continue
-        val fraction = match.groupValues[3]
-        val text = match.groupValues[4].trim()
-        if (text.isEmpty()) continue
-        if (chars + text.length > CastContract.MAX_LYRIC_CHARS) break
-        val minutes = match.groupValues[1].toLongOrNull() ?: continue
-        val seconds = match.groupValues[2].toLongOrNull() ?: continue
-        val fractionValue = fraction.toLongOrNull() ?: continue
-        // Two digits are centiseconds and three are milliseconds, which is the one thing the LRC
-        // format leaves to be inferred from the field's width.
-        val timestamp = minutes * 60_000 + seconds * 1_000 +
-            if (fraction.length == 2) fractionValue * 10 else fractionValue
-        lines.add(LyricLine(timestamp, text))
-        chars += text.length
+    for (entry in parsed) {
+        val next = chars + entry.text.length
+        if (next > CastContract.MAX_LYRIC_CHARS) break
+        lines.add(LyricLine(entry.timestamp, entry.text))
+        chars = next
     }
     return lines.sortedBy { it.timestamp }
+}
+
+private class ParsedLyric(val timestamp: Long, val text: String)
+
+private const val MILLIS_PER_MINUTE = 60_000L
+private const val MILLIS_PER_SECOND = 1_000L
+private const val CENTISECOND_TO_MILLIS = 10L
+private const val CENTISECOND_DIGITS = 2
+
+private fun parseLyricLine(line: String): ParsedLyric? {
+    val match = LYRIC_PATTERN.find(line) ?: return null
+    val text = match.groupValues[4].trim()
+    if (text.isEmpty()) return null
+    val timestamp = lyricTimestamp(
+        match.groupValues[1],
+        match.groupValues[2],
+        match.groupValues[3],
+    ) ?: return null
+    return ParsedLyric(timestamp, text)
+}
+
+private fun lyricTimestamp(minutesText: String, secondsText: String, fractionText: String): Long? {
+    val minutes = minutesText.toLongOrNull() ?: return null
+    val seconds = secondsText.toLongOrNull() ?: return null
+    val fractionValue = fractionText.toLongOrNull() ?: return null
+    // Two digits are centiseconds and three are milliseconds, which is the one thing the LRC
+    // format leaves to be inferred from the field's width.
+    val fractionMillis = if (fractionText.length == CENTISECOND_DIGITS) {
+        fractionValue * CENTISECOND_TO_MILLIS
+    } else {
+        fractionValue
+    }
+    return minutes * MILLIS_PER_MINUTE + seconds * MILLIS_PER_SECOND + fractionMillis
 }
 
 /** `[mm:ss.xx] text`, with a two- or three-digit fraction. */

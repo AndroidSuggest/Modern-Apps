@@ -34,6 +34,17 @@ data class LocalContactChange(
 object ContactsSink {
     private const val TAG = "ContactsSink"
     private val ACCOUNT_TYPE = AccountStore.ACCOUNT_TYPE
+    private const val CURSOR_UID = 0
+    private const val CURSOR_ETAG = 1
+    private const val CURSOR_DATA2 = 2
+    private const val CURSOR_DATA3 = 3
+    private const val CURSOR_DATA4 = 4
+    private const val CURSOR_DATA5 = 5
+    private const val CURSOR_DATA6 = 6
+    private const val CURSOR_RAW_ID = 0
+    private const val CURSOR_SOURCE_ID = 1
+    private const val CURSOR_SYNC1 = 2
+    private const val CURSOR_DELETED = 3
 
     private fun Uri.asSyncAdapter(accountName: String): Uri =
         buildUpon()
@@ -49,17 +60,19 @@ object ContactsSink {
             context.contentResolver.query(
                 ContactsContract.RawContacts.CONTENT_URI,
                 arrayOf(ContactsContract.RawContacts.SOURCE_ID, ContactsContract.RawContacts.SYNC1),
-                "${ContactsContract.RawContacts.ACCOUNT_NAME} = ? AND ${ContactsContract.RawContacts.ACCOUNT_TYPE} = ? AND ${ContactsContract.RawContacts.DELETED} = 0",
+                "${ContactsContract.RawContacts.ACCOUNT_NAME} = ? AND " +
+                    "${ContactsContract.RawContacts.ACCOUNT_TYPE} = ? AND " +
+                    "${ContactsContract.RawContacts.DELETED} = 0",
                 arrayOf(accountName, ACCOUNT_TYPE),
                 null,
             )?.use { c ->
                 while (c.moveToNext()) {
-                    val uid = c.getStringOrNull(0) ?: continue
-                    result[uid] = c.getStringOrNull(1)
+                    val uid = c.getStringOrNull(CURSOR_UID) ?: continue
+                    result[uid] = c.getStringOrNull(CURSOR_ETAG)
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "localUidToEtag failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "localUidToEtag failed", expected)
         }
         return result
     }
@@ -69,12 +82,14 @@ object ContactsSink {
             context.contentResolver.query(
                 ContactsContract.RawContacts.CONTENT_URI,
                 arrayOf(ContactsContract.RawContacts._ID),
-                "${ContactsContract.RawContacts.ACCOUNT_NAME} = ? AND ${ContactsContract.RawContacts.ACCOUNT_TYPE} = ? AND ${ContactsContract.RawContacts.SOURCE_ID} = ?",
+                "${ContactsContract.RawContacts.ACCOUNT_NAME} = ? AND " +
+                    "${ContactsContract.RawContacts.ACCOUNT_TYPE} = ? AND " +
+                    "${ContactsContract.RawContacts.SOURCE_ID} = ?",
                 arrayOf(accountName, ACCOUNT_TYPE, uid),
                 null,
-            )?.use { if (it.moveToFirst()) it.getLong(0) else null }
-        } catch (e: Exception) {
-            Log.e(TAG, "rawContactId failed", e)
+            )?.use { if (it.moveToFirst()) it.getLong(CURSOR_UID) else null }
+        } catch (expected: Exception) {
+            Log.e(TAG, "rawContactId failed", expected)
             null
         }
     }
@@ -123,8 +138,8 @@ object ContactsSink {
                 "${ContactsContract.RawContacts._ID} = ?",
                 arrayOf(id.toString()),
             )
-        } catch (e: Exception) {
-            Log.e(TAG, "delete failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "delete failed", expected)
         }
     }
 
@@ -141,8 +156,8 @@ object ContactsSink {
                 "${ContactsContract.RawContacts.ACCOUNT_NAME} = ? AND ${ContactsContract.RawContacts.ACCOUNT_TYPE} = ?",
                 arrayOf(accountName, ACCOUNT_TYPE),
             )
-        } catch (e: Exception) {
-            Log.e(TAG, "purge failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "purge failed", expected)
         }
     }
 
@@ -158,24 +173,27 @@ object ContactsSink {
                     ContactsContract.RawContacts.SYNC1,
                     ContactsContract.RawContacts.DELETED,
                 ),
-                "${ContactsContract.RawContacts.ACCOUNT_NAME} = ? AND ${ContactsContract.RawContacts.ACCOUNT_TYPE} = ? AND (${ContactsContract.RawContacts.DIRTY} = 1 OR ${ContactsContract.RawContacts.DELETED} = 1)",
+                "${ContactsContract.RawContacts.ACCOUNT_NAME} = ? AND " +
+                    "${ContactsContract.RawContacts.ACCOUNT_TYPE} = ? AND " +
+                    "(${ContactsContract.RawContacts.DIRTY} = 1 OR ${ContactsContract.RawContacts.DELETED} = 1)",
                 arrayOf(accountName, ACCOUNT_TYPE),
                 null,
             )?.use { c ->
                 while (c.moveToNext()) {
-                    val rawId = c.getLong(0)
-                    val deleted = c.getInt(3) == 1
+                    val rawId = c.getLong(CURSOR_RAW_ID)
+                    val deleted = c.getInt(CURSOR_DELETED) == 1
+                    val sourceId = c.getStringOrNull(CURSOR_SOURCE_ID)
                     changes += LocalContactChange(
                         rawContactId = rawId,
-                        sourceId = c.getStringOrNull(1),
-                        etag = c.getStringOrNull(2),
+                        sourceId = sourceId,
+                        etag = c.getStringOrNull(CURSOR_SYNC1),
                         deleted = deleted,
-                        contact = if (deleted) null else readContact(context, rawId, c.getStringOrNull(1)),
+                        contact = if (deleted) null else readContact(context, rawId, sourceId),
                     )
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "getLocalChanges failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "getLocalChanges failed", expected)
         }
         return changes
     }
@@ -188,13 +206,19 @@ object ContactsSink {
                 "${ContactsContract.RawContacts._ID} = ?",
                 arrayOf(rawContactId.toString()),
             )
-        } catch (e: Exception) {
-            Log.e(TAG, "clearDirty failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "clearDirty failed", expected)
         }
     }
 
     /** Attach a remote UID/ETag to a locally-created raw contact after pushing it. */
-    fun setSourceId(context: Context, accountName: String, rawContactId: Long, uid: String, etag: String?) {
+    fun setSourceId(
+        context: Context,
+        accountName: String,
+        rawContactId: Long,
+        uid: String,
+        etag: String?,
+    ) {
         try {
             context.contentResolver.update(
                 ContactsContract.RawContacts.CONTENT_URI.asSyncAdapter(accountName),
@@ -206,18 +230,13 @@ object ContactsSink {
                 "${ContactsContract.RawContacts._ID} = ?",
                 arrayOf(rawContactId.toString()),
             )
-        } catch (e: Exception) {
-            Log.e(TAG, "setSourceId failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "setSourceId failed", expected)
         }
     }
 
     private fun readContact(context: Context, rawId: Long, uid: String?): RemoteContact {
-        var display = ""
-        var prefix = ""; var first = ""; var middle = ""; var last = ""; var suffix = ""
-        var org = ""; var note = ""; var bday: String? = null
-        val phones = mutableListOf<TypedValue>()
-        val emails = mutableListOf<TypedValue>()
-        val addresses = mutableListOf<TypedValue>()
+        val builder = ContactBuilder()
         try {
             context.contentResolver.query(
                 ContactsContract.Data.CONTENT_URI,
@@ -235,32 +254,72 @@ object ContactsSink {
                 null,
             )?.use { c ->
                 while (c.moveToNext()) {
-                    when (c.getStringOrNull(0)) {
-                        StructuredName.CONTENT_ITEM_TYPE -> {
-                            display = c.getStringOrNull(1) ?: ""
-                            first = c.getStringOrNull(2) ?: ""
-                            last = c.getStringOrNull(3) ?: ""
-                            prefix = c.getStringOrNull(4) ?: ""
-                            middle = c.getStringOrNull(5) ?: ""
-                            suffix = c.getStringOrNull(6) ?: ""
-                        }
-                        Phone.CONTENT_ITEM_TYPE -> phones += TypedValue(c.getStringOrNull(1) ?: "", c.getInt(2))
-                        Email.CONTENT_ITEM_TYPE -> emails += TypedValue(c.getStringOrNull(1) ?: "", c.getInt(2))
-                        StructuredPostal.CONTENT_ITEM_TYPE -> addresses += TypedValue(c.getStringOrNull(1) ?: "", c.getInt(2))
-                        Organization.CONTENT_ITEM_TYPE -> org = c.getStringOrNull(1) ?: ""
-                        Note.CONTENT_ITEM_TYPE -> note = c.getStringOrNull(1) ?: ""
-                        Event.CONTENT_ITEM_TYPE -> if (c.getInt(2) == Event.TYPE_BIRTHDAY) bday = c.getStringOrNull(1)
-                    }
+                    builder.applyRow(c)
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "readContact failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "readContact failed", expected)
         }
-        return RemoteContact(
-            uid = uid ?: "",
+        return builder.build(uid ?: "")
+    }
+
+    private class ContactBuilder {
+        var display = ""
+        var prefix = ""
+        var first = ""
+        var middle = ""
+        var last = ""
+        var suffix = ""
+        var org = ""
+        var note = ""
+        var bday: String? = null
+        val phones = mutableListOf<TypedValue>()
+        val emails = mutableListOf<TypedValue>()
+        val addresses = mutableListOf<TypedValue>()
+
+        fun applyRow(c: android.database.Cursor) {
+            when (c.getStringOrNull(CURSOR_UID)) {
+                StructuredName.CONTENT_ITEM_TYPE -> readName(c)
+                Phone.CONTENT_ITEM_TYPE -> phones += typedValue(c)
+                Email.CONTENT_ITEM_TYPE -> emails += typedValue(c)
+                StructuredPostal.CONTENT_ITEM_TYPE -> addresses += typedValue(c)
+                Organization.CONTENT_ITEM_TYPE -> org = c.getStringOrNull(CURSOR_ETAG) ?: ""
+                Note.CONTENT_ITEM_TYPE -> note = c.getStringOrNull(CURSOR_ETAG) ?: ""
+                Event.CONTENT_ITEM_TYPE -> readBirthday(c)
+            }
+        }
+
+        private fun readName(c: android.database.Cursor) {
+            display = c.getStringOrNull(CURSOR_ETAG) ?: ""
+            first = c.getStringOrNull(CURSOR_DATA2) ?: ""
+            last = c.getStringOrNull(CURSOR_DATA3) ?: ""
+            prefix = c.getStringOrNull(CURSOR_DATA4) ?: ""
+            middle = c.getStringOrNull(CURSOR_DATA5) ?: ""
+            suffix = c.getStringOrNull(CURSOR_DATA6) ?: ""
+        }
+
+        private fun typedValue(c: android.database.Cursor) =
+            TypedValue(c.getStringOrNull(CURSOR_ETAG) ?: "", c.getInt(CURSOR_DATA2))
+
+        private fun readBirthday(c: android.database.Cursor) {
+            if (c.getInt(CURSOR_DATA2) == Event.TYPE_BIRTHDAY) {
+                bday = c.getStringOrNull(CURSOR_ETAG)
+            }
+        }
+
+        fun build(uid: String) = RemoteContact(
+            uid = uid,
             displayName = display,
-            prefix = prefix, firstName = first, middleName = middle, lastName = last, suffix = suffix,
-            organization = org, note = note, phones = phones, emails = emails, addresses = addresses,
+            prefix = prefix,
+            firstName = first,
+            middleName = middle,
+            lastName = last,
+            suffix = suffix,
+            organization = org,
+            note = note,
+            phones = phones,
+            emails = emails,
+            addresses = addresses,
             birthday = bday,
         )
     }
@@ -280,22 +339,34 @@ object ContactsSink {
                 .withValue(ContactsContract.Data.MIMETYPE, Organization.CONTENT_ITEM_TYPE)
                 .withValue(Organization.COMPANY, c.organization)
         }
-        for (p in c.phones) ops += ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-            .withValue(ContactsContract.Data.MIMETYPE, Phone.CONTENT_ITEM_TYPE)
-            .withValue(Phone.NUMBER, p.value).withValue(Phone.TYPE, p.type)
-        for (e in c.emails) ops += ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-            .withValue(ContactsContract.Data.MIMETYPE, Email.CONTENT_ITEM_TYPE)
-            .withValue(Email.ADDRESS, e.value).withValue(Email.TYPE, e.type)
-        for (a in c.addresses) ops += ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-            .withValue(ContactsContract.Data.MIMETYPE, StructuredPostal.CONTENT_ITEM_TYPE)
-            .withValue(StructuredPostal.FORMATTED_ADDRESS, a.value).withValue(StructuredPostal.TYPE, a.type)
-        if (c.note.isNotBlank()) ops += ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-            .withValue(ContactsContract.Data.MIMETYPE, Note.CONTENT_ITEM_TYPE)
-            .withValue(Note.NOTE, c.note)
+        for (p in c.phones) {
+            ops += ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                .withValue(ContactsContract.Data.MIMETYPE, Phone.CONTENT_ITEM_TYPE)
+                .withValue(Phone.NUMBER, p.value)
+                .withValue(Phone.TYPE, p.type)
+        }
+        for (email in c.emails) {
+            ops += ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                .withValue(ContactsContract.Data.MIMETYPE, Email.CONTENT_ITEM_TYPE)
+                .withValue(Email.ADDRESS, email.value)
+                .withValue(Email.TYPE, email.type)
+        }
+        for (a in c.addresses) {
+            ops += ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                .withValue(ContactsContract.Data.MIMETYPE, StructuredPostal.CONTENT_ITEM_TYPE)
+                .withValue(StructuredPostal.FORMATTED_ADDRESS, a.value)
+                .withValue(StructuredPostal.TYPE, a.type)
+        }
+        if (c.note.isNotBlank()) {
+            ops += ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                .withValue(ContactsContract.Data.MIMETYPE, Note.CONTENT_ITEM_TYPE)
+                .withValue(Note.NOTE, c.note)
+        }
         c.birthday?.let { bday ->
             ops += ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
                 .withValue(ContactsContract.Data.MIMETYPE, Event.CONTENT_ITEM_TYPE)
-                .withValue(Event.START_DATE, bday).withValue(Event.TYPE, Event.TYPE_BIRTHDAY)
+                .withValue(Event.START_DATE, bday)
+                .withValue(Event.TYPE, Event.TYPE_BIRTHDAY)
         }
         return ops
     }
@@ -304,8 +375,8 @@ object ContactsSink {
         if (ops.isEmpty()) return
         try {
             context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
-        } catch (e: Exception) {
-            Log.e(TAG, "applyBatch failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "applyBatch failed", expected)
         }
     }
 }

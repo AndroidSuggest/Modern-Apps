@@ -21,6 +21,9 @@ import kotlinx.coroutines.launch
  */
 class DoseReceiver : BroadcastReceiver() {
 
+    // Broad catch below is deliberate: onReceive must not throw, and Room plus the
+    // scheduler throw undocumented RuntimeExceptions (not just SQLiteException).
+    @Suppress("TooGenericExceptionCaught")
     override fun onReceive(context: Context, intent: Intent) {
         val scheduleId = intent.getStringExtra(DoseScheduler.EXTRA_SCHEDULE_ID) ?: return
         val medicationId = intent.getStringExtra(DoseScheduler.EXTRA_MEDICATION_ID) ?: return
@@ -50,6 +53,11 @@ class DoseReceiver : BroadcastReceiver() {
         }
     }
 
+    // Broad catch is deliberate: losing this must not throw out of onReceive — the
+    // insistent notification is already posted and is the thing that rings, so a refused
+    // service start is survivable. ForegroundServiceStartNotAllowedException and
+    // SecurityException are the expected modes, but any failure lands in the same place.
+    @Suppress("TooGenericExceptionCaught")
     private fun startSound(
         context: Context,
         scheduleId: String,
@@ -64,8 +72,6 @@ class DoseReceiver : BroadcastReceiver() {
         try {
             context.startForegroundService(serviceIntent)
         } catch (e: Exception) {
-            // Losing this must not throw out of onReceive: the insistent notification is already
-            // posted and is the thing that rings, so a refused service start is survivable.
             Log.e(TAG, "Could not start DoseSoundService", e)
         }
     }

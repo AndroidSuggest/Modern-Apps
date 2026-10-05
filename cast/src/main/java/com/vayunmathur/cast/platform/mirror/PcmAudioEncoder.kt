@@ -3,6 +3,7 @@ package com.vayunmathur.cast.platform.mirror
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import java.io.FileInputStream
+import java.io.IOException
 
 private const val TAG = "PcmAudioEncoder"
 
@@ -37,33 +38,49 @@ class PcmAudioEncoder(private val readEnd: ParcelFileDescriptor) : AudioStream {
         return try {
             input = FileInputStream(readEnd.fileDescriptor)
             true
-        } catch (e: Exception) {
-            Log.w(TAG, "could not open the PCM pipe", e)
-            release()
-            false
+        } catch (e: IOException) {
+            failStart(e)
+        } catch (e: SecurityException) {
+            failStart(e)
         }
+    }
+
+    private fun failStart(e: Exception): Boolean {
+        Log.w(TAG, "could not open the PCM pipe", e)
+        release()
+        return false
     }
 
     override fun pump(): List<EncodedChunk> {
         val stream = input ?: return emptyList()
-        val available = try {
-            stream.available()
-        } catch (e: Exception) {
-            Log.w(TAG, "the PCM pipe went away", e)
-            return emptyList()
-        }
+        val available = pipeAvailable(stream) ?: return emptyList()
         if (available <= 0) return emptyList()
-        val read = try {
-            stream.read(frame, filled, minOf(frame.size - filled, available))
-        } catch (e: Exception) {
-            Log.w(TAG, "PCM read failed", e)
-            return emptyList()
-        }
+        val read = readFrame(stream, available)
         if (read <= 0) return emptyList()
         filled += read
         if (filled < frame.size) return emptyList()
         filled = 0
         return opus.encode(frame, frame.size)
+    }
+
+    private fun pipeAvailable(stream: FileInputStream): Int? = try {
+        stream.available()
+    } catch (e: IOException) {
+        Log.w(TAG, "the PCM pipe went away", e)
+        null
+    }
+
+    private fun readFrame(stream: FileInputStream, available: Int): Int = try {
+        // Bounds are provable: `filled` never exceeds `frame.size` (it resets to 0 when full),
+        // `available` is positive here, and `minOf` keeps `off + len` inside the frame.
+        stream.read(frame, filled, minOf(frame.size - filled, available))
+    } catch (e: IOException) {
+        Log.w(TAG, "PCM read failed", e)
+        EMPTY_READ
+    }
+
+    private companion object {
+        const val EMPTY_READ = 0
     }
 
     override fun release() {

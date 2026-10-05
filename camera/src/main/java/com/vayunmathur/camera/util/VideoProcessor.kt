@@ -9,14 +9,12 @@ import java.io.File
 import java.nio.ByteBuffer
 
 object VideoProcessor {
+    /** Sample buffer size (2MB); no-video-track sentinel. */
+    private const val SAMPLE_BUFFER_BYTES = 2 * 1024 * 1024
+    private const val NO_TRACK = -1
+
     fun adjustSpeed(inputFile: File, outputFile: File, speedFactor: Float) {
-        val retriever = MediaMetadataRetriever()
-        val rotation = try {
-            retriever.setDataSource(inputFile.path)
-            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
-        } catch (_: Exception) { 0 } finally {
-            try { retriever.release() } catch (_: Exception) {}
-        }
+        val rotation = readRotation(inputFile)
 
         val extractor = MediaExtractor()
         var muxer: MediaMuxer? = null
@@ -26,50 +24,17 @@ object VideoProcessor {
             muxer = MediaMuxer(outputFile.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             muxer.setOrientationHint(rotation)
 
-            var videoTrackIndex = -1
-            var muxerTrackIndex = -1
-            for (i in 0 until extractor.trackCount) {
-                val format = extractor.getTrackFormat(i)
-                val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
-                if (mime.startsWith("video/")) {
-                    videoTrackIndex = i
-                    muxerTrackIndex = muxer.addTrack(format)
-                    break
-                }
-            }
-
+            val videoTrackIndex = findVideoTrack(extractor, muxer)
             // No video track (audio-only input): clean up the half-created muxer and the empty
             // output so the caller falls back to the raw recording instead of a 0-byte file.
-            if (videoTrackIndex < 0) {
-                try { extractor.release() } catch (_: Exception) {}
-                try { muxer.release() } catch (_: Exception) {}
-                muxer = null
-                try { outputFile.delete() } catch (_: Exception) {}
+            if (videoTrackIndex == NO_TRACK) {
+                releaseQuietly(extractor, muxer, outputFile)
                 return
             }
 
             extractor.selectTrack(videoTrackIndex)
             muxer.start()
-
-            val buffer = ByteBuffer.allocate(2 * 1024 * 1024)
-            val info = MediaCodec.BufferInfo()
-
-            // newPts = (pts / totalDuration) * (totalDuration / speedFactor) == pts / speedFactor,
-            // so timestamps can be remapped per-sample without buffering the whole stream.
-            while (true) {
-                val size = extractor.readSampleData(buffer, 0)
-                if (size < 0) break
-                info.offset = 0
-                info.size = size
-                info.flags = if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
-                    MediaCodec.BUFFER_FLAG_KEY_FRAME
-                } else {
-                    0
-                }
-                info.presentationTimeUs = (extractor.sampleTime.toDouble() / speedFactor).toLong()
-                muxer.writeSampleData(muxerTrackIndex, buffer, info)
-                extractor.advance()
-            }
+            remuxAtSpeed(extractor, muxer, speedFactor)
 
             try { muxer.stop() } catch (_: Exception) {}
         } finally {
@@ -77,6 +42,84 @@ object VideoProcessor {
                 try { muxer.release() } catch (_: Exception) {}
             }
             try { extractor.release() } catch (_: Exception) {}
+        }
+    }
+
+    /** Reads the source rotation metadata; 0 when unavailable. */
+    private fun readRotation(inputFile: File): Int {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(inputFile.path)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                ?.toIntOrNull() ?: 0
+        } catch (_: Exception) {
+            0
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
+        }
+    }
+
+    /** Adds the first video track to the muxer; NO_TRACK when there is none. */
+    private fun findVideoTrack(extractor: MediaExtractor, muxer: MediaMuxer): Int {
+        for (i in 0 until extractor.trackCount) {
+            val format = extractor.getTrackFormat(i)
+            val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
+            if (mime.startsWith("video/")) {
+                muxer.addTrack(format)
+                return i
+            }
+        }
+        return NO_TRACK
+    }
+
+    /** Releases a half-created session and deletes the empty output. */
+    private fun releaseQuietly(extractor: MediaExtractor, muxer: MediaMuxer?, outputFile: File) {
+        try { extractor.release() } catch (_: Exception) {}
+        try { muxer?.release() } catch (_: Exception) {}
+        try { outputFile.delete() } catch (_: Exception) {}
+    }
+
+    /**
+     * Copies video samples while remapping timestamps.
+     *
+     * newPts = (pts / totalDuration) * (totalDuration / speedFactor) == pts / speedFactor,
+     * so timestamps can be remapped per-sample without buffering the whole stream.
+     */
+    private fun remuxAtSpeed(extractor: MediaExtractor, muxer: MediaMuxer, speedFactor: Float) {
+        val buffer = ByteBuffer.allocate(SAMPLE_BUFFER_BYTES)
+        val info = MediaCodec.BufferInfo()
+        val muxerTrackIndex = 0
+        while (true) {
+            val size = extractor.readSampleData(buffer, 0)
+            if (size < 0) break
+            writeSample(extractor, muxer, muxerTrackIndex, buffer, info, size, speedFactor)
+            extractor.advance()
+        }
+    }
+
+    /** Writes one sample with its remapped presentation timestamp. */
+    private fun writeSample(
+        extractor: MediaExtractor,
+        muxer: MediaMuxer,
+        trackIndex: Int,
+        buffer: ByteBuffer,
+        info: MediaCodec.BufferInfo,
+        size: Int,
+        speedFactor: Float
+    ) {
+        info.offset = 0
+        info.size = size
+        info.flags = sampleFlags(extractor)
+        info.presentationTimeUs = (extractor.sampleTime.toDouble() / speedFactor).toLong()
+        muxer.writeSampleData(trackIndex, buffer, info)
+    }
+
+    /** Key-frame flag when the sample is a sync sample, else 0. */
+    private fun sampleFlags(extractor: MediaExtractor): Int {
+        return if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
+            MediaCodec.BUFFER_FLAG_KEY_FRAME
+        } else {
+            0
         }
     }
 }

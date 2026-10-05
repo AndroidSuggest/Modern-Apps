@@ -23,37 +23,55 @@ internal class SabrAttestationRetryHandler(
     @Throws(SabrAttestationException::class)
     fun prepareRetry(session: YoutubeSabrSession, rejectedTokenError: SabrAttestationException) {
         if (retriesRemaining == 0) {
-            throw SabrAttestationException(
-                "SABR PO token was rejected after $MAX_RETRIES attestation recovery retries " +
-                    "for video=$videoId",
-                rejectedTokenError
-            )
+            throw exhaustedAttestationException(rejectedTokenError)
         }
-        val minter = tokenMinter
-            ?: throw SabrAttestationException(
-                "SABR attestation failed and no PO token minter is available for video=$videoId",
-                rejectedTokenError
-            )
         val retryNumber = MAX_RETRIES - retriesRemaining + 1
         retriesRemaining--
-        val token = try {
-            minter(true)
-        } catch (error: Exception) {
-            throw SabrAttestationException(
-                "SABR PO token recovery failed on retry $retryNumber of $MAX_RETRIES " +
-                    "for video=$videoId: ${error.message}",
-                error
-            )
-        }
+        val token = mintFreshToken(retryNumber)
         if (token == null || token.isEmpty()) {
-            throw SabrAttestationException(
-                "SABR PO token recovery returned no token on retry $retryNumber of $MAX_RETRIES " +
-                    "for video=$videoId",
-                rejectedTokenError
-            )
+            throw emptyTokenAttestationException(retryNumber, rejectedTokenError)
         }
         session.setPoToken(token)
     }
+
+    @Throws(SabrAttestationException::class)
+    private fun mintFreshToken(retryNumber: Int): ByteArray? {
+        val minter = tokenMinter
+            ?: throw noMinterAttestationException()
+        return try {
+            minter(true)
+        } catch (error: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+            throw recoveryAttestationException(retryNumber, error)
+        }
+    }
+
+    private fun exhaustedAttestationException(cause: SabrAttestationException) =
+        SabrAttestationException(
+            "SABR PO token was rejected after $MAX_RETRIES attestation recovery retries " +
+                "for video=$videoId",
+            cause,
+        )
+
+    private fun noMinterAttestationException() =
+        SabrAttestationException(
+            "SABR attestation failed and no PO token minter is available for video=$videoId",
+        )
+
+    private fun recoveryAttestationException(retryNumber: Int, cause: Throwable) =
+        SabrAttestationException(
+            "SABR PO token recovery failed on retry $retryNumber of $MAX_RETRIES " +
+                "for video=$videoId: ${cause.message}",
+            cause,
+        )
+
+    private fun emptyTokenAttestationException(
+        retryNumber: Int,
+        cause: SabrAttestationException,
+    ) = SabrAttestationException(
+        "SABR PO token recovery returned no token on retry $retryNumber of $MAX_RETRIES " +
+            "for video=$videoId",
+        cause,
+    )
 
     /** A media payload proves the current token is usable and restores a fresh budget. */
     @Synchronized

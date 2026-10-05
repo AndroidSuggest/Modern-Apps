@@ -60,6 +60,10 @@ class ChessViewModel(application: Application) : AndroidViewModel(application), 
     // screen), which must not tick the counter again (#668). Reset on every new game.
     private var winScored = false
 
+    companion object {
+        private const val AI_REPLY_DELAY_MS = 500L
+    }
+
     init {
         viewModelScope.launch { _aiAvailable.value = chessApi.isAvailable() }
     }
@@ -111,7 +115,7 @@ class ChessViewModel(application: Application) : AndroidViewModel(application), 
                 }
                 if (mode is GameMode.VsAI && result == null && newBoard.promotionPosition == null) {
                     viewModelScope.launch {
-                        delay(500)
+                        delay(AI_REPLY_DELAY_MS)
                         makeAiMove()
                     }
                 }

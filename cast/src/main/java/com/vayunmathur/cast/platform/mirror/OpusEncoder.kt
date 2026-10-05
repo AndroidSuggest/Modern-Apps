@@ -4,6 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaFormat
 import android.util.Log
 import com.vayunmathur.cast.protocol.StreamConstants
+import java.io.IOException
 
 private const val TAG = "OpusEncoder"
 
@@ -49,11 +50,19 @@ class OpusEncoder {
             created.start()
             codec = created
             true
-        } catch (e: Exception) {
-            Log.w(TAG, "could not start the Opus encoder", e)
-            release()
-            false
+        } catch (e: IllegalStateException) {
+            failStart(e)
+        } catch (e: IllegalArgumentException) {
+            failStart(e)
+        } catch (e: IOException) {
+            failStart(e)
         }
+    }
+
+    private fun failStart(e: Exception): Boolean {
+        Log.w(TAG, "could not start the Opus encoder", e)
+        release()
+        return false
     }
 
     /**

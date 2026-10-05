@@ -62,6 +62,11 @@ private fun PoiIndex.PoiRecord.toSearchResult() = SearchResult(
  */
 class MapsSearchViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        /** Keystroke debounce (ms) before a query hits the network. */
+        private const val SEARCH_DEBOUNCE_MS = 250L
+    }
+
     private val recentStore = RecentSearchStore.get(application)
 
     private val _query = MutableStateFlow("")
@@ -111,7 +116,7 @@ class MapsSearchViewModel(application: Application) : AndroidViewModel(applicati
         _searching.value = true
         searchJob = viewModelScope.launch {
             try {
-                delay(250)
+                delay(SEARCH_DEBOUNCE_MS)
                 // Try the offline OSM POI index first (P27): resolving a POI name
                 // locally avoids a Google call. Google stays the fallback (and
                 // handles addresses, which the POI index doesn't carry). Any offline

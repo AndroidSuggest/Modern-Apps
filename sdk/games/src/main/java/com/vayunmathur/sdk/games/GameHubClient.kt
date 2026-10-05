@@ -195,12 +195,16 @@ class GameHubClient(
 
     @Deprecated("Use registerAchievements with AchievementDefinition")
     suspend fun registerAchievementsLegacy(achievements: List<Achievement>) {
-        val defs = achievements.map { AchievementDefinition(it.id, it.name, it.description, iconResName = it.iconResName) }
+        val defs = achievements.map {
+            AchievementDefinition(it.id, it.name, it.description, iconResName = it.iconResName)
+        }
         registerAchievements(defs)
     }
-
-    @Deprecated("Leaderboards removed — no-op")
-    suspend fun reportScore(category: String, score: Long) {
+    @Deprecated("Leaderboards removed - no-op")
+    suspend fun reportScore(
+        @Suppress("UNUSED_PARAMETER") category: String,
+        @Suppress("UNUSED_PARAMETER") score: Long,
+    ) {
         // No-op: leaderboards removed for now.
     }
 }

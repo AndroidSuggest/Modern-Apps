@@ -9,6 +9,7 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.measure.Route
 import com.vayunmathur.measure.domain.Units
 import com.vayunmathur.measure.platform.MeasureViewModel
+import com.vayunmathur.measure.platform.setPixelsPerMmImpl
 import com.vayunmathur.measure.ui.components.MeasureBottomBar
 
 @Composable
@@ -22,7 +23,7 @@ fun RulerPage(backStack: NavBackStack<Route>, viewModel: MeasureViewModel) {
     LaunchedEffect(resources) {
         val metrics = resources.displayMetrics
         val dpi = metrics.ydpi.takeIf { it > 1f } ?: (metrics.density * 160f)
-        viewModel.setPixelsPerMm(dpi / Units.MM_PER_INCH.toFloat())
+        viewModel.setPixelsPerMmImpl(dpi / Units.MM_PER_INCH.toFloat())
     }
 
     RulerContent(

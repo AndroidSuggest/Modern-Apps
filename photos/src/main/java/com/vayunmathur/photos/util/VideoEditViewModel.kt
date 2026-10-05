@@ -45,6 +45,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 
 /**
  * Video editor view model. The single source of truth is [state]; both the live
@@ -156,16 +157,16 @@ class VideoEditViewModel(
             VideoFilterPreset.None -> {}
             VideoFilterPreset.Mono -> effects.add(RgbFilter.createGrayscaleFilter())
             VideoFilterPreset.Warm ->
-                effects.add(RgbAdjustment.Builder().setRedScale(1.1f).setBlueScale(0.9f).build())
+                effects.add(RgbAdjustment.Builder().setRedScale(WARM_RED_SCALE).setBlueScale(WARM_BLUE_SCALE).build())
             VideoFilterPreset.Cool ->
-                effects.add(RgbAdjustment.Builder().setRedScale(0.9f).setBlueScale(1.1f).build())
+                effects.add(RgbAdjustment.Builder().setRedScale(COOL_RED_SCALE).setBlueScale(COOL_BLUE_SCALE).build())
             VideoFilterPreset.Vivid ->
-                effects.add(HslAdjustment.Builder().adjustSaturation(40f).build())
+                effects.add(HslAdjustment.Builder().adjustSaturation(VIVID_SATURATION).build())
         }
         if (state.brightness != 0f) effects.add(Brightness(state.brightness))
         if (state.contrast != 0f) effects.add(Contrast(state.contrast))
         if (state.saturation != 0f) {
-            effects.add(HslAdjustment.Builder().adjustSaturation(state.saturation * 100f).build())
+            effects.add(HslAdjustment.Builder().adjustSaturation(state.saturation * SATURATION_PERCENT).build())
         }
         if (state.isCropped) {
             val l = state.cropLeft!!; val t = state.cropTop!!
@@ -248,9 +249,9 @@ class VideoEditViewModel(
             while (isActive) {
                 val stateInt = transformer?.getProgress(holder) ?: Transformer.PROGRESS_STATE_NOT_STARTED
                 if (stateInt == Transformer.PROGRESS_STATE_AVAILABLE) {
-                    _progress.value = holder.progress / 100f
+                    _progress.value = holder.progress / PROGRESS_PERCENT_DIVISOR
                 }
-                delay(200)
+                delay(PROGRESS_POLL_MS)
             }
         }
     }
@@ -315,13 +316,15 @@ class VideoEditViewModel(
                     val resolver = ctx.contentResolver
                     resolver.openOutputStream(uri, "w")?.use { out ->
                         tempFile.inputStream().use { it.copyTo(out) }
-                    } ?: throw Exception("openOutputStream returned null after permission grant")
+                    } ?: throw IllegalStateException("openOutputStream returned null after permission grant")
                     val values = ContentValues().apply {
                         put(MediaStore.Video.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
                         put(MediaStore.Video.Media.SIZE, tempFile.length())
                     }
                     resolver.update(uri, values, null, null)
-                } catch (e: Exception) {
+                } catch (e: IOException) {
+                    Log.e(TAG, "Overwrite FAILED after permission grant", e)
+                } catch (e: SecurityException) {
                     Log.e(TAG, "Overwrite FAILED after permission grant", e)
                 } finally {
                     tempFile.delete()
@@ -349,6 +352,15 @@ class VideoEditViewModel(
     companion object {
         private const val TAG = "VideoEditViewModel"
 
+        private const val WARM_RED_SCALE = 1.1f
+        private const val WARM_BLUE_SCALE = 0.9f
+        private const val COOL_RED_SCALE = 0.9f
+        private const val COOL_BLUE_SCALE = 1.1f
+        private const val VIVID_SATURATION = 40f
+        private const val SATURATION_PERCENT = 100f
+        private const val PROGRESS_PERCENT_DIVISOR = 100f
+        private const val PROGRESS_POLL_MS = 200L
+
         private sealed class WriteResult {
             data object Success : WriteResult()
             data class NeedsPermission(
@@ -365,32 +377,46 @@ class VideoEditViewModel(
             tempFile: File,
             asCopy: Boolean,
         ): WriteResult {
+            return if (asCopy) {
+                writeVideoCopy(context, photo, tempFile)
+            } else {
+                overwriteVideo(context, photo, tempFile)
+            }
+        }
+
+        private fun writeVideoCopy(context: Context, photo: Photo, tempFile: File): WriteResult {
             val resolver = context.contentResolver
             val nowSeconds = System.currentTimeMillis() / 1000
-            if (asCopy) {
-                val baseName = photo.name.substringBeforeLast('.')
-                val values = ContentValues().apply {
-                    put(MediaStore.Video.Media.DISPLAY_NAME, "Edited_$baseName.mp4")
-                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                    put(MediaStore.Video.Media.DATE_MODIFIED, nowSeconds)
-                    put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
-                    put(MediaStore.Video.Media.IS_PENDING, 1)
-                }
-                return try {
-                    val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
-                        ?: return WriteResult.Error(Exception("MediaStore insert returned null"))
-                    resolver.openOutputStream(uri)?.use { out ->
-                        tempFile.inputStream().use { it.copyTo(out) }
-                    }
-                    val done = ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }
-                    resolver.update(uri, done, null, null)
-                    tempFile.delete()
-                    WriteResult.Success
-                } catch (e: Exception) {
-                    WriteResult.Error(e)
-                }
+            val baseName = photo.name.substringBeforeLast('.')
+            val values = ContentValues().apply {
+                put(MediaStore.Video.Media.DISPLAY_NAME, "Edited_$baseName.mp4")
+                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                put(MediaStore.Video.Media.DATE_MODIFIED, nowSeconds)
+                put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
+                put(MediaStore.Video.Media.IS_PENDING, 1)
             }
+            return try {
+                val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: return WriteResult.Error(IllegalStateException("MediaStore insert returned null"))
+                resolver.openOutputStream(uri)?.use { out ->
+                    tempFile.inputStream().use { it.copyTo(out) }
+                }
+                val done = ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }
+                resolver.update(uri, done, null, null)
+                tempFile.delete()
+                WriteResult.Success
+            } catch (e: IOException) {
+                WriteResult.Error(e)
+            } catch (e: SecurityException) {
+                WriteResult.Error(e)
+            } catch (e: IllegalArgumentException) {
+                WriteResult.Error(e)
+            }
+        }
 
+        private fun overwriteVideo(context: Context, photo: Photo, tempFile: File): WriteResult {
+            val resolver = context.contentResolver
+            val nowSeconds = System.currentTimeMillis() / 1000
             val uri = photo.uri.toUri()
             try {
                 resolver.openOutputStream(uri, "w")?.use { out ->
@@ -403,7 +429,9 @@ class VideoEditViewModel(
                 resolver.update(uri, values, null, null)
                 tempFile.delete()
                 return WriteResult.Success
-            } catch (e: Exception) {
+            } catch (e: IOException) {
+                Log.d(TAG, "Direct write failed, falling back to createWriteRequest", e)
+            } catch (e: SecurityException) {
                 Log.d(TAG, "Direct write failed, falling back to createWriteRequest", e)
             }
             val pendingIntent = MediaStore.createWriteRequest(resolver, listOf(uri))
@@ -420,12 +448,3 @@ fun VideoEditViewModelFactory(
     viewModelFactory {
         initializer { VideoEditViewModel(application, repository) }
     }
-
-@Suppress("FunctionName")
-fun VideoEditViewModelFactory(
-    application: Application,
-    photoDao: com.vayunmathur.photos.data.PhotoDao,
-): ViewModelProvider.Factory {
-    val repo = PhotosRepository.get(application)
-    return VideoEditViewModelFactory(application, repo)
-}

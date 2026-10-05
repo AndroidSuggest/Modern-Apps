@@ -48,8 +48,6 @@ fun FreeCellSlot(
                 card = card,
                 sourceId = "freecell_$index",
                 actions = actions,
-                cardWidth = cardWidth,
-                cardHeight = cardHeight
             ) {
                 CardFace(card, cardWidth = cardWidth, cardHeight = cardHeight)
             }

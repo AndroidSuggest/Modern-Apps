@@ -75,10 +75,10 @@ class Dictionary private constructor(
         fun scan(bucket: IntArray?) {
             if (bucket == null) return
             for (idx in bucket) {
-                if (freqs[idx] <= bestFreq) continue // includes the freq == 0 exclusion
-                if (!withinEditDistance1(lower, words[idx])) continue
-                bestFreq = freqs[idx]
-                best = idx
+                if (isBetterCandidate(lower, idx, bestFreq)) {
+                    bestFreq = freqs[idx]
+                    best = idx
+                }
             }
         }
 
@@ -116,6 +116,14 @@ class Dictionary private constructor(
     }
 
     // --- internals ---
+
+    /**
+     * True when candidate [idx] should replace the current best: more frequent, more frequent
+     * than the running floor (which also excludes never-offered freq-0 words), and within one
+     * edit of [lower]. Extracted so the bucket scan is a single jump per loop.
+     */
+    private fun isBetterCandidate(lower: String, idx: Int, bestFreq: Int): Boolean =
+        freqs[idx] > bestFreq && withinEditDistance1(lower, words[idx])
 
     /**
      * Insert [idx]/[freq] into a descending fixed-size top-k, dropping the smallest. Words
@@ -165,11 +173,15 @@ class Dictionary private constructor(
         /** An empty dictionary used before loading completes. */
         val EMPTY = Dictionary(emptyList(), IntArray(0), emptyMap(), emptyMap())
 
+        /** Bits the word length is shifted to make room for the char code in a bucket key. */
+        private const val LENGTH_SHIFT_BITS = 16
+
         /**
          * Key for the [byFirst]/[bySecond] buckets: a word length paired with the
          * character at the position that index pins.
          */
-        private fun bucketKey(length: Int, c: Char): Int = (length shl 16) or c.code
+        private fun bucketKey(length: Int, c: Char): Int =
+            (length shl LENGTH_SHIFT_BITS) or c.code
 
         /** Load and index the bundled word list off the main thread. */
         suspend fun load(context: Context): Dictionary = withContext(Dispatchers.IO) {
@@ -191,18 +203,29 @@ class Dictionary private constructor(
                     // so common words rank above rarer ones even without an explicit column.
                     var order = 0
                     for (raw in lines) {
-                        val line = raw.trim()
-                        if (line.isEmpty() || line.startsWith("#")) continue
-                        val parts = line.split('\t')
-                        val word = parts[0].trim().lowercase()
-                        if (word.isEmpty()) continue
-                        val freq = parts.getOrNull(1)?.trim()?.toIntOrNull() ?: (1_000_000 - order)
-                        entries.add(word to freq)
-                        order++
+                        parseWordLine(raw, order)?.let {
+                            entries.add(it)
+                            order++
+                        }
                     }
                 }
             }
             return entries
+        }
+
+        /**
+         * Parse one `word[\tfreq]` line, or null when it is blank, a comment or unusable.
+         * [order] is the count of valid words so far, which is what the fallback frequency
+         * derives from — so it only advances on lines this accepts.
+         */
+        private fun parseWordLine(raw: String, order: Int): Pair<String, Int>? {
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("#")) return null
+            val parts = line.split('\t')
+            val word = parts[0].trim().lowercase()
+            if (word.isEmpty()) return null
+            val freq = parts.getOrNull(1)?.trim()?.toIntOrNull() ?: (1_000_000 - order)
+            return word to freq
         }
 
         private fun build(entries: List<Pair<String, Int>>): Dictionary {

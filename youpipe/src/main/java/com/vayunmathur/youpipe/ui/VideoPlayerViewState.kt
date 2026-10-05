@@ -79,7 +79,6 @@ internal fun rememberVideoPlayerViewState(
     controller: MediaController?,
     isPlaying: Boolean,
     isDragging: Boolean,
-    playbackSpeed: Float,
 ): VideoPlayerViewState {
     val context = LocalContext.current
 

@@ -105,8 +105,13 @@ fun TextDocumentView(
     ) {
         if (doc.headerParagraphs.isNotEmpty()) {
             item {
-                Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                    Column(modifier = Modifier.padding(8.dp)) { for (para in doc.headerParagraphs) ParagraphView(para, "", fontSizeMultiplier) }
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    Column(modifier = Modifier.padding(8.dp)) { for (para in doc.headerParagraphs) ParagraphView(
+                        para,
+                        "",
+                        fontSizeMultiplier) }
                 }
             }
         }
@@ -123,10 +128,17 @@ fun TextDocumentView(
                     remoteCarets = remoteCarets,
                 )
                 is DocSegment.Block -> when (val block = doc.content[seg.index]) {
-                    is OdfContentBlock.Table -> TableView(block.table, seg.index, searchQuery, fontSizeMultiplier, onCellTextChange, onCellFocus)
+                    is OdfContentBlock.Table -> TableView(
+                        block.table,
+                        seg.index,
+                        fontSizeMultiplier,
+                        onCellTextChange,
+                        onCellFocus)
                     is OdfContentBlock.Image -> {
                         var fullScreen by remember { mutableStateOf(false) }
-                        if (fullScreen) FullScreenImage(block.image, onCrop = { fullScreen = false; onCropImage(seg.index) }) { fullScreen = false }
+                        if (fullScreen) FullScreenImage(
+                            block.image,
+                            onCrop = { fullScreen = false; onCropImage(seg.index) }) { fullScreen = false }
                         else Box(modifier = Modifier.clickable { fullScreen = true }) { OdfImageView(block.image) }
                     }
                     is OdfContentBlock.PageBreak -> PageBreakView()
@@ -134,7 +146,10 @@ fun TextDocumentView(
                     is OdfContentBlock.Formula -> MathView(block.mathml)
                     is OdfContentBlock.TableOfContents -> {
                         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                            Text(block.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                block.title,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium)
                             for (entry in block.entries) {
                                 Text(
                                     entry.spans.joinToString("") { it.text },
@@ -156,15 +171,23 @@ fun TextDocumentView(
                 val fn = doc.footnotes[index]
                 Row(modifier = Modifier.padding(vertical = 2.dp)) {
                     Text("${fn.citation} ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                    Column(Modifier.weight(1f)) { for (para in fn.body) ParagraphView(para, searchQuery, fontSizeMultiplier) }
+                    Column(Modifier.weight(1f)) { for (para in fn.body) ParagraphView(
+                        para,
+                        searchQuery,
+                        fontSizeMultiplier) }
                 }
             }
         }
 
         if (doc.footerParagraphs.isNotEmpty()) {
             item {
-                Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                    Column(modifier = Modifier.padding(8.dp)) { for (para in doc.footerParagraphs) ParagraphView(para, "", fontSizeMultiplier) }
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Column(modifier = Modifier.padding(8.dp)) { for (para in doc.footerParagraphs) ParagraphView(
+                        para,
+                        "",
+                        fontSizeMultiplier) }
                 }
             }
         }
@@ -173,9 +196,17 @@ fun TextDocumentView(
 
 @Composable
 private fun FullScreenImage(image: OdfImage, onCrop: (() -> Unit)? = null, onDismiss: () -> Unit) {
-    val bitmap = remember(image.path, image.imageData.size) { BitmapFactory.decodeByteArray(image.imageData, 0, image.imageData.size) }
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.9f)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
-        if (bitmap != null) Image(bitmap = bitmap.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxWidth().padding(16.dp), contentScale = ContentScale.Fit)
+    val bitmap = remember(
+        image.path,
+        image.imageData.size) { BitmapFactory.decodeByteArray(image.imageData, 0, image.imageData.size) }
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.9f)).clickable { onDismiss() },
+        contentAlignment = Alignment.Center) {
+        if (bitmap != null) Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = null,
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            contentScale = ContentScale.Fit)
         if (onCrop != null) {
             TextButton(onClick = onCrop, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
                 IconCrop(tint = Color.White)
@@ -188,14 +219,16 @@ private fun FullScreenImage(image: OdfImage, onCrop: (() -> Unit)? = null, onDis
 
 @Composable
 private fun PageBreakView() {
-    HorizontalDivider(modifier = Modifier.padding(vertical = 24.dp), thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+    HorizontalDivider(
+        modifier = Modifier.padding(vertical = 24.dp),
+        thickness = 1.dp,
+        color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
 private fun TableView(
     table: com.vayunmathur.library.ui.odf.OdfTable,
     blockIndex: Int,
-    searchQuery: String = "",
     fontSizeMultiplier: Float = 1f,
     onCellTextChange: (Int, Int, Int, String) -> Unit = { _, _, _, _ -> },
     onCellFocus: (Int, Int, Int) -> Unit = { _, _, _ -> }
@@ -231,17 +264,30 @@ private fun TableView(
                             .then(cell.backgroundColor?.let { Modifier.background(Color(it.toInt())) } ?: Modifier)
                             .padding(8.dp)
                     ) {
-                        EditableCell(cell, onSurface, fontSizeMultiplier, onFocus = { onCellFocus(blockIndex, r, c) }) { txt -> onCellTextChange(blockIndex, r, c, txt) }
+                        EditableCell(
+                            cell,
+                            onSurface,
+                            fontSizeMultiplier,
+                            onFocus = { onCellFocus(blockIndex, r, c) })
+                        { txt -> onCellTextChange(blockIndex, r, c, txt) }
                     }
                 }
             }
         }
-        if (table.rows.isEmpty()) Text(stringResource(R.string.empty_table), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
+        if (table.rows.isEmpty()) Text(
+            stringResource(R.string.empty_table),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(8.dp))
     }
 }
 
 @Composable
-private fun EditableCell(cell: OdfTableCell, onSurface: Color, mult: Float, onFocus: () -> Unit, onChange: (String) -> Unit) {
+private fun EditableCell(
+    cell: OdfTableCell,
+    onSurface: Color,
+    mult: Float,
+    onFocus: () -> Unit,
+    onChange: (String) -> Unit) {
     val plain = cell.paragraphs.joinToString("\n") { p -> p.spans.joinToString("") { it.text } }
     var tfv by remember { mutableStateOf(TextFieldValue(plain)) }
     if (tfv.text != plain) tfv = TextFieldValue(plain, TextRange(tfv.selection.end.coerceIn(0, plain.length)))

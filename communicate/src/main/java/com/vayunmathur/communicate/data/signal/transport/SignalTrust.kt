@@ -59,24 +59,10 @@ object SignalTrust {
         return try {
             val cf = CertificateFactory.getInstance("X.509")
             val ks = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
-            var loaded = 0
-            for ((idx, path) in CA_ASSETS.withIndex()) {
-                try {
-                    context.assets.open(path).use { ins ->
-                        val cert = cf.generateCertificate(ins) as? X509Certificate
-                        if (cert != null) {
-                            ks.setCertificateEntry("signal-ca-$idx", cert)
-                            loaded++
-                        } else {
-                            Log.w(TAG, "Asset $path did not decode to X509Certificate")
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to load Signal CA asset $path: ${e.message}")
-                }
-            }
+            val loaded = loadBundledRoots(context, cf, ks)
             if (loaded == 0) {
-                Log.e(TAG, "No Signal CAs loaded (checked ${CA_ASSETS.size} assets) — Signal TLS will fail (trust anchor not found)")
+                Log.e(TAG, "No Signal CAs loaded (checked ${CA_ASSETS.size}" +
+                    "assets) — Signal TLS will fail (trust anchor not found)")
                 return null
             }
 
@@ -93,9 +79,43 @@ object SignalTrust {
             }
             Log.i(TAG, "Signal trust ready: $loaded bundled root(s) + system defaults")
             sslContext.socketFactory
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to build Signal SSLSocketFactory", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "Failed to build Signal SSLSocketFactory", expected)
             null
+        }
+    }
+
+    /** Load bundled CA assets into [ks]; returns the count loaded. */
+    private fun loadBundledRoots(context: Context, cf: CertificateFactory, ks: KeyStore): Int {
+        var loaded = 0
+        for ((idx, path) in CA_ASSETS.withIndex()) {
+            if (loadOneRoot(context, cf, ks, idx, path)) loaded++
+        }
+        return loaded
+    }
+
+    /** Load one CA asset; true when it decoded and stored. */
+    private fun loadOneRoot(
+        context: Context,
+        cf: CertificateFactory,
+        ks: KeyStore,
+        idx: Int,
+        path: String,
+    ): Boolean {
+        return try {
+            context.assets.open(path).use { ins ->
+                val cert = cf.generateCertificate(ins) as? X509Certificate
+                if (cert != null) {
+                    ks.setCertificateEntry("signal-ca-$idx", cert)
+                    true
+                } else {
+                    Log.w(TAG, "Asset $path did not decode to X509Certificate")
+                    false
+                }
+            }
+        } catch (expected: Exception) {
+            Log.w(TAG, "Failed to load Signal CA asset $path: ${expected.message}")
+            false
         }
     }
 

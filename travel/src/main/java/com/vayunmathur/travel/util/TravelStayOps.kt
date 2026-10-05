@@ -32,11 +32,21 @@ fun TravelViewModel.searchStays(
             adults = adults,
         )
     )
-    _stayResults.value = StaySearchState(loading = true, hasSearched = true)
+    stayResultsMutable.value = StaySearchState(loading = true, hasSearched = true)
     viewModelScope.launch {
-        runCatching { StaysApi.search(place, checkIn, checkOut, rooms, adults, latitude = latitude, longitude = longitude) }
-            .onSuccess { _stayResults.value = StaySearchState(results = it, hasSearched = true) }
-            .onFailure { _stayResults.value = StaySearchState(error = errorMessage(it), hasSearched = true) }
+        runCatching {
+            StaysApi.search(
+                place,
+                checkIn,
+                checkOut,
+                rooms,
+                adults,
+                latitude = latitude,
+                longitude = longitude
+            )
+        }
+            .onSuccess { stayResultsMutable.value = StaySearchState(results = it, hasSearched = true) }
+            .onFailure { stayResultsMutable.value = StaySearchState(error = errorMessage(it), hasSearched = true) }
     }
 }
 
@@ -46,14 +56,14 @@ suspend fun TravelViewModel.staySuggestions(query: String): List<StaySuggestionD
 
 fun TravelViewModel.loadStayRates(searchResultId: String, accommodationName: String) {
     selectedStayName = accommodationName
-    _stayRates.value = StayRatesState(loading = true)
+    stayRatesMutable.value = StayRatesState(loading = true)
     viewModelScope.launch {
         runCatching { StaysApi.rates(searchResultId) }
             .onSuccess {
                 if (it.name.isNotBlank()) selectedStayName = it.name
-                _stayRates.value = StayRatesState(rates = it)
+                stayRatesMutable.value = StayRatesState(rates = it)
             }
-            .onFailure { _stayRates.value = StayRatesState(error = errorMessage(it)) }
+            .onFailure { stayRatesMutable.value = StayRatesState(error = errorMessage(it)) }
     }
 }
 
@@ -61,7 +71,7 @@ fun TravelViewModel.loadStayRates(searchResultId: String, accommodationName: Str
 fun TravelViewModel.selectStayRate(rate: StayRateDto) {
     selectedRate = rate
     stayQuote = null
-    _stayBooking.value = StayBookingState.Idle
+    stayBookingMutable.value = StayBookingState.Idle
     viewModelScope.launch {
         runCatching { StaysApi.quote(rate.id) }
             .onSuccess { stayQuote = it }
@@ -85,10 +95,10 @@ fun TravelViewModel.stayTotal(): Pair<String, String> {
 fun TravelViewModel.bookStay(guest: StayGuestInputDto, email: String, phone: String) {
     val quoteId = stayQuote?.id
     if (quoteId == null) {
-        _stayBooking.value = StayBookingState.Error("This rate is no longer available. Please pick another.")
+        stayBookingMutable.value = StayBookingState.Error("This rate is no longer available. Please pick another.")
         return
     }
-    _stayBooking.value = StayBookingState.Loading
+    stayBookingMutable.value = StayBookingState.Loading
     viewModelScope.launch {
         runCatching {
             StaysApi.book(
@@ -102,14 +112,14 @@ fun TravelViewModel.bookStay(guest: StayGuestInputDto, email: String, phone: Str
         }
             .onSuccess { result ->
                 persistStay(result)
-                _stayBooking.value = StayBookingState.Success(result)
+                stayBookingMutable.value = StayBookingState.Success(result)
             }
-            .onFailure { _stayBooking.value = StayBookingState.Error(errorMessage(it)) }
+            .onFailure { stayBookingMutable.value = StayBookingState.Error(errorMessage(it)) }
     }
 }
 
 fun TravelViewModel.resetStayBooking() {
-    _stayBooking.value = StayBookingState.Idle
+    stayBookingMutable.value = StayBookingState.Idle
 }
 
 private suspend fun TravelViewModel.persistStay(result: StayBookingResultDto) {
@@ -124,7 +134,7 @@ private suspend fun TravelViewModel.persistStay(result: StayBookingResultDto) {
             orderId = result.id,
             bookingReference = result.reference,
             route = name,
-            departDate = checkIn.take(10),
+            departDate = checkIn.take(ISO_DATE_LENGTH),
             amount = amount,
             currency = currency,
             status = result.status.ifBlank { "confirmed" },
@@ -144,3 +154,6 @@ internal fun TravelViewModel.recordRecent(search: RecentSearch) {
         repository.trimRecent()
     }
 }
+
+/** Length of an ISO `YYYY-MM-DD` date prefix. */
+private const val ISO_DATE_LENGTH = 10

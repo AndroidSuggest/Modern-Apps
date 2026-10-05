@@ -32,10 +32,14 @@ class PlayHttpClient : IHttpClient {
     companion object {
         private const val CONNECT_TIMEOUT = 30_000
         private const val READ_TIMEOUT = 30_000
-        private const val MAX_REDIRECTS = 5
+        private const val HTTP_OK_MIN = 200
+        private const val HTTP_OK_MAX = 299
+        private const val HTTP_ERROR_MIN = 400
 
         private const val TOO_MANY_REQUESTS = 429
         private const val SERVICE_UNAVAILABLE = 503
+        private const val MILLIS_PER_SECOND = 1_000L
+        private const val NETWORK_FAILURE_CODE = -1
 
         /** Smallest gap between two requests starting, before anything has been refused. */
         private const val MIN_REQUEST_GAP_MS = 250L
@@ -118,7 +122,7 @@ class PlayHttpClient : IHttpClient {
     }
 
     /** One attempt's answer, plus how long the server asked us to wait before the next. */
-    private data class Attempt(val response: PlayResponse, val retryAfterMs: Long)
+    internal data class Attempt(val response: PlayResponse, val retryAfterMs: Long)
 
     private fun execute(
         url: String,
@@ -181,7 +185,7 @@ class PlayHttpClient : IHttpClient {
     private fun retryAfterMs(conn: HttpURLConnection): Long =
         conn.getHeaderField("Retry-After")?.trim()?.toLongOrNull()
             ?.takeIf { it >= 0 }
-            ?.times(1_000L)
+            ?.times(MILLIS_PER_SECOND)
             ?: 0L
 
     private fun executeOnce(
@@ -192,90 +196,104 @@ class PlayHttpClient : IHttpClient {
         contentType: String? = null
     ): Attempt {
         return try {
-            var currentUrl = url
-            var currentMethod = method
-            var currentBody: ByteArray? = rawBody
-            var currentContentType: String? = contentType
-            var redirects = 0
-            var lastConn: HttpURLConnection? = null
-            var result: Attempt? = null
-
-            while (result == null) {
-                val conn = openConnection(currentUrl, currentMethod, headers, currentBody, currentContentType)
-                lastConn = conn
-                val code = try {
-                    conn.responseCode
-                } catch (e: IOException) {
-                    conn.disconnect()
-                    throw e
-                }
-
-                // Manual redirect handling
-                if (code in 301..308 && code != 304 && redirects < MAX_REDIRECTS) {
-                    val loc = conn.getHeaderField("Location") ?: conn.getHeaderField("location")
-                    if (loc != null) {
-                        currentUrl = URL(URL(currentUrl), loc).toString()
-                        if (code == 303) {
-                            currentMethod = "GET"
-                            currentBody = null
-                            currentContentType = null
-                        }
-                        redirects++
-                        try { conn.inputStream?.close() } catch (_: Exception) {}
-                        conn.disconnect()
-                        continue
-                    }
-                }
-
-                val ct = conn.getHeaderField("Content-Type")
-                val responseMessage = try { conn.responseMessage } catch (_: Exception) { "" } ?: ""
-                val retryAfter = retryAfterMs(conn)
-                _responseCode.value = code
-
-                val bytes = try {
-                    val stream = if (code >= 400) conn.errorStream ?: conn.inputStream else conn.inputStream
-                    stream?.readBytes() ?: ByteArray(0)
-                } catch (_: Exception) {
-                    ByteArray(0)
-                } finally {
-                    try { lastConn.inputStream?.close() } catch (_: Exception) {}
-                    try { lastConn.errorStream?.close() } catch (_: Exception) {}
-                    lastConn.disconnect()
-                }
-
-                val isSuccessful = code in 200..299
-                val errStr = if (!isSuccessful) {
-                    responseMessage.ifEmpty { "Error $code" }
-                } else ""
-
-                val errBytes = if (!isSuccessful) bytes else ByteArray(0)
-                val respBytes = if (isSuccessful) bytes else ByteArray(0)
-
-                result = Attempt(
-                    PlayResponse(
-                        responseBytes = respBytes,
-                        errorBytes = errBytes,
-                        errorString = errStr,
-                        isSuccessful = isSuccessful,
-                        code = code,
-                        type = ct
-                    ),
-                    retryAfter,
-                )
-            }
-            result
-        } catch (e: Exception) {
-            Attempt(
-                PlayResponse(
-                    isSuccessful = false,
-                    code = -1,
-                    errorString = e.message ?: "Network error",
-                    errorBytes = ByteArray(0),
-                    responseBytes = ByteArray(0)
-                ),
-                0L,
-            )
+            RedirectFollower(
+                ::openConnection,
+                ::readResponseCode,
+                ::readAttempt,
+                ::closeQuietly,
+            ).follow(url, method, headers, rawBody, contentType)
+        } catch (expected: IOException) {
+            networkFailure(expected)
+        } catch (expected: IllegalStateException) {
+            networkFailure(expected)
+        } catch (expected: SecurityException) {
+            networkFailure(expected)
         }
+    }
+
+    private fun networkFailure(e: Exception): Attempt {
+        return Attempt(
+            PlayResponse(
+                isSuccessful = false,
+                code = NETWORK_FAILURE_CODE,
+                errorString = e.message ?: "Network error",
+                errorBytes = ByteArray(0),
+                responseBytes = ByteArray(0)
+            ),
+            0L,
+        )
+    }
+
+    private fun readResponseCode(conn: HttpURLConnection): Int {
+        return try {
+            conn.responseCode
+        } catch (expected: IOException) {
+            conn.disconnect()
+            throw expected
+        }
+    }
+
+    private fun readAttempt(conn: HttpURLConnection, code: Int): Attempt {
+        val ct = conn.getHeaderField("Content-Type")
+        val responseMessage = readResponseMessage(conn)
+        val retryAfter = retryAfterMs(conn)
+        _responseCode.value = code
+
+        val bytes = readBodyBytes(conn, code)
+        closeQuietly(conn)
+
+        val isSuccessful = code in HTTP_OK_MIN..HTTP_OK_MAX
+        val errStr = if (!isSuccessful) {
+            responseMessage.ifEmpty { "Error $code" }
+        } else ""
+
+        val errBytes = if (!isSuccessful) bytes else ByteArray(0)
+        val respBytes = if (isSuccessful) bytes else ByteArray(0)
+
+        return Attempt(
+            PlayResponse(
+                responseBytes = respBytes,
+                errorBytes = errBytes,
+                errorString = errStr,
+                isSuccessful = isSuccessful,
+                code = code,
+                type = ct
+            ),
+            retryAfter,
+        )
+    }
+
+    private fun readResponseMessage(conn: HttpURLConnection): String {
+        return try {
+            conn.responseMessage
+        } catch (_: IOException) {
+            ""
+        } ?: ""
+    }
+
+    private fun readBodyBytes(conn: HttpURLConnection, code: Int): ByteArray {
+        return try {
+            val stream = if (code >= HTTP_ERROR_MIN) {
+                conn.errorStream ?: conn.inputStream
+            } else {
+                conn.inputStream
+            }
+            stream?.readBytes() ?: ByteArray(0)
+        } catch (_: IOException) {
+            ByteArray(0)
+        }
+    }
+
+    private fun closeQuietly(conn: HttpURLConnection) {
+        try {
+            conn.inputStream?.close()
+        } catch (_: IOException) {
+        }
+        try {
+            conn.errorStream?.close()
+        } catch (_: IOException) {
+        }
+        conn.disconnect()
     }
 
     private fun openConnection(
@@ -300,29 +318,52 @@ class PlayHttpClient : IHttpClient {
             doOutput = bodyBytes != null
         }
 
-        // Set method, with reflection fallback for custom verbs
-        try {
-            conn.requestMethod = method
-        } catch (_: java.net.ProtocolException) {
-            var clazz: Class<*>? = conn.javaClass
-            var success = false
-            while (clazz != null && !success) {
-                try {
-                    val f = clazz.getDeclaredField("method")
-                    f.isAccessible = true
-                    f.set(conn, method)
-                    success = true
-                } catch (_: Exception) {
-                    clazz = clazz.superclass
-                }
-            }
-        }
+        setRequestMethod(conn, method)
 
         headers.forEach { (k, v) ->
             conn.setRequestProperty(k, v)
         }
 
-        // Content-Type handling: explicit param wins, otherwise default protobuf for POST
+        applyContentType(conn, method, bodyBytes, contentType)
+        writeBody(conn, bodyBytes)
+
+        return conn
+    }
+
+    // Set method, with reflection fallback for custom verbs
+    private fun setRequestMethod(conn: HttpURLConnection, method: String) {
+        try {
+            conn.requestMethod = method
+        } catch (_: java.net.ProtocolException) {
+            setMethodByReflection(conn, method)
+        }
+    }
+
+    private fun setMethodByReflection(conn: HttpURLConnection, method: String) {
+        var clazz: Class<*>? = conn.javaClass
+        while (clazz != null) {
+            try {
+                val f = clazz.getDeclaredField("method")
+                f.isAccessible = true
+                f.set(conn, method)
+                return
+            } catch (_: NoSuchFieldException) {
+                clazz = clazz.superclass
+            } catch (_: IllegalAccessException) {
+                clazz = clazz.superclass
+            } catch (_: SecurityException) {
+                return
+            }
+        }
+    }
+
+    // Content-Type handling: explicit param wins, otherwise default protobuf for POST
+    private fun applyContentType(
+        conn: HttpURLConnection,
+        method: String,
+        bodyBytes: ByteArray?,
+        contentType: String?,
+    ) {
         val effectiveContentType = when {
             contentType != null -> contentType
             method == "POST" && bodyBytes != null -> "application/x-protobuf"
@@ -331,21 +372,94 @@ class PlayHttpClient : IHttpClient {
         if (effectiveContentType != null) {
             conn.setRequestProperty("Content-Type", effectiveContentType)
         }
+    }
 
-        if (bodyBytes != null) {
+    private fun writeBody(conn: HttpURLConnection, bodyBytes: ByteArray?) {
+        if (bodyBytes == null) return
+        try {
+            conn.setFixedLengthStreamingMode(bodyBytes.size)
+        } catch (_: IllegalStateException) {
             try {
-                conn.setFixedLengthStreamingMode(bodyBytes.size)
-            } catch (_: Exception) {
-                try { conn.setChunkedStreamingMode(0) } catch (_: Exception) {}
-            }
-            try {
-                conn.outputStream.use { it.write(bodyBytes) }
-            } catch (e: Exception) {
-                // If output fails, propagate
-                throw e
+                conn.setChunkedStreamingMode(0)
+            } catch (_: IllegalStateException) {
             }
         }
+        // A write failure propagates to the caller as-is.
+        conn.outputStream.use { it.write(bodyBytes) }
+    }
+}
 
-        return conn
+/**
+ * Manual redirect follower (301-308, up to [maxRedirects] hops), extracted from
+ * [PlayHttpClient] so the client stays under detekt's TooManyFunctions cap.
+ */
+internal class RedirectFollower(
+    private val open: (
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        body: ByteArray?,
+        contentType: String?,
+    ) -> HttpURLConnection,
+    private val readCode: (HttpURLConnection) -> Int,
+    private val readResult: (HttpURLConnection, Int) -> PlayHttpClient.Attempt,
+    private val close: (HttpURLConnection) -> Unit,
+    private val maxRedirects: Int = MAX_REDIRECTS,
+) {
+    private class State(
+        var url: String,
+        var method: String,
+        var body: ByteArray?,
+        var contentType: String?,
+        var redirects: Int = 0,
+    )
+
+    private class Target(
+        val url: String,
+        val method: String,
+        val body: ByteArray?,
+        val contentType: String?,
+    )
+
+    fun follow(
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        rawBody: ByteArray?,
+        contentType: String?,
+    ): PlayHttpClient.Attempt {
+        val state = State(url, method, rawBody, contentType)
+        while (true) {
+            val conn = open(state.url, state.method, headers, state.body, state.contentType)
+            val code = readCode(conn)
+            val target = redirectTarget(conn, code, state)
+            if (target == null) return readResult(conn, code)
+            close(conn)
+            state.url = target.url
+            state.method = target.method
+            state.body = target.body
+            state.contentType = target.contentType
+            state.redirects++
+        }
+    }
+
+    private fun redirectTarget(conn: HttpURLConnection, code: Int, state: State): Target? {
+        // Manual redirect handling
+        if (code !in REDIRECT_MIN..REDIRECT_MAX || code == REDIRECT_NOT_MODIFIED) return null
+        if (state.redirects >= maxRedirects) return null
+        val loc = conn.getHeaderField("Location") ?: conn.getHeaderField("location") ?: return null
+        val nextUrl = URL(URL(state.url), loc).toString()
+        if (code == REDIRECT_SEE_OTHER) {
+            return Target(nextUrl, "GET", null, null)
+        }
+        return Target(nextUrl, state.method, state.body, state.contentType)
+    }
+
+    companion object {
+        private const val MAX_REDIRECTS = 5
+        private const val REDIRECT_MIN = 301
+        private const val REDIRECT_MAX = 308
+        private const val REDIRECT_NOT_MODIFIED = 304
+        private const val REDIRECT_SEE_OTHER = 303
     }
 }

@@ -46,7 +46,11 @@ class GoogleVoiceParserTest {
 
     @Test
     fun buildSendSms_existingThreadUsesThreadSlot() {
-        val body = GoogleVoiceParser.buildSendSmsBody("+12134774209", "hi", threadRemoteId = "t.+12134774209", clientTxnId = 42L)
+        val body = GoogleVoiceParser.buildSendSmsBody(
+            "+12134774209",
+            "hi",
+            threadRemoteId = "t.+12134774209",
+            clientTxnId = 42L)
         assertEquals("[null,null,null,null,\"hi\",\"t.+12134774209\",null,null,[42],null]", body)
     }
 

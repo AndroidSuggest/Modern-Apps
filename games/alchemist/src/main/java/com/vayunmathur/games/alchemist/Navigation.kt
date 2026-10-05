@@ -33,6 +33,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private const val UNLOCK_DISPLAY_MILLIS = 3000L
+
 @Composable
 fun Navigation(viewModel: AlchemistViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.Home)
@@ -51,16 +53,33 @@ fun Navigation(viewModel: AlchemistViewModel) {
         viewModel.newUnlocksEvent.collectLatest { items ->
             currentUnlocks = items
             showingUnlock = true
-            delay(3000)
+            delay(UNLOCK_DISPLAY_MILLIS)
             showingUnlock = false
         }
     }
     Box(Modifier.fillMaxSize()) {
         MainNavigation(backStack) {
-            entry<Route.Home> { HomePage(backStack, viewModel, onOpenCollection = { backStack.add(Route.Collection) }, onOpenGameCenter = { backStack.add(Route.GameCenter) }) }
+            entry<Route.Home> {
+                HomePage(
+                    backStack,
+                    viewModel,
+                    onOpenCollection = { backStack.add(Route.Collection) },
+                    onOpenGameCenter = { backStack.add(Route.GameCenter) },
+                )
+            }
             entry<Route.Collection> { CollectionPage(backStack, viewModel) }
-            entry<Route.ItemDetails>(metadata = MorphPage()) { ItemDetailsPage(backStack, viewModel, it.item) }
-            entry<Route.GameCenter> { achievementsManager?.let { GameCenterScreen(backupAgent = AppBackupAgent(), manager = it, onBack = { backStack.pop() }) } }
+            entry<Route.ItemDetails>(metadata = MorphPage()) {
+                ItemDetailsPage(backStack, viewModel, it.item)
+            }
+            entry<Route.GameCenter> {
+                achievementsManager?.let {
+                    GameCenterScreen(
+                        backupAgent = AppBackupAgent(),
+                        manager = it,
+                        onBack = { backStack.pop() },
+                    )
+                }
+            }
         }
         newAchievement?.let { ach -> AchievementNotification(ach) { achievementsManager.dismissNotification() } }
         UnlockNotification(unlock = currentUnlocks, showing = showingUnlock)
@@ -71,7 +90,12 @@ fun Navigation(viewModel: AlchemistViewModel) {
 fun rememberAchievementsManager(): AchievementsManager? {
     val context = LocalContext.current
     val state = produceState<AchievementsManager?>(initialValue = null, context) {
-        value = withContext(Dispatchers.IO) { val json = context.assets.open("achievements.json").bufferedReader().use { it.readText() }; AlchemistAchievementsManager(context, json) }
+        value = withContext(Dispatchers.IO) {
+            val json = context.assets.open("achievements.json")
+                .bufferedReader()
+                .use { it.readText() }
+            AlchemistAchievementsManager(context, json)
+        }
     }
     return state.value
 }

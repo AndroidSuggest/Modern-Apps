@@ -47,6 +47,27 @@ object Rtcp {
     private const val FEEDBACK_HEADER_SIZE = 16
     private const val FEEDBACK_ACK_HEADER_SIZE = 6
     private const val LOSS_FIELD_SIZE = 4
+    private const val SSRC_PAIR_SIZE = 8
+
+    private const val ACK_VECTOR_BASE_OFFSET = 2L
+    private const val PLI_BODY_WORDS = 2
+
+    private const val BYTE_MASK = 0xffL
+    private const val BYTE_MASK_INT = 0xff
+    private const val SHORT_MASK = 0xffff_ffffL
+    private const val NTP_HIGH_SHIFT = 32
+    private const val WORD_BYTES = 4
+    private const val VERSION_BITS = 0b1110_0000
+    private const val SUBTYPE_BITS = 0b0001_1111
+    private const val LOSS_VECTOR_SPAN = 8
+    private const val ACK_BITS_PER_OCTET = 8L
+    private const val WRAP_RANGE = 256
+    private const val HALF_WRAP = 128
+    private const val SENDER_REPORT_NTP_HIGH = 4
+    private const val SENDER_REPORT_NTP_LOW = 8
+    private const val SENDER_REPORT_RTP = 12
+    private const val SENDER_REPORT_PACKETS = 16
+    private const val SENDER_REPORT_OCTETS = 20
 
     /** `kAllPacketsLost` - a NACK for a whole frame rather than for one packet. */
     const val ALL_PACKETS_LOST = 0xffff
@@ -81,13 +102,13 @@ object Rtcp {
         out[i++] = TYPE_SENDER_REPORT.toByte()
         // The length field counts 32-bit words *after* the first, which is what dividing by 4
         // without adding one expresses.
-        i = out.putShort(i, SENDER_REPORT_SIZE / 4)
-        i = out.putInt(i, senderSsrc and 0xffff_ffffL)
-        i = out.putInt(i, (ntpTimestamp ushr 32) and 0xffff_ffffL)
-        i = out.putInt(i, ntpTimestamp and 0xffff_ffffL)
-        i = out.putInt(i, rtpTimestamp and 0xffff_ffffL)
-        i = out.putInt(i, packetCount and 0xffff_ffffL)
-        out.putInt(i, octetCount and 0xffff_ffffL)
+        i = out.putShort(i, SENDER_REPORT_SIZE / WORD_BYTES)
+        i = out.putInt(i, senderSsrc and SHORT_MASK)
+        i = out.putInt(i, (ntpTimestamp ushr NTP_HIGH_SHIFT) and SHORT_MASK)
+        i = out.putInt(i, ntpTimestamp and SHORT_MASK)
+        i = out.putInt(i, rtpTimestamp and SHORT_MASK)
+        i = out.putInt(i, packetCount and SHORT_MASK)
+        out.putInt(i, octetCount and SHORT_MASK)
         return out
     }
 
@@ -100,12 +121,14 @@ object Rtcp {
     fun parseSenderReport(packet: ByteArray, senderSsrc: Long): SenderReport? {
         forEachSubPacket(packet) { type, _, start, size ->
             if (type == TYPE_SENDER_REPORT && size >= SENDER_REPORT_SIZE) {
-                if (packet.getInt(start) == senderSsrc and 0xffff_ffffL) {
+                if (packet.getInt(start) == senderSsrc and SHORT_MASK) {
                     return SenderReport(
-                        ntpTimestamp = (packet.getInt(start + 4) shl 32) or packet.getInt(start + 8),
-                        rtpTimestamp = packet.getInt(start + 12),
-                        packetCount = packet.getInt(start + 16),
-                        octetCount = packet.getInt(start + 20),
+                        ntpTimestamp =
+                            (packet.getInt(start + SENDER_REPORT_NTP_HIGH) shl NTP_HIGH_SHIFT) or
+                                packet.getInt(start + SENDER_REPORT_NTP_LOW),
+                        rtpTimestamp = packet.getInt(start + SENDER_REPORT_RTP),
+                        packetCount = packet.getInt(start + SENDER_REPORT_PACKETS),
+                        octetCount = packet.getInt(start + SENDER_REPORT_OCTETS),
                     )
                 }
             }
@@ -142,9 +165,9 @@ object Rtcp {
         var i = 0
         out[i++] = (VERSION_AND_PADDING or SUBTYPE_FEEDBACK).toByte()
         out[i++] = TYPE_PAYLOAD_SPECIFIC.toByte()
-        i = out.putShort(i, padded / 4)
-        i = out.putInt(i, receiverSsrc and 0xffff_ffffL)
-        i = out.putInt(i, senderSsrc and 0xffff_ffffL)
+        i = out.putShort(i, padded / WORD_BYTES)
+        i = out.putInt(i, receiverSsrc and SHORT_MASK)
+        i = out.putInt(i, senderSsrc and SHORT_MASK)
         i = out.putInt(i, CAST_WORD)
         out[i++] = checkpoint.lower8.toByte()
         out[i++] = lossFields.size.toByte()
@@ -175,9 +198,9 @@ object Rtcp {
         var i = 0
         out[i++] = (VERSION_AND_PADDING or SUBTYPE_PICTURE_LOSS_INDICATOR).toByte()
         out[i++] = TYPE_PAYLOAD_SPECIFIC.toByte()
-        i = out.putShort(i, 2)
-        i = out.putInt(i, receiverSsrc and 0xffff_ffffL)
-        out.putInt(i, senderSsrc and 0xffff_ffffL)
+        i = out.putShort(i, PLI_BODY_WORDS)
+        i = out.putInt(i, receiverSsrc and SHORT_MASK)
+        out.putInt(i, senderSsrc and SHORT_MASK)
         return out
     }
 
@@ -207,29 +230,30 @@ object Rtcp {
      */
     private fun lossFields(nacks: List<PacketNack>): List<LossField> {
         if (nacks.isEmpty()) return emptyList()
-        val out = mutableListOf<LossField>()
         // Grouped and sorted so the frames closest to the checkpoint - the ones actually blocking
         // playout - are the ones that survive MAX_LOSS_FIELDS.
         val byFrame = nacks.groupBy { it.frameId }.toSortedMap()
-        for ((frameId, forFrame) in byFrame) {
-            if (out.size >= MAX_LOSS_FIELDS) break
-            if (forFrame.any { it.isWholeFrame }) {
-                out += LossField(frameId, ALL_PACKETS_LOST, 0)
-                continue
+        val all = byFrame.flatMap { (frameId, forFrame) -> fieldsForFrame(frameId, forFrame) }
+        return all.take(MAX_LOSS_FIELDS)
+    }
+
+    private fun fieldsForFrame(frameId: FrameId, forFrame: List<PacketNack>): List<LossField> {
+        if (forFrame.any { it.isWholeFrame }) {
+            return listOf(LossField(frameId, ALL_PACKETS_LOST, 0))
+        }
+        val ids = forFrame.map { it.packetId }.distinct().sorted()
+        val out = mutableListOf<LossField>()
+        var index = 0
+        while (index < ids.size) {
+            val base = ids[index]
+            var bits = 0
+            var next = index + 1
+            while (next < ids.size && ids[next] - base <= LOSS_VECTOR_SPAN) {
+                bits = bits or (1 shl (ids[next] - base - 1))
+                next++
             }
-            val ids = forFrame.map { it.packetId }.distinct().sorted()
-            var index = 0
-            while (index < ids.size && out.size < MAX_LOSS_FIELDS) {
-                val base = ids[index]
-                var bits = 0
-                var next = index + 1
-                while (next < ids.size && ids[next] - base <= 8) {
-                    bits = bits or (1 shl (ids[next] - base - 1))
-                    next++
-                }
-                out += LossField(frameId, base, bits)
-                index = next
-            }
+            out += LossField(frameId, base, bits)
+            index = next
         }
         return out
     }
@@ -243,16 +267,16 @@ object Rtcp {
      */
     private fun ackOctets(checkpoint: FrameId, ackedFrames: List<FrameId>): ByteArray {
         val offsets = ackedFrames
-            .map { it - checkpoint - 2 }
+            .map { it - checkpoint - ACK_VECTOR_BASE_OFFSET }
             // The vector's length is written into a single byte, so a frame further ahead than it can
             // reach simply is not acked. Nothing is lost by that: an ack is an optimisation, and the
             // checkpoint already says everything that has definitely been played.
-            .filter { it in 0 until MAX_ACK_OCTETS * 8 }
+            .filter { it in 0 until MAX_ACK_OCTETS * ACK_BITS_PER_OCTET }
         val highest = offsets.maxOrNull() ?: return ByteArray(0)
-        val out = ByteArray((highest / 8 + 1).toInt())
+        val out = ByteArray((highest / ACK_BITS_PER_OCTET + 1).toInt())
         for (offset in offsets) {
-            val octet = (offset / 8).toInt()
-            val bit = (offset % 8).toInt()
+            val octet = (offset / ACK_BITS_PER_OCTET).toInt()
+            val bit = (offset % ACK_BITS_PER_OCTET).toInt()
             out[octet] = (out[octet].toInt() or (1 shl bit)).toByte()
         }
         return out
@@ -340,11 +364,11 @@ object Rtcp {
     ) {
         var offset = 0
         while (offset + COMMON_HEADER_SIZE <= packet.size) {
-            val byte0 = packet[offset].toInt() and 0xff
-            if (byte0 and 0b1110_0000 != VERSION_AND_PADDING) return
-            val countOrSubtype = byte0 and 0b0001_1111
-            val type = packet[offset + 1].toInt() and 0xff
-            val payloadSize = packet.getShort(offset + 2) * 4
+            val byte0 = packet[offset].toInt() and BYTE_MASK_INT
+            if (byte0 and VERSION_BITS != VERSION_AND_PADDING) return
+            val countOrSubtype = byte0 and SUBTYPE_BITS
+            val type = packet[offset + 1].toInt() and BYTE_MASK_INT
+            val payloadSize = packet.getShort(offset + 2) * WORD_BYTES
             val payloadStart = offset + COMMON_HEADER_SIZE
             if (payloadStart + payloadSize > packet.size) return
             block(type, countOrSubtype, payloadStart, payloadSize)
@@ -364,9 +388,9 @@ object Rtcp {
         receiverSsrc: Long,
         senderSsrc: Long,
     ): Boolean {
-        if (size < 8) return false
-        return packet.getInt(start) == receiverSsrc and 0xffff_ffffL &&
-            packet.getInt(start + 4) == senderSsrc and 0xffff_ffffL
+        if (size < SSRC_PAIR_SIZE) return false
+        return packet.getInt(start) == receiverSsrc and SHORT_MASK &&
+            packet.getInt(start + WORD_BYTES) == senderSsrc and SHORT_MASK
     }
 
     /**
@@ -386,28 +410,28 @@ object Rtcp {
         if (size < FEEDBACK_HEADER_SIZE) return null
         val end = start + size
         var i = start
-        if (packet.getInt(i) != receiverSsrc and 0xffff_ffffL) return null
-        i += 4
-        if (packet.getInt(i) != senderSsrc and 0xffff_ffffL) return null
-        i += 4
+        if (packet.getInt(i) != receiverSsrc and SHORT_MASK) return null
+        i += WORD_BYTES
+        if (packet.getInt(i) != senderSsrc and SHORT_MASK) return null
+        i += WORD_BYTES
         if (packet.getInt(i) != CAST_WORD) return null
-        i += 4
+        i += WORD_BYTES
 
-        val checkpoint = expandLessThanOrEqual(maxFrameId, packet[i].toInt() and 0xff)
+        val checkpoint = expandLessThanOrEqual(maxFrameId, packet[i].toInt() and BYTE_MASK_INT)
         i++
-        val lossFieldCount = packet[i].toInt() and 0xff
+        val lossFieldCount = packet[i].toInt() and BYTE_MASK_INT
         i++
         val playoutDelayMs = packet.getShort(i)
-        i += 2
+        i += SSRC_PAIR_SIZE / WORD_BYTES
 
         if (end - i < LOSS_FIELD_SIZE * lossFieldCount) return null
         val nacks = mutableListOf<PacketNack>()
         repeat(lossFieldCount) {
-            val frameId = expandGreaterThan(checkpoint, packet[i].toInt() and 0xff)
+            val frameId = expandGreaterThan(checkpoint, packet[i].toInt() and BYTE_MASK_INT)
             i++
             var packetId = packet.getShort(i)
-            i += 2
-            var bits = packet[i].toInt() and 0xff
+            i += SSRC_PAIR_SIZE / WORD_BYTES
+            var bits = packet[i].toInt() and BYTE_MASK_INT
             i++
             nacks += PacketNack(frameId, packetId)
             if (packetId != ALL_PACKETS_LOST) {
@@ -424,14 +448,14 @@ object Rtcp {
         // that are not 'CST2' rather than calling the packet corrupt.
         val acked = mutableListOf<FrameId>()
         if (end - i >= FEEDBACK_ACK_HEADER_SIZE && packet.getInt(i) == CST2_WORD) {
-            i += 4
+            i += WORD_BYTES
             i++ // Feedback Count, unused.
-            val octets = packet[i].toInt() and 0xff
+            val octets = packet[i].toInt() and BYTE_MASK_INT
             i++
             if (end - i >= octets) {
-                var frameId = checkpoint + 2
+                var frameId = checkpoint + ACK_VECTOR_BASE_OFFSET
                 repeat(octets) {
-                    var bits = packet[i].toInt() and 0xff
+                    var bits = packet[i].toInt() and BYTE_MASK_INT
                     var id = frameId
                     while (bits != 0) {
                         if (bits and 1 != 0) acked += id
@@ -439,7 +463,7 @@ object Rtcp {
                         id += 1
                     }
                     i++
-                    frameId += 8
+                    frameId += ACK_BITS_PER_OCTET
                 }
             }
         }
@@ -454,14 +478,14 @@ object Rtcp {
      * openscreen `impl/expanded_value_base.h`, `ExpandLessThanOrEqual`.
      */
     internal fun expandLessThanOrEqual(reference: FrameId, truncated: Int): FrameId {
-        val delta = (reference.lower8 - truncated) and 0xff
+        val delta = (reference.lower8 - truncated) and BYTE_MASK_INT
         return FrameId(reference.value - delta)
     }
 
     /** The mirror of the above, for an id known to be greater than [reference]. */
     internal fun expandGreaterThan(reference: FrameId, truncated: Int): FrameId {
-        val delta = (truncated - reference.lower8) and 0xff
-        return FrameId(reference.value + if (delta == 0) 256 else delta)
+        val delta = (truncated - reference.lower8) and BYTE_MASK_INT
+        return FrameId(reference.value + if (delta == 0) WRAP_RANGE else delta)
     }
 
     /**
@@ -472,7 +496,8 @@ object Rtcp {
      * expansions above can produce both.
      */
     internal fun expandNearest(reference: FrameId, truncated: Int): FrameId {
-        val delta = ((((truncated - reference.lower8) and 0xff) + 128) and 0xff) - 128
+        val delta = ((((truncated - reference.lower8) and BYTE_MASK_INT) + HALF_WRAP) and BYTE_MASK_INT) -
+            HALF_WRAP
         return FrameId(reference.value + delta)
     }
 }
@@ -517,10 +542,23 @@ data class SenderReport(
 )
 
 internal fun ByteArray.getShort(offset: Int): Int =
-    ((this[offset].toInt() and 0xff) shl 8) or (this[offset + 1].toInt() and 0xff)
+    ((this[offset].toInt() and RtcpByte.MASK) shl RtcpByte.HIGH_SHIFT) or
+        (this[offset + 1].toInt() and RtcpByte.MASK)
 
 internal fun ByteArray.getInt(offset: Int): Long =
-    ((this[offset].toLong() and 0xff) shl 24) or
-        ((this[offset + 1].toLong() and 0xff) shl 16) or
-        ((this[offset + 2].toLong() and 0xff) shl 8) or
-        (this[offset + 3].toLong() and 0xff)
+    ((this[offset].toLong() and RtcpByte.MASK_LONG) shl RtcpByte.SHIFT_3) or
+        ((this[offset + RtcpByte.INDEX_1].toLong() and RtcpByte.MASK_LONG) shl RtcpByte.SHIFT_2) or
+        ((this[offset + RtcpByte.INDEX_2].toLong() and RtcpByte.MASK_LONG) shl RtcpByte.SHIFT_1) or
+        (this[offset + RtcpByte.INDEX_3].toLong() and RtcpByte.MASK_LONG)
+
+private object RtcpByte {
+    const val MASK = 0xff
+    const val MASK_LONG = 0xffL
+    const val HIGH_SHIFT = 8
+    const val SHIFT_1 = 8
+    const val SHIFT_2 = 16
+    const val SHIFT_3 = 24
+    const val INDEX_1 = 1
+    const val INDEX_2 = 2
+    const val INDEX_3 = 3
+}

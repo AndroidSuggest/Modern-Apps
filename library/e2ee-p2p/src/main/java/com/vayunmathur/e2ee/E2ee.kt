@@ -16,9 +16,10 @@ import javax.crypto.spec.SecretKeySpec
 object E2ee {
     private const val GCM_TAG_BITS = 128
     private const val IV_LEN = 12
+    private const val AES_KEY_BYTES = 32
 
     /** A fresh random 256-bit content key. */
-    fun newContentKey(): ByteArray = ByteArray(32).also { SecureRandom().nextBytes(it) }
+    fun newContentKey(): ByteArray = ByteArray(AES_KEY_BYTES).also { SecureRandom().nextBytes(it) }
 
     /** Encrypts [plaintext] with [key]; the random 12-byte IV is prepended to the ciphertext. */
     fun aesEncrypt(key: ByteArray, plaintext: ByteArray): ByteArray {

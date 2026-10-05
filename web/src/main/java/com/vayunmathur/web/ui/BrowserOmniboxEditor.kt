@@ -20,9 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
@@ -136,11 +133,7 @@ internal fun OmniboxEditor(
                         Row(
                             modifier = Modifier
                                 .navigationBarsPadding()
-                                .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp)
-                                .onGloballyPositioned { coords ->
-                                    ImeDebugState.barBottomY =
-                                        (coords.positionInWindow().y + coords.size.height).toInt()
-                                },
+                                .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             dismissOmnibox()
@@ -148,14 +141,7 @@ internal fun OmniboxEditor(
                         }
                     }
                 },
-            ) { paddingValues ->
-                ImeDebugState.contentPadBottomPx = with(LocalDensity.current) {
-                    paddingValues.calculateBottomPadding().toPx().toInt()
-                }
-                // TEMP DEBUG readout at top of content: always visible. Remove before commit.
-                ImeDebugOverlay()
-                suggestions(paddingValues)
-            }
+            ) { paddingValues -> suggestions(paddingValues) }
         } else {
             AppScaffold(
                 title = { omniboxField(Modifier.fillMaxWidth()) },

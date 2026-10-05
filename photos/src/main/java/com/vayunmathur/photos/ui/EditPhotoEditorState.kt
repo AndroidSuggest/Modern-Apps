@@ -140,7 +140,7 @@ internal class EditPhotoEditorState(
     var currentViewportHeight by mutableFloatStateOf(1f)
 
     fun exitCropPreview() {
-        vm.setCroppingPreview(false)
+        vm.pixel.setCroppingPreview(false)
         isCropping = false
     }
 
@@ -150,7 +150,7 @@ internal class EditPhotoEditorState(
                 cropCx = 0.5f; cropCy = 0.5f; cropHx = 0.5f; cropHy = 0.5f
                 cropAngle = 0f; cropAspect = null
                 isCropping = true
-                vm.setCroppingPreview(true)
+                vm.pixel.setCroppingPreview(true)
                 editorMode = EditorMode.Crop
             }
             else -> {
@@ -169,7 +169,7 @@ internal class EditPhotoEditorState(
 
     fun commitOverlays() {
         if (inkStrokes.isNotEmpty() || texts.isNotEmpty()) {
-            vm.commitOverlaysToLayers(
+            vm.layers.commitOverlaysToLayers(
                 inkStrokes.map { it.serialize() }, texts.toList(),
                 currentViewportWidth, currentViewportHeight,
             )
@@ -267,8 +267,8 @@ internal class EditPhotoEditorState(
         val t = ((cry - hhpx) / hp).toFloat().coerceIn(0f, 1f)
         val r = ((crx + hwpx) / wp).toFloat().coerceIn(0f, 1f)
         val b = ((cry + hhpx) / hp).toFloat().coerceIn(0f, 1f)
-        vm.setRotation(-cropAngle)
-        vm.setCropRect(Rect(l, t, r, b))
+        vm.pixel.setRotation(-cropAngle)
+        vm.pixel.setCropRect(Rect(l, t, r, b))
         goHome()
     }
 
@@ -277,7 +277,7 @@ internal class EditPhotoEditorState(
         // composite; save with no separate overlay baking.
         commitOverlays()
         photo?.let {
-            vm.savePhoto(
+            vm.saver.savePhoto(
                 it, asCopy, emptyList(), emptyList(),
                 currentViewportWidth, currentViewportHeight, format,
             ) { context.finish() }

@@ -33,62 +33,12 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 @OptIn(ExperimentalEncodingApi::class)
 object SignalPayload {
 
-    private val secureRandom = SecureRandom()
+    private const val PROTOCOL_POLLS = 8
+    private const val PROTOCOL_REACTIONS = 4
 
-    // ---- WebSocket framing (binary protobuf) ----
+    internal val secureRandom = SecureRandom()
 
-    fun buildWebSocketRequestMessage(
-        verb: String,
-        path: String,
-        body: ByteArray? = null,
-        id: Long = nextRequestId(),
-        headers: List<String> = emptyList(),
-    ): WebSocketRequestMessage {
-        val b = WebSocketRequestMessage.newBuilder()
-            .setVerb(verb)
-            .setPath(path)
-            .setId(id)
-        if (body != null && body.isNotEmpty()) b.setBody(ByteString.copyFrom(body))
-        if (headers.isNotEmpty()) b.addAllHeaders(headers)
-        return b.build()
-    }
-
-    fun buildWebSocketResponseMessage(
-        id: Long,
-        status: Int = 200,
-        message: String = "OK",
-        body: ByteArray? = null,
-        headers: List<String> = emptyList(),
-    ): WebSocketResponseMessage {
-        val b = WebSocketResponseMessage.newBuilder()
-            .setId(id)
-            .setStatus(status)
-            .setMessage(message)
-        if (body != null && body.isNotEmpty()) b.setBody(ByteString.copyFrom(body))
-        if (headers.isNotEmpty()) b.addAllHeaders(headers)
-        return b.build()
-    }
-
-    fun buildWebSocketMessageForRequest(request: WebSocketRequestMessage): WebSocketMessage =
-        WebSocketMessage.newBuilder().setType(WebSocketMessage.Type.REQUEST).setRequest(request).build()
-
-    fun buildWebSocketMessageForResponse(response: WebSocketResponseMessage): WebSocketMessage =
-        WebSocketMessage.newBuilder().setType(WebSocketMessage.Type.RESPONSE).setResponse(response).build()
-
-    fun encodeWebSocketRequest(
-        verb: String,
-        path: String,
-        body: ByteArray? = null,
-        id: Long = nextRequestId(),
-        headers: List<String> = emptyList(),
-    ): ByteArray = buildWebSocketMessageForRequest(buildWebSocketRequestMessage(verb, path, body, id, headers)).toByteArray()
-
-    fun encodeWebSocketResponse(
-        id: Long,
-        status: Int = 200,
-        message: String = "OK",
-        body: ByteArray? = null,
-    ): ByteArray = buildWebSocketMessageForResponse(buildWebSocketResponseMessage(id, status, message, body)).toByteArray()
+    // ---- WebSocket framing (binary protobuf): see SignalPayloadWs.kt ----
 
     // ---- Single send path: PUT /v1/messages/{aci} ----
 
@@ -251,29 +201,16 @@ object SignalPayload {
         val b = SignalServiceProtos.DataMessage.newBuilder()
             .setBody(body)
             .setTimestamp(timestamp)
-        if (groupV2MasterKey != null || groupV2Revision != null || groupV2Change != null) {
-            val g = SignalServiceProtos.GroupContextV2.newBuilder()
-            if (groupV2MasterKey != null) g.setMasterKey(ByteString.copyFrom(groupV2MasterKey))
-            if (groupV2Revision != null) g.setRevision(groupV2Revision)
-            if (groupV2Change != null) g.setGroupChange(ByteString.copyFrom(groupV2Change))
-            b.setGroupV2(g)
-        }
-        if (bodyRanges.isNotEmpty()) b.addAllBodyRanges(bodyRanges)
-        if (attachments.isNotEmpty()) b.addAllAttachments(attachments)
-        if (quote != null) b.setQuote(quote)
-        if (reaction != null) b.setReaction(reaction)
-        if (delete != null) b.setDelete(delete)
-        if (pollCreate != null) b.setPollCreate(pollCreate)
-        if (pollVote != null) b.setPollVote(pollVote)
-        if (pollTerminate != null) b.setPollTerminate(pollTerminate)
-        if (expireTimer != null) b.setExpireTimer(expireTimer)
-        if (profileKey != null) b.setProfileKey(ByteString.copyFrom(profileKey))
-        if (contact != null) b.addContact(contact)
+        applyGroupV2(b, groupV2MasterKey, groupV2Revision, groupV2Change)
+        applyDataOptionals(
+            b, bodyRanges, attachments, quote, reaction, delete,
+            pollCreate, pollVote, pollTerminate, expireTimer, profileKey, contact,
+        )
         // Derived, not trusted from the caller: only the features actually present raise the floor.
         // REACTIONS = 4 and POLLS = 8 per DataMessage.ProtocolVersion; everything else is 0.
         val derivedVersion = requiredProtocolVersion ?: when {
-            pollCreate != null || pollVote != null || pollTerminate != null -> 8
-            reaction != null -> 4
+            pollCreate != null || pollVote != null || pollTerminate != null -> PROTOCOL_POLLS
+            reaction != null -> PROTOCOL_REACTIONS
             else -> 0
         }
         b.setRequiredProtocolVersion(derivedVersion)
@@ -286,7 +223,9 @@ object SignalPayload {
         pniSignatureMessage: SignalServiceProtos.PniSignatureMessage? = null,
     ): SignalServiceProtos.Content {
         val b = SignalServiceProtos.Content.newBuilder().setDataMessage(dataMessage)
-        if (senderKeyDistributionMessage != null) b.setSenderKeyDistributionMessage(ByteString.copyFrom(senderKeyDistributionMessage))
+        if (senderKeyDistributionMessage != null) {
+            b.setSenderKeyDistributionMessage(ByteString.copyFrom(senderKeyDistributionMessage))
+        }
         if (pniSignatureMessage != null) b.setPniSignatureMessage(pniSignatureMessage)
         return b.build()
     }
@@ -321,7 +260,10 @@ object SignalPayload {
         action: SignalServiceProtos.TypingMessage.Action,
         groupId: ByteArray? = null,
     ): SignalServiceProtos.Content =
-        SignalServiceProtos.Content.newBuilder().setTypingMessage(buildTypingMessage(timestamp, action, groupId)).build()
+        SignalServiceProtos.Content.newBuilder().setTypingMessage(buildTypingMessage(
+            timestamp,
+            action,
+            groupId)).build()
 
     fun buildContentForEdit(
         targetSentTimestamp: Long,
@@ -367,7 +309,10 @@ object SignalPayload {
         return b.build()
     }
 
-    fun buildGroupContextV2(masterKey: ByteArray, revision: Int, groupChange: ByteArray? = null): SignalServiceProtos.GroupContextV2 {
+    fun buildGroupContextV2(
+        masterKey: ByteArray,
+        revision: Int,
+        groupChange: ByteArray? = null): SignalServiceProtos.GroupContextV2 {
         val b = SignalServiceProtos.GroupContextV2.newBuilder()
             .setMasterKey(ByteString.copyFrom(masterKey))
             .setRevision(revision)
@@ -375,7 +320,10 @@ object SignalPayload {
         return b.build()
     }
 
-    fun buildPollCreate(question: String, options: List<String>, allowMultiple: Boolean = false): SignalServiceProtos.DataMessage.PollCreate =
+    fun buildPollCreate(
+        question: String,
+        options: List<String>,
+        allowMultiple: Boolean = false): SignalServiceProtos.DataMessage.PollCreate =
         SignalServiceProtos.DataMessage.PollCreate.newBuilder()
             .setQuestion(question)
             .setAllowMultiple(allowMultiple)
@@ -429,8 +377,6 @@ object SignalPayload {
         return "Signal-Android 7.20.0 Android/${Build.VERSION.RELEASE} Device/$device"
     }
 
-    fun nextRequestId(): Long = (secureRandom.nextLong() and Long.MAX_VALUE).let { if (it == 0L) 1L else it }
-
     @Deprecated("Use proto buildWebSocketRequestMessage / encodeWebSocketRequest")
     fun buildWebSocketRequest(
         verb: String,
@@ -443,7 +389,9 @@ object SignalPayload {
         obj.put("verb", verb)
         obj.put("path", path)
         obj.put("id", id)
-        if (body != null && body.isNotEmpty()) obj.put("body", android.util.Base64.encodeToString(body, android.util.Base64.NO_WRAP))
+        if (body != null && body.isNotEmpty()) obj.put(
+            "body",
+            android.util.Base64.encodeToString(body, android.util.Base64.NO_WRAP))
         return obj.toString()
     }
 
@@ -467,7 +415,9 @@ object SignalPayload {
         val data = JSONObject()
         data.put("body", body)
         data.put("timestamp", timestamp)
-        if (groupId != null) data.put("groupId", android.util.Base64.encodeToString(groupId, android.util.Base64.NO_WRAP))
+        if (groupId != null) data.put(
+            "groupId",
+            android.util.Base64.encodeToString(groupId, android.util.Base64.NO_WRAP))
         if (quoteId != null) data.put("quoteId", quoteId)
         return data
     }

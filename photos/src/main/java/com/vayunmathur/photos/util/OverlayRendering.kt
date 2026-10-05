@@ -65,7 +65,9 @@ fun Canvas.drawSerializedStrokes(
         strokes.forEach { serialized ->
             try {
                 renderer.draw(this, serialized.deserialize(), identity)
-            } catch (e: Exception) {
+            } catch (e: IllegalArgumentException) {
+                Log.w(OVERLAY_TAG, "Failed to render stroke", e)
+            } catch (e: IllegalStateException) {
                 Log.w(OVERLAY_TAG, "Failed to render stroke", e)
             }
         }

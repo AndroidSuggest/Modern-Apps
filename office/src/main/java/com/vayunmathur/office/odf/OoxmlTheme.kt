@@ -34,6 +34,7 @@ internal class OoxmlTheme(
         if (map.isEmpty()) this else OoxmlTheme(colors, majorFont, minorFont, map)
 
     companion object {
+        private const val RGB_MASK = 0xFFFFFFL
         val DEFAULT = OoxmlTheme(
             colors = mapOf(
                 "dk1" to 0xFF000000, "lt1" to 0xFFFFFFFF, "dk2" to 0xFF44546A, "lt2" to 0xFFE7E6E6,
@@ -44,52 +45,69 @@ internal class OoxmlTheme(
             majorFont = "Calibri Light", minorFont = "Calibri"
         )
 
+        /** System color slot as hex, or null when unresolvable. */
+        private fun sysHex(parser: org.xmlpull.v1.XmlPullParser): String? =
+            OoxmlUnits.sysColor(OoxmlXml.attr(parser, "val"))?.let { "%06X".format(it and RGB_MASK) }
+
         /** Parses a theme1.xml part; falls back to [DEFAULT] entries for anything missing. */
         fun parse(xml: String?): OoxmlTheme {
             if (xml == null) return DEFAULT
-            val colors = HashMap<String, Long>()
-            var majorFont: String? = null
-            var minorFont: String? = null
+            val acc = ThemeAcc()
             val parser = OoxmlXml.newParser(xml)
             var e = parser.eventType
-            var inClrScheme = false
-            var clrSchemeDepth = -1
-            var inMajor = false
-            var inMinor = false
-            var currentSlot: String? = null
             while (e != XmlPullParser.END_DOCUMENT) {
-                if (e == XmlPullParser.START_TAG) {
-                    val n = parser.name
-                    when (n) {
-                        "clrScheme" -> { inClrScheme = true; clrSchemeDepth = parser.depth }
-                        "majorFont" -> inMajor = true
-                        "minorFont" -> inMinor = true
-                        "latin" -> {
-                            val tf = OoxmlXml.attr(parser, "typeface")
-                            if (inMajor && majorFont == null) majorFont = tf
-                            if (inMinor && minorFont == null) minorFont = tf
-                        }
-                        "srgbClr", "sysClr" -> {
-                            val slot = currentSlot
-                            if (inClrScheme && slot != null) {
-                                val v = if (n == "srgbClr") OoxmlXml.attr(parser, "val")
-                                else OoxmlXml.attr(parser, "lastClr") ?: OoxmlUnits.sysColor(OoxmlXml.attr(parser, "val"))?.let { "%06X".format(it and 0xFFFFFF) }
-                                OoxmlUnits.hexColor(v)?.let { colors[slot.lowercase()] = it }
-                                currentSlot = null
-                            }
-                        }
-                        else -> if (inClrScheme && parser.depth == clrSchemeDepth + 1) currentSlot = n
-                    }
-                } else if (e == XmlPullParser.END_TAG) when (parser.name) {
-                    "clrScheme" -> inClrScheme = false
-                    "majorFont" -> inMajor = false
-                    "minorFont" -> inMinor = false
-                }
+                if (e == XmlPullParser.START_TAG) applyThemeTag(parser, acc)
+                else if (e == XmlPullParser.END_TAG) applyThemeEndTag(parser, acc)
                 e = parser.next()
             }
             // Fill any missing slots from DEFAULT so schemeColor never returns null unexpectedly.
-            for ((k, v) in DEFAULT.colors) colors.putIfAbsent(k, v)
-            return OoxmlTheme(colors, majorFont ?: DEFAULT.majorFont, minorFont ?: DEFAULT.minorFont)
+            for ((k, v) in DEFAULT.colors) acc.colors.putIfAbsent(k, v)
+            return OoxmlTheme(acc.colors, acc.majorFont ?: DEFAULT.majorFont, acc.minorFont ?: DEFAULT.minorFont)
         }
+
+    private class ThemeAcc(
+        val colors: HashMap<String, Long> = HashMap(),
+        var majorFont: String? = null,
+        var minorFont: String? = null,
+        var inClrScheme: Boolean = false,
+        var clrSchemeDepth: Int = -1,
+        var inMajor: Boolean = false,
+        var inMinor: Boolean = false,
+        var currentSlot: String? = null,
+    )
+
+    private fun applyThemeTag(parser: XmlPullParser, acc: ThemeAcc) {
+        when (parser.name) {
+            "clrScheme" -> { acc.inClrScheme = true; acc.clrSchemeDepth = parser.depth }
+            "majorFont" -> acc.inMajor = true
+            "minorFont" -> acc.inMinor = true
+            "latin" -> applyThemeFont(parser, acc)
+            "srgbClr", "sysClr" -> applyThemeColor(parser, acc)
+            else -> if (acc.inClrScheme && parser.depth == acc.clrSchemeDepth + 1) acc.currentSlot = parser.name
+        }
+    }
+
+    private fun applyThemeFont(parser: XmlPullParser, acc: ThemeAcc) {
+        val tf = OoxmlXml.attr(parser, "typeface")
+        if (acc.inMajor && acc.majorFont == null) acc.majorFont = tf
+        if (acc.inMinor && acc.minorFont == null) acc.minorFont = tf
+    }
+
+    private fun applyThemeColor(parser: XmlPullParser, acc: ThemeAcc) {
+        val slot = acc.currentSlot ?: return
+        if (!acc.inClrScheme) return
+        val isSrgb = parser.name == "srgbClr"
+        val v = if (isSrgb) OoxmlXml.attr(parser, "val") else OoxmlXml.attr(parser, "lastClr") ?: sysHex(parser)
+        OoxmlUnits.hexColor(v)?.let { acc.colors[slot.lowercase()] = it }
+        acc.currentSlot = null
+    }
+
+    private fun applyThemeEndTag(parser: XmlPullParser, acc: ThemeAcc) {
+        when (parser.name) {
+            "clrScheme" -> acc.inClrScheme = false
+            "majorFont" -> acc.inMajor = false
+            "minorFont" -> acc.inMinor = false
+        }
+    }
     }
 }

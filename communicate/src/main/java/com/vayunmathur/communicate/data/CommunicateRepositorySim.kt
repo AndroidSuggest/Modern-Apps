@@ -41,21 +41,23 @@ fun CommunicateRepository.loadContacts(context: Context): List<CommunicateContac
 
                 while (cursor.moveToNext()) {
                     val rawNumber = cursor.getString(number).orEmpty().trim()
-                    if (rawNumber.isEmpty()) continue
-                    val normalized = rawNumber.filter { it.isDigit() || it == '+' }
-                    if (!seenNumbers.add(normalized.ifEmpty { rawNumber })) continue
-                    add(
-                        CommunicateContact(
-                            id = cursor.getLong(id),
-                            name = cursor.getString(name).orEmpty().ifBlank { rawNumber },
-                            phoneNumber = rawNumber,
-                            label = ContactsContract.CommonDataKinds.Phone.getTypeLabel(
-                                context.resources,
-                                cursor.getInt(type),
-                                cursor.getString(label),
-                            ).toString(),
-                        )
-                    )
+                    if (rawNumber.isNotEmpty()) {
+                        val normalized = rawNumber.filter { it.isDigit() || it == '+' }
+                        if (seenNumbers.add(normalized.ifEmpty { rawNumber })) {
+                            add(
+                                CommunicateContact(
+                                    id = cursor.getLong(id),
+                                    name = cursor.getString(name).orEmpty().ifBlank { rawNumber },
+                                    phoneNumber = rawNumber,
+                                    label = ContactsContract.CommonDataKinds.Phone.getTypeLabel(
+                                        context.resources,
+                                        cursor.getInt(type),
+                                        cursor.getString(label),
+                                    ).toString(),
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }.orEmpty()
@@ -149,7 +151,9 @@ fun CommunicateRepository.loadSmsThreads(context: Context): List<SmsThread> {
     }.sortedByDescending { it.timestampMillis }
 }
 
-suspend fun CommunicateRepository.markSimThreadRead(context: Context, threadId: Long): Boolean = withContext(Dispatchers.IO) {
+suspend fun CommunicateRepository.markSimThreadRead(
+    context: Context,
+    threadId: Long): Boolean = withContext(Dispatchers.IO) {
     val values = android.content.ContentValues().apply {
         put(Telephony.Sms.READ, 1)
         put(Telephony.Sms.SEEN, 1)
@@ -236,7 +240,7 @@ fun CommunicateRepository.loadMmsMessages(context: Context, threadId: Long?): Li
                             address = sender.orEmpty(),
                             body = text,
                             // MMS DATE is in seconds, unlike SMS (ms).
-                            timestampMillis = c.getLong(dateIdx) * 1000L,
+                            timestampMillis = c.getLong(dateIdx) * MS_PER_SECOND,
                             outgoing = outgoing,
                             read = c.getInt(readIdx) != 0,
                             attachments = attachments,
@@ -251,7 +255,9 @@ fun CommunicateRepository.loadMmsMessages(context: Context, threadId: Long?): Li
     }.getOrDefault(emptyList())
 }
 
-internal fun CommunicateRepository.loadMmsParts(context: Context, mmsId: Long): Pair<String, List<CommunicateAttachment>> = runCatching {
+internal fun CommunicateRepository.loadMmsParts(
+    context: Context,
+    mmsId: Long): Pair<String, List<CommunicateAttachment>> = runCatching {
     val text = StringBuilder()
     val attachments = ArrayList<CommunicateAttachment>()
     runCatching {
@@ -376,11 +382,14 @@ internal fun CommunicateRepository.smsStatus(msgType: Int, outgoing: Boolean, st
     else -> MessageStatus.Sent // STATUS_PENDING / STATUS_NONE → single tick
 }
 
+private const val MS_PER_SECOND = 1000L
+private const val MAX_DASHES = 4
+
 fun CommunicateRepository.isUnknownContact(context: Context, number: String): Boolean {
     if (number.isBlank()) return false
     // Service ids (ACI/PNI UUIDs, JIDs) are not dialable and cannot be saved as a phone number.
     if (!number.any { it.isDigit() }) return false
-    if (number.contains('@') || number.count { it == '-' } >= 4) return false
+    if (number.contains('@') || number.count { it == '-' } >= MAX_DASHES) return false
     if (!context.hasPermission(Manifest.permission.READ_CONTACTS)) return false
     return findContactName(context, number) == null
 }
@@ -404,7 +413,9 @@ fun CommunicateRepository.findContactName(context: Context, number: String): Str
     }.getOrNull()
 }
 
-internal fun CommunicateRepository.phoneAccountHandleForSub(context: Context, subscriptionId: Int): android.telecom.PhoneAccountHandle? {
+internal fun CommunicateRepository.phoneAccountHandleForSub(
+    context: Context,
+    subscriptionId: Int): android.telecom.PhoneAccountHandle? {
     if (subscriptionId < 0) return null
     if (!context.hasPermission(Manifest.permission.READ_PHONE_STATE)) return null
     val tm = context.getSystemService(TelecomManager::class.java) ?: return null

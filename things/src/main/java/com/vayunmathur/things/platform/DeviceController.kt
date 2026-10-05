@@ -17,8 +17,6 @@ import com.vayunmathur.library.util.AppMessages
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import kotlin.random.Random
 
 /**
  * Process-scoped owner of the BLE managers, device state, and all the bottle/scale logic that
@@ -48,11 +46,13 @@ object DeviceController {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     // Replaces the Activity's lifecycleScope for the async Health Connect writes.
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    internal val deviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private val prefs: SharedPreferences by lazy {
+    internal val devicePrefs: SharedPreferences by lazy {
         appContextRef.getSharedPreferences("hydration", Context.MODE_PRIVATE)
     }
+
+    private val prefs: SharedPreferences get() = devicePrefs
 
     private var initialized = false
 
@@ -106,7 +106,7 @@ object DeviceController {
      * The bottle only reports while connected, and it is out of range most of the time, so its
      * last readings are kept across process restarts rather than resetting the card to empty.
      */
-    private fun persistBottleTelemetry() {
+    internal fun persistBottleTelemetry() {
         try {
             prefs.edit {
                 waterTempC.value?.let { putInt(BOTTLE_TEMP_KEY, it) }
@@ -161,82 +161,7 @@ object DeviceController {
     }
 
     // --- Callbacks invoked by the BLE managers ---
-
-    fun onDrinkLog(reading: HydrationReading) {
-        // Health data is owned by the Health app; this app only writes it to Health Connect and
-        // never displays it. Body of the record stays; the on-screen total/list is gone.
-        writeHydrationToHealthConnect(reading)
-    }
-
-    fun onBottleStatus(status: BottleStatus) {
-        // Merge rather than replace: the bottle sends single-field RT updates, and its cache is
-        // cleared on every reconnect, so assigning all five would blank whatever this particular
-        // packet happened not to carry.
-        status.tempC?.let { waterTempC.value = it }
-        status.tds?.let { tds.value = it }
-        status.batteryPct?.let { batteryPct.value = it }
-        status.volumePct?.let { bottleVolumePct.value = it }
-        charging.value = status.charging
-        bottleLastUpdated.value = System.currentTimeMillis()
-        persistBottleTelemetry()
-    }
-
-    fun onScaleRealtimeWeight(weight: Double) {
-        scaleRealtimeWeight.value = weight
-        scaleConnectionState.value = "Weighing... %.1f kg".format(weight)
-    }
-
-    fun onScaleMeasurement(
-        weightKg: Double,
-        r50: Int,
-        r500: Int,
-        segmental: SegmentalImpedance? = null,
-        measuredAtMillis: Long = System.currentTimeMillis(),
-    ) {
-        scaleRealtimeWeight.value = null
-        scaleWeight.value = weightKg
-        scaleR50.value = if (r50 == 0) null else r50
-        scaleR500.value = if (r500 == 0) null else r500
-        scaleConnectionState.value = "Scale: %.1f kg".format(weightKg)
-        // Recompute metrics with current profile.
-        val profile = ScaleProfile(
-            sex = scaleSex.value,
-            age = scaleAge.value.toIntOrNull()?.coerceIn(3, 80) ?: scaleProfile.value.age,
-            heightCm = scaleHeight.value.toDoubleOrNull()?.coerceIn(40.0, 240.0) ?: scaleProfile.value.heightCm,
-            athlete = scaleAthlete.value,
-        )
-        scaleProfile.value = profile
-        val metrics = BodyComposition.calculate(profile, ScaleMeasurement(weightKg, r50, r500, segmental))
-        scaleMetrics.value = metrics
-        try {
-            prefs.edit {
-                putString("scale_sex", profile.sex.name)
-                putInt("scale_age", profile.age)
-                putString("scale_height", profile.heightCm.toString())
-                putString("scale_athlete", profile.athlete.toString())
-            }
-        } catch (_: Exception) {}
-        writeBodyCompositionToHealthConnect(weightKg, metrics, measuredAtMillis, clientRecordId = null)
-    }
-
-    /**
-     * A measurement the scale buffered while the phone was away. It is archived to Health Connect
-     * under its own timestamp but must not touch the live state, which describes right now. The
-     * scale replays its whole buffer on every connect, so the record ID lets Health Connect
-     * upsert instead of accumulating duplicates.
-     */
-    fun onScaleHistory(weightKg: Double, r50: Int, r500: Int, measuredAtMillis: Long) {
-        val metrics = BodyComposition.calculate(
-            scaleProfile.value,
-            ScaleMeasurement(weightKg, r50, r500, null),
-        )
-        writeBodyCompositionToHealthConnect(
-            weightKg = weightKg,
-            metrics = metrics,
-            measuredAtMillis = measuredAtMillis,
-            clientRecordId = "scale-$measuredAtMillis",
-        )
-    }
+    // (see DeviceSessions.kt — extension functions on this object)
 
     // --- Actions used by the UI / service ---
 
@@ -271,70 +196,7 @@ object DeviceController {
         scaleBleManager.disconnect()
     }
 
-    /**
-     * The scale's category and impedance-encryption flag only exist in its advertisement, so they
-     * are remembered for the launch-time reconnect, which connects straight to a saved address.
-     */
-    fun saveScaleAdvertisedTraits(category: Int, encryptsResistance: Boolean) {
-        prefs.edit {
-            putInt(SCALE_CATEGORY_KEY, category)
-            putBoolean(SCALE_ENCRYPT_RES_KEY, encryptsResistance)
-        }
-    }
-
-    fun savedScaleCategory(): Int? =
-        if (prefs.contains(SCALE_CATEGORY_KEY)) prefs.getInt(SCALE_CATEGORY_KEY, 0) else null
-
-    fun savedScaleEncryptsResistance(): Boolean = prefs.getBoolean(SCALE_ENCRYPT_RES_KEY, false)
-
-    /**
-     * Our slot on the scale, or null if we have not registered yet.
-     *
-     * The slot's key cannot be read back off the scale (that needs characteristics this hardware
-     * does not expose), so once assigned it has to survive forever — losing it strands the slot,
-     * recoverable only by resetting the scale.
-     */
-    fun scaleUserIndex(): Int? =
-        if (prefs.contains(SCALE_USER_INDEX_KEY)) prefs.getInt(SCALE_USER_INDEX_KEY, 0) else null
-
-    /** Stable per-slot secret. Generated once; the scale expects the same value on every visit. */
-    fun scaleUserKey(): Int {
-        val existing = prefs.getInt(SCALE_USER_KEY_KEY, 0)
-        if (existing in 1..9999) return existing
-        val generated = Random.nextInt(1, 10000)
-        prefs.edit { putInt(SCALE_USER_KEY_KEY, generated) }
-        return generated
-    }
-
-    fun saveScaleUserIndex(index: Int) {
-        prefs.edit { putInt(SCALE_USER_INDEX_KEY, index) }
-        scaleUserSlot.value = index
-    }
-
-    private fun clearScaleUserSlot() {
-        prefs.edit {
-            remove(SCALE_USER_INDEX_KEY)
-            remove(SCALE_USER_KEY_KEY)
-        }
-        scaleUserSlot.value = null
-    }
-
-    /**
-     * Wipe every user slot on the scale. It is powered off between weigh-ins, so this is recorded
-     * and carried out on the next connection rather than attempted now.
-     */
-    fun requestScaleReset() {
-        prefs.edit { putBoolean(SCALE_PENDING_RESET_KEY, true) }
-        clearScaleUserSlot()
-        AppMessages.show("Scale will be reset next time it connects")
-    }
-
-    fun scaleResetPending(): Boolean = prefs.getBoolean(SCALE_PENDING_RESET_KEY, false)
-
-    fun onScaleResetDone() {
-        prefs.edit { remove(SCALE_PENDING_RESET_KEY) }
-        clearScaleUserSlot()
-    }
+    // --- Scale session state (see DeviceSessions.kt — extensions on this object) ---
 
     /** Reconnect to any remembered devices. No-op without permission or a powered-on adapter. */
     fun autoConnectSavedDevices() {
@@ -377,28 +239,6 @@ object DeviceController {
         return true
     }
 
-    fun recalcScaleMetrics() {
-        val w = scaleWeight.value ?: return
-        val profile = ScaleProfile(
-            sex = scaleSex.value,
-            age = scaleAge.value.toIntOrNull()?.coerceIn(3, 80) ?: scaleProfile.value.age,
-            heightCm = scaleHeight.value.toDoubleOrNull()?.coerceIn(40.0, 240.0) ?: scaleProfile.value.heightCm,
-            athlete = scaleAthlete.value,
-        )
-        scaleProfile.value = profile
-        val r50 = scaleR50.value ?: 0
-        val r500 = scaleR500.value ?: 0
-        scaleMetrics.value = BodyComposition.calculate(profile, ScaleMeasurement(w, r50, r500, null))
-        try {
-            prefs.edit {
-                putString("scale_sex", profile.sex.name)
-                putInt("scale_age", profile.age)
-                putString("scale_height", profile.heightCm.toString())
-                putString("scale_athlete", profile.athlete.toString())
-            }
-        } catch (_: Exception) {}
-    }
-
     // Remembered device addresses so the app silently reconnects to both devices on launch
     // instead of making the user scan and tap every time it is reopened.
     private fun saveDeviceAddress(key: String, address: String) {
@@ -411,91 +251,27 @@ object DeviceController {
         refreshPaired()
     }
 
-    private fun loadScaleProfile() {
-        try {
-            val sexName = prefs.getString("scale_sex", null)
-            if (sexName != null) scaleSex.value = Sex.valueOf(sexName)
-            val ageInt = prefs.getInt("scale_age", -1)
-            if (ageInt != -1) scaleAge.value = ageInt.toString()
-            val hStr = prefs.getString("scale_height", null)
-            if (hStr != null) scaleHeight.value = hStr
-            val ath = prefs.getString("scale_athlete", null)
-            if (ath != null) scaleAthlete.value = ath.toBoolean()
-            scaleProfile.value = ScaleProfile(
-                sex = scaleSex.value,
-                age = scaleAge.value.toIntOrNull()?.coerceIn(3, 80) ?: 30,
-                heightCm = scaleHeight.value.toDoubleOrNull()?.coerceIn(40.0, 240.0) ?: 175.0,
-                athlete = scaleAthlete.value,
-            )
-        } catch (_: Exception) {}
-    }
-
-    private fun writeHydrationToHealthConnect(reading: HydrationReading) {
-        // Check Health Connect availability synchronously; writes are async.
-        val status = HealthConnectHelper.availabilityStatus(appContext)
-        if (status != HealthConnectClient.SDK_AVAILABLE) return
-        scope.launch {
-            try {
-                val client = HealthConnectClient.getOrCreate(appContext)
-                if (!HealthConnectHelper.hasAllPermissions(client)) return@launch
-                // The bottle's clock runs a little ahead of the phone's, and Health Connect
-                // rejects any future-dated record outright, so a few seconds of skew would
-                // otherwise silently discard every drink log.
-                val now = System.currentTimeMillis()
-                val stamp = if (reading.epochMillis > now) now else reading.epochMillis
-                val instant = java.time.Instant.ofEpochMilli(stamp)
-                HealthConnectHelper.writeHydration(client, instant, reading.amountMl / 1000.0)
-            } catch (_: Exception) {}
-        }
-    }
-
-    private fun writeBodyCompositionToHealthConnect(
-        weightKg: Double,
-        metrics: BodyMetrics,
-        measuredAtMillis: Long,
-        clientRecordId: String?,
-    ) {
-        val status = HealthConnectHelper.availabilityStatus(appContext)
-        if (status != HealthConnectClient.SDK_AVAILABLE) return
-        scope.launch {
-            try {
-                val client = HealthConnectClient.getOrCreate(appContext)
-                if (!HealthConnectHelper.hasAllPermissions(client)) {
-                    // Otherwise a missing grant looks identical to the scale not reporting at all.
-                    // Only surfaced for live readings, so a history replay can't spam it.
-                    if (clientRecordId == null) {
-                        AppMessages.show("Grant Health Connect permissions to save measurements")
-                    }
-                    return@launch
-                }
-                val instant = java.time.Instant.ofEpochMilli(measuredAtMillis)
-                val waterMassKg = if (metrics.waterPercent > 0) weightKg * metrics.waterPercent / 100.0 else null
-                HealthConnectHelper.writeBodyComposition(
-                    client = client,
-                    instant = instant,
-                    weightKg = weightKg,
-                    bodyFatPct = metrics.bodyFatPercent.takeIf { it > 0 },
-                    leanMassKg = metrics.lbmKg.takeIf { it > 0 },
-                    boneMassKg = metrics.boneKg.takeIf { it > 0 },
-                    bodyWaterMassKg = waterMassKg,
-                    bmrKcal = metrics.bmrKcal.takeIf { it > 0 },
-                    clientRecordId = clientRecordId,
-                )
-            } catch (_: Exception) {}
-        }
-    }
-
-    private const val BOTTLE_ADDRESS_KEY = "bottle_address"
-    private const val BOTTLE_TEMP_KEY = "bottle_temp"
-    private const val BOTTLE_TDS_KEY = "bottle_tds"
-    private const val BOTTLE_BATTERY_KEY = "bottle_battery"
-    private const val BOTTLE_VOLUME_KEY = "bottle_volume"
-    private const val BOTTLE_CHARGING_KEY = "bottle_charging"
-    private const val BOTTLE_UPDATED_KEY = "bottle_updated"
-    private const val SCALE_ADDRESS_KEY = "scale_address"
-    private const val SCALE_CATEGORY_KEY = "scale_category"
-    private const val SCALE_ENCRYPT_RES_KEY = "scale_encrypt_resistance"
-    private const val SCALE_USER_INDEX_KEY = "scale_user_index"
-    private const val SCALE_USER_KEY_KEY = "scale_user_key"
-    private const val SCALE_PENDING_RESET_KEY = "scale_pending_reset"
+    internal const val BOTTLE_ADDRESS_KEY = "bottle_address"
+    internal const val BOTTLE_TEMP_KEY = "bottle_temp"
+    internal const val BOTTLE_TDS_KEY = "bottle_tds"
+    internal const val BOTTLE_BATTERY_KEY = "bottle_battery"
+    internal const val BOTTLE_VOLUME_KEY = "bottle_volume"
+    internal const val BOTTLE_CHARGING_KEY = "bottle_charging"
+    internal const val BOTTLE_UPDATED_KEY = "bottle_updated"
+    internal const val SCALE_ADDRESS_KEY = "scale_address"
+    internal const val SCALE_CATEGORY_KEY = "scale_category"
+    internal const val SCALE_ENCRYPT_RES_KEY = "scale_encrypt_resistance"
+    internal const val SCALE_USER_INDEX_KEY = "scale_user_index"
+    internal const val SCALE_USER_KEY_KEY = "scale_user_key"
+    internal const val SCALE_PENDING_RESET_KEY = "scale_pending_reset"
+    internal const val MIN_SCALE_USER_KEY = 1
+    internal const val MAX_SCALE_USER_KEY = 9999
+    internal const val SCALE_USER_KEY_BOUND = 10000
+    internal const val MIN_SCALE_AGE = 3
+    internal const val MAX_SCALE_AGE = 80
+    internal const val MIN_HEIGHT_CM = 40.0
+    internal const val MAX_HEIGHT_CM = 240.0
+    internal const val DEFAULT_SCALE_AGE = 30
+    internal const val DEFAULT_HEIGHT_CM = 175.0
+    internal const val ML_PER_LITER = 1000.0
 }

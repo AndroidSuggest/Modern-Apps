@@ -8,93 +8,128 @@ package com.vayunmathur.code.util
  * [com.vayunmathur.code.ui.PreviewPage] wraps the returned fragment in a styled document.
  */
 fun markdownToHtml(markdown: String): String {
-    val out = StringBuilder()
-    val lines = markdown.replace("\r\n", "\n").split("\n")
+    val converter = MarkdownConverter()
+    return converter.convert(markdown.replace("\r\n", "\n").split("\n"))
+}
 
-    var inCode = false
-    val codeBuf = StringBuilder()
-    var listType: String? = null
-    val paraBuf = StringBuilder()
+private class MarkdownConverter {
+    private val out = StringBuilder()
+    private val codeBuf = StringBuilder()
+    private val paraBuf = StringBuilder()
+    private var inCode = false
+    private var listType: String? = null
 
-    fun closeList() {
+    fun convert(lines: List<String>): String {
+        for (line in lines) consumeLine(line)
+        if (inCode) emitCodeBlock()
+        flushParagraph()
+        closeList()
+        return out.toString().trim()
+    }
+
+    private fun consumeLine(line: String) {
+        if (line.trimStart().startsWith(FENCE)) {
+            consumeFence()
+            return
+        }
+        if (inCode) {
+            codeBuf.append(line).append("\n")
+            return
+        }
+        val trimmed = line.trim()
+        if (trimmed.isEmpty()) {
+            flushParagraph()
+            closeList()
+            return
+        }
+        if (consumeHeading(trimmed)) return
+        if (consumeQuote(trimmed)) return
+        if (consumeListItem(trimmed)) return
+        appendParagraphText(trimmed)
+    }
+
+    private fun consumeFence() {
+        if (inCode) {
+            emitCodeBlock()
+        } else {
+            flushParagraph()
+            closeList()
+            inCode = true
+        }
+    }
+
+    private fun emitCodeBlock() {
+        out.append("<pre><code>").append(escapeHtml(codeBuf.toString())).append("</code></pre>\n")
+        codeBuf.setLength(0)
+        inCode = false
+    }
+
+    private fun consumeHeading(trimmed: String): Boolean {
+        val heading = HEADING.find(trimmed) ?: return false
+        flushParagraph()
+        closeList()
+        val level = heading.groupValues[1].length
+        out.append("<h").append(level).append(">")
+            .append(inlineMarkdown(heading.groupValues[2]))
+            .append("</h").append(level).append(">\n")
+        return true
+    }
+
+    private fun consumeQuote(trimmed: String): Boolean {
+        if (!trimmed.startsWith(">")) return false
+        flushParagraph()
+        closeList()
+        val quote = inlineMarkdown(trimmed.removePrefix(">").trim())
+        out.append("<blockquote>").append(quote).append("</blockquote>\n")
+        return true
+    }
+
+    private fun consumeListItem(trimmed: String): Boolean {
+        val bullet = BULLET.find(trimmed)
+        if (bullet != null) {
+            emitListItem("ul", bullet.groupValues[1])
+            return true
+        }
+        val numbered = NUMBERED.find(trimmed)
+        if (numbered != null) {
+            emitListItem("ol", numbered.groupValues[1])
+            return true
+        }
+        return false
+    }
+
+    private fun emitListItem(kind: String, text: String) {
+        flushParagraph()
+        if (listType != kind) {
+            closeList()
+            out.append("<").append(kind).append(">\n")
+            listType = kind
+        }
+        out.append("<li>").append(inlineMarkdown(text)).append("</li>\n")
+    }
+
+    private fun appendParagraphText(trimmed: String) {
+        if (paraBuf.isNotEmpty()) paraBuf.append(" ")
+        paraBuf.append(trimmed)
+    }
+
+    private fun closeList() {
         if (listType != null) {
             out.append("</").append(listType).append(">\n")
             listType = null
         }
     }
 
-    fun flushParagraph() {
+    private fun flushParagraph() {
         if (paraBuf.isNotBlank()) {
             out.append("<p>").append(inlineMarkdown(paraBuf.toString().trim())).append("</p>\n")
         }
         paraBuf.setLength(0)
     }
 
-    for (line in lines) {
-        if (line.trimStart().startsWith("```")) {
-            if (inCode) {
-                out.append("<pre><code>").append(escapeHtml(codeBuf.toString())).append("</code></pre>\n")
-                codeBuf.setLength(0)
-                inCode = false
-            } else {
-                flushParagraph()
-                closeList()
-                inCode = true
-            }
-            continue
-        }
-        if (inCode) {
-            codeBuf.append(line).append("\n")
-            continue
-        }
-
-        val trimmed = line.trim()
-        if (trimmed.isEmpty()) {
-            flushParagraph()
-            closeList()
-            continue
-        }
-
-        val heading = HEADING.find(trimmed)
-        if (heading != null) {
-            flushParagraph(); closeList()
-            val level = heading.groupValues[1].length
-            out.append("<h").append(level).append(">")
-                .append(inlineMarkdown(heading.groupValues[2]))
-                .append("</h").append(level).append(">\n")
-            continue
-        }
-
-        if (trimmed.startsWith(">")) {
-            flushParagraph(); closeList()
-            out.append("<blockquote>").append(inlineMarkdown(trimmed.removePrefix(">").trim())).append("</blockquote>\n")
-            continue
-        }
-
-        val bullet = BULLET.find(trimmed)
-        if (bullet != null) {
-            flushParagraph()
-            if (listType != "ul") { closeList(); out.append("<ul>\n"); listType = "ul" }
-            out.append("<li>").append(inlineMarkdown(bullet.groupValues[1])).append("</li>\n")
-            continue
-        }
-
-        val numbered = NUMBERED.find(trimmed)
-        if (numbered != null) {
-            flushParagraph()
-            if (listType != "ol") { closeList(); out.append("<ol>\n"); listType = "ol" }
-            out.append("<li>").append(inlineMarkdown(numbered.groupValues[1])).append("</li>\n")
-            continue
-        }
-
-        if (paraBuf.isNotEmpty()) paraBuf.append(" ")
-        paraBuf.append(trimmed)
+    private companion object {
+        const val FENCE = "```"
     }
-
-    if (inCode) out.append("<pre><code>").append(escapeHtml(codeBuf.toString())).append("</code></pre>\n")
-    flushParagraph()
-    closeList()
-    return out.toString().trim()
 }
 
 private val HEADING = Regex("^(#{1,6})\\s+(.*)$")

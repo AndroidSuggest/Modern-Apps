@@ -43,10 +43,10 @@ class Crypto(key: ByteArray, private val ivMask: ByteArray) {
     fun ivForFrame(frameId: FrameId): ByteArray {
         val iv = ByteArray(KEY_BYTES)
         val lower32 = frameId.lower32
-        iv[8] = (lower32 ushr 24).toByte()
-        iv[9] = (lower32 ushr 16).toByte()
-        iv[10] = (lower32 ushr 8).toByte()
-        iv[11] = lower32.toByte()
+        iv[FRAME_ID_OFFSET_0] = (lower32 ushr BYTE_SHIFT_HIGH).toByte()
+        iv[FRAME_ID_OFFSET_1] = (lower32 ushr BYTE_SHIFT_MID_HIGH).toByte()
+        iv[FRAME_ID_OFFSET_2] = (lower32 ushr BYTE_SHIFT_MID_LOW).toByte()
+        iv[FRAME_ID_OFFSET_3] = lower32.toByte()
         for (i in iv.indices) iv[i] = (iv[i].toInt() xor ivMask[i].toInt()).toByte()
         return iv
     }
@@ -65,5 +65,13 @@ class Crypto(key: ByteArray, private val ivMask: ByteArray) {
 
     private companion object {
         const val KEY_BYTES = 16
+
+        private const val FRAME_ID_OFFSET_0 = 8
+        private const val FRAME_ID_OFFSET_1 = 9
+        private const val FRAME_ID_OFFSET_2 = 10
+        private const val FRAME_ID_OFFSET_3 = 11
+        private const val BYTE_SHIFT_HIGH = 24
+        private const val BYTE_SHIFT_MID_HIGH = 16
+        private const val BYTE_SHIFT_MID_LOW = 8
     }
 }

@@ -23,7 +23,11 @@ object TreeSitterNative {
         try {
             System.loadLibrary("code_ts")
             true
-        } catch (t: Throwable) {
+        } catch (e: UnsatisfiedLinkError) {
+            android.util.Log.w("TreeSitter", "native lib missing, using regex highlighting", e)
+            false
+        } catch (e: SecurityException) {
+            android.util.Log.w("TreeSitter", "native lib blocked, using regex highlighting", e)
             false
         }
 
@@ -58,16 +62,22 @@ object TreeSitterNative {
         if (!isAvailable) return null
         val id = languageIdFor(language) ?: return null
         val packed = runCatching { highlight(id, text) }.getOrNull() ?: return null
-        val out = ArrayList<TsSpan>(packed.size / 3)
+        val out = ArrayList<TsSpan>(packed.size / PACKED_SPAN_SIZE)
         var i = 0
-        while (i + 2 < packed.size) {
+        while (i + PACKED_SPAN_TAIL < packed.size) {
             val start = packed[i]
             val end = packed[i + 1]
             val kindOrdinal = packed[i + 2]
             val kind = kinds.getOrNull(kindOrdinal)
             if (kind != null && end > start) out.add(TsSpan(start, end, kind))
-            i += 3
+            i += PACKED_SPAN_SIZE
         }
+    }
+
+    private companion object {
+        const val PACKED_SPAN_SIZE = 3
+        const val PACKED_SPAN_TAIL = 2
+    }
         return out
     }
 }

@@ -103,8 +103,8 @@ class TokenStore private constructor(context: Context) {
     private suspend fun store(key: String, value: String) {
         try {
             ds.setByteArray(key, encrypt(value.toByteArray()))
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to store secret", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "Failed to store secret", expected)
         }
     }
 
@@ -113,8 +113,8 @@ class TokenStore private constructor(context: Context) {
         if (blob.size <= GCM_IV_LEN) return null
         return try {
             String(decrypt(blob))
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load secret", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "Failed to load secret", expected)
             null
         }
     }

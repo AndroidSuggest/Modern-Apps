@@ -21,6 +21,11 @@ import kotlin.time.Duration
  * maps-local units toggle.
  */
 
+/** Metres per mile / feet per metre / metres per kilometre, for the API < 33 fallback. */
+private const val METERS_PER_MILE = 1609.34
+private const val FEET_PER_METER = 3.28084
+private const val METERS_PER_KILOMETER = 1000.0
+
 /** True when [locale]'s regional settings prefer imperial road units (mi/ft). */
 fun isImperialUnits(locale: Locale = Locale.getDefault()): Boolean {
     val system = LocaleData.getMeasurementSystem(ULocale.forLocale(locale))
@@ -45,10 +50,10 @@ internal fun formatDistance(meters: Double, locale: Locale = Locale.getDefault()
 
     // Fallback for API < 33 (no usage("road")): pick the unit by regional system.
     val (unit, value) = if (isImperialUnits(locale)) {
-        if (meters >= 1609.34) MeasureUnit.MILE to (meters / 1609.34)
-        else MeasureUnit.FOOT to (meters * 3.28084)
+        if (meters >= METERS_PER_MILE) MeasureUnit.MILE to (meters / METERS_PER_MILE)
+        else MeasureUnit.FOOT to (meters * FEET_PER_METER)
     } else {
-        if (meters >= 1000.0) MeasureUnit.KILOMETER to (meters / 1000.0)
+        if (meters >= METERS_PER_KILOMETER) MeasureUnit.KILOMETER to (meters / METERS_PER_KILOMETER)
         else MeasureUnit.METER to meters
     }
     return NumberFormatter.with()

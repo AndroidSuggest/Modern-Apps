@@ -69,8 +69,12 @@ object PoweredOffProtocol {
     /** Domain-separation tag. Deliberately not `TrackerProtocol`'s, so the id spaces cannot collide. */
     private const val EID_DOMAIN = "ffpof1"
 
+    /** Milliseconds per second, for wall-clock to slot conversion. */
+    private const val MILLIS_PER_SECOND = 1000L
+
     /** The wall-clock slot number for a time in milliseconds. */
-    fun currentSlot(nowMs: Long = System.currentTimeMillis()): Long = (nowMs / 1000L) / SLOT_SECONDS
+    fun currentSlot(nowMs: Long = System.currentTimeMillis()): Long =
+        (nowMs / MILLIS_PER_SECOND) / SLOT_SECONDS
 
     /**
      * The 20-byte EID for a `(secret, slot)` pair:
@@ -89,7 +93,11 @@ object PoweredOffProtocol {
      * The EIDs to arm the controller with when shutting down at [nowMs], oldest first. Index 0
      * is the slot containing the shutdown instant, which is the key the controller starts on.
      */
-    fun armingEids(secret: ByteArray, nowMs: Long = System.currentTimeMillis(), count: Int = ARMED_SLOTS): List<ByteArray> {
+    fun armingEids(
+        secret: ByteArray,
+        nowMs: Long = System.currentTimeMillis(),
+        count: Int = ARMED_SLOTS,
+    ): List<ByteArray> {
         val first = currentSlot(nowMs)
         return (0 until count).map { eid(secret, first + it) }
     }

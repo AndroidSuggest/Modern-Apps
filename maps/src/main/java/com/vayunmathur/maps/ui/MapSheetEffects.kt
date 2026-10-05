@@ -17,15 +17,10 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.maps.R as MapsR
 import com.vayunmathur.maps.Route
 import com.vayunmathur.maps.data.SpecificFeature
-import com.vayunmathur.maps.ui.map.MapChromeState
 import com.vayunmathur.maps.util.MapsSearchViewModel
-import com.vayunmathur.maps.util.NavigationProgress
 import com.vayunmathur.maps.util.SelectedFeatureViewModel
 import com.vayunmathur.maps.util.visibleBoundsOrWorld
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * State the sheet effects own: the open search request plus the latched
@@ -76,14 +71,10 @@ internal fun rememberMapSearchHost(
 internal fun MapSheetEffects(
     wide: Boolean,
     viewModel: SelectedFeatureViewModel,
-    backStack: NavBackStack<Route>,
     camera: CameraState,
-    chrome: MapChromeState,
     selectedFeature: SpecificFeature?,
     inactiveNavigation: SpecificFeature.Route?,
-    navProgress: NavigationProgress?,
     isNavigating: Boolean,
-    coroutineScope: CoroutineScope,
     sheetState: FreeHeightSheetState?,
     searchSheetState: FreeHeightSheetState?,
     searchHost: MapSearchHost,

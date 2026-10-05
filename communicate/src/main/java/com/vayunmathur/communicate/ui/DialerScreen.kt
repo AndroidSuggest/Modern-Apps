@@ -126,7 +126,10 @@ fun DialerScreen() {
                     message = stringResource(R.string.permission_contacts_message),
                     modifier = Modifier.weight(1f),
                 ) { permissionRevision ->
-                    val contacts = produceState<List<CommunicateContact>?>(initialValue = null, roleRevision, permissionRevision) {
+                    val contacts = produceState<List<CommunicateContact>?>(
+                        initialValue = null,
+                        roleRevision,
+                        permissionRevision) {
                         value = withContext(Dispatchers.IO) { CommunicateRepository.loadContacts(context) }
                     }
                     // Keyed on the contact list only: the query must never re-run the provider query.

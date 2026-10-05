@@ -288,7 +288,10 @@ impl Handshake {
             aad: &mac1,
             msg: packet.encrypted_cookie.as_bytes(),
         };
-        let plaintext = XChaCha20Poly1305::new_from_slice(&key)
+        // Fully qualified: `blake2::digest::KeyInit` (digest 0.11, in scope via
+        // handshake.rs) is a different trait from the aead-0.5/crypto-common-0.1.7
+        // one that chacha20poly1305 0.10 implements.
+        let plaintext = <XChaCha20Poly1305 as aead::KeyInit>::new_from_slice(&key)
             .unwrap()
             .decrypt(&packet.nonce.into(), payload)
             .map_err(|_| WireGuardError::InvalidAeadTag)?;

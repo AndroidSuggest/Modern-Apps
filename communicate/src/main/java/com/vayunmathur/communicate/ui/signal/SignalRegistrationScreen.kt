@@ -69,8 +69,8 @@ fun SignalRegistrationScreen(
         scope.launch {
             try {
                 block()
-            } catch (t: Throwable) {
-                status = "Error: ${t.message}"
+            } catch (expected: Throwable) {
+                status = "Error: ${expected.message}"
             } finally {
                 busy = false
             }
@@ -151,7 +151,10 @@ fun SignalRegistrationScreen(
                 SignalCaptchaWebView(
                     onToken = { token ->
                         run {
-                            val r = withContext(Dispatchers.IO) { client.submitCaptcha(e164(), token, pendingTransport) }
+                            val r = withContext(Dispatchers.IO) { client.submitCaptcha(
+                                e164(),
+                                token,
+                                pendingTransport) }
                             status = "code: ${r.status}${r.reason?.let { " ($it)" } ?: ""}"
                             when {
                                 r.ok -> step = RegStep.EnterCode
@@ -180,7 +183,7 @@ fun SignalRegistrationScreen(
                     enabled = !busy && code.length >= 4,
                     onClick = {
                         run {
-                            val r = withContext(Dispatchers.IO) { client.verifyCode(e164(), code) }
+                            val r = withContext(Dispatchers.IO) { client.verifyCode(code) }
                             status = "register: ${r.status}${r.reason?.let { " ($it)" } ?: ""}"
                             if (r.ok && r.auth != null) {
                                 session.markRegistered(context, r.auth)

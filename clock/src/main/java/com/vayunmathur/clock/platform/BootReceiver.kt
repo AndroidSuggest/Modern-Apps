@@ -11,6 +11,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 class BootReceiver : BroadcastReceiver() {
+    // Broad catch is deliberate: onReceive must not throw, and Room throws
+    // undocumented RuntimeExceptions (not just SQLiteException).
+    @Suppress("TooGenericExceptionCaught")
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED,

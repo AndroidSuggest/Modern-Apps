@@ -15,6 +15,8 @@ import android.util.Log
  * measurement decoding stay on the manager.
  */
 
+private const val HEX_RADIX = 16
+
 private fun ScaleBleManager.isScaleName(name: String?): Boolean {
     if (name == null) return false
     return ScaleBleManager.SCALE_NAME_PREFIXES.any { name.startsWith(it, ignoreCase = true) }
@@ -30,8 +32,9 @@ internal fun ScaleBleManager.makeScanCallback(): ScanCallback = object : ScanCal
                 manufacturerData[addr] = it
                 Log.d(
                     ScaleBleManager.TAG,
-                    "scan $name company=0x${data.keyAt(0).toString(16)} mfg=${it.toHex()} " +
-                        "category=${qnScaleCategory(it)} encryptRes=${qnUsesResistanceEncrypt(qnScaleCategory(it), it)}",
+                    "scan $name company=0x${data.keyAt(0).toString(HEX_RADIX)} mfg=${it.toHex()} " +
+                        "category=${qnScaleCategory(it)} " +
+                        "encryptRes=${qnUsesResistanceEncrypt(qnScaleCategory(it), it)}",
                 )
             }
         } ?: Log.d(ScaleBleManager.TAG, "scan $name (no manufacturer data)")

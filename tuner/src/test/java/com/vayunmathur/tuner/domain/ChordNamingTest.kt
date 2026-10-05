@@ -239,27 +239,39 @@ class ChordNamingTest {
         val pool = (48..71).toList()
         for (a in pool.indices) {
             for (b in a + 1 until pool.size) {
-                for (c in b + 1 until pool.size) {
-                    for (d in listOf(-1) + (c + 1 until pool.size)) {
-                        val midis = buildList {
-                            add(pool[a]); add(pool[b]); add(pool[c])
-                            if (d >= 0) add(pool[d])
-                        }
-                        val reading = ChordNaming.name(
-                            midis.map { DetectedNote(it, 1.0) },
-                            null,
-                            ChordTier.CONFIRMED,
-                        )
-                        val label = reading.label
-                        if (label !is ChordLabel.Chord) continue
-                        assertTrue(
-                            label.name.quality.tier == QualityTier.A,
-                            "$midis was named ${symbol(label.name)}, a tier-B quality, with no bass",
-                        )
-                    }
-                }
+                checkTriplesFrom(pool, a, b)
             }
         }
+    }
+
+    private fun checkTriplesFrom(pool: List<Int>, a: Int, b: Int) {
+        for (c in b + 1 until pool.size) {
+            checkQuadsFrom(pool, a, b, c)
+        }
+    }
+
+    private fun checkQuadsFrom(pool: List<Int>, a: Int, b: Int, c: Int) {
+        for (d in listOf(-1) + (c + 1 until pool.size)) {
+            checkOneCombination(pool, a, b, c, d)
+        }
+    }
+
+    private fun checkOneCombination(pool: List<Int>, a: Int, b: Int, c: Int, d: Int) {
+        val midis = buildList {
+            add(pool[a]); add(pool[b]); add(pool[c])
+            if (d >= 0) add(pool[d])
+        }
+        val reading = ChordNaming.name(
+            midis.map { DetectedNote(it, 1.0) },
+            null,
+            ChordTier.CONFIRMED,
+        )
+        val label = reading.label
+        if (label !is ChordLabel.Chord) return
+        assertTrue(
+            label.name.quality.tier == QualityTier.A,
+            "$midis was named ${symbol(label.name)}, a tier-B quality, with no bass",
+        )
     }
 
     /** A one-note reading is a degraded observation of a strum, so it is never presented flat. */

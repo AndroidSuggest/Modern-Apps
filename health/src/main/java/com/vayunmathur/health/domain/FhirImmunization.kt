@@ -130,21 +130,24 @@ internal fun parseQuantity(text: String): Pair<Double, String>? {
     return if (unit.isEmpty()) null else value to unit
 }
 
+/** Known shapes of `occurrenceDateTime`, from most to least precise. */
+private val DATE_TIME_PARSERS: List<(String) -> Instant> = listOf(
+    { text -> Instant.parse(text) },
+    { text -> java.time.OffsetDateTime.parse(text).toInstant() },
+    { text ->
+        java.time.LocalDate.parse(text).atStartOfDay(java.time.ZoneOffset.UTC).toInstant()
+    },
+    { text ->
+        java.time.YearMonth.parse(text).atDay(1)
+            .atStartOfDay(java.time.ZoneOffset.UTC).toInstant()
+    },
+    { text ->
+        java.time.Year.parse(text).atDay(1)
+            .atStartOfDay(java.time.ZoneOffset.UTC).toInstant()
+    },
+)
+
 internal fun parseDateTime(text: String?): Instant? {
     if (text.isNullOrBlank()) return null
-    runCatching { return Instant.parse(text) }
-    runCatching { return java.time.OffsetDateTime.parse(text).toInstant() }
-    runCatching {
-        return java.time.LocalDate.parse(text)
-            .atStartOfDay(java.time.ZoneOffset.UTC).toInstant()
-    }
-    runCatching {
-        return java.time.YearMonth.parse(text).atDay(1)
-            .atStartOfDay(java.time.ZoneOffset.UTC).toInstant()
-    }
-    runCatching {
-        return java.time.Year.parse(text).atDay(1)
-            .atStartOfDay(java.time.ZoneOffset.UTC).toInstant()
-    }
-    return null
+    return DATE_TIME_PARSERS.firstNotNullOfOrNull { parser -> runCatching { parser(text) }.getOrNull() }
 }

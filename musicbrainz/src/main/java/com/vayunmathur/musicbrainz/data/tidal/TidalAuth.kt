@@ -76,6 +76,10 @@ object TidalAuth {
         clientSecret = pair.getOrElse(1) { "" }
     }
 
+    private const val DEFAULT_POLL_INTERVAL_SECONDS = 2
+    private const val DEFAULT_CODE_LIFETIME_SECONDS = 300
+    private const val MILLIS_PER_SECOND = 1000L
+
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     private val formHeaders = mapOf(
@@ -107,8 +111,8 @@ object TidalAuth {
             verificationUri = root.string("verificationUriComplete")
                 ?.let { if (it.startsWith("http")) it else "https://$it" }
                 .orEmpty(),
-            intervalSeconds = root.int("interval", 2),
-            expiresInSeconds = root.int("expiresIn", 300),
+            intervalSeconds = root.int("interval", DEFAULT_POLL_INTERVAL_SECONDS),
+            expiresInSeconds = root.int("expiresIn", DEFAULT_CODE_LIFETIME_SECONDS),
         )
     }
 
@@ -179,11 +183,11 @@ object TidalAuth {
 
     private fun tokens(root: JsonObject, fallbackRefresh: String? = null): TidalTokens {
         val user = (root["user"] as? JsonObject)
-        val expiresIn = root.long("expires_in") ?: 86_400L
+        val expiresIn = root.long("expires_in") ?: DEFAULT_TOKEN_LIFETIME_SECONDS
         return TidalTokens(
             accessToken = root.string("access_token").orEmpty(),
             refreshToken = root.string("refresh_token") ?: fallbackRefresh,
-            expiresAtMs = System.currentTimeMillis() + expiresIn * 1000,
+            expiresAtMs = System.currentTimeMillis() + expiresIn * MILLIS_PER_SECOND,
             userId = root.string("user_id") ?: user?.string("userId").orEmpty(),
             countryCode = user?.string("countryCode").orEmpty(),
             username = user?.string("username")
@@ -206,4 +210,8 @@ object TidalAuth {
         (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.longOrNull
 
     private fun JsonObject.int(key: String, default: Int): Int = long(key)?.toInt() ?: default
+
+    private companion object {
+        const val DEFAULT_TOKEN_LIFETIME_SECONDS = 86_400L
+    }
 }

@@ -79,8 +79,10 @@ internal class LyftOffersParser(private val json: Json) {
             originalFareLowMinor = fare.originalLow,
             originalFareHighMinor = fare.originalHigh,
             currency = cost?.lyftStr("currency") ?: "USD",
-            pickupEtaMinutes = pickupEtaMs?.let { (it / 60_000).toInt() },
-            tripDurationMinutes = cost?.lyftLong("estimated_duration_seconds")?.let { (it / 60).toInt() },
+            pickupEtaMinutes = pickupEtaMs?.let { (it / MILLIS_PER_MINUTE).toInt() },
+            tripDurationMinutes = cost?.lyftLong("estimated_duration_seconds")?.let {
+                (it / SECONDS_PER_MINUTE).toInt()
+            },
             surgeMultiplier = cost?.get("primetime_multiplier")?.jsonPrimitive?.doubleOrNull,
             capacity = rideType?.get("seats")?.jsonPrimitive?.intOrNull,
             offerId = offer.lyftStr("id"),
@@ -90,7 +92,7 @@ internal class LyftOffersParser(private val json: Json) {
             rideType = cost?.lyftStr("ride_type"),
             // `cost_token_expiry_time` is an epoch **seconds** value (measured live: ~120s
             // lifetime, shared across all fares); convert to ms so callers can compare to now.
-            costTokenExpiryMs = cost?.lyftLong("cost_token_expiry_time")?.let { it * 1000 },
+            costTokenExpiryMs = cost?.lyftLong("cost_token_expiry_time")?.let { it * MILLIS_PER_SECOND },
         )
     }
 
@@ -110,60 +112,68 @@ internal class LyftOffersParser(private val json: Json) {
      */
     fun parseProto(bytes: ByteArray): ParsedOffers {
         val root = ProtoMessage(bytes, 0, bytes.size)
-        val offers = root.message(1) ?: return ParsedOffers.EMPTY
+        val offers = root.message(OFFERS_FIELD) ?: return ParsedOffers.EMPTY
         return ParsedOffers(
-            quotes = offers.messages(3).mapNotNull { toQuoteProto(it) },
-            purchaseSessionId = offers.string(1),
-            offersResponseId = offers.string(2),
+            quotes = offers.messages(OFFERS_LIST_FIELD).mapNotNull { toQuoteProto(it) },
+            purchaseSessionId = offers.string(PURCHASE_SESSION_ID_FIELD),
+            offersResponseId = offers.string(OFFERS_RESPONSE_ID_FIELD),
         )
     }
 
     fun toQuoteProto(offer: ProtoMessage): RideQuote? {
-        val cost = offer.message(4)
-        val rideType = offer.message(5)
-        val display = rideType?.message(10)
+        val cost = offer.message(OfferFields.COST_ESTIMATE)
+        val rideType = offer.message(OfferFields.RIDE_TYPE_DETAILS)
+        val display = rideType?.message(RideModeFields.DISPLAY_PROPERTIES)
 
-        val name = display?.string(3)
-            ?: cost?.string(4) // ride_type
-            ?: offer.string(2) // offer_product_id
+        val name = display?.string(DisplayFields.NAME)
+            ?: cost?.string(CostFields.RIDE_TYPE) // ride_type
+            ?: offer.string(OfferFields.OFFER_PRODUCT_ID) // offer_product_id
             ?: return null
 
-        val min = cost?.wrappedLong(6)
-        val max = cost?.wrappedLong(5)
-        val upfront = cost?.wrappedLong(7)
-        // applicable_coupons(18, repeated ApplicableCoupon): discount_amount_min(10),
-        // discount_amount_max(11) are plain int64. First coupon is the one the client applies.
-        val coupon = cost?.messages(18)?.firstOrNull()
+        val min = cost?.wrappedLong(CostFields.CENTS_MIN)
+        val max = cost?.wrappedLong(CostFields.CENTS_MAX)
+        val upfront = cost?.wrappedLong(CostFields.UPFRONT)
+        // applicable_coupons: discount_amount_min/max are plain int64. First coupon is the one
+        // the client applies.
+        val coupon = cost?.messages(CostFields.APPLICABLE_COUPONS)?.firstOrNull()
         val fare = farePrice(
             min, max, upfront,
-            discountMin = coupon?.varint(10),
-            discountMax = coupon?.varint(11),
+            discountMin = coupon?.varint(CouponFields.DISCOUNT_MIN),
+            discountMax = coupon?.varint(CouponFields.DISCOUNT_MAX),
         ) ?: return null
 
-        val pickupEtaMs = offer.message(9)?.message(1)?.message(2)?.wrappedLong(1)
+        val pickupEtaMs = offer.message(OfferFields.RIDE_TRAVEL_DETAILS)
+            ?.message(TravelFields.PICKUP_ESTIMATE)
+            ?.message(EstimateFields.DURATION_RANGE)
+            ?.wrappedLong(WrapperFields.VALUE)
 
         return RideQuote(
             provider = Provider.LYFT,
-            productId = offer.string(2) ?: name,
+            productId = offer.string(OfferFields.OFFER_PRODUCT_ID) ?: name,
             displayName = name,
             fareLowMinor = fare.low,
             fareHighMinor = fare.high,
             originalFareLowMinor = fare.originalLow,
             originalFareHighMinor = fare.originalHigh,
-            currency = cost?.wrappedString(8) ?: "USD",
-            pickupEtaMinutes = pickupEtaMs?.let { (it / 60_000).toInt() },
-            tripDurationMinutes = cost?.wrappedLong(22)?.let { (it / 60).toInt() },
-            surgeMultiplier = cost?.double(12),
-            capacity = rideType?.varint(7)?.toInt(),
-            // OfferDTO.id=1, offer_token=3 (StringValue). CostEstimate.cost_token=3,
-            // ride_type=4, cost_token_expiry_time=20 (best-effort; type unverified — dry-run
+            currency = cost?.wrappedString(CostFields.CURRENCY) ?: "USD",
+            pickupEtaMinutes = pickupEtaMs?.let { (it / MILLIS_PER_MINUTE).toInt() },
+            tripDurationMinutes = cost?.wrappedLong(CostFields.DURATION_SECONDS)?.let {
+                (it / SECONDS_PER_MINUTE).toInt()
+            },
+            surgeMultiplier = cost?.double(CostFields.PRIMETIME_MULTIPLIER),
+            capacity = rideType?.varint(RideModeFields.SEATS)?.toInt(),
+            // OfferDTO.id, offer_token (StringValue). CostEstimate.cost_token,
+            // ride_type, cost_token_expiry_time (best-effort; type unverified — dry-run
             // surfaces the built request for validation).
-            offerId = offer.string(1),
-            offerToken = offer.wrappedString(3),
-            costToken = cost?.string(3),
-            rideType = cost?.string(4),
+            offerId = offer.string(OfferFields.ID),
+            offerToken = offer.wrappedString(OfferFields.OFFER_TOKEN),
+            costToken = cost?.string(CostFields.COST_TOKEN),
+            rideType = cost?.string(CostFields.RIDE_TYPE),
             // Epoch seconds (see toQuoteJson) -> ms.
-            costTokenExpiryMs = (cost?.wrappedLong(20) ?: cost?.varint(20))?.let { it * 1000 },
+            costTokenExpiryMs = (
+                cost?.wrappedLong(CostFields.COST_TOKEN_EXPIRY)
+                    ?: cost?.varint(CostFields.COST_TOKEN_EXPIRY)
+                )?.let { it * MILLIS_PER_SECOND },
         )
     }
 
@@ -204,6 +214,73 @@ internal class LyftOffersParser(private val json: Json) {
             originalLow = baseLow,
             originalHigh = baseHigh,
         )
+    }
+
+    private companion object {
+        private const val MILLIS_PER_MINUTE = 60_000L
+        private const val SECONDS_PER_MINUTE = 60L
+        private const val MILLIS_PER_SECOND = 1000L
+
+        // ReadOffersV2Response / OffersV2DTO field tags.
+        private const val OFFERS_FIELD = 1
+        private const val PURCHASE_SESSION_ID_FIELD = 1
+        private const val OFFERS_RESPONSE_ID_FIELD = 2
+        private const val OFFERS_LIST_FIELD = 3
+    }
+
+    /** OfferDTO field tags. */
+    private object OfferFields {
+        const val ID = 1
+        const val OFFER_PRODUCT_ID = 2
+        const val OFFER_TOKEN = 3
+        const val COST_ESTIMATE = 4
+        const val RIDE_TYPE_DETAILS = 5
+        const val RIDE_TRAVEL_DETAILS = 9
+    }
+
+    /** CostEstimate field tags. */
+    private object CostFields {
+        const val COST_TOKEN = 3
+        const val RIDE_TYPE = 4
+        const val CENTS_MAX = 5
+        const val CENTS_MIN = 6
+        const val UPFRONT = 7
+        const val CURRENCY = 8
+        const val PRIMETIME_MULTIPLIER = 12
+        const val APPLICABLE_COUPONS = 18
+        const val COST_TOKEN_EXPIRY = 20
+        const val DURATION_SECONDS = 22
+    }
+
+    /** ApplicableCoupon field tags. */
+    private object CouponFields {
+        const val DISCOUNT_MIN = 10
+        const val DISCOUNT_MAX = 11
+    }
+
+    /** RideMode field tags. */
+    private object RideModeFields {
+        const val SEATS = 7
+        const val DISPLAY_PROPERTIES = 10
+    }
+
+    /** DisplayProperties field tags. */
+    private object DisplayFields {
+        const val NAME = 3
+    }
+
+    /** RideTravelDetails / estimate field tags. */
+    private object TravelFields {
+        const val PICKUP_ESTIMATE = 1
+    }
+
+    private object EstimateFields {
+        const val DURATION_RANGE = 2
+    }
+
+    /** google.protobuf wrapper field tag: field 1 carries the value. */
+    private object WrapperFields {
+        const val VALUE = 1
     }
 }
 

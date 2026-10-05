@@ -27,9 +27,17 @@ fun InsertHyperlinkDialog(onInsert: (text: String, url: String) -> Unit, onDismi
         title = { Text(stringResource(R.string.insert_hyperlink)) },
         text = {
             Column {
-                TextField(value = linkText, onValueChange = { linkText = it }, label = { Text(stringResource(R.string.display_text)) }, singleLine = true)
+                TextField(
+                    value = linkText,
+                    onValueChange = { linkText = it },
+                    label = { Text(stringResource(R.string.display_text)) },
+                    singleLine = true)
                 Spacer(Modifier.height(8.dp))
-                TextField(value = linkUrl, onValueChange = { linkUrl = it }, label = { Text(stringResource(R.string.url)) }, singleLine = true)
+                TextField(
+                    value = linkUrl,
+                    onValueChange = { linkUrl = it },
+                    label = { Text(stringResource(R.string.url)) },
+                    singleLine = true)
             }
         },
         confirmButton = {

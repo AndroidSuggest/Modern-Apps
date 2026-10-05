@@ -35,18 +35,7 @@ internal class SabrRequestCoordinator(
     ): YoutubeSabrSession.RequestResult {
         while (true) {
             awaitBackoff()
-            val result: YoutubeSabrSession.RequestResult = try {
-                session.requestOnce(
-                    request,
-                    SabrStreamingResponseReader.SegmentConsumer { segment ->
-                        attestationRetryHandler.onMediaReceived()
-                        consumer.accept(segment)
-                    }
-                )
-            } catch (error: SabrAttestationException) {
-                attestationRetryHandler.prepareRetry(session, error)
-                continue
-            }
+            val result = attemptOnce(request, consumer) ?: continue
 
             val progress = progressChecker?.invoke() ?: (result.getSegmentCount() > 0)
             val backoffMs = result.getBackoffMs().toLong()
@@ -56,10 +45,28 @@ internal class SabrRequestCoordinator(
             if (progress) {
                 return result
             }
-            if (result.isDeferred()) {
-                continue
+            if (!result.isDeferred()) {
+                sleep(EMPTY_RESPONSE_RETRY_MS)
             }
-            sleep(EMPTY_RESPONSE_RETRY_MS)
+        }
+    }
+
+    @Throws(IOException::class, ExtractionException::class)
+    private fun attemptOnce(
+        request: YoutubeSabrRequest,
+        consumer: SabrStreamingResponseReader.SegmentConsumer,
+    ): YoutubeSabrSession.RequestResult? {
+        return try {
+            session.requestOnce(
+                request,
+                SabrStreamingResponseReader.SegmentConsumer { segment ->
+                    attestationRetryHandler.onMediaReceived()
+                    consumer.accept(segment)
+                }
+            )
+        } catch (error: SabrAttestationException) {
+            attestationRetryHandler.prepareRetry(session, error)
+            null
         }
     }
 
@@ -88,7 +95,7 @@ internal class SabrRequestCoordinator(
             return
         }
         if (backoffDeadlineNs == 0L) {
-            backoffDeadlineNs = System.nanoTime() + MAX_CONTINUOUS_BACKOFF_MS * 1_000_000L
+            backoffDeadlineNs = System.nanoTime() + MAX_CONTINUOUS_BACKOFF_MS * NANOS_PER_MILLISECOND
             return
         }
         throwIfBudgetExceeded(
@@ -104,7 +111,7 @@ internal class SabrRequestCoordinator(
             return
         }
         if (noProgressDeadlineNs == 0L) {
-            noProgressDeadlineNs = System.nanoTime() + MAX_CONTINUOUS_NO_PROGRESS_MS * 1_000_000L
+            noProgressDeadlineNs = System.nanoTime() + MAX_CONTINUOUS_NO_PROGRESS_MS * NANOS_PER_MILLISECOND
             return
         }
         throwIfBudgetExceeded(
@@ -118,10 +125,11 @@ internal class SabrRequestCoordinator(
         private const val EMPTY_RESPONSE_RETRY_MS = 250L
         private const val MAX_CONTINUOUS_BACKOFF_MS = 30_000L
         private const val MAX_CONTINUOUS_NO_PROGRESS_MS = 30_000L
+        private const val NANOS_PER_MILLISECOND = 1_000_000L
 
         @Throws(IOException::class)
         private fun throwIfBudgetExceeded(deadlineNs: Long, waitMs: Long, message: String) {
-            if (deadlineNs != 0L && waitMs * 1_000_000L > deadlineNs - System.nanoTime()) {
+            if (deadlineNs != 0L && waitMs * NANOS_PER_MILLISECOND > deadlineNs - System.nanoTime()) {
                 throw IOException(message)
             }
         }

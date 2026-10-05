@@ -23,10 +23,10 @@ object MusicCaptureGrant {
     private var resultData: Intent? = null
 
     /** Whether a grant is stored. The in-app consent switch is checked separately. */
-    fun hasGrant(context: Context): Boolean = resultData != null
+    fun hasGrant(): Boolean = resultData != null
 
     /** Stores the consent-activity result. Called from the capture card. */
-    fun storeResult(context: Context, code: Int, data: Intent) {
+    fun storeResult(code: Int, data: Intent) {
         resultCode = code
         resultData = data
     }

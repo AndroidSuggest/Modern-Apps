@@ -14,7 +14,11 @@ package com.vayunmathur.library.ml
  *
  * Nothing here is thread-safe. Callers hold a lock across [segment] and [destroy]; see
  * [SelfieSegmenter] and [SubjectSegmenter], which do.
+ *
+ * One declaration per native entry point (create/encode/step/destroy per model family);
+ * the count is inherent to the JNI surface. FileLength (fatal lint) still caps file size.
  */
+@Suppress("TooManyFunctions")
 internal object MlNative {
 
     /**

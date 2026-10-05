@@ -3,6 +3,7 @@ package com.vayunmathur.everysync.provider.impl
 import android.content.Context
 import androidx.compose.runtime.Composable
 import com.vayunmathur.everysync.auth.AccountConfig
+import com.vayunmathur.everysync.auth.DavCredentials
 import com.vayunmathur.everysync.auth.TokenStore
 import com.vayunmathur.everysync.provider.AuthType
 import com.vayunmathur.everysync.provider.DataType
@@ -26,12 +27,16 @@ abstract class DavProvider(
     override val authType = AuthType.DAV
 
     /** Base URL to discover addressbook collections from. */
-    protected open fun contactsBaseUrl(config: AccountConfig, creds: com.vayunmathur.everysync.auth.DavCredentials): String =
-        config.davBaseUrl ?: creds.baseUrl
+    protected open fun contactsBaseUrl(
+        config: AccountConfig,
+        creds: DavCredentials,
+    ): String = config.davBaseUrl ?: creds.baseUrl
 
     /** Base URL to discover calendar collections from. */
-    protected open fun calendarBaseUrl(config: AccountConfig, creds: com.vayunmathur.everysync.auth.DavCredentials): String =
-        config.davBaseUrl ?: creds.baseUrl
+    protected open fun calendarBaseUrl(
+        config: AccountConfig,
+        creds: DavCredentials,
+    ): String = config.davBaseUrl ?: creds.baseUrl
 
     override suspend fun sync(context: Context, config: AccountConfig, direction: SyncDirection) {
         val creds = TokenStore.getInstance(context).getDav(config.accountName) ?: return
@@ -39,10 +44,22 @@ abstract class DavProvider(
         val account = config.accountName
 
         if (DataType.CONTACTS in capabilities && DataType.CONTACTS in config.enabledTypes) {
-            DavSync.syncContacts(context, account, client, contactsBaseUrl(config, creds), direction)
+            DavSync.syncContacts(
+                context,
+                account,
+                client,
+                contactsBaseUrl(config, creds),
+                direction,
+            )
         }
         if (DataType.CALENDAR in capabilities && DataType.CALENDAR in config.enabledTypes) {
-            DavSync.syncCalendars(context, account, client, calendarBaseUrl(config, creds), direction)
+            DavSync.syncCalendars(
+                context,
+                account,
+                client,
+                calendarBaseUrl(config, creds),
+                direction,
+            )
         }
     }
 }

@@ -40,11 +40,26 @@ object TrackerProtocol {
     /** Domain-separation tag mixed into every epoch-id HMAC. Must match the server. */
     private const val EPOCH_DOMAIN = "fftrk1"
 
+    /** Milliseconds per second, for wall-clock to epoch conversion. */
+    private const val MILLIS_PER_SECOND = 1000L
+
+    /** Length of one big-endian u64 field. */
+    private const val U64_LEN = 8
+
+    /** Shift of the most significant byte in a big-endian u64. */
+    private const val U64_MSB_SHIFT = 56
+
+    /** Bits per byte, for big-endian byte-packing shifts. */
+    private const val BITS_PER_BYTE = 8
+
+    /** Length of the `[4B kemPrivLen]` prefix on a private bundle. */
+    private const val KEM_LEN_PREFIX_LEN = 4
+
     private val json = Json { ignoreUnknownKeys = true }
 
     /** The current epoch number for a wall-clock time in milliseconds. */
     fun currentEpoch(nowMs: Long = System.currentTimeMillis()): Long =
-        (nowMs / 1000L) / EPOCH_SECONDS
+        (nowMs / MILLIS_PER_SECOND) / EPOCH_SECONDS
 
     /**
      * The 16-byte rotating beacon id for a `(secret, epoch)` pair:
@@ -103,12 +118,12 @@ object TrackerProtocol {
             ((priv[1].toInt() and 0xFF) shl 16) or
             ((priv[2].toInt() and 0xFF) shl 8) or
             (priv[3].toInt() and 0xFF)
-        return priv.copyOfRange(4, 4 + len)
+        return priv.copyOfRange(KEM_LEN_PREFIX_LEN, KEM_LEN_PREFIX_LEN + len)
     }
 
     internal fun u64be(v: Long): ByteArray {
-        val out = ByteArray(8)
-        for (i in 0 until 8) out[i] = (v ushr (56 - i * 8)).toByte()
+        val out = ByteArray(U64_LEN)
+        for (i in 0 until U64_LEN) out[i] = (v ushr (U64_MSB_SHIFT - i * BITS_PER_BYTE)).toByte()
         return out
     }
 }

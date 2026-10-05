@@ -72,7 +72,12 @@ internal fun LocationTrackingService.createNotification(): Notification {
         .build()
 }
 
-internal fun LocationTrackingService.createNotificationWithCategory(title: String, message: String, category: String, userId: Long) {
+internal fun LocationTrackingService.createNotificationWithCategory(
+    title: String,
+    message: String,
+    category: String,
+    userId: Long,
+) {
     val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     val channelId = when (category) {

@@ -10,6 +10,9 @@ import com.vayunmathur.cast.protocol.VideoCodec
 
 private const val TAG = "EncoderSupport"
 
+/** Bits per megabit, for turning a bitrate range into a log line. */
+private const val BITS_PER_MEGABIT = 1_000_000.0
+
 /**
  * What this device can actually encode.
  *
@@ -84,7 +87,7 @@ object EncoderSupport {
                 TAG,
                 "${codec.label} encodes up to ${limits.maxWidth}x${limits.maxHeight} and holds " +
                     "${limits.maxFrameRate}fps at ${width}x$height, " +
-                    "${limits.maxBitRate / 1_000_000.0} Mbit/s on ${info.name}",
+                    "${limits.maxBitRate / BITS_PER_MEGABIT} Mbit/s on ${info.name}",
             )
             limits
         }

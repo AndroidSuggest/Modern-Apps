@@ -1,6 +1,7 @@
 package com.vayunmathur.library.room
 
 import android.content.Context
+import android.util.Log
 import androidx.room3.Room
 import androidx.room3.RoomDatabase
 import androidx.room3.migration.Migration
@@ -17,10 +18,12 @@ fun loadSqlCipher() {
     try {
         System.loadLibrary("sqlcipher")
         sqlCipherLoaded = true
-    } catch (e: UnsatisfiedLinkError) {
-        e.printStackTrace()
+    } catch (expected: UnsatisfiedLinkError) {
+        Log.e(TAG, "Failed to load sqlcipher native library", expected)
     }
 }
+
+private const val TAG = "SqlCipher"
 
 /**
  * Reified convenience wrapper. Prefer obtaining databases through a
@@ -162,18 +165,19 @@ private fun <T : RoomDatabase> Context.openRoomDatabase(
 fun encryptExistingDatabase(context: Context, dbName: String, password: String) {
     loadSqlCipher()
     val dbFile = context.getDatabasePath(dbName)
-    if (!dbFile.exists() || dbFile.length() < 16) return
+    if (!dbFile.exists() || dbFile.length() < SQLITE_HEADER_BYTES) return
 
     val isEncrypted = try {
         FileInputStream(dbFile).use { fis ->
-            val header = ByteArray(16)
-            if (fis.read(header) != 16) {
+            val header = ByteArray(SQLITE_HEADER_BYTES)
+            if (fis.read(header) != SQLITE_HEADER_BYTES) {
                 true
             } else {
-                !header.contentEquals("SQLite format 3\u0000".toByteArray(Charsets.UTF_8))
+                !header.contentEquals(SQLITE_MAGIC)
             }
         }
-    } catch (e: Exception) {
+    } catch (expected: java.io.IOException) {
+        Log.w(TAG, "Failed to read database header; assuming encrypted", expected)
         true
     }
 
@@ -206,7 +210,11 @@ fun encryptExistingDatabase(context: Context, dbName: String, password: String) 
         File("${dbFile.path}-journal").delete()
 
         tempFile.renameTo(dbFile)
-    } catch (e: net.zetetic.database.sqlcipher.SQLiteNotADatabaseException) {
+    } catch (expected: net.zetetic.database.sqlcipher.SQLiteNotADatabaseException) {
+        Log.w(TAG, "Database is not a plain SQLite file; skipping encryption", expected)
         tempFile.delete()
     }
 }
+
+private val SQLITE_MAGIC = "SQLite format 3\u0000".toByteArray(Charsets.UTF_8)
+private const val SQLITE_HEADER_BYTES = 16

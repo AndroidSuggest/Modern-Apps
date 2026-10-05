@@ -87,8 +87,11 @@ class AccrescentRepository(
             AccrescentPage(apps, response.nextPageToken)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "listApps failed", e)
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "listApps failed", expected)
+            AccrescentPage(emptyList(), "")
+        } catch (expected: IllegalStateException) {
+            Log.w(TAG, "listApps failed", expected)
             AccrescentPage(emptyList(), "")
         }
     }
@@ -114,29 +117,40 @@ class AccrescentRepository(
         if (allListingsLoaded) return
         listingsMutex.withLock {
             if (allListingsLoaded) return
-            var token = ""
-            var pages = 0
-            var complete = false
-            while (pages < MAX_LISTING_PAGES) {
-                val response = try {
-                    api.listAppListings(PAGE_SIZE, token, preferredLanguages())
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.w(TAG, "listAppListings page $pages failed", e)
-                    break
-                }
-                response.listingsList.forEach { listingsCache[it.appId] = it.toUnifiedApp() }
-                token = response.nextPageToken
-                pages++
-                if (token.isBlank()) {
-                    complete = true
-                    break
-                }
-            }
+            val loaded = loadAllPages()
             // Mark loaded when we reached the end (or the page cap); leave it false on a network
             // failure so the next search retries the full load.
-            if (complete || pages >= MAX_LISTING_PAGES) allListingsLoaded = true
+            if (loaded) allListingsLoaded = true
+        }
+    }
+
+    private suspend fun loadAllPages(): Boolean {
+        var token = ""
+        var pages = 0
+        while (pages < MAX_LISTING_PAGES) {
+            val response = loadOnePage(token, pages) ?: return false
+            response.listingsList.forEach { listingsCache[it.appId] = it.toUnifiedApp() }
+            token = response.nextPageToken
+            pages++
+            if (token.isBlank()) return true
+        }
+        return pages >= MAX_LISTING_PAGES
+    }
+
+    private suspend fun loadOnePage(
+        token: String,
+        pages: Int,
+    ): app.accrescent.appstore.v1.ListAppListingsResponse? {
+        return try {
+            api.listAppListings(PAGE_SIZE, token, preferredLanguages())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "listAppListings page $pages failed", expected)
+            null
+        } catch (expected: IllegalStateException) {
+            Log.w(TAG, "listAppListings page $pages failed", expected)
+            null
         }
     }
 
@@ -153,8 +167,11 @@ class AccrescentRepository(
             ).also { listingsCache[appId] = it }
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "details failed for $appId", e)
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "details failed for $appId", expected)
+            null
+        } catch (expected: IllegalStateException) {
+            Log.w(TAG, "details failed for $appId", expected)
             null
         }
     }

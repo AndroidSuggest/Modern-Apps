@@ -116,27 +116,27 @@ object CastController {
     /** Serialises re-negotiations so two mode changes in quick succession cannot interleave. */
     internal var renegotiateJob: Job? = null
 
-    internal val _mirrorPhase = MutableStateFlow(MirrorPhase.Idle)
-    val mirrorPhase: StateFlow<MirrorPhase> = _mirrorPhase.asStateFlow()
+    internal val mirrorPhaseMutable = MutableStateFlow(MirrorPhase.Idle)
+    val mirrorPhase: StateFlow<MirrorPhase> = mirrorPhaseMutable.asStateFlow()
 
-    internal val _degradation = MutableStateFlow(MirrorDegradation())
-    val degradation: StateFlow<MirrorDegradation> = _degradation.asStateFlow()
+    internal val degradationMutable = MutableStateFlow(MirrorDegradation())
+    val degradation: StateFlow<MirrorDegradation> = degradationMutable.asStateFlow()
 
     /** Why mirroring failed, already a user-facing sentence. */
-    internal val _failure = MutableStateFlow<String?>(null)
-    val mirrorFailure: StateFlow<String?> = _failure.asStateFlow()
+    internal val failureMutable = MutableStateFlow<String?>(null)
+    val mirrorFailure: StateFlow<String?> = failureMutable.asStateFlow()
 
     private var discoveryManager: CastDiscoveryManager? = null
 
-    internal val _device = MutableStateFlow<CastDevice?>(null)
-    val device: StateFlow<CastDevice?> = _device.asStateFlow()
+    internal val deviceMutable = MutableStateFlow<CastDevice?>(null)
+    val device: StateFlow<CastDevice?> = deviceMutable.asStateFlow()
 
-    internal val _sessionState = MutableStateFlow(ClientState())
-    val sessionState: StateFlow<ClientState> = _sessionState.asStateFlow()
+    internal val sessionStateMutable = MutableStateFlow(ClientState())
+    val sessionState: StateFlow<ClientState> = sessionStateMutable.asStateFlow()
 
     /** True from the moment a device is tapped until it is paired or refuses. */
-    internal val _isConnecting = MutableStateFlow(false)
-    val isConnecting: StateFlow<Boolean> = _isConnecting.asStateFlow()
+    internal val isConnectingMutable = MutableStateFlow(false)
+    val isConnecting: StateFlow<Boolean> = isConnectingMutable.asStateFlow()
 
     /**
      * Whether the session being opened should go on to ask for capture consent.
@@ -209,8 +209,8 @@ object CastController {
             // being set is exactly "this was a served session"; nothing else needs telling.
             if (proxy != null) client?.let { mutex.withLock { it.sendContentEnded() } }
             stopEngine()
-            _mirrorPhase.value = MirrorPhase.Idle
-            _sessionState.update {
+            mirrorPhaseMutable.value = MirrorPhase.Idle
+            sessionStateMutable.update {
                 if (it.phase == ClientPhase.Streaming) it.copy(phase = ClientPhase.Paired) else it
             }
             CastService.stopMirroring(appContext)
@@ -219,7 +219,7 @@ object CastController {
 
     internal fun onEngineStopped(context: Context, reason: MirrorStopReason) {
         val codec = activeCodec
-        _failure.value = when (reason) {
+        failureMutable.value = when (reason) {
             MirrorStopReason.Udp -> context.getString(R.string.cast_mirror_udp_failed)
             MirrorStopReason.NoEncoders -> context.getString(R.string.cast_mirror_no_encoder)
             MirrorStopReason.ReceiverGone -> context.getString(R.string.cast_mirror_receiver_gone)
@@ -228,7 +228,7 @@ object CastController {
             MirrorStopReason.NoVideoOutput ->
                 context.getString(R.string.cast_mirror_no_video_output)
         }
-        _mirrorPhase.value = MirrorPhase.Failed
+        mirrorPhaseMutable.value = MirrorPhase.Failed
         endContentSession(CastContract.REASON_FAILED)
         CastService.stopMirroring(context)
         if (reason == MirrorStopReason.CodecConfig && codec != null) {
@@ -240,7 +240,7 @@ object CastController {
      * End the whole session, not just the mirror, and remember the codec that did it.
      *
      * **Unlike every other stop reason, this one leaves a perfectly healthy control channel.** Nothing
-     * would tear the session down, so `_sessionState` would sit at [ClientPhase.Streaming] - and
+     * would tear the session down, so `sessionStateMutable` would sit at [ClientPhase.Streaming] - and
      * [connect] treats that as live, so tapping the same TV again would return early and do nothing.
      * The user would be left unable to retry the very TV that just failed, which is exactly the retry
      * the demotion exists to make work.
@@ -249,15 +249,15 @@ object CastController {
      * [stopEngine] joins that coroutine - doing it here would be waiting on ourselves.
      */
     internal fun endCodecConfigFailure(context: Context, codec: VideoCodec) {
-        val receiverId = client?.receiverId ?: _device.value?.id
+        val receiverId = client?.receiverId ?: deviceMutable.value?.id
         val message = context.getString(R.string.cast_mirror_codec_config_failed)
         scope.launch {
             if (receiverId != null) MirrorPreferences.demoteCodec(context, receiverId, codec)
             client?.let { mutex.withLock { it.sayGoodbye("no codec config") } }
             teardown()
             // After the teardown, which resets both of these - see startWatch for the same ordering.
-            _failure.value = message
-            _mirrorPhase.value = MirrorPhase.Failed
+            failureMutable.value = message
+            mirrorPhaseMutable.value = MirrorPhase.Failed
             CastService.stop(context)
         }
     }
@@ -329,13 +329,13 @@ object CastController {
             watchJob = null
             socket = null
             client = null
-            _isConnecting.value = false
-            _mirrorPhase.value = MirrorPhase.Idle
-            _degradation.value = MirrorDegradation()
+            isConnectingMutable.value = false
+            mirrorPhaseMutable.value = MirrorPhase.Idle
+            degradationMutable.value = MirrorDegradation()
             if (!keepFailure) {
-                _device.value = null
-                _sessionState.value = ClientState()
-                _failure.value = null
+                deviceMutable.value = null
+                sessionStateMutable.value = ClientState()
+                failureMutable.value = null
             }
         }
     }

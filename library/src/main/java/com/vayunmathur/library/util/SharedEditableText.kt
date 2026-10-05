@@ -24,7 +24,11 @@ import kotlinx.coroutines.delay
  * bounds travel finishes, which is where it belongs - hence a fraction of [NavMorphMillis] rather
  * than a literal that has to be kept in step with it by hand.
  */
-private const val RevealDelayMillis = NavMorphMillis * 2L / 3L
+/** Reveal fraction of [NAV_MORPH_MILLIS] before the bounds travel finishes. */
+private const val REVEAL_DELAY_NUMERATOR = 2L
+private const val REVEAL_DELAY_DENOMINATOR = 3L
+private const val REVEAL_DELAY_MILLIS =
+    NAV_MORPH_MILLIS * REVEAL_DELAY_NUMERATOR / REVEAL_DELAY_DENOMINATOR
 
 /**
  * Wraps the inner text of an editable field so the read-only text carrying the same [key] on the
@@ -65,7 +69,7 @@ fun SharedEditableText(
         var revealed by remember(morphing) { mutableStateOf(!morphing) }
         LaunchedEffect(morphing) {
             if (morphing) {
-                delay(RevealDelayMillis)
+                delay(REVEAL_DELAY_MILLIS)
                 revealed = true
             }
         }

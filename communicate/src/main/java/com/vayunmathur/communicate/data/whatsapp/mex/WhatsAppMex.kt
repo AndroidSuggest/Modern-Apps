@@ -31,7 +31,7 @@ object WhatsAppMex {
         } else {
             val docId = MexPersistedQueryProvider.docIdFor(context, operationName)
                 ?: return MexResult.transport("no_persisted_id:$operationName")
-            WhatsAppWwwGraphQlClient.post(context, docId, variablesJson)
+            WhatsAppWwwGraphQlClient.post(docId, variablesJson)
         }
     }
 }

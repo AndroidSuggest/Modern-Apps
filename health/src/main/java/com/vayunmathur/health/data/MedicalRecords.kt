@@ -232,6 +232,9 @@ data class ConditionEntry(
 )
 
 @Dao
+// Query surface of the medical tables: one method per query by Room's design.
+// Splitting the interface would only move the same method count to more files.
+@Suppress("TooManyFunctions")
 interface MedicalDao {
 
     // --- Vaccinations ------------------------------------------------------

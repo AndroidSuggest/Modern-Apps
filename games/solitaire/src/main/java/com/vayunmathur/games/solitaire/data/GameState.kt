@@ -36,8 +36,8 @@ data class GameConfig(
 data class KlondikeState(
     val stock: List<Card> = emptyList(),
     val waste: List<Card> = emptyList(),
-    val tableauPiles: List<TableauPile> = List(7) { TableauPile() },
-    val foundations: List<List<Card>> = List(4) { emptyList() },
+    val tableauPiles: List<TableauPile> = List(size = KLONDIKE_TABLEAU_COUNT) { TableauPile() },
+    val foundations: List<List<Card>> = List(size = FOUNDATION_COUNT) { emptyList() },
     val drawMode: DrawMode = DrawMode.DRAW_ONE,
     val difficulty: KlondikeDifficulty = KlondikeDifficulty.REGULAR,
     val redealsRemaining: Int = 2,
@@ -46,10 +46,13 @@ data class KlondikeState(
     val elapsedSeconds: Int = 0,
     val usedUndo: Boolean = false,
     val isWon: Boolean = false
-)
+) {
+    fun tick(): KlondikeState =
+        if (isWon) this else copy(elapsedSeconds = elapsedSeconds + 1)
+}
 
 data class SpiderState(
-    val tableauPiles: List<TableauPile> = List(10) { TableauPile() },
+    val tableauPiles: List<TableauPile> = List(size = SPIDER_TABLEAU_COUNT) { TableauPile() },
     val stockGroups: List<List<Card>> = emptyList(),
     val suitCount: Int = 4,
     val variant: String = "",
@@ -58,18 +61,24 @@ data class SpiderState(
     val elapsedSeconds: Int = 0,
     val usedUndo: Boolean = false,
     val isWon: Boolean = false
-)
+) {
+    fun tick(): SpiderState =
+        if (isWon) this else copy(elapsedSeconds = elapsedSeconds + 1)
+}
 
 data class FreeCellState(
-    val tableauPiles: List<List<Card>> = List(8) { emptyList() },
-    val freeCells: List<Card?> = List(4) { null },
-    val foundations: List<List<Card>> = List(4) { emptyList() },
+    val tableauPiles: List<List<Card>> = List(size = FREECELL_TABLEAU_COUNT) { emptyList() },
+    val freeCells: List<Card?> = List(size = FREECELL_COUNT) { null },
+    val foundations: List<List<Card>> = List(size = FOUNDATION_COUNT) { emptyList() },
     val variant: String = "",
     val moveCount: Int = 0,
     val elapsedSeconds: Int = 0,
     val usedUndo: Boolean = false,
     val isWon: Boolean = false
-)
+) {
+    fun tick(): FreeCellState =
+        if (isWon) this else copy(elapsedSeconds = elapsedSeconds + 1)
+}
 
 /**
  * Pyramid solitaire. [pyramid] is 7 rows (row r has r+1 slots); a removed card
@@ -92,7 +101,10 @@ data class PyramidState(
     val elapsedSeconds: Int = 0,
     val usedUndo: Boolean = false,
     val isWon: Boolean = false
-)
+) {
+    fun tick(): PyramidState =
+        if (isWon) this else copy(elapsedSeconds = elapsedSeconds + 1)
+}
 
 data class SolitaireUiState(
     val gameMode: GameMode? = null,
@@ -102,3 +114,30 @@ data class SolitaireUiState(
     val pyramid: PyramidState? = null,
     val history: List<Any> = emptyList()
 )
+
+const val KLONDIKE_TABLEAU_COUNT = 7
+const val SPIDER_TABLEAU_COUNT = 10
+const val FREECELL_TABLEAU_COUNT = 8
+const val FREECELL_COUNT = 4
+const val FOUNDATION_COUNT = 4
+
+/** Columns in a Spider deal that start with six cards instead of five. */
+const val SPIDER_TALL_COLUMN_COUNT = 4
+
+/** Cards in a tall Spider column (one face-up on top of five face-down). */
+const val SPIDER_TALL_COLUMN_CARDS = 6
+
+/** Cards in a standard Spider column (one face-up on top of four face-down). */
+const val SPIDER_COLUMN_CARDS = 5
+
+/** Cards in a complete same-suit run, which clears from the board. */
+const val FULL_SUIT_SIZE = 13
+
+/** Complete runs needed to win Spider (eight in a 104-card deck). */
+const val TOTAL_SPIDER_SUITS = 8
+
+/** Rows in the Pyramid layout (row r holds r+1 cards). */
+const val PYRAMID_ROWS = 7
+
+/** Two Pyramid cards clear together when their ranks sum to this. */
+const val PAIR_TARGET = 13

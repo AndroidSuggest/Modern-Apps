@@ -131,6 +131,9 @@ data class Record(
 )
 
 @Dao
+// Query surface of the fitness-record tables: one method per query by Room's design.
+// Splitting the interface would only move the same method count to more files.
+@Suppress("TooManyFunctions")
 interface HealthDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(records: List<Record>)
@@ -144,7 +147,10 @@ interface HealthDao {
     @Query("SELECT * FROM Record WHERE type = :type ORDER BY startTime DESC LIMIT 1")
     suspend fun getLastRecord(type: RecordType): Record?
 
-    @Query("SELECT COALESCE(SUM(CASE WHEN :type = 'Nutrition' THEN nutrition_calories ELSE value END), 0.0) FROM Record WHERE type = :type AND startTime >= :startTime AND endTime <= :endTime")
+    @Query(
+        "SELECT COALESCE(SUM(CASE WHEN :type = 'Nutrition' THEN nutrition_calories ELSE value END), 0.0) " +
+            "FROM Record WHERE type = :type AND startTime >= :startTime AND endTime <= :endTime"
+    )
     fun sumInRange(type: RecordType, startTime: kotlin.time.Instant, endTime: kotlin.time.Instant): Flow<Double>
 
     /**
@@ -197,14 +203,22 @@ interface HealthDao {
             COALESCE(SUM(nutrition_calories), 0.0) AS calories
         FROM Record WHERE type = :type AND startTime >= :startTime AND endTime <= :endTime
     """)
-    fun sumNutritionInRange(type: RecordType, startTime: kotlin.time.Instant, endTime: kotlin.time.Instant): Flow<NutritionData>
+    fun sumNutritionInRange(
+        type: RecordType,
+        startTime: kotlin.time.Instant,
+        endTime: kotlin.time.Instant,
+    ): Flow<NutritionData>
 
     @Query("SELECT MIN(value) FROM Record WHERE type = :type AND startTime >= :startTime AND endTime <= :endTime")
     fun minInRange(type: RecordType, startTime: kotlin.time.Instant, endTime: kotlin.time.Instant): Flow<Double?>
     @Query("SELECT MAX(value) FROM Record WHERE type = :type AND startTime >= :startTime AND endTime <= :endTime")
     fun maxInRange(type: RecordType, startTime: kotlin.time.Instant, endTime: kotlin.time.Instant): Flow<Double?>
     @Query("SELECT * FROM Record WHERE type = :type AND startTime >= :startTime AND endTime <= :endTime")
-    fun getAllInRange(type: RecordType, startTime: kotlin.time.Instant, endTime: kotlin.time.Instant): Flow<List<Record>>
+    fun getAllInRange(
+        type: RecordType,
+        startTime: kotlin.time.Instant,
+        endTime: kotlin.time.Instant,
+    ): Flow<List<Record>>
 
     @Query("""
     SELECT 
@@ -309,7 +323,10 @@ interface HealthDao {
     @Query("SELECT * FROM Ingredient WHERE id = :id")
     suspend fun getIngredient(id: String): Ingredient?
 
-    @Query("SELECT * FROM Ingredient WHERE originalName LIKE '%' || :query || '%' OR customName LIKE '%' || :query || '%'")
+    @Query(
+        "SELECT * FROM Ingredient WHERE originalName LIKE '%' || :query || '%' " +
+            "OR customName LIKE '%' || :query || '%'"
+    )
     suspend fun searchIngredients(query: String): List<Ingredient>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -391,7 +408,10 @@ abstract class HealthDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                it.execSQL("CREATE INDEX IF NOT EXISTS index_VaccinationEntry_occurredAt ON VaccinationEntry (occurredAt)")
+                it.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_VaccinationEntry_occurredAt " +
+                        "ON VaccinationEntry (occurredAt)"
+                )
                 it.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS MedicationEntry (
@@ -424,7 +444,10 @@ abstract class HealthDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                it.execSQL("CREATE INDEX IF NOT EXISTS index_MedicalAttachment_vaccinationId ON MedicalAttachment (vaccinationId)")
+                it.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_MedicalAttachment_vaccinationId " +
+                        "ON MedicalAttachment (vaccinationId)"
+                )
             },
             Migration(6, 7) {
                 it.execSQL(

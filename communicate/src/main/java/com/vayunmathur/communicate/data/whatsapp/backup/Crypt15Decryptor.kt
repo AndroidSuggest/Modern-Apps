@@ -25,12 +25,28 @@ import javax.crypto.spec.SecretKeySpec
 object Crypt15Decryptor {
 
     private const val HKDF_INFO = "backup encryption"
+    private const val BACKUP_KEY_SIZE = 32
+    private const val GCM_TAG_BITS = 128
+    private const val IV_SIZE = 16
+    private const val WIRE_TYPE_MASK = 0x7L
+    private const val WIRE_VARINT = 0
+    private const val WIRE_LENGTH_DELIMITED = 2
+    private const val WIRE_FIXED64 = 1
+    private const val WIRE_FIXED32 = 5
+    private const val FIXED32_SIZE = 4
+    private const val FIXED64_SIZE = 8
+    private const val BYTE_MASK = 0xFF
+    private const val VARINT_MASK = 0x7F
+    private const val VARINT_CONT = 0x80
+    private const val VARINT_BITS = 7
 
     class DecryptException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
     /** @return the decrypted plaintext SQLite file in [cacheDir]. */
     fun decryptToFile(crypt15: ByteArray, backupKey: ByteArray, cacheDir: File): File {
-        if (backupKey.size != 32) throw DecryptException("backup key must be 32 bytes, got ${backupKey.size}")
+        if (backupKey.size != BACKUP_KEY_SIZE) {
+            throw DecryptException("backup key must be 32 bytes, got ${backupKey.size}")
+        }
 
         val (iv, cipherStart) = parseHeader(crypt15)
 
@@ -39,11 +55,22 @@ object Crypt15Decryptor {
         // let AES-256-GCM's auth tag pick the correct key: a wrong key throws AEADBadTagException.
         val candidates = listOf(
             "hkdf(info=\"backup encryption\\x01\")" to
-                hkdfSha256(backupKey, ByteArray(32), "backup encryption\u0001".toByteArray(Charsets.ISO_8859_1), 32),
+                hkdfSha256(
+                    backupKey,
+                    ByteArray(BACKUP_KEY_SIZE),
+                    "backup encryption\u0001".toByteArray(Charsets.ISO_8859_1),
+                    BACKUP_KEY_SIZE,
+                ),
             "hkdf(info=\"backup encryption\")" to
-                hkdfSha256(backupKey, ByteArray(32), HKDF_INFO.toByteArray(Charsets.UTF_8), 32),
+                hkdfSha256(
+                    backupKey,
+                    ByteArray(BACKUP_KEY_SIZE),
+                    HKDF_INFO.toByteArray(Charsets.UTF_8),
+                    BACKUP_KEY_SIZE,
+                ),
             "expand-only hmac(key,\"backup encryption\\x01\")" to
-                hmacSha256(backupKey, "backup encryption\u0001".toByteArray(Charsets.ISO_8859_1)).copyOf(32),
+                hmacSha256(backupKey, "backup encryption\u0001".toByteArray(Charsets.ISO_8859_1))
+                    .copyOf(BACKUP_KEY_SIZE),
             "raw root key" to backupKey,
         )
 
@@ -51,7 +78,7 @@ object Crypt15Decryptor {
         for ((label, aesKey) in candidates) {
             try {
                 val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(aesKey, "AES"), GCMParameterSpec(128, iv))
+                cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(aesKey, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
                 val plaintextGz = cipher.doFinal(crypt15, cipherStart, crypt15.size - cipherStart)
                 // GCM authenticated → this is the right key. Now gunzip.
                 val out = File.createTempFile("msgstore_", ".db", cacheDir)
@@ -60,8 +87,8 @@ object Crypt15Decryptor {
                 }
                 android.util.Log.i("Crypt15", "decrypted via: $label")
                 return out
-            } catch (t: Throwable) {
-                lastErr = t
+            } catch (expected: Throwable) {
+                lastErr = expected
             }
         }
         throw DecryptException(
@@ -94,23 +121,23 @@ object Crypt15Decryptor {
         while (p < end) {
             val (tag, afterTag) = readVarint(data, p)
             p = afterTag
-            when ((tag and 0x7).toInt()) {
-                0 -> { // varint
+            when ((tag and WIRE_TYPE_MASK).toInt()) {
+                WIRE_VARINT -> { // varint
                     p = readVarint(data, p).second
                 }
-                2 -> { // length-delimited
+                WIRE_LENGTH_DELIMITED -> { // length-delimited
                     val (len, afterLen) = readVarint(data, p)
                     p = afterLen
                     val l = len.toInt()
-                    if (l == 16 && p + 16 <= end) return data.copyOfRange(p, p + 16)
+                    if (l == IV_SIZE && p + IV_SIZE <= end) return data.copyOfRange(p, p + IV_SIZE)
                     // Recurse into nested messages to find a nested C15_IV.
                     if (p + l <= end) {
                         findSixteenByteField(data, p, p + l)?.let { return it }
                     }
                     p += l
                 }
-                5 -> p += 4 // fixed32
-                1 -> p += 8 // fixed64
+                WIRE_FIXED32 -> p += FIXED32_SIZE // fixed32
+                WIRE_FIXED64 -> p += FIXED64_SIZE // fixed64
                 else -> return null
             }
         }
@@ -122,11 +149,11 @@ object Crypt15Decryptor {
         var shift = 0
         var p = start
         while (p < data.size) {
-            val b = data[p].toInt() and 0xFF
-            result = result or ((b and 0x7F).toLong() shl shift)
+            val b = data[p].toInt() and BYTE_MASK
+            result = result or ((b and VARINT_MASK).toLong() shl shift)
             p++
-            if (b and 0x80 == 0) break
-            shift += 7
+            if (b and VARINT_CONT == 0) break
+            shift += VARINT_BITS
         }
         return result to p
     }
@@ -141,7 +168,7 @@ object Crypt15Decryptor {
     private fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {
         val mac = Mac.getInstance("HmacSHA256")
         // extract
-        mac.init(SecretKeySpec(if (salt.isEmpty()) ByteArray(32) else salt, "HmacSHA256"))
+        mac.init(SecretKeySpec(if (salt.isEmpty()) ByteArray(BACKUP_KEY_SIZE) else salt, "HmacSHA256"))
         val prk = mac.doFinal(ikm)
         // expand
         mac.init(SecretKeySpec(prk, "HmacSHA256"))

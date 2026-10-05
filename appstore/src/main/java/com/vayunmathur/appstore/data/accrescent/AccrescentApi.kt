@@ -40,6 +40,10 @@ class AccrescentApi {
     @Volatile
     private var channelRef: ManagedChannel? = null
 
+    private companion object {
+        private const val HTTPS_PORT = 443
+    }
+
     private fun stub(): AppServiceGrpcKt.AppServiceCoroutineStub =
         AppServiceGrpcKt.AppServiceCoroutineStub(channel())
 
@@ -48,7 +52,7 @@ class AccrescentApi {
         return synchronized(this) {
             channelRef?.let { if (!it.isShutdown && !it.isTerminated) return it }
             OkHttpChannelBuilder
-                .forAddress(AccrescentRepo.APP_STORE_API_DOMAIN, 443)
+                .forAddress(AccrescentRepo.APP_STORE_API_DOMAIN, HTTPS_PORT)
                 .useTransportSecurity()
                 .build()
                 .also { channelRef = it }

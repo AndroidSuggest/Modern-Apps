@@ -203,6 +203,7 @@ object RcsImsNetwork {
      * Plain-network fallback is deliberately absent: advertising an
      * unroutable address is worse than offering active-only.
      */
+    private const val LISTEN_BACKLOG = 16
     suspend fun listenSocket(context: Context): ListenSocket? {
         if (!RcsFeature.enabled) return null
         val ims = imsNetwork(context) ?: return null
@@ -212,7 +213,7 @@ object RcsImsNetwork {
                 ?: return null
             val server = ServerSocket()
             // Backlog sized for one peer per pending session plus slack.
-            server.bind(InetSocketAddress(localIp, 0), 16)
+            server.bind(InetSocketAddress(localIp, 0), LISTEN_BACKLOG)
             val port = server.localPort.takeIf { it > 0 } ?: run {
                 runCatching { server.close() }
                 return null

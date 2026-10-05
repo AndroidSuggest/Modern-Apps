@@ -14,8 +14,10 @@ class ChannelMessage(
     val payload: ByteArray,
 ) {
     override fun toString(): String =
-        "ChannelMessage(channel=$channelId, type=0x${type.toString(16)}, ${payload.size} bytes)"
+        "ChannelMessage(channel=$channelId, type=0x${type.toString(HEX_RADIX)}, ${payload.size} bytes)"
 }
+
+private const val HEX_RADIX = 16
 
 /**
  * Encodes and decodes the message-type prefix.
@@ -29,7 +31,9 @@ object MessageCodec {
     const val TYPE_PREFIX_SIZE = 2
 
     fun encode(type: Int, payload: ByteArray): ByteArray {
-        require(type in 0..0xFFFF) { "message type $type does not fit in a uint16" }
+        require(type in MIN_MESSAGE_TYPE..MAX_MESSAGE_TYPE) {
+            "message type $type does not fit in a uint16"
+        }
         return ByteBuffer.allocate(TYPE_PREFIX_SIZE + payload.size)
             .putShort(type.toShort())
             .put(payload)
@@ -44,11 +48,13 @@ object MessageCodec {
             "message of ${bytes.size} bytes is too short to carry a type"
         }
         val buffer = ByteBuffer.wrap(bytes)
-        val type = buffer.short.toInt() and 0xFFFF
+        val type = buffer.short.toInt() and MAX_MESSAGE_TYPE
         val payload = ByteArray(buffer.remaining())
         buffer.get(payload)
         return ChannelMessage(channelId, type, payload)
     }
 
+    private const val MIN_MESSAGE_TYPE = 0
+    private const val MAX_MESSAGE_TYPE = 0xFFFF
     private val EMPTY = ByteArray(0)
 }

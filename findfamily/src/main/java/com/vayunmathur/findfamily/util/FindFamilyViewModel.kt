@@ -18,7 +18,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.vayunmathur.findfamily.data.Coord
 import com.vayunmathur.findfamily.data.FindFamilyRepository
 import com.vayunmathur.findfamily.data.LocationValue
 import com.vayunmathur.findfamily.data.NoShowAlert
@@ -197,109 +196,47 @@ class FindFamilyViewModel(
     }
 
     override fun deleteTemporaryLink(link: TemporaryLink) {
-        viewModelScope.launch(Dispatchers.IO) { repository.deleteTemporaryLink(link) }
+        viewModelScope.launch(Dispatchers.IO) { repository.temporaryLinkStore.delete(link) }
     }
 
     // ------------------------------------------------------------------
-    // Selection state
+    // Map selection + waypoint-form state (extracted holder, same observables)
     // ------------------------------------------------------------------
 
-    private val _selectedUserId = MutableStateFlow<Long?>(null)
-    val selectedUserId: StateFlow<Long?> = _selectedUserId.asStateFlow()
+    /**
+     * Which user / waypoint is selected, present-vs-history, the historical
+     * position, and the waypoint editing form. Lives in [MapPageState] so this
+     * class stays under the function cap; the StateFlows below are the same
+     * observables as before.
+     */
+    val mapState = MapPageState(viewModelScope, repository)
 
-    private val _selectedWaypointId = MutableStateFlow<Long?>(null)
-    val selectedWaypointId: StateFlow<Long?> = _selectedWaypointId.asStateFlow()
+    val selectedUserId: StateFlow<Long?> = mapState.selectedUserId
+    val isShowingPresent: StateFlow<Boolean> = mapState.isShowingPresent
+    val historicalPosition: StateFlow<GeoPoint?> = mapState.historicalPosition
 
-    private val _isShowingPresent = MutableStateFlow(true)
-    val isShowingPresent: StateFlow<Boolean> = _isShowingPresent.asStateFlow()
-
-    private val _historicalPosition = MutableStateFlow<GeoPoint?>(null)
-    val historicalPosition: StateFlow<GeoPoint?> = _historicalPosition.asStateFlow()
-
-    fun setSelectedUserId(id: Long?) { _selectedUserId.value = id }
-    fun setSelectedWaypointId(id: Long?) { _selectedWaypointId.value = id }
-    fun setShowingPresent(value: Boolean) { _isShowingPresent.value = value }
-    fun setHistoricalPosition(position: GeoPoint?) { _historicalPosition.value = position }
-
-    override fun selectUser(userId: Long) {
-        _selectedUserId.value = userId
-        _selectedWaypointId.value = null
-        _isShowingPresent.value = true
-    }
-
-    fun clearSelection() {
-        _selectedUserId.value = null
-        _selectedWaypointId.value = null
-    }
+    override fun selectUser(userId: Long) = mapState.selectUser(userId)
 
     /**
      * Apply the initial selection passed in via navigation. Called from the
      * MainPage entry so that opening the screen with a deep-linked user or
      * waypoint id selects it on arrival.
      */
-    fun applyInitialSelection(initialUserId: Long?, initialWaypointId: Long?) {
-        _selectedUserId.value = initialUserId
-        _selectedWaypointId.value = initialWaypointId
-    }
+    fun applyInitialSelection(initialUserId: Long?, initialWaypointId: Long?) =
+        mapState.applyInitialSelection(initialUserId, initialWaypointId)
 
-    // ------------------------------------------------------------------
-    // Waypoint editing form
-    // ------------------------------------------------------------------
-
-    private val _waypointName = MutableStateFlow("")
-    val waypointName: StateFlow<String> = _waypointName.asStateFlow()
-
-    private val _waypointRange = MutableStateFlow("")
-    val waypointRange: StateFlow<String> = _waypointRange.asStateFlow()
-
-    private val _waypointCoord = MutableStateFlow(Coord(0.0, 0.0))
-    val waypointCoord: StateFlow<Coord> = _waypointCoord.asStateFlow()
-
-    fun setWaypointName(name: String) { _waypointName.value = name }
-    fun setWaypointRange(range: String) { _waypointRange.value = range }
-    fun setWaypointCoord(coord: Coord) { _waypointCoord.value = coord }
-
-    /** Begin creating a brand-new waypoint with sensible defaults. */
-    fun beginCreateWaypoint() {
-        _selectedWaypointId.value = 0L
-        _waypointName.value = ""
-        _waypointRange.value = "100"
-        _waypointCoord.value = Coord(0.0, 0.0)
-    }
+    val waypointName: StateFlow<String> = mapState.waypointName
+    val waypointRange: StateFlow<String> = mapState.waypointRange
 
     /** Begin editing an existing waypoint, prefilling the form. */
-    override fun beginEditWaypoint(waypoint: Waypoint) {
-        _selectedWaypointId.value = waypoint.id
-        _waypointName.value = waypoint.name
-        _waypointRange.value = waypoint.range.toString()
-        _waypointCoord.value = waypoint.coord
-    }
-
-    /**
-     * Persist the in-progress waypoint. Silently no-ops if the form is invalid
-     * (matching the original FAB-click behaviour).
-     */
-    fun saveCurrentWaypoint() {
-        val name = _waypointName.value
-        val range = _waypointRange.value.toDoubleOrNull() ?: return
-        if (name.isBlank()) return
-        val id = _selectedWaypointId.value ?: return
-        val coord = _waypointCoord.value
-        viewModelScope.launch(Dispatchers.IO) {
-            val base = if (id == 0L) Waypoint.NEW_WAYPOINT else repository.getWaypoint(id)
-            repository.upsertWaypoint(base.copy(name = name, range = range, coord = coord))
-            withContext(Dispatchers.Main) {
-                _selectedWaypointId.value = null
-            }
-        }
-    }
+    override fun beginEditWaypoint(waypoint: Waypoint) = mapState.beginEditWaypoint(waypoint)
 
     // ------------------------------------------------------------------
     // Per-user location history (raw, filtered by selected user)
     // ------------------------------------------------------------------
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val locationHistory: StateFlow<List<LocationValue>> = _selectedUserId
+    val locationHistory: StateFlow<List<LocationValue>> = mapState.selectedUserId
         .flatMapLatest { userId ->
             if (userId == null) flowOf(emptyList())
             else repository.locationHistory(userId)
@@ -462,7 +399,7 @@ class FindFamilyViewModel(
                 expectedAt = expectedAt,
                 grace = graceMinutes.minutes,
             )
-            val id = repository.upsertNoShowAlert(alert)
+            val id = repository.noShowAlertStore.upsert(alert)
             NoShowCheckScheduler.schedule(ctx, alert.copy(id = id))
         }
     }
@@ -514,7 +451,7 @@ class FindFamilyViewModel(
                 pqcPublicKey = linkKey.publicBundleB64,
                 pqcSeed = linkKey.seedB64Url,
             )
-            repository.upsertTemporaryLink(newLink)
+            repository.temporaryLinkStore.upsert(newLink)
             withContext(Dispatchers.Main) { onDone(true) }
         }
     }

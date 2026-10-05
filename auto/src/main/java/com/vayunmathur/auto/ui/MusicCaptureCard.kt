@@ -39,12 +39,12 @@ fun MusicCaptureCard(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val messenger = rememberMessenger()
     var consented by remember { mutableStateOf(MusicCapturePrefs.isMusicCaptureConsented(context)) }
-    var granted by remember { mutableStateOf(MusicCaptureGrant.hasGrant(context)) }
+    var granted by remember { mutableStateOf(MusicCaptureGrant.hasGrant()) }
     val projectionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            MusicCaptureGrant.storeResult(context, result.resultCode, result.data!!)
+            MusicCaptureGrant.storeResult(result.resultCode, result.data!!)
             granted = true
             com.vayunmathur.auto.service.MusicCaptureService.startIfGranted(context)
         } else {

@@ -43,7 +43,7 @@ internal fun LauncherViewModel.predictedApps(): List<DrawerApp> {
 internal fun LauncherViewModel.countLaunch(key: ComponentKey) {
     val flattened = key.componentName.flattenToShortString()
     launchCounts[flattened] = (launchCounts[flattened] ?: 0) + 1
-    _drawer.value = _drawer.value.copy(predictions = predictedApps())
+    drawerState.value = drawerState.value.copy(predictions = predictedApps())
     viewModelScope.launch {
         ds.setString(
             KEY_LAUNCH_COUNTS,
@@ -72,10 +72,11 @@ internal fun LauncherViewModel.applyDrawerQuery(query: String) {
             .partition { it.label.startsWith(trimmed, ignoreCase = true) }
         prefix + contains
     }
-    _drawer.value = _drawer.value.copy(
+    drawerState.value = drawerState.value.copy(
         query = query,
         apps = matches,
         predictions = predictedApps(),
         loading = false,
     )
 }
+

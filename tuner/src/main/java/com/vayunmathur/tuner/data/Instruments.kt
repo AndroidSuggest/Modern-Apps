@@ -41,8 +41,19 @@ data class AnalysisRange(val minHz: Double, val maxHz: Double) {
     /** The same span as MIDI numbers, rounded inwards so the bounds stay sounding. */
     val midiRange: IntRange
         get() = ceil(hzToMidi(minHz)).toInt()..floor(hzToMidi(maxHz)).toInt()
+    private fun hzToMidi(hz: Double): Double =
+        MIDI_A4 + SEMITONES_PER_OCTAVE * log2(hz / A4_HZ)
 
-    private fun hzToMidi(hz: Double): Double = 69.0 + 12.0 * log2(hz / 440.0)
+    private companion object {
+        /** MIDI number of concert A (A4). */
+        const val MIDI_A4 = 69.0
+
+        /** Semitones per octave. */
+        const val SEMITONES_PER_OCTAVE = 12.0
+
+        /** Concert pitch in Hz. */
+        const val A4_HZ = 440.0
+    }
 }
 
 /**

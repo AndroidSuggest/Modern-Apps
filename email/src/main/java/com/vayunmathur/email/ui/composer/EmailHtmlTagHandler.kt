@@ -37,70 +37,75 @@ class EmailHtmlTagHandler : Html.TagHandler {
     private val markers = mutableListOf<SpanMarker>()
 
     override fun handleTag(opening: Boolean, tag: String, output: Editable, xmlReader: XMLReader) {
-        val t = tag.lowercase()
-        if (opening) {
-            when (t) {
-                "h1" -> markers.add(SpanMarker(output.length, "h1"))
-                "h2" -> markers.add(SpanMarker(output.length, "h2"))
-                "h3" -> markers.add(SpanMarker(output.length, "h3"))
-                "blockquote" -> markers.add(SpanMarker(output.length, "blockquote"))
-                "code" -> markers.add(SpanMarker(output.length, "code"))
-                "hr" -> {
-                    // Insert object replacement and tag it – matches serializer contract
-                    val pos = output.length
-                    output.append("\uFFFC")
-                    // Ensure next char newline already present via surrounding html parsing? Add explicit span here.
-                    output.setSpan(HrSpan(), pos, pos + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
-                "span", "div" -> {
-                    // Defer – we need attributes. XMLReader does not expose them easily,
-                    // but we record start; closing tag will inspect substring? Instead we rely on
-                    // a simpler heuristic: the raw attrs are available via reflection on the parser
-                    // stack in some implementations. We approximate by reading style from the TagHandler
-                    // argument – HtmlCompat does NOT give attrs, so we try to get them from the underlying
-                    // parser's attribute list via xmlReader.
-                    val style = extractStyle(xmlReader)
-                    if (style != null) {
-                        markers.add(SpanMarker(output.length, t, style))
-                    }
-                }
+        if (opening) handleOpenTag(tag.lowercase(), output, xmlReader) else handleCloseTag(tag.lowercase(), output)
+    }
+
+    private fun handleOpenTag(t: String, output: Editable, xmlReader: XMLReader) {
+        when (t) {
+            "h1", "h2", "h3", "blockquote", "code" -> markers.add(SpanMarker(output.length, t))
+            "hr" -> insertHrSpan(output)
+            "span", "div" -> recordStyleMarker(t, output, xmlReader)
+        }
+    }
+
+    private fun insertHrSpan(output: Editable) {
+        // Insert object replacement and tag it – matches serializer contract
+        val pos = output.length
+        output.append("\uFFFC")
+        // Ensure next char newline already present via surrounding html parsing? Add explicit span here.
+        output.setSpan(HrSpan(), pos, pos + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+
+    private fun recordStyleMarker(t: String, output: Editable, xmlReader: XMLReader) {
+        // Defer – we need attributes. XMLReader does not expose them easily,
+        // but we record start; closing tag will inspect substring? Instead we rely on
+        // a simpler heuristic: the raw attrs are available via reflection on the parser
+        // stack in some implementations. We approximate by reading style from the TagHandler
+        // argument – HtmlCompat does NOT give attrs, so we try to get them from the underlying
+        // parser's attribute list via xmlReader.
+        val style = extractStyle(xmlReader)
+        if (style != null) {
+            markers.add(SpanMarker(output.length, t, style))
+        }
+    }
+
+    private fun handleCloseTag(t: String, output: Editable) {
+        when (t) {
+            "h1", "h2", "h3" -> applyHeadingClose(t, output)
+            "blockquote" -> applySimpleClose("blockquote", output) { start, end ->
+                output.setSpan(EmailBlockQuoteSpan(), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
             }
-        } else {
-            when (t) {
-                "h1", "h2", "h3" -> {
-                    val start = popMarker(t) ?: return
-                    val end = output.length
-                    if (start >= end) return
-                    val level = when (t) { "h1" -> 1; "h2" -> 2; else -> 3 }
-                    output.setSpan(HeadingSpan(level), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
-                "blockquote" -> {
-                    val start = popMarker("blockquote") ?: return
-                    val end = output.length
-                    if (start >= end) return
-                    output.setSpan(EmailBlockQuoteSpan(), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                }
-                "code" -> {
-                    val start = popMarker("code") ?: return
-                    val end = output.length
-                    if (start >= end) return
-                    output.setSpan(InlineCodeSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
-                "span" -> {
-                    val marker = popMarkerWithExtra("span") ?: return
-                    val end = output.length
-                    if (marker.start >= end) return
+            "code" -> applySimpleClose("code", output) { start, end ->
+                output.setSpan(InlineCodeSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            "span" -> {
+                val marker = popMarkerWithExtra("span")
+                val end = output.length
+                if (marker != null && marker.start < end) {
                     applySpanStyles(output, marker.start, end, marker.extra)
                 }
-                "div" -> {
-                    val marker = popMarkerWithExtra("div")
-                    val end = output.length
-                    if (marker == null) return
-                    if (marker.start >= end) return
+            }
+            "div" -> {
+                val marker = popMarkerWithExtra("div")
+                val end = output.length
+                if (marker != null && marker.start < end) {
                     applyDivStyles(output, marker.start, end, marker.extra)
                 }
             }
         }
+    }
+
+    private fun applyHeadingClose(t: String, output: Editable) {
+        applySimpleClose(t, output) { start, end ->
+            val level = when (t) { "h1" -> 1; "h2" -> 2; else -> 3 }
+            output.setSpan(HeadingSpan(level), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+
+    private fun applySimpleClose(kind: String, output: Editable, apply: (Int, Int) -> Unit) {
+        val start = popMarker(kind) ?: return
+        val end = output.length
+        if (start < end) apply(start, end)
     }
 
     private fun popMarker(kind: String): Int? {

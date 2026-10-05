@@ -126,99 +126,127 @@ data class Event(
                 CalendarContract.Events.RRULE,
                 CalendarContract.Events.DURATION,
                 CalendarContract.Events.EXDATE,
-                CalendarContract.Events.RDATE
+                CalendarContract.Events.RDATE,
             )
             try {
                 val cursor = context.contentResolver.query(uri, projection, null, null, null)
-                cursor?.use {
-                    // Resolve column indices once, not per row.
-                    val idIdx = it.getColumnIndexOrThrow(CalendarContract.Events._ID)
-                    val calIdx = it.getColumnIndexOrThrow(CalendarContract.Events.CALENDAR_ID)
-                    val titleIdx = it.getColumnIndexOrThrow(CalendarContract.Events.TITLE)
-                    val descIdx = it.getColumnIndexOrThrow(CalendarContract.Events.DESCRIPTION)
-                    val locIdx = it.getColumnIndexOrThrow(CalendarContract.Events.EVENT_LOCATION)
-                    val colorIdx = it.getColumnIndexOrThrow(CalendarContract.Events.EVENT_COLOR)
-                    val startIdx = it.getColumnIndexOrThrow(CalendarContract.Events.DTSTART)
-                    val endIdx = it.getColumnIndexOrThrow(CalendarContract.Events.DTEND)
-                    val allDayIdx = it.getColumnIndexOrThrow(CalendarContract.Events.ALL_DAY)
-                    val tzIdx = it.getColumnIndexOrThrow(CalendarContract.Events.EVENT_TIMEZONE)
-                    val deletedIdx = it.getColumnIndexOrThrow(CalendarContract.Events.DELETED)
-                    val rruleIdx = it.getColumnIndexOrThrow(CalendarContract.Events.RRULE)
-                    val durationIdx = it.getColumnIndexOrThrow(CalendarContract.Events.DURATION)
-                    val exdateIdx = it.getColumnIndexOrThrow(CalendarContract.Events.EXDATE)
-                    val rdateIdx = it.getColumnIndexOrThrow(CalendarContract.Events.RDATE)
-
-                    while (it.moveToNext()) {
-                        try {
-                            val id = it.getLong(idIdx)
-                            val calendarID = it.getLong(calIdx)
-                            val title = it.getString(titleIdx)
-                            val description = it.getStringOrNull(descIdx) ?: ""
-                            val location = it.getStringOrNull(locIdx) ?: ""
-                            val color = it.getIntOrNull(colorIdx)
-                            val start = it.getLong(startIdx)
-                            var end = it.getLong(endIdx)
-                            val allDay = it.getInt(allDayIdx) == 1
-                            val tz = runCatching {
-                                TimeZone.of(it.getStringOrNull(tzIdx) ?: TimeZone.currentSystemDefault().id)
-                            }.getOrDefault(TimeZone.currentSystemDefault())
-                            val timezone = tz.id
-                            val deleted = it.getInt(deletedIdx) == 1
-                            val rrule = it.getStringOrNull(rruleIdx) ?: ""
-                            val duration = it.getStringOrNull(durationIdx)
-                            val exdateStr = it.getStringOrNull(exdateIdx)
-                            val rdateStr = it.getStringOrNull(rdateIdx)
-
-
-                            val durationMillis = duration?.let { duration -> try {Duration.parse(duration).inWholeMilliseconds } catch(_: Exception) {0} }
-
-                            if(end == 0L && durationMillis != null) {
-                                end = start + durationMillis
-                            }
-
-                            // EXDATE/RDATE are comma-separated RFC 5545 dates, either YYYYMMDD or a
-                            // datetime. A datetime is resolved in the event's own zone, because a
-                            // late-evening occurrence written as UTC lands on the next UTC day and
-                            // taking the date off the raw string would move it.
-                            val exdate = exdateStr?.split(",")?.mapNotNull {
-                                parseIcalOccurrenceDate(it.trim(), tz)
-                            } ?: emptyList()
-
-                            // Another client may prefix the value with "TZID=...:" or "VALUE=DATE:".
-                            val rdate = rdateStr?.split(",")?.mapNotNull {
-                                parseIcalOccurrenceDate(it.trim().substringAfterLast(':'), tz)
-                            } ?: emptyList()
-
-                            if (deleted) continue
-
-                            if (title == null) continue
-                            val event = Event(
-                                id,
-                                calendarID,
-                                title,
-                                description,
-                                location,
-                                color,
-                                start,
-                                end,
-                                timezone,
-                                allDay,
-                                RRule.parse(rrule, tz),
-                                exdate,
-                                rdate,
-                                remindersByEvent[id]?.sorted() ?: emptyList(),
-                            )
-                            events.add(event)
-                        } catch (e: Exception) {
-                            Log.e("Event", "Error constructing event from cursor", e)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("Event", "Error querying events", e)
+                cursor?.use { drainEvents(it, remindersByEvent, events) }
+            } catch (expected: Exception) {
+                Log.e("Event", "Error querying events", expected)
             }
 
             return events
+        }
+
+        /** Drains one query cursor into [events], skipping rows that fail to parse. */
+        private fun drainEvents(
+            cursor: android.database.Cursor,
+            remindersByEvent: Map<Long, List<Int>>,
+            events: MutableList<Event>,
+        ) {
+            val cols = EventRowColumns(cursor)
+            while (cursor.moveToNext()) {
+                try {
+                    readEventRow(cursor, cols, remindersByEvent)?.let { event ->
+                        events.add(event)
+                    }
+                } catch (expected: Exception) {
+                    Log.e("Event", "Error constructing event from cursor", expected)
+                }
+            }
+        }
+
+        /** Column indices for one [getAllEvents] query, resolved once per cursor. */
+        private class EventRowColumns(c: android.database.Cursor) {
+            val id = c.getColumnIndexOrThrow(CalendarContract.Events._ID)
+            val cal = c.getColumnIndexOrThrow(CalendarContract.Events.CALENDAR_ID)
+            val title = c.getColumnIndexOrThrow(CalendarContract.Events.TITLE)
+            val desc = c.getColumnIndexOrThrow(CalendarContract.Events.DESCRIPTION)
+            val loc = c.getColumnIndexOrThrow(CalendarContract.Events.EVENT_LOCATION)
+            val color = c.getColumnIndexOrThrow(CalendarContract.Events.EVENT_COLOR)
+            val start = c.getColumnIndexOrThrow(CalendarContract.Events.DTSTART)
+            val end = c.getColumnIndexOrThrow(CalendarContract.Events.DTEND)
+            val allDay = c.getColumnIndexOrThrow(CalendarContract.Events.ALL_DAY)
+            val tz = c.getColumnIndexOrThrow(CalendarContract.Events.EVENT_TIMEZONE)
+            val deleted = c.getColumnIndexOrThrow(CalendarContract.Events.DELETED)
+            val rrule = c.getColumnIndexOrThrow(CalendarContract.Events.RRULE)
+            val duration = c.getColumnIndexOrThrow(CalendarContract.Events.DURATION)
+            val exdate = c.getColumnIndexOrThrow(CalendarContract.Events.EXDATE)
+            val rdate = c.getColumnIndexOrThrow(CalendarContract.Events.RDATE)
+        }
+
+        /** Reads one event row, or null when the row is deleted or untitled. */
+        private fun readEventRow(
+            c: android.database.Cursor,
+            cols: EventRowColumns,
+            remindersByEvent: Map<Long, List<Int>>,
+        ): Event? {
+            if (c.getInt(cols.deleted) == 1) return null
+            val title = c.getString(cols.title) ?: return null
+            val id = c.getLong(cols.id)
+            val calendarID = c.getLong(cols.cal)
+            val description = c.getStringOrNull(cols.desc) ?: ""
+            val location = c.getStringOrNull(cols.loc) ?: ""
+            val color = c.getIntOrNull(cols.color)
+            val start = c.getLong(cols.start)
+            val allDay = c.getInt(cols.allDay) == 1
+            val tz = runCatching {
+                TimeZone.of(c.getStringOrNull(cols.tz) ?: TimeZone.currentSystemDefault().id)
+            }.getOrDefault(TimeZone.currentSystemDefault())
+            val end = resolveEndMillis(c, cols, start)
+            return Event(
+                id,
+                calendarID,
+                title,
+                description,
+                location,
+                color,
+                start,
+                end,
+                tz.id,
+                allDay,
+                RRule.parse(c.getStringOrNull(cols.rrule) ?: "", tz),
+                parseExdates(c.getStringOrNull(cols.exdate), tz),
+                parseRdates(c.getStringOrNull(cols.rdate), tz),
+                remindersByEvent[id]?.sorted() ?: emptyList(),
+            )
+        }
+
+        /** End millis, falling back to start + DURATION when the provider left DTEND at 0. */
+        private fun resolveEndMillis(
+            c: android.database.Cursor,
+            cols: EventRowColumns,
+            start: Long,
+        ): Long {
+            val end = c.getLong(cols.end)
+            if (end != 0L) return end
+            val durationMillis = c.getStringOrNull(cols.duration)?.let { raw ->
+                try {
+                    Duration.parse(raw).inWholeMilliseconds
+                } catch (_: Exception) {
+                    0L
+                }
+            } ?: return end
+            return start + durationMillis
+        }
+
+        /**
+         * EXDATE values are comma-separated RFC 5545 dates, either YYYYMMDD or a
+         * datetime. A datetime is resolved in the event's own zone, because a
+         * late-evening occurrence written as UTC lands on the next UTC day and
+         * taking the date off the raw string would move it.
+         */
+        private fun parseExdates(exdateStr: String?, tz: TimeZone): List<LocalDate> {
+            return exdateStr?.split(",")?.mapNotNull {
+                parseIcalOccurrenceDate(it.trim(), tz)
+            } ?: emptyList()
+        }
+
+        /** RDATE values, tolerating another client's "TZID=...:"/"VALUE=DATE:" prefix. */
+        private fun parseRdates(rdateStr: String?, tz: TimeZone): List<LocalDate> {
+            return rdateStr?.split(",")?.mapNotNull {
+                parseIcalOccurrenceDate(it.trim().substringAfterLast(':'), tz)
+            } ?: emptyList()
         }
 
         /**

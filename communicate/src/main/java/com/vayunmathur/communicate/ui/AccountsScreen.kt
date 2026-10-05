@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceClient
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceSession
+import com.vayunmathur.communicate.data.rcs.RcsRegistrationState
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.DetailScaffold
@@ -165,7 +166,7 @@ fun AccountsScreen(
         // RCS single-registration line (dev-only; hidden in the release variant).
         if (com.vayunmathur.communicate.data.rcs.RcsFeature.enabled) {
             val rcsState by com.vayunmathur.communicate.data.rcs.RcsSipTransport.state.collectAsState(
-                initial = com.vayunmathur.communicate.data.rcs.RcsRegistrationState.Unknown,
+                initial = RcsRegistrationState.Unknown,
             )
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(bottom = 8.dp)) {
@@ -175,11 +176,15 @@ fun AccountsScreen(
                         supportingContent = {
                             Text(
                                 when (val s = rcsState) {
-                                    is com.vayunmathur.communicate.data.rcs.RcsRegistrationState.Available -> "Available"
-                                    is com.vayunmathur.communicate.data.rcs.RcsRegistrationState.Provisioning -> "Checking…"
-                                    is com.vayunmathur.communicate.data.rcs.RcsRegistrationState.Disabled -> "Disabled"
-                                    is com.vayunmathur.communicate.data.rcs.RcsRegistrationState.Unknown -> "Not checked"
-                                    is com.vayunmathur.communicate.data.rcs.RcsRegistrationState.Unavailable -> "Unavailable: ${s.reason}"
+                                    is RcsRegistrationState.Available ->
+                                        "Available"
+                                    is RcsRegistrationState.Provisioning ->
+                                        "Checking…"
+                                    is RcsRegistrationState.Disabled -> "Disabled"
+                                    is RcsRegistrationState.Unknown ->
+                                        "Not checked"
+                                    is RcsRegistrationState.Unavailable ->
+                                        "Unavailable: ${s.reason}"
                                 },
                             )
                         },

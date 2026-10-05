@@ -30,7 +30,10 @@ import com.vayunmathur.email.data.Attachment
     exportSchema = false,
 )
 abstract class EmailDatabase : RoomDatabase() {
-    abstract fun emailDao(): EmailDao
+    abstract fun accountDao(): EmailAccountDao
+    abstract fun messageDao(): EmailMessageDao
+    abstract fun queryDao(): EmailQueryDao
+    abstract fun outboxDao(): EmailOutboxDao
 
     companion object : DatabaseMigrations {
         @Volatile
@@ -128,7 +131,10 @@ abstract class EmailDatabase : RoomDatabase() {
                 it.execSQL("UPDATE OR REPLACE $table SET $column = ${canonical(column)} WHERE ${isUnderInbox(column)}")
             }
             it.execSQL("UPDATE EmailFolder SET parentFullName = 'INBOX' WHERE ${isInbox("parentFullName")}")
-            it.execSQL("UPDATE EmailFolder SET parentFullName = ${canonical("parentFullName")} WHERE ${isUnderInbox("parentFullName")}")
+            it.execSQL(
+                "UPDATE EmailFolder SET parentFullName = " +
+                    "${canonical("parentFullName")} WHERE ${isUnderInbox("parentFullName")}",
+            )
         }
 
         private val MIGRATION_5_6 = Migration(5, 6) {

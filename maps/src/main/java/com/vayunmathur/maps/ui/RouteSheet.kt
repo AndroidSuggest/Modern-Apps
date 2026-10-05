@@ -238,13 +238,13 @@ fun RouteSheet(
                                 ListItem({ Text(stringResource(R.string.leave_at, time)) })
                             }
                         }
-                        itemsIndexed(routeForMode.step) { idx, it ->
+                        itemsIndexed(routeForMode.step) { idx, step ->
                             Card(shape = verticalShape(leave.size + idx, total)) {
-                                val transit = it.transitDetails
+                                val transit = step.transitDetails
                                 ListItem({
-                                    Text(it.navInstruction.instructions)
+                                    Text(step.navInstruction.instructions)
                                 }, leadingContent = {
-                                    it.navInstruction.maneuver.iconContent()?.let { icon ->
+                                    step.navInstruction.maneuver.iconContent()?.let { icon ->
                                         icon(Modifier, LocalContentColor.current)
                                     }
                                 }, supportingContent = transit?.let { t ->

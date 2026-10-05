@@ -147,27 +147,43 @@ object VoicingGenerator {
         requiredBass: Int?,
     ): Boolean {
         val sounding = frets.indices.filter { frets[it] != MUTED_FRET }
-        if (sounding.size < required.size) return false
-
         val produced = sounding.map { pitchClassOf(instrument.strings[it].openMidi + frets[it]) }
-        if (!produced.containsAll(required)) return false
+        val outcome: Boolean = when {
+            sounding.size < required.size -> false
+            !produced.containsAll(required) -> false
+            !spanWithinLimit(frets) -> false
+            interiorMutes(frets, sounding) > MAX_INTERIOR_MUTES -> false
+            fingerCount(frets, barreFret(frets)) > MAX_FINGERS -> false
+            else -> bassSatisfied(instrument, frets, sounding, requiredBass)
+        }
+        return outcome
+    }
 
+    private fun spanWithinLimit(frets: IntArray): Boolean {
         val fretted = frets.filter { it > 0 }
-        if (fretted.isNotEmpty() && fretted.max() - fretted.min() >= MAX_SPAN) return false
+        return fretted.isEmpty() || fretted.max() - fretted.min() < MAX_SPAN
+    }
 
-        var interior = 0
-        val first = sounding.firstOrNull() ?: return false
+    private fun interiorMutes(frets: IntArray, sounding: List<Int>): Int {
+        val first = sounding.firstOrNull() ?: return Int.MAX_VALUE
         val last = sounding.last()
+        var interior = 0
         for (i in first..last) if (frets[i] == MUTED_FRET) interior++
-        if (interior > MAX_INTERIOR_MUTES) return false
+        return interior
+    }
 
-        if (fingerCount(frets, barreFret(frets)) > MAX_FINGERS) return false
-
+    private fun bassSatisfied(
+        instrument: Instrument,
+        frets: IntArray,
+        sounding: List<Int>,
+        requiredBass: Int?,
+    ): Boolean {
+        if (sounding.isEmpty()) return false
+        if (requiredBass == null) return true
         // Pitch order, not string order: on a re-entrant tuning the bass is not string zero.
         val lowest = sounding.minBy { instrument.strings[it].openMidi + frets[it] }
         val lowestPitchClass = pitchClassOf(instrument.strings[lowest].openMidi + frets[lowest])
-        val wanted = requiredBass ?: return true
-        return lowestPitchClass == wanted
+        return lowestPitchClass == requiredBass
     }
 
     /**
@@ -202,6 +218,26 @@ object VoicingGenerator {
         chord: ChordName,
         shapes: List<List<Int>>,
     ): List<Voicing> {
+        val ranked = rankShapes(instrument, chord, shapes)
+        val primary = ranked.firstOrNull() ?: return emptyList()
+
+        // Four strings and a short neck run out of genuinely distinct shapes sooner than six do.
+        val limit = if (instrument.strings.size >= 5) 4 else 3
+        val chosen = choosePositions(ranked, primary, limit)
+
+        return ranked.asSequence()
+            .filter { it.frets in chosen }
+            .distinctBy { it.frets }
+            .map { it.copy(isPrimary = it.frets == primary.frets) }
+            .sortedBy { it.position }
+            .toList()
+    }
+
+    private fun rankShapes(
+        instrument: Instrument,
+        chord: ChordName,
+        shapes: List<List<Int>>,
+    ): MutableList<Voicing> {
         val seen = HashSet<List<Int>>()
         val scored = ArrayList<Voicing>()
         for (shape in shapes) {
@@ -215,10 +251,14 @@ object VoicingGenerator {
             ranked.removeAll { it.frets == preferred.frets }
             ranked.add(0, preferred)
         }
-        val primary = ranked.firstOrNull() ?: return emptyList()
+        return ranked
+    }
 
-        // Four strings and a short neck run out of genuinely distinct shapes sooner than six do.
-        val limit = if (instrument.strings.size >= 5) 4 else 3
+    private fun choosePositions(
+        ranked: List<Voicing>,
+        primary: Voicing,
+        limit: Int,
+    ): LinkedHashSet<List<Int>> {
         val chosen = LinkedHashSet<List<Int>>()
         chosen += primary.frets
         for (bucket in BUCKETS) {
@@ -231,13 +271,7 @@ object VoicingGenerator {
             if (chosen.size >= limit) break
             chosen += candidate.frets
         }
-
-        return ranked.asSequence()
-            .filter { it.frets in chosen }
-            .distinctBy { it.frets }
-            .map { it.copy(isPrimary = it.frets == primary.frets) }
-            .sortedBy { it.position }
-            .toList()
+        return chosen
     }
 
     private fun describe(instrument: Instrument, chord: ChordName, shape: List<Int>): Voicing {

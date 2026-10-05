@@ -33,6 +33,9 @@ private const val CHANNEL_ID = "cast_tv_receiver"
 
 private const val NOTIF_ID = 4301
 
+/** `Build.VERSION_CODES.UPSIDE_DOWN_CAKE`: `startForeground` takes a service type from API 34. */
+private const val MIN_SERVICE_TYPE_SDK = 34
+
 /**
  * Keeps this TV listening while nothing is on screen.
  *
@@ -107,7 +110,7 @@ class ReceiverService : Service() {
     private fun enterForeground() {
         val notification = buildNotification(getString(R.string.tv_notification_text_idle))
         try {
-            if (Build.VERSION.SDK_INT >= 34) {
+            if (Build.VERSION.SDK_INT >= MIN_SERVICE_TYPE_SDK) {
                 startForeground(
                     NOTIF_ID,
                     notification,
@@ -117,9 +120,15 @@ class ReceiverService : Service() {
                 @Suppress("DEPRECATION")
                 startForeground(NOTIF_ID, notification)
             }
-        } catch (e: Exception) {
+        } catch (e: SecurityException) {
             // A background start the platform refuses. The receiver still works; it just will not
             // outlive the Activity.
+            Log.w(TAG, "could not enter the foreground", e)
+        } catch (e: IllegalStateException) {
+            // Foreground-service start not allowed from the background on newer platforms.
+            Log.w(TAG, "could not enter the foreground", e)
+        } catch (e: IllegalArgumentException) {
+            // Bad notification or service type on this device.
             Log.w(TAG, "could not enter the foreground", e)
         }
     }
@@ -155,9 +164,11 @@ class ReceiverService : Service() {
         fun start(context: Context) {
             try {
                 context.startForegroundService(Intent(context, ReceiverService::class.java))
-            } catch (_: Exception) {
+            } catch (_: IllegalStateException) {
                 // Refused because the app is in the background with no exemption. The Activity's own
                 // session still works; it just will not outlive it.
+            } catch (_: SecurityException) {
+                // Foreground-service start refused by the platform. Same fallback as above.
             }
         }
     }

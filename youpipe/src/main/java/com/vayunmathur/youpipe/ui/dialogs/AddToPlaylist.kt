@@ -67,18 +67,18 @@ fun AddToPlaylist(
         initiallyChecked = { it.id in membership },
         createLabel = stringResource(R.string.new_playlist),
         canCreate = { name -> name.isNotBlank() && allPlaylists.none { it.name == name.trim() } },
-        onCreate = { name -> youPipeViewModel.createPlaylistAndAddVideo(name.trim(), video) },
+        onCreate = { name -> youPipeViewModel.playlistOps.createPlaylistAndAddVideo(name.trim(), video) },
         onConfirm = { selected ->
             val selectedIds = selected.map { it.id }.toSet()
             playlists.forEach { playlist ->
                 val wasMember = playlist.id in membership
                 val nowMember = playlist.id in selectedIds
                 if (nowMember && !wasMember) {
-                    youPipeViewModel.addVideoToPlaylist(playlist.id, video)
+                    youPipeViewModel.playlistOps.addVideoToPlaylist(playlist.id, video)
                 } else if (!nowMember && wasMember) {
                     allItems.firstOrNull {
                         it.playlistId == playlist.id && it.videoItem.videoID == videoID
-                    }?.let { youPipeViewModel.removeFromPlaylist(it) }
+                    }?.let { youPipeViewModel.playlistOps.removeFromPlaylist(it) }
                 }
             }
             backStack.pop()

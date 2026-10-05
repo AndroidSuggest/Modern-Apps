@@ -92,7 +92,8 @@ internal fun AlchemistInventoryPanel(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            ('A'..'Z').filter { it in activeLetters }.forEach { letter ->
+            for (letter in 'A'..'Z') {
+                if (letter !in activeLetters) continue
                 Text(
                     text = letter.toString(),
                     fontSize = 11.sp,

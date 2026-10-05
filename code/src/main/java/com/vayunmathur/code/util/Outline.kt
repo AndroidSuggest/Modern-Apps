@@ -38,15 +38,20 @@ private data class OutlineRule(val regex: Regex, val kind: SymbolKind, val group
 private fun lineScan(text: String, rules: List<OutlineRule>): List<Symbol> {
     val out = ArrayList<Symbol>()
     text.lineSequence().forEachIndexed { index, line ->
-        for (rule in rules) {
-            val match = rule.regex.find(line) ?: continue
-            val name = match.groupValues.getOrNull(rule.group)?.takeIf { it.isNotEmpty() } ?: continue
-            out.add(Symbol(name, index + 1, rule.kind, indentDepthOf(line)))
-            break
+        matchRule(line, rules)?.let { (name, kind) ->
+            out.add(Symbol(name, index + 1, kind, indentDepthOf(line)))
         }
     }
     return out
 }
+
+private fun matchRule(line: String, rules: List<OutlineRule>): Pair<String, SymbolKind>? =
+    rules.firstNotNullOfOrNull { rule ->
+        val match = rule.regex.find(line) ?: return@firstNotNullOfOrNull null
+        val name = match.groupValues.getOrNull(rule.group)?.takeIf { it.isNotEmpty() }
+            ?: return@firstNotNullOfOrNull null
+        name to rule.kind
+    }
 
 /** Leading-whitespace nesting: one level per tab, or per two spaces. */
 private fun indentDepthOf(line: String): Int {
@@ -83,7 +88,11 @@ private fun yamlSymbols(text: String): List<Symbol> {
 }
 
 /** Captures object keys at nesting depth 1, tracking string/brace state so nested keys are skipped. */
-private fun jsonSymbols(text: String): List<Symbol> {
+private fun jsonSymbols(text: String): List<Symbol> = JsonKeyScanner(text).scan()
+
+private const val TOP_LEVEL_DEPTH = 1
+
+private class JsonKeyScanner(val text: String) {
     val out = ArrayList<Symbol>()
     var depth = 0
     var line = 1
@@ -92,48 +101,74 @@ private fun jsonSymbols(text: String): List<Symbol> {
     var stringStart = -1
     val n = text.length
     var i = 0
-    while (i < n) {
-        val c = text[i]
-        if (inString) {
-            when {
-                escaped -> escaped = false
-                c == '\\' -> escaped = true
-                c == '"' -> {
-                    inString = false
-                    if (depth == 1) {
-                        var j = i + 1
-                        while (j < n && text[j].isWhitespace()) j++
-                        if (j < n && text[j] == ':') {
-                            out.add(Symbol(text.substring(stringStart + 1, i), line, SymbolKind.KEY, 0))
-                        }
-                    }
-                }
-            }
-        } else {
-            when (c) {
-                '"' -> {
-                    inString = true
-                    stringStart = i
-                }
-                '{', '[' -> depth++
-                '}', ']' -> depth--
-                '\n' -> line++
-            }
+
+    fun scan(): List<Symbol> {
+        while (i < n) {
+            if (inString) consumeStringChar() else consumeStructural()
+            i++
         }
-        i++
+        return out
     }
-    return out
+
+    private fun consumeStringChar() {
+        val c = text[i]
+        if (escaped) {
+            escaped = false
+            return
+        }
+        if (c == '\\') {
+            escaped = true
+            return
+        }
+        if (c != '"') return
+        inString = false
+        if (depth == TOP_LEVEL_DEPTH) emitKeyIfFollowedByColon()
+    }
+
+    private fun emitKeyIfFollowedByColon() {
+        var j = i + 1
+        while (j < n && text[j].isWhitespace()) j++
+        if (j >= n || text[j] != ':') return
+        out.add(Symbol(text.substring(stringStart + 1, i), line, SymbolKind.KEY, 0))
+    }
+
+    private fun consumeStructural() {
+        when (text[i]) {
+            '"' -> {
+                inString = true
+                stringStart = i
+            }
+            '{', '[' -> depth++
+            '}', ']' -> depth--
+            '\n' -> line++
+        }
+    }
 }
 
 private val KOTLIN_RULES = listOf(
-    OutlineRule(Regex("^\\s*(?:[\\w@]+\\s+)*?(?:class|interface|object)\\s+([A-Za-z_][A-Za-z0-9_]*)"), SymbolKind.CLASS),
-    OutlineRule(Regex("^\\s*(?:[\\w@]+\\s+)*?fun\\s+(?:<[^>]+>\\s*)?(?:[A-Za-z_][A-Za-z0-9_]*\\.)?([A-Za-z_][A-Za-z0-9_]*)"), SymbolKind.FUNCTION),
+    OutlineRule(
+        Regex("^\\s*(?:[\\w@]+\\s+)*?(?:class|interface|object)\\s+([A-Za-z_][A-Za-z0-9_]*)"),
+        SymbolKind.CLASS,
+    ),
+    OutlineRule(
+        Regex("^\\s*(?:[\\w@]+\\s+)*?fun\\s+(?:<[^>]+>\\s*)?(?:[A-Za-z_][A-Za-z0-9_]*\\.)?([A-Za-z_][A-Za-z0-9_]*)"),
+        SymbolKind.FUNCTION,
+    ),
     OutlineRule(Regex("^\\s*(?:[\\w@]+\\s+)*?(?:val|var)\\s+([A-Za-z_][A-Za-z0-9_]*)"), SymbolKind.PROPERTY),
 )
 
 private val JAVA_RULES = listOf(
-    OutlineRule(Regex("^\\s*(?:[\\w@]+\\s+)*?(?:class|interface|enum)\\s+([A-Za-z_][A-Za-z0-9_]*)"), SymbolKind.CLASS),
-    OutlineRule(Regex("^\\s*(?:public|private|protected|static|final|abstract|synchronized|native)\\s+(?:[\\w<>\\[\\].]+\\s+)+([A-Za-z_][A-Za-z0-9_]*)\\s*\\("), SymbolKind.FUNCTION),
+    OutlineRule(
+        Regex("^\\s*(?:[\\w@]+\\s+)*?(?:class|interface|enum)\\s+([A-Za-z_][A-Za-z0-9_]*)"),
+        SymbolKind.CLASS,
+    ),
+    OutlineRule(
+        Regex(
+            "^\\s*(?:public|private|protected|static|final|abstract|synchronized|native)\\s+" +
+                "(?:[\\w<>\\[\\].]+\\s+)+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(",
+        ),
+        SymbolKind.FUNCTION,
+    ),
 )
 
 private val JS_RULES = listOf(
@@ -158,13 +193,34 @@ private val GO_RULES = listOf(
 )
 
 private val SWIFT_RULES = listOf(
-    OutlineRule(Regex("^\\s*(?:public|private|internal|fileprivate|open|\\s)*(?:class|struct|enum|protocol|extension)\\s+([A-Za-z_][A-Za-z0-9_]*)"), SymbolKind.CLASS),
-    OutlineRule(Regex("^\\s*(?:public|private|internal|fileprivate|open|static|\\s)*func\\s+([A-Za-z_][A-Za-z0-9_]*)"), SymbolKind.FUNCTION),
+    OutlineRule(
+        Regex(
+            "^\\s*(?:public|private|internal|fileprivate|open|\\s)*" +
+                "(?:class|struct|enum|protocol|extension)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+        ),
+        SymbolKind.CLASS,
+    ),
+    OutlineRule(
+        Regex(
+            "^\\s*(?:public|private|internal|fileprivate|open|static|\\s)*func\\s+" +
+                "([A-Za-z_][A-Za-z0-9_]*)",
+        ),
+        SymbolKind.FUNCTION,
+    ),
 )
 
 private val C_RULES = listOf(
-    OutlineRule(Regex("^\\s*(?:class|struct)\\s+([A-Za-z_][A-Za-z0-9_]*)"), SymbolKind.CLASS),
-    OutlineRule(Regex("^[A-Za-z_][\\w<>:*&\\s]*?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^;{]*\\)\\s*\\{?\\s*$"), SymbolKind.FUNCTION),
+    OutlineRule(
+        Regex("^\\s*(?:class|struct)\\s+([A-Za-z_][A-Za-z0-9_]*)")),
+        SymbolKind.CLASS,
+    ),
+    OutlineRule(
+        Regex(
+            "^[A-Za-z_][\\w<>:*&\\s]*?\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^;{]*\\)" +
+                "\\s*\\{?\\s*$",
+        ),
+        SymbolKind.FUNCTION,
+    ),
 )
 
 private fun rulesFor(language: Language): List<OutlineRule> = when (language) {

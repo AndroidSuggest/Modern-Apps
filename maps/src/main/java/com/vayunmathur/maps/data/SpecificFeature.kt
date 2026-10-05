@@ -27,15 +27,25 @@ sealed interface SpecificFeature {
      * names, stamped at build time (see `region_links`). `0` means unlinked — mask nothing.
      */
     @Serializable
-    data class Admin0Label(@SerialName("iso3166_1") val iso: String? = null, val wikipedia: String? = null, val name: String,
-                           @Serializable(with = GeoPointAsCoordinates::class) val position: GeoPoint? = null, val regionId: Long = 0L) : SpecificFeature
+    data class Admin0Label(
+        @SerialName("iso3166_1") val iso: String? = null,
+        val wikipedia: String? = null,
+        val name: String,
+        @Serializable(with = GeoPointAsCoordinates::class) val position: GeoPoint? = null,
+        val regionId: Long = 0L,
+    ) : SpecificFeature
     /**
      * A state or region. [iso] and [wikipedia] are optional for the same reason as [Admin0Label].
      * [regionId] is the baked link, as in [Admin0Label].
      */
     @Serializable
-    data class Admin1Label(@SerialName("iso3166_2") val iso: String? = null, val wikipedia: String? = null, val name: String,
-                           @Serializable(with = GeoPointAsCoordinates::class) val position: GeoPoint? = null, val regionId: Long = 0L) : SpecificFeature
+    data class Admin1Label(
+        @SerialName("iso3166_2") val iso: String? = null,
+        val wikipedia: String? = null,
+        val name: String,
+        @Serializable(with = GeoPointAsCoordinates::class) val position: GeoPoint? = null,
+        val regionId: Long = 0L,
+    ) : SpecificFeature
     /**
      * A city / town. Unlike the country and region labels there is no ISO code to
      * key on — the baked `admin_city` layer carries only `name` / `name_en` — so
@@ -45,16 +55,32 @@ sealed interface SpecificFeature {
      * [regionId] is the baked link, as in [Admin0Label].
      */
     @Serializable
-    data class Admin2Label(val wikipedia: String? = null, val name: String,
-                           @Serializable(with = GeoPointAsCoordinates::class) val position: GeoPoint? = null, val regionId: Long = 0L) : SpecificFeature
+    data class Admin2Label(
+        val wikipedia: String? = null,
+        val name: String,
+        @Serializable(with = GeoPointAsCoordinates::class) val position: GeoPoint? = null,
+        val regionId: Long = 0L,
+    ) : SpecificFeature
     @Serializable
-    data class Restaurant(override val name: String, val phone: String?, val website: String?, val menu: String?, val openingHours: OpeningHours?,
-                          @Serializable(with = GeoPointAsCoordinates::class) override val position: GeoPoint): RoutableFeature
+    data class Restaurant(
+        override val name: String,
+        val phone: String?,
+        val website: String?,
+        val menu: String?,
+        val openingHours: OpeningHours?,
+        @Serializable(with = GeoPointAsCoordinates::class) override val position: GeoPoint,
+    ) : RoutableFeature
     @Serializable
-    data class GenericPlace(override val name: String, val phone: String?, val website: String?, val openingHours: OpeningHours?,
-                          @Serializable(with = GeoPointAsCoordinates::class) override val position: GeoPoint, val poiType: Int? = null,
-                          /** Street address from the OSM `addr:*` tags, when we have them. */
-                          val address: String? = null): RoutableFeature
+    data class GenericPlace(
+        override val name: String,
+        val phone: String?,
+        val website: String?,
+        val openingHours: OpeningHours?,
+        @Serializable(with = GeoPointAsCoordinates::class) override val position: GeoPoint,
+        val poiType: Int? = null,
+        /** Street address from the OSM `addr:*` tags, when we have them. */
+        val address: String? = null,
+    ) : RoutableFeature
     @Serializable
     data class Route(val waypoints: List<RoutableFeature?>) : SpecificFeature
 }
@@ -81,7 +107,7 @@ suspend fun osmPlace(
     position: GeoPoint,
     poiType: Int? = null,
 ): SpecificFeature.GenericPlace {
-    val attrs = withContext(Dispatchers.IO) {
+    val attrs: PoiIndex.PoiAttributes? = withContext(Dispatchers.IO) {
         PoiIndex.attributesNear(position.latitude, position.longitude, name)
     }
     return SpecificFeature.GenericPlace(
@@ -148,8 +174,12 @@ suspend fun parse(feature: Feature1): SpecificFeature? {
         )
         // No ISO lookup: a city has no ISO 3166 code, so the Wikidata round trip is only for the
         // article URL.
-        "locality" ->
-            SpecificFeature.Admin2Label(wikipedia = wiki?.getWikipedia(), name = name, position = at, regionId = regionId)
+        "locality" -> SpecificFeature.Admin2Label(
+            wikipedia = wiki?.getWikipedia(),
+            name = name,
+            position = at,
+            regionId = regionId,
+        )
         else -> null
     }
 }

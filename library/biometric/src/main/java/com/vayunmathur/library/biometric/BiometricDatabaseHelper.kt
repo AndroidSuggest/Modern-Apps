@@ -96,7 +96,7 @@ fun unlockDatabaseWithBiometrics(
     if (!helper.isKeyGenerated()) {
         try {
             helper.generateKey()
-        } catch (e: Exception) {
+        } catch (expected: IllegalStateException) {
             onFailure(biometricUnavailableMessage(status))
             return
         }

@@ -101,7 +101,10 @@ class NavGuidanceMonitor(
             val active = object : LocationListener {
                 override fun onLocationChanged(location: Location) = publish(location)
 
-                @Deprecated("Required by old LocationListener interface; status callbacks are no longer delivered on API 29+.")
+                @Deprecated(
+                    "Required by the old LocationListener interface; " +
+                        "status callbacks are no longer delivered on API 29+.",
+                )
                 override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
             }
             listener = active

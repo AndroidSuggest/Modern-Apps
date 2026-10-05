@@ -25,7 +25,7 @@ import com.vayunmathur.education.R
 
 /** K-2 reward: celebratory stars and praise, no numbers or percentages. */
 @Composable
-fun K2RewardPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, stars: Int) {
+fun K2RewardPage(backStack: NavBackStack<Route>, stars: Int) {
     val narrator = LocalNarrator.current
     LaunchedEffect(Unit) { narrator?.speak("You did it! Great job!") }
 

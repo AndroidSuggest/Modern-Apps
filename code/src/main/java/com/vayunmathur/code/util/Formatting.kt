@@ -10,38 +10,77 @@ package com.vayunmathur.code.util
 fun formatJson(json: String, indentUnit: String = "  "): String? {
     val s = json.trim()
     if (s.isEmpty()) return null
+    val printer = JsonPrinter(indentUnit)
+    if (!printer.print(s)) return null
+    return printer.result()
+}
+
+private class JsonPrinter(val indentUnit: String) {
     val sb = StringBuilder()
     var depth = 0
     var inString = false
     var escaped = false
+    var valid = true
+
+    fun print(s: String): Boolean {
+        for (c in s) {
+            if (inString) {
+                consumeStringChar(c)
+                continue
+            }
+            consumeStructural(c)
+            if (!valid) return false
+        }
+        return valid && !inString && depth == 0
+    }
+
+    fun result(): String = sb.toString()
 
     fun newline() {
         sb.append('\n')
         repeat(depth) { sb.append(indentUnit) }
     }
 
-    for (c in s) {
-        if (inString) {
-            sb.append(c)
-            when {
-                escaped -> escaped = false
-                c == '\\' -> escaped = true
-                c == '"' -> inString = false
-            }
-            continue
+    private fun consumeStringChar(c: Char) {
+        sb.append(c)
+        if (escaped) {
+            escaped = false
+        } else if (c == '\\') {
+            escaped = true
+        } else if (c == '"') {
+            inString = false
         }
+    }
+
+    private fun consumeStructural(c: Char) {
         when (c) {
-            '"' -> { inString = true; sb.append(c) }
-            '{', '[' -> { sb.append(c); depth++; newline() }
-            '}', ']' -> { depth--; if (depth < 0) return null; newline(); sb.append(c) }
-            ',' -> { sb.append(c); newline() }
+            '"' -> {
+                inString = true
+                sb.append(c)
+            }
+            '{', '[' -> {
+                sb.append(c)
+                depth++
+                newline()
+            }
+            '}', ']' -> {
+                depth--
+                if (depth < 0) {
+                    valid = false
+                    return
+                }
+                newline()
+                sb.append(c)
+            }
+            ',' -> {
+                sb.append(c)
+                newline()
+            }
             ':' -> sb.append(": ")
-            ' ', '\t', '\n', '\r' -> {} // collapse insignificant whitespace
+            ' ', '\t', '\n', '\r' -> Unit // collapse insignificant whitespace
             else -> sb.append(c)
         }
     }
-    if (inString || depth != 0) return null
-    return sb.toString()
 }
 
 private val XML_TAG = Regex("<[^>]+>")

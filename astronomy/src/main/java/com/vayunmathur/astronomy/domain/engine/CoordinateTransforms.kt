@@ -1,7 +1,13 @@
 package com.vayunmathur.astronomy.domain.engine
 
 import com.vayunmathur.astronomy.domain.AstronomyNative
-import kotlin.math.*
+import kotlin.math.abs
+import kotlin.math.acos
+import kotlin.math.asin
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.tan
 
 data class RaDec(val raRad: Double, val decRad: Double) {
     val raDeg get() = raRad.toDeg()
@@ -32,24 +38,36 @@ object CoordinateTransforms {
     }
 
     fun altAzToRaDec(altAz: AltAz, lstRad: Double, latRad: Double): RaDec {
-        val sinDec = sin(altAz.altRad) * sin(latRad) + cos(altAz.altRad) * cos(latRad) * cos(altAz.azRad)
+        val sinDec = sin(altAz.altRad) * sin(latRad) +
+            cos(altAz.altRad) * cos(latRad) * cos(altAz.azRad)
         val dec = asin(sinDec.coerceIn(-1.0, 1.0))
-        val ha = atan2(-cos(altAz.altRad) * sin(altAz.azRad), cos(altAz.altRad) * cos(altAz.azRad) * sin(latRad) - sin(altAz.altRad) * cos(latRad))
+        val ha = atan2(
+            -cos(altAz.altRad) * sin(altAz.azRad),
+            cos(altAz.altRad) * cos(altAz.azRad) * sin(latRad) - sin(altAz.altRad) * cos(latRad),
+        )
         val ra = (lstRad - ha).normalize2Pi()
         return RaDec(ra, dec)
     }
 
     fun raDecToEcliptic(raDec: RaDec, obliquityRad: Double): Ecliptic {
-        val sinElat = sin(raDec.decRad) * cos(obliquityRad) - cos(raDec.decRad) * sin(obliquityRad) * sin(raDec.raRad)
+        val sinElat = sin(raDec.decRad) * cos(obliquityRad) -
+            cos(raDec.decRad) * sin(obliquityRad) * sin(raDec.raRad)
         val eLat = asin(sinElat.coerceIn(-1.0, 1.0))
-        val eLon = atan2(sin(raDec.raRad) * cos(obliquityRad) + tan(raDec.decRad) * sin(obliquityRad), cos(raDec.raRad)).normalize2Pi()
+        val eLon = atan2(
+            sin(raDec.raRad) * cos(obliquityRad) + tan(raDec.decRad) * sin(obliquityRad),
+            cos(raDec.raRad),
+        ).normalize2Pi()
         return Ecliptic(eLon, eLat)
     }
 
     fun eclipticToRaDec(ecliptic: Ecliptic, obliquityRad: Double): RaDec {
-        val sinDec = sin(ecliptic.latRad) * cos(obliquityRad) + cos(ecliptic.latRad) * sin(obliquityRad) * sin(ecliptic.lonRad)
+        val sinDec = sin(ecliptic.latRad) * cos(obliquityRad) +
+            cos(ecliptic.latRad) * sin(obliquityRad) * sin(ecliptic.lonRad)
         val dec = asin(sinDec.coerceIn(-1.0, 1.0))
-        val ra = atan2(sin(ecliptic.lonRad) * cos(obliquityRad) - tan(ecliptic.latRad) * sin(obliquityRad), cos(ecliptic.lonRad)).normalize2Pi()
+        val ra = atan2(
+            sin(ecliptic.lonRad) * cos(obliquityRad) - tan(ecliptic.latRad) * sin(obliquityRad),
+            cos(ecliptic.lonRad),
+        ).normalize2Pi()
         return RaDec(ra, dec)
     }
 

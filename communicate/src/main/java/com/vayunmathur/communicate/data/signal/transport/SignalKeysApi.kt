@@ -4,6 +4,7 @@ import android.util.Log
 import com.vayunmathur.communicate.data.signal.e2e.SignalE2E
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
@@ -64,7 +65,7 @@ object SignalKeysApi {
             headers = mapOf("Authorization" to "Basic $authHeader"),
             sslSocketFactory = sslSocketFactory,
         )
-        if (resp.status == 404) throw UnregisteredUserException(aci)
+        if (resp.status == HTTP_NOT_FOUND) throw UnregisteredUserException(aci)
         if (!resp.isSuccess) {
             Log.w(TAG, "prekey fetch for $aci failed: ${resp.status} ${resp.statusMessage}")
             return emptyList()
@@ -85,8 +86,8 @@ object SignalKeysApi {
     ): List<DeviceBundle> {
         val root = try {
             json.parseToJsonElement(body).jsonObject
-        } catch (e: Exception) {
-            warn("unparseable prekey response for $aci: ${e.message}")
+        } catch (expected: Exception) {
+            warn("unparseable prekey response for $aci: ${expected.message}")
             return emptyList()
         }
         val identityKey = decode(root.str("identityKey")) ?: run {
@@ -101,49 +102,59 @@ object SignalKeysApi {
 
         val result = ArrayList<DeviceBundle>(devices.size)
         for (element in devices) {
-            val device = try { element.jsonObject } catch (_: Exception) { continue }
-            val deviceId = device.int("deviceId") ?: continue
-            if (deviceId < 1) continue
-
-            val signed = device.obj("signedPreKey")
-            val signedPublic = decode(signed?.str("publicKey"))
-            val signedSignature = decode(signed?.str("signature"))
-            if (signed == null || signedPublic == null || signedSignature == null) {
-                warn("$aci device $deviceId has no signed pre-key, skipping")
-                continue
-            }
-
-            val pq = device.obj("pqPreKey")
-            val pqPublic = decode(pq?.str("publicKey"))
-            val pqSignature = decode(pq?.str("signature"))
-            if (pq == null || pqPublic == null || pqSignature == null) {
-                warn("$aci device $deviceId has no Kyber pre-key, skipping")
-                continue
-            }
-
-            // The one-time EC pre-key is the only optional part; the server runs out of them.
-            val oneTime = device.obj("preKey")
-            val oneTimePublic = decode(oneTime?.str("publicKey"))
-
-            result.add(
-                DeviceBundle(
-                    deviceId = deviceId,
-                    bundle = SignalE2E.ParsedPreKeyBundle(
-                        registrationId = device.int("registrationId") ?: 0,
-                        preKeyId = if (oneTimePublic != null) oneTime?.int("keyId") else null,
-                        preKeyPublic = oneTimePublic,
-                        signedPreKeyId = signed.int("keyId") ?: 0,
-                        signedPreKeyPublic = signedPublic,
-                        signedPreKeySignature = signedSignature,
-                        identityKey = identityKey,
-                        kyberPreKeyId = pq.int("keyId") ?: 0,
-                        kyberPreKeyPublic = pqPublic,
-                        kyberPreKeySignature = pqSignature,
-                    ),
-                ),
-            )
+            parseDeviceBundle(aci, element, identityKey)?.let { result.add(it) }
         }
         return result
+    }
+
+    /** One device's pre-key bundle, or null (warned) when unusable. */
+    private const val HTTP_NOT_FOUND = 404
+    private const val BASE64_SINGLE_PAD = 3
+
+    private fun parseDeviceBundle(aci: String, element: JsonElement, identityKey: ByteArray): DeviceBundle? {
+        val device = try {
+            element.jsonObject
+        } catch (_: Exception) {
+            return null
+        }
+        val deviceId = device.int("deviceId") ?: return null
+        if (deviceId < 1) return null
+
+        val signed = device.obj("signedPreKey")
+        val signedPublic = decode(signed?.str("publicKey"))
+        val signedSignature = decode(signed?.str("signature"))
+        if (signed == null || signedPublic == null || signedSignature == null) {
+            warn("$aci device $deviceId has no signed pre-key, skipping")
+            return null
+        }
+
+        val pq = device.obj("pqPreKey")
+        val pqPublic = decode(pq?.str("publicKey"))
+        val pqSignature = decode(pq?.str("signature"))
+        if (pq == null || pqPublic == null || pqSignature == null) {
+            warn("$aci device $deviceId has no Kyber pre-key, skipping")
+            return null
+        }
+
+        // The one-time EC pre-key is the only optional part; the server runs out of them.
+        val oneTime = device.obj("preKey")
+        val oneTimePublic = decode(oneTime?.str("publicKey"))
+
+        return DeviceBundle(
+            deviceId = deviceId,
+            bundle = SignalE2E.ParsedPreKeyBundle(
+                registrationId = device.int("registrationId") ?: 0,
+                preKeyId = if (oneTimePublic != null) oneTime?.int("keyId") else null,
+                preKeyPublic = oneTimePublic,
+                signedPreKeyId = signed.int("keyId") ?: 0,
+                signedPreKeyPublic = signedPublic,
+                signedPreKeySignature = signedSignature,
+                identityKey = identityKey,
+                kyberPreKeyId = pq.int("keyId") ?: 0,
+                kyberPreKeyPublic = pqPublic,
+                kyberPreKeySignature = pqSignature,
+            ),
+        )
     }
 
     private fun JsonObject.str(key: String): String? =
@@ -208,15 +219,16 @@ object SignalKeysApi {
                 body = body,
                 sslSocketFactory = sslSocketFactory,
             )
-        } catch (t: Throwable) {
-            Log.w(TAG, "pre-key registration failed", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "pre-key registration failed", expected)
             return false
         }
         if (!resp.isSuccess) {
             Log.w(TAG, "pre-key registration rejected: ${resp.status} ${resp.statusMessage}")
             return false
         }
-        Log.i(TAG, "registered pre-keys: signed=${signedPreKey != null} kyber=${lastResortKyber != null} oneTime=${oneTimeEcPreKeys.size}")
+        Log.i(TAG, "registered pre-keys: signed=${signedPreKey != null}" +
+            "kyber=${lastResortKyber != null} oneTime=${oneTimeEcPreKeys.size}")
         return true
     }
 
@@ -229,7 +241,7 @@ object SignalKeysApi {
         if (value.isNullOrEmpty()) return null
         val padded = when (value.length % 4) {
             2 -> "$value=="
-            3 -> "$value="
+            BASE64_SINGLE_PAD -> "$value="
             0 -> value
             else -> return null
         }

@@ -82,17 +82,26 @@ class SabrNgSegmentDataSource(
         }
         val currentData = data
         if (currentData != null) {
-            if (pos >= currentData.size) {
-                return C.RESULT_END_OF_INPUT
-            }
-            val toCopy =
-                minOf(minOf(length.toLong(), (currentData.size - pos).toLong()), bytesRemaining)
-                    .toInt()
-            System.arraycopy(currentData, pos, target, offset, toCopy)
-            pos += toCopy
-            bytesRemaining -= toCopy
-            return toCopy
+            return copyFromData(currentData, target, offset, length)
         }
+        return readFromStream(target, offset, length)
+    }
+
+    private fun copyFromData(currentData: ByteArray, target: ByteArray, offset: Int, length: Int): Int {
+        if (pos >= currentData.size) {
+            return C.RESULT_END_OF_INPUT
+        }
+        val toCopy =
+            minOf(minOf(length.toLong(), (currentData.size - pos).toLong()), bytesRemaining)
+                .toInt()
+        System.arraycopy(currentData, pos, target, offset, toCopy)
+        pos += toCopy
+        bytesRemaining -= toCopy
+        return toCopy
+    }
+
+    @Throws(IOException::class)
+    private fun readFromStream(target: ByteArray, offset: Int, length: Int): Int {
         val stream = dataStream ?: return C.RESULT_END_OF_INPUT
         val toRead = minOf(length.toLong(), bytesRemaining).toInt()
         val read = stream.read(target, offset, toRead)
@@ -128,11 +137,12 @@ class SabrNgSegmentDataSource(
         try {
             closeStream()
         } catch (e: IOException) {
-            // best-effort close
+            android.util.Log.w(TAG, "Failed to close segment stream", e)
         }
     }
 
     private companion object {
+        private const val TAG = "SabrNgSegmentDataSource"
         @Throws(IOException::class)
         private fun skipFully(input: InputStream, requested: Long): Long {
             var remaining = requested
@@ -141,13 +151,13 @@ class SabrNgSegmentDataSource(
                 val skipped = input.skip(remaining)
                 if (skipped > 0) {
                     remaining -= skipped
-                    continue
+                } else {
+                    val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                    if (read < 0) {
+                        break
+                    }
+                    remaining -= read
                 }
-                val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                if (read < 0) {
-                    break
-                }
-                remaining -= read
             }
             return requested - remaining
         }

@@ -17,6 +17,7 @@ import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.CommunicateCallLogEntry
 import com.vayunmathur.communicate.data.call.InAppCallPhase
 import com.vayunmathur.communicate.data.call.InAppCallRegistry
+import com.vayunmathur.communicate.data.call.isLiveCall
 import com.vayunmathur.communicate.data.loadCallLogsMerged
 import com.vayunmathur.communicate.data.placeCallForLine
 import kotlinx.coroutines.Dispatchers
@@ -54,11 +55,7 @@ class CommunicateCarCallScreen(
 
     override fun onGetTemplate(): Template {
         val live = InAppCallRegistry.state.value
-        if (live.phase == InAppCallPhase.Incoming ||
-            live.phase == InAppCallPhase.Outgoing ||
-            live.phase == InAppCallPhase.Connecting ||
-            live.phase == InAppCallPhase.Active
-        ) {
+        if (live.phase.isLiveCall()) {
             // Experimental dialer templates need an icon-only action and a
             // resolvable drawable; fall back to the Pane card when unavailable.
             runCatching { return inCallTemplate(live.peerName.ifBlank { live.peerId }, live) }
@@ -83,14 +80,14 @@ class CommunicateCarCallScreen(
             )
         builder.addText(live.phase.name)
         if (live.phase == InAppCallPhase.Incoming) {
-            builder.addAction(callAction("Answer") { InAppCallRegistry.answer("car") })
-            builder.addAction(callAction("Decline") { InAppCallRegistry.reject("car") })
+            builder.addAction(callAction { InAppCallRegistry.answer("car") })
+            builder.addAction(callAction { InAppCallRegistry.reject("car") })
         } else {
             builder.addAction(
-                callAction(if (live.muted) "Unmute" else "Mute") { InAppCallRegistry.toggleMuted() },
+                callAction { InAppCallRegistry.toggleMuted() },
             )
-            builder.addAction(callAction("Speaker") { InAppCallRegistry.toggleSpeaker() })
-            builder.addAction(callAction("End") { InAppCallRegistry.hangup("car") })
+            builder.addAction(callAction { InAppCallRegistry.toggleSpeaker() })
+            builder.addAction(callAction { InAppCallRegistry.hangup("car") })
         }
         return builder.build()
     }
@@ -124,7 +121,7 @@ class CommunicateCarCallScreen(
             .build()
     }
 
-    private fun callAction(title: String, onClick: () -> Unit): Action {
+    private fun callAction(onClick: () -> Unit): Action {
         // IN_CALL_CONTENT requires icons and allows zero custom titles, so
         // actions are icon-only. The launcher icon stands in: music ships no
         // playback drawables and titles are rejected here.

@@ -37,6 +37,8 @@ import com.vayunmathur.library.ui.SegmentedButtonDefaults
 import com.vayunmathur.library.ui.SingleChoiceSegmentedButtonRow
 import com.vayunmathur.library.ui.Text
 
+private const val PUZZLE_DIFFICULTY_COUNT = 3
+
 /** Binds [PuzzleViewModel] to the stateless [PuzzleBoardScreen] and deals the first puzzle. */
 @Composable
 fun PuzzleScreen(viewModel: PuzzleViewModel) {
@@ -71,21 +73,7 @@ fun PuzzleBoardScreen(state: PuzzleUiState, actions: PuzzleActions) {
             Arrangement.Center,
             Alignment.CenterHorizontally
         ) {
-            SingleChoiceSegmentedButtonRow {
-                val labels = listOf(
-                    stringResource(R.string.puzzle_difficulty_easy),
-                    stringResource(R.string.puzzle_difficulty_medium),
-                    stringResource(R.string.puzzle_difficulty_hard)
-                )
-                PuzzleDifficulty.entries.forEachIndexed { idx, diff ->
-                    SegmentedButton(
-                        shape = SegmentedButtonDefaults.itemShape(idx, PuzzleDifficulty.entries.size),
-                        onClick = { if (state.difficulty != diff) actions.loadRandom(diff) },
-                        selected = state.difficulty == diff,
-                        label = { Text(labels[idx], style = MaterialTheme.typography.labelSmall) }
-                    )
-                }
-            }
+            PuzzleDifficultySelector(state = state, actions = actions)
             Spacer(Modifier.height(12.dp))
 
             Text(
@@ -93,9 +81,11 @@ fun PuzzleBoardScreen(state: PuzzleUiState, actions: PuzzleActions) {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                if (state.playerColor == PieceColor.WHITE)
+                if (state.playerColor == PieceColor.WHITE) {
                     stringResource(R.string.puzzle_white_to_move)
-                else stringResource(R.string.puzzle_black_to_move),
+                } else {
+                    stringResource(R.string.puzzle_black_to_move)
+                },
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(Modifier.height(8.dp))
@@ -113,19 +103,7 @@ fun PuzzleBoardScreen(state: PuzzleUiState, actions: PuzzleActions) {
             }
             Spacer(Modifier.height(16.dp))
 
-            val statusText = when (state.status) {
-                PuzzleStatus.Loading -> stringResource(R.string.puzzle_loading)
-                PuzzleStatus.Solving -> stringResource(R.string.puzzle_your_move)
-                PuzzleStatus.Solved -> stringResource(R.string.puzzle_solved)
-                PuzzleStatus.Failed -> stringResource(R.string.puzzle_failed)
-                PuzzleStatus.ShowingSolution -> stringResource(R.string.puzzle_show_solution)
-            }
-            Text(
-                statusText,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
+            PuzzleStatusText(status = state.status)
             Spacer(Modifier.height(16.dp))
 
             // Reserve the action-row height whether or not the Failed buttons are
@@ -148,4 +126,40 @@ fun PuzzleBoardScreen(state: PuzzleUiState, actions: PuzzleActions) {
             }
         }
     }
+}
+
+@Composable
+private fun PuzzleDifficultySelector(state: PuzzleUiState, actions: PuzzleActions) {
+    SingleChoiceSegmentedButtonRow {
+        val labels = listOf(
+            stringResource(R.string.puzzle_difficulty_easy),
+            stringResource(R.string.puzzle_difficulty_medium),
+            stringResource(R.string.puzzle_difficulty_hard)
+        )
+        PuzzleDifficulty.entries.forEachIndexed { idx, diff ->
+            SegmentedButton(
+                shape = SegmentedButtonDefaults.itemShape(idx, PUZZLE_DIFFICULTY_COUNT),
+                onClick = { if (state.difficulty != diff) actions.loadRandom(diff) },
+                selected = state.difficulty == diff,
+                label = { Text(labels[idx], style = MaterialTheme.typography.labelSmall) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun PuzzleStatusText(status: PuzzleStatus) {
+    val statusText = when (status) {
+        PuzzleStatus.Loading -> stringResource(R.string.puzzle_loading)
+        PuzzleStatus.Solving -> stringResource(R.string.puzzle_your_move)
+        PuzzleStatus.Solved -> stringResource(R.string.puzzle_solved)
+        PuzzleStatus.Failed -> stringResource(R.string.puzzle_failed)
+        PuzzleStatus.ShowingSolution -> stringResource(R.string.puzzle_show_solution)
+    }
+    Text(
+        statusText,
+        fontSize = 18.sp,
+        fontWeight = FontWeight.Bold,
+        textAlign = TextAlign.Center
+    )
 }

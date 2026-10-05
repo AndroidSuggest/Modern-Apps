@@ -89,126 +89,201 @@ data class SensorSnapshot(
     fun withEvents(events: List<SensorEvent>): SensorSnapshot {
         var next = this
         for (event in events) {
-            next = when (event.sensorType) {
-                SensorType.LOCATION -> if (event.hasLocation()) {
-                    val fix = event.location
-                    next.copy(
-                        location = LocationFix(
-                            latitudeE7 = fix.latitudeE7,
-                            longitudeE7 = fix.longitudeE7,
-                            accuracyM = if (fix.hasAccuracyM()) fix.accuracyM else null,
-                            timestampMs = if (fix.hasTimestampMs()) fix.timestampMs else null,
-                        ),
-                    )
-                } else {
-                    next
-                }
-                SensorType.SPEED -> if (event.hasSpeed() && event.speed.hasSpeedMps()) {
-                    next.copy(speedMps = event.speed.speedMps)
-                } else {
-                    next
-                }
-                SensorType.NIGHT_MODE -> if (event.hasNight() && event.night.hasIsNight()) {
-                    next.copy(isNight = event.night.isNight)
-                } else {
-                    next
-                }
-                SensorType.DRIVING_STATUS_DATA -> if (event.hasDrivingStatus() &&
-                    event.drivingStatus.hasParked()
-                ) {
-                    next.copy(parked = event.drivingStatus.parked)
-                } else {
-                    next
-                }
-                SensorType.COMPASS -> if (event.hasCompass() && event.compass.hasHeadingDeg()) {
-                    next.copy(compassHeadingDeg = event.compass.headingDeg)
-                } else {
-                    next
-                }
-                SensorType.RPM -> if (event.hasRpm()) next.copy(rpm = event.rpm) else next
-                SensorType.ODOMETER -> if (event.hasOdometer()) {
-                    next.copy(odometer = event.odometer)
-                } else {
-                    next
-                }
-                SensorType.FUEL -> if (event.hasFuel()) next.copy(fuel = event.fuel) else next
-                SensorType.PARKING_BRAKE -> if (event.hasParkingBrake()) {
-                    next.copy(parkingBrake = event.parkingBrake)
-                } else {
-                    next
-                }
-                SensorType.GEAR -> if (event.hasGear()) next.copy(gear = event.gear) else next
-                SensorType.OBDII_DIAGNOSTIC_CODE -> if (event.hasObdii()) {
-                    next.copy(obdii = event.obdii)
-                } else {
-                    next
-                }
-                SensorType.ENVIRONMENT_DATA -> if (event.hasEnvironment()) {
-                    next.copy(environment = event.environment)
-                } else {
-                    next
-                }
-                SensorType.HVAC_DATA -> if (event.hasHvac()) next.copy(hvac = event.hvac) else next
-                SensorType.DEAD_RECKONING_DATA -> if (event.hasDeadReckoning()) {
-                    next.copy(deadReckoning = event.deadReckoning)
-                } else {
-                    next
-                }
-                SensorType.PASSENGER_DATA -> if (event.hasPassenger()) {
-                    next.copy(passenger = event.passenger)
-                } else {
-                    next
-                }
-                SensorType.DOOR_DATA -> if (event.hasDoor()) next.copy(door = event.door) else next
-                SensorType.LIGHT_DATA -> if (event.hasLight()) {
-                    next.copy(light = event.light)
-                } else {
-                    next
-                }
-                SensorType.TIRE_PRESSURE_DATA -> if (event.hasTirePressure()) {
-                    next.copy(tirePressure = event.tirePressure)
-                } else {
-                    next
-                }
-                SensorType.ACCELEROMETER_DATA -> if (event.hasAccelerometer()) {
-                    next.copy(accelerometer = event.accelerometer)
-                } else {
-                    next
-                }
-                SensorType.GYROSCOPE_DATA -> if (event.hasGyroscope()) {
-                    next.copy(gyroscope = event.gyroscope)
-                } else {
-                    next
-                }
-                SensorType.GPS_SATELLITE_DATA -> if (event.hasGpsSatellite()) {
-                    next.copy(gpsSatellite = event.gpsSatellite)
-                } else {
-                    next
-                }
-                SensorType.TOLL_CARD -> if (event.hasTollCard()) {
-                    next.copy(tollCard = event.tollCard)
-                } else {
-                    next
-                }
-                SensorType.RAW_VEHICLE_ENERGY_MODEL -> if (event.hasRawVehicleEnergy()) {
-                    next.copy(rawVehicleEnergy = event.rawVehicleEnergy)
-                } else {
-                    next
-                }
-                SensorType.RAW_EV_TRIP_SETTINGS -> if (event.hasRawEvTrip()) {
-                    next.copy(rawEvTrip = event.rawEvTrip)
-                } else {
-                    next
-                }
-                // MISSING payloads (`gal/sensors.proto`): `xgu` unrecovered,
-                // `xon` empty -- nothing to fold, last-known stands.
-                SensorType.VEHICLE_ENERGY_MODEL_DATA,
-                SensorType.TRAILER_DATA -> next
-                else -> next
-            }
+            next = next.withCoreEvent(event)
+                .withComfortEvent(event)
+                .withChassisEvent(event)
+                .withPowertrainEvent(event)
         }
         return next
     }
+
+    /**
+     * Folds position and motion events: location, speed, night mode, driving
+     * status and compass. Anything else (or a payload-less event) keeps
+     * the snapshot unchanged.
+     */
+    private fun SensorSnapshot.withCoreEvent(event: SensorEvent): SensorSnapshot = when (event.sensorType) {
+        SensorType.LOCATION -> withLocation(event)
+        SensorType.SPEED -> withSpeed(event)
+        SensorType.NIGHT_MODE -> withNightMode(event)
+        SensorType.DRIVING_STATUS_DATA -> withDrivingStatus(event)
+        SensorType.COMPASS -> withCompass(event)
+        else -> this
+    }
+
+    /** Folds a LOCATION fix; payload-less events keep last-known. */
+    private fun SensorSnapshot.withLocation(event: SensorEvent): SensorSnapshot {
+        if (!event.hasLocation()) return this
+        val fix = event.location
+        return copy(
+            location = LocationFix(
+                latitudeE7 = fix.latitudeE7,
+                longitudeE7 = fix.longitudeE7,
+                accuracyM = if (fix.hasAccuracyM()) fix.accuracyM else null,
+                timestampMs = if (fix.hasTimestampMs()) fix.timestampMs else null,
+            ),
+        )
+    }
+
+    /** Folds a SPEED reading; payload-less events keep last-known. */
+    private fun SensorSnapshot.withSpeed(event: SensorEvent): SensorSnapshot =
+        if (event.hasSpeed() && event.speed.hasSpeedMps()) {
+            copy(speedMps = event.speed.speedMps)
+        } else {
+            this
+        }
+
+    /** Folds a NIGHT_MODE reading; payload-less events keep last-known. */
+    private fun SensorSnapshot.withNightMode(event: SensorEvent): SensorSnapshot =
+        if (event.hasNight() && event.night.hasIsNight()) {
+            copy(isNight = event.night.isNight)
+        } else {
+            this
+        }
+
+    /** Folds a DRIVING_STATUS reading; payload-less events keep last-known. */
+    private fun SensorSnapshot.withDrivingStatus(event: SensorEvent): SensorSnapshot =
+        if (event.hasDrivingStatus() && event.drivingStatus.hasParked()) {
+            copy(parked = event.drivingStatus.parked)
+        } else {
+            this
+        }
+
+    /** Folds a COMPASS heading; payload-less events keep last-known. */
+    private fun SensorSnapshot.withCompass(event: SensorEvent): SensorSnapshot =
+        if (event.hasCompass() && event.compass.hasHeadingDeg()) {
+            copy(compassHeadingDeg = event.compass.headingDeg)
+        } else {
+            this
+        }
+
+    /**
+     * Folds cabin and body events: climate, lighting, doors, passengers,
+     * parking brake and gear. Anything else keeps the snapshot unchanged.
+     */
+    private fun SensorSnapshot.withComfortEvent(event: SensorEvent): SensorSnapshot =
+        withClimateEvent(event).withBodyEvent(event)
+
+    /** Folds ENVIRONMENT/HVAC readings; anything else keeps the snapshot. */
+    private fun SensorSnapshot.withClimateEvent(event: SensorEvent): SensorSnapshot =
+        when (event.sensorType) {
+            SensorType.ENVIRONMENT_DATA -> if (event.hasEnvironment()) {
+                copy(environment = event.environment)
+            } else {
+                this
+            }
+            SensorType.HVAC_DATA -> if (event.hasHvac()) copy(hvac = event.hvac) else this
+            else -> this
+        }
+
+    /** Folds body readings (doors, lights, brake, gear); else unchanged. */
+    private fun SensorSnapshot.withBodyEvent(event: SensorEvent): SensorSnapshot =
+        when (event.sensorType) {
+            SensorType.PASSENGER_DATA -> if (event.hasPassenger()) {
+                copy(passenger = event.passenger)
+            } else {
+                this
+            }
+            SensorType.DOOR_DATA -> if (event.hasDoor()) copy(door = event.door) else this
+            SensorType.LIGHT_DATA -> if (event.hasLight()) {
+                copy(light = event.light)
+            } else {
+                this
+            }
+            SensorType.PARKING_BRAKE -> if (event.hasParkingBrake()) {
+                copy(parkingBrake = event.parkingBrake)
+            } else {
+                this
+            }
+            SensorType.GEAR -> if (event.hasGear()) copy(gear = event.gear) else this
+            else -> this
+        }
+
+    /**
+     * Folds running-gear events: engine, odometer, fuel, diagnostics, tires,
+     * motion sensors and satellite fixes. Anything else keeps the snapshot
+     * unchanged.
+     */
+    private fun SensorSnapshot.withChassisEvent(event: SensorEvent): SensorSnapshot =
+        withEngineEvent(event).withMotionEvent(event)
+
+    /** Folds engine/drivetrain readings (rpm, odo, fuel, OBD-II); else unchanged. */
+    private fun SensorSnapshot.withEngineEvent(event: SensorEvent): SensorSnapshot =
+        when (event.sensorType) {
+            SensorType.RPM -> if (event.hasRpm()) copy(rpm = event.rpm) else this
+            SensorType.ODOMETER -> if (event.hasOdometer()) {
+                copy(odometer = event.odometer)
+            } else {
+                this
+            }
+            SensorType.FUEL -> if (event.hasFuel()) copy(fuel = event.fuel) else this
+            SensorType.OBDII_DIAGNOSTIC_CODE -> if (event.hasObdii()) {
+                copy(obdii = event.obdii)
+            } else {
+                this
+            }
+            else -> this
+        }
+
+    /** Folds motion readings (dead-reckoning, tires, IMU, GPS); else unchanged. */
+    private fun SensorSnapshot.withMotionEvent(event: SensorEvent): SensorSnapshot =
+        when (event.sensorType) {
+            SensorType.DEAD_RECKONING_DATA -> if (event.hasDeadReckoning()) {
+                copy(deadReckoning = event.deadReckoning)
+            } else {
+                this
+            }
+            SensorType.TIRE_PRESSURE_DATA -> if (event.hasTirePressure()) {
+                copy(tirePressure = event.tirePressure)
+            } else {
+                this
+            }
+            SensorType.ACCELEROMETER_DATA -> if (event.hasAccelerometer()) {
+                copy(accelerometer = event.accelerometer)
+            } else {
+                this
+            }
+            SensorType.GYROSCOPE_DATA -> if (event.hasGyroscope()) {
+                copy(gyroscope = event.gyroscope)
+            } else {
+                this
+            }
+            SensorType.GPS_SATELLITE_DATA -> if (event.hasGpsSatellite()) {
+                copy(gpsSatellite = event.gpsSatellite)
+            } else {
+                this
+            }
+            else -> this
+        }
+
+    /**
+     * Folds energy, toll and trailer events. The last two carry no payload
+     * (MISSING -- see `gal/sensors.proto`), so they -- and anything unknown
+     * here -- keep the snapshot unchanged.
+     */
+    private fun SensorSnapshot.withPowertrainEvent(event: SensorEvent): SensorSnapshot =
+        when (event.sensorType) {
+            SensorType.TOLL_CARD -> if (event.hasTollCard()) {
+                copy(tollCard = event.tollCard)
+            } else {
+                this
+            }
+            SensorType.RAW_VEHICLE_ENERGY_MODEL -> if (event.hasRawVehicleEnergy()) {
+                copy(rawVehicleEnergy = event.rawVehicleEnergy)
+            } else {
+                this
+            }
+            SensorType.RAW_EV_TRIP_SETTINGS -> if (event.hasRawEvTrip()) {
+                copy(rawEvTrip = event.rawEvTrip)
+            } else {
+                this
+            }
+            // MISSING payloads (`gal/sensors.proto`): `xgu` unrecovered,
+            // `xon` empty -- nothing to fold, last-known stands.
+            SensorType.VEHICLE_ENERGY_MODEL_DATA,
+            SensorType.TRAILER_DATA -> this
+            else -> this
+        }
 }
 
 /** A classified inbound sensor-channel message. Anything else on the channel is [Observed]. */

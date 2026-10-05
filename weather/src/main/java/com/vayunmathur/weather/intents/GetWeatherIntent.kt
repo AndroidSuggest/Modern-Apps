@@ -28,6 +28,9 @@ class GetWeatherIntent : AssistantIntent<LatLonInput, WeatherData>(
     inputSerializer = serializer<LatLonInput>(),
     outputSerializer = serializer<WeatherData>(),
 ) {
+    // Broad catch is deliberate: a headless assistant intent must return a payload,
+    // never throw, and network plus parsing throw undocumented RuntimeExceptions.
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun performCalculation(input: LatLonInput): WeatherData {
         return try {
             val forecast = WeatherApi.forecast(input.latitude, input.longitude)

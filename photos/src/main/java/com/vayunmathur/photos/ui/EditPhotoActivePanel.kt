@@ -138,8 +138,8 @@ internal fun ActivePanel(
                 adjustments = basic,
                 selectedAdjustment = selectedAdjustment,
                 onSelectAdjustment = onSelectAdjustment,
-                onUpdateAdjustment = { update -> vm.updateActiveAdjustment(BasicAdjustment(update(basic))) },
-                onReset = { vm.updateActiveAdjustment(BasicAdjustment(ImageAdjustments())) },
+                onUpdateAdjustment = { update -> vm.adjustments.updateActiveAdjustment(BasicAdjustment(update(basic))) },
+                onReset = { vm.adjustments.updateActiveAdjustment(BasicAdjustment(ImageAdjustments())) },
             )
         }
         EditorMode.Filters -> {
@@ -147,60 +147,60 @@ internal fun ActivePanel(
             FilterPresetPanel(
                 bitmap = baseBitmap,
                 adjustments = basic,
-                onSelectFilter = { filter -> vm.updateActiveAdjustment(BasicAdjustment(filter.adjustments)) },
+                onSelectFilter = { filter -> vm.adjustments.updateActiveAdjustment(BasicAdjustment(filter.adjustments)) },
             )
         }
         EditorMode.Curves -> {
             val curves = document.activeAdjustment<CurvesAdj>()?.curves ?: CurvesAdjustment()
-            CurvesPanel(curves, selectedCurveChannel, onCurveChannel) { vm.updateActiveAdjustment(CurvesAdj(it)) }
+            CurvesPanel(curves, selectedCurveChannel, onCurveChannel) { vm.adjustments.updateActiveAdjustment(CurvesAdj(it)) }
         }
         EditorMode.HSL -> {
             val hsl = document.activeAdjustment<HslAdj>()?.hsl ?: HslAdjustments()
-            HslPanel(hsl, selectedHslRange, onHslRange) { vm.updateActiveAdjustment(HslAdj(it)) }
+            HslPanel(hsl, selectedHslRange, onHslRange) { vm.adjustments.updateActiveAdjustment(HslAdj(it)) }
         }
         EditorMode.Levels -> {
             val levels = document.activeAdjustment<LevelsAdj>()?.levels ?: com.vayunmathur.photos.data.LevelsAdjustment()
-            LevelsPanel(levels) { vm.updateActiveAdjustment(LevelsAdj(it)) }
+            LevelsPanel(levels) { vm.adjustments.updateActiveAdjustment(LevelsAdj(it)) }
         }
         EditorMode.ColorBalance -> {
             val cb = document.activeAdjustment<ColorBalanceAdj>()?.balance ?: com.vayunmathur.photos.data.ColorBalanceAdjustment()
-            ColorBalancePanel(cb) { vm.updateActiveAdjustment(ColorBalanceAdj(it)) }
+            ColorBalancePanel(cb) { vm.adjustments.updateActiveAdjustment(ColorBalanceAdj(it)) }
         }
         EditorMode.ChannelMixer -> {
             val mx = document.activeAdjustment<ChannelMixerAdj>()?.mixer ?: com.vayunmathur.photos.data.ChannelMixerAdjustment()
-            ChannelMixerPanel(mx) { vm.updateActiveAdjustment(ChannelMixerAdj(it)) }
+            ChannelMixerPanel(mx) { vm.adjustments.updateActiveAdjustment(ChannelMixerAdj(it)) }
         }
         EditorMode.BlackWhite -> {
             val bw = document.activeAdjustment<BlackAndWhiteAdj>()?.bw ?: com.vayunmathur.photos.data.BlackAndWhiteAdjustment(enabled = true)
-            BlackWhitePanel(bw) { vm.updateActiveAdjustment(BlackAndWhiteAdj(it.copy(enabled = true))) }
+            BlackWhitePanel(bw) { vm.adjustments.updateActiveAdjustment(BlackAndWhiteAdj(it.copy(enabled = true))) }
         }
         EditorMode.GradientMap -> {
-            GradientMapPanel { stops -> vm.updateActiveAdjustment(GradientMapAdj(com.vayunmathur.photos.data.GradientMapAdjustment(stops))) }
+            GradientMapPanel { stops -> vm.adjustments.updateActiveAdjustment(GradientMapAdj(com.vayunmathur.photos.data.GradientMapAdjustment(stops))) }
         }
         EditorMode.Vibrance -> {
             val v = document.activeAdjustment<VibranceAdj>()?.amount ?: 0f
-            VibrancePanel(v) { vm.updateActiveAdjustment(VibranceAdj(it)) }
+            VibrancePanel(v) { vm.adjustments.updateActiveAdjustment(VibranceAdj(it)) }
         }
         EditorMode.PhotoFilter -> {
             val pf = document.activeAdjustment<PhotoFilterAdj>() ?: PhotoFilterAdj()
-            PhotoFilterPanel(pf) { vm.updateActiveAdjustment(it) }
+            PhotoFilterPanel(pf) { vm.adjustments.updateActiveAdjustment(it) }
         }
         EditorMode.SelectiveColor -> {
             val sc = document.activeAdjustment<SelectiveColorAdj>() ?: SelectiveColorAdj()
-            SelectiveColorPanel(sc) { vm.updateActiveAdjustment(it) }
+            SelectiveColorPanel(sc) { vm.adjustments.updateActiveAdjustment(it) }
         }
         EditorMode.Posterize -> {
             val p = document.activeAdjustment<PosterizeAdj>()?.levels ?: 4
-            PosterizePanel(p) { vm.updateActiveAdjustment(PosterizeAdj(it)) }
+            PosterizePanel(p) { vm.adjustments.updateActiveAdjustment(PosterizeAdj(it)) }
         }
         EditorMode.Threshold -> {
             val t = document.activeAdjustment<ThresholdAdj>()?.level ?: 128
-            ThresholdPanel(t) { vm.updateActiveAdjustment(ThresholdAdj(it)) }
+            ThresholdPanel(t) { vm.adjustments.updateActiveAdjustment(ThresholdAdj(it)) }
         }
         EditorMode.Invert -> InvertPanel()
         EditorMode.LensBlur -> {
             val blur = document.activeAdjustment<BlurAdj>()?.blur ?: BlurParams()
-            BlurPanel(blur) { vm.updateActiveAdjustment(BlurAdj(it)) }
+            BlurPanel(blur) { vm.adjustments.updateActiveAdjustment(BlurAdj(it)) }
         }
         EditorMode.Selective -> {
             val sel = document.activeAdjustment<SelectiveAdj>()?.selective ?: SelectiveEdits()
@@ -210,12 +210,12 @@ internal fun ActivePanel(
                 onMaskChanged = onSelectiveMask,
                 onShowMaskChanged = onShowSelectiveMask,
                 onAddMask = {
-                    vm.updateActiveAdjustment(SelectiveAdj(sel.copy(masks = sel.masks + currentSelectiveMask)))
+                    vm.adjustments.updateActiveAdjustment(SelectiveAdj(sel.copy(masks = sel.masks + currentSelectiveMask)))
                     onSelectiveMask(SelectiveMask())
                 },
             )
         }
-        EditorMode.FilterFx -> FiltersPanel { adj -> vm.addAdjustmentLayer(adj) }
+        EditorMode.FilterFx -> FiltersPanel { adj -> vm.adjustments.addAdjustmentLayer(adj) }
         EditorMode.Liquify -> LiquifyPanel(liquifyTool, onLiquifyTool, liquifyStrength, onLiquifyStrength, liquifyRadius, onLiquifyRadius)
         EditorMode.Healing -> HealingPanel(healingBrushSize, isSettingHealingSource, onHealingBrushSize, onSetHealingSource)
         EditorMode.RedEye -> SimpleBrushPanel("Tap each eye. Brush", brushSize, onBrushSize)
@@ -232,31 +232,31 @@ internal fun ActivePanel(
             onInvert = onSelectionInvert,
             onClear = onSelectionClear,
             onDelete = onSelectionDelete,
-            onContentAwareFill = { vm.contentAwareFillSelection() },
+            onContentAwareFill = { vm.pixel.contentAwareFillSelection() },
             onSelectSubject = onSelectSubject,
         )
         EditorMode.Layers -> LayersPanel(
             document = document,
             hasSelection = selection != null,
-            onSelectLayer = { vm.setActiveLayer(it) },
-            onToggleVisibility = { i, v -> vm.setLayerVisibility(i, v) },
-            onOpacityChange = { i, o -> vm.setLayerOpacity(i, o) },
-            onBlendModeChange = { i, m -> vm.setLayerBlendMode(i, m) },
-            onAddAdjustment = { vm.addAdjustmentLayer(it) },
-            onAddPixelLayer = { vm.addEmptyPixelLayer() },
-            onDuplicate = { vm.duplicateLayer(it) },
-            onMergeDown = { vm.mergeDown(it) },
-            onDelete = { vm.removeLayer(it) },
-            onFlatten = { vm.flatten() },
-            onAddMaskFromSelection = { vm.selectionToActiveMask() },
-            onDeleteMask = { vm.deleteLayerMask(it) },
-            onInvertMask = { vm.invertLayerMask(it) },
-            onToggleClip = { i, c -> vm.setLayerClipped(i, c) },
-            onSetStyle = { i, s -> vm.setLayerStyle(i, s) },
-            onGroupActive = { vm.groupActiveWithBelow() },
-            onUngroup = { vm.ungroupActive() },
-            onUpdateGroup = { vm.updateGroup(it) },
-            onMoveLayer = { from, to -> vm.moveLayer(from, to) },
+            onSelectLayer = { vm.layers.setActiveLayer(it) },
+            onToggleVisibility = { i, v -> vm.layers.setLayerVisibility(i, v) },
+            onOpacityChange = { i, o -> vm.layers.setLayerOpacity(i, o) },
+            onBlendModeChange = { i, m -> vm.layers.setLayerBlendMode(i, m) },
+            onAddAdjustment = { vm.adjustments.addAdjustmentLayer(it) },
+            onAddPixelLayer = { vm.layers.addEmptyPixelLayer() },
+            onDuplicate = { vm.layers.duplicateLayer(it) },
+            onMergeDown = { vm.layers.mergeDown(it) },
+            onDelete = { vm.layers.removeLayer(it) },
+            onFlatten = { vm.layers.flatten() },
+            onAddMaskFromSelection = { vm.layers.selectionToActiveMask() },
+            onDeleteMask = { vm.layers.deleteLayerMask(it) },
+            onInvertMask = { vm.layers.invertLayerMask(it) },
+            onToggleClip = { i, c -> vm.layers.setLayerClipped(i, c) },
+            onSetStyle = { i, s -> vm.layers.setLayerStyle(i, s) },
+            onGroupActive = { vm.layers.groupActiveWithBelow() },
+            onUngroup = { vm.layers.ungroupActive() },
+            onUpdateGroup = { vm.layers.updateGroup(it) },
+            onMoveLayer = { from, to -> vm.layers.moveLayer(from, to) },
             onEditText = onEditTextLayer,
             onResumeDrawing = onResumeDrawingLayer,
         )

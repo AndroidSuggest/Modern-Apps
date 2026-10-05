@@ -2,8 +2,15 @@ package com.vayunmathur.communicate.data.whatsapp
 
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.Node
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.ParticipantEnc
+import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto
 
 // -- Message node builders (from whatsmeow/send.go) --
+
+private const val PEER_DATA_HISTORY_SYNC_ON_DEMAND = 3
+private const val SHIFT_BYTE3 = 24
+private const val SHIFT_BYTE2 = 16
+private const val SHIFT_BYTE1 = 8
+private const val MS_PER_SECOND = 1000L
 
 /**
  * Build a text message node with E2E encrypted protobuf payload.
@@ -19,8 +26,8 @@ fun WhatsAppProtocol.buildConversationPlaintext(text: String): ByteArray {
 }
 
 /** Build the waE2E.Message proto object for a conversation (text) message. */
-fun WhatsAppProtocol.buildConversationMessage(text: String): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
-    return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+fun WhatsAppProtocol.buildConversationMessage(text: String): WhatsAppE2EProto.Message {
+    return WhatsAppE2EProto.Message.newBuilder()
         .setConversation(text)
         .build()
 }
@@ -36,20 +43,21 @@ fun WhatsAppProtocol.buildHistoryOnDemandRequest(
     oldestMsgFromMe: Boolean,
     oldestMsgTimestampSec: Long,
     count: Int,
-): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
-    val req = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.HistorySyncOnDemandRequest.newBuilder()
+): WhatsAppE2EProto.Message {
+    val req = WhatsAppE2EProto.HistorySyncOnDemandRequest.newBuilder()
         .setChatJid(chatJid)
         .setOldestMsgId(oldestMsgId)
         .setOldestMsgFromMe(oldestMsgFromMe)
         .setOnDemandMsgCount(count)
         .setOldestMsgTimestampMs(oldestMsgTimestampSec)
-    val pdo = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.PeerDataOperationRequestMessage.newBuilder()
-        .setPeerDataOperationRequestType(3) // HISTORY_SYNC_ON_DEMAND
+    val pdo =
+        WhatsAppE2EProto.PeerDataOperationRequestMessage.newBuilder()
+        .setPeerDataOperationRequestType(PEER_DATA_HISTORY_SYNC_ON_DEMAND) // HISTORY_SYNC_ON_DEMAND
         .setHistorySyncOnDemandRequest(req)
-    val proto = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.newBuilder()
-        .setType(com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.Type.PEER_DATA_OPERATION_REQUEST_MESSAGE)
+    val proto = WhatsAppE2EProto.ProtocolMessage.newBuilder()
+        .setType(WhatsAppE2EProto.ProtocolMessage.Type.PEER_DATA_OPERATION_REQUEST_MESSAGE)
         .setPeerDataOperationRequestMessage(pdo)
-    return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+    return WhatsAppE2EProto.Message.newBuilder()
         .setProtocolMessage(proto)
         .build()
 }
@@ -60,11 +68,11 @@ fun WhatsAppProtocol.buildHistoryOnDemandRequest(
  */
 fun WhatsAppProtocol.deviceSentPlaintext(
     destinationJid: String,
-    message: com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message,
+    message: WhatsAppE2EProto.Message,
 ): ByteArray {
-    return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+    return WhatsAppE2EProto.Message.newBuilder()
         .setDeviceSentMessage(
-            com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.DeviceSentMessage.newBuilder()
+            WhatsAppE2EProto.DeviceSentMessage.newBuilder()
                 .setDestinationJid(destinationJid)
                 .setMessage(message)
         )
@@ -77,9 +85,9 @@ fun WhatsAppProtocol.deviceSentPlaintext(
  * can decrypt the group skmsg. Ref whatsmeow send.go sendGroup() skdMessage.
  */
 fun WhatsAppProtocol.senderKeyDistributionPlaintext(groupJid: String, axolotlSkdm: ByteArray): ByteArray {
-    return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+    return WhatsAppE2EProto.Message.newBuilder()
         .setSenderKeyDistributionMessage(
-            com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.SenderKeyDistributionMessage.newBuilder()
+            WhatsAppE2EProto.SenderKeyDistributionMessage.newBuilder()
                 .setGroupId(groupJid)
                 .setAxolotlSenderKeyDistributionMessage(com.google.protobuf.ByteString.copyFrom(axolotlSkdm))
         )
@@ -146,9 +154,9 @@ fun WhatsAppProtocol.buildRetryReceipt(
     originalNode.attrs["recipient"]?.let { attrs["recipient"] = it }
     originalNode.attrs["participant"]?.let { attrs["participant"] = it }
     val regBytes = byteArrayOf(
-        (registrationId ushr 24).toByte(),
-        (registrationId ushr 16).toByte(),
-        (registrationId ushr 8).toByte(),
+        (registrationId ushr SHIFT_BYTE3).toByte(),
+        (registrationId ushr SHIFT_BYTE2).toByte(),
+        (registrationId ushr SHIFT_BYTE1).toByte(),
         registrationId.toByte(),
     )
     val retryNode = Node(
@@ -267,8 +275,8 @@ fun WhatsAppProtocol.buildReactionProto(
     emoji: String,
     targetFromMe: Boolean,
     targetSenderJid: String?,
-): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
-    val messageKey = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.MessageKey.newBuilder()
+): WhatsAppE2EProto.Message {
+    val messageKey = WhatsAppE2EProto.MessageKey.newBuilder()
         .setFromMe(targetFromMe)
         .setId(targetMessageId)
         .setRemoteJid(chatJid)
@@ -276,13 +284,13 @@ fun WhatsAppProtocol.buildReactionProto(
         messageKey.setParticipant(targetSenderJid)
     }
 
-    val reactionMessage = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ReactionMessage.newBuilder()
+    val reactionMessage = WhatsAppE2EProto.ReactionMessage.newBuilder()
         .setKey(messageKey.build())
         .setText(emoji)
         .setSenderTimestampMs(System.currentTimeMillis())
         .build()
 
-    return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+    return WhatsAppE2EProto.Message.newBuilder()
         .setReactionMessage(reactionMessage)
         .build()
 }
@@ -336,71 +344,135 @@ fun WhatsAppProtocol.buildMediaProto(
     mimeType: String,
     caption: String?,
     mediaType: String, // "image", "video", "audio", "document", "sticker"
-): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
-    val e2eBuilder = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+): WhatsAppE2EProto.Message {
+    val e2eBuilder = WhatsAppE2EProto.Message.newBuilder()
 
     when (mediaType) {
-        "image" -> {
-            val imgBuilder = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ImageMessage.newBuilder()
-                .setUrl(url)
-                .setDirectPath(directPath)
-                .setMediaKey(com.google.protobuf.ByteString.copyFrom(mediaKey))
-                .setFileSha256(com.google.protobuf.ByteString.copyFrom(fileSha256))
-                .setFileEncSha256(com.google.protobuf.ByteString.copyFrom(fileEncSha256))
-                .setFileLength(fileLength.toULong().toLong())
-                .setMimetype(mimeType)
-            if (caption != null) imgBuilder.setCaption(caption)
-            e2eBuilder.setImageMessage(imgBuilder.build())
-        }
-        "video" -> {
-            val vidBuilder = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.VideoMessage.newBuilder()
-                .setUrl(url)
-                .setDirectPath(directPath)
-                .setMediaKey(com.google.protobuf.ByteString.copyFrom(mediaKey))
-                .setFileSha256(com.google.protobuf.ByteString.copyFrom(fileSha256))
-                .setFileEncSha256(com.google.protobuf.ByteString.copyFrom(fileEncSha256))
-                .setFileLength(fileLength.toULong().toLong())
-                .setMimetype(mimeType)
-            if (caption != null) vidBuilder.setCaption(caption)
-            e2eBuilder.setVideoMessage(vidBuilder.build())
-        }
-        "audio" -> {
-            val audBuilder = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.AudioMessage.newBuilder()
-                .setUrl(url)
-                .setDirectPath(directPath)
-                .setMediaKey(com.google.protobuf.ByteString.copyFrom(mediaKey))
-                .setFileSha256(com.google.protobuf.ByteString.copyFrom(fileSha256))
-                .setFileEncSha256(com.google.protobuf.ByteString.copyFrom(fileEncSha256))
-                .setFileLength(fileLength.toULong().toLong())
-                .setMimetype(mimeType)
-            e2eBuilder.setAudioMessage(audBuilder.build())
-        }
-        "document" -> {
-            val docBuilder = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.DocumentMessage.newBuilder()
-                .setUrl(url)
-                .setDirectPath(directPath)
-                .setMediaKey(com.google.protobuf.ByteString.copyFrom(mediaKey))
-                .setFileSha256(com.google.protobuf.ByteString.copyFrom(fileSha256))
-                .setFileEncSha256(com.google.protobuf.ByteString.copyFrom(fileEncSha256))
-                .setFileLength(fileLength.toULong().toLong())
-                .setMimetype(mimeType)
-            e2eBuilder.setDocumentMessage(docBuilder.build())
-        }
-        "sticker" -> {
-            val stickerBuilder = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.StickerMessage.newBuilder()
-                .setUrl(url)
-                .setDirectPath(directPath)
-                .setMediaKey(com.google.protobuf.ByteString.copyFrom(mediaKey))
-                .setFileSha256(com.google.protobuf.ByteString.copyFrom(fileSha256))
-                .setFileEncSha256(com.google.protobuf.ByteString.copyFrom(fileEncSha256))
-                .setFileLength(fileLength.toULong().toLong())
-                .setMimetype(mimeType)
-            e2eBuilder.setStickerMessage(stickerBuilder.build())
-        }
+        "image" -> e2eBuilder.setImageMessage(
+            buildImageMedia(url, directPath, mediaKey, fileSha256, fileEncSha256, fileLength, mimeType, caption))
+        "video" -> e2eBuilder.setVideoMessage(
+            buildVideoMedia(url, directPath, mediaKey, fileSha256, fileEncSha256, fileLength, mimeType, caption))
+        "audio" -> e2eBuilder.setAudioMessage(
+            buildAudioMedia(url, directPath, mediaKey, fileSha256, fileEncSha256, fileLength, mimeType))
+        "document" -> e2eBuilder.setDocumentMessage(
+            buildDocumentMedia(url, directPath, mediaKey, fileSha256, fileEncSha256, fileLength, mimeType))
+        "sticker" -> e2eBuilder.setStickerMessage(
+            buildStickerMedia(url, directPath, mediaKey, fileSha256, fileEncSha256, fileLength, mimeType))
     }
 
     val plaintext = e2eBuilder.build()
     return plaintext
+}
+
+/** Image media message. */
+private fun buildImageMedia(
+    url: String,
+    directPath: String,
+    mediaKey: ByteArray,
+    fileSha256: ByteArray,
+    fileEncSha256: ByteArray,
+    fileLength: Long,
+    mimeType: String,
+    caption: String?,
+): WhatsAppE2EProto.ImageMessage {
+    val imgBuilder = WhatsAppE2EProto.ImageMessage.newBuilder()
+        .setUrl(url)
+        .setDirectPath(directPath)
+        .setMediaKey(com.google.protobuf.ByteString.copyFrom(mediaKey))
+        .setFileSha256(com.google.protobuf.ByteString.copyFrom(fileSha256))
+        .setFileEncSha256(com.google.protobuf.ByteString.copyFrom(fileEncSha256))
+        .setFileLength(fileLength.toULong().toLong())
+        .setMimetype(mimeType)
+    if (caption != null) imgBuilder.setCaption(caption)
+    return imgBuilder.build()
+}
+
+/** Video media message. */
+private fun buildVideoMedia(
+    url: String,
+    directPath: String,
+    mediaKey: ByteArray,
+    fileSha256: ByteArray,
+    fileEncSha256: ByteArray,
+    fileLength: Long,
+    mimeType: String,
+    caption: String?,
+): WhatsAppE2EProto.VideoMessage {
+    val vidBuilder = WhatsAppE2EProto.VideoMessage.newBuilder()
+        .setUrl(url)
+        .setDirectPath(directPath)
+        .setMediaKey(com.google.protobuf.ByteString.copyFrom(mediaKey))
+        .setFileSha256(com.google.protobuf.ByteString.copyFrom(fileSha256))
+        .setFileEncSha256(com.google.protobuf.ByteString.copyFrom(fileEncSha256))
+        .setFileLength(fileLength.toULong().toLong())
+        .setMimetype(mimeType)
+    if (caption != null) vidBuilder.setCaption(caption)
+    return vidBuilder.build()
+}
+
+/** Audio media message. */
+private fun buildAudioMedia(
+    url: String,
+    directPath: String,
+    mediaKey: ByteArray,
+    fileSha256: ByteArray,
+    fileEncSha256: ByteArray,
+    fileLength: Long,
+    mimeType: String,
+): WhatsAppE2EProto.AudioMessage {
+    val audBuilder = WhatsAppE2EProto.AudioMessage.newBuilder()
+        .setUrl(url)
+        .setDirectPath(directPath)
+        .setMediaKey(com.google.protobuf.ByteString.copyFrom(mediaKey))
+        .setFileSha256(com.google.protobuf.ByteString.copyFrom(fileSha256))
+        .setFileEncSha256(com.google.protobuf.ByteString.copyFrom(fileEncSha256))
+        .setFileLength(fileLength.toULong().toLong())
+        .setMimetype(mimeType)
+    return audBuilder.build()
+}
+
+/** Document media message. */
+private fun buildDocumentMedia(
+    url: String,
+    directPath: String,
+    mediaKey: ByteArray,
+    fileSha256: ByteArray,
+    fileEncSha256: ByteArray,
+    fileLength: Long,
+    mimeType: String,
+): WhatsAppE2EProto.DocumentMessage {
+    val docBuilder =
+        WhatsAppE2EProto.DocumentMessage.newBuilder()
+        .setUrl(url)
+        .setDirectPath(directPath)
+        .setMediaKey(com.google.protobuf.ByteString.copyFrom(mediaKey))
+        .setFileSha256(com.google.protobuf.ByteString.copyFrom(fileSha256))
+        .setFileEncSha256(com.google.protobuf.ByteString.copyFrom(fileEncSha256))
+        .setFileLength(fileLength.toULong().toLong())
+        .setMimetype(mimeType)
+    return docBuilder.build()
+}
+
+/** Sticker media message. */
+private fun buildStickerMedia(
+    url: String,
+    directPath: String,
+    mediaKey: ByteArray,
+    fileSha256: ByteArray,
+    fileEncSha256: ByteArray,
+    fileLength: Long,
+    mimeType: String,
+): WhatsAppE2EProto.StickerMessage {
+    val stickerBuilder =
+        WhatsAppE2EProto.StickerMessage.newBuilder()
+        .setUrl(url)
+        .setDirectPath(directPath)
+        .setMediaKey(com.google.protobuf.ByteString.copyFrom(mediaKey))
+        .setFileSha256(com.google.protobuf.ByteString.copyFrom(fileSha256))
+        .setFileEncSha256(com.google.protobuf.ByteString.copyFrom(fileEncSha256))
+        .setFileLength(fileLength.toULong().toLong())
+        .setMimetype(mimeType)
+    return stickerBuilder.build()
 }
 
 /**
@@ -411,7 +483,7 @@ fun WhatsAppProtocol.buildReadReceipt(
     chatJid: String,
     messageIds: List<String>,
     senderJid: String? = null,
-    timestamp: Long = System.currentTimeMillis() / 1000,
+    timestamp: Long = System.currentTimeMillis() / MS_PER_SECOND,
 ): Node {
     if (messageIds.isEmpty()) throw IllegalArgumentException("No message IDs")
 

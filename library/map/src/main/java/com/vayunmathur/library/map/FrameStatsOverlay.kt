@@ -68,14 +68,14 @@ fun FrameStatsOverlay(
     }
     Box(
         modifier
-            .background(Color(0xC0000000))
+            .background(Color(OVERLAY_SCRIM))
             .padding(6.dp),
     ) {
         Column {
             // Strings first, composables second: the rows are plain data, emitted below.
             for (i in STEP_NAMES.indices) {
                 val name = STEP_NAMES[i]
-                val ms = times.getOrNull(i)?.let { it / 1_000_000.0 }
+            val ms = times.getOrNull(i)?.let { it / NANOS_PER_MILLI }
                 // One decimal, fixed width-ish: the table must not jitter while panning.
                 val text = if (ms == null) "$name  n/a" else "$name %5.1f".format(ms)
                 BasicText(text, style = TextStyle(color = Color.White, fontSize = 10.sp))
@@ -86,3 +86,5 @@ fun FrameStatsOverlay(
 
 /** How often the overlay polls the native copy: ~3 Hz, slow enough to cost nothing. */
 private const val POLL_MILLIS = 333L
+private const val NANOS_PER_MILLI = 1_000_000.0
+private const val OVERLAY_SCRIM = 0xC0000000

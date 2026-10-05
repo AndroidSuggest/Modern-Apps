@@ -2,11 +2,8 @@ package com.vayunmathur.contacts.data
 import android.content.ContentProviderOperation
 import android.content.ContentUris
 import android.content.Context
-import android.net.Uri
 import android.provider.ContactsContract
-import android.provider.ContactsContract.Profile
 import android.util.Log
-import androidx.core.database.getBlobOrNull
 import androidx.core.database.getStringOrNull
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -82,7 +79,11 @@ interface ContactDetail<T: ContactDetail<T>> {
                 PhoneNumber::class -> PhoneNumber(0, "", CDKPhone.TYPE_MOBILE)
                 Email::class -> Email(0, "", CDKEmail.TYPE_HOME)
                 Address::class -> Address(0, "", CDKStructuredPostal.TYPE_HOME)
-                Event::class -> Event(0, Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date, CDKEvent.TYPE_OTHER)
+                Event::class -> Event(
+                    0,
+                    Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date,
+                    CDKEvent.TYPE_OTHER
+                )
                 else -> throw IllegalArgumentException("Unknown type")
             } as T
         }
@@ -90,7 +91,12 @@ interface ContactDetail<T: ContactDetail<T>> {
 }
 
 @Serializable
-data class PhoneNumber(override val id: Long, val number: String, override val type: Int, val label: String = ""): ContactDetail<PhoneNumber> {
+data class PhoneNumber(
+    override val id: Long,
+    val number: String,
+    override val type: Int,
+    val label: String = ""
+) : ContactDetail<PhoneNumber> {
     override val value: String
         get() = number
 
@@ -102,7 +108,12 @@ data class PhoneNumber(override val id: Long, val number: String, override val t
 }
 
 @Serializable
-data class Email(override val id: Long, val address: String, override val type: Int, val label: String = ""): ContactDetail<Email> {
+data class Email(
+    override val id: Long,
+    val address: String,
+    override val type: Int,
+    val label: String = ""
+) : ContactDetail<Email> {
     override val value: String
         get() = address
 
@@ -114,7 +125,12 @@ data class Email(override val id: Long, val address: String, override val type: 
 }
 
 @Serializable
-data class Address(override val id: Long, val formattedAddress: String, override val type: Int, val label: String = ""): ContactDetail<Address> {
+data class Address(
+    override val id: Long,
+    val formattedAddress: String,
+    override val type: Int,
+    val label: String = ""
+) : ContactDetail<Address> {
     override val value: String
         get() = formattedAddress
 
@@ -122,7 +138,8 @@ data class Address(override val id: Long, val formattedAddress: String, override
     override fun withValue(value: String) = copy(formattedAddress = value)
     override fun withLabel(label: String) = copy(label = label)
 
-    override fun typeString(context: Context) = CDKStructuredPostal.getTypeLabel(context.resources, type, label).toString()
+    override fun typeString(context: Context) =
+        CDKStructuredPostal.getTypeLabel(context.resources, type, label).toString()
 }
 
 @Serializable
@@ -139,7 +156,12 @@ data class Photo(override val id: Long, val photo: String): ContactDetail<Photo>
 }
 
 @Serializable
-data class Event(override val id: Long, val startDate: LocalDate, override val type: Int, val label: String = ""): ContactDetail<Event> {
+data class Event(
+    override val id: Long,
+    val startDate: LocalDate,
+    override val type: Int,
+    val label: String = ""
+) : ContactDetail<Event> {
     override val value: String
         get() = startDate.format(LocalDate.Formats.ISO)
 
@@ -174,7 +196,13 @@ data class Name(
 ): ContactDetail<Name> {
     override val type: Int = 0
     override val value: String
-        get() = listOfNotNull(namePrefix.ifEmpty { null }, firstName.ifEmpty { null }, middleName.ifEmpty { null }, lastName.ifEmpty { null }, nameSuffix.ifEmpty { null }).joinToString(" ")
+        get() = listOfNotNull(
+            namePrefix.ifEmpty { null },
+            firstName.ifEmpty { null },
+            middleName.ifEmpty { null },
+            lastName.ifEmpty { null },
+            nameSuffix.ifEmpty { null }
+        ).joinToString(" ")
 
     override fun withType(type: Int) = throw UnsupportedOperationException("Cannot change type of name")
     override fun withValue(value: String) = throw UnsupportedOperationException("Cannot change value of name")
@@ -205,7 +233,8 @@ data class Nickname(override val id: Long, val nickname: String, override val ty
     override fun withValue(value: String) = copy(nickname = value)
     override fun withLabel(label: String): Nickname = this
 
-    override fun typeString(context: Context) = throw UnsupportedOperationException("Nickname types shouldn't be written")
+    override fun typeString(context: Context) =
+        throw UnsupportedOperationException("Nickname types shouldn't be written")
 }
 
 @Serializable
@@ -218,7 +247,8 @@ data class GroupMembership(override val id: Long, val groupId: Long): ContactDet
     override fun withValue(value: String) = copy(groupId = value.toLong())
     override fun withLabel(label: String): GroupMembership = this
 
-    override fun typeString(context: Context) = throw UnsupportedOperationException("Group membership doesn't have type")
+    override fun typeString(context: Context) =
+        throw UnsupportedOperationException("Group membership doesn't have type")
 }
 
 @Serializable
@@ -275,35 +305,28 @@ data class Contact(
         return try {
             context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
             true
-        } catch (e: Exception) {
+        } catch (e: android.content.OperationApplicationException) {
+            Log.e("Contact", "Error saving contact", e)
+            false
+        } catch (e: android.os.RemoteException) {
+            Log.e("Contact", "Error saving contact", e)
+            false
+        } catch (e: SecurityException) {
+            Log.e("Contact", "Error saving contact", e)
+            false
+        } catch (e: IllegalArgumentException) {
             Log.e("Contact", "Error saving contact", e)
             false
         }
     }
 
-    private fun handleDetailUpdates(currentDetails: List<ContactDetail<*>>, newDetails: List<ContactDetail<*>>, rawContactID: String): List<ContentProviderOperation> {
-        val currentIds = currentDetails.map { it.id }.toSet()
-        val newIds = newDetails.map { it.id }.toSet()
-        val ops = mutableListOf<ContentProviderOperation>()
-
-        val idsToDelete = currentIds - newIds
-        ops += idsToDelete.map { id -> createDeleteOperation(id)  }
-
-        ops += newDetails.mapNotNull { detail ->
-            if (detail.id == 0L) { // New item
-                createInsertOperation(detail, rawContactID)
-            } else { // Existing item, check if it has changed
-                val oldDetail = currentDetails.find { it.id == detail.id }
-                if (oldDetail != null && oldDetail != detail) {
-                    createUpdateOperation(detail)
-                } else null
-            }
-        }
-
         return ops
     }
 
-    private fun createInsertOperation(detail: ContactDetail<*>, rawContactId: String? = null): ContentProviderOperation {
+    private fun createInsertOperation(
+        detail: ContactDetail<*>,
+        rawContactId: String? = null
+    ): ContentProviderOperation {
         val builder = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
         if (rawContactId != null) {
             builder.withValue(ContactsContract.Data.RAW_CONTACT_ID, rawContactId)
@@ -326,71 +349,116 @@ data class Contact(
             .build()
     }
 
-    fun ContentProviderOperation.Builder.completeOperation(detail: ContactDetail<*>, isInsert: Boolean): ContentProviderOperation {
+    fun ContentProviderOperation.Builder.completeOperation(
+        detail: ContactDetail<*>,
+        isInsert: Boolean
+    ): ContentProviderOperation {
         if (isInsert) {
-            this.withValue(ContactsContract.Data.MIMETYPE, when(detail) {
-                is PhoneNumber -> CDKPhone.CONTENT_ITEM_TYPE
-                is Email -> CDKEmail.CONTENT_ITEM_TYPE
-                is Address -> CDKStructuredPostal.CONTENT_ITEM_TYPE
-                is Event -> CDKEvent.CONTENT_ITEM_TYPE
-                is Photo -> CDKPhoto.CONTENT_ITEM_TYPE
-                is Name -> CDKSName.CONTENT_ITEM_TYPE
-                is Organization -> CDKOrg.CONTENT_ITEM_TYPE
-                is Note -> CDKNote.CONTENT_ITEM_TYPE
-                is Nickname -> CDKNickname.CONTENT_ITEM_TYPE
-                is GroupMembership -> CDKGroupMembership.CONTENT_ITEM_TYPE
-                else -> throw IllegalArgumentException("Unknown detail type")
-            })
+            this.withValue(ContactsContract.Data.MIMETYPE, mimeTypeFor(detail))
         }
         return when (detail) {
-            is PhoneNumber -> this
-                .withValue(CDKPhone.NUMBER, detail.number)
-                .withValue(CDKPhone.TYPE, detail.type)
-                .withValue(CDKPhone.LABEL, detail.label)
-                .build()
-            is Email -> this
-                .withValue(CDKEmail.ADDRESS, detail.address)
-                .withValue(CDKEmail.TYPE, detail.type)
-                .withValue(CDKEmail.LABEL, detail.label)
-                .build()
-            is Address -> this
-                .withValue(CDKStructuredPostal.FORMATTED_ADDRESS, detail.formattedAddress)
-                .withValue(CDKStructuredPostal.TYPE, detail.type)
-                .withValue(CDKStructuredPostal.LABEL, detail.label)
-                .build()
-            is Event -> this
-                .withValue(CDKEvent.START_DATE, detail.startDate.format(LocalDate.Formats.ISO))
-                .withValue(CDKEvent.TYPE, detail.type)
-                .withValue(CDKEvent.LABEL, detail.label)
-                .build()
-            is Photo -> this
-                .withValue(ContactsContract.Data.IS_SUPER_PRIMARY, 1)
-                .withValue(CDKPhoto.PHOTO, Base64.decode(detail.photo))
-                .build()
-            is Name -> this
-                .withValue(CDKSName.PREFIX, detail.namePrefix)
-                .withValue(CDKSName.GIVEN_NAME, detail.firstName)
-                .withValue(CDKSName.MIDDLE_NAME, detail.middleName)
-                .withValue(CDKSName.FAMILY_NAME, detail.lastName)
-                .withValue(CDKSName.SUFFIX, detail.nameSuffix)
-                .build()
-            is Organization -> this
-                .withValue(CDKOrg.COMPANY, detail.company)
-                .build()
-            is Note -> this
-                .withValue(CDKNote.NOTE, detail.content)
-                .build()
-            is Nickname -> this
-                .withValue(CDKNickname.NAME, detail.nickname)
-                .withValue(CDKNickname.TYPE, detail.type)
-                .build()
-            is GroupMembership -> this
-                .withValue(CDKGroupMembership.GROUP_ROW_ID, detail.groupId)
-                .build()
-
+            is PhoneNumber -> completePhoneOperation(detail)
+            is Email -> completeEmailOperation(detail)
+            is Address -> completeAddressOperation(detail)
+            is Event -> completeEventOperation(detail)
+            is Photo -> completePhotoOperation(detail)
+            is Name -> completeNameOperation(detail)
+            is Organization -> completeOrganizationOperation(detail)
+            is Note -> completeNoteOperation(detail)
+            is Nickname -> completeNicknameOperation(detail)
+            is GroupMembership -> completeGroupMembershipOperation(detail)
             else -> throw IllegalArgumentException("Unknown detail type")
         }
     }
+
+    private fun mimeTypeFor(detail: ContactDetail<*>): String =
+        when (detail) {
+            is PhoneNumber -> CDKPhone.CONTENT_ITEM_TYPE
+            is Email -> CDKEmail.CONTENT_ITEM_TYPE
+            is Address -> CDKStructuredPostal.CONTENT_ITEM_TYPE
+            is Event -> CDKEvent.CONTENT_ITEM_TYPE
+            is Photo -> CDKPhoto.CONTENT_ITEM_TYPE
+            is Name -> CDKSName.CONTENT_ITEM_TYPE
+            is Organization -> CDKOrg.CONTENT_ITEM_TYPE
+            is Note -> CDKNote.CONTENT_ITEM_TYPE
+            is Nickname -> CDKNickname.CONTENT_ITEM_TYPE
+            is GroupMembership -> CDKGroupMembership.CONTENT_ITEM_TYPE
+            else -> throw IllegalArgumentException("Unknown detail type")
+        }
+
+    private fun ContentProviderOperation.Builder.completePhoneOperation(
+        detail: PhoneNumber
+    ): ContentProviderOperation = this
+        .withValue(CDKPhone.NUMBER, detail.number)
+        .withValue(CDKPhone.TYPE, detail.type)
+        .withValue(CDKPhone.LABEL, detail.label)
+        .build()
+
+    private fun ContentProviderOperation.Builder.completeEmailOperation(
+        detail: Email
+    ): ContentProviderOperation = this
+        .withValue(CDKEmail.ADDRESS, detail.address)
+        .withValue(CDKEmail.TYPE, detail.type)
+        .withValue(CDKEmail.LABEL, detail.label)
+        .build()
+
+    private fun ContentProviderOperation.Builder.completeAddressOperation(
+        detail: Address
+    ): ContentProviderOperation = this
+        .withValue(CDKStructuredPostal.FORMATTED_ADDRESS, detail.formattedAddress)
+        .withValue(CDKStructuredPostal.TYPE, detail.type)
+        .withValue(CDKStructuredPostal.LABEL, detail.label)
+        .build()
+
+    private fun ContentProviderOperation.Builder.completeEventOperation(
+        detail: Event
+    ): ContentProviderOperation = this
+        .withValue(CDKEvent.START_DATE, detail.startDate.format(LocalDate.Formats.ISO))
+        .withValue(CDKEvent.TYPE, detail.type)
+        .withValue(CDKEvent.LABEL, detail.label)
+        .build()
+
+    private fun ContentProviderOperation.Builder.completePhotoOperation(
+        detail: Photo
+    ): ContentProviderOperation = this
+        .withValue(ContactsContract.Data.IS_SUPER_PRIMARY, 1)
+        .withValue(CDKPhoto.PHOTO, Base64.decode(detail.photo))
+        .build()
+
+    private fun ContentProviderOperation.Builder.completeNameOperation(
+        detail: Name
+    ): ContentProviderOperation = this
+        .withValue(CDKSName.PREFIX, detail.namePrefix)
+        .withValue(CDKSName.GIVEN_NAME, detail.firstName)
+        .withValue(CDKSName.MIDDLE_NAME, detail.middleName)
+        .withValue(CDKSName.FAMILY_NAME, detail.lastName)
+        .withValue(CDKSName.SUFFIX, detail.nameSuffix)
+        .build()
+
+    private fun ContentProviderOperation.Builder.completeOrganizationOperation(
+        detail: Organization
+    ): ContentProviderOperation = this
+        .withValue(CDKOrg.COMPANY, detail.company)
+        .build()
+
+    private fun ContentProviderOperation.Builder.completeNoteOperation(
+        detail: Note
+    ): ContentProviderOperation = this
+        .withValue(CDKNote.NOTE, detail.content)
+        .build()
+
+    private fun ContentProviderOperation.Builder.completeNicknameOperation(
+        detail: Nickname
+    ): ContentProviderOperation = this
+        .withValue(CDKNickname.NAME, detail.nickname)
+        .withValue(CDKNickname.TYPE, detail.type)
+        .build()
+
+    private fun ContentProviderOperation.Builder.completeGroupMembershipOperation(
+        detail: GroupMembership
+    ): ContentProviderOperation = this
+        .withValue(CDKGroupMembership.GROUP_ROW_ID, detail.groupId)
+        .build()
 
     companion object {
 
@@ -432,6 +500,55 @@ data class Contact(
         private fun ringtoneToProvider(value: String?): String? =
             if (value == RINGTONE_SILENT) "" else value
 
+        private fun queryRawContacts(
+            contentResolver: android.content.ContentResolver,
+            contactId: Long?,
+            projection: Array<String>,
+            rawContacts: MutableList<RawContactInfo>,
+        ) {
+            contentResolver.query(
+                ContactsContract.RawContacts.CONTENT_URI,
+                projection,
+                buildString {
+                    append("${ContactsContract.RawContacts.DELETED} = 0")
+                    if (contactId != null) {
+                        append(" AND ${ContactsContract.RawContacts._ID} = ?")
+                    }
+                },
+                contactId?.let { arrayOf(it.toString()) },
+                null,
+            )?.use { cursor ->
+                collectRawContacts(cursor, rawContacts)
+            }
+        }
+
+        private fun collectRawContacts(
+            cursor: android.database.Cursor,
+            rawContacts: MutableList<RawContactInfo>,
+        ) {
+            val idIdx = cursor.getColumnIndexOrThrow(ContactsContract.RawContacts._ID)
+            val nameIdx =
+                cursor.getColumnIndexOrThrow(ContactsContract.RawContacts.DISPLAY_NAME_PRIMARY)
+            val starredIdx = cursor.getColumnIndexOrThrow(ContactsContract.RawContacts.STARRED)
+            val accountNameIdx =
+                cursor.getColumnIndexOrThrow(ContactsContract.RawContacts.ACCOUNT_NAME)
+            val accountTypeIdx =
+                cursor.getColumnIndexOrThrow(ContactsContract.RawContacts.ACCOUNT_TYPE)
+            val ringtoneIdx =
+                cursor.getColumnIndexOrThrow(ContactsContract.RawContacts.CUSTOM_RINGTONE)
+
+            while (cursor.moveToNext()) {
+                rawContacts += RawContactInfo(
+                    id = cursor.getLong(idIdx),
+                    displayName = cursor.getStringOrNull(nameIdx),
+                    isFavorite = cursor.getInt(starredIdx) == 1,
+                    accountName = cursor.getStringOrNull(accountNameIdx),
+                    accountType = cursor.getStringOrNull(accountTypeIdx),
+                    customRingtone = ringtoneFromProvider(cursor.getStringOrNull(ringtoneIdx))
+                )
+            }
+        }
+
         private fun getContacts(context: Context, contactId: Long?): List<Contact> {
             val contentResolver = context.contentResolver
             val projection = arrayOf(
@@ -451,34 +568,12 @@ data class Contact(
                 // already gone. Without this filter processDetails() rebuilds a name-only
                 // contact from that column, so the contact appears to survive deletion and any
                 // edit to it silently fails to persist.
-                contentResolver.query(
-                    ContactsContract.RawContacts.CONTENT_URI, projection,
-                    buildString {
-                        append("${ContactsContract.RawContacts.DELETED} = 0")
-                        if (contactId != null) append(" AND ${ContactsContract.RawContacts._ID} = ?")
-                    },
-                    contactId?.let { arrayOf(it.toString()) },
-                    null
-                )?.use { cursor ->
-                    val idIdx = cursor.getColumnIndexOrThrow(ContactsContract.RawContacts._ID)
-                    val nameIdx = cursor.getColumnIndexOrThrow(ContactsContract.RawContacts.DISPLAY_NAME_PRIMARY)
-                    val starredIdx = cursor.getColumnIndexOrThrow(ContactsContract.RawContacts.STARRED)
-                    val accountNameIdx = cursor.getColumnIndexOrThrow(ContactsContract.RawContacts.ACCOUNT_NAME)
-                    val accountTypeIdx = cursor.getColumnIndexOrThrow(ContactsContract.RawContacts.ACCOUNT_TYPE)
-                    val ringtoneIdx = cursor.getColumnIndexOrThrow(ContactsContract.RawContacts.CUSTOM_RINGTONE)
-
-                    while (cursor.moveToNext()) {
-                        rawContacts += RawContactInfo(
-                            id = cursor.getLong(idIdx),
-                            displayName = cursor.getStringOrNull(nameIdx),
-                            isFavorite = cursor.getInt(starredIdx) == 1,
-                            accountName = cursor.getStringOrNull(accountNameIdx),
-                            accountType = cursor.getStringOrNull(accountTypeIdx),
-                            customRingtone = ringtoneFromProvider(cursor.getStringOrNull(ringtoneIdx))
-                        )
-                    }
-                }
-            } catch (e: Exception) {
+                queryRawContacts(contentResolver, contactId, projection, rawContacts)
+            } catch (e: android.database.SQLException) {
+                Log.e("Contact", "Error querying contacts", e)
+            } catch (e: IllegalArgumentException) {
+                Log.e("Contact", "Error querying contacts", e)
+            } catch (e: SecurityException) {
                 Log.e("Contact", "Error querying contacts", e)
             }
 
@@ -486,8 +581,18 @@ data class Contact(
 
             val allDetails = getDetailsInternal(context, contactId)
             return rawContacts.mapNotNull { raw ->
-                val details = processDetails(allDetails[raw.id] ?: ContactDetails.empty(), raw.displayName) ?: return@mapNotNull null
-                Contact(raw.id, raw.accountType, raw.accountName, raw.isFavorite, details, raw.customRingtone)
+                val details = processDetails(
+                    allDetails[raw.id] ?: ContactDetails.empty(),
+                    raw.displayName
+                ) ?: return@mapNotNull null
+                Contact(
+                    raw.id,
+                    raw.accountType,
+                    raw.accountName,
+                    raw.isFavorite,
+                    details,
+                    raw.customRingtone
+                )
             }
         }
 
@@ -529,175 +634,3 @@ data class Contact(
     }
 }
 
-fun getDetails(context: Context, id: Long, isProfile: Boolean = false): ContactDetails {
-    return getDetailsInternal(context, id, isProfile)[id] ?: ContactDetails.empty()
-}
-
-/** Loads the full-size photo bytes for [contactId], or null if none / on error. */
-fun loadFullSizePhoto(context: Context, contactId: Long): ByteArray? = runCatching {
-    val contactUri = ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, contactId)
-    ContactsContract.Contacts.openContactPhotoInputStream(context.contentResolver, contactUri, true)?.use { it.readBytes() }
-}.getOrNull()
-
-fun getDetailsInternal(context: Context, id: Long? = null, isProfile: Boolean = false): Map<Long, ContactDetails> {
-    val contentResolver = context.contentResolver
-
-    val projection = arrayOf(
-        ContactsContract.Data.RAW_CONTACT_ID,
-        ContactsContract.Data._ID,
-        ContactsContract.Data.MIMETYPE,
-        ContactsContract.Data.CONTACT_ID,
-        ContactsContract.Data.DATA1,
-        ContactsContract.Data.DATA2,
-        ContactsContract.Data.DATA3,
-        ContactsContract.Data.DATA4,
-        ContactsContract.Data.DATA5,
-        ContactsContract.Data.DATA6,
-        ContactsContract.Data.DATA7,
-        ContactsContract.Data.DATA8,
-        ContactsContract.Data.DATA9,
-        ContactsContract.Data.DATA10,
-        ContactsContract.Data.DATA15
-    )
-
-    val phoneNumbersMap = mutableMapOf<Long, MutableList<PhoneNumber>>()
-    val emailsMap = mutableMapOf<Long, MutableList<Email>>()
-    val addressesMap = mutableMapOf<Long, MutableList<Address>>()
-    val datesMap = mutableMapOf<Long, MutableList<Event>>()
-    val photosMap = mutableMapOf<Long, MutableList<Photo>>()
-    val namesMap = mutableMapOf<Long, MutableList<Name>>()
-    val orgsMap = mutableMapOf<Long, MutableList<Organization>>()
-    val notesMap = mutableMapOf<Long, MutableList<Note>>()
-    val nicknamesMap = mutableMapOf<Long, MutableList<Nickname>>()
-    val groupsMap = mutableMapOf<Long, MutableList<GroupMembership>>()
-
-    val rawContactIds = mutableSetOf<Long>()
-
-    try {
-        contentResolver.query(
-            if (isProfile) Uri.withAppendedPath(Profile.CONTENT_URI, ContactsContract.Contacts.Data.CONTENT_DIRECTORY) else ContactsContract.Data.CONTENT_URI,
-            projection,
-            id?.let { "${ContactsContract.Data.RAW_CONTACT_ID} = ?" },
-            id?.let { arrayOf(it.toString()) },
-            null
-        )?.use { cursor ->
-            val rawIdIdx = cursor.getColumnIndexOrThrow(ContactsContract.Data.RAW_CONTACT_ID)
-            val idIdx = cursor.getColumnIndexOrThrow(ContactsContract.Data._ID)
-            val mimeIdx = cursor.getColumnIndexOrThrow(ContactsContract.Data.MIMETYPE)
-            val d1Idx = cursor.getColumnIndexOrThrow(ContactsContract.Data.DATA1)
-            val d2Idx = cursor.getColumnIndexOrThrow(ContactsContract.Data.DATA2)
-            val d3Idx = cursor.getColumnIndexOrThrow(ContactsContract.Data.DATA3)
-            val d4Idx = cursor.getColumnIndexOrThrow(ContactsContract.Data.DATA4)
-            val d5Idx = cursor.getColumnIndexOrThrow(ContactsContract.Data.DATA5)
-            val d6Idx = cursor.getColumnIndexOrThrow(ContactsContract.Data.DATA6)
-            val d7Idx = cursor.getColumnIndexOrThrow(ContactsContract.Data.DATA7)
-            val d8Idx = cursor.getColumnIndexOrThrow(ContactsContract.Data.DATA8)
-            val d9Idx = cursor.getColumnIndexOrThrow(ContactsContract.Data.DATA9)
-            val d10Idx = cursor.getColumnIndexOrThrow(ContactsContract.Data.DATA10)
-            val contactIdIdx = cursor.getColumnIndexOrThrow(ContactsContract.Data.CONTACT_ID)
-            val d15Idx = cursor.getColumnIndexOrThrow(ContactsContract.Data.DATA15)
-
-            while (cursor.moveToNext()) {
-                    val rawId = cursor.getLong(rawIdIdx)
-                    rawContactIds.add(rawId)
-                    val dataId = cursor.getLong(idIdx)
-                    when (cursor.getString(mimeIdx)) {
-                        CDKPhone.CONTENT_ITEM_TYPE -> {
-                            val number = cursor.getStringOrNull(d1Idx) ?: ""
-                            val type = cursor.getInt(d2Idx)
-                            val label = cursor.getStringOrNull(d3Idx) ?: ""
-                            phoneNumbersMap.getOrPut(rawId) { mutableListOf() }.add(PhoneNumber(dataId, number, type, label))
-                        }
-                        CDKEmail.CONTENT_ITEM_TYPE -> {
-                            val address = cursor.getStringOrNull(d1Idx) ?: ""
-                            val type = cursor.getInt(d2Idx)
-                            val label = cursor.getStringOrNull(d3Idx) ?: ""
-                            emailsMap.getOrPut(rawId) { mutableListOf() }.add(Email(dataId, address, type, label))
-                        }
-                        CDKStructuredPostal.CONTENT_ITEM_TYPE -> {
-                            var formatted = cursor.getStringOrNull(d1Idx)
-                            val type = cursor.getInt(d2Idx)
-                            val label = cursor.getStringOrNull(d3Idx) ?: ""
-                            if (formatted.isNullOrBlank()) {
-                                val street = cursor.getStringOrNull(d4Idx)
-                                val city = cursor.getStringOrNull(d7Idx)
-                                val region = cursor.getStringOrNull(d8Idx)
-                                val code = cursor.getStringOrNull(d9Idx)
-                                val country = cursor.getStringOrNull(d10Idx)
-                                formatted = listOfNotNull(street, city, region, code, country)
-                                    .filter { it.isNotBlank() }
-                                    .joinToString(", ")
-                            }
-                            addressesMap.getOrPut(rawId) { mutableListOf() }.add(Address(dataId, formatted, type, label))
-                        }
-                        CDKEvent.CONTENT_ITEM_TYPE -> {
-                            val date = cursor.getStringOrNull(d1Idx) ?: ""
-                            val type = cursor.getInt(d2Idx)
-                            val label = cursor.getStringOrNull(d3Idx) ?: ""
-                            val localDate = runCatching { LocalDate.parse(date, LocalDate.Formats.ISO) }.getOrNull()
-                                ?: runCatching { LocalDate.parse(date, LocalDate.Format { year(); monthNumber(); day() }) }.getOrNull()
-                                ?: if (date.startsWith("--")) runCatching { LocalDate.parse("1604" + date.substring(2)) }.getOrNull() else null
-
-                            if (localDate != null) {
-                                datesMap.getOrPut(rawId) { mutableListOf() }.add(Event(dataId, localDate, type, label))
-                            }
-                        }
-                        CDKPhoto.CONTENT_ITEM_TYPE -> runCatching {
-                            // Prefer the DATA15 thumbnail blob so whole-book sync doesn't open
-                            // a full-size stream per row; only fall back when the blob is null.
-                            val photoBytes = cursor.getBlobOrNull(d15Idx) ?: run {
-                                val contactId = cursor.getLong(contactIdIdx)
-                                val contactUri = ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, contactId)
-                                ContactsContract.Contacts.openContactPhotoInputStream(contentResolver, contactUri, true)?.use { it.readBytes() }
-                            }
-                            if (photoBytes != null) {
-                                photosMap.getOrPut(rawId) { mutableListOf() }.add(Photo(dataId, Base64.encode(photoBytes)))
-                            }
-                        }.onFailure { Log.e("Contact", "Error reading contact photo", it) }
-                        CDKSName.CONTENT_ITEM_TYPE -> {
-                            val prefix = cursor.getStringOrNull(d4Idx) ?: ""
-                            val given = cursor.getStringOrNull(d2Idx) ?: ""
-                            val middle = cursor.getStringOrNull(d5Idx) ?: ""
-                            val family = cursor.getStringOrNull(d3Idx) ?: ""
-                            val suffix = cursor.getStringOrNull(d6Idx) ?: ""
-                            namesMap.getOrPut(rawId) { mutableListOf() }.add(Name(dataId, prefix, given, middle, family, suffix))
-                        }
-                        CDKOrg.CONTENT_ITEM_TYPE -> {
-                            val company = cursor.getStringOrNull(d1Idx) ?: ""
-                            orgsMap.getOrPut(rawId) { mutableListOf() }.add(Organization(dataId, company))
-                        }
-                        CDKNote.CONTENT_ITEM_TYPE -> {
-                            val noteContent = cursor.getStringOrNull(d1Idx) ?: ""
-                            notesMap.getOrPut(rawId) { mutableListOf() }.add(Note(dataId, noteContent))
-                        }
-                        CDKNickname.CONTENT_ITEM_TYPE -> {
-                            val nickname = cursor.getStringOrNull(d1Idx) ?: ""
-                            val type = cursor.getInt(d2Idx)
-                            nicknamesMap.getOrPut(rawId) { mutableListOf() }.add(Nickname(dataId, nickname, type))
-                        }
-                        CDKGroupMembership.CONTENT_ITEM_TYPE -> {
-                            val groupId = cursor.getLong(d1Idx)
-                            groupsMap.getOrPut(rawId) { mutableListOf() }.add(GroupMembership(dataId, groupId))
-                        }
-                    }
-            }
-        }
-    } catch (e: Exception) {
-        Log.e("Contact", "Error querying contact details", e)
-    }
-
-    return rawContactIds.associateWith { rawId ->
-        ContactDetails(
-            phoneNumbersMap[rawId]?.distinct().orEmpty(),
-            emailsMap[rawId]?.distinct().orEmpty(),
-            addressesMap[rawId]?.distinct().orEmpty(),
-            datesMap[rawId]?.distinct().orEmpty(),
-            photosMap[rawId]?.distinct().orEmpty(),
-            namesMap[rawId]?.distinct().orEmpty(),
-            orgsMap[rawId]?.distinct().orEmpty(),
-            notesMap[rawId]?.distinct().orEmpty(),
-            nicknamesMap[rawId]?.distinct().orEmpty(),
-            groupsMap[rawId]?.distinct().orEmpty()
-        )
-    }
-}

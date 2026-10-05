@@ -89,7 +89,7 @@ object HealthSink {
                         try {
                             client.insertRecords(batch)
                             synchronized(this@HealthSink) { inserted += batch.size }
-                        } catch (e: Exception) {
+                        } catch (expected: Exception) {
                             Log.e(TAG, "insertRecords failed (${batch.size} records)", e)
                         }
                     }
@@ -139,8 +139,8 @@ object HealthSink {
     /** Construct a record, skipping (not crashing) on Health Connect range violations. */
     private fun safeRecord(m: RemoteMeasurement): Record? = try {
         toRecord(m)
-    } catch (e: Exception) {
-        Log.w(TAG, "skipping ${m.type} (${m.value}) @ ${m.startMillis}: ${e.message}")
+    } catch (expected: Exception) {
+        Log.w(TAG, "skipping ${m.type} (${m.value}) @ ${m.startMillis}: ${expected.message}")
         null
     }
 
@@ -150,85 +150,228 @@ object HealthSink {
         val startOffset = zone.rules.getOffset(start)
         val endOffset = zone.rules.getOffset(end)
         val meta = Metadata.manualEntry(clientRecordId = m.clientRecordId)
+        val ctx = RecordContext(m, start, startOffset, end, endOffset, meta)
         return when (m.type) {
-            // --- Body composition (instantaneous) ---
+            MeasurementType.WEIGHT,
+            MeasurementType.HEIGHT,
+            MeasurementType.BODY_FAT,
+            -> bodyCompositionRecord(ctx)
+            MeasurementType.OXYGEN_SATURATION,
+            MeasurementType.RESTING_HEART_RATE,
+            MeasurementType.HEART_RATE_VARIABILITY,
+            MeasurementType.RESPIRATORY_RATE,
+            MeasurementType.BLOOD_GLUCOSE,
+            MeasurementType.BODY_TEMPERATURE,
+            MeasurementType.VO2_MAX,
+            MeasurementType.HEART_RATE,
+            -> vitalsRecord(ctx)
+            MeasurementType.STEPS,
+            MeasurementType.DISTANCE,
+            MeasurementType.FLOORS,
+            MeasurementType.ELEVATION,
+            MeasurementType.ACTIVE_CALORIES,
+            MeasurementType.TOTAL_CALORIES,
+            MeasurementType.HYDRATION,
+            -> activityRecord(ctx)
+            MeasurementType.SLEEP,
+            MeasurementType.EXERCISE,
+            MeasurementType.NUTRITION,
+            -> sessionRecord(ctx)
+        }
+    }
+
+    private data class RecordContext(
+        val m: RemoteMeasurement,
+        val start: Instant,
+        val startOffset: java.time.ZoneOffset,
+        val end: Instant,
+        val endOffset: java.time.ZoneOffset,
+        val meta: Metadata,
+    )
+
+    private fun bodyCompositionRecord(ctx: RecordContext): Record {
+        val m = ctx.m
+        return when (m.type) {
             MeasurementType.WEIGHT ->
-                WeightRecord(time = start, zoneOffset = startOffset, weight = Mass.kilograms(m.value), metadata = meta)
+                WeightRecord(
+                    time = ctx.start,
+                    zoneOffset = ctx.startOffset,
+                    weight = Mass.kilograms(m.value),
+                    metadata = ctx.meta,
+                )
             MeasurementType.HEIGHT ->
-                HeightRecord(time = start, zoneOffset = startOffset, height = Length.meters(m.value), metadata = meta)
-            MeasurementType.BODY_FAT ->
-                BodyFatRecord(time = start, zoneOffset = startOffset, percentage = Percentage(m.value), metadata = meta)
+                HeightRecord(
+                    time = ctx.start,
+                    zoneOffset = ctx.startOffset,
+                    height = Length.meters(m.value),
+                    metadata = ctx.meta,
+                )
+            else ->
+                BodyFatRecord(
+                    time = ctx.start,
+                    zoneOffset = ctx.startOffset,
+                    percentage = Percentage(m.value),
+                    metadata = ctx.meta,
+                )
+        }
+    }
 
-            // --- Vitals (instantaneous) ---
-            MeasurementType.OXYGEN_SATURATION ->
-                OxygenSaturationRecord(time = start, zoneOffset = startOffset, percentage = Percentage(m.value), metadata = meta)
-            MeasurementType.RESTING_HEART_RATE ->
-                RestingHeartRateRecord(time = start, zoneOffset = startOffset, beatsPerMinute = m.value.toLong(), metadata = meta)
-            MeasurementType.HEART_RATE_VARIABILITY ->
-                HeartRateVariabilityRmssdRecord(time = start, zoneOffset = startOffset, heartRateVariabilityMillis = m.value, metadata = meta)
-            MeasurementType.RESPIRATORY_RATE ->
-                RespiratoryRateRecord(time = start, zoneOffset = startOffset, rate = m.value, metadata = meta)
-            MeasurementType.BLOOD_GLUCOSE ->
-                BloodGlucoseRecord(time = start, zoneOffset = startOffset, level = BloodGlucose.milligramsPerDeciliter(m.value), metadata = meta)
-            MeasurementType.BODY_TEMPERATURE ->
-                BodyTemperatureRecord(time = start, zoneOffset = startOffset, temperature = Temperature.celsius(m.value), metadata = meta)
-            MeasurementType.VO2_MAX ->
-                Vo2MaxRecord(time = start, zoneOffset = startOffset, vo2MillilitersPerMinuteKilogram = m.value, metadata = meta)
-            MeasurementType.HEART_RATE -> HeartRateRecord(
-                startTime = start,
-                startZoneOffset = startOffset,
-                endTime = end,
-                endZoneOffset = endOffset,
-                samples = listOf(HeartRateRecord.Sample(start, m.value.toLong())),
-                metadata = meta,
-            )
+    private fun vitalsRecord(ctx: RecordContext): Record {
+        val m = ctx.m
+        return when (m.type) {
+            MeasurementType.OXYGEN_SATURATION -> oxygenSaturation(ctx)
+            MeasurementType.RESTING_HEART_RATE -> restingHeartRate(ctx)
+            MeasurementType.HEART_RATE_VARIABILITY -> heartRateVariability(ctx)
+            MeasurementType.RESPIRATORY_RATE -> respiratoryRate(ctx)
+            MeasurementType.BLOOD_GLUCOSE -> bloodGlucose(ctx)
+            MeasurementType.BODY_TEMPERATURE -> bodyTemperature(ctx)
+            MeasurementType.VO2_MAX -> vo2Max(ctx)
+            else -> heartRateSeries(ctx)
+        }
+    }
 
-            // --- Activity (intervals) ---
-            MeasurementType.STEPS -> StepsRecord(
-                startTime = start,
-                startZoneOffset = startOffset,
-                endTime = end,
-                endZoneOffset = endOffset,
-                count = m.value.toLong().coerceAtLeast(1),
-                metadata = meta,
-            )
-            MeasurementType.DISTANCE -> DistanceRecord(
-                startTime = start, startZoneOffset = startOffset,
-                endTime = end, endZoneOffset = endOffset,
-                distance = Length.meters(m.value), metadata = meta,
-            )
-            MeasurementType.FLOORS -> FloorsClimbedRecord(
-                startTime = start, startZoneOffset = startOffset,
-                endTime = end, endZoneOffset = endOffset,
-                floors = m.value, metadata = meta,
-            )
-            MeasurementType.ELEVATION -> ElevationGainedRecord(
-                startTime = start, startZoneOffset = startOffset,
-                endTime = end, endZoneOffset = endOffset,
-                elevation = Length.meters(m.value), metadata = meta,
-            )
-            MeasurementType.ACTIVE_CALORIES -> ActiveCaloriesBurnedRecord(
-                startTime = start, startZoneOffset = startOffset,
-                endTime = end, endZoneOffset = endOffset,
-                energy = Energy.kilocalories(m.value), metadata = meta,
-            )
-            MeasurementType.TOTAL_CALORIES -> TotalCaloriesBurnedRecord(
-                startTime = start, startZoneOffset = startOffset,
-                endTime = end, endZoneOffset = endOffset,
-                energy = Energy.kilocalories(m.value), metadata = meta,
-            )
-            MeasurementType.HYDRATION -> HydrationRecord(
-                startTime = start, startZoneOffset = startOffset,
-                endTime = end, endZoneOffset = endOffset,
-                volume = Volume.liters(m.value), metadata = meta,
-            )
+    private fun oxygenSaturation(ctx: RecordContext) = OxygenSaturationRecord(
+        time = ctx.start,
+        zoneOffset = ctx.startOffset,
+        percentage = Percentage(ctx.m.value),
+        metadata = ctx.meta,
+    )
 
-            // --- Sessions ---
+    private fun restingHeartRate(ctx: RecordContext) = RestingHeartRateRecord(
+        time = ctx.start,
+        zoneOffset = ctx.startOffset,
+        beatsPerMinute = ctx.m.value.toLong(),
+        metadata = ctx.meta,
+    )
+
+    private fun heartRateVariability(ctx: RecordContext) = HeartRateVariabilityRmssdRecord(
+        time = ctx.start,
+        zoneOffset = ctx.startOffset,
+        heartRateVariabilityMillis = ctx.m.value,
+        metadata = ctx.meta,
+    )
+
+    private fun respiratoryRate(ctx: RecordContext) = RespiratoryRateRecord(
+        time = ctx.start,
+        zoneOffset = ctx.startOffset,
+        rate = ctx.m.value,
+        metadata = ctx.meta,
+    )
+
+    private fun bloodGlucose(ctx: RecordContext) = BloodGlucoseRecord(
+        time = ctx.start,
+        zoneOffset = ctx.startOffset,
+        level = BloodGlucose.milligramsPerDeciliter(ctx.m.value),
+        metadata = ctx.meta,
+    )
+
+    private fun bodyTemperature(ctx: RecordContext) = BodyTemperatureRecord(
+        time = ctx.start,
+        zoneOffset = ctx.startOffset,
+        temperature = Temperature.celsius(ctx.m.value),
+        metadata = ctx.meta,
+    )
+
+    private fun vo2Max(ctx: RecordContext) = Vo2MaxRecord(
+        time = ctx.start,
+        zoneOffset = ctx.startOffset,
+        vo2MillilitersPerMinuteKilogram = ctx.m.value,
+        metadata = ctx.meta,
+    )
+
+    private fun heartRateSeries(ctx: RecordContext) = HeartRateRecord(
+        startTime = ctx.start,
+        startZoneOffset = ctx.startOffset,
+        endTime = ctx.end,
+        endZoneOffset = ctx.endOffset,
+        samples = listOf(HeartRateRecord.Sample(ctx.start, ctx.m.value.toLong())),
+        metadata = ctx.meta,
+    )
+
+    private fun activityRecord(ctx: RecordContext): Record {
+        val m = ctx.m
+        return when (m.type) {
+            MeasurementType.STEPS -> steps(ctx)
+            MeasurementType.DISTANCE -> distance(ctx)
+            MeasurementType.FLOORS -> floors(ctx)
+            MeasurementType.ELEVATION -> elevation(ctx)
+            MeasurementType.ACTIVE_CALORIES -> activeCalories(ctx)
+            MeasurementType.TOTAL_CALORIES -> totalCalories(ctx)
+            else -> hydration(ctx)
+        }
+    }
+
+    private fun steps(ctx: RecordContext) = StepsRecord(
+        startTime = ctx.start,
+        startZoneOffset = ctx.startOffset,
+        endTime = ctx.end,
+        endZoneOffset = ctx.endOffset,
+        count = ctx.m.value.toLong().coerceAtLeast(1),
+        metadata = ctx.meta,
+    )
+
+    private fun distance(ctx: RecordContext) = DistanceRecord(
+        startTime = ctx.start,
+        startZoneOffset = ctx.startOffset,
+        endTime = ctx.end,
+        endZoneOffset = ctx.endOffset,
+        distance = Length.meters(ctx.m.value),
+        metadata = ctx.meta,
+    )
+
+    private fun floors(ctx: RecordContext) = FloorsClimbedRecord(
+        startTime = ctx.start,
+        startZoneOffset = ctx.startOffset,
+        endTime = ctx.end,
+        endZoneOffset = ctx.endOffset,
+        floors = ctx.m.value,
+        metadata = ctx.meta,
+    )
+
+    private fun elevation(ctx: RecordContext) = ElevationGainedRecord(
+        startTime = ctx.start,
+        startZoneOffset = ctx.startOffset,
+        endTime = ctx.end,
+        endZoneOffset = ctx.endOffset,
+        elevation = Length.meters(ctx.m.value),
+        metadata = ctx.meta,
+    )
+
+    private fun activeCalories(ctx: RecordContext) = ActiveCaloriesBurnedRecord(
+        startTime = ctx.start,
+        startZoneOffset = ctx.startOffset,
+        endTime = ctx.end,
+        endZoneOffset = ctx.endOffset,
+        energy = Energy.kilocalories(ctx.m.value),
+        metadata = ctx.meta,
+    )
+
+    private fun totalCalories(ctx: RecordContext) = TotalCaloriesBurnedRecord(
+        startTime = ctx.start,
+        startZoneOffset = ctx.startOffset,
+        endTime = ctx.end,
+        endZoneOffset = ctx.endOffset,
+        energy = Energy.kilocalories(ctx.m.value),
+        metadata = ctx.meta,
+    )
+
+    private fun hydration(ctx: RecordContext) = HydrationRecord(
+        startTime = ctx.start,
+        startZoneOffset = ctx.startOffset,
+        endTime = ctx.end,
+        endZoneOffset = ctx.endOffset,
+        volume = Volume.liters(ctx.m.value),
+        metadata = ctx.meta,
+    )
+
+    private fun sessionRecord(ctx: RecordContext): Record {
+        val m = ctx.m
+        return when (m.type) {
             MeasurementType.SLEEP -> SleepSessionRecord(
-                startTime = start,
-                startZoneOffset = startOffset,
-                endTime = end,
-                endZoneOffset = endOffset,
+                startTime = ctx.start,
+                startZoneOffset = ctx.startOffset,
+                endTime = ctx.end,
+                endZoneOffset = ctx.endOffset,
                 stages = m.sleepStages.map {
                     SleepSessionRecord.Stage(
                         startTime = Instant.ofEpochMilli(it.startMillis),
@@ -236,19 +379,26 @@ object HealthSink {
                         stage = it.stage,
                     )
                 },
-                metadata = meta,
+                metadata = ctx.meta,
             )
             MeasurementType.EXERCISE -> ExerciseSessionRecord(
-                startTime = start,
-                startZoneOffset = startOffset,
-                endTime = end,
-                endZoneOffset = endOffset,
+                startTime = ctx.start,
+                startZoneOffset = ctx.startOffset,
+                endTime = ctx.end,
+                endZoneOffset = ctx.endOffset,
                 exerciseType = m.exerciseType,
                 title = m.title,
                 notes = m.notes,
-                metadata = meta,
+                metadata = ctx.meta,
             )
-            MeasurementType.NUTRITION -> nutritionRecord(m, start, startOffset, end, endOffset, meta)
+            else -> nutritionRecord(
+                m,
+                ctx.start,
+                ctx.startOffset,
+                ctx.end,
+                ctx.endOffset,
+                ctx.meta,
+            )
         }
     }
 

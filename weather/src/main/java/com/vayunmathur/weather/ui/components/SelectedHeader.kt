@@ -13,7 +13,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.vayunmathur.weather.network.ForecastResponse
 import com.vayunmathur.weather.domain.SelectedDateOrTime
 import com.vayunmathur.weather.domain.formatDayMonthLabel
 import com.vayunmathur.weather.domain.formatSelectedHourLabel
@@ -26,7 +25,6 @@ import com.vayunmathur.weather.domain.formatSelectedHourLabel
 @Composable
 fun SelectedDateTimeHeader(
     selection: SelectedDateOrTime,
-    forecast: ForecastResponse,
     use24Hour: Boolean,
     onClear: () -> Unit,
 ) {

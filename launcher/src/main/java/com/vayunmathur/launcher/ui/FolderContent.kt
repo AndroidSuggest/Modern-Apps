@@ -72,7 +72,6 @@ fun FolderContent(
     iconScale: Float = 1f,
     anchor: Rect = Rect.Zero,
     progress: () -> Float = { 1f },
-    onOpenItemMenu: (Long, Rect) -> Unit = { _, _ -> },
     onDragLeft: () -> Unit = {},
     onDismiss: () -> Unit = {},
 ) {
@@ -161,7 +160,6 @@ fun FolderContent(
                             showLabels = showLabels,
                             iconScale = iconScale,
                             dimmed = drag.payload?.itemId == child.id,
-                            onOpenItemMenu = onOpenItemMenu,
                             onDismiss = onDismiss,
                             // A reorder rewrites every rank after the one that moved, so without
                             // this the siblings it displaced appear at their new slots instantly.
@@ -183,7 +181,6 @@ private fun FolderChild(
     showLabels: Boolean,
     iconScale: Float,
     dimmed: Boolean,
-    onOpenItemMenu: (Long, Rect) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {

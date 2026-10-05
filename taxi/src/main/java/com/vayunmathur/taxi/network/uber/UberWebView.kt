@@ -52,7 +52,7 @@ fun UberWebView(
                             @JavascriptInterface
                             fun onGraphql(operation: String, variables: String, response: String) {
                                 Log.d(TAG, "GQL $operation vars=$variables")
-                                Log.d(TAG, "GQL $operation resp=${response.take(4000)}")
+                                Log.d(TAG, "GQL $operation resp=${response.take(GRAPHQL_RESPONSE_LOG_MAX)}")
                                 post {
                                     onGraphqlCaptured(
                                         UberGraphqlCapture(operation, variables, response),
@@ -95,6 +95,9 @@ fun UberWebView(
 }
 
 private const val TAG = "UberWeb"
+
+/** How much of a captured GraphQL response goes to logcat — the shape, not the payload. */
+private const val GRAPHQL_RESPONSE_LOG_MAX = 4000
 
 data class UberGraphqlCapture(
     val operationName: String,

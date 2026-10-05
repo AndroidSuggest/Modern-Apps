@@ -63,7 +63,11 @@ fun CallLogsScreen() {
                 message = stringResource(R.string.permission_call_logs_message),
                 modifier = Modifier.padding(padding),
             ) { permissionRevision ->
-                val callLogs = produceState<List<CommunicateCallLogEntry>?>(initialValue = null, roleRevision, permissionRevision, tick) {
+                val callLogs = produceState<List<CommunicateCallLogEntry>?>(
+                    initialValue = null,
+                    roleRevision,
+                    permissionRevision,
+                    tick) {
                     value = withContext(Dispatchers.IO) { CommunicateRepository.loadCallLogsMerged(context) }
                 }
                 when (val rows = callLogs.value) {
@@ -99,7 +103,9 @@ fun CallLogsScreen() {
                         onConfirm = {
                             pendingDelete = null
                             scope.launch {
-                                val ok = withContext(Dispatchers.IO) { CommunicateRepository.deleteCallLog(context, toDelete) }
+                                val ok = withContext(Dispatchers.IO) { CommunicateRepository.deleteCallLog(
+                                    context,
+                                    toDelete) }
                                 if (ok) tick++ else AppMessages.show(context.getString(R.string.delete_failed))
                             }
                         },

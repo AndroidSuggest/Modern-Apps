@@ -28,7 +28,12 @@ enum class WeatherCondition(@StringRes val label: Int) {
         Clear -> if (isDay) R.drawable.outline_clear_day_24 else R.drawable.outline_clear_night_24
         // Mostly/mainly clear shows the same sun / moon as fully clear.
         MostlyClear -> if (isDay) R.drawable.outline_clear_day_24 else R.drawable.outline_clear_night_24
-        PartlyCloudy -> if (isDay) R.drawable.outline_partly_cloudy_day_24 else R.drawable.outline_partly_cloudy_night_24
+        PartlyCloudy ->
+            if (isDay) {
+                R.drawable.outline_partly_cloudy_day_24
+            } else {
+                R.drawable.outline_partly_cloudy_night_24
+            }
         Cloudy -> R.drawable.outline_cloudy_24
         Fog -> R.drawable.outline_fog_24
         Drizzle -> R.drawable.outline_drizzle_24

@@ -27,6 +27,17 @@ object MmsPdu {
     private const val MMS_VERSION_1_2 = 0x92 // short-integer for version 1.2
     private const val INSERT_ADDRESS_TOKEN = 0x81
     private const val FROM_ADDRESS_PRESENT = 0x80
+    // WSP value markers.
+    private const val FIELD_CONTENT_LOCATION = 0x8E
+    private const val QUOTE_TOKEN = 0x7F
+    private const val BYTE_MASK = 0xFF
+    private const val END_STRING = 0x00
+    private const val CHARSET_UTF8_SHORT = 0xEA
+    private const val SHORT_LENGTH_MAX = 31
+    private const val LENGTH_QUOTE = 0x1F
+    private const val UINTVAR_BITS = 7
+    private const val UINTVAR_MASK = 0x7F
+    private const val UINTVAR_CONT = 0x80
 
     private const val CT_MULTIPART_MIXED = "application/vnd.wap.multipart.mixed"
 
@@ -73,7 +84,7 @@ object MmsPdu {
             writeTextString(headers, p.contentType)
             // Content-Location / name so the receiver can reference the part.
             val name = p.name ?: defaultPartName(p.contentType, i)
-            headers.write(0x8E) // Content-Location well-known field
+            headers.write(FIELD_CONTENT_LOCATION) // Content-Location well-known field
             writeTextString(headers, name)
             val headerBytes = headers.toByteArray()
             writeUintvar(out, headerBytes.size.toLong())
@@ -94,9 +105,9 @@ object MmsPdu {
     /** Text-string = [Quote] *TEXT End-of-string(0x00). Quote (0x7F) prefix if first byte >= 0x80. */
     private fun writeTextString(out: ByteArrayOutputStream, value: String) {
         val bytes = value.toByteArray(Charsets.UTF_8)
-        if (bytes.isNotEmpty() && (bytes[0].toInt() and 0xFF) >= 0x80) out.write(0x7F)
+        if (bytes.isNotEmpty() && (bytes[0].toInt() and BYTE_MASK) >= FROM_ADDRESS_PRESENT) out.write(QUOTE_TOKEN)
         out.write(bytes)
-        out.write(0x00)
+        out.write(END_STRING)
     }
 
     /**
@@ -105,7 +116,7 @@ object MmsPdu {
      */
     private fun writeEncodedString(out: ByteArrayOutputStream, value: String) {
         val text = ByteArrayOutputStream()
-        text.write(0xEA) // charset UTF-8 (106) as short-integer
+        text.write(CHARSET_UTF8_SHORT) // charset UTF-8 (106) as short-integer
         writeTextString(text, value)
         val body = text.toByteArray()
         writeValueLength(out, body.size.toLong())
@@ -114,27 +125,27 @@ object MmsPdu {
 
     /** Value-length = Short-length (0..30) | (0x1F Length-uintvar). */
     private fun writeValueLength(out: ByteArrayOutputStream, length: Long) {
-        if (length < 31) {
+        if (length < SHORT_LENGTH_MAX) {
             out.write(length.toInt())
         } else {
-            out.write(0x1F)
+            out.write(LENGTH_QUOTE)
             writeUintvar(out, length)
         }
     }
 
     /** Variable-length unsigned integer (uintvar), 7 bits per byte, MSB = continuation. */
     private fun writeUintvar(out: ByteArrayOutputStream, value: Long) {
-        if (value < 0x80) {
+        if (value < FROM_ADDRESS_PRESENT) {
             out.write(value.toInt())
             return
         }
         val bytes = ArrayList<Int>()
         var v = value
-        bytes.add((v and 0x7F).toInt())
-        v = v shr 7
+        bytes.add((v and UINTVAR_MASK).toInt())
+        v = v shr UINTVAR_BITS
         while (v > 0) {
-            bytes.add(((v and 0x7F) or 0x80).toInt())
-            v = v shr 7
+            bytes.add(((v and UINTVAR_MASK) or UINTVAR_CONT).toInt())
+            v = v shr UINTVAR_BITS
         }
         for (i in bytes.indices.reversed()) out.write(bytes[i])
     }

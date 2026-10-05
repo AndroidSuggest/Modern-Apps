@@ -23,7 +23,10 @@ interface LocationValueDao {
      * would never reach the UI — stored, but invisible. For live-only data the two columns are
      * equal and this behaves exactly as it always did.
      */
-    @Query("SELECT * FROM LocationValue WHERE (userid, reportedAt) IN ( SELECT userid, MAX(reportedAt) FROM LocationValue GROUP BY userid )")
+    @Query(
+        "SELECT * FROM LocationValue WHERE (userid, reportedAt) IN " +
+            "( SELECT userid, MAX(reportedAt) FROM LocationValue GROUP BY userid )"
+    )
     fun getLatest(): Flow<List<LocationValue>>
 
     @Query("SELECT * FROM LocationValue WHERE userid = :userid")
@@ -90,16 +93,25 @@ interface UserDao {
 
     /** Atomically set only the time-based auto-toggle deadline (Never = null). Also clears any
      * arrival trigger so the two auto-toggle modes stay mutually exclusive. */
-    @Query("UPDATE User SET sharingAutoToggleAt = :atEpochSeconds, sharingAutoToggleWaypointId = NULL WHERE id = :id")
+    @Query(
+        "UPDATE User SET sharingAutoToggleAt = :atEpochSeconds, " +
+            "sharingAutoToggleWaypointId = NULL WHERE id = :id"
+    )
     suspend fun setSharingAutoToggleAt(id: Long, atEpochSeconds: Long?)
 
     /** Atomically set the arrival-based auto-toggle waypoint (Never = null). Also clears any
      * time-based deadline so the two auto-toggle modes stay mutually exclusive. */
-    @Query("UPDATE User SET sharingAutoToggleWaypointId = :waypointId, sharingAutoToggleAt = NULL WHERE id = :id")
+    @Query(
+        "UPDATE User SET sharingAutoToggleWaypointId = :waypointId, " +
+            "sharingAutoToggleAt = NULL WHERE id = :id"
+    )
     suspend fun setSharingAutoToggleWaypointId(id: Long, waypointId: Long?)
 
     /** Atomically set sharing enabled AND clear any pending auto-toggle (manual toggle path). */
-    @Query("UPDATE User SET sendingEnabled = :enabled, sharingAutoToggleAt = NULL, sharingAutoToggleWaypointId = NULL WHERE id = :id")
+    @Query(
+        "UPDATE User SET sendingEnabled = :enabled, sharingAutoToggleAt = NULL, " +
+            "sharingAutoToggleWaypointId = NULL WHERE id = :id"
+    )
     suspend fun setSendingEnabledAndClearToggle(id: Long, enabled: Boolean)
 
     /**
@@ -108,7 +120,11 @@ interface UserDao {
      * no longer matches and we won't accidentally disable/enable when they didn't intend it.
      * Returns number of rows flipped.
      */
-    @Query("UPDATE User SET sendingEnabled = CASE WHEN sendingEnabled THEN 0 ELSE 1 END, sharingAutoToggleAt = NULL WHERE sharingAutoToggleAt IS NOT NULL AND sharingAutoToggleAt <= :nowEpochSeconds")
+    @Query(
+        "UPDATE User SET sendingEnabled = CASE WHEN sendingEnabled THEN 0 ELSE 1 END, " +
+            "sharingAutoToggleAt = NULL WHERE sharingAutoToggleAt IS NOT NULL " +
+            "AND sharingAutoToggleAt <= :nowEpochSeconds"
+    )
     suspend fun applyDueAutoToggles(nowEpochSeconds: Long): Int
 
     /**
@@ -118,13 +134,25 @@ interface UserDao {
      * trigger, the row no longer matches. Clears the trigger on flip so it fires once per arrival.
      * Returns number of rows flipped.
      */
-    @Query("UPDATE User SET sendingEnabled = CASE WHEN sendingEnabled THEN 0 ELSE 1 END, sharingAutoToggleWaypointId = NULL WHERE sharingAutoToggleWaypointId IS NOT NULL AND sharingAutoToggleWaypointId IN (:insideWaypointIds)")
+    @Query(
+        "UPDATE User SET sendingEnabled = CASE WHEN sendingEnabled THEN 0 ELSE 1 END, " +
+            "sharingAutoToggleWaypointId = NULL WHERE sharingAutoToggleWaypointId IS NOT NULL " +
+            "AND sharingAutoToggleWaypointId IN (:insideWaypointIds)"
+    )
     suspend fun applyDueArrivalToggles(insideWaypointIds: List<Long>): Int
 
     // --- Atomic partial updates to avoid heartbeat clobbering sharingAutoToggleAt / sendingEnabled ---
 
-    @Query("UPDATE User SET locationName = :locationName, lastWaypointId = :lastWaypointId, lastLocationChangeTime = :lastLocationChangeTime WHERE id = :id")
-    suspend fun updateLocationMeta(id: Long, locationName: String, lastWaypointId: Long?, lastLocationChangeTime: Long)
+    @Query(
+        "UPDATE User SET locationName = :locationName, lastWaypointId = :lastWaypointId, " +
+            "lastLocationChangeTime = :lastLocationChangeTime WHERE id = :id"
+    )
+    suspend fun updateLocationMeta(
+        id: Long,
+        locationName: String,
+        lastWaypointId: Long?,
+        lastLocationChangeTime: Long
+    )
 
     @Query("UPDATE User SET pqcEncryptionKey = :pqcEncryptionKey WHERE id = :id")
     suspend fun setPqcEncryptionKey(id: Long, pqcEncryptionKey: String)
@@ -154,7 +182,11 @@ interface TemporaryLinkDao {
     suspend fun delete(value: TemporaryLink): Int
 }
 
-@Database(entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class, NoShowAlert::class], version = 13, exportSchema = false)
+@Database(
+    entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class, NoShowAlert::class],
+    version = 13,
+    exportSchema = false
+)
 @ColumnTypeConverters(DefaultConverters::class)
 abstract class FFDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao

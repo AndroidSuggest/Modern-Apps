@@ -77,8 +77,16 @@ private val SampleSpreadsheet = OdfDocument.Spreadsheet(
                     sheetCell("Total", bold = true, background = HeaderFill),
                     // Shown as the formula engine would evaluate it; the preview's value source
                     // returns the literal text, so the cell reads the same either way.
-                    OdfCell(text = "147,800", bold = true, formula = "of:=SUM([.B2:.B6])", backgroundColor = HeaderFill),
-                    OdfCell(text = "148,200", bold = true, formula = "of:=SUM([.C2:.C6])", backgroundColor = HeaderFill),
+                    OdfCell(
+                        text = "147,800",
+                        bold = true,
+                        formula = "of:=SUM([.B2:.B6])",
+                        backgroundColor = HeaderFill),
+                    OdfCell(
+                        text = "148,200",
+                        bold = true,
+                        formula = "of:=SUM([.C2:.C6])",
+                        backgroundColor = HeaderFill),
                     OdfCell(text = "400", bold = true, formula = "of:=C7-B7", backgroundColor = HeaderFill),
                 )),
             ),

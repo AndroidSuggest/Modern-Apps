@@ -20,6 +20,11 @@ import androidx.car.app.validation.HostValidator
  */
 class MusicCarAppService : CarAppService() {
 
+    companion object {
+        const val MIN_API_MULTI_DISPLAY = 6
+        const val MIN_API_THEMING = 9
+    }
+
     // Dev posture: accept any host. Before shipping this must be tightened to a
     // real allow-list (Android Auto / Automotive OS signatures) via
     // HostValidator.Builder + the car-app allowlist — same follow-up as maps.
@@ -30,11 +35,11 @@ class MusicCarAppService : CarAppService() {
 
     // API 6+: per-display sessions. Cluster sessions still browse — the host
     // picks which templates it allows.
-    @RequiresCarApi(6)
+    @RequiresCarApi(MIN_API_MULTI_DISPLAY)
     override fun onCreateSession(sessionInfo: SessionInfo): Session = MusicCarSession()
 
     // API 9 (experimental): keep MA brand styling on hosts that offer it.
-    @RequiresCarApi(9)
+    @RequiresCarApi(MIN_API_THEMING)
     @ExperimentalCarApi
     override fun getCarAppThemeSource(): Int =
         CarAppService.THEME_SOURCE_APP

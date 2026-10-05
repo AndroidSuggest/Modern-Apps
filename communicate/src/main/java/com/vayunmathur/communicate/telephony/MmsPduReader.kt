@@ -23,6 +23,19 @@ object MmsPduReader {
     private const val F_PRIORITY = 0x8F
     private const val F_DELIVERY_REPORT = 0x86
     private const val F_READ_REPORT = 0x90
+    // WSP value markers.
+    private const val BYTE_MASK = 0xFF
+    private const val QUOTE_TOKEN = 0x7F
+    private const val TEXT_MIN = 0x20
+    private const val ADDRESS_PRESENT = 0x80
+    private const val TEXT_END = 31
+    private const val TEXT_MAX = 0x7E
+    private const val MS_PER_SECOND = 1000L
+    private const val MAX_SHORT_LENGTH = 30
+    private const val BYTE_BITS = 8
+    private const val VARINT_BITS = 7
+    private const val VARINT_MASK = 0x7F
+    private const val VARINT_CONT = 0x80
 
     data class Notification(val contentLocation: String?, val transactionId: String?)
 
@@ -41,7 +54,7 @@ object MmsPduReader {
         var contentLocation: String? = null
         var transactionId: String? = null
         while (r.hasRemaining()) {
-            val field = r.readByte() and 0xFF
+            val field = r.readByte() and BYTE_MASK
             when (field) {
                 F_MESSAGE_TYPE, F_MMS_VERSION, F_MESSAGE_CLASS, F_PRIORITY,
                 F_DELIVERY_REPORT, F_READ_REPORT -> r.readByte()
@@ -66,10 +79,11 @@ object MmsPduReader {
         val r = Reader(pdu)
         var from: String? = null
         var subject: String? = null
-        var dateSeconds = System.currentTimeMillis() / 1000L
+        var dateSeconds = System.currentTimeMillis() / MS_PER_SECOND
         // Header loop — stops when we reach Content-Type (immediately followed by the body).
-        loop@ while (r.hasRemaining()) {
-            val field = r.readByte() and 0xFF
+        var headersDone = false
+        while (r.hasRemaining() && !headersDone) {
+            val field = r.readByte() and BYTE_MASK
             when (field) {
                 F_MESSAGE_TYPE, F_MMS_VERSION, F_MESSAGE_CLASS, F_PRIORITY,
                 F_DELIVERY_REPORT, F_READ_REPORT -> r.readByte()
@@ -80,8 +94,11 @@ object MmsPduReader {
                 F_MESSAGE_SIZE -> r.skipLongInteger()
                 F_EXPIRY -> r.skipValueLength()
                 F_CONTENT_LOCATION -> r.readTextString()
-                F_CONTENT_TYPE -> { r.readContentType(); break@loop }
-                else -> break@loop
+                F_CONTENT_TYPE -> {
+                    r.readContentType()
+                    headersDone = true
+                }
+                else -> headersDone = true
             }
         }
         val parts = runCatching { r.readMultipart() }.getOrDefault(emptyList())
@@ -95,7 +112,7 @@ object MmsPduReader {
         fun readByte(): Int = buf[pos++].toInt()
 
         fun readTextString(): String {
-            if (pos < buf.size && (buf[pos].toInt() and 0xFF) == 0x7F) pos++ // Quote
+            if (pos < buf.size && (buf[pos].toInt() and BYTE_MASK) == QUOTE_TOKEN) pos++ // Quote
             val start = pos
             while (pos < buf.size && buf[pos].toInt() != 0) pos++
             val s = String(buf, start, pos - start, Charsets.UTF_8)
@@ -105,12 +122,12 @@ object MmsPduReader {
 
         /** Encoded-string-value: either a plain text-string or Value-length Charset Text-string. */
         fun readEncodedString(): String {
-            val first = buf[pos].toInt() and 0xFF
-            if (first in 0x20..0x7F || first == 0x7F) return readTextString()
+            val first = buf[pos].toInt() and BYTE_MASK
+            if (first in TEXT_MIN..QUOTE_TOKEN || first == QUOTE_TOKEN) return readTextString()
             val len = readValueLength()
             val end = pos + len
             // Optional charset short-integer.
-            if (pos < end && (buf[pos].toInt() and 0x80) != 0) pos++
+            if (pos < end && (buf[pos].toInt() and ADDRESS_PRESENT) != 0) pos++
             val s = readTextString()
             pos = end.coerceAtMost(buf.size)
             return s
@@ -121,8 +138,8 @@ object MmsPduReader {
             val len = readValueLength()
             val end = (pos + len).coerceAtMost(buf.size)
             if (pos < end) {
-                val token = buf[pos++].toInt() and 0xFF
-                if (token == 0x80) { // address-present
+                val token = buf[pos++].toInt() and BYTE_MASK
+                if (token == ADDRESS_PRESENT) { // address-present
                     val s = readEncodedString()
                     pos = end
                     return s.substringBefore("/TYPE=")
@@ -133,8 +150,8 @@ object MmsPduReader {
         }
 
         fun readValueLength(): Int {
-            val first = buf[pos++].toInt() and 0xFF
-            return if (first < 31) first else readUintvar()
+            val first = buf[pos++].toInt() and BYTE_MASK
+            return if (first < TEXT_END) first else readUintvar()
         }
 
         fun skipValueLength() {
@@ -143,10 +160,10 @@ object MmsPduReader {
         }
 
         fun readLongInteger(): Long {
-            val len = buf[pos++].toInt() and 0xFF
-            if (len > 30) return 0 // not a short-length; bail
+            val len = buf[pos++].toInt() and BYTE_MASK
+            if (len > MAX_SHORT_LENGTH) return 0 // not a short-length; bail
             var v = 0L
-            repeat(len) { v = (v shl 8) or (buf[pos++].toLong() and 0xFF) }
+            repeat(len) { v = (v shl BYTE_BITS) or (buf[pos++].toLong() and BYTE_MASK) }
             return v
         }
 
@@ -155,25 +172,25 @@ object MmsPduReader {
         fun readUintvar(): Int {
             var result = 0
             while (pos < buf.size) {
-                val b = buf[pos++].toInt() and 0xFF
-                result = (result shl 7) or (b and 0x7F)
-                if (b and 0x80 == 0) break
+                val b = buf[pos++].toInt() and BYTE_MASK
+                result = (result shl VARINT_BITS) or (b and VARINT_MASK)
+                if (b and VARINT_CONT == 0) break
             }
             return result
         }
 
         /** Content-Type value: constrained-media (text/short-int) or general-form (length-prefixed). */
         fun readContentType(): String {
-            val first = buf[pos].toInt() and 0xFF
+            val first = buf[pos].toInt() and BYTE_MASK
             return when {
-                first >= 0x80 -> { pos++; wellKnownContentType(first and 0x7F) } // short-integer
-                first in 0x20..0x7E -> readTextString() // text media type
+                first >= ADDRESS_PRESENT -> { pos++; wellKnownContentType(first and VARINT_MASK) } // short-integer
+                first in TEXT_MIN..TEXT_MAX -> readTextString() // text media type
                 else -> {
                     // General form: value-length, then media type (short-int or text), then params.
                     val len = readValueLength()
                     val end = (pos + len).coerceAtMost(buf.size)
-                    val ct = if ((buf[pos].toInt() and 0x80) != 0) {
-                        wellKnownContentType((buf[pos++].toInt() and 0x7F))
+                    val ct = if ((buf[pos].toInt() and ADDRESS_PRESENT) != 0) {
+                        wellKnownContentType((buf[pos++].toInt() and VARINT_MASK))
                     } else {
                         readTextString()
                     }
@@ -207,14 +224,16 @@ object MmsPduReader {
     }
 
     /** A tiny subset of WSP content-type assigned numbers we may encounter. */
-    private fun wellKnownContentType(code: Int): String = when (code) {
-        0x03 -> "text/plain"
-        0x1D -> "image/gif"
-        0x1E -> "image/jpeg"
-        0x1F -> "image/tiff"
-        0x20 -> "image/png"
-        0x21 -> "application/vnd.wap.multipart.mixed"
-        0x22 -> "application/vnd.wap.multipart.related"
-        else -> "application/octet-stream"
-    }
+    private val WELL_KNOWN_CONTENT_TYPES = mapOf(
+        0x03 to "text/plain",
+        0x1D to "image/gif",
+        0x1E to "image/jpeg",
+        0x1F to "image/tiff",
+        0x20 to "image/png",
+        0x21 to "application/vnd.wap.multipart.mixed",
+        0x22 to "application/vnd.wap.multipart.related",
+    )
+
+    private fun wellKnownContentType(code: Int): String =
+        WELL_KNOWN_CONTENT_TYPES[code] ?: "application/octet-stream"
 }

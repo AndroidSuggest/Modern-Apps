@@ -3,6 +3,7 @@ package com.vayunmathur.communicate.data.whatsapp
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.LinkPreview
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.Node
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.QuotedContext
+import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto
 
 // -- Rich content, presence/ack, poll/location/contact protos, group IQs --
 
@@ -13,9 +14,9 @@ import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.QuotedContext
 fun WhatsAppProtocol.buildContextInfo(
     mentionedJids: List<String> = emptyList(),
     quoted: QuotedContext? = null,
-): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ContextInfo? {
+): WhatsAppE2EProto.ContextInfo? {
     if (mentionedJids.isEmpty() && quoted == null) return null
-    val ctx = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ContextInfo.newBuilder()
+    val ctx = WhatsAppE2EProto.ContextInfo.newBuilder()
     for (jid in mentionedJids) ctx.addMentionedJid(jid)
     if (quoted != null) {
         ctx.stanzaId = quoted.stanzaId
@@ -37,12 +38,12 @@ fun WhatsAppProtocol.buildTextProto(
     mentionedJids: List<String> = emptyList(),
     quoted: QuotedContext? = null,
     linkPreview: LinkPreview? = null,
-): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
+): WhatsAppE2EProto.Message {
     val ctx = buildContextInfo(mentionedJids, quoted)
     if (ctx == null && linkPreview == null) {
         return buildConversationMessage(text)
     }
-    val ext = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ExtendedTextMessage.newBuilder()
+    val ext = WhatsAppE2EProto.ExtendedTextMessage.newBuilder()
         .setText(text)
     if (ctx != null) ext.contextInfo = ctx
     if (linkPreview != null) {
@@ -52,7 +53,7 @@ fun WhatsAppProtocol.buildTextProto(
         linkPreview.description?.let { ext.description = it }
         linkPreview.jpegThumbnail?.let { ext.jpegThumbnail = com.google.protobuf.ByteString.copyFrom(it) }
     }
-    return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+    return WhatsAppE2EProto.Message.newBuilder()
         .setExtendedTextMessage(ext.build())
         .build()
 }
@@ -68,25 +69,25 @@ fun WhatsAppProtocol.buildEditProto(
     chatJid: String,
     targetMessageId: String,
     newText: String,
-): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
-    val messageKey = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.MessageKey.newBuilder()
+): WhatsAppE2EProto.Message {
+    val messageKey = WhatsAppE2EProto.MessageKey.newBuilder()
         .setFromMe(true)
         .setId(targetMessageId)
         .setRemoteJid(chatJid)
         .build()
 
-    val newContent = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+    val newContent = WhatsAppE2EProto.Message.newBuilder()
         .setConversation(newText)
         .build()
 
-    val protocolMessage = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.newBuilder()
-        .setType(com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.Type.MESSAGE_EDIT)
+    val protocolMessage = WhatsAppE2EProto.ProtocolMessage.newBuilder()
+        .setType(WhatsAppE2EProto.ProtocolMessage.Type.MESSAGE_EDIT)
         .setKey(messageKey)
         .setEditedMessage(newContent)
         .setTimestampMs(System.currentTimeMillis())
         .build()
 
-    return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+    return WhatsAppE2EProto.Message.newBuilder()
         .setProtocolMessage(protocolMessage)
         .build()
 }
@@ -106,9 +107,9 @@ fun WhatsAppProtocol.buildRevokeProto(
     senderJid: String,
     targetMessageId: String,
     ownJid: String,
-): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
+): WhatsAppE2EProto.Message {
     val isFromMe = isRevokeFromMe(senderJid, ownJid)
-    val messageKey = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.MessageKey.newBuilder()
+    val messageKey = WhatsAppE2EProto.MessageKey.newBuilder()
         .setFromMe(isFromMe)
         .setId(targetMessageId)
         .setRemoteJid(chatJid)
@@ -116,12 +117,12 @@ fun WhatsAppProtocol.buildRevokeProto(
         messageKey.setParticipant(senderJid)
     }
 
-    val protocolMessage = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.newBuilder()
-        .setType(com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.Type.REVOKE)
+    val protocolMessage = WhatsAppE2EProto.ProtocolMessage.newBuilder()
+        .setType(WhatsAppE2EProto.ProtocolMessage.Type.REVOKE)
         .setKey(messageKey.build())
         .build()
 
-    return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+    return WhatsAppE2EProto.Message.newBuilder()
         .setProtocolMessage(protocolMessage)
         .build()
 }
@@ -200,21 +201,21 @@ fun WhatsAppProtocol.buildPollCreationProto(
     options: List<String>,
     selectableCount: Int,
     messageSecret: ByteArray,
-): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
-    val poll = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.PollCreationMessage.newBuilder()
+): WhatsAppE2EProto.Message {
+    val poll = WhatsAppE2EProto.PollCreationMessage.newBuilder()
         .setName(name)
         .setSelectableOptionsCount(
             if (selectableCount < 0 || selectableCount > options.size) 0 else selectableCount
         )
     for (opt in options) {
         poll.addOptions(
-            com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.PollCreationMessage.Option.newBuilder()
+            WhatsAppE2EProto.PollCreationMessage.Option.newBuilder()
                 .setOptionName(opt)
         )
     }
-    val ctx = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.MessageContextInfo.newBuilder()
+    val ctx = WhatsAppE2EProto.MessageContextInfo.newBuilder()
         .setMessageSecret(com.google.protobuf.ByteString.copyFrom(messageSecret))
-    return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+    return WhatsAppE2EProto.Message.newBuilder()
         .setPollCreationMessageV3(poll.build())
         .setMessageContextInfo(ctx.build())
         .build()
@@ -230,14 +231,14 @@ fun WhatsAppProtocol.buildLocationProto(
     longitude: Double,
     name: String? = null,
     address: String? = null,
-): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
-    val locBuilder = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.LocationMessage.newBuilder()
+): WhatsAppE2EProto.Message {
+    val locBuilder = WhatsAppE2EProto.LocationMessage.newBuilder()
         .setDegreesLatitude(latitude)
         .setDegreesLongitude(longitude)
     if (!name.isNullOrEmpty()) locBuilder.setName(name)
     if (!address.isNullOrEmpty()) locBuilder.setAddress(address)
 
-    return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+    return WhatsAppE2EProto.Message.newBuilder()
         .setLocationMessage(locBuilder.build())
         .build()
 }
@@ -250,13 +251,13 @@ fun WhatsAppProtocol.buildLocationProto(
 fun WhatsAppProtocol.buildContactProto(
     displayName: String,
     vcard: String,
-): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
-    val contactMsg = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ContactMessage.newBuilder()
+): WhatsAppE2EProto.Message {
+    val contactMsg = WhatsAppE2EProto.ContactMessage.newBuilder()
         .setDisplayName(displayName)
         .setVcard(vcard)
         .build()
 
-    return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+    return WhatsAppE2EProto.Message.newBuilder()
         .setContactMessage(contactMsg)
         .build()
 }
@@ -268,13 +269,13 @@ fun WhatsAppProtocol.buildContactProto(
  */
 fun WhatsAppProtocol.buildDisappearingTimerProto(
     timerSeconds: Long,
-): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
-    val protocolMsg = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.newBuilder()
-        .setType(com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.Type.EPHEMERAL_SETTING)
+): WhatsAppE2EProto.Message {
+    val protocolMsg = WhatsAppE2EProto.ProtocolMessage.newBuilder()
+        .setType(WhatsAppE2EProto.ProtocolMessage.Type.EPHEMERAL_SETTING)
         .setEphemeralExpiration(timerSeconds.toInt())
         .build()
 
-    return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+    return WhatsAppE2EProto.Message.newBuilder()
         .setProtocolMessage(protocolMsg)
         .build()
 }

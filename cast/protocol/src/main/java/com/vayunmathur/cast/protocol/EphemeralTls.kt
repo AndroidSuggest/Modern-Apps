@@ -198,7 +198,7 @@ object EphemeralTls {
             // Issuer and subject are the same name: this certificate signs itself.
             name,
             publicKeyInfo,
-            Der.explicit(3, Der.sequence(*extensions.toTypedArray())),
+            Der.explicit(Der.EXTENSIONS_TAG, Der.sequence(*extensions.toTypedArray())),
         )
     }
 
@@ -214,27 +214,47 @@ object EphemeralTls {
      */
     private object Der {
 
+        private const val TAG_SEQUENCE = 0x30
+        private const val TAG_SET = 0x31
+        private const val TAG_INTEGER = 0x02
+        private const val TAG_BIT_STRING = 0x03
+        private const val TAG_OCTET_STRING = 0x04
+        private const val TAG_OID = 0x06
+        private const val TAG_UTF8_STRING = 0x0C
+        private const val TAG_UTC_TIME = 0x17
+        private const val TAG_EXPLICIT_BASE = 0xA0
+        private const val LONG_FORM_FLAG = 0x80
+        private const val SHORT_FORM_LIMIT = 0x80
+        private const val FIRST_ARC_FACTOR = 40
+        private const val SEPTET_MASK = 0x7fL
+        private const val SEPTET_BITS = 7
+        private const val CONTINUATION_BIT = 0x80
+        private const val BYTE_MASK = 0xff
+        private const val BYTE_SHIFT = 8
+        const val EXTENSIONS_TAG = 3
+
         fun tagged(tag: Int, content: ByteArray): ByteArray =
             byteArrayOf(tag.toByte()) + length(content.size) + content
 
-        fun sequence(vararg parts: ByteArray): ByteArray = tagged(0x30, concat(parts))
+        fun sequence(vararg parts: ByteArray): ByteArray = tagged(TAG_SEQUENCE, concat(parts))
 
-        fun set(vararg parts: ByteArray): ByteArray = tagged(0x31, concat(parts))
+        fun set(vararg parts: ByteArray): ByteArray = tagged(TAG_SET, concat(parts))
 
         /** Context-specific, constructed - the `[n] EXPLICIT` of the X.509 definitions. */
-        fun explicit(number: Int, content: ByteArray): ByteArray = tagged(0xA0 or number, content)
+        fun explicit(number: Int, content: ByteArray): ByteArray =
+            tagged(TAG_EXPLICIT_BASE or number, content)
 
         fun integer(value: Int): ByteArray = integer(BigInteger.valueOf(value.toLong()))
 
         /** [BigInteger.toByteArray] is already two's-complement big-endian, which is DER's INTEGER. */
-        fun integer(value: BigInteger): ByteArray = tagged(0x02, value.toByteArray())
+        fun integer(value: BigInteger): ByteArray = tagged(TAG_INTEGER, value.toByteArray())
 
         /** The leading zero is the count of unused bits in the final byte, always none here. */
-        fun bitString(bytes: ByteArray): ByteArray = tagged(0x03, byteArrayOf(0) + bytes)
+        fun bitString(bytes: ByteArray): ByteArray = tagged(TAG_BIT_STRING, byteArrayOf(0) + bytes)
 
-        fun octetString(bytes: ByteArray): ByteArray = tagged(0x04, bytes)
+        fun octetString(bytes: ByteArray): ByteArray = tagged(TAG_OCTET_STRING, bytes)
 
-        fun utf8(text: String): ByteArray = tagged(0x0C, text.toByteArray(Charsets.UTF_8))
+        fun utf8(text: String): ByteArray = tagged(TAG_UTF8_STRING, text.toByteArray(Charsets.UTF_8))
 
         /** UTCTime, which X.509 requires for anything before 2050. */
         fun utcTime(instant: Instant): ByteArray {
@@ -247,38 +267,38 @@ object EphemeralTls {
                 time.minute,
                 time.second,
             )
-            return tagged(0x17, text.toByteArray(Charsets.US_ASCII))
+            return tagged(TAG_UTC_TIME, text.toByteArray(Charsets.US_ASCII))
         }
 
         /** The first two arcs share a byte; the rest are base-128 with a continuation bit. */
         fun oid(dotted: String): ByteArray {
             val arcs = dotted.split('.').map { it.toLong() }
             val out = ArrayList<Byte>()
-            out.add((arcs[0] * 40 + arcs[1]).toByte())
+            out.add((arcs[0] * FIRST_ARC_FACTOR + arcs[1]).toByte())
             for (arc in arcs.drop(2)) {
                 val septets = ArrayList<Byte>()
                 var value = arc
                 do {
-                    septets.add(0, (value and 0x7f).toByte())
-                    value = value ushr 7
+                    septets.add(0, (value and SEPTET_MASK).toByte())
+                    value = value ushr SEPTET_BITS
                 } while (value > 0)
                 for (i in septets.indices) {
                     val last = i == septets.size - 1
-                    out.add(if (last) septets[i] else (septets[i].toInt() or 0x80).toByte())
+                    out.add(if (last) septets[i] else (septets[i].toInt() or CONTINUATION_BIT).toByte())
                 }
             }
-            return tagged(0x06, out.toByteArray())
+            return tagged(TAG_OID, out.toByteArray())
         }
 
         private fun length(size: Int): ByteArray {
-            if (size < 0x80) return byteArrayOf(size.toByte())
+            if (size < SHORT_FORM_LIMIT) return byteArrayOf(size.toByte())
             val bytes = ArrayList<Byte>()
             var value = size
             while (value > 0) {
-                bytes.add(0, (value and 0xff).toByte())
-                value = value ushr 8
+                bytes.add(0, (value and BYTE_MASK).toByte())
+                value = value ushr BYTE_SHIFT
             }
-            return byteArrayOf((0x80 or bytes.size).toByte()) + bytes.toByteArray()
+            return byteArrayOf((LONG_FORM_FLAG or bytes.size).toByte()) + bytes.toByteArray()
         }
 
         private fun concat(parts: Array<out ByteArray>): ByteArray {

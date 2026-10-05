@@ -63,10 +63,14 @@ internal fun VideoPlayerControllerLifecycle(
             // AbstractFuture RuntimeException. Swallow cancellation, keep real failures loud.
             controller = try {
                 controllerFuture.get()
-            } catch (e: java.util.concurrent.CancellationException) {
+            } catch (_: java.util.concurrent.CancellationException) {
                 null
-            } catch (e: Exception) {
+            } catch (e: java.util.concurrent.ExecutionException) {
                 android.util.Log.e("YouPipePlayer", "MediaController connect failed", e)
+                null
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                android.util.Log.e("YouPipePlayer", "MediaController connect interrupted", e)
                 null
             }
         }, MoreExecutors.directExecutor())

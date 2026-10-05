@@ -113,7 +113,7 @@ class WebReviewsFetcher(private val context: Context) {
         onPartial: (List<GoogleReview>) -> Unit,
     ): List<GoogleReview> {
         return run {
-            val id = "r" + seq.incrementAndGet()
+            val id = BRIDGE_ID_PREFIX + seq.incrementAndGet()
             val deferred = CompletableDeferred<String>()
             pending[id] = deferred
             progress[id] = onProgress
@@ -124,7 +124,10 @@ class WebReviewsFetcher(private val context: Context) {
                         val wv = ensureWebView()
                         val ready = CompletableDeferred<Unit>()
                         wv.webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                            override fun shouldOverrideUrlLoading(
+                                view: WebView?,
+                                request: WebResourceRequest?,
+                            ): Boolean {
                                 // Only google.com pages — a stray click on an external link (e.g. the
                                 // place's website/menu action) must not navigate the hidden WebView away.
                                 val u = request?.url ?: return false
@@ -145,7 +148,10 @@ class WebReviewsFetcher(private val context: Context) {
                         // Proceed even if the SPA's onPageFinished is slow.
                         main.postDelayed({ if (!ready.isCompleted) ready.complete(Unit) }, MAX_LOAD_MS)
                         ready.await()
-                        wv.evaluateJavascript(extractScript(id), null)
+                        wv.evaluateJavascript(
+                            extractScript(id, SCRAPE_REVIEW_CAP),
+                            null,
+                        )
                     }
                     deferred.await()
                 }
@@ -154,7 +160,11 @@ class WebReviewsFetcher(private val context: Context) {
                 progress.remove(id)
                 partial.remove(id)
             }
-            if (raw.isNullOrEmpty()) emptyList() else runCatching { ReviewsWebParser.parse(raw) }.getOrDefault(emptyList())
+            if (raw.isNullOrEmpty()) {
+                emptyList()
+            } else {
+                runCatching { ReviewsWebParser.parse(raw) }.getOrDefault(emptyList())
+            }
         }
     }
 
@@ -162,7 +172,7 @@ class WebReviewsFetcher(private val context: Context) {
      *  canonical `maps.google.com?cid=` deep-link to a place. */
     private fun cidOf(featureId: String): String? {
         val low = featureId.substringAfter(":", "").removePrefix("0x").ifBlank { return null }
-        return runCatching { BigInteger(low, 16).toString() }.getOrNull()
+        return runCatching { BigInteger(low, CID_RADIX).toString() }.getOrNull()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -198,15 +208,32 @@ class WebReviewsFetcher(private val context: Context) {
      *  DOM nodes as you scroll, so any single snapshot holds only ~10 cards; the union across scroll
      *  positions is the full list). Bridges the accumulated JSON array back once the list is exhausted
      *  or the cap is hit. */
-    private fun extractScript(id: String): String {
+    private fun extractScript(id: String, cap: Int): String {
         val idj = "\"" + id.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
-        return """
+        return listOf(
+            scraperHeader(idj, cap),
+            scraperCardHelpers,
+            scraperExtract,
+            scraperDomUtils,
+            scraperOpenFull,
+            scraperTick,
+            scraperFooter,
+        ).joinToString("\n")
+    }
+
+    private fun scraperHeader(idj: String, cap: Int): String = """
             (function(){
               var ID=$idj, tries=0, opened=false, acc={}, accN=0, lastN=0, noGrow=0, atBottom=0;
               var openedAt=-1, lastRep=-1, openedBy='', sawEntry=false, everCards=false, btnReclicks=0;
-              var CAP=50;
+              var CAP=$cap;
+    """.trimIndent()
+
+    private val scraperCardHelpers = """
               function num(s){ var m=(s||'').match(/([0-9.]+)\s*star/i); return m?Math.round(parseFloat(m[1])):0; }
               function t1(c,sel){ var e=c.querySelector(sel); return e?(e.textContent||'').trim():''; }
+    """.trimIndent()
+
+    private val scraperExtract = """
               function extract(){
                 // Review cards are `.jJc9Ad`, each with a unique `data-review-id` — far more robust than the
                 // old "div with one star + text" heuristic, which also matched the place header ("4.6 stars
@@ -258,6 +285,9 @@ class WebReviewsFetcher(private val context: Context) {
                   // anyway, so letting them through only wastes CAP slots on cards we can't render.
                 }).filter(function(x){ return x.a; });
               }
+    """.trimIndent()
+
+    private val scraperDomUtils = """
               // Expand truncated review bodies. The class hook (`.w8nwRe` is the card's More toggle)
               // works in EVERY UI language; the label regex stays as a fallback for older layouts
               // (it only knows English, which silently skipped expansion under any other hl).
@@ -282,6 +312,9 @@ class WebReviewsFetcher(private val context: Context) {
                 }); }catch(e){}
                 return moved;
               }
+    """.trimIndent()
+
+    private val scraperOpenFull = """
               // Open the FULL reviews list. The canonical entry is the "Reviews" role=tab; fall back to a
               // "More reviews" button for layouts that only expose that. On busy pages (food/retail) the
               // tab's list can take ~8 s to render after the click — the idle-bail is gated on `sawCards`
@@ -309,6 +342,9 @@ class WebReviewsFetcher(private val context: Context) {
                 var bs=[].slice.call(document.querySelectorAll('button'));
                 for(var i=0;i<bs.length;i++){ var l=((bs[i].getAttribute('aria-label')||bs[i].textContent)||''); if(/more reviews/i.test(l)){ sawEntry=true; try{ bs[i].click(); }catch(e){} opened=true; openedAt=tries; openedBy='btn'; return; } }
               }
+    """.trimIndent()
+
+    private val scraperTick = """
               function tick(){
                 tries++;
                 // Let the SPA hydrate a beat before clicking the Reviews tab — clicking a not-yet-live
@@ -367,10 +403,12 @@ class WebReviewsFetcher(private val context: Context) {
                 }
                 setTimeout(tick, 250);
               }
+    """.trimIndent()
+
+    private val scraperFooter = """
               tick();
             })();
-        """.trimIndent()
-    }
+    """.trimIndent()
 
     private companion object {
         // Must outlast the script's own hard stop (130 ticks × 250 ms ≈ 33 s + page load) — if Kotlin
@@ -383,5 +421,10 @@ class WebReviewsFetcher(private val context: Context) {
         // healthy batch per scroll position.
         const val WV_WIDTH = 1200
         const val WV_HEIGHT = 6000
+        // JS bridge request ids and the scraper's own review cap (was a `var CAP=50` literal).
+        const val BRIDGE_ID_PREFIX = "r"
+        const val SCRAPE_REVIEW_CAP = 50
+        // The Google "cid" is the LOW half of `0xHIGH:0xLOW` as hex.
+        const val CID_RADIX = 16
     }
 }

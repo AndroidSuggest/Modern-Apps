@@ -20,7 +20,8 @@ import kotlinx.coroutines.withContext
  */
 internal suspend fun WhatsAppClient.getUserDevices(userJids: List<String>): List<String> {
     if (userJids.isEmpty()) return emptyList()
-    val bareUsers = userJids.map { it.substringBefore(":").let { u -> if (u.contains("@")) u else "$u@s.whatsapp.net" } }
+    val bareUsers =
+        userJids.map { it.substringBefore(":").let { u -> if (u.contains("@")) u else "$u@s.whatsapp.net" } }
     val iq = WhatsAppProtocol.buildUsyncDevicesQuery(bareUsers, generateMessageId(), generateMessageId())
     val resp = sendIqAndWait(iq, timeoutMs = 10_000) ?: run {
         WhatsAppDiag.log(TAG, "usync: no response for $bareUsers (timeout)")
@@ -30,6 +31,13 @@ internal suspend fun WhatsAppClient.getUserDevices(userJids: List<String>): List
         WhatsAppDiag.log(TAG, "usync: malformed response (no list) for $bareUsers")
         return emptyList()
     }
+    val devices = collectUserDevices(list)
+    WhatsAppDiag.log(TAG, "usync: $bareUsers -> ${devices.size} device(s)")
+    return devices
+}
+
+/** Collect device JIDs from a usync user list. */
+private fun collectUserDevices(list: WhatsAppProtocol.Node): List<String> {
     val devices = mutableListOf<String>()
     list.getChildren().filter { it.tag == "user" }.forEach { user ->
         val userJid = user.attrs["jid"] ?: return@forEach
@@ -42,7 +50,6 @@ internal suspend fun WhatsAppClient.getUserDevices(userJids: List<String>): List
             devices.add(if (devId == 0) "$bareUser@$server" else "$bareUser:$devId@$server")
         }
     }
-    WhatsAppDiag.log(TAG, "usync: $bareUsers -> ${devices.size} device(s)")
     return devices
 }
 
@@ -99,7 +106,7 @@ internal fun WhatsAppClient.resolveDeviceContactName(phoneE164: String?): String
             arrayOf(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME),
             null, null, null,
         )?.use { c -> if (c.moveToFirst()) c.getString(0)?.takeIf { it.isNotBlank() } else null }
-    } catch (e: Exception) {
+    } catch (ignored: Exception) {
         null
     }
 }
@@ -113,10 +120,7 @@ internal fun WhatsAppClient.inflateZlib(data: ByteArray): ByteArray {
     try {
         while (!inflater.finished()) {
             val n = inflater.inflate(buf)
-            if (n == 0) {
-                if (inflater.finished() || inflater.needsDictionary()) break
-                if (inflater.needsInput()) break
-            }
+            if (n == 0 && isInflateDone(inflater)) break
             out.write(buf, 0, n)
         }
     } finally {
@@ -124,6 +128,10 @@ internal fun WhatsAppClient.inflateZlib(data: ByteArray): ByteArray {
     }
     return out.toByteArray()
 }
+
+/** True when the inflater is exhausted (finished, missing dictionary, or needs input). */
+private fun isInflateDone(inflater: java.util.zip.Inflater): Boolean =
+    inflater.finished() || inflater.needsDictionary() || inflater.needsInput()
 
 /**
  * Download and decrypt media from a WhatsApp media message.
@@ -154,14 +162,14 @@ suspend fun WhatsAppClient.downloadMedia(
         val encrypted = response.bytes
         if (encrypted.isEmpty()) return@withContext null
         WhatsAppProtocol.decryptMedia(encrypted, mediaKey, mediaType)
-    } catch (e: Exception) {
-        Log.e(TAG, "Media download/decrypt failed", e)
+    } catch (expected: Exception) {
+        Log.e(TAG, "Media download/decrypt failed", expected)
         null
     }
 }
 
 fun WhatsAppClient.isLoggedIn(): Boolean {
-    return authData != null && _state.value is State.Connected
+    return authData != null && stateMutable.value is State.Connected
 }
 
 /**
@@ -175,74 +183,111 @@ internal suspend fun WhatsAppClient.buildIncomingMediaAttachment(
     e2e: WhatsAppE2EProto.Message,
     msgId: String,
 ): com.vayunmathur.communicate.data.whatsapp.MessageAttachment? {
-    val url: String; val directPath: String; val mediaKey: ByteArray; val encSha: ByteArray
-    val mime: String?; val keyInfo: String; val type: String
-    val width: Int; val height: Int; val fileName: String?; val ext: String
+    val spec = mediaSpecFor(e2e) ?: return null
+    if (spec.mediaKey.isEmpty()) return null
+    val downloadUrl = downloadUrlFor(spec) ?: return null
+    val bytes = downloadMedia(downloadUrl, spec.mediaKey, spec.keyInfo) ?: return null
+    return cacheIncomingMedia(spec, msgId, bytes)
+}
+
+/** Media download/cache spec for an incoming message. */
+private data class IncomingMediaSpec(
+    val url: String,
+    val directPath: String,
+    val mediaKey: ByteArray,
+    val encSha: ByteArray,
+    val mime: String?,
+    val keyInfo: String,
+    val type: String,
+    val width: Int,
+    val height: Int,
+    val fileName: String?,
+    val ext: String,
+)
+
+/** Extract the media spec from the message, or null for non-media. */
+private fun mediaSpecFor(e2e: WhatsAppE2EProto.Message): IncomingMediaSpec? {
     when {
         e2e.hasImageMessage() -> e2e.imageMessage.let {
-            url = it.url; directPath = it.directPath; mediaKey = it.mediaKey.toByteArray()
-            encSha = it.fileEncSha256.toByteArray(); mime = it.mimetype.ifEmpty { "image/jpeg" }
-            keyInfo = WhatsAppProtocol.MEDIA_KEY_IMAGE; type = "image"
-            width = it.width; height = it.height; fileName = null; ext = "jpg"
+            return IncomingMediaSpec(
+                url = it.url, directPath = it.directPath, mediaKey = it.mediaKey.toByteArray(),
+                encSha = it.fileEncSha256.toByteArray(), mime = it.mimetype.ifEmpty { "image/jpeg" },
+                keyInfo = WhatsAppProtocol.MEDIA_KEY_IMAGE, type = "image",
+                width = it.width, height = it.height, fileName = null, ext = "jpg")
         }
         e2e.hasStickerMessage() -> e2e.stickerMessage.let {
-            url = it.url; directPath = it.directPath; mediaKey = it.mediaKey.toByteArray()
-            encSha = it.fileEncSha256.toByteArray(); mime = it.mimetype.ifEmpty { "image/webp" }
-            keyInfo = WhatsAppProtocol.MEDIA_KEY_STICKER; type = "sticker"
-            width = it.width; height = it.height; fileName = null; ext = "webp"
+            return IncomingMediaSpec(
+                url = it.url, directPath = it.directPath, mediaKey = it.mediaKey.toByteArray(),
+                encSha = it.fileEncSha256.toByteArray(), mime = it.mimetype.ifEmpty { "image/webp" },
+                keyInfo = WhatsAppProtocol.MEDIA_KEY_STICKER, type = "sticker",
+                width = it.width, height = it.height, fileName = null, ext = "webp")
         }
         e2e.hasVideoMessage() -> e2e.videoMessage.let {
-            url = it.url; directPath = it.directPath; mediaKey = it.mediaKey.toByteArray()
-            encSha = it.fileEncSha256.toByteArray(); mime = it.mimetype.ifEmpty { "video/mp4" }
-            keyInfo = WhatsAppProtocol.MEDIA_KEY_VIDEO; type = "video"
-            width = it.width; height = it.height; fileName = null; ext = "mp4"
+            return IncomingMediaSpec(
+                url = it.url, directPath = it.directPath, mediaKey = it.mediaKey.toByteArray(),
+                encSha = it.fileEncSha256.toByteArray(), mime = it.mimetype.ifEmpty { "video/mp4" },
+                keyInfo = WhatsAppProtocol.MEDIA_KEY_VIDEO, type = "video",
+                width = it.width, height = it.height, fileName = null, ext = "mp4")
         }
         e2e.hasAudioMessage() -> e2e.audioMessage.let {
-            url = it.url; directPath = it.directPath; mediaKey = it.mediaKey.toByteArray()
-            encSha = it.fileEncSha256.toByteArray(); mime = it.mimetype.ifEmpty { "audio/ogg" }
-            keyInfo = WhatsAppProtocol.MEDIA_KEY_AUDIO; type = "audio"
-            width = 0; height = 0; fileName = null; ext = "ogg"
+            return IncomingMediaSpec(
+                url = it.url, directPath = it.directPath, mediaKey = it.mediaKey.toByteArray(),
+                encSha = it.fileEncSha256.toByteArray(), mime = it.mimetype.ifEmpty { "audio/ogg" },
+                keyInfo = WhatsAppProtocol.MEDIA_KEY_AUDIO, type = "audio",
+                width = 0, height = 0, fileName = null, ext = "ogg")
         }
         e2e.hasDocumentMessage() -> e2e.documentMessage.let {
-            url = it.url; directPath = it.directPath; mediaKey = it.mediaKey.toByteArray()
-            encSha = it.fileEncSha256.toByteArray(); mime = it.mimetype.ifEmpty { null }
-            keyInfo = WhatsAppProtocol.MEDIA_KEY_DOCUMENT; type = "file"
-            width = 0; height = 0
-            fileName = it.fileName.ifEmpty { it.title.ifEmpty { null } }
-            ext = it.fileName.substringAfterLast('.', "").ifEmpty { "bin" }
+            return IncomingMediaSpec(
+                url = it.url, directPath = it.directPath, mediaKey = it.mediaKey.toByteArray(),
+                encSha = it.fileEncSha256.toByteArray(), mime = it.mimetype.ifEmpty { null },
+                keyInfo = WhatsAppProtocol.MEDIA_KEY_DOCUMENT, type = "file",
+                width = 0, height = 0,
+                fileName = it.fileName.ifEmpty { it.title.ifEmpty { null } },
+                ext = it.fileName.substringAfterLast('.', "").ifEmpty { "bin" })
         }
         else -> return null
     }
-    if (mediaKey.isEmpty()) return null
-    val downloadUrl = url.ifEmpty {
-        if (directPath.isEmpty()) return null
-        val host = mediaConn()?.first ?: return null
-        val mmsType = when (type) {
-            "sticker", "image" -> "image"
-            "video" -> "video"
-            "audio" -> "audio"
-            else -> "document"
-        }
-        val hash = Base64.encodeToString(encSha, Base64.URL_SAFE or Base64.NO_WRAP)
-        "https://$host$directPath&hash=$hash&mms-type=$mmsType&__wa-mms="
+}
+
+/** Resolve the download URL (direct or via media host). */
+private suspend fun WhatsAppClient.downloadUrlFor(
+    spec: IncomingMediaSpec,
+): String? {
+    if (spec.url.isNotEmpty()) return spec.url
+    if (spec.directPath.isEmpty()) return null
+    val host = mediaConn()?.first ?: return null
+    val mmsType = when (spec.type) {
+        "sticker", "image" -> "image"
+        "video" -> "video"
+        "audio" -> "audio"
+        else -> "document"
     }
-    val bytes = downloadMedia(downloadUrl, mediaKey, keyInfo) ?: return null
+    val hash = Base64.encodeToString(spec.encSha, Base64.URL_SAFE or Base64.NO_WRAP)
+    return "https://$host${spec.directPath}&hash=$hash&mms-type=$mmsType&__wa-mms="
+}
+
+/** Write downloaded bytes to the media cache and build the attachment. */
+private fun WhatsAppClient.cacheIncomingMedia(
+    spec: IncomingMediaSpec,
+    msgId: String,
+    bytes: ByteArray,
+): com.vayunmathur.communicate.data.whatsapp.MessageAttachment? {
     return try {
         val dir = java.io.File(appContext.cacheDir, "whatsapp_media")
         dir.mkdirs()
         val safeName = msgId.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        val file = java.io.File(dir, "$safeName.$ext")
+        val file = java.io.File(dir, "$safeName.${spec.ext}")
         if (!(file.exists() && file.length() > 0)) file.writeBytes(bytes)
         com.vayunmathur.communicate.data.whatsapp.MessageAttachment(
             url = "file://${file.absolutePath}",
-            mimeType = mime,
-            attachmentType = type,
-            fileName = fileName,
-            width = width,
-            height = height,
+            mimeType = spec.mime,
+            attachmentType = spec.type,
+            fileName = spec.fileName,
+            width = spec.width,
+            height = spec.height,
         )
-    } catch (e: Exception) {
-        Log.w(TAG, "Failed to cache incoming media for $msgId", e)
+    } catch (expected: Exception) {
+        Log.w(TAG, "Failed to cache incoming media for $msgId", expected)
         null
     }
 }
@@ -273,8 +318,8 @@ fun WhatsAppClient.logoutRemote() {
             )
             try {
                 ws.send(WhatsAppProtocol.encodeNode(logoutNode))
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send logout", e)
+            } catch (expected: Exception) {
+                Log.e(TAG, "Failed to send logout", expected)
             }
         }
         stop()
@@ -369,5 +414,43 @@ fun WhatsAppClient.getContactSuggestions(query: String): List<ContactSuggestion>
     return nameCache.entries
         .filter { it.value.contains(query, ignoreCase = true) }
         .map { ContactSuggestion(it.value, null, null, MessageSource.WHATSAPP) }
-        .take(10)
+        .take(MAX_SUGGESTIONS)
 }
+
+/** LID-routed sender plus whether the message is ours (sent from another linked device). */
+internal fun WhatsAppClient.resolveChatSender(message: WhatsAppMessage): Pair<String, Boolean> {
+    // LID routing (Go rerouteWAMessage)
+    val sender = resolveJID(message.participant ?: message.from)
+    // Treat the message as ours when it was sent by our own account from another
+    // device — either flagged during parse (DeviceSentMessage / recipient attr) or the
+    // sender JID resolves to our own user (the common group case: from=group,
+    // participant=ourJid). Otherwise it wrongly renders as an incoming bubble "from"
+    // ourselves.
+    val fromMe = message.isFromMe || isOwnJid(sender) ||
+        isOwnJid(message.participant ?: message.from)
+    return sender to fromMe
+}
+
+/** Cache push name from notify attr (Go syncGhost / PushName handling). */
+internal fun WhatsAppClient.cacheNotifyName(node: WhatsAppProtocol.Node, sender: String) {
+    val notifyName = node.attrs["notify"]
+    if (!notifyName.isNullOrEmpty()) {
+        nameCache[sender] = notifyName
+    }
+}
+
+/** Store poll options + secret for later vote encryption/decryption (Go handleWAMessage/poll case). */
+internal suspend fun WhatsAppClient.rememberInboundPoll(message: WhatsAppMessage) {
+    // Handle poll creation — store option hashes.
+    if (message.pollData != null && !message.pollData.isPollVote) {
+        storePollOptions(message.id, message.pollData.options)
+    }
+
+    // Store poll secrets from incoming polls for vote encryption/decryption.
+    if (message.pollData != null && !message.pollData.isPollVote && message.e2eMessage != null) {
+        val secret = message.e2eMessage.messageContextInfo?.messageSecret?.toByteArray()
+        if (secret != null) storePollSecret(message.id, secret)
+    }
+}
+
+private const val MAX_SUGGESTIONS = 10

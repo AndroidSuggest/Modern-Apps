@@ -122,23 +122,27 @@ class MainActivity : ComponentActivity() {
      */
     private fun resolveInitialBackStack(intent: Intent): List<Route> {
         if (intent.action == Intent.ACTION_APPLICATION_PREFERENCES) {
-            return listOf(Route.Main(4))
+            return listOf(Route.Main(TAB_SETTINGS))
         }
         if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
             val videoID = intent.getStringExtra(Intent.EXTRA_TEXT)?.let { parseSharedVideoId(it) }
             if (videoID != null) {
                 return when (intent.component?.className) {
                     "$packageName.ShareWatchLater" ->
-                        listOf(Route.Main(0), Route.VideoPage(videoID), Route.AddToWatchLater(videoID))
+                        listOf(Route.Main(TAB_HOME), Route.VideoPage(videoID), Route.AddToWatchLater(videoID))
                     "$packageName.SharePlaylist" ->
-                        listOf(Route.Main(0), Route.VideoPage(videoID), Route.AddToPlaylist(videoID, includeWatchLater = false))
-                    else -> listOf(Route.Main(0), Route.VideoPage(videoID))
+                        listOf(
+                            Route.Main(TAB_HOME),
+                            Route.VideoPage(videoID),
+                            Route.AddToPlaylist(videoID, includeWatchLater = false),
+                        )
+                    else -> listOf(Route.Main(TAB_HOME), Route.VideoPage(videoID))
                 }
             }
         }
         val uri = intent.data
         if (uri != null && "watch" in uri.pathSegments && "v" in uri.queryParameterNames) {
-            return listOf(Route.Main(0), Route.VideoPage(videoURLtoID(uri.toString())))
+            return listOf(Route.Main(TAB_HOME), Route.VideoPage(videoURLtoID(uri.toString())))
         }
         return defaultBackStack(DataStoreUtils.getInstance(this).getString(DEFAULT_PAGE_KEY))
     }
@@ -163,6 +167,13 @@ class MainActivity : ComponentActivity() {
 }
 
 // --- Default startup page ("Open to" setting) ---
+
+/** Tab indices in [YouPipeTabs], shared by deep-link and default-page routing. */
+private const val TAB_HOME = 0
+private const val TAB_SUBSCRIPTIONS = 1
+private const val TAB_HISTORY = 2
+private const val TAB_SAVED = 3
+private const val TAB_SETTINGS = 4
 
 /** DataStore key holding the persisted default-page choice. */
 const val DEFAULT_PAGE_KEY = "default_page"
@@ -191,16 +202,16 @@ val DEFAULT_PAGE_OPTIONS: List<Pair<String, Int>> = listOf(
 
 /** Map a persisted default-page key to the initial backstack to launch with. */
 fun defaultBackStack(key: String?): List<Route> = when (key) {
-    DEFAULT_PAGE_SUBSCRIPTIONS -> listOf(Route.Main(1))
+    DEFAULT_PAGE_SUBSCRIPTIONS -> listOf(Route.Main(TAB_SUBSCRIPTIONS))
     // Seed the Subscriptions root beneath the all-subscriptions feed so Back
     // returns to the Subscriptions list instead of exiting the app.
     DEFAULT_PAGE_ALL_SUBSCRIPTIONS ->
-        listOf(Route.Main(1), Route.SubscriptionVideosPage(null))
-    DEFAULT_PAGE_HISTORY -> listOf(Route.Main(2))
+        listOf(Route.Main(TAB_SUBSCRIPTIONS), Route.SubscriptionVideosPage(null))
+    DEFAULT_PAGE_HISTORY -> listOf(Route.Main(TAB_HISTORY))
     // Both the legacy "downloads" key and the new "saved" key open the Saved hub.
-    DEFAULT_PAGE_DOWNLOADS, DEFAULT_PAGE_SAVED -> listOf(Route.Main(3))
-    DEFAULT_PAGE_SETTINGS -> listOf(Route.Main(4))
-    else -> listOf(Route.Main(0)) // home / unset / unknown
+    DEFAULT_PAGE_DOWNLOADS, DEFAULT_PAGE_SAVED -> listOf(Route.Main(TAB_SAVED))
+    DEFAULT_PAGE_SETTINGS -> listOf(Route.Main(TAB_SETTINGS))
+    else -> listOf(Route.Main(TAB_HOME)) // home / unset / unknown
 }
 
 @Serializable

@@ -14,6 +14,12 @@ import java.util.Base64
  */
 object ControlFraming {
 
+    private const val LENGTH_PREFIX_BYTES = 4
+    private const val LAST_PREFIX_INDEX = 3
+    private const val BYTE_SHIFT_HIGH = 24
+    private const val BYTE_SHIFT_MID_HIGH = 16
+    private const val BYTE_SHIFT_MID_LOW = 8
+
     /**
      * A frame larger than this is refused rather than allocated.
      *
@@ -24,12 +30,12 @@ object ControlFraming {
     const val MAX_FRAME_BYTES = 1 shl 20
 
     fun encode(body: ByteArray): ByteArray {
-        val out = ByteArray(4 + body.size)
-        out[0] = (body.size ushr 24).toByte()
-        out[1] = (body.size ushr 16).toByte()
-        out[2] = (body.size ushr 8).toByte()
-        out[3] = body.size.toByte()
-        body.copyInto(out, 4)
+        val out = ByteArray(LENGTH_PREFIX_BYTES + body.size)
+        out[0] = (body.size ushr BYTE_SHIFT_HIGH).toByte()
+        out[1] = (body.size ushr BYTE_SHIFT_MID_HIGH).toByte()
+        out[2] = (body.size ushr BYTE_SHIFT_MID_LOW).toByte()
+        out[LAST_PREFIX_INDEX] = body.size.toByte()
+        body.copyInto(out, LENGTH_PREFIX_BYTES)
         return out
     }
 

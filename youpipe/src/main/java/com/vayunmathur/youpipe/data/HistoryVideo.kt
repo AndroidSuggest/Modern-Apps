@@ -16,6 +16,7 @@ data class HistoryVideo(
     val timestamp: Instant
 ): DatabaseItem {
     companion object {
-        fun fromVideoData(videoInfo: VideoInfo, progress: Long) = HistoryVideo(videoInfo.videoID, progress, videoInfo, Clock.System.now())
+        fun fromVideoData(videoInfo: VideoInfo, progress: Long) =
+            HistoryVideo(videoInfo.videoID, progress, videoInfo, Clock.System.now())
     }
 }

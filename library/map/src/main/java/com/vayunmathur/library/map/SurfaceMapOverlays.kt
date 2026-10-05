@@ -55,13 +55,16 @@ internal fun packVehicles(vehicles: List<MapMarker>): PackedVehicles {
     for (i in vehicles.indices) {
         val v = vehicles[i]
         ids[i] = v.id
-        lonLat[i * 2] = v.position.longitude.toFloat()
-        lonLat[i * 2 + 1] = v.position.latitude.toFloat()
+        lonLat[i * LON_LAT_COMPONENTS] = v.position.longitude.toFloat()
+        lonLat[i * LON_LAT_COMPONENTS + 1] = v.position.latitude.toFloat()
         icons[i] = v.icon
-        colors[i] = v.color and 0x00FFFFFF
+        colors[i] = v.color and RGB_MASK
     }
     return PackedVehicles(ids, lonLat, icons, colors)
 }
+
+private const val LON_LAT_COMPONENTS = 2
+private const val RGB_MASK = 0x00FFFFFF
 
 /**
  * The route, traffic and picking half of [SurfaceMapRenderer], as `internal`
@@ -168,7 +171,7 @@ internal fun SurfaceMapRenderer.tapMarkerAt(xDp: Float, yDp: Float): Long {
  * contract is a JVM unit test rather than a screenshot.
  */
 internal fun parseLabelRow(parts: List<String>): PlacedLabel? {
-    if (parts.size != 6 && parts.size != 7) return null
+    if (parts.size != LABEL_FIELDS && parts.size != LABEL_FIELDS_LEGACY) return null
     return PlacedLabel(
         layerId = parts[0],
         name = parts[1],
@@ -180,9 +183,13 @@ internal fun parseLabelRow(parts: List<String>): PlacedLabel? {
         // Unsigned on the native side; ids never come close to the sign bit
         // (an OSM id shifted left two is ~36 bits), so a Long is roomy.
         featureId = parts[5].toLongOrNull() ?: 0L,
-        regionId = parts.getOrNull(6)?.toLongOrNull() ?: 0L,
+        regionId = parts.getOrNull(LABEL_REGION_INDEX)?.toLongOrNull() ?: 0L,
     )
 }
+
+private const val LABEL_FIELDS = 7
+private const val LABEL_FIELDS_LEGACY = 6
+private const val LABEL_REGION_INDEX = 6
 internal fun SurfaceMapRenderer.tapLabelsIn(box: DpRect, layerIds: Set<String>): List<PlacedLabel> {
     val h = handle
     if (h == 0L) return emptyList()

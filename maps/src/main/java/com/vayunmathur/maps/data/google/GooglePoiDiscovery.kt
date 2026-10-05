@@ -107,6 +107,21 @@ object GooglePoiDiscovery {
      *  continent. */
     private const val MIN_SPAN_M = 500.0
     private const val MAX_SPAN_M = 40_000.0
+    /** Cache span bucket (m): centres in the same bucket share a cache entry. */
+    private const val SPAN_BUCKET_M = 250.0
+    /** Zoom matched to [BASE_SPAN_M], the template's baked window. */
+    private const val BASE_ZOOM = 13.1
+    private const val BASE_SPAN_M = 25229.0
+    private const val MIN_ZOOM = 13.0
+    private const val MAX_ZOOM = 17.5
+    /** Prominence weights: review count dominates (log-compressed), rating nudges. */
+    private const val RATING_WEIGHT = 0.6
+    private const val DEFAULT_RATING = 3.5
+    private const val RATING_SCALE = 10.0
+    /** Scale for rounding cache keys to ~100 m. */
+    private const val ROUND_SCALE = 1000.0
+    /** Metres per degree of latitude, for the rank-tiebreak distance. */
+    private const val METERS_PER_DEGREE = 111_320.0
 
     @Volatile private var sessionWarmed = false
 
@@ -135,7 +150,7 @@ object GooglePoiDiscovery {
         maxPins: Int = MAX_PINS,
     ): List<GooglePoiPin> {
         val span = spanMeters.coerceIn(MIN_SPAN_M, MAX_SPAN_M)
-        val key = Key(round3(lat), round3(lon), (span / 250.0).toInt())
+        val key = Key(round3(lat), round3(lon), (span / SPAN_BUCKET_M).toInt())
         synchronized(cache) { cache[key]?.let { return it.take(maxPins) } }
         val pins = runCatching { fetch(lat, lon, span) }.getOrDefault(emptyList())
         synchronized(cache) { cache[key] = pins }
@@ -157,7 +172,7 @@ object GooglePoiDiscovery {
         withContext(Dispatchers.IO) {
             warmSession()
             // Match the zoom to the tightened window (span 25229 ↔ zoom 13.1).
-            val zoom = (13.1 + log2(25229.0 / span)).coerceIn(13.0, 17.5)
+            val zoom = (BASE_ZOOM + log2(BASE_SPAN_M / span)).coerceIn(MIN_ZOOM, MAX_ZOOM)
             val pool = coroutineScope {
                 FANOUT_TERMS.map { term ->
                     async { runCatching { fetchTerm(term, lat, lon, span, zoom) }.getOrDefault(emptyList()) }
@@ -223,7 +238,7 @@ object GooglePoiDiscovery {
      *  mega-chain doesn't utterly bury everything), nudged by rating so among
      *  similarly-popular places the better-rated wins. */
     private fun prominenceOf(rating: Double?, reviews: Int): Double =
-        ln(reviews.coerceAtLeast(0) + 1.0) * (0.6 + (rating ?: 3.5) / 10.0)
+        ln(reviews.coerceAtLeast(0) + 1.0) * (RATING_WEIGHT + (rating ?: DEFAULT_RATING) / RATING_SCALE)
 
     // --- HTTP plumbing (mirrors GooglePoiDataSource) ------------------------
 
@@ -264,13 +279,13 @@ object GooglePoiDiscovery {
             .replaceFirst(Regex("!4f[0-9.]+"), "!4f${String.format(java.util.Locale.US, "%.1f", zoom)}")
             .replaceFirst(Regex("!7i\\d+"), "!7i$POOL_SIZE")
 
-    private fun round3(v: Double): Double = Math.round(v * 1000.0) / 1000.0
+    private fun round3(v: Double): Double = Math.round(v * ROUND_SCALE) / ROUND_SCALE
     private fun String.enc(): String = URLEncoder.encode(this, "UTF-8")
 
     /** Rough planar metres between two lat/lon points — enough for a rank
      *  tiebreak at viewport scale; no need for full haversine here. */
     private fun metersBetween(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
-        val mPerDegLat = 111_320.0
+        val mPerDegLat = METERS_PER_DEGREE
         val dLat = (bLat - aLat) * mPerDegLat
         val dLon = (bLon - aLon) * mPerDegLat * cos(Math.toRadians((aLat + bLat) / 2.0))
         return hypot(dLat, dLon)

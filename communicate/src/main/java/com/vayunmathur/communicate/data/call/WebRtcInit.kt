@@ -34,11 +34,11 @@ object WebRtcInit {
                     .setEnableInternalTracer(false)
                     .createInitializationOptions(),
             )
-        } catch (t: Throwable) {
+        } catch (expected: Throwable) {
             // Let the next attempt retry rather than leaving the flag set on a half-initialized stack.
             initialized.set(false)
-            Log.e(TAG, "WebRTC initialization failed", t)
-            throw t
+            Log.e(TAG, "WebRTC initialization failed", expected)
+            throw expected
         }
     }
 

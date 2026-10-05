@@ -46,6 +46,11 @@ import kotlinx.coroutines.sync.withLock
 class MusicRepository private constructor(context: Context) :
     RoomRepository<MusicDatabase>(context, MusicDatabase::class) {
 
+    private companion object {
+        const val STALE_DELETE_BATCH = 900
+        const val TAG_CACHE_UPSERT_BATCH = 200
+    }
+
     private val musicDao get() = db.musicDao()
     private val playlistDao get() = db.playlistDao()
     private val matchingDao get() = db.matchingDao()
@@ -141,36 +146,49 @@ class MusicRepository private constructor(context: Context) :
      */
     suspend fun backfillTags() {
         val cached = musicDao.getAll().associateBy { it.id }
-        if (cached.isNotEmpty()) {
-            _music.value = _music.value.map { song ->
-                if (song.duration != 0L && song.year != 0) return@map song
-                val hit = cached[song.id] ?: return@map song
-                song.copy(
-                    duration = if (song.duration == 0L) hit.duration else song.duration,
-                    year = if (song.year == 0) hit.year else song.year,
-                )
-            }
-        }
+        applyTagCache(cached)
+        pruneStaleTags(cached)
+        backfillFromFiles()
+    }
 
+    private fun applyTagCache(cached: Map<Long, Music>) {
+        if (cached.isEmpty()) return
+        _music.value = _music.value.map { song -> cachedSong(song, cached[song.id]) }
+    }
+
+    private fun cachedSong(song: Music, hit: Music?): Music {
+        if (hit == null) return song
+        if (song.duration != 0L && song.year != 0) return song
+        return song.copy(
+            duration = if (song.duration == 0L) hit.duration else song.duration,
+            year = if (song.year == 0) hit.year else song.year,
+        )
+    }
+
+    private suspend fun pruneStaleTags(cached: Map<Long, Music>) {
         // Entries for songs that no longer exist would otherwise accumulate forever.
         val live = _music.value.mapTo(mutableSetOf()) { it.id }
         val stale = cached.keys - live
-        if (stale.isNotEmpty()) stale.chunked(900).forEach { musicDao.deleteByIds(it) }
+        if (stale.isNotEmpty()) stale.chunked(STALE_DELETE_BATCH).forEach { musicDao.deleteByIds(it) }
+    }
 
+    private suspend fun backfillFromFiles() {
         val pending = _music.value.filter { it.duration == 0L || it.year == 0 }
         if (pending.isEmpty()) return
-        val resolved = pending.mapNotNull { song ->
-            val uri = song.uri.toUri()
-            val duration =
-                if (song.duration == 0L) getRealAudioDuration(appContext, uri) else song.duration
-            val year = if (song.year == 0) getAudioYear(appContext, uri) else song.year
-            song.copy(duration = duration, year = year).takeIf { it != song }
-        }
+        val resolved = pending.mapNotNull { resolveTags(it) }
         if (resolved.isEmpty()) return
-        resolved.chunked(200).forEach { musicDao.upsertAll(it) }
+        resolved.chunked(TAG_CACHE_UPSERT_BATCH).forEach { musicDao.upsertAll(it) }
 
         val byId = resolved.associateBy { it.id }
         _music.value = _music.value.map { byId[it.id] ?: it }
+    }
+
+    private fun resolveTags(song: Music): Music? {
+        val uri = song.uri.toUri()
+        val duration =
+            if (song.duration == 0L) getRealAudioDuration(appContext, uri) else song.duration
+        val year = if (song.year == 0) getAudioYear(appContext, uri) else song.year
+        return song.copy(duration = duration, year = year).takeIf { it != song }
     }
 
     // ------------------------------------------------------------------

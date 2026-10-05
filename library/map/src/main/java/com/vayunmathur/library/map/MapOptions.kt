@@ -17,12 +17,25 @@ data class GestureOptions(
 
         /** Pan + zoom only: no twist-rotate, no two-finger tilt. What every app but `maps` uses. */
         val TiltLocked =
-            GestureOptions(isScrollEnabled = true, isZoomEnabled = true, isRotateEnabled = false, isTiltEnabled = false)
+            GestureOptions(
+                isScrollEnabled = true,
+                isZoomEnabled = true,
+                isRotateEnabled = false,
+                isTiltEnabled = false
+            )
 
         /** All gestures disabled (static map). */
         val AllDisabled = GestureOptions(isScrollEnabled = false, isZoomEnabled = false)
     }
 }
+
+/** True when no transform gesture (scroll/zoom/rotate) is enabled. */
+internal val GestureOptions.isTransformDisabled: Boolean
+    get() = !isScrollEnabled && !isZoomEnabled && !isRotateEnabled
+
+/** True when the tilt detector has nothing to disambiguate against. */
+internal val GestureOptions.isTiltDisabled: Boolean
+    get() = (!isScrollEnabled && !isZoomEnabled) || !isTiltEnabled
 
 /**
  * Map ornaments.

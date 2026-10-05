@@ -95,25 +95,122 @@ data class SegmentalResult(
 
 object BodyComposition {
 
+    // Clamp bounds from algorithmWithSecAthlete @0x139a0 (ghidra_helpers.txt:28-62).
+    private const val MIN_HEIGHT_CM = 40.0
+    private const val MAX_HEIGHT_CM = 240.0
+    private const val MIN_AGE = 3
+    private const val MAX_AGE = 80
+    private const val MIN_RESISTANCE = 100
+    private const val MAX_RESISTANCE = 1500
+    /** Four-electrode resistance at or above this means no foot contact. */
+    private const val NO_CONTACT_RESISTANCE = 60000
+
+    // BMI @0x1149c scaffolding: cm per metre, the square, and the +0.05/10x rounding.
+    private const val CM_PER_M = 100.0
+    private const val BMI_EXPONENT = 2.0
+    private const val BMI_ROUND_BIAS = 0.05
+    private const val BMI_ROUND_SCALE = 10.0
+
+    /** Percent divisor shared by the LBM identity, fat mass and all percentage outputs. */
+    private const val PERCENT_DIVISOR = 100.0
+
+    // BF clamp @0x11534.
+    private const val MIN_BODY_FAT = 5.1
+    private const val MAX_BODY_FAT = 75.0
+
+    // Total body water ≈ 73.2% of FFM (classic hydration constant) with an age slope
+    // anchored at 30 years; TBW% is clamped to the plausible human range.
+    private const val HYDRATION_FRACTION = 0.732
+    private const val HYDRATION_REF_AGE = 30
+    private const val HYDRATION_AGE_SLOPE = 0.02
+    private const val MIN_WATER_PCT = 35.0
+    private const val MAX_WATER_PCT = 75.0
+
+    // Skeletal muscle mass ≈ ~53% of FFM (Wang et al), scaled.
+    private const val MUSCLE_FRACTION = 0.53
+
+    // Bone mass approx 3.5-5% of weight: base fraction, male offset, height slope around
+    // 170 cm, and the hard min/max envelope as fractions of weight.
+    private const val BONE_FRACTION = 0.045
+    private const val BONE_MALE_ADJ = 0.35
+    private const val BONE_REF_HEIGHT_CM = 170
+    private const val BONE_HEIGHT_SLOPE = 0.008
+    private const val BONE_MIN_FRACTION = 0.02
+    private const val BONE_MAX_FRACTION = 0.10
+
+    /** Protein ≈ remaining FFM after water+bone+minerals, capped at 35% of FFM. */
+    private const val PROTEIN_MAX_FRACTION = 0.35
+
+    // BMR — Mifflin-St Jeor coefficients, athlete muscle bonus, and the output envelope.
+    private const val MALE_BMR_BASE = 88.362
+    private const val MALE_BMR_WEIGHT = 13.397
+    private const val MALE_BMR_HEIGHT = 4.799
+    private const val MALE_BMR_AGE = 5.677
+    private const val FEMALE_BMR_BASE = 447.593
+    private const val FEMALE_BMR_WEIGHT = 9.247
+    private const val FEMALE_BMR_HEIGHT = 3.098
+    private const val FEMALE_BMR_AGE = 4.330
+    private const val ATHLETE_BONUS_PER_MUSCLE_KG = 2.0
+    private const val MIN_BMR = 800
+    private const val MAX_BMR = 4000
+
+    // Visceral fat level 1-59 (Yolanda scale) from BF, age, BMI and the male offset.
+    private const val VISCERAL_BF_WEIGHT = 0.28
+    private const val VISCERAL_AGE_WEIGHT = 0.08
+    private const val VISCERAL_BMI_WEIGHT = 0.15
+    private const val VISCERAL_MALE_ADJ = 1.5
+    private const val MIN_VISCERAL = 1
+    private const val MAX_VISCERAL = 59
+
+    // Body age — chronological plus BF delta against the sex-specific ideal and the
+    // visceral delta against level 10, clamped to 10-80.
+    private const val IDEAL_BF_MALE = 15.0
+    private const val IDEAL_BF_FEMALE = 22.0
+    private const val BODY_AGE_BF_WEIGHT = 0.45
+    private const val BODY_AGE_VISCERAL_WEIGHT = 0.25
+    private const val VISCERAL_REF_LEVEL = 10
+    private const val MIN_BODY_AGE = 10
+    private const val MAX_BODY_AGE = 80
+
+    // Health score balanced around 85: penalise high BF/visceral/BMI deviation, clamp 40-100.
+    private const val BASE_SCORE = 85.0
+    private const val SCORE_BF_WEIGHT = 0.9
+    private const val SCORE_VISCERAL_WEIGHT = 0.8
+    private const val SCORE_BMI_WEIGHT = 1.6
+    private const val REF_BMI = 22.0
+    private const val MIN_SCORE = 40.0
+    private const val MAX_SCORE = 100.0
+
+    // MeasureDecoder.decodeWeight: while above this many kg, divide by ten (ratio fix-up).
+    private const val MAX_WEIGHT_KG = 300.0
+    private const val WEIGHT_RESCALE_DIVISOR = 10.0
+
+    /** Unsigned-byte mask and byte width for packing/unpacking two-byte frames. */
+    private const val BYTE_MASK = 0xFF
+    private const val BITS_PER_BYTE = 8
+
+    /** QNDecoderImpl.kRatio, fixed for every eight-electrode channel. */
+    private const val EIGHT_ELECTRODE_RATIO = 0.1
+
     // Clamps from algorithmWithSecAthlete @0x139a0 (ghidra_helpers.txt:28-62)
-    fun clampHeight(h: Double) = h.coerceIn(40.0, 240.0)
-    fun clampAge(a: Int) = a.coerceIn(3, 80)
-    fun clampResistance(r: Int) = r.coerceIn(100, 1500)
+    fun clampHeight(h: Double) = h.coerceIn(MIN_HEIGHT_CM, MAX_HEIGHT_CM)
+    fun clampAge(a: Int) = a.coerceIn(MIN_AGE, MAX_AGE)
+    fun clampResistance(r: Int) = r.coerceIn(MIN_RESISTANCE, MAX_RESISTANCE)
 
     /** BMI @0x1149c: weight/(h/100)^2 rounded to 1 decimal with +0.05 bias. */
     fun calcBmi(heightCm: Double, weightKg: Double): Double {
         if (heightCm <= 0) return 0.0
-        val raw = weightKg / (heightCm / 100.0).pow(2.0)
+        val raw = weightKg / (heightCm / CM_PER_M).pow(BMI_EXPONENT)
         // Ghidra: tmp = (weightKg+0.05)*10 + fudge(1e-07 if negative); return (long)tmp/10
         // 1e-07 fudge is irrelevant except for exact tie-breaking on negative BMI (never hit).
-        val tmp = (raw + 0.05) * 10.0
-        return (tmp.toLong().toDouble()) / 10.0
+        val tmp = (raw + BMI_ROUND_BIAS) * BMI_ROUND_SCALE
+        return (tmp.toLong().toDouble()) / BMI_ROUND_SCALE
     }
 
     /** LBM @0x11500: weight*(1-bf/100); 0 if bf==0 (no impedance). */
     fun calcLbm(weightKg: Double, bodyFatPercent: Double): Double {
         if (bodyFatPercent == 0.0) return 0.0
-        return weightKg * (1.0 - bodyFatPercent / 100.0)
+        return weightKg * (1.0 - bodyFatPercent / PERCENT_DIVISOR)
     }
 
     /** BF clamp @0x11534: 5.1-75.0 when impedance present, else 0. */
@@ -121,14 +218,14 @@ object BodyComposition {
         if (!hasImpedance) return 0.0
         if (bf.isNaN()) return 0.0
         return when {
-            bf <= 5.1 -> 5.1
-            bf >= 75.0 -> 75.0
+            bf <= MIN_BODY_FAT -> MIN_BODY_FAT
+            bf >= MAX_BODY_FAT -> MAX_BODY_FAT
             else -> bf
         }
     }
 
     /** Impedance quick-check @0x149f8 simplified: 50-1500 seen as plausible foot-to-foot. */
-    fun isImpedanceValid(r: Int): Boolean = r in 100..60000 && r != 0
+    fun isImpedanceValid(r: Int): Boolean = r in MIN_RESISTANCE..NO_CONTACT_RESISTANCE && r != 0
 
     /**
      * Core body-fat estimator.
@@ -148,7 +245,12 @@ object BodyComposition {
         val sex = profile.sex.code.toDouble()
         val athlete = profile.athlete
         // Height^2 / resistance is the classic BIA volume proxy.
-        val ht2OverR = if (r50 in 100..1500 && r50 != 0) (height * height) / r50 else null
+        val ht2OverR =
+            if (r50 in MIN_RESISTANCE..MAX_RESISTANCE && r50 != 0) {
+                (height * height) / r50
+            } else {
+                null
+            }
 
         // Coefficients chosen to emulate Yolanda SingleFrequency family (non-athlete vs athlete)
         // while staying within Kyle/Sun published ranges.
@@ -178,95 +280,28 @@ object BodyComposition {
         val height = clampHeight(profile.heightCm)
         val weight = measurement.weightKg
         val r50 = measurement.resistance50
-        val hasImpedance = r50 != 0 && r50 < 60000 && r50 in 100..1500
+        val hasImpedance = r50 != 0 && r50 < NO_CONTACT_RESISTANCE && r50 in MIN_RESISTANCE..MAX_RESISTANCE
 
         val bmi = calcBmi(height, weight)
         val rawBf = if (hasImpedance || weight > 0) estimateBodyFatPercent(profile, weight, r50) else 0.0
         val bodyFat = limitBodyFat(rawBf, hasImpedance)
 
         val lbm = calcLbm(weight, bodyFat)
-        val fatMass = if (bodyFat == 0.0) 0.0 else weight * bodyFat / 100.0
+        val fatMass = if (bodyFat == 0.0) 0.0 else weight * bodyFat / PERCENT_DIVISOR
 
-        // Total body water ≈ 73.2% of FFM (classic hydration constant) adjusted for age.
-        // TBW% = TBW/weight*100.
-        val tbwKg = if (lbm == 0.0) 0.0 else lbm * 0.732 - (profile.age - 30) * 0.02
-        val waterPercent = if (weight == 0.0) 0.0 else (tbwKg / weight * 100.0).coerceIn(35.0, 75.0).let {
-            if (bodyFat == 0.0) 0.0 else it
-        }
-
-        // Skeletal muscle mass ≈ ~53% of FFM (Wang et al), scaled.
-        val muscleMass = if (lbm == 0.0) 0.0 else (lbm * 0.53).coerceIn(0.0, lbm)
-        val musclePercent = if (weight == 0.0) 0.0 else muscleMass / weight * 100.0
-
-        // Bone mass approx 3.5-5% of weight, inversely correlated with BF.
-        val boneKg = if (bodyFat == 0.0) 0.0 else {
-            val base = weight * 0.045
-            // Slightly more bone on taller / male
-            val sexAdj = if (profile.sex == Sex.Male) 0.35 else 0.0
-            val hAdj = (height - 170) * 0.008
-            (base + sexAdj + hAdj).coerceIn(weight * 0.02, weight * 0.10)
-        }
-
-        // Protein ≈ remaining FFM after water+bone+minerals; protein% ~15-19 typical.
-        val proteinKg = if (lbm == 0.0) 0.0 else (lbm - tbwKg - boneKg).coerceIn(0.0, lbm * 0.35)
-        val proteinPercent = if (weight == 0.0) 0.0 else proteinKg / weight * 100.0
-
-        // BMR — Mifflin-St Jeor with athlete + muscle tweak.
-        val bmrBase = if (profile.sex == Sex.Male) {
-            88.362 + 13.397 * weight + 4.799 * height - 5.677 * profile.age
-        } else {
-            447.593 + 9.247 * weight + 3.098 * height - 4.330 * profile.age
-        }
-        val bmrAthleteBonus = if (profile.athlete) muscleMass * 2.0 else 0.0
-        val bmr = (bmrBase + bmrAthleteBonus).roundToLong().toInt().coerceIn(800, 4000).let {
-            if (weight == 0.0) 0 else it
-        }
-
-        // Visceral fat level 1-59 (Yolanda scale). Estimate from BF + age + BMI.
-        val visceralLevel = if (bodyFat == 0.0) 0 else {
-            val raw = bodyFat * 0.28 + profile.age * 0.08 + bmi * 0.15 - profile.sex.code * 1.5
-            raw.roundToLong().toInt().coerceIn(1, 59)
-        }
-
-        // Body age — chronological plus BF delta. Ideal BF ~15 male / 22 female.
-        val idealBf = if (profile.sex == Sex.Male) 15.0 else 22.0
-        val bodyAge = if (bodyFat == 0.0) 0 else {
-            val delta = ((bodyFat - idealBf) * 0.45 + (visceralLevel - 10) * 0.25).toInt()
-            (profile.age + delta).coerceIn(10, 80)
-        }
-
-        // Health score 0-100 (Yolanda: balanced around 80). Penalise high BF/visceral/BMI.
-        val score = if (bodyFat == 0.0) 0 else {
-            var s = 85.0
-            s -= (bodyFat - idealBf).coerceAtLeast(0.0) * 0.9
-            s -= (visceralLevel - 10).coerceAtLeast(0) * 0.8
-            s -= kotlin.math.abs(bmi - 22.0) * 1.6
-            s.coerceIn(40.0, 100.0).toInt()
-        }
-
-        // Segmental — only on 8-electrode hardware; Elis 1 is 4-electrode, so null.
-        val segmental = measurement.segmental?.let { seg ->
-            // Distribute mass proportionally to impedance ratios (approx).
-            // These are illustrative; real Quad fit uses calcSpecialtyQuadElectrodeBodyDataFit @0x27adc.
-            val total20 = seg.rh20 + seg.lh20 + seg.t20 + seg.rf20 + seg.lf20
-            if (total20 == 0.0) null else {
-                // Fat per segment proportional to local impedance share, muscle complementary.
-                fun fatShare(local: Double) = if (total20 == 0.0) 0.0 else (fatMass * (local / total20))
-                fun muscleShare(local: Double) = if (total20 == 0.0) 0.0 else (muscleMass * (local / total20))
-                SegmentalResult(
-                    fatRh = fatShare(seg.rh20),
-                    fatLh = fatShare(seg.lh20),
-                    fatT = fatShare(seg.t20),
-                    fatRf = fatShare(seg.rf20),
-                    fatLf = fatShare(seg.lf20),
-                    muscleRh = muscleShare(seg.rh20),
-                    muscleLh = muscleShare(seg.lh20),
-                    muscleT = muscleShare(seg.t20),
-                    muscleRf = muscleShare(seg.rf20),
-                    muscleLf = muscleShare(seg.lf20),
-                )
-            }
-        }
+        val tbwKg = totalBodyWaterKg(lbm, profile.age)
+        val waterPercent = waterPercent(tbwKg, weight, bodyFat)
+        val muscleMass = muscleMassKg(lbm)
+        val musclePercent = if (weight == 0.0) 0.0 else muscleMass / weight * PERCENT_DIVISOR
+        val boneKg = boneMassKg(weight, height, profile.sex, bodyFat)
+        val proteinKg = proteinMassKg(lbm, tbwKg, boneKg)
+        val proteinPercent = if (weight == 0.0) 0.0 else proteinKg / weight * PERCENT_DIVISOR
+        val bmr = bmrKcal(profile, weight, height, muscleMass)
+        val visceralLevel = visceralLevel(bodyFat, profile.age, bmi, profile.sex.code)
+        val idealBf = if (profile.sex == Sex.Male) IDEAL_BF_MALE else IDEAL_BF_FEMALE
+        val bodyAge = bodyAge(profile.age, bodyFat, idealBf, visceralLevel)
+        val score = healthScore(bodyFat, idealBf, visceralLevel, bmi)
+        val segmental = segmentalResult(measurement.segmental, fatMass, muscleMass)
 
         return BodyMetrics(
             bmi = bmi,
@@ -287,22 +322,118 @@ object BodyComposition {
         )
     }
 
+    // Total body water ≈ 73.2% of FFM (classic hydration constant) adjusted for age.
+    // TBW% = TBW/weight*100.
+    private fun totalBodyWaterKg(lbm: Double, age: Int): Double =
+        if (lbm == 0.0) 0.0 else lbm * HYDRATION_FRACTION - (age - HYDRATION_REF_AGE) * HYDRATION_AGE_SLOPE
+
+    private fun waterPercent(tbwKg: Double, weight: Double, bodyFat: Double): Double {
+        if (weight == 0.0) return 0.0
+        val pct = (tbwKg / weight * PERCENT_DIVISOR).coerceIn(MIN_WATER_PCT, MAX_WATER_PCT)
+        return if (bodyFat == 0.0) 0.0 else pct
+    }
+
+    // Skeletal muscle mass ≈ ~53% of FFM (Wang et al), scaled.
+    private fun muscleMassKg(lbm: Double): Double =
+        if (lbm == 0.0) 0.0 else (lbm * MUSCLE_FRACTION).coerceIn(0.0, lbm)
+
+    // Bone mass approx 3.5-5% of weight, inversely correlated with BF.
+    private fun boneMassKg(weight: Double, height: Double, sex: Sex, bodyFat: Double): Double {
+        if (bodyFat == 0.0) return 0.0
+        val base = weight * BONE_FRACTION
+        // Slightly more bone on taller / male
+        val sexAdj = if (sex == Sex.Male) BONE_MALE_ADJ else 0.0
+        val hAdj = (height - BONE_REF_HEIGHT_CM) * BONE_HEIGHT_SLOPE
+        return (base + sexAdj + hAdj).coerceIn(weight * BONE_MIN_FRACTION, weight * BONE_MAX_FRACTION)
+    }
+
+    // Protein ≈ remaining FFM after water+bone+minerals; protein% ~15-19 typical.
+    private fun proteinMassKg(lbm: Double, tbwKg: Double, boneKg: Double): Double =
+        if (lbm == 0.0) 0.0 else (lbm - tbwKg - boneKg).coerceIn(0.0, lbm * PROTEIN_MAX_FRACTION)
+
+    // BMR — Mifflin-St Jeor with athlete + muscle tweak.
+    private fun bmrKcal(profile: ScaleProfile, weight: Double, height: Double, muscleMass: Double): Int {
+        val bmrBase = if (profile.sex == Sex.Male) {
+            MALE_BMR_BASE + MALE_BMR_WEIGHT * weight + MALE_BMR_HEIGHT * height - MALE_BMR_AGE * profile.age
+        } else {
+            FEMALE_BMR_BASE + FEMALE_BMR_WEIGHT * weight + FEMALE_BMR_HEIGHT * height -
+                FEMALE_BMR_AGE * profile.age
+        }
+        val bmrAthleteBonus = if (profile.athlete) muscleMass * ATHLETE_BONUS_PER_MUSCLE_KG else 0.0
+        val bmr = (bmrBase + bmrAthleteBonus).roundToLong().toInt().coerceIn(MIN_BMR, MAX_BMR)
+        return if (weight == 0.0) 0 else bmr
+    }
+
+    // Visceral fat level 1-59 (Yolanda scale). Estimate from BF + age + BMI.
+    private fun visceralLevel(bodyFat: Double, age: Int, bmi: Double, sexCode: Int): Int {
+        if (bodyFat == 0.0) return 0
+        val raw = bodyFat * VISCERAL_BF_WEIGHT + age * VISCERAL_AGE_WEIGHT +
+            bmi * VISCERAL_BMI_WEIGHT - sexCode * VISCERAL_MALE_ADJ
+        return raw.roundToLong().toInt().coerceIn(MIN_VISCERAL, MAX_VISCERAL)
+    }
+
+    // Body age — chronological plus BF delta. Ideal BF ~15 male / 22 female.
+    private fun bodyAge(age: Int, bodyFat: Double, idealBf: Double, visceralLevel: Int): Int {
+        if (bodyFat == 0.0) return 0
+        val delta = ((bodyFat - idealBf) * BODY_AGE_BF_WEIGHT +
+            (visceralLevel - VISCERAL_REF_LEVEL) * BODY_AGE_VISCERAL_WEIGHT).toInt()
+        return (age + delta).coerceIn(MIN_BODY_AGE, MAX_BODY_AGE)
+    }
+
+    // Health score 0-100 (Yolanda: balanced around 85). Penalise high BF/visceral/BMI.
+    private fun healthScore(bodyFat: Double, idealBf: Double, visceralLevel: Int, bmi: Double): Int {
+        if (bodyFat == 0.0) return 0
+        var s = BASE_SCORE
+        s -= (bodyFat - idealBf).coerceAtLeast(0.0) * SCORE_BF_WEIGHT
+        s -= (visceralLevel - VISCERAL_REF_LEVEL).coerceAtLeast(0) * SCORE_VISCERAL_WEIGHT
+        s -= kotlin.math.abs(bmi - REF_BMI) * SCORE_BMI_WEIGHT
+        return s.coerceIn(MIN_SCORE, MAX_SCORE).toInt()
+    }
+
+    // Segmental — only on 8-electrode hardware; Elis 1 is 4-electrode, so null.
+    private fun segmentalResult(
+        segmental: SegmentalImpedance?,
+        fatMass: Double,
+        muscleMass: Double,
+    ): SegmentalResult? {
+        val seg = segmental ?: return null
+        // Distribute mass proportionally to impedance ratios (approx).
+        // These are illustrative; real Quad fit uses calcSpecialtyQuadElectrodeBodyDataFit @0x27adc.
+        val total20 = seg.rh20 + seg.lh20 + seg.t20 + seg.rf20 + seg.lf20
+        if (total20 == 0.0) return null
+        // Fat per segment proportional to local impedance share, muscle complementary.
+        fun fatShare(local: Double) = fatMass * (local / total20)
+        fun muscleShare(local: Double) = muscleMass * (local / total20)
+        return SegmentalResult(
+            fatRh = fatShare(seg.rh20),
+            fatLh = fatShare(seg.lh20),
+            fatT = fatShare(seg.t20),
+            fatRf = fatShare(seg.rf20),
+            fatLf = fatShare(seg.lf20),
+            muscleRh = muscleShare(seg.rh20),
+            muscleLh = muscleShare(seg.lh20),
+            muscleT = muscleShare(seg.t20),
+            muscleRf = muscleShare(seg.rf20),
+            muscleLf = muscleShare(seg.lf20),
+        )
+    }
+
     /** Decode weight per MeasureDecoder.decodeWeight: value/ratio, while >300 divide by 10. */
     fun decodeWeight(raw: Int, ratio: Double): Double {
         var w = raw.toDouble() / ratio
-        while (w > 300.0) w /= 10.0
+        while (w > MAX_WEIGHT_KG) w /= WEIGHT_RESCALE_DIVISOR
         return w
     }
 
     /** 4-electrode resistance: two bytes big-endian. >=60000 treated as 0 (no contact). */
     fun fourResTwoByte2Int(b1: Byte, b2: Byte): Int {
-        val v = ((b1.toInt() and 0xFF) shl 8) or (b2.toInt() and 0xFF)
-        return if (v >= 60000) 0 else v
+        val v = ((b1.toInt() and BYTE_MASK) shl BITS_PER_BYTE) or (b2.toInt() and BYTE_MASK)
+        return if (v >= NO_CONTACT_RESISTANCE) 0 else v
     }
 
     /** 8-electrode resistance: (hi<<8|lo)*0.1 ohms, per eightResTwoByte2Double. */
-    fun eightResTwoByte2Double(b1: Byte, b2: Byte, ratio: Double = 0.1): Double {
-        val v = ((b1.toInt() and 0xFF) shl 8) or (b2.toInt() and 0xFF)
+    fun eightResTwoByte2Double(b1: Byte, b2: Byte, ratio: Double = EIGHT_ELECTRODE_RATIO): Double {
+        val v = ((b1.toInt() and BYTE_MASK) shl BITS_PER_BYTE) or (b2.toInt() and BYTE_MASK)
         return v * ratio
     }
 }

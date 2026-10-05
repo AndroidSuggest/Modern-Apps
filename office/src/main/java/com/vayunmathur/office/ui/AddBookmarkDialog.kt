@@ -19,7 +19,11 @@ fun AddBookmarkDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.add_bookmark)) },
-        text = { TextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.name)) }, singleLine = true) },
+        text = { TextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text(stringResource(R.string.name)) },
+            singleLine = true) },
         confirmButton = { TextButton(onClick = { if (name.isNotBlank()) { onAdd(name); onDismiss() } }) { Text(stringResource(UiR.string.add)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
     )

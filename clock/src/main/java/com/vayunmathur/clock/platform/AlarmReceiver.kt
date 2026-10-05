@@ -1,4 +1,5 @@
 package com.vayunmathur.clock.platform
+import android.content.ActivityNotFoundException
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -36,6 +37,18 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        postRingNotification(context, intent, alarmId, pendingIntent)
+        rescheduleAlarm(context, alarmId)
+        startSoundService(context, alarmId)
+        startRingActivity(context, alarmId, ringIntent)
+    }
+
+    private fun postRingNotification(
+        context: Context,
+        intent: Intent,
+        alarmId: Long,
+        pendingIntent: PendingIntent,
+    ) {
         // 3. Build the Notification. For most alarms this is what actually rings: FLAG_INSISTENT
         // below repeats the ring channel's sound until something cancels it, so the alarm sounds
         // even when AlarmSoundService never reaches startForeground.
@@ -65,6 +78,36 @@ class AlarmReceiver : BroadcastReceiver() {
             // dismiss path is missed (process killed before the UI ever appeared, say).
             .setTimeoutAfter(RING_TIMEOUT_MS)
 
+        warnIfFullscreenDenied(context, alarmId)
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(
+            ALARM_RING_NOTIFICATION_ID,
+            builder.build().apply {
+                if (!gradual) flags = flags or Notification.FLAG_INSISTENT
+            },
+        )
+    }
+
+    private fun warnIfFullscreenDenied(context: Context, alarmId: Long) {
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            !notificationManager.canUseFullScreenIntent()
+        ) {
+            // Without it the ringing screen can only appear if the background activity start
+            // below happens to be allowed, which off-screen it is not.
+            Log.w(
+                TAG,
+                "Alarm $alarmId: USE_FULL_SCREEN_INTENT not granted; ringing UI may not appear",
+            )
+        }
+    }
+
+    // Broad catch is deliberate: onReceive must not throw, and Room plus the
+    // scheduler throw undocumented RuntimeExceptions (not just SQLiteException).
+    @Suppress("TooGenericExceptionCaught")
+    private fun rescheduleAlarm(context: Context, alarmId: Long) {
         val repository = ClockRepository.get(context)
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
@@ -81,38 +124,40 @@ class AlarmReceiver : BroadcastReceiver() {
                 pendingResult.finish()
             }
         }
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
-            !notificationManager.canUseFullScreenIntent()
-        ) {
-            // Without it the ringing screen can only appear if the background activity start
-            // below happens to be allowed, which off-screen it is not.
-            Log.w(TAG, "Alarm $alarmId: USE_FULL_SCREEN_INTENT not granted; ringing UI may not appear")
-        }
-        notificationManager.notify(
-            ALARM_RING_NOTIFICATION_ID,
-            builder.build().apply {
-                if (!gradual) flags = flags or Notification.FLAG_INSISTENT
-            },
-        )
+    }
 
+    private fun startSoundService(context: Context, alarmId: Long) {
         // 4. Start the Sound Service immediately so we hear it even if Activity doesn't launch
         val serviceIntent = Intent(context, AlarmSoundService::class.java).apply {
             putExtra("ALARM_ID", alarmId)
         }
         try {
             context.startForegroundService(serviceIntent)
-        } catch (e: Exception) {
+        } catch (e: SecurityException) {
             // Losing this used to throw out of onReceive, which took the notification's
             // rescheduling and the activity start below down with it.
             Log.e(TAG, "Alarm $alarmId: could not start AlarmSoundService", e)
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "Alarm $alarmId: could not start AlarmSoundService", e)
         }
+    }
 
+    private fun startRingActivity(context: Context, alarmId: Long, ringIntent: Intent) {
         // 5. Try to start the activity explicitly (useful if screen is already on)
         try {
             context.startActivity(ringIntent)
-        } catch (e: Exception) {
-            Log.w(TAG, "Alarm $alarmId: background activity start refused; relying on full-screen intent", e)
+        } catch (e: SecurityException) {
+            Log.w(
+                TAG,
+                "Alarm $alarmId: background activity start refused; relying on full-screen intent",
+                e,
+            )
+        } catch (e: ActivityNotFoundException) {
+            Log.w(
+                TAG,
+                "Alarm $alarmId: background activity start refused; relying on full-screen intent",
+                e,
+            )
         }
     }
 

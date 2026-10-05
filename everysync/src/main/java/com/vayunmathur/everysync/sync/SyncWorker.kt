@@ -1,6 +1,7 @@
 package com.vayunmathur.everysync.sync
 
 import android.content.Context
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.vayunmathur.everysync.provider.SyncDirection
@@ -23,12 +24,14 @@ class SyncWorker(
                 SyncEngine.syncAll(applicationContext, SyncDirection.BOTH)
             }
             Result.success()
-        } catch (e: Exception) {
+        } catch (expected: Exception) {
+            Log.e(TAG, "Sync failed", expected)
             Result.retry()
         }
     }
 
     companion object {
         const val KEY_ACCOUNT = "account"
+        private const val TAG = "SyncWorker"
     }
 }

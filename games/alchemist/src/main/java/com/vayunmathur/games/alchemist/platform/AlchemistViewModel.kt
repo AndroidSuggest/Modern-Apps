@@ -126,7 +126,9 @@ class AlchemistViewModel(application: Application) : AndroidViewModel(applicatio
     private suspend fun seedInitialItemsIfEmpty() {
         val initial = ds.stringSetFlow("available_items").first()
         if (initial.isEmpty()) {
-            (1L..4L).forEach { ds.addStringToSet("available_items", it.toString()) }
+            for (seed in 1..INITIAL_ITEM_COUNT) {
+                ds.addStringToSet("available_items", seed.toString())
+            }
         }
     }
 
@@ -157,7 +159,7 @@ class AlchemistViewModel(application: Application) : AndroidViewModel(applicatio
         val elementToDuplicate = current.find { it.key == key } ?: return
         val duplicatedItem = PlacedItem(
             id = elementToDuplicate.id,
-            offset = elementToDuplicate.offset + Offset(25f, 25f)
+            offset = elementToDuplicate.offset + Offset(DUPLICATE_OFFSET, DUPLICATE_OFFSET)
         )
         _placedElements.update { it + duplicatedItem }
     }
@@ -171,7 +173,7 @@ class AlchemistViewModel(application: Application) : AndroidViewModel(applicatio
         val movedItem = current.find { it.key == movedKey } ?: return
         val target = current
             .filter { it.key != movedKey }
-            .find { (it.offset - movedOffset).getDistance() < 100f }
+            .find { (it.offset - movedOffset).getDistance() < COMBINE_RADIUS }
             ?: return
 
         val combined = listOf(movedItem.id, target.id).sorted()
@@ -203,7 +205,7 @@ class AlchemistViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             availableItems.collect { items ->
                 if (items.isEmpty()) return@collect
-                if (items.size > 4) achievementsManager.onAchievementUnlocked("first_creation")
+                if (items.size > FIRST_CREATION_COUNT) achievementsManager.onAchievementUnlocked("first_creation")
                 achievementsManager.onProgressUpdated("collector_50", items.size)
                 achievementsManager.onProgressUpdated("collector_100", items.size)
                 achievementsManager.onProgressUpdated("all_discovered", items.size)
@@ -215,7 +217,7 @@ class AlchemistViewModel(application: Application) : AndroidViewModel(applicatio
                 if (items.any { it.final }) {
                     achievementsManager.onAchievementUnlocked("final_item")
                 }
-                if (items.any { it.id == 44L }) {
+                if (items.any { it.id == LIFE_ITEM_ID }) {
                     achievementsManager.onAchievementUnlocked("created_life")
                 }
 
@@ -239,5 +241,10 @@ class AlchemistViewModel(application: Application) : AndroidViewModel(applicatio
         private const val TIME_UNLOCK_THRESHOLD = 100
         private const val PLACED_ELEMENTS_KEY = "placed_elements"
         private const val HIDE_EXHAUSTED_KEY = "hide_exhausted"
+        private const val INITIAL_ITEM_COUNT = 4L
+        private const val DUPLICATE_OFFSET = 25f
+        private const val COMBINE_RADIUS = 100f
+        private const val FIRST_CREATION_COUNT = 4
+        private const val LIFE_ITEM_ID = 44L
     }
 }

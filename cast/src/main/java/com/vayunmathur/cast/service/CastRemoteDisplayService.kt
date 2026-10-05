@@ -35,7 +35,13 @@ class CastRemoteDisplayService : Service() {
         }
         val existing = provider ?: try {
             MaRemoteDisplayProvider(this).also { provider = it }
-        } catch (e: Throwable) {
+        } catch (e: NoClassDefFoundError) {
+            Log.e(TAG, "onBind: failed to construct MaRemoteDisplayProvider", e)
+            return null
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "onBind: failed to construct MaRemoteDisplayProvider", e)
+            return null
+        } catch (e: SecurityException) {
             Log.e(TAG, "onBind: failed to construct MaRemoteDisplayProvider", e)
             return null
         }

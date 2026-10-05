@@ -92,7 +92,6 @@ object CarApps {
     }
 
     private fun launcherApp(
-        context: Context,
         pm: PackageManager,
         packageName: String,
     ): CarApp? {
@@ -110,13 +109,13 @@ object CarApps {
         object : Slot {
             override val label = "maps"
             override fun resolve(context: Context, pm: PackageManager): CarApp? =
-                launcherApp(context, pm, "com.vayunmathur.maps")
+                launcherApp(pm, "com.vayunmathur.maps")
         },
         object : Slot {
             override val label = "music"
             override fun resolve(context: Context, pm: PackageManager): CarApp? {
                 val direct = runCatching {
-                    launcherApp(context, pm, "com.vayunmathur.music")
+                    launcherApp(pm, "com.vayunmathur.music")
                 }.getOrNull()
                 if (direct != null) return direct
                 // Fallback: anything declaring a browsable media surface.

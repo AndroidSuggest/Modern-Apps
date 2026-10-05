@@ -212,7 +212,6 @@ object LevelGenerator {
 
     fun generatePack(
         name: String,
-        shape: String,
         cells: Set<CellPos>,
         adjacency: Map<CellPos, List<CellPos>>,
         levelCount: Int,

@@ -13,9 +13,16 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
 
 @Serializable
-@Entity(foreignKeys = [
-    ForeignKey(entity = Subscription::class, parentColumns = ["id"], childColumns = ["subscriptionID"], onDelete = ForeignKey.CASCADE)
-    ])
+@Entity(
+    foreignKeys = [
+        ForeignKey(
+            entity = Subscription::class,
+            parentColumns = ["id"],
+            childColumns = ["subscriptionID"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
 data class SubscriptionCategory(
     @ColumnInfo(index = true)
     val subscriptionID: Long,

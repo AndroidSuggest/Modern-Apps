@@ -84,32 +84,36 @@ enum class Language(val label: String, val lineCommentPrefix: String? = null) {
         fun fromFileName(name: String): Language {
             if (name == "Dockerfile" || name.startsWith("Dockerfile.")) return DOCKERFILE
             val ext = name.substringAfterLast('.', "").lowercase()
-            return when (ext) {
-                "kt", "kts" -> KOTLIN
-                "java" -> JAVA
-                "js", "jsx", "mjs", "cjs" -> JAVASCRIPT
-                "ts", "tsx" -> TYPESCRIPT
-                "py", "pyw" -> PYTHON
-                "c", "h" -> C
-                "cpp", "cc", "cxx", "hpp", "hh", "hxx" -> CPP
-                "rs" -> RUST
-                "go" -> GO
-                "swift" -> SWIFT
-                "rb" -> RUBY
-                "php" -> PHP
-                "json" -> JSON
-                "xml", "html", "htm", "svg", "xhtml" -> XML
-                "md", "markdown" -> MARKDOWN
-                "yml", "yaml" -> YAML
-                "toml" -> TOML
-                "sh", "bash", "zsh" -> SHELL
-                "css" -> CSS
-                "sql" -> SQL
-                "gradle" -> GRADLE
-                else -> PLAINTEXT
-            }
+            return EXTENSION_LANGUAGE[ext] ?: PLAINTEXT
         }
     }
+}
+
+private val EXTENSION_LANGUAGE: Map<String, Language> = buildMap {
+    fun map(language: Language, vararg extensions: String) {
+        for (ext in extensions) put(ext, language)
+    }
+    map(Language.KOTLIN, "kt", "kts")
+    map(Language.JAVA, "java")
+    map(Language.JAVASCRIPT, "js", "jsx", "mjs", "cjs")
+    map(Language.TYPESCRIPT, "ts", "tsx")
+    map(Language.PYTHON, "py", "pyw")
+    map(Language.C, "c", "h")
+    map(Language.CPP, "cpp", "cc", "cxx", "hpp", "hh", "hxx")
+    map(Language.RUST, "rs")
+    map(Language.GO, "go")
+    map(Language.SWIFT, "swift")
+    map(Language.RUBY, "rb")
+    map(Language.PHP, "php")
+    map(Language.JSON, "json")
+    map(Language.XML, "xml", "html", "htm", "svg", "xhtml")
+    map(Language.MARKDOWN, "md", "markdown")
+    map(Language.YAML, "yml", "yaml")
+    map(Language.TOML, "toml")
+    map(Language.SHELL, "sh", "bash", "zsh")
+    map(Language.CSS, "css")
+    map(Language.SQL, "sql")
+    map(Language.GRADLE, "gradle")
 }
 
 // --- Reusable regex fragments (only non-capturing groups inside each) ---
@@ -130,8 +134,35 @@ private fun keywords(vararg words: String) = "\\b(?:" + words.joinToString("|") 
 /** Case-insensitive keyword alternation, for languages whose keywords ignore case (SQL, Dockerfile). */
 private fun keywordsCI(vararg words: String) = "\\b(?i:" + words.joinToString("|") + ")\\b"
 
-private fun specFor(language: Language): LanguageSpec? = when (language) {
-    Language.KOTLIN, Language.JAVA -> LanguageSpec(
+private val LANGUAGE_SPECS: Map<Language, () -> LanguageSpec> = mapOf(
+    Language.KOTLIN to ::kotlinJvmSpec,
+    Language.JAVA to ::kotlinJvmSpec,
+    Language.JAVASCRIPT to ::javaScriptSpec,
+    Language.TYPESCRIPT to ::javaScriptSpec,
+    Language.PYTHON to ::pythonSpec,
+    Language.C to ::cSpec,
+    Language.CPP to ::cSpec,
+    Language.RUST to ::rustSpec,
+    Language.JSON to ::jsonSpec,
+    Language.XML to ::xmlSpec,
+    Language.MARKDOWN to ::markdownSpec,
+    Language.GO to ::goSpec,
+    Language.SWIFT to ::swiftSpec,
+    Language.RUBY to ::rubySpec,
+    Language.PHP to ::phpSpec,
+    Language.YAML to ::yamlSpec,
+    Language.TOML to ::tomlSpec,
+    Language.SHELL to ::shellSpec,
+    Language.CSS to ::cssSpec,
+    Language.SQL to ::sqlSpec,
+    Language.DOCKERFILE to ::dockerfileSpec,
+    Language.GRADLE to ::gradleSpec,
+)
+
+private fun specFor(language: Language): LanguageSpec? =
+    LANGUAGE_SPECS[language]?.invoke()
+
+private fun kotlinJvmSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to BLOCK_COMMENT,
             TokenKind.COMMENT to LINE_COMMENT,
@@ -156,7 +187,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.JAVASCRIPT, Language.TYPESCRIPT -> LanguageSpec(
+private fun javaScriptSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to BLOCK_COMMENT,
             TokenKind.COMMENT to LINE_COMMENT,
@@ -177,7 +208,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.PYTHON -> LanguageSpec(
+private fun pythonSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.STRING to TRIPLE_DOUBLE,
             TokenKind.STRING to TRIPLE_SINGLE,
@@ -195,7 +226,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.C, Language.CPP -> LanguageSpec(
+private fun cSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to BLOCK_COMMENT,
             TokenKind.COMMENT to LINE_COMMENT,
@@ -217,7 +248,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.RUST -> LanguageSpec(
+private fun rustSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to BLOCK_COMMENT,
             TokenKind.COMMENT to LINE_COMMENT,
@@ -233,7 +264,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.JSON -> LanguageSpec(
+private fun jsonSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.STRING to DOUBLE_STRING,
             TokenKind.KEYWORD to keywords("true", "false", "null"),
@@ -241,7 +272,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.XML -> LanguageSpec(
+private fun xmlSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to "<!--[\\s\\S]*?-->",
             TokenKind.STRING to DOUBLE_STRING,
@@ -251,7 +282,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.MARKDOWN -> LanguageSpec(
+private fun markdownSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.STRING to "```[\\s\\S]*?```",
             TokenKind.STRING to "`[^`\\n]+`",
@@ -263,7 +294,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.GO -> LanguageSpec(
+private fun goSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to BLOCK_COMMENT,
             TokenKind.COMMENT to LINE_COMMENT,
@@ -280,7 +311,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.SWIFT -> LanguageSpec(
+private fun swiftSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to BLOCK_COMMENT,
             TokenKind.COMMENT to LINE_COMMENT,
@@ -299,7 +330,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.RUBY -> LanguageSpec(
+private fun rubySpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to HASH_COMMENT,
             TokenKind.STRING to DOUBLE_STRING,
@@ -315,7 +346,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.PHP -> LanguageSpec(
+private fun phpSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to BLOCK_COMMENT,
             TokenKind.COMMENT to LINE_COMMENT,
@@ -337,7 +368,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.YAML -> LanguageSpec(
+private fun yamlSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to HASH_COMMENT,
             TokenKind.STRING to DOUBLE_STRING,
@@ -347,7 +378,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.TOML -> LanguageSpec(
+private fun tomlSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to HASH_COMMENT,
             TokenKind.STRING to DOUBLE_STRING,
@@ -357,7 +388,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.SHELL -> LanguageSpec(
+private fun shellSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to HASH_COMMENT,
             TokenKind.STRING to DOUBLE_STRING,
@@ -372,7 +403,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.CSS -> LanguageSpec(
+private fun cssSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to BLOCK_COMMENT,
             TokenKind.STRING to DOUBLE_STRING,
@@ -382,7 +413,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.SQL -> LanguageSpec(
+private fun sqlSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to BLOCK_COMMENT,
             TokenKind.COMMENT to SQL_LINE_COMMENT,
@@ -400,7 +431,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.DOCKERFILE -> LanguageSpec(
+private fun dockerfileSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to HASH_COMMENT,
             TokenKind.STRING to DOUBLE_STRING,
@@ -414,7 +445,7 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
         )
     )
 
-    Language.GRADLE -> LanguageSpec(
+private fun gradleSpec(): LanguageSpec = LanguageSpec(
         listOf(
             TokenKind.COMMENT to BLOCK_COMMENT,
             TokenKind.COMMENT to LINE_COMMENT,
@@ -431,9 +462,6 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
             TokenKind.NUMBER to NUMBER,
         )
     )
-
-    Language.PLAINTEXT -> null
-}
 
 /** Named color presets for the editor, theme-aware for [DEFAULT] and fixed for the others. */
 object EditorThemes {
@@ -478,6 +506,13 @@ fun rememberSyntaxColors(theme: String = EditorThemes.DEFAULT): SyntaxColors {
     }
 }
 
+private const val MATCH_ALPHA = 0.30f
+private const val ACTIVE_MATCH_ALPHA = 0.55f
+private const val CURRENT_LINE_ALPHA = 0.06f
+private const val MATCHED_BRACKET_ALPHA = 0.35f
+private const val TRAILING_WS_ALPHA = 0.15f
+private const val SOLARIZED_LINE_ALPHA = 0.12f
+
 private fun defaultColors(scheme: androidx.compose.material3.ColorScheme) = SyntaxColors(
     keyword = scheme.primary,
     string = scheme.tertiary,
@@ -486,44 +521,63 @@ private fun defaultColors(scheme: androidx.compose.material3.ColorScheme) = Synt
     annotation = scheme.error,
     function = scheme.primary,
     type = scheme.secondary,
-    match = scheme.primary.copy(alpha = 0.30f),
-    activeMatch = scheme.tertiary.copy(alpha = 0.55f),
-    currentLine = scheme.onSurface.copy(alpha = 0.06f),
-    matchedBracket = scheme.primary.copy(alpha = 0.35f),
-    trailingWhitespace = scheme.error.copy(alpha = 0.15f),
+    match = scheme.primary.copy(alpha = MATCH_ALPHA),
+    activeMatch = scheme.tertiary.copy(alpha = ACTIVE_MATCH_ALPHA),
+    currentLine = scheme.onSurface.copy(alpha = CURRENT_LINE_ALPHA),
+    matchedBracket = scheme.primary.copy(alpha = MATCHED_BRACKET_ALPHA),
+    trailingWhitespace = scheme.error.copy(alpha = TRAILING_WS_ALPHA),
     brackets = listOf(scheme.primary, scheme.tertiary, scheme.secondary),
 )
 
+private val MONOKAI_PINK = Color(0xFFF92672)
+private val MONOKAI_YELLOW = Color(0xFFE6DB74)
+private val MONOKAI_PURPLE = Color(0xFFAE81FF)
+private val MONOKAI_GREY = Color(0xFF75715E)
+private val MONOKAI_GREEN = Color(0xFFA6E22E)
+private val MONOKAI_BLUE = Color(0xFF66D9EF)
+private val MONOKAI_WHITE = Color(0xFFFFFFFF)
+private val MONOKAI_ORANGE = Color(0xFFFD971F)
+
 private fun monokaiColors(scheme: androidx.compose.material3.ColorScheme) = SyntaxColors(
-    keyword = Color(0xFFF92672),
-    string = Color(0xFFE6DB74),
-    number = Color(0xFFAE81FF),
-    comment = Color(0xFF75715E),
-    annotation = Color(0xFFA6E22E),
-    function = Color(0xFFA6E22E),
-    type = Color(0xFF66D9EF),
-    match = scheme.primary.copy(alpha = 0.30f),
-    activeMatch = scheme.tertiary.copy(alpha = 0.55f),
-    currentLine = Color(0xFFFFFFFF).copy(alpha = 0.06f),
-    matchedBracket = Color(0xFFF92672).copy(alpha = 0.35f),
-    trailingWhitespace = Color(0xFFF92672).copy(alpha = 0.15f),
-    brackets = listOf(Color(0xFFF92672), Color(0xFFA6E22E), Color(0xFF66D9EF), Color(0xFFFD971F)),
+    keyword = MONOKAI_PINK,
+    string = MONOKAI_YELLOW,
+    number = MONOKAI_PURPLE,
+    comment = MONOKAI_GREY,
+    annotation = MONOKAI_GREEN,
+    function = MONOKAI_GREEN,
+    type = MONOKAI_BLUE,
+    match = scheme.primary.copy(alpha = MATCH_ALPHA),
+    activeMatch = scheme.tertiary.copy(alpha = ACTIVE_MATCH_ALPHA),
+    currentLine = MONOKAI_WHITE.copy(alpha = CURRENT_LINE_ALPHA),
+    matchedBracket = MONOKAI_PINK.copy(alpha = MATCHED_BRACKET_ALPHA),
+    trailingWhitespace = MONOKAI_PINK.copy(alpha = TRAILING_WS_ALPHA),
+    brackets = listOf(MONOKAI_PINK, MONOKAI_GREEN, MONOKAI_BLUE, MONOKAI_ORANGE),
 )
 
+private val SOLARIZED_GREEN = Color(0xFF859900)
+private val SOLARIZED_CYAN = Color(0xFF2AA198)
+private val SOLARIZED_MAGENTA = Color(0xFFD33682)
+private val SOLARIZED_GREY = Color(0xFF93A1A1)
+private val SOLARIZED_YELLOW = Color(0xFFB58900)
+private val SOLARIZED_BLUE = Color(0xFF268BD2)
+private val SOLARIZED_SLATE = Color(0xFF586E75)
+private val SOLARIZED_RED = Color(0xFFDC322F)
+private val SOLARIZED_VIOLET = Color(0xFF6C71C4)
+
 private fun solarizedColors(scheme: androidx.compose.material3.ColorScheme) = SyntaxColors(
-    keyword = Color(0xFF859900),
-    string = Color(0xFF2AA198),
-    number = Color(0xFFD33682),
-    comment = Color(0xFF93A1A1),
-    annotation = Color(0xFFB58900),
-    function = Color(0xFF268BD2),
-    type = Color(0xFFB58900),
-    match = scheme.primary.copy(alpha = 0.30f),
-    activeMatch = scheme.tertiary.copy(alpha = 0.55f),
-    currentLine = Color(0xFF586E75).copy(alpha = 0.12f),
-    matchedBracket = Color(0xFF268BD2).copy(alpha = 0.35f),
-    trailingWhitespace = Color(0xFFDC322F).copy(alpha = 0.15f),
-    brackets = listOf(Color(0xFF268BD2), Color(0xFF6C71C4), Color(0xFF2AA198), Color(0xFFB58900)),
+    keyword = SOLARIZED_GREEN,
+    string = SOLARIZED_CYAN,
+    number = SOLARIZED_MAGENTA,
+    comment = SOLARIZED_GREY,
+    annotation = SOLARIZED_YELLOW,
+    function = SOLARIZED_BLUE,
+    type = SOLARIZED_YELLOW,
+    match = scheme.primary.copy(alpha = MATCH_ALPHA),
+    activeMatch = scheme.tertiary.copy(alpha = ACTIVE_MATCH_ALPHA),
+    currentLine = SOLARIZED_SLATE.copy(alpha = SOLARIZED_LINE_ALPHA),
+    matchedBracket = SOLARIZED_BLUE.copy(alpha = MATCHED_BRACKET_ALPHA),
+    trailingWhitespace = SOLARIZED_RED.copy(alpha = TRAILING_WS_ALPHA),
+    brackets = listOf(SOLARIZED_BLUE, SOLARIZED_VIOLET, SOLARIZED_CYAN, SOLARIZED_YELLOW),
 )
 
 /** Index of the bracket matching the one at [index], or -1 if [index] isn't a bracket / unmatched. */
@@ -587,111 +641,140 @@ class SyntaxTransformation(
 ) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText {
-        val raw = text.text
-        val builder = AnnotatedString.Builder(text)
+        val painter = SyntaxPainter(text.text, AnnotatedString.Builder(text), spec, colors, tsSpans, caret)
+        painter.paintCurrentLine()
+        painter.paintHighlight()
+        painter.paintBracketMatch()
+        painter.paintMatches(matches, activeMatch)
+        return TransformedText(painter.builder.toAnnotatedString(), OffsetMapping.Identity)
+    }
 
+    internal companion object {
+        val FUNCTION_REGEX = Regex("\\b[A-Za-z_]\\w*(?=\\s*\\()")
+        val TYPE_REGEX = Regex("\\b[A-Z]\\w*\\b")
+        val TRAILING_WS_REGEX = Regex("[ \\t]+$", RegexOption.MULTILINE)
+    }
+}
+
+private class SyntaxPainter(
+    val raw: String,
+    val builder: AnnotatedString.Builder,
+    val spec: LanguageSpec?,
+    val colors: SyntaxColors,
+    val tsSpans: List<TsColorSpan>?,
+    val caret: Int,
+) {
+    val withinBudget = raw.length <= MAX_HIGHLIGHT_CHARS
+
+    fun paintCurrentLine() {
         // Current-line background (drawn first so token colors sit on top).
-        if (caret in 0..raw.length) {
-            val lineStart = raw.lastIndexOf('\n', caret - 1) + 1
-            var lineEnd = raw.indexOf('\n', caret)
-            if (lineEnd < 0) lineEnd = raw.length
-            if (lineEnd > lineStart) {
-                builder.addStyle(SpanStyle(background = colors.currentLine), lineStart, lineEnd)
-            }
+        if (caret !in 0..raw.length) return
+        val lineStart = raw.lastIndexOf('\n', caret - 1) + 1
+        var lineEnd = raw.indexOf('\n', caret)
+        if (lineEnd < 0) lineEnd = raw.length
+        if (lineEnd > lineStart) {
+            builder.addStyle(SpanStyle(background = colors.currentLine), lineStart, lineEnd)
         }
+    }
 
-        val withinBudget = raw.length <= MAX_HIGHLIGHT_CHARS
-        val highlight = spec != null && withinBudget
+    fun paintHighlight() {
         if (tsSpans != null && withinBudget) {
-            // Rainbow brackets first; tree-sitter colours paint on top.
-            if (colors.brackets.isNotEmpty()) {
-                var depth = 0
-                val n = colors.brackets.size
-                for (i in raw.indices) {
-                    when (raw[i]) {
-                        '(', '[', '{' -> {
-                            builder.addStyle(SpanStyle(color = colors.brackets[depth % n]), i, i + 1)
-                            depth++
-                        }
-                        ')', ']', '}' -> {
-                            depth = (depth - 1).coerceAtLeast(0)
-                            builder.addStyle(SpanStyle(color = colors.brackets[depth % n]), i, i + 1)
-                        }
-                    }
-                }
-            }
-            for (s in tsSpans) {
-                val a = s.start.coerceIn(0, raw.length)
-                val b = s.end.coerceIn(a, raw.length)
-                if (b > a) builder.addStyle(SpanStyle(color = s.color), a, b)
-            }
-            for (m in TRAILING_WS_REGEX.findAll(raw)) {
-                builder.addStyle(SpanStyle(background = colors.trailingWhitespace), m.range.first, m.range.last + 1)
-            }
-        } else if (highlight) {
-            // Rainbow brackets first, so string/comment spec spans repaint any brackets inside them.
-            if (colors.brackets.isNotEmpty()) {
-                var depth = 0
-                val n = colors.brackets.size
-                for (i in raw.indices) {
-                    when (raw[i]) {
-                        '(', '[', '{' -> {
-                            builder.addStyle(SpanStyle(color = colors.brackets[depth % n]), i, i + 1)
-                            depth++
-                        }
-                        ')', ']', '}' -> {
-                            depth = (depth - 1).coerceAtLeast(0)
-                            builder.addStyle(SpanStyle(color = colors.brackets[depth % n]), i, i + 1)
-                        }
-                    }
-                }
-            }
+            paintRainbowBrackets()
+            paintTsSpans()
+            paintTrailingWhitespace()
+        } else if (spec != null && withinBudget) {
+            paintRainbowBrackets()
+            val covered = paintSpecTokens()
+            paintFunctions(covered)
+            paintTypes(covered)
+            paintTrailingWhitespace()
+        }
+    }
 
-            val covered = BooleanArray(raw.length)
-            for (match in spec!!.regex.findAll(raw)) {
-                val kind = spec.kindFor(match) ?: continue
-                val first = match.range.first
-                val lastExclusive = match.range.last + 1
-                builder.addStyle(SpanStyle(color = colors.colorFor(kind)), first, lastExclusive)
-                for (p in first until lastExclusive) covered[p] = true
-            }
-
-            // Function calls: an identifier immediately before "(", where not already a token.
-            for (m in FUNCTION_REGEX.findAll(raw)) {
-                if (!rangeCovered(covered, m.range)) {
-                    builder.addStyle(SpanStyle(color = colors.function), m.range.first, m.range.last + 1)
-                    for (p in m.range) covered[p] = true
+    private fun paintRainbowBrackets() {
+        // Rainbow brackets first, so string/comment spec spans repaint any brackets inside them.
+        if (colors.brackets.isEmpty()) return
+        var depth = 0
+        val n = colors.brackets.size
+        for (i in raw.indices) {
+            when (raw[i]) {
+                '(', '[', '{' -> {
+                    builder.addStyle(SpanStyle(color = colors.brackets[depth % n]), i, i + 1)
+                    depth++
                 }
-            }
-            // Types: Capitalized identifiers not already covered.
-            for (m in TYPE_REGEX.findAll(raw)) {
-                if (!rangeCovered(covered, m.range)) {
-                    builder.addStyle(SpanStyle(color = colors.type), m.range.first, m.range.last + 1)
+                ')', ']', '}' -> {
+                    depth = (depth - 1).coerceAtLeast(0)
+                    builder.addStyle(SpanStyle(color = colors.brackets[depth % n]), i, i + 1)
                 }
-            }
-            // Trailing whitespace: a subtle background flag per line.
-            for (m in TRAILING_WS_REGEX.findAll(raw)) {
-                builder.addStyle(SpanStyle(background = colors.trailingWhitespace), m.range.first, m.range.last + 1)
             }
         }
+    }
 
+    private fun paintTsSpans() {
+        // Tree-sitter colours paint on top of the rainbow brackets.
+        for (s in tsSpans.orEmpty()) {
+            val a = s.start.coerceIn(0, raw.length)
+            val b = s.end.coerceIn(a, raw.length)
+            if (b > a) builder.addStyle(SpanStyle(color = s.color), a, b)
+        }
+    }
+
+    private fun paintSpecTokens(): BooleanArray {
+        val covered = BooleanArray(raw.length)
+        for (match in spec!!.regex.findAll(raw)) {
+            val kind = spec.kindFor(match) ?: continue
+            val first = match.range.first
+            val lastExclusive = match.range.last + 1
+            builder.addStyle(SpanStyle(color = colors.colorFor(kind)), first, lastExclusive)
+            for (p in first until lastExclusive) covered[p] = true
+        }
+        return covered
+    }
+
+    private fun paintFunctions(covered: BooleanArray) {
+        // Function calls: an identifier immediately before "(", where not already a token.
+        for (m in SyntaxTransformation.FUNCTION_REGEX.findAll(raw)) {
+            if (rangeCovered(covered, m.range)) continue
+            builder.addStyle(SpanStyle(color = colors.function), m.range.first, m.range.last + 1)
+            for (p in m.range) covered[p] = true
+        }
+    }
+
+    private fun paintTypes(covered: BooleanArray) {
+        // Types: Capitalized identifiers not already covered.
+        for (m in SyntaxTransformation.TYPE_REGEX.findAll(raw)) {
+            if (rangeCovered(covered, m.range)) continue
+            builder.addStyle(SpanStyle(color = colors.type), m.range.first, m.range.last + 1)
+        }
+    }
+
+    private fun paintTrailingWhitespace() {
+        // Trailing whitespace: a subtle background flag per line.
+        for (m in SyntaxTransformation.TRAILING_WS_REGEX.findAll(raw)) {
+            val first = m.range.first
+            val last = m.range.last + 1
+            builder.addStyle(SpanStyle(background = colors.trailingWhitespace), first, last)
+        }
+    }
+
+    fun paintBracketMatch() {
         // Bracket matching: check the char before and at the caret. Finding the partner is a scan
         // that can run to the end of the document, so it shares the highlighting budget.
-        if (withinBudget && caret in 0..raw.length) {
-            val candidate = when {
-                caret > 0 && raw[caret - 1] in "()[]{}" -> caret - 1
-                caret < raw.length && raw[caret] in "()[]{}" -> caret
-                else -> -1
-            }
-            if (candidate >= 0) {
-                val other = matchingBracketIndex(raw, candidate)
-                if (other >= 0) {
-                    builder.addStyle(SpanStyle(background = colors.matchedBracket), candidate, candidate + 1)
-                    builder.addStyle(SpanStyle(background = colors.matchedBracket), other, other + 1)
-                }
-            }
-        }
+        if (!withinBudget || caret !in 0..raw.length) return
+        val candidate = bracketCandidate() ?: return
+        val other = matchingBracketIndex(raw, candidate)
+        if (other < 0) return
+        builder.addStyle(SpanStyle(background = colors.matchedBracket), candidate, candidate + 1)
+        builder.addStyle(SpanStyle(background = colors.matchedBracket), other, other + 1)
+    }
 
+    private fun bracketCandidate(): Int? = when {
+        caret > 0 && raw[caret - 1] in "()[]{}" -> caret - 1
+        caret < raw.length && raw[caret] in "()[]{}" -> caret
+        else -> null
+    }
+
+    fun paintMatches(matches: List<IntRange>, activeMatch: Int) {
         matches.forEachIndexed { index, range ->
             if (range.isEmpty()) return@forEachIndexed
             val background = if (index == activeMatch) colors.activeMatch else colors.match
@@ -701,14 +784,6 @@ class SyntaxTransformation(
                 (range.last + 1).coerceIn(0, raw.length),
             )
         }
-
-        return TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
-    }
-
-    private companion object {
-        val FUNCTION_REGEX = Regex("\\b[A-Za-z_]\\w*(?=\\s*\\()")
-        val TYPE_REGEX = Regex("\\b[A-Z]\\w*\\b")
-        val TRAILING_WS_REGEX = Regex("[ \\t]+$", RegexOption.MULTILINE)
     }
 }
 

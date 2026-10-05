@@ -7,7 +7,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.map
 
 /**
- * Session facade for the Signal primary line, mirroring [com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession]'s
+ * Session facade for the Signal primary line, mirroring
+ * [com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession]'s
  * shape so the UI and the sync service treat all lines uniformly.
  *
  * Owns the reactive sign-in flag + phone-number mirror in DataStore; the authoritative credentials

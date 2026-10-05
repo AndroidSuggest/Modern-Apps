@@ -1,6 +1,7 @@
 package com.vayunmathur.cast.network
 
 import android.util.Log
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.PortUnreachableException
 import java.net.StandardSocketOptions
@@ -8,6 +9,9 @@ import java.nio.ByteBuffer
 import java.nio.channels.DatagramChannel
 
 private const val TAG = "CastUdpTransport"
+
+/** How many header bytes a packet log line carries. Enough to identify, not a video frame. */
+private const val HEX_PREVIEW_BYTES = 32
 
 /**
  * The UDP socket carrying RTP out and RTCP back.
@@ -41,10 +45,18 @@ class CastUdpTransport(private val host: String, private val port: Int) {
         val granted = runCatching { channel?.getOption(StandardSocketOptions.SO_SNDBUF) }.getOrNull()
         Log.i(TAG, "udp connected to $host:$port with sndbuf=${granted}B")
         true
-    } catch (e: Exception) {
+    } catch (e: IOException) {
+        failOpen(e)
+    } catch (e: IllegalArgumentException) {
+        failOpen(e)
+    } catch (e: IllegalStateException) {
+        failOpen(e)
+    }
+
+    private fun failOpen(e: Exception): Boolean {
         Log.w(TAG, "could not open a udp socket to $host:$port", e)
         close()
-        false
+        return false
     }
 
     /**
@@ -86,11 +98,18 @@ class CastUdpTransport(private val host: String, private val port: Int) {
             // Counted rather than logged per packet: at 30 fps this would be thousands of identical
             // stack traces, which buries whatever else the log had to say.
             unreachableCount++
+            if (unreachableCount == 1) {
+                Log.d(TAG, "port unreachable for $host:$port; the receiver may not have bound yet", e)
+            }
             if (unreachableCount == UNREACHABLE_THRESHOLD) {
                 Log.w(TAG, "$host:$port is unreachable - the receiver closed its socket")
             }
             false
-        } catch (e: Exception) {
+        } catch (e: IOException) {
+            Log.w(TAG, "udp send failed", e)
+            countFailure()
+            false
+        } catch (e: IllegalArgumentException) {
             Log.w(TAG, "udp send failed", e)
             countFailure()
             false
@@ -114,9 +133,13 @@ class CastUdpTransport(private val host: String, private val port: Int) {
             readBuffer.flip()
             ByteArray(readBuffer.remaining()).also { readBuffer.get(it) }
                 .also { if (hexDump) Log.i(TAG, "<- ${it.size}B ${it.toHexPreview()}") }
-        } catch (e: Exception) {
+        } catch (e: IOException) {
             // A port-unreachable ICMP surfaces here on a connected socket. Not fatal: the receiver
             // may not have bound yet.
+            Log.d(TAG, "udp receive failed: ${e.javaClass.simpleName}")
+            null
+        } catch (e: IllegalArgumentException) {
+            Log.d(TAG, "udp receive failed: ${e.javaClass.simpleName}")
             null
         }
     }
@@ -128,7 +151,8 @@ class CastUdpTransport(private val host: String, private val port: Int) {
 
     /** Enough to identify a header without filling logcat with a whole video frame. */
     private fun ByteArray.toHexPreview(): String =
-        take(32).joinToString("") { "%02x".format(it) } + if (size > 32) "..." else ""
+        take(HEX_PREVIEW_BYTES).joinToString("") { "%02x".format(it) } +
+            if (size > HEX_PREVIEW_BYTES) "..." else ""
 
     private companion object {
         const val MAX_DATAGRAM = 2048

@@ -3,13 +3,19 @@ package com.vayunmathur.parentalcontrols.platform
 import android.content.Context
 import android.util.Log
 import com.vayunmathur.parentalcontrols.data.AppRule
+import com.vayunmathur.parentalcontrols.data.BedtimeSchedule
 import com.vayunmathur.parentalcontrols.data.BonusGrant
+import com.vayunmathur.parentalcontrols.data.DowntimeSchedule
+import com.vayunmathur.parentalcontrols.data.SchoolTimeSchedule
 import com.vayunmathur.parentalcontrols.data.SupervisionRules
 import com.vayunmathur.parentalcontrols.notifications.LockNotifier
 import java.time.LocalDate
 import java.time.LocalDateTime
 
 private const val TAG = "ParentalControlsEnforcer"
+
+/** Minutes between the boundary check and the "was it just closed" comparison. */
+private const val BOUNDARY_LOOKBACK_MINUTES = 1L
 
 /**
  * Decides what each supervised app's state should be, and makes it so.
@@ -50,9 +56,15 @@ class Enforcer(private val context: Context) {
         LockNotifier.notifyLocked(context, BlockReason.AppLimit, packageName)
     }
 
+    /** Whether [rule] is blocked by school-time right now, given the other windows. */
+    private fun AppRule.schoolBlockedNow(bedtimeNow: Boolean, downtimeNow: Boolean): Boolean {
+        if (allowedInDowntime) return false
+        if (blockedAtBedtime && bedtimeNow) return false
+        return !downtimeNow
+    }
+
     /**
-     * Called from the window-boundary receiver after [reconcile].
-     *
+     * Bring the device in line with the stored rules.
      * Notifies only for windows that just *opened* (closed a minute ago, open now), and only
      * the apps that window blocks - so a boundary that ends a window stays silent, and an
      * already-crying child is not re-notified for apps blocked all along by another reason.
@@ -60,45 +72,73 @@ class Enforcer(private val context: Context) {
     suspend fun onWindowBoundary() {
         reconcile()
         val now = LocalDateTime.now()
-        val minuteAgo = now.minusMinutes(1)
+        val minuteAgo = now.minusMinutes(BOUNDARY_LOOKBACK_MINUTES)
         val bedtime = rules.scheduleNow()
         val downtime = rules.downtimeNow()
         val school = rules.schoolTimeNow()
         val all = rules.allRulesNow()
+        notifyBedtimeOpened(bedtime, now, minuteAgo, all)
+        notifyDowntimeOpened(bedtime, downtime, now, minuteAgo, all)
+        notifySchoolOpened(bedtime, downtime, school, now, minuteAgo, all)
+        notifyDeviceBudgetCrossed()
+    }
+
+    private suspend fun notifyBedtimeOpened(
+        bedtime: BedtimeSchedule,
+        now: LocalDateTime,
+        minuteAgo: LocalDateTime,
+        all: List<AppRule>,
+    ) {
+        if (!bedtime.activeAt(now) || bedtime.activeAt(minuteAgo)) return
+        for (rule in all) {
+            if (rule.blockedAtBedtime) {
+                LockNotifier.notifyLocked(context, BlockReason.Bedtime, rule.packageName)
+            }
+        }
+    }
+
+    private suspend fun notifyDowntimeOpened(
+        bedtime: BedtimeSchedule,
+        downtime: DowntimeSchedule,
+        now: LocalDateTime,
+        minuteAgo: LocalDateTime,
+        all: List<AppRule>,
+    ) {
+        if (!downtime.activeAt(now) || downtime.activeAt(minuteAgo)) return
+        val bedtimeNow = bedtime.activeAt(now)
+        for (rule in all) {
+            if (!rule.allowedInDowntime && !(rule.blockedAtBedtime && bedtimeNow)) {
+                LockNotifier.notifyLocked(context, BlockReason.Downtime, rule.packageName)
+            }
+        }
+    }
+
+    private suspend fun notifySchoolOpened(
+        bedtime: BedtimeSchedule,
+        downtime: DowntimeSchedule,
+        school: SchoolTimeSchedule,
+        now: LocalDateTime,
+        minuteAgo: LocalDateTime,
+        all: List<AppRule>,
+    ) {
+        if (!school.activeAt(now) || school.activeAt(minuteAgo)) return
+        val bedtimeNow = bedtime.activeAt(now)
+        val downtimeNow = downtime.activeAt(now)
+        for (rule in all) {
+            if (rule.schoolBlockedNow(bedtimeNow, downtimeNow)) {
+                LockNotifier.notifyLocked(context, BlockReason.SchoolTime, rule.packageName)
+            }
+        }
+    }
+
+    private suspend fun notifyDeviceBudgetCrossed() {
         val day = LocalDate.now().toString()
-        val deviceOverBudget = deviceOverBudgetNow(rules.bonusesToday(day))
-        if (bedtime.activeAt(now) && !bedtime.activeAt(minuteAgo)) {
-            for (rule in all) {
-                if (rule.blockedAtBedtime) {
-                    LockNotifier.notifyLocked(context, BlockReason.Bedtime, rule.packageName)
-                }
-            }
-        }
-        if (downtime.activeAt(now) && !downtime.activeAt(minuteAgo)) {
-            for (rule in all) {
-                if (!rule.allowedInDowntime &&
-                    !(rule.blockedAtBedtime && bedtime.activeAt(now))
-                ) {
-                    LockNotifier.notifyLocked(context, BlockReason.Downtime, rule.packageName)
-                }
-            }
-        }
-        if (school.activeAt(now) && !school.activeAt(minuteAgo)) {
-            for (rule in all) {
-                if (!rule.allowedInDowntime &&
-                    !(rule.blockedAtBedtime && bedtime.activeAt(now)) &&
-                    !(downtime.activeAt(now))
-                ) {
-                    LockNotifier.notifyLocked(context, BlockReason.SchoolTime, rule.packageName)
-                }
-            }
-        }
+        if (deviceOverBudgetNow(rules.bonusesToday(day))) return
         // Device-wide budget crossing is detected here rather than by an observer (the
         // platform has no device-total primitive): if the last minute pushed the total over,
         // the child gets one notice. Per-app trips already notified via onLimitReached.
-        if (!deviceOverBudget) {
-            val overNow = deviceOverBudgetNow(rules.bonusesToday(LocalDate.now().toString()))
-            if (overNow) LockNotifier.notifyLocked(context, BlockReason.DailyLimit, null)
+        if (deviceOverBudgetNow(rules.bonusesToday(LocalDate.now().toString()))) {
+            LockNotifier.notifyLocked(context, BlockReason.DailyLimit, null)
         }
     }
 

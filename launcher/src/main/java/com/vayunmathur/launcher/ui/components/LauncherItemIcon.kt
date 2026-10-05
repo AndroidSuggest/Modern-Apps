@@ -69,7 +69,6 @@ private fun ShortcutIcon(item: WorkspaceItem, modifier: Modifier, scale: Float, 
     LauncherIconCell(
         label = item.label,
         modifier = modifier,
-        scale = scale,
         showLabel = showLabel,
         dimmed = item.hidden,
     ) {
@@ -92,7 +91,6 @@ private fun FolderIcon(item: WorkspaceItem, modifier: Modifier, scale: Float, sh
     LauncherIconCell(
         label = item.label,
         modifier = modifier,
-        scale = scale,
         showLabel = showLabel,
         dimmed = false,
     ) {

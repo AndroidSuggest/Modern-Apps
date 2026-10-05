@@ -7,14 +7,25 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.core.content.edit
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.library.ui.odf.OdfCell
+import com.vayunmathur.library.ui.odf.OdfContentBlock
+import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.library.ui.odf.OdfFrame
+import com.vayunmathur.library.ui.odf.OdfParagraph
+import com.vayunmathur.library.ui.odf.OdfRow
+import com.vayunmathur.library.ui.odf.OdfSheet
+import com.vayunmathur.library.ui.odf.OdfSlide
+import com.vayunmathur.library.ui.odf.OdfSlideElement
+import com.vayunmathur.library.ui.odf.OdfSpan
+import com.vayunmathur.library.ui.odf.ParagraphStyle
 import com.vayunmathur.library.util.AppMessages
-import com.vayunmathur.office.odf.*
-import com.vayunmathur.library.ui.odf.*
+import com.vayunmathur.office.R
+import com.vayunmathur.office.odf.DocumentImporter
+import com.vayunmathur.office.odf.OdfWriter
+import com.vayunmathur.office.util.MAX_RECENT
+import com.vayunmathur.office.util.OfficeViewModel.ViewState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import com.vayunmathur.office.R
-import com.vayunmathur.office.util.OfficeViewModel.Companion.MAX_RECENT
-import com.vayunmathur.office.util.OfficeViewModel.ViewState
 
 fun OfficeViewModel.addToRecent(context: Context, uri: Uri, name: String) {
     val prefs = context.getSharedPreferences("office_recent", Context.MODE_PRIVATE)
@@ -45,12 +56,16 @@ fun OfficeViewModel.clearRecentFiles(context: Context) {
     context.getSharedPreferences("office_recent", Context.MODE_PRIVATE).edit { clear() }
 }
 
-fun OfficeViewModel.loadDocument(uri: Uri, fileName: String, onlineDocId: String? = null, onlineDocKey: ByteArray? = null) {
-    _state.value = ViewState.Loading
-    _isEditMode.value = true
-    _hasUnsavedChanges.value = false
+fun OfficeViewModel.loadDocument(
+    uri: Uri,
+    fileName: String,
+    onlineDocId: String? = null,
+    onlineDocKey: ByteArray? = null) {
+    stateMutable.value = ViewState.Loading
+    isEditModeMutable.value = true
+    hasUnsavedChangesMutable.value = false
     undoStack.clear(); redoStack.clear()
-    _canUndo.value = false; _canRedo.value = false
+    canUndoMutable.value = false; canRedoMutable.value = false
     documentUri = uri
     originalUri = uri
     // Track (or clear) the online identity of the document now open.
@@ -58,7 +73,7 @@ fun OfficeViewModel.loadDocument(uri: Uri, fileName: String, onlineDocId: String
     currentDocKey = onlineDocKey
     currentTree?.close(); currentTree = null
     currentCharKind = ""
-    _isOnline.value = onlineDocId != null
+    isOnlineMutable.value = onlineDocId != null
     if (onlineDocId == null) {
         // Offline document: you own your own local file and may edit it freely.
         currentRole = OfficeRoles.OWNER
@@ -74,10 +89,10 @@ fun OfficeViewModel.loadDocument(uri: Uri, fileName: String, onlineDocId: String
             val localUri = persistToAppStorage(uri, fileName)
             documentUri = localUri
             val doc = DocumentImporter.open(getApplication(), localUri, fileName)
-            _state.value = ViewState.Loaded(doc)
+            stateMutable.value = ViewState.Loaded(doc)
             addToRecent(getApplication(), uri, fileName)
-        } catch (e: Exception) {
-            _state.value = ViewState.Error(e.message ?: "Unknown error")
+        } catch (expected: Exception) {
+            stateMutable.value = ViewState.Error(expected.message ?: "Unknown error")
         }
     }
 }
@@ -95,11 +110,11 @@ internal fun OfficeViewModel.persistToAppStorage(uri: Uri, fileName: String): Ur
 }
 
 fun OfficeViewModel.clearDocument() {
-    _state.value = ViewState.Empty
-    _isEditMode.value = false
-    _hasUnsavedChanges.value = false
+    stateMutable.value = ViewState.Empty
+    isEditModeMutable.value = false
+    hasUnsavedChangesMutable.value = false
     undoStack.clear(); redoStack.clear()
-    _canUndo.value = false; _canRedo.value = false
+    canUndoMutable.value = false; canRedoMutable.value = false
     documentUri = null
     originalUri = null
     currentDocId = null
@@ -109,49 +124,49 @@ fun OfficeViewModel.clearDocument() {
     OfficeSync.stopLive()
     livePollJob?.cancel()
     presenceTickJob?.cancel()
-    _remotePresence.value = emptyList()
-    _isOnline.value = false
+    remotePresenceMutable.value = emptyList()
+    isOnlineMutable.value = false
     autoSaveJob?.cancel()
 }
 
 fun OfficeViewModel.createNewTextDocument() {
     currentDocId = null; currentDocKey = null; currentTree?.close(); currentTree = null; currentCharKind = ""
-    currentRole = OfficeRoles.OWNER; currentOwnerKey = null; currentMembers.clear(); _isOnline.value = false
+    currentRole = OfficeRoles.OWNER; currentOwnerKey = null; currentMembers.clear(); isOnlineMutable.value = false
     undoStack.clear(); redoStack.clear()
-    _canUndo.value = false; _canRedo.value = false
+    canUndoMutable.value = false; canRedoMutable.value = false
     val doc = OdfDocument.TextDocument(
         title = "Untitled Document",
         content = listOf(OdfContentBlock.Paragraph(OdfParagraph(listOf(OdfSpan(text = "")))))
     )
-    _state.value = ViewState.Loaded(doc)
-    _isEditMode.value = true
-    _hasUnsavedChanges.value = true
+    stateMutable.value = ViewState.Loaded(doc)
+    isEditModeMutable.value = true
+    hasUnsavedChangesMutable.value = true
     documentUri = null
     originalUri = null
 }
 
 fun OfficeViewModel.createNewSpreadsheet() {
     currentDocId = null; currentDocKey = null; currentTree?.close(); currentTree = null; currentCharKind = ""
-    currentRole = OfficeRoles.OWNER; currentOwnerKey = null; currentMembers.clear(); _isOnline.value = false
+    currentRole = OfficeRoles.OWNER; currentOwnerKey = null; currentMembers.clear(); isOnlineMutable.value = false
     undoStack.clear(); redoStack.clear()
-    _canUndo.value = false; _canRedo.value = false
+    canUndoMutable.value = false; canRedoMutable.value = false
     val rows = (0 until 10).map { OdfRow(List(5) { OdfCell(text = "") }) }
     val doc = OdfDocument.Spreadsheet(
         title = "Untitled Spreadsheet",
         sheets = listOf(OdfSheet("Sheet 1", rows))
     )
-    _state.value = ViewState.Loaded(doc)
-    _isEditMode.value = true
-    _hasUnsavedChanges.value = true
+    stateMutable.value = ViewState.Loaded(doc)
+    isEditModeMutable.value = true
+    hasUnsavedChangesMutable.value = true
     documentUri = null
     originalUri = null
 }
 
 fun OfficeViewModel.createNewPresentation() {
     currentDocId = null; currentDocKey = null; currentTree?.close(); currentTree = null; currentCharKind = ""
-    currentRole = OfficeRoles.OWNER; currentOwnerKey = null; currentMembers.clear(); _isOnline.value = false
+    currentRole = OfficeRoles.OWNER; currentOwnerKey = null; currentMembers.clear(); isOnlineMutable.value = false
     undoStack.clear(); redoStack.clear()
-    _canUndo.value = false; _canRedo.value = false
+    canUndoMutable.value = false; canRedoMutable.value = false
     val doc = OdfDocument.Presentation(
         title = "Untitled Presentation",
         slides = listOf(OdfSlide(
@@ -167,24 +182,24 @@ fun OfficeViewModel.createNewPresentation() {
             )
         ))
     )
-    _state.value = ViewState.Loaded(doc)
-    _isEditMode.value = true
-    _hasUnsavedChanges.value = true
+    stateMutable.value = ViewState.Loaded(doc)
+    isEditModeMutable.value = true
+    hasUnsavedChangesMutable.value = true
     documentUri = null
     originalUri = null
 }
 
 fun OfficeViewModel.save(targetUri: Uri? = null) {
-    val doc = (_state.value as? ViewState.Loaded)?.document ?: return
+    val doc = (stateMutable.value as? ViewState.Loaded)?.document ?: return
     // Source may be null for a brand-new document; the writer then builds the package from scratch.
     val source = documentUri
     // Write back to the document the user opened, not to the app-private read cache.
     val target = targetUri ?: originalUri ?: return
-    _isSaving.value = true
+    isSavingMutable.value = true
     viewModelScope.launch(Dispatchers.IO) {
         try {
             OdfWriter.save(getApplication(), source, doc, target)
-            _hasUnsavedChanges.value = false
+            hasUnsavedChangesMutable.value = false
             originalUri = target
             if (documentUri == null) documentUri = target
             // If this document lives online, push local edits + merge remote ones.
@@ -195,10 +210,12 @@ fun OfficeViewModel.save(targetUri: Uri? = null) {
                 }
             }
             launch(Dispatchers.Main) { AppMessages.show(getApplication<Application>().getString(R.string.saved)) }
-        } catch (e: Exception) {
-            launch(Dispatchers.Main) { AppMessages.show(getApplication<Application>().getString(R.string.save_failed, e.message)) }
+        } catch (expected: Exception) {
+            launch(Dispatchers.Main) { AppMessages.show(getApplication<Application>().getString(
+                R.string.save_failed,
+                expected.message)) }
         } finally {
-            _isSaving.value = false
+            isSavingMutable.value = false
         }
     }
 }

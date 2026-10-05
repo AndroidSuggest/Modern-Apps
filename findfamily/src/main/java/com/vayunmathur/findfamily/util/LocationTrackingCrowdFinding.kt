@@ -13,6 +13,10 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
 
+/** Logged when a sighting report is accepted but resolves to nothing reportable. */
+private const val REPORT_SIGHTING_UNRESOLVED =
+    "reportSighting returned false (epoch id unresolved or socket down)"
+
 /**
  * Finder path: subscribe to tracker beacon sightings and, for each, upload a
  * report stamped with this device's current GPS (if accurate enough). The sealed
@@ -47,7 +51,7 @@ internal fun LocationTrackingService.startTrackerScanner() {
                     battery,
                 )
                 runCatching { TrackerReporting.reportSighting(sighting, lv) }
-                    .onSuccess { if (!it) Log.i("FF-Tracker", "reportSighting returned false (epoch id unresolved or socket down)") }
+                    .onSuccess { if (!it) Log.i("FF-Tracker", REPORT_SIGHTING_UNRESOLVED) }
                     .onFailure { Log.w("FF-Tracker", "reportSighting failed", it) }
             }
         }.onFailure { Log.w("FF-Tracker", "tracker scan collect failed", it) }
@@ -99,7 +103,10 @@ internal fun LocationTrackingService.startPoweredOffScanner() {
                         // from a coarse fix would add noise the owner cannot tell
                         // apart from a good one, so drop it rather than dilute the answer.
                         if (loc.accuracy > MAX_FIX_ACCURACY_METERS) {
-                            Log.i(LocationTrackingService.TAG_POWERED_OFF, "sighting dropped: accuracy ${loc.accuracy}m > ${MAX_FIX_ACCURACY_METERS}m")
+                            Log.i(
+                                LocationTrackingService.TAG_POWERED_OFF,
+                                "sighting dropped: accuracy ${loc.accuracy}m > ${MAX_FIX_ACCURACY_METERS}m"
+                            )
                             return@collect
                         }
                         val lv = LocationValue(

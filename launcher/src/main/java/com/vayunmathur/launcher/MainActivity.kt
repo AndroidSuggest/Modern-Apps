@@ -21,6 +21,10 @@ import androidx.compose.runtime.SideEffect
 import com.vayunmathur.launcher.platform.ActivityBridge
 import com.vayunmathur.launcher.platform.LauncherPrivilege
 import com.vayunmathur.launcher.platform.LauncherViewModel
+import com.vayunmathur.launcher.platform.onStartImpl
+import com.vayunmathur.launcher.platform.reconcileNowImpl
+import com.vayunmathur.launcher.platform.onStopImpl
+import com.vayunmathur.launcher.platform.refreshDefaultHomeImpl
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.NavBackStack
@@ -74,19 +78,19 @@ class MainActivity : ComponentActivity(), ActivityBridge {
 
     override fun onStart() {
         super.onStart()
-        viewModel.onStart()
-        viewModel.refreshDefaultHome()
+        viewModel.onStartImpl()
+        viewModel.refreshDefaultHomeImpl()
     }
 
     override fun onResume() {
         super.onResume()
         // Cheap enough to redo every time we come back: an app may have been installed or
         // uninstalled while we were away without us being alive to hear the callback.
-        viewModel.reconcileNow()
+        viewModel.reconcileNowImpl()
     }
 
     override fun onStop() {
-        viewModel.onStop()
+        viewModel.onStopImpl()
         super.onStop()
     }
 

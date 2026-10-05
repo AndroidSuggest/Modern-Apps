@@ -26,8 +26,13 @@ import java.util.zip.ZipInputStream
  * `collection.anki2`) are detected and rejected with a clear message.
  */
 object ApkgImport {
-
     class ApkgFormatException(message: String) : Exception(message)
+
+    /** Cursor columns of `SELECT id, nid, did, ord FROM cards`. */
+    private const val COL_ID = 0
+    private const val COL_NID = 1
+    private const val COL_DID = 2
+    private const val COL_ORD = 3
 
     suspend fun import(
         context: Context,
@@ -107,31 +112,56 @@ object ApkgImport {
         noteDao: NoteDao,
         cardDao: CardDao,
     ): String {
-        val (modelsJson, decksJson) = db.rawQuery("SELECT models, decks FROM col LIMIT 1", null).use { c ->
+        val (modelsJson, decksJson) = readCollectionHeader(db)
+        val modelIdMap = importNoteTypes(modelsJson, noteTypeDao, fieldDao, templateDao)
+        val rawCards = readRawCards(db)
+        val deckIdMap = importDecks(rawCards.map { it.did }.toSet(), decksJson, deckDao)
+        val fallbackDeckId = deckIdMap.values.firstOrNull()
+            ?: deckDao.upsert(Deck(name = "Imported"))
+        val noteIdMap = importNotes(db, rawCards, modelIdMap, deckIdMap, fallbackDeckId, noteDao)
+        val newCards = buildCards(rawCards, noteIdMap, deckIdMap, fallbackDeckId)
+        if (newCards.isNotEmpty()) cardDao.upsertAll(newCards)
+        return "Imported ${noteIdMap.size} notes and ${newCards.size} cards"
+    }
+
+    private fun readCollectionHeader(db: SQLiteDatabase): Pair<JSONObject, JSONObject> =
+        db.rawQuery("SELECT models, decks FROM col LIMIT 1", null).use { c ->
             if (!c.moveToFirst()) throw ApkgFormatException("Empty collection")
             JSONObject(c.getString(0)) to JSONObject(c.getString(1))
         }
 
-        val modelIdMap = importNoteTypes(modelsJson, noteTypeDao, fieldDao, templateDao)
+    private data class RawCard(val id: Long, val nid: Long, val did: Long, val ord: Int)
 
+    private fun readRawCards(db: SQLiteDatabase): List<RawCard> {
         // Raw cards first, so we know which decks are actually used.
-        data class RawCard(val id: Long, val nid: Long, val did: Long, val ord: Int)
         val rawCards = mutableListOf<RawCard>()
         db.rawQuery("SELECT id, nid, did, ord FROM cards", null).use { c ->
             while (c.moveToNext()) {
-                rawCards.add(RawCard(c.getLong(0), c.getLong(1), c.getLong(2), c.getInt(3)))
+                rawCards.add(
+                    RawCard(
+                        c.getLong(COL_ID),
+                        c.getLong(COL_NID),
+                        c.getLong(COL_DID),
+                        c.getInt(COL_ORD),
+                    )
+                )
             }
         }
+        return rawCards
+    }
 
-        val deckIdMap = importDecks(rawCards.map { it.did }.toSet(), decksJson, deckDao)
-        val fallbackDeckId = deckIdMap.values.firstOrNull()
-            ?: deckDao.upsert(Deck(name = "Imported"))
+    private suspend fun importNotes(
+        db: SQLiteDatabase,
+        rawCards: List<RawCard>,
+        modelIdMap: Map<Long, Long>,
+        deckIdMap: Map<Long, Long>,
+        fallbackDeckId: Long,
+        noteDao: NoteDao,
+    ): Map<Long, Long> {
         val nidToDid = rawCards.associate { it.nid to it.did }
-
         // Notes.
         val noteIdMap = HashMap<Long, Long>()
         val positionByDeck = HashMap<Long, Double>()
-        var noteCount = 0
         db.rawQuery("SELECT id, guid, mid, tags, flds, mod FROM notes", null).use { c ->
             while (c.moveToNext()) {
                 val oldId = c.getLong(0)
@@ -140,7 +170,6 @@ object ApkgImport {
                 val tags = c.getString(3)?.trim().orEmpty()
                 val fldsHtml = c.getString(4) ?: ""
                 val mod = c.getLong(5)
-
                 val noteTypeId = modelIdMap[mid] ?: continue
                 val deckId = deckIdMap[nidToDid[oldId]] ?: fallbackDeckId
                 val fieldsMd = fldsHtml.split("\u001f").map { HtmlConvert.htmlToMarkdown(it) }
@@ -158,22 +187,26 @@ object ApkgImport {
                 )
                 val newId = noteDao.upsert(note)
                 noteIdMap[oldId] = newId
-                noteCount++
             }
         }
+        return noteIdMap
+    }
 
+    private fun buildCards(
+        rawCards: List<RawCard>,
+        noteIdMap: Map<Long, Long>,
+        deckIdMap: Map<Long, Long>,
+        fallbackDeckId: Long,
+    ): List<Card> {
         // Cards (as new).
         val cardPositionByDeck = HashMap<Long, Double>()
-        val newCards = rawCards.mapNotNull { raw ->
+        return rawCards.mapNotNull { raw ->
             val noteId = noteIdMap[raw.nid] ?: return@mapNotNull null
             val deckId = deckIdMap[raw.did] ?: fallbackDeckId
             val position = cardPositionByDeck.getOrDefault(deckId, 0.0) + 1.0
             cardPositionByDeck[deckId] = position
             Card(noteId = noteId, templateOrd = raw.ord, deckId = deckId, position = position)
         }
-        if (newCards.isNotEmpty()) cardDao.upsertAll(newCards)
-
-        return "Imported $noteCount notes and ${newCards.size} cards"
     }
 
     private suspend fun importNoteTypes(

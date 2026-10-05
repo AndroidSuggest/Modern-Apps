@@ -34,10 +34,7 @@ fun clampGate(
 
 fun clampTerm(
   center: Offset,
-  pillW: Float,
-  canvasSize: Size,
-  padding: Float,
-  density: Density? = null
+  canvasSize: Size
 ): Offset {
   if (canvasSize.width <= 0f || canvasSize.height <= 0f) return center
   // Large virtual work area (matches CircuitCanvas.CANVAS_MARGIN) so terminals can be moved off-viewport.

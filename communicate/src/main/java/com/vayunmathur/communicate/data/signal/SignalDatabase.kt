@@ -123,7 +123,8 @@ abstract class SignalDatabase : RoomDatabase() {
         private val MIGRATION_3_4 = object : androidx.room3.migration.Migration(3, 4) {
             override suspend fun migrate(connection: SQLiteConnection) {
                 connection.execSQL("ALTER TABLE signal_conversation ADD COLUMN groupMasterKey BLOB")
-                connection.execSQL("ALTER TABLE signal_conversation ADD COLUMN groupRevision INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE signal_conversation ADD COLUMN" +
+                    "groupRevision INTEGER NOT NULL DEFAULT 0")
                 connection.execSQL("DELETE FROM signal_cached_message WHERE conversationId LIKE 'group:%'")
                 connection.execSQL("DELETE FROM signal_conversation WHERE chatId LIKE 'group:%'")
             }
@@ -136,7 +137,11 @@ abstract class SignalDatabase : RoomDatabase() {
             }
         }
 
-        override val migrations = listOf<androidx.room3.migration.Migration>(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        override val migrations = listOf<androidx.room3.migration.Migration>(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5)
 
         fun getDatabase(context: Context): SignalDatabase =
             SignalRepository.get(context).database()
@@ -594,13 +599,15 @@ interface SignalE2EKyberUsedBaseKeyDao {
 
 @Dao
 interface SignalE2ESenderKeyDao {
-    @Query("SELECT * FROM signal_e2e_sender_keys WHERE address = :address AND deviceId = :deviceId AND distributionId = :distributionId LIMIT 1")
+    @Query("SELECT * FROM signal_e2e_sender_keys WHERE address = :address AND" +
+        "deviceId = :deviceId AND distributionId = :distributionId LIMIT 1")
     suspend fun get(address: String, deviceId: Int, distributionId: String): SignalE2ESenderKey?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entity: SignalE2ESenderKey)
 
-    @Query("DELETE FROM signal_e2e_sender_keys WHERE address = :address AND deviceId = :deviceId AND distributionId = :distributionId")
+    @Query("DELETE FROM signal_e2e_sender_keys WHERE address = :address" +
+        "AND deviceId = :deviceId AND distributionId = :distributionId")
     suspend fun delete(address: String, deviceId: Int, distributionId: String)
 }
 

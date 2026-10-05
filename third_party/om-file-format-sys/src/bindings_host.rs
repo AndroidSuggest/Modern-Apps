@@ -706,6 +706,10 @@ pub struct _opaque_pthread_attr_t {
     pub __opaque: [::std::os::raw::c_char; 56usize],
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
+// Darwin layout (bindgen ran on macOS): c_long is 8 bytes there but 4 on
+// Windows, so this assertion only holds off-Windows. The type is unused by
+// weather (only om_* symbols are), so skipping it on Windows is safe.
+#[cfg(not(target_os = "windows"))]
 const _: () = {
     ["Size of _opaque_pthread_attr_t"][::std::mem::size_of::<_opaque_pthread_attr_t>() - 64usize];
     ["Alignment of _opaque_pthread_attr_t"]
@@ -722,6 +726,10 @@ pub struct _opaque_pthread_cond_t {
     pub __opaque: [::std::os::raw::c_char; 40usize],
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
+// Darwin layout (bindgen ran on macOS): c_long is 8 bytes there but 4 on
+// Windows, so this assertion only holds off-Windows. The type is unused by
+// weather (only om_* symbols are), so skipping it on Windows is safe.
+#[cfg(not(target_os = "windows"))]
 const _: () = {
     ["Size of _opaque_pthread_cond_t"][::std::mem::size_of::<_opaque_pthread_cond_t>() - 48usize];
     ["Alignment of _opaque_pthread_cond_t"]
@@ -738,6 +746,10 @@ pub struct _opaque_pthread_condattr_t {
     pub __opaque: [::std::os::raw::c_char; 8usize],
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
+// Darwin layout (bindgen ran on macOS): c_long is 8 bytes there but 4 on
+// Windows, so this assertion only holds off-Windows. The type is unused by
+// weather (only om_* symbols are), so skipping it on Windows is safe.
+#[cfg(not(target_os = "windows"))]
 const _: () = {
     ["Size of _opaque_pthread_condattr_t"]
         [::std::mem::size_of::<_opaque_pthread_condattr_t>() - 16usize];
@@ -755,6 +767,10 @@ pub struct _opaque_pthread_mutex_t {
     pub __opaque: [::std::os::raw::c_char; 56usize],
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
+// Darwin layout (bindgen ran on macOS): c_long is 8 bytes there but 4 on
+// Windows, so this assertion only holds off-Windows. The type is unused by
+// weather (only om_* symbols are), so skipping it on Windows is safe.
+#[cfg(not(target_os = "windows"))]
 const _: () = {
     ["Size of _opaque_pthread_mutex_t"][::std::mem::size_of::<_opaque_pthread_mutex_t>() - 64usize];
     ["Alignment of _opaque_pthread_mutex_t"]
@@ -771,6 +787,10 @@ pub struct _opaque_pthread_mutexattr_t {
     pub __opaque: [::std::os::raw::c_char; 8usize],
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
+// Darwin layout (bindgen ran on macOS): c_long is 8 bytes there but 4 on
+// Windows, so this assertion only holds off-Windows. The type is unused by
+// weather (only om_* symbols are), so skipping it on Windows is safe.
+#[cfg(not(target_os = "windows"))]
 const _: () = {
     ["Size of _opaque_pthread_mutexattr_t"]
         [::std::mem::size_of::<_opaque_pthread_mutexattr_t>() - 16usize];
@@ -788,6 +808,10 @@ pub struct _opaque_pthread_once_t {
     pub __opaque: [::std::os::raw::c_char; 8usize],
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
+// Darwin layout (bindgen ran on macOS): c_long is 8 bytes there but 4 on
+// Windows, so this assertion only holds off-Windows. The type is unused by
+// weather (only om_* symbols are), so skipping it on Windows is safe.
+#[cfg(not(target_os = "windows"))]
 const _: () = {
     ["Size of _opaque_pthread_once_t"][::std::mem::size_of::<_opaque_pthread_once_t>() - 16usize];
     ["Alignment of _opaque_pthread_once_t"]
@@ -804,6 +828,10 @@ pub struct _opaque_pthread_rwlock_t {
     pub __opaque: [::std::os::raw::c_char; 192usize],
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
+// Darwin layout (bindgen ran on macOS): c_long is 8 bytes there but 4 on
+// Windows, so this assertion only holds off-Windows. The type is unused by
+// weather (only om_* symbols are), so skipping it on Windows is safe.
+#[cfg(not(target_os = "windows"))]
 const _: () = {
     ["Size of _opaque_pthread_rwlock_t"]
         [::std::mem::size_of::<_opaque_pthread_rwlock_t>() - 200usize];
@@ -821,6 +849,10 @@ pub struct _opaque_pthread_rwlockattr_t {
     pub __opaque: [::std::os::raw::c_char; 16usize],
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
+// Darwin layout (bindgen ran on macOS): c_long is 8 bytes there but 4 on
+// Windows, so this assertion only holds off-Windows. The type is unused by
+// weather (only om_* symbols are), so skipping it on Windows is safe.
+#[cfg(not(target_os = "windows"))]
 const _: () = {
     ["Size of _opaque_pthread_rwlockattr_t"]
         [::std::mem::size_of::<_opaque_pthread_rwlockattr_t>() - 24usize];

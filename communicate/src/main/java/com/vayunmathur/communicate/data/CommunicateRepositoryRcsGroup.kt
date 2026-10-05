@@ -37,7 +37,7 @@ suspend fun CommunicateRepository.createEncryptedRcsGroup(
         val ok = RcsE2E.setupEncryptedGroup(context, local, conversationId, cached as Map<String, ByteArray>)
         if (!ok) {
             // Restore what we consumed so a retry can proceed.
-            cached.forEach { (peer, kp) -> if (kp != null) RcsPeerKeys.store(context, peer, kp) }
+            cached.forEach { (peer, kp) -> if (kp != null) RcsPeerKeys.store(peer, kp) }
         }
         return@withContext ok
     }
@@ -45,9 +45,9 @@ suspend fun CommunicateRepository.createEncryptedRcsGroup(
     RcsKeyDirectory.publishTo(context, local, members.first())
     cached.forEach { (peer, kp) ->
         if (kp == null) {
-            RcsE2E.requestKeyPackage(context, peer)
+            RcsE2E.requestKeyPackage(peer)
         } else {
-            RcsPeerKeys.store(context, peer, kp)
+            RcsPeerKeys.store(peer, kp)
         }
     }
     RcsPendingGroups.add(conversationId, members)

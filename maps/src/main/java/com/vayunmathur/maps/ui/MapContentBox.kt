@@ -60,7 +60,7 @@ internal fun MapPageScope.MapContentBox(
     // No app bar. The map is the whole screen and every piece of chrome floats over it,
     // which is also what keeps the renderer's surface edge-to-edge — a padded parent here
     // is what used to leave a dead strip along the navigation bar.
-    Box(Modifier.fillMaxSize()) {
+    Box(modifier.fillMaxSize()) {
                 MapSurface(
                     camera = camera,
                     chrome = chrome,

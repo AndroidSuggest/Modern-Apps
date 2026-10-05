@@ -61,6 +61,13 @@ object SiglipEmbedder {
     const val IMAGE_SIZE = 224
 
     private const val TAG = "SiglipEmbedder"
+    private const val CHANNELS = 3
+    private const val PIXEL_MID = 127.5f
+    private const val CHANNEL_MASK = 0xFF
+    private const val RED_SHIFT = 16
+    private const val GREEN_SHIFT = 8
+    private const val FLOAT_BYTES = 4
+    private const val BATCH_DIM = 1L
 
     private val env: OrtEnvironment by lazy { OrtEnvironment.getEnvironment() }
     private val lock = Any()
@@ -125,10 +132,14 @@ object SiglipEmbedder {
                 textOutputName = bestOutputName(textSession!!)
                 cachedDim = visionSession?.let { readOutputDim(it, visionOutputName!!) } ?: 0
                 initOk = true
-                Log.i(TAG, "SigLIP2 embedder ready (dim=$cachedDim, visionOut=$visionOutputName, textOut=$textOutputName)")
+                Log.i(
+                    TAG,
+                    "SigLIP2 embedder ready " +
+                        "(dim=$cachedDim, visionOut=$visionOutputName, textOut=$textOutputName)",
+                )
                 true
-            } catch (e: Throwable) {
-                Log.e(TAG, "Failed to initialise SigLIP2 embedder", e)
+            } catch (expected: Throwable) {
+                Log.e(TAG, "Failed to initialise SigLIP2 embedder", expected)
                 closeLocked()
                 false
             }
@@ -169,8 +180,8 @@ object SiglipEmbedder {
         val session = visionSession ?: return null
         val bitmap = try {
             BitmapFactory.decodeFile(file.absolutePath)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to decode image ${file.absolutePath}", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "Failed to decode image ${file.absolutePath}", expected)
             null
         } ?: return null
         val input = try {
@@ -185,7 +196,12 @@ object SiglipEmbedder {
                 OnnxTensor.createTensor(
                     env,
                     FloatBuffer.wrap(input),
-                    longArrayOf(1, 3, IMAGE_SIZE.toLong(), IMAGE_SIZE.toLong()),
+                    longArrayOf(
+                        BATCH_DIM,
+                        CHANNELS.toLong(),
+                        IMAGE_SIZE.toLong(),
+                        IMAGE_SIZE.toLong(),
+                    ),
                 ).use { tensor ->
                     session.run(mapOf(inputName to tensor)).use { result ->
                         val out = result.get(outName).get() as OnnxTensor
@@ -195,8 +211,8 @@ object SiglipEmbedder {
                     }
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Image embedding failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "Image embedding failed", expected)
             null
         }
     }
@@ -251,8 +267,8 @@ object SiglipEmbedder {
                     tensors.values.forEach { it.close() }
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Text embedding failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "Text embedding failed", expected)
             null
         }
     }
@@ -291,12 +307,12 @@ object SiglipEmbedder {
         if (safe != src) safe.recycle()
 
         val area = IMAGE_SIZE * IMAGE_SIZE
-        val out = FloatArray(3 * area)
+        val out = FloatArray(CHANNELS * area)
         for (i in 0 until area) {
             val p = px[i]
-            out[i] = (((p shr 16) and 0xFF) - 127.5f) / 127.5f          // R plane
-            out[area + i] = (((p shr 8) and 0xFF) - 127.5f) / 127.5f    // G plane
-            out[2 * area + i] = ((p and 0xFF) - 127.5f) / 127.5f        // B plane
+            out[i] = (((p shr RED_SHIFT) and CHANNEL_MASK) - PIXEL_MID) / PIXEL_MID
+            out[area + i] = (((p shr GREEN_SHIFT) and CHANNEL_MASK) - PIXEL_MID) / PIXEL_MID
+            out[2 * area + i] = ((p and CHANNEL_MASK) - PIXEL_MID) / PIXEL_MID
         }
         return out
     }
@@ -312,7 +328,7 @@ object SiglipEmbedder {
     }
 
     fun floatsToBytes(values: FloatArray): ByteArray {
-        val buffer = ByteBuffer.allocate(values.size * 4).order(ByteOrder.LITTLE_ENDIAN)
+        val buffer = ByteBuffer.allocate(values.size * FLOAT_BYTES).order(ByteOrder.LITTLE_ENDIAN)
         for (v in values) buffer.putFloat(v)
         return buffer.array()
     }

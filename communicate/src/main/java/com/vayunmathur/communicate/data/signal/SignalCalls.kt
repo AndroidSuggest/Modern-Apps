@@ -43,47 +43,7 @@ internal suspend fun SignalClient.handleCallMessage(
     if (manager.ensureInitialized(localAci) == null) return
 
     when {
-        cm.hasOffer() -> {
-            val offer = cm.offer
-            val isVideo = offer.type == SignalServiceProtos.CallMessage.Offer.Type.OFFER_VIDEO_CALL
-            // Logged in full so an inbound offer from official Signal can be compared against what we
-            // send: our own offers are accepted by the server but never ring, and our side reports
-            // success, so the difference has to be in the message itself.
-            val ageSec = ((env.serverTimestamp - env.timestamp).coerceAtLeast(0L)) / 1000
-            Log.i(
-                TAG,
-                "inbound Offer callId=${offer.id} from $senderAci:$senderDeviceId " +
-                    "opaque=${offer.opaque.size()}B type=${offer.type} " +
-                    "hasDestinationDeviceId=${cm.hasDestinationDeviceId()} " +
-                    "destinationDeviceId=${cm.destinationDeviceId} ageSec=$ageSec " +
-                    "urgent=${env.urgent}",
-            )
-            // Recorded before RingRTC reports Ringing, which is how the shared registry tells an
-            // inbound call from an outbound one, and what `answer()` needs.
-            pendingIncomingCallAci = senderAci
-            pendingIncomingCallId = offer.id
-            _events.emit(
-                SignalEvent.CallOffer(
-                    callId = offer.id.toString(),
-                    from = senderAci,
-                    callCreator = senderAci,
-                    isVideo = isVideo,
-                    peerName = displayNameFor(senderAci),
-                    timestamp = timestamp,
-                ),
-            )
-            // Hand the call to the system so it owns ringing, audio focus and routing.
-            appContext?.let { ctx -> InAppCallTelecom.addIncoming(ctx, senderAci) }
-            manager.receivedOffer(
-                callId = offer.id,
-                senderAci = senderAci,
-                senderDeviceId = senderDeviceId,
-                localDeviceId = localDeviceId,
-                opaque = offer.opaque.toByteArray(),
-                messageAgeSec = ageSec,
-                video = isVideo,
-            )
-        }
+        cm.hasOffer() -> handleCallOffer(cm, senderAci, senderDeviceId, env, timestamp, manager, localDeviceId)
         cm.hasAnswer() -> manager.receivedAnswer(
             callId = cm.answer.id,
             senderAci = senderAci,
@@ -108,14 +68,65 @@ internal suspend fun SignalClient.handleCallMessage(
                 type = cm.hangup.type.toRingRtc(),
                 deviceId = cm.hangup.deviceId,
             )
-            _events.emit(SignalEvent.CallEnded(callId = cm.hangup.id.toString(), reason = "hangup"))
+            eventsMutable.emit(SignalEvent.CallEnded(callId = cm.hangup.id.toString(), reason = "hangup"))
         }
         cm.hasBusy() -> {
             manager.receivedBusy(cm.busy.id, senderAci, senderDeviceId)
-            _events.emit(SignalEvent.CallEnded(callId = cm.busy.id.toString(), reason = "busy"))
+            eventsMutable.emit(SignalEvent.CallEnded(callId = cm.busy.id.toString(), reason = "busy"))
         }
         cm.hasOpaque() -> Log.i(TAG, "ignoring an opaque call message (group calling not implemented)")
     }
+}
+
+/** Inbound offer: log, emit, hand to telecom + RingRTC. */
+private suspend fun SignalClient.handleCallOffer(
+    cm: SignalServiceProtos.CallMessage,
+    senderAci: String,
+    senderDeviceId: Int,
+    env: SignalProtocol.SignalEnvelope,
+    timestamp: Long,
+    manager: SignalCallManager,
+    localDeviceId: Int,
+) {
+    val offer = cm.offer
+    val isVideo = offer.type == SignalServiceProtos.CallMessage.Offer.Type.OFFER_VIDEO_CALL
+    // Logged in full so an inbound offer from official Signal can be compared against what we
+    // send: our own offers are accepted by the server but never ring, and our side reports
+    // success, so the difference has to be in the message itself.
+    val ageSec = ((env.serverTimestamp - env.timestamp).coerceAtLeast(0L)) / 1000
+    Log.i(
+        TAG,
+        "inbound Offer callId=${offer.id} from $senderAci:$senderDeviceId " +
+            "opaque=${offer.opaque.size()}B type=${offer.type} " +
+            "hasDestinationDeviceId=${cm.hasDestinationDeviceId()} " +
+            "destinationDeviceId=${cm.destinationDeviceId} ageSec=$ageSec " +
+            "urgent=${env.urgent}",
+    )
+    // Recorded before RingRTC reports Ringing, which is how the shared registry tells an
+    // inbound call from an outbound one, and what `answer()` needs.
+    pendingIncomingCallAci = senderAci
+    pendingIncomingCallId = offer.id
+    eventsMutable.emit(
+        SignalEvent.CallOffer(
+            callId = offer.id.toString(),
+            from = senderAci,
+            callCreator = senderAci,
+            isVideo = isVideo,
+            peerName = displayNameFor(senderAci),
+            timestamp = timestamp,
+        ),
+    )
+    // Hand the call to the system so it owns ringing, audio focus and routing.
+    appContext?.let { ctx -> InAppCallTelecom.addIncoming(ctx, senderAci) }
+    manager.receivedOffer(
+        callId = offer.id,
+        senderAci = senderAci,
+        senderDeviceId = senderDeviceId,
+        localDeviceId = localDeviceId,
+        opaque = offer.opaque.toByteArray(),
+        messageAgeSec = ageSec,
+        video = isVideo,
+    )
 }
 
 /**
@@ -125,7 +136,6 @@ internal suspend fun SignalClient.handleCallMessage(
  */
 internal suspend fun SignalClient.publishCallState(
     aci: String,
-    callId: Long,
     state: SignalCallManager.CallState,
     isVideo: Boolean,
 ) {
@@ -165,7 +175,6 @@ internal suspend fun SignalClient.publishCallState(
 }
 
 internal suspend fun SignalClient.emitCallState(
-    aci: String,
     callId: Long,
     state: SignalCallManager.CallState,
     isVideo: Boolean,
@@ -173,13 +182,13 @@ internal suspend fun SignalClient.emitCallState(
     val id = callId.toString()
     when (state) {
         SignalCallManager.CallState.Ringing ->
-            _events.emit(SignalEvent.CallStateChanged(callId = id, phase = "ringing", isVideo = isVideo))
+            eventsMutable.emit(SignalEvent.CallStateChanged(callId = id, phase = "ringing", isVideo = isVideo))
         SignalCallManager.CallState.Connecting ->
-            _events.emit(SignalEvent.CallStateChanged(callId = id, phase = "connecting", isVideo = isVideo))
+            eventsMutable.emit(SignalEvent.CallStateChanged(callId = id, phase = "connecting", isVideo = isVideo))
         SignalCallManager.CallState.Connected ->
-            _events.emit(SignalEvent.CallStateChanged(callId = id, phase = "connected", isVideo = isVideo))
+            eventsMutable.emit(SignalEvent.CallStateChanged(callId = id, phase = "connected", isVideo = isVideo))
         SignalCallManager.CallState.Ended ->
-            _events.emit(SignalEvent.CallEnded(callId = id, reason = "ended"))
+            eventsMutable.emit(SignalEvent.CallEnded(callId = id, reason = "ended"))
     }
 }
 
@@ -204,19 +213,19 @@ fun SignalClient.placeCall(conversationId: String, video: Boolean) {
         val resolved = resolveDestinationAci(conversationId)
         if (resolved == null) {
             Log.w(TAG, "cannot call $conversationId: no Signal identity for it")
-            _events.emit(SignalEvent.CallEnded(callId = "", reason = "not a Signal user"))
+            eventsMutable.emit(SignalEvent.CallEnded(callId = "", reason = "not a Signal user"))
             return@launch
         }
         if (!ACI_REGEX.matches(resolved)) {
             // A PNI is enough to message but not to call.
             Log.w(TAG, "cannot call $resolved: calling needs an ACI, which arrives with their first message")
-            _events.emit(SignalEvent.CallEnded(callId = "", reason = "cannot call this contact yet"))
+            eventsMutable.emit(SignalEvent.CallEnded(callId = "", reason = "cannot call this contact yet"))
             return@launch
         }
         val e = e2e
         if (e == null || (!e.hasSession(resolved, PRIMARY_DEVICE_ID) && !establishSession(e, resolved))) {
             Log.w(TAG, "no session with $resolved, cannot place a call")
-            _events.emit(SignalEvent.CallEnded(callId = "", reason = "no session"))
+            eventsMutable.emit(SignalEvent.CallEnded(callId = "", reason = "no session"))
             return@launch
         }
         manager.placeCall(localAci, authData?.deviceId ?: PRIMARY_DEVICE_ID, resolved, video)
@@ -230,10 +239,10 @@ fun SignalClient.acceptCall(callId: String): Boolean {
     return callManager?.accept(id) ?: false
 }
 
-suspend fun SignalClient.rejectCall(from: String, callId: String, creator: String): Boolean {
+suspend fun SignalClient.rejectCall(callId: String): Boolean {
     // RingRTC turns this into the right hangup type and tells us what to send.
     val ok = callManager?.hangup() ?: false
-    if (!ok) _events.emit(SignalEvent.CallEnded(callId = callId, reason = "rejected"))
+    if (!ok) eventsMutable.emit(SignalEvent.CallEnded(callId = callId, reason = "rejected"))
     return true
 }
 

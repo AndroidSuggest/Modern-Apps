@@ -93,7 +93,19 @@ internal class OoxmlPackage(
     }
 
     companion object {
-        private val MEDIA_EXTS = setOf("png", "jpg", "jpeg", "gif", "bmp", "emf", "wmf", "svg", "tif", "tiff", "ico", "webp")
+        private val MEDIA_EXTS = setOf(
+            "png",
+            "jpg",
+            "jpeg",
+            "gif",
+            "bmp",
+            "emf",
+            "wmf",
+            "svg",
+            "tif",
+            "tiff",
+            "ico",
+            "webp")
 
         /** Reads an OOXML zip into text entries + binary media. Never throws on malformed input. */
         fun read(bytes: ByteArray): OoxmlPackage {

@@ -2,6 +2,8 @@ package com.vayunmathur.education.ui
 
 import android.content.Intent
 import android.text.format.DateUtils
+import androidx.compose.runtime.setValue
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -63,11 +65,14 @@ fun VideoPlayerPage(
     title: String,
 ) {
     var state by remember(youtubeId) { mutableStateOf<PlayerUiState>(PlayerUiState.Loading) }
-
+    // Broad catch is deliberate: the extractor throws undocumented RuntimeExceptions
+    // (not just IOException) on malformed responses, which read as "unplayable".
+    @Suppress("TooGenericExceptionCaught")
     LaunchedEffect(youtubeId) {
         state = try {
             PlayerUiState.Ready(VideoExtractor.resolve(youtubeId))
         } catch (e: Exception) {
+            Log.w("VideoPlayer", "could not resolve $youtubeId", e)
             PlayerUiState.Failed
         }
     }

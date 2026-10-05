@@ -46,7 +46,7 @@ import androidx.compose.ui.res.stringResource
 fun AncillariesPage(
     backStack: NavBackStack<Route>,
     viewModel: TravelViewModel,
-    route: Route.Ancillaries,
+    @Suppress("UNUSED_PARAMETER") route: Route.Ancillaries,
 ) {
     val review by viewModel.review.collectAsStateWithLifecycle()
     val selectedBaggage by viewModel.selectedBaggage.collectAsStateWithLifecycle()

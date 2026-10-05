@@ -44,11 +44,11 @@ class OpenAssistantSession(context: Context) : VoiceInteractionSession(context) 
         try {
             val file = File(context.cacheDir, "assist_screenshot.png")
             FileOutputStream(file).use { out ->
-                screenshot.compress(Bitmap.CompressFormat.PNG, 90, out)
+                screenshot.compress(Bitmap.CompressFormat.PNG, SCREENSHOT_QUALITY, out)
             }
             screenshotPath = file.absolutePath
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to save assist screenshot", e)
+        } catch (expected: Exception) {
+            Log.w(TAG, "Failed to save assist screenshot", expected)
         }
     }
 
@@ -109,6 +109,7 @@ class OpenAssistantSession(context: Context) : VoiceInteractionSession(context) 
     companion object {
         private const val TAG = "OpenAssistantSession"
         private const val MAX_CHARS = 6000
+        private const val SCREENSHOT_QUALITY = 90
 
         const val EXTRA_SCREEN_TEXT = "assist_screen_text"
         const val EXTRA_SCREENSHOT_PATH = "assist_screenshot_path"

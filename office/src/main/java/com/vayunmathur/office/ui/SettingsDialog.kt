@@ -27,8 +27,13 @@ fun SettingsDialog(
     autoSave: Boolean,
     autoSaveInterval: Int,
     defaultFontSize: Float,
-    documentThemeMode: com.vayunmathur.office.util.OfficeViewModel.DocumentThemeMode = com.vayunmathur.office.util.OfficeViewModel.DocumentThemeMode.UNCHANGED,
-    onSave: (autoSave: Boolean, interval: Int, fontSize: Float, documentThemeMode: com.vayunmathur.office.util.OfficeViewModel.DocumentThemeMode) -> Unit = { _, _, _, _ -> },
+    documentThemeMode: com.vayunmathur.office.util.OfficeViewModel.DocumentThemeMode =
+        com.vayunmathur.office.util.OfficeViewModel.DocumentThemeMode.UNCHANGED,
+    onSave: (
+        autoSave: Boolean,
+        interval: Int,
+        fontSize: Float,
+        documentThemeMode: com.vayunmathur.office.util.OfficeViewModel.DocumentThemeMode) -> Unit = { _, _, _, _ -> },
     onDismiss: () -> Unit
 ) {
     var autoSaveEnabled by remember { mutableStateOf(autoSave) }
@@ -54,17 +59,29 @@ fun SettingsDialog(
                 }
                 Spacer(Modifier.height(16.dp))
                 Text(stringResource(R.string.default_font_size_pt, fontSize.toInt()))
-                com.vayunmathur.library.ui.Slider(value = fontSize, onValueChange = { fontSize = it }, valueRange = 8f..48f)
+                com.vayunmathur.library.ui.Slider(
+                    value = fontSize,
+                    onValueChange = { fontSize = it },
+                    valueRange = 8f..48f)
                 Spacer(Modifier.height(16.dp))
                 Text(stringResource(R.string.document_theme), style = MaterialTheme.typography.titleSmall)
-                Text(stringResource(R.string.document_theme_summary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    stringResource(R.string.document_theme_summary),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.document_theme_unchanged), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(R.string.document_theme_unchanged),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium)
                     androidx.compose.material3.RadioButton(selected = themeMode == com.vayunmathur.office.util.OfficeViewModel.DocumentThemeMode.UNCHANGED, onClick = { themeMode = com.vayunmathur.office.util.OfficeViewModel.DocumentThemeMode.UNCHANGED })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.document_theme_follow_system), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(R.string.document_theme_follow_system),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium)
                     androidx.compose.material3.RadioButton(selected = themeMode == com.vayunmathur.office.util.OfficeViewModel.DocumentThemeMode.FOLLOW_SYSTEM, onClick = { themeMode = com.vayunmathur.office.util.OfficeViewModel.DocumentThemeMode.FOLLOW_SYSTEM })
                 }
             }

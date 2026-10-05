@@ -86,10 +86,10 @@ fun ArrowsBoard(
             advance.animateTo(target, tween(cellMillis(move.advance + move.route.size), easing = LinearEasing))
         } else {
             // Wedged arrows still get a nudge, or a tap on one reads as the game ignoring the input.
-            val target = if (move.advance == 0) NudgeCells else move.advance.toFloat()
+            val target = if (move.advance == 0) NUDGE_CELLS else move.advance.toFloat()
             advance.animateTo(target, tween(cellMillis(move.advance), easing = LinearOutSlowInEasing))
             showBlocked = true
-            delay(BlockedHoldMillis)
+            delay(BLOCKED_HOLD_MILLIS)
             advance.animateTo(0f, tween(cellMillis(move.advance), easing = FastOutSlowInEasing))
         }
         onMoveFinished()
@@ -202,10 +202,10 @@ private fun cellMillis(cells: Int): Int =
     (cells * MILLIS_PER_CELL).coerceAtLeast(MIN_MOVE_MILLIS)
 
 /** How far a wedged arrow lurches before coming back, in cells. */
-private const val NudgeCells = 0.3f
+private const val NUDGE_CELLS = 0.3f
 
 /** How long the arrow stays red at the far end before returning. */
-private const val BlockedHoldMillis = 180L
+private const val BLOCKED_HOLD_MILLIS = 180L
 
 /** Spoken name for a direction, for the board's accessibility description. */
 val Direction.spokenNameRes: Int

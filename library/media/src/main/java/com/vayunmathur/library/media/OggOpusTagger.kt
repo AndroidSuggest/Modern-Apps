@@ -43,6 +43,14 @@ data class VorbisTags(
  */
 object OggOpusTagger {
 
+    private const val LACING_TERMINATOR = 255
+    private const val SEQUENCE_NUMBER_OFFSET = 18
+    private const val SERIAL_NUMBER_OFFSET = 14
+    private const val SEGMENT_COUNT_OFFSET = 26
+    private const val CAPTURE_PATTERN_LENGTH = 4
+    private const val BYTE_MASK = 0xff
+    private const val INT_SIZE_BYTES = 4
+
     /**
      * Returns the retagged bytes, or null when the input is not an Ogg/Opus file this can
      * rewrite. Callers fall back to the original bytes: an untagged file is still worth
@@ -61,15 +69,16 @@ object OggOpusTagger {
         for (i in 1 until pages.size) {
             val page = pages[i]
             if (page.segmentCount == 0) return null
-            val lastLacing = source[page.start + 27 + page.segmentCount - 1].toInt() and 0xff
-            if (lastLacing < 255) {
+            val lastLacing = source[page.start + OggPages.HEADER_SIZE + page.segmentCount - 1].toInt() and
+                BYTE_MASK
+            if (lastLacing < LACING_TERMINATOR) {
                 commentEnd = i
                 break
             }
         }
         if (commentEnd == -1) return null
 
-        val serial = readIntLe(source, head.start + 14)
+        val serial = readIntLe(source, head.start + SERIAL_NUMBER_OFFSET)
         val packet = buildOpusTagsPacket(tags)
         val commentPages = OggPages.forPacket(
             packet = packet,
@@ -88,7 +97,7 @@ object OggOpusTagger {
         var sequence = 1 + commentPages.size
         for (i in commentEnd + 1 until pages.size) {
             val page = source.copyOfRange(pages[i].start, pages[i].end)
-            OggPages.writeIntLe(page, 18, sequence)
+            OggPages.writeIntLe(page, SEQUENCE_NUMBER_OFFSET, sequence)
             OggPages.setChecksum(page)
             out.write(page)
             sequence++
@@ -114,12 +123,12 @@ object OggOpusTagger {
         val pages = ArrayList<Page>()
         var offset = 0
         while (offset + OggPages.HEADER_SIZE <= buf.size) {
-            if (String(buf, offset, 4, Charsets.ISO_8859_1) != "OggS") break
-            val segmentCount = buf[offset + 26].toInt() and 0xff
+            if (String(buf, offset, CAPTURE_PATTERN_LENGTH, Charsets.ISO_8859_1) != "OggS") break
+            val segmentCount = buf[offset + SEGMENT_COUNT_OFFSET].toInt() and BYTE_MASK
             val tableStart = offset + OggPages.HEADER_SIZE
             if (tableStart + segmentCount > buf.size) return null
             var payload = 0
-            for (i in 0 until segmentCount) payload += buf[tableStart + i].toInt() and 0xff
+            for (i in 0 until segmentCount) payload += buf[tableStart + i].toInt() and BYTE_MASK
             val end = tableStart + segmentCount + payload
             if (end > buf.size) return null
             pages.add(Page(offset, end, segmentCount))
@@ -129,6 +138,6 @@ object OggOpusTagger {
     }
 
     private fun readIntLe(buf: ByteArray, offset: Int): Int =
-        ByteBuffer.wrap(buf, offset, 4).order(ByteOrder.LITTLE_ENDIAN).int
+        ByteBuffer.wrap(buf, offset, INT_SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN).int
 }
 

@@ -53,18 +53,28 @@ class ChannelSendQueue {
     fun poll(): QueuedSend? = synchronized(lock) {
         if (controlQueue.isNotEmpty()) return controlQueue.removeFirst()
         while (channelOrder.isNotEmpty()) {
-            val id = channelOrder.removeFirst()
-            val queue = channelQueues[id] ?: continue
-            val send = queue.removeFirstOrNull()
-            if (send == null) {
-                channelQueues.remove(id)
-                continue
-            }
-            // A still-full channel goes to the back; a drained one leaves the rotation.
-            if (queue.isNotEmpty()) channelOrder.addLast(id) else channelQueues.remove(id)
+            val send = pollNextServiceSend() ?: continue
             return send
         }
         return null
+    }
+
+    /**
+     * Advances the round-robin by one channel: drops drained or orphaned
+     * entries, re-queues still-full ones, and returns the head send when the
+     * channel had one. Null means "no send here, keep scanning".
+     */
+    private fun pollNextServiceSend(): QueuedSend? {
+        val id = channelOrder.removeFirst()
+        val queue = channelQueues[id] ?: return null
+        val send = queue.removeFirstOrNull()
+        if (send == null) {
+            channelQueues.remove(id)
+            return null
+        }
+        // A still-full channel goes to the back; a drained one leaves the rotation.
+        if (queue.isNotEmpty()) channelOrder.addLast(id) else channelQueues.remove(id)
+        return send
     }
 
     /** Total sends waiting, across all channels. */

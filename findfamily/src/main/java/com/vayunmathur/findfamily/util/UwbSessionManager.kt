@@ -6,7 +6,9 @@
 package com.vayunmathur.findfamily.util
 
 import kotlin.uuid.Uuid
-import kotlin.concurrent.atomics.*
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.compareAndSet
+import kotlin.concurrent.atomics.load
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -157,110 +159,147 @@ object UwbSessionManager {
     // -----------------------------------------------------------------
 
     fun startAsInitiator(peerUserId: Long) {
-        Log.i(TAG, "startAsInitiator(peer=$peerUserId) entered. isSupportedSdk=$isSupportedSdk initialized=${initialized.load()} state=${_state.value}")
+        Log.i(
+            TAG,
+            "startAsInitiator(peer=$peerUserId) entered. " +
+                "isSupportedSdk=$isSupportedSdk initialized=${initialized.load()} state=${_state.value}"
+        )
         if (!isSupportedSdk) {
             // UI renders R.string.uwb_status_unsupported for a null reason.
             _state.value = UwbSessionState.Unsupported()
             return
         }
-        if (!initialized.load()) { Log.w(TAG, "startAsInitiator: NOT INITIALIZED — service hasn't called init() yet"); return }
-        if (_state.value !is UwbSessionState.Idle) { Log.i(TAG, "startAsInitiator: not idle, skipping"); return }
+        if (!initialized.load()) {
+            Log.w(TAG, "startAsInitiator: NOT INITIALIZED — service hasn't called init() yet")
+            return
+        }
+        if (_state.value !is UwbSessionState.Idle) {
+            Log.i(TAG, "startAsInitiator: not idle, skipping")
+            return
+        }
         _state.value = UwbSessionState.Starting
         val sessionId = Uuid.random().toString()
         currentSessionId = sessionId
         _peerUserId.value = peerUserId
 
         scope.launch {
-            Log.i(TAG, "startAsInitiator: launched coroutine, loading peer from DB")
-            val peerUser = repository.getUser(peerUserId)
-            Log.i(TAG, "startAsInitiator: peerUser=${peerUser?.name} platform=${peerUser?.platform}")
-            if (peerUser == null) {
-                _state.value = UwbSessionState.Failed("Unknown peer")
-                stopLocal()
-                return@launch
-            }
-            if (peerUser.kind == UserKind.TRACKER) {
-                beginTrackerFind(peerUserId)
-                return@launch
-            }
-            if (peerUser.platform == "ios") {
-                beginCrossPlatformInitiateToIos(peerUserId, sessionId)
-                return@launch
-            }
-
-            val ctrl = UwbController(appContext)
-            controller = ctrl
-            Log.i(TAG, "startAsInitiator: opening controller")
-            val info = ctrl.openController().getOrElse {
-                Log.e(TAG, "openController failed", it)
-                _state.value = UwbSessionState.Unsupported(it.message ?: "UWB not available on this device")
-                return@launch
-            }
-            Log.i(TAG, "startAsInitiator: controller opened (addr=${info.localAddress.joinToString(":") { "%02x".format(it) }} ch=${info.channelNumber} pi=${info.preambleIndex}); publishing REQUEST")
-
-            val envelope = UwbEnvelope(
-                sessionId = sessionId,
-                sender = Networking.userid.toULong(),
-                senderPlatform = "android",
-                kind = UwbEnvelopeKind.REQUEST,
-                payload = UwbHandshake(
-                    addressB64 = UwbBytes.b64(info.localAddress),
-                    channelNumber = info.channelNumber,
-                    preambleIndex = info.preambleIndex,
-                    sessionKeyB64 = UwbBytes.b64(info.sessionKey),
-                    sessionId = info.sessionId
-                )
-            )
-            val ok = publish(envelope, peerUserId)
-            Log.i(TAG, "startAsInitiator: publishUwbMessage returned $ok")
-            if (!ok) {
-                _state.value = UwbSessionState.Failed("Could not reach peer")
-                stopLocal()
-                return@launch
-            }
-            _state.value = UwbSessionState.WaitingForPeer
-
-            waitJob = launch {
-                Log.i(TAG, "startAsInitiator: parked waiting for ACK on sessionId=$sessionId")
-                val ack = waitForEnvelope(sessionId, TIMEOUT_MS) { env ->
-                    env.kind == UwbEnvelopeKind.ACK || env.kind == UwbEnvelopeKind.CANCEL
-                }
-                if (ack == null) {
-                    _state.value = UwbSessionState.Failed("Peer did not respond")
-                    stopLocal()
-                    return@launch
-                }
-                if (ack.kind == UwbEnvelopeKind.CANCEL) {
-                    _state.value = UwbSessionState.Idle
-                    stopLocal()
-                    return@launch
-                }
-                val peerAddress = ack.payload?.addressB64?.let(UwbBytes::from)
-                if (peerAddress == null) {
-                    _state.value = UwbSessionState.Failed("Invalid peer ack")
-                    stopLocal()
-                    return@launch
-                }
-                startRangingStream(
-                    ctrl,
-                    role = UwbController.Role.Initiator,
-                    localAddress = info.localAddress,
-                    peerAddress = peerAddress,
-                    sessionId = info.sessionId,
-                    sessionKey = info.sessionKey,
-                    channelNumber = info.channelNumber,
-                    preambleIndex = info.preambleIndex
-                )
-            }
+            runInitiatorSession(this, peerUserId, sessionId)
         }
+    }
+
+    /** Body of the initiator coroutine: resolve the peer, open the controller, publish REQUEST. */
+    @RequiresApi(Build.VERSION_CODES.BAKLAVA)
+    private suspend fun runInitiatorSession(
+        outerScope: CoroutineScope,
+        peerUserId: Long,
+        sessionId: String,
+    ) {
+        Log.i(TAG, "startAsInitiator: launched coroutine, loading peer from DB")
+        val peerUser = repository.getUser(peerUserId)
+        Log.i(TAG, "startAsInitiator: peerUser=${peerUser?.name} platform=${peerUser?.platform}")
+        if (peerUser == null) {
+            _state.value = UwbSessionState.Failed("Unknown peer")
+            stopLocal()
+            return
+        }
+        if (peerUser.kind == UserKind.TRACKER) {
+            beginTrackerFind(peerUserId)
+            return
+        }
+        if (peerUser.platform == "ios") {
+            beginCrossPlatformInitiateToIos(peerUserId, sessionId)
+            return
+        }
+
+        val ctrl = UwbController(appContext)
+        controller = ctrl
+        Log.i(TAG, "startAsInitiator: opening controller")
+        val info = ctrl.openController().getOrElse {
+            Log.e(TAG, "openController failed", it)
+            _state.value = UwbSessionState.Unsupported(it.message ?: "UWB not available on this device")
+            return
+        }
+        Log.i(
+            TAG,
+            "startAsInitiator: controller opened " +
+                "(addr=${info.localAddress.joinToString(":") { "%02x".format(it) }} " +
+                "ch=${info.channelNumber} pi=${info.preambleIndex}); publishing REQUEST"
+        )
+
+        val envelope = UwbEnvelope(
+            sessionId = sessionId,
+            sender = Networking.userid.toULong(),
+            senderPlatform = "android",
+            kind = UwbEnvelopeKind.REQUEST,
+            payload = UwbHandshake(
+                addressB64 = UwbBytes.b64(info.localAddress),
+                channelNumber = info.channelNumber,
+                preambleIndex = info.preambleIndex,
+                sessionKeyB64 = UwbBytes.b64(info.sessionKey),
+                sessionId = info.sessionId
+            )
+        )
+        val ok = publish(envelope, peerUserId)
+        Log.i(TAG, "startAsInitiator: publishUwbMessage returned $ok")
+        if (!ok) {
+            _state.value = UwbSessionState.Failed("Could not reach peer")
+            stopLocal()
+            return
+        }
+        _state.value = UwbSessionState.WaitingForPeer
+
+        waitJob = outerScope.launch {
+            awaitAckAndRange(ctrl, info, sessionId)
+        }
+    }
+
+    /** Park waiting for the peer's ACK, then start the ranging stream. */
+    @RequiresApi(Build.VERSION_CODES.BAKLAVA)
+    private suspend fun awaitAckAndRange(ctrl: UwbController, info: UwbController.ControllerInfo, sessionId: String) {
+        Log.i(TAG, "startAsInitiator: parked waiting for ACK on sessionId=$sessionId")
+        val ack = waitForEnvelope(sessionId, TIMEOUT_MS) { env ->
+            env.kind == UwbEnvelopeKind.ACK || env.kind == UwbEnvelopeKind.CANCEL
+        }
+        if (ack == null) {
+            _state.value = UwbSessionState.Failed("Peer did not respond")
+            stopLocal()
+            return
+        }
+        if (ack.kind == UwbEnvelopeKind.CANCEL) {
+            _state.value = UwbSessionState.Idle
+            stopLocal()
+            return
+        }
+        val peerAddress = ack.payload?.addressB64?.let(UwbBytes::from)
+        if (peerAddress == null) {
+            _state.value = UwbSessionState.Failed("Invalid peer ack")
+            stopLocal()
+            return
+        }
+        startRangingStream(
+            ctrl,
+            role = UwbController.Role.Initiator,
+            localAddress = info.localAddress,
+            peerAddress = peerAddress,
+            sessionId = info.sessionId,
+            sessionKey = info.sessionKey,
+            channelNumber = info.channelNumber,
+            preambleIndex = info.preambleIndex
+        )
     }
 
     /**
      * Cross-platform initiator: Android user tapped on an iOS peer. We open
      * controlee, ship accessoryData in the REQUEST, and park waiting for
      * iOS's shareableConfigurationData reply.
+     *
+     * Broad Throwable catch below is deliberate: the shareable-config parse is
+     * still a stub throwing NotImplementedError (an Error, not an Exception),
+     * and the base64 decode can throw IllegalArgumentException; either must
+     * fail the session, not the scope.
      */
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun beginCrossPlatformInitiateToIos(peerUserId: Long, sessionId: String) {
         val ctrl = UwbController(appContext)
         controller = ctrl
@@ -401,7 +440,10 @@ object UwbSessionManager {
         }
     }
 
+    // Broad Throwable catch inside is deliberate, same as [beginCrossPlatformInitiateToIos]:
+    // the shareable-config parse stub throws NotImplementedError (an Error).
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun beginCrossPlatformAsAccessory(request: UwbEnvelope) {
         val ctrl = UwbController(appContext)
         controller = ctrl
@@ -484,6 +526,9 @@ object UwbSessionManager {
     }
 
     /** Drive an already-opened ranging [stream] into the UI state machine. */
+    // Broad catch is deliberate: the UWB radio stack surfaces undocumented
+    // runtime exceptions; a dying stream must fail the session, not the scope.
+    @Suppress("TooGenericExceptionCaught")
     private fun collectRangingStream(stream: Flow<RangingSample>) {
         streamJob?.cancel()
         streamJob = scope.launch {
@@ -531,7 +576,12 @@ object UwbSessionManager {
      * Look up the peer (best-effort) and publish a UWB envelope to it,
      * swallowing and logging any failure. Returns true iff the server
      * accepted the message.
+     *
+     * Broad catches are deliberate: the lookup crosses Room and the publish
+     * crosses the relay socket; either may throw undocumented runtime
+     * exceptions, and a failed handshake publish must return false, not crash.
      */
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun publish(envelope: UwbEnvelope, peerId: Long): Boolean {
         val peer = try {
             repository.getUser(peerId)

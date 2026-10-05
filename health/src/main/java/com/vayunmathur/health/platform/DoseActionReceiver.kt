@@ -26,6 +26,9 @@ import kotlin.uuid.Uuid
  */
 class DoseActionReceiver : BroadcastReceiver() {
 
+    // Broad catches below are deliberate: onReceive must not throw, and Room plus the
+    // Health Connect client throw undocumented RuntimeExceptions (not just declared ones).
+    @Suppress("TooGenericExceptionCaught")
     override fun onReceive(context: Context, intent: Intent) {
         val scheduleId = intent.getStringExtra(DoseScheduler.EXTRA_SCHEDULE_ID) ?: return
         val medicationId = intent.getStringExtra(DoseScheduler.EXTRA_MEDICATION_ID) ?: return
@@ -36,7 +39,7 @@ class DoseActionReceiver : BroadcastReceiver() {
             ACTION_TAKEN -> recordTaken(context, medicationId)
             ACTION_SNOOZE -> {
                 DoseScheduler.armSnooze(context, scheduleId, medicationId, SNOOZE_MS)
-                Log.i(TAG, "Dose for $medicationId snoozed for ${SNOOZE_MS / 60_000} minutes")
+                Log.i(TAG, "Dose for $medicationId snoozed for ${SNOOZE_MS / MS_PER_MINUTE} minutes")
             }
         }
     }
@@ -48,6 +51,10 @@ class DoseActionReceiver : BroadcastReceiver() {
      * nothing has set up the Health Connect client, and losing the record of a dose the user
      * explicitly acknowledged would be much worse than an un-mirrored row. A later import reconciles.
      */
+    // Broad catch below is deliberate: the alarm may have woken a process where nothing
+    // has set up the Health Connect client, and losing the record of an acknowledged dose
+    // would be much worse than an un-mirrored row. A later import reconciles.
+    @Suppress("TooGenericExceptionCaught")
     private fun recordTaken(context: Context, medicationId: String) {
         val repository = HealthRepository.get(context)
         val pendingResult = goAsync()
@@ -78,6 +85,10 @@ class DoseActionReceiver : BroadcastReceiver() {
         }
     }
 
+    // Broad catch is deliberate: losing this must not throw out of onReceive — the
+    // notification is already cancelled and stopping a service that is not running
+    // fails with any number of unchecked exceptions depending on platform version.
+    @Suppress("TooGenericExceptionCaught")
     private fun stopRinging(context: Context) {
         DoseNotification.cancel(context)
         try {
@@ -95,5 +106,6 @@ class DoseActionReceiver : BroadcastReceiver() {
         const val SNOOZE_MS = 15 * 60 * 1000L
 
         private const val TAG = "DoseActionReceiver"
+        private const val MS_PER_MINUTE = 60_000
     }
 }

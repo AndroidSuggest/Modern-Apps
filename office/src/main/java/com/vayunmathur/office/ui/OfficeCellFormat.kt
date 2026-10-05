@@ -55,22 +55,49 @@ internal fun CellFormatControls(target: FormatTarget.Cell?, viewModel: OfficeVie
     Box {
         FmtIcon(false, enabled, { IconFormatAlignLeft() }) { alignMenu = true }
         DropdownMenu(expanded = alignMenu, onDismissRequest = { alignMenu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.left)) }, leadingIcon = { IconFormatAlignLeft() }, onClick = { alignMenu = false; if (enabled) viewModel.setCellAlignment(s, r, c, TextAlign.Start) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.center)) }, leadingIcon = { IconFormatAlignCenter() }, onClick = { alignMenu = false; if (enabled) viewModel.setCellAlignment(s, r, c, TextAlign.Center) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.right)) }, leadingIcon = { IconFormatAlignRight() }, onClick = { alignMenu = false; if (enabled) viewModel.setCellAlignment(s, r, c, TextAlign.End) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.left)) },
+                leadingIcon = { IconFormatAlignLeft() },
+                onClick = { alignMenu = false; if (enabled) viewModel.setCellAlignment(s, r, c, TextAlign.Start) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.center)) },
+                leadingIcon = { IconFormatAlignCenter() },
+                onClick = { alignMenu = false; if (enabled) viewModel.setCellAlignment(s, r, c, TextAlign.Center) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.right)) },
+                leadingIcon = { IconFormatAlignRight() },
+                onClick = { alignMenu = false; if (enabled) viewModel.setCellAlignment(s, r, c, TextAlign.End) })
         }
     }
-    TextButton(onClick = { if (enabled) viewModel.unmergeCells(s, r, c) }, enabled = enabled) { Text(stringResource(R.string.unmerge)) }
+    TextButton(
+        onClick = { if (enabled) viewModel.unmergeCells(s, r, c) },
+        enabled = enabled) { Text(stringResource(R.string.unmerge)) }
     Box {
         var moreMenu by remember { mutableStateOf(false) }
         var numMenu by remember { mutableStateOf(false) }
         FmtIcon(false, enabled, { IconMoreVert() }) { moreMenu = true }
         DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.fill_down)) }, enabled = enabled, onClick = { moreMenu = false; if (enabled) viewModel.fillDownToEnd(s, r, c) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.border_color)) }, enabled = enabled, onClick = { moreMenu = false; actions.onCellBorder() })
-            DropdownMenuItem(text = { Text(stringResource(R.string.comment_1)) }, enabled = enabled, onClick = { moreMenu = false; actions.onCellComment() })
-            DropdownMenuItem(text = { Text(stringResource(R.string.row_column_size)) }, enabled = enabled, onClick = { moreMenu = false; actions.onCellResize() })
-            DropdownMenuItem(text = { Text(stringResource(R.string.number_format)) }, trailingIcon = { IconArrowDropDown() }, enabled = enabled, onClick = { numMenu = true })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.fill_down)) },
+                enabled = enabled,
+                onClick = { moreMenu = false; if (enabled) viewModel.fillDownToEnd(s, r, c) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.border_color)) },
+                enabled = enabled,
+                onClick = { moreMenu = false; actions.onCellBorder() })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.comment_1)) },
+                enabled = enabled,
+                onClick = { moreMenu = false; actions.onCellComment() })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.row_column_size)) },
+                enabled = enabled,
+                onClick = { moreMenu = false; actions.onCellResize() })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.number_format)) },
+                trailingIcon = { IconArrowDropDown() },
+                enabled = enabled,
+                onClick = { numMenu = true })
         }
         DropdownMenu(expanded = numMenu, onDismissRequest = { numMenu = false }) {
             DropdownMenuItem(text = { Text(stringResource(R.string.general)) }, onClick = { numMenu = false; moreMenu = false; if (enabled) viewModel.setCellNumberFormat(s, r, c, null) })
@@ -125,7 +152,10 @@ internal class SlideFormatter(
 }
 
 @Composable
-internal fun ElementFormatControls(target: FormatTarget.Element?, viewModel: OfficeViewModel, actions: BottomBarActions) {
+internal fun ElementFormatControls(
+    target: FormatTarget.Element?,
+    viewModel: OfficeViewModel,
+    actions: BottomBarActions) {
     val enabled = target != null
     val s = target?.slide ?: -1
     val e = target?.element ?: -1
@@ -137,9 +167,15 @@ internal fun ElementFormatControls(target: FormatTarget.Element?, viewModel: Off
     Box {
         FmtIcon(false, enabled, { IconFormatAlignLeft() }) { alignMenu = true }
         DropdownMenu(expanded = alignMenu, onDismissRequest = { alignMenu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.left)) }, leadingIcon = { IconFormatAlignLeft() }, onClick = { alignMenu = false; if (enabled) viewModel.setSlideElementAlignment(s, e, TextAlign.Start) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.left)) },
+                leadingIcon = { IconFormatAlignLeft() },
+                onClick = { alignMenu = false; if (enabled) viewModel.setSlideElementAlignment(s, e, TextAlign.Start) })
             DropdownMenuItem(text = { Text(stringResource(R.string.center)) }, leadingIcon = { IconFormatAlignCenter() }, onClick = { alignMenu = false; if (enabled) viewModel.setSlideElementAlignment(s, e, TextAlign.Center) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.right)) }, leadingIcon = { IconFormatAlignRight() }, onClick = { alignMenu = false; if (enabled) viewModel.setSlideElementAlignment(s, e, TextAlign.End) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.right)) },
+                leadingIcon = { IconFormatAlignRight() },
+                onClick = { alignMenu = false; if (enabled) viewModel.setSlideElementAlignment(s, e, TextAlign.End) })
         }
     }
     FmtIcon(false, enabled, { IconDelete() }) { if (enabled) actions.onDeleteElement() }
@@ -147,14 +183,32 @@ internal fun ElementFormatControls(target: FormatTarget.Element?, viewModel: Off
         var moreMenu by remember { mutableStateOf(false) }
         FmtIcon(false, enabled, { IconMoreVert() }) { moreMenu = true }
         DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.duplicate)) }, enabled = enabled, onClick = { moreMenu = false; if (enabled) viewModel.duplicateSlideElement(s, e) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.bring_to_front)) }, enabled = enabled, onClick = { moreMenu = false; if (enabled) viewModel.reorderSlideElement(s, e, true) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.send_to_back)) }, enabled = enabled, onClick = { moreMenu = false; if (enabled) viewModel.reorderSlideElement(s, e, false) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.rotate_90)) }, enabled = enabled, onClick = { moreMenu = false; if (enabled) viewModel.setSlideElementRotation(s, e, 90f) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.duplicate)) },
+                enabled = enabled,
+                onClick = { moreMenu = false; if (enabled) viewModel.duplicateSlideElement(s, e) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.bring_to_front)) },
+                enabled = enabled,
+                onClick = { moreMenu = false; if (enabled) viewModel.reorderSlideElement(s, e, true) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.send_to_back)) },
+                enabled = enabled,
+                onClick = { moreMenu = false; if (enabled) viewModel.reorderSlideElement(s, e, false) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.rotate_90)) },
+                enabled = enabled,
+                onClick = { moreMenu = false; if (enabled) viewModel.setSlideElementRotation(s, e, 90f) })
             HorizontalDivider()
-            DropdownMenuItem(text = { Text(stringResource(R.string.speaker_notes_1)) }, onClick = { moreMenu = false; actions.onSlideNotes() })
-            DropdownMenuItem(text = { Text(stringResource(R.string.slide_background)) }, onClick = { moreMenu = false; actions.onSlideBackground() })
-            DropdownMenuItem(text = { Text(stringResource(R.string.slide_transition)) }, onClick = { moreMenu = false; actions.onSlideTransition() })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.speaker_notes_1)) },
+                onClick = { moreMenu = false; actions.onSlideNotes() })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.slide_background)) },
+                onClick = { moreMenu = false; actions.onSlideBackground() })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.slide_transition)) },
+                onClick = { moreMenu = false; actions.onSlideTransition() })
         }
     }
 }

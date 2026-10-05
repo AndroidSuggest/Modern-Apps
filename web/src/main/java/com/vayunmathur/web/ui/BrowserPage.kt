@@ -27,8 +27,17 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.web.platform.BrowserUtils
 import com.vayunmathur.web.platform.WebPermissions
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.blockedCount
+import com.vayunmathur.web.platform.clearLocalNetworkPrompt
 import com.vayunmathur.web.platform.deliverFileChooserResult
+import com.vayunmathur.web.platform.getCanGoBack
+import com.vayunmathur.web.platform.getCanGoForward
+import com.vayunmathur.web.platform.getProgress
 import com.vayunmathur.web.platform.isNewTab
+import com.vayunmathur.web.platform.markFreshNavigation
+import com.vayunmathur.web.platform.navigateActiveTab
+import com.vayunmathur.web.platform.newTab
+import com.vayunmathur.web.platform.onTabUrlChange
 
 @Composable
 fun BrowserPage(
@@ -189,7 +198,6 @@ fun BrowserPage(
 
         BrowserOverlays(
             viewModel = viewModel,
-            backStack = backStack,
             activeTab = activeTab,
             shieldHost = shieldHost,
             webViewPool = webViewPool,

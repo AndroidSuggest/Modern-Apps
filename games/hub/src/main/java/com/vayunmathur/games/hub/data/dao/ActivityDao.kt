@@ -24,6 +24,13 @@ interface ActivityDao {
     @Query("DELETE FROM activity_events")
     suspend fun clearAll()
 
-    @Query("DELETE FROM activity_events WHERE id NOT IN (SELECT id FROM activity_events ORDER BY timestamp DESC LIMIT :keep)")
-    suspend fun trim(keep: Int = 500)
+    @Query(
+        "DELETE FROM activity_events WHERE id NOT IN " +
+            "(SELECT id FROM activity_events ORDER BY timestamp DESC LIMIT :keep)"
+    )
+    suspend fun trim(keep: Int = ACTIVITY_TRIM_DEFAULT)
+
+    companion object {
+        const val ACTIVITY_TRIM_DEFAULT = 500
+    }
 }

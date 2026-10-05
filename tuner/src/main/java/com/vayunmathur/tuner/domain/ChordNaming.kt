@@ -200,123 +200,209 @@ object ChordNaming {
         tier: ChordTier,
     ): ChordReading {
         val bassPitchClass = bass?.let { pitchClassOf(it.midi) }
-        val loudest = notes.maxOfOrNull { it.salience } ?: 0.0
-        val bassConfidence = when {
-            bass == null || loudest <= 0.0 -> 0f
-            else -> (bass.salience / loudest).coerceIn(0.0, 1.0).toFloat()
-        }
+        val bassConfidence = bassConfidenceOf(bass, notes)
         val distinct = notes.map { pitchClassOf(it.midi) }.toSet()
 
-        fun reading(
-            label: ChordLabel,
-            alternates: List<ChordCandidate>,
-            confidence: Float,
-            presentation: ChordPresentation,
-        ) = ChordReading(
-            notes, bassPitchClass, bassConfidence, label, alternates, confidence, tier, presentation,
-        )
-
         // Cardinality shortcuts: a triad name cannot honestly be inferred from two notes.
-        when (distinct.size) {
-            0 -> return reading(ChordLabel.Silent, emptyList(), 0f, ChordPresentation.LISTENING)
+        val label: ChordReading = when (distinct.size) {
+            0 -> buildReading(
+                notes, bassPitchClass, bassConfidence, tier,
+                ChordLabel.Silent, emptyList(), 0f, ChordPresentation.LISTENING,
+            )
             // One pitch class is far more often a strum whose other tones fell under the picking
             // floor than a deliberately plucked single string, and the two are not separable from
             // the audio. The note itself is a measurement and is still shown; what is withheld is
             // the claim that it is the whole of what was played.
-            1 -> return reading(
+            1 -> buildReading(
+                notes, bassPitchClass, bassConfidence, tier,
                 ChordLabel.SingleNote(notes.minOf { it.midi }),
                 emptyList(),
                 SINGLE_NOTE_CONFIDENCE,
                 ChordPresentation.UNCERTAIN,
             )
-            2 -> return twoNoteReading(notes, bassPitchClass, bassConfidence, tier)
+            2 -> twoNoteReading(notes, bassPitchClass, bassConfidence, tier)
+            else -> scoredReading(notes, bassPitchClass, bassConfidence, tier)
         }
+        return label
+    }
 
+    private fun bassConfidenceOf(bass: DetectedNote?, notes: List<DetectedNote>): Float {
+        val loudest = notes.maxOfOrNull { it.salience } ?: 0.0
+        return when {
+            bass == null || loudest <= 0.0 -> 0f
+            else -> (bass.salience / loudest).coerceIn(0.0, 1.0).toFloat()
+        }
+    }
+
+    private fun buildReading(
+        notes: List<DetectedNote>,
+        bassPitchClass: Int?,
+        bassConfidence: Float,
+        tier: ChordTier,
+        label: ChordLabel,
+        alternates: List<ChordCandidate>,
+        confidence: Float,
+        presentation: ChordPresentation,
+    ) = ChordReading(
+        notes, bassPitchClass, bassConfidence, label, alternates, confidence, tier, presentation,
+    )
+
+    private fun buildNormalizedSalience(notes: List<DetectedNote>): DoubleArray {
         val salience = DoubleArray(12)
         for (note in notes) salience[pitchClassOf(note.midi)] += note.salience
         val peak = salience.max()
         if (peak > 0.0) for (i in 0..11) salience[i] /= peak
+        return salience
+    }
 
+    private fun scoreAllCandidates(
+        salience: DoubleArray,
+        bassPitchClass: Int?,
+    ): ArrayList<Pair<ChordName, Double>> {
         val scored = ArrayList<Pair<ChordName, Double>>(12 * ChordQuality.entries.size)
         for (root in 0..11) {
             for (quality in ChordQuality.entries) {
-                if (!passesStrictTone(root, quality, salience)) continue
-                // With a confident bass, a tier-B reading rooted anywhere else is ruled out by
-                // evidence rather than by preference - that is what the bass is for.
-                if (quality.tier == QualityTier.B &&
-                    bassPitchClass != null &&
-                    bassPitchClass != root
-                ) {
-                    continue
-                }
+                if (isRuledOut(root, quality, salience, bassPitchClass)) continue
                 scored += ChordName(root, quality) to score(root, quality, salience, bassPitchClass)
             }
         }
+        return scored
+    }
+
+    private fun isRuledOut(
+        root: Int,
+        quality: ChordQuality,
+        salience: DoubleArray,
+        bassPitchClass: Int?,
+    ): Boolean {
+        if (!passesStrictTone(root, quality, salience)) return true
+        // With a confident bass, a tier-B reading rooted anywhere else is ruled out by
+        // evidence rather than by preference - that is what the bass is for.
+        return quality.tier == QualityTier.B &&
+            bassPitchClass != null &&
+            bassPitchClass != root
+    }
+
+    private fun scoredReading(
+        notes: List<DetectedNote>,
+        bassPitchClass: Int?,
+        bassConfidence: Float,
+        tier: ChordTier,
+    ): ChordReading {
+        val salience = buildNormalizedSalience(notes)
+        val scored = scoreAllCandidates(salience, bassPitchClass)
         if (scored.isEmpty()) {
-            return reading(ChordLabel.Unnamed, emptyList(), 0f, ChordPresentation.NOTES_ONLY)
+            return buildReading(
+                notes, bassPitchClass, bassConfidence, tier,
+                ChordLabel.Unnamed, emptyList(), 0f, ChordPresentation.NOTES_ONLY,
+            )
         }
         scored.sortByDescending { it.second }
 
         val (bestName, bestScore) = scored[0]
         val confidence = (bestScore / bestName.quality.intervals.size).coerceIn(0.0, 1.0).toFloat()
         if (confidence < NAMING_THRESHOLD) {
-            return reading(ChordLabel.Unnamed, emptyList(), confidence, ChordPresentation.NOTES_ONLY)
+            return buildReading(
+                notes, bassPitchClass, bassConfidence, tier,
+                ChordLabel.Unnamed, emptyList(), confidence, ChordPresentation.NOTES_ONLY,
+            )
         }
 
-        val alternates = scored.asSequence()
-            .drop(1)
-            .filter { bestScore > 0.0 && (bestScore - it.second) / bestScore < ALTERNATE_MARGIN }
-            .filter { it.first.root != bestName.root || it.first.quality != bestName.quality }
-            .take(MAX_ALTERNATES)
-            .map { (name, value) ->
-                ChordCandidate(
-                    name,
-                    (value / name.quality.intervals.size).coerceIn(0.0, 1.0).toFloat(),
-                )
-            }
-            .toList()
+        val alternates = buildAlternates(scored, bestName, bestScore)
+        val named = withSlash(bestName, bassPitchClass)
+        return resolveFinalReading(notes, bassPitchClass, bassConfidence, tier, scored, named, alternates, confidence)
+    }
 
+    private fun buildAlternates(
+        scored: List<Pair<ChordName, Double>>,
+        bestName: ChordName,
+        bestScore: Double,
+    ): List<ChordCandidate> = scored.asSequence()
+        .drop(1)
+        .filter { bestScore > 0.0 && (bestScore - it.second) / bestScore < ALTERNATE_MARGIN }
+        .filter { it.first.root != bestName.root || it.first.quality != bestName.quality }
+        .take(MAX_ALTERNATES)
+        .map { (name, value) ->
+            ChordCandidate(
+                name,
+                (value / name.quality.intervals.size).coerceIn(0.0, 1.0).toFloat(),
+            )
+        }
+        .toList()
+
+    private fun withSlash(bestName: ChordName, bassPitchClass: Int?): ChordName {
         // A slash chord only when the bass is confident and is a chord tone other than the
         // root. When it is not confident, omit the slash rather than guess an inversion.
         val slash = bassPitchClass
             ?.takeIf { it != bestName.root && it in bestName.pitchClasses }
-        val named = if (slash != null) bestName.copy(bass = slash) else bestName
+        return if (slash != null) bestName.copy(bass = slash) else bestName
+    }
 
+    private fun resolveFinalReading(
+        notes: List<DetectedNote>,
+        bassPitchClass: Int?,
+        bassConfidence: Float,
+        tier: ChordTier,
+        scored: List<Pair<ChordName, Double>>,
+        named: ChordName,
+        alternates: List<ChordCandidate>,
+        confidence: Float,
+    ): ChordReading {
+        val bestName = scored[0].first
         val bassBacked = bassPitchClass != null && bassPitchClass == bestName.root
         val gated = bestName.quality.tier == QualityTier.B && !bassBacked
         val contested = alternates.isNotEmpty() && !bassBacked
-        if (gated || contested) {
-            val other = alternates.firstOrNull()?.name
-                ?: scored.drop(1).firstOrNull { it.first.root != bestName.root }?.first
-            if (other != null) {
-                return reading(
-                    ChordLabel.Ambiguous(named, other),
-                    alternates,
-                    confidence,
-                    ChordPresentation.AMBIGUOUS,
-                )
-            }
-            // A tier-B quality with no rival reading and no bass still cannot be named alone.
-            if (gated) {
-                return reading(
-                    ChordLabel.Unnamed,
-                    emptyList(),
-                    confidence,
-                    ChordPresentation.NOTES_ONLY,
-                )
-            }
+        val ambiguous: ChordReading? = when {
+            gated || contested -> ambiguousReading(
+                notes, bassPitchClass, bassConfidence, tier, scored, named, alternates, confidence, gated,
+            )
+            else -> null
         }
-
-        return reading(
+        return ambiguous ?: buildReading(
+            notes, bassPitchClass, bassConfidence, tier,
             ChordLabel.Chord(named),
             alternates,
             confidence,
-            if (confidence >= CONFIDENT_THRESHOLD) {
-                ChordPresentation.CONFIDENT
-            } else {
-                ChordPresentation.UNCERTAIN
+            when {
+                confidence >= CONFIDENT_THRESHOLD -> ChordPresentation.CONFIDENT
+                else -> ChordPresentation.UNCERTAIN
             },
         )
+    }
+
+    private fun ambiguousReading(
+        notes: List<DetectedNote>,
+        bassPitchClass: Int?,
+        bassConfidence: Float,
+        tier: ChordTier,
+        scored: List<Pair<ChordName, Double>>,
+        named: ChordName,
+        alternates: List<ChordCandidate>,
+        confidence: Float,
+        gated: Boolean,
+    ): ChordReading? {
+        val other = alternates.firstOrNull()?.name
+            ?: scored.drop(1).firstOrNull { it.first.root != scored[0].first.root }?.first
+        if (other != null) {
+            return buildReading(
+                notes, bassPitchClass, bassConfidence, tier,
+                ChordLabel.Ambiguous(named, other),
+                alternates,
+                confidence,
+                ChordPresentation.AMBIGUOUS,
+            )
+        }
+        // A tier-B quality with no rival reading and no bass still cannot be named alone.
+        return when {
+            gated -> buildReading(
+                notes, bassPitchClass, bassConfidence, tier,
+                ChordLabel.Unnamed,
+                emptyList(),
+                confidence,
+                ChordPresentation.NOTES_ONLY,
+            )
+            else -> null
+        }
     }
 
     /** Tier B': `aug` and `sus2` need their distinguishing tone to be genuinely present. */

@@ -79,8 +79,8 @@ class SignalGroupCallManager(
             call.connect()
             Log.i(TAG, "connecting to the group call for ${groupIdentifier.toHex()}")
             true
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not create the group call", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not create the group call", expected)
             groupCall = null
             groupId = null
             false
@@ -93,8 +93,8 @@ class SignalGroupCallManager(
         try {
             call.setOutgoingVideoSource(localVideoSink, NoCameraControl)
             call.join()
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not join the group call", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not join the group call", expected)
         }
     }
 
@@ -103,8 +103,8 @@ class SignalGroupCallManager(
         try {
             call.leave()
             call.disconnect()
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not leave the group call", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not leave the group call", expected)
         } finally {
             groupCall = null
             groupId = null
@@ -115,16 +115,16 @@ class SignalGroupCallManager(
     fun setAudioMuted(muted: Boolean) {
         try {
             groupCall?.setOutgoingAudioMuted(muted)
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not change the group call mute state", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not change the group call mute state", expected)
         }
     }
 
     fun setVideoMuted(muted: Boolean, isScreenShare: Boolean = false) {
         try {
             groupCall?.setOutgoingVideoMuted(muted, isScreenShare)
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not change the group call video state", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not change the group call video state", expected)
         }
     }
 
@@ -140,8 +140,8 @@ class SignalGroupCallManager(
             }
             try {
                 groupCall.setMembershipProof(proof)
-            } catch (t: Throwable) {
-                Log.w(TAG, "could not set the membership proof", t)
+            } catch (expected: Throwable) {
+                Log.w(TAG, "could not set the membership proof", expected)
             }
         }
     }
@@ -158,8 +158,8 @@ class SignalGroupCallManager(
                 groupCall.setGroupMembers(
                     members.map { (uuid, ciphertext) -> GroupCall.GroupMemberInfo(uuid, ciphertext) },
                 )
-            } catch (t: Throwable) {
-                Log.w(TAG, "could not set the group members", t)
+            } catch (expected: Throwable) {
+                Log.w(TAG, "could not set the group members", expected)
             }
         }
     }
@@ -219,11 +219,13 @@ class SignalGroupCallManager(
 
     override fun onObservedRemoteMute(groupCall: GroupCall, sourceDemuxId: Long, targetDemuxId: Long) = Unit
 
-    private fun ByteArray.toHex(): String = take(8).joinToString("") { "%02x".format(it) }
+    private fun ByteArray.toHex(): String =
+        take(HEX_PREFIX_BYTES).joinToString("") { "%02x".format(it) }
 
     private companion object {
         const val TAG = "SignalGroupCall"
         const val AUDIO_LEVEL_INTERVAL_MS = 200
         const val SFU_URL = "https://sfu.voip.signal.org"
+        const val HEX_PREFIX_BYTES = 8
     }
 }

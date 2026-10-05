@@ -1,5 +1,6 @@
 package com.vayunmathur.taxi.ipc
 
+import android.net.Uri
 import androidx.core.net.toUri
 import com.vayunmathur.taxi.data.BookingTrip
 import com.vayunmathur.taxi.data.LatLng
@@ -56,16 +57,22 @@ object RideHandoffContract {
      */
     fun parseBooking(uriString: String?): BookingTrip? {
         val uri = uriString?.toUri() ?: return null
-        if (uri.scheme != DEEP_LINK_SCHEME || uri.host != DEEP_LINK_HOST) return null
+        if (!isBookingUri(uri)) return null
+        val (pickup, destination) = bookingPlaces(uri) ?: return null
+        return BookingTrip(pickup, destination)
+    }
+
+    private fun isBookingUri(uri: Uri): Boolean =
+        uri.scheme == DEEP_LINK_SCHEME && uri.host == DEEP_LINK_HOST
+
+    private fun bookingPlaces(uri: Uri): Pair<Place, Place>? {
         val pickupLat = uri.getQueryParameter(PARAM_PICKUP_LAT)?.toDoubleOrNull() ?: return null
         val pickupLng = uri.getQueryParameter(PARAM_PICKUP_LNG)?.toDoubleOrNull() ?: return null
         val destLat = uri.getQueryParameter(PARAM_DEST_LAT)?.toDoubleOrNull() ?: return null
         val destLng = uri.getQueryParameter(PARAM_DEST_LNG)?.toDoubleOrNull() ?: return null
         val pickupLabel = uri.getQueryParameter(PARAM_PICKUP_LABEL)?.ifBlank { null }
         val destLabel = uri.getQueryParameter(PARAM_DEST_LABEL)?.ifBlank { null }
-        return BookingTrip(
-            pickup = Place(pickupLabel.orEmpty(), null, LatLng(pickupLat, pickupLng)),
-            destination = Place(destLabel.orEmpty(), null, LatLng(destLat, destLng)),
-        )
+        return Place(pickupLabel.orEmpty(), null, LatLng(pickupLat, pickupLng)) to
+            Place(destLabel.orEmpty(), null, LatLng(destLat, destLng))
     }
 }

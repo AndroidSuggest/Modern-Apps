@@ -28,6 +28,11 @@ import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+// DataStore accessor overloads for each stored type (byteArray/long/boolean/double/string/
+// stringSet × sync/suspend/flow/default variants) plus the Direct Boot seed helpers. Split
+// across files would scatter one type's read/write pair; the count is inherent to the API
+// surface. FileLength (fatal lint) still caps file size.
+@Suppress("TooManyFunctions")
 class DataStoreUtils internal constructor(private val dataStore: DataStore<Preferences>) {
 
     private constructor(context: Context) : this(createDataStore(context))
@@ -54,7 +59,7 @@ class DataStoreUtils internal constructor(private val dataStore: DataStore<Prefe
 
     suspend fun setByteArray(name: String, value: ByteArray, onlyIfAbsent: Boolean = false) {
         dataStore.edit {
-            if(onlyIfAbsent && it.contains(byteArrayPreferencesKey(name))) return@edit
+            if (onlyIfAbsent && it.contains(byteArrayPreferencesKey(name))) return@edit
             it[byteArrayPreferencesKey(name)] = value
         }
     }
@@ -92,18 +97,18 @@ class DataStoreUtils internal constructor(private val dataStore: DataStore<Prefe
         }
     }
 
-    fun longFlow(s: String): Flow<Long> {
-        return dataStore.data.mapNotNull { it[longPreferencesKey(s)] }.distinctUntilChanged()
+    fun longFlow(key: String): Flow<Long> {
+        return dataStore.data.mapNotNull { it[longPreferencesKey(key)] }.distinctUntilChanged()
     }
 
     fun longFlow(name: String, default: Long): Flow<Long> {
         return dataStore.data.map { it[longPreferencesKey(name)] ?: default }.distinctUntilChanged()
     }
 
-    suspend fun setLong(s: String, userid: Long, onlyIfAbsent: Boolean = false) {
+    suspend fun setLong(key: String, value: Long, onlyIfAbsent: Boolean = false) {
         dataStore.edit {
-            if(onlyIfAbsent && it.contains(longPreferencesKey(s))) return@edit
-            it[longPreferencesKey(s)] = userid
+            if (onlyIfAbsent && it.contains(longPreferencesKey(key))) return@edit
+            it[longPreferencesKey(key)] = value
         }
     }
 
@@ -120,22 +125,22 @@ class DataStoreUtils internal constructor(private val dataStore: DataStore<Prefe
         return updated
     }
 
-    fun doubleFlow(string: String): Flow<Double> {
-        return dataStore.data.mapNotNull { it[doublePreferencesKey(string)] }.distinctUntilChanged()
+    fun doubleFlow(key: String): Flow<Double> {
+        return dataStore.data.mapNotNull { it[doublePreferencesKey(key)] }.distinctUntilChanged()
     }
 
     fun getDouble(name: String): Double? {
         return getWithFallback(doublePreferencesKey(name))
     }
 
-    suspend fun setDouble(string: String, progress: Double) {
+    suspend fun setDouble(key: String, value: Double) {
         dataStore.edit {
-            it[doublePreferencesKey(string)] = progress
+            it[doublePreferencesKey(key)] = value
         }
     }
 
-    fun getString(string: String): String? {
-        return getWithFallback(stringPreferencesKey(string))
+    fun getString(key: String): String? {
+        return getWithFallback(stringPreferencesKey(key))
     }
 
     /** Suspend variant that awaits DataStore hydration. */
@@ -143,10 +148,10 @@ class DataStoreUtils internal constructor(private val dataStore: DataStore<Prefe
         return dataStore.data.first()[stringPreferencesKey(name)]
     }
 
-    suspend fun setString(string: String, value: String, onlyIfAbsent: Boolean = false) {
+    suspend fun setString(key: String, value: String, onlyIfAbsent: Boolean = false) {
         dataStore.edit {
-            if (onlyIfAbsent && it.contains(stringPreferencesKey(string))) return@edit
-            it[stringPreferencesKey(string)] = value
+            if (onlyIfAbsent && it.contains(stringPreferencesKey(key))) return@edit
+            it[stringPreferencesKey(key)] = value
         }
     }
 
@@ -173,33 +178,33 @@ class DataStoreUtils internal constructor(private val dataStore: DataStore<Prefe
         return dataStore.data.first()[stringSetPreferencesKey(name)] ?: emptySet()
     }
 
-    fun addStringToSet(string: String, id: String) {
+    fun addStringToSet(key: String, id: String) {
         scope.launch {
             dataStore.edit {
-                val set = it[stringSetPreferencesKey(string)] ?: setOf()
-                it[stringSetPreferencesKey(string)] = set + id
+                val set = it[stringSetPreferencesKey(key)] ?: setOf()
+                it[stringSetPreferencesKey(key)] = set + id
             }
         }
     }
 
     /** Atomically adds [id] to the set, returning true only if it was not already present. */
-    suspend fun addStringToSetIfAbsent(string: String, id: String): Boolean {
+    suspend fun addStringToSetIfAbsent(key: String, id: String): Boolean {
         var added = false
         dataStore.edit {
-            val set = it[stringSetPreferencesKey(string)] ?: setOf()
+            val set = it[stringSetPreferencesKey(key)] ?: setOf()
             if (id !in set) {
-                it[stringSetPreferencesKey(string)] = set + id
+                it[stringSetPreferencesKey(key)] = set + id
                 added = true
             }
         }
         return added
     }
 
-    fun removeStringFromSet(string: String, id: String) {
+    fun removeStringFromSet(key: String, id: String) {
         scope.launch {
             dataStore.edit {
-                val set = it[stringSetPreferencesKey(string)] ?: setOf()
-                it[stringSetPreferencesKey(string)] = set - id
+                val set = it[stringSetPreferencesKey(key)] ?: setOf()
+                it[stringSetPreferencesKey(key)] = set - id
             }
         }
     }
@@ -217,8 +222,8 @@ class DataStoreUtils internal constructor(private val dataStore: DataStore<Prefe
         }
     }
 
-    fun getBoolean(string: String, bool: Boolean): Boolean {
-        return getWithFallback(booleanPreferencesKey(string)) ?: bool
+    fun getBoolean(key: String, default: Boolean): Boolean {
+        return getWithFallback(booleanPreferencesKey(key)) ?: default
     }
 
     /**
@@ -343,15 +348,24 @@ internal fun MutablePreferences.copyEntriesFrom(
     keys: Set<String>,
     overwrite: Boolean,
 ): Int {
+    val wanted = source.asMap().filterKeys { it.name in keys }
+    if (wanted.isEmpty()) return 0
+    return copyWantedEntries(wanted, overwrite)
+}
+
+private fun MutablePreferences.copyWantedEntries(
+    wanted: Map<Preferences.Key<*>, Any?>,
+    overwrite: Boolean
+): Int {
     var copied = 0
-    for ((key, value) in source.asMap()) {
-        if (key.name !in keys) continue
+    for ((key, value) in wanted) {
         // The value came out of this very key, so it already has the type the key was stored
         // with; the cast only re-attaches what the star projection erased.
         @Suppress("UNCHECKED_CAST")
         val typed = key as Preferences.Key<Any>
         if (!overwrite && contains(typed)) continue
-        this[typed] = value
+        @Suppress("UNCHECKED_CAST")
+        this[typed] = value as Any
         copied++
     }
     return copied

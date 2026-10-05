@@ -5,7 +5,7 @@
 /// endpoint info only fits fast mode for a very short device name.
 /// `deviceToken` must be empty or exactly 2 bytes.
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeBuildBleAdvertisement<
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeBuildBleAdvertisement<
     'l,
 >(
     mut env: JNIEnv<'l>,
@@ -44,7 +44,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeBui
 /// `BleAdvertisement`, or when the embedded `serviceIdHash` is not
 /// `"NearbySharing"`'s — which filters out any other `0xFEF3` advertiser.
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeParseBleAdvertisement<
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeParseBleAdvertisement<
     'l,
 >(
     mut env: JNIEnv<'l>,
@@ -69,7 +69,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativePar
 ///
 /// Service data for the `0xFE2C` FastInitiation beacon. `metadata` must be 2 bytes.
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeFastInitiationServiceData<
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeFastInitiationServiceData<
     'l,
 >(
     mut env: JNIEnv<'l>,
@@ -101,7 +101,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeFas
 /// device name. The metadata key inside is a random decoy — Everyone mode needs no real
 /// credential (see `endpoint_info.rs`).
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeBuildEndpointInfo<'l>(
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeBuildEndpointInfo<'l>(
     mut env: JNIEnv<'l>,
     _cls: JClass<'l>,
     jDeviceName: JString<'l>,
@@ -123,7 +123,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeBui
 /// omitted for a contact-only advertisement. Null when a real device would reject the
 /// blob, so callers can use it as a filter as well as a decoder.
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeParseEndpointInfo<'l>(
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeParseEndpointInfo<'l>(
     mut env: JNIEnv<'l>,
     _cls: JClass<'l>,
     jBlob: JByteArray<'l>,
@@ -150,7 +150,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativePar
 /// Base64 these (URL-safe, unpadded, unwrapped) to get the mDNS instance name GMS
 /// expects. Null unless `endpointId` is exactly 4 ASCII characters.
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeBuildWifiLanServiceInfo<
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeBuildWifiLanServiceInfo<
     'l,
 >(
     mut env: JNIEnv<'l>,
@@ -172,7 +172,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeBui
 /// checks GMS applies (`p000\dnux.java:86-118`), which filters foreign advertisers on the
 /// same service type.
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeParseWifiLanServiceInfo<
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeParseWifiLanServiceInfo<
     'l,
 >(
     mut env: JNIEnv<'l>,
@@ -199,7 +199,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativePar
 /// (`pcp/version ‖ serviceIdHash ‖ endpointId ‖ len ‖ blob`). Advertising the bare blob
 /// leaves the peer with no endpoint id, and it drops us without logging a parse failure.
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeBuildBleEndpointPayload<
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeBuildBleEndpointPayload<
     'l,
 >(
     mut env: JNIEnv<'l>,
@@ -224,7 +224,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeBui
 /// `data` is a `BleAdvertisement.data` field as returned by `nativeParseBleAdvertisement`.
 /// Null when it is not a `"NearbySharing"` endpoint payload.
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeParseBleEndpointInfo<
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeParseBleEndpointInfo<
     'l,
 >(
     mut env: JNIEnv<'l>,
@@ -245,7 +245,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativePar
 /// The same id the peer publishes in its mDNS `WifiLanServiceInfo`, so the BLE and mDNS legs
 /// of discovery can be merged instead of listing one device twice.
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeParseBleEndpointId<'l>(
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeParseBleEndpointId<'l>(
     mut env: JNIEnv<'l>,
     _cls: JClass<'l>,
     jData: JByteArray<'l>,
@@ -275,7 +275,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativePar
 
 /// byte[] nativeBuildPresenceAdvert(String deviceName) -> advert bytes or null
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeBuildPresenceAdvert<'l>(
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeBuildPresenceAdvert<'l>(
     mut env: JNIEnv<'l>,
     _cls: JClass<'l>,
     jName: JString<'l>,
@@ -290,7 +290,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeBui
 /// byte[] nativeParsePresenceAdvert(byte[] serviceData) -> JSON utf8 or null
 /// Returns JSON: {"deviceName":"Pixel 7","deviceType":1,"txPower":0,"isTruncated":false}
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeParsePresenceAdvert<'l>(
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeParsePresenceAdvert<'l>(
     mut env: JNIEnv<'l>,
     _cls: JClass<'l>,
     jBytes: JByteArray<'l>,
@@ -307,7 +307,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativePar
 
 /// String nativeParsePresenceAdvertName(byte[] advertBytes) -> display name or null
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeParsePresenceAdvertName<'l>(
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeParsePresenceAdvertName<'l>(
     mut env: JNIEnv<'l>,
     _cls: JClass<'l>,
     jBytes: JByteArray<'l>,
@@ -324,39 +324,4 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativePar
         Ok(s) => s.into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
-}
-
-/// String nativeQueryTrace(long handle) -> recent protocol events, one per line, or null.
-///
-/// Diagnostic: names the frames each side actually exchanged. A peer that goes quiet gives
-/// no other clue about which frame it disliked, and the wire is encrypted, so a packet
-/// capture cannot answer it either.
-#[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeQueryTrace<'l>(
-    env: JNIEnv<'l>,
-    _cls: JClass<'l>,
-    handle: jlong,
-) -> jni::sys::jobject {
-    let text = with_session(handle, None, |s| Some(s.trace_text()));
-    match text {
-        Some(t) => match env.new_string(t) {
-            Ok(s) => s.into_raw(),
-            Err(_) => std::ptr::null_mut(),
-        },
-        None => std::ptr::null_mut(),
-    }
-}
-
-/// void nativeDestroy(long handle)
-#[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeDestroy<'l>(
-    _env: JNIEnv<'l>,
-    _cls: JClass<'l>,
-    handle: jlong,
-) {
-    let mut map = match sessions().lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    let _ = map.remove(&handle);
 }

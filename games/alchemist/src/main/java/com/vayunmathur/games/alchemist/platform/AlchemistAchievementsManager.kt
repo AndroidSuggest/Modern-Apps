@@ -17,7 +17,7 @@ class AlchemistAchievementsManager(
         CoroutineScope(Dispatchers.IO).launch {
             val ds = DataStoreUtils.getInstance(context)
             val items = ds.stringSetFlow("available_items").first()
-            if (items.size > 4) onAchievementUnlocked("first_creation")
+            if (items.size > INITIAL_SEED_COUNT) onAchievementUnlocked("first_creation")
             onProgressUpdated("collector_50", items.size)
             onProgressUpdated("collector_100", items.size)
             onProgressUpdated("all_discovered", items.size)
@@ -31,10 +31,15 @@ class AlchemistAchievementsManager(
                 if (discoveredFinal) {
                     onAchievementUnlocked("final_item")
                 }
-                if (itemIds.contains(44L)) {
+                if (itemIds.contains(LIFE_ITEM_ID)) {
                     onAchievementUnlocked("created_life")
                 }
             }
         }
+    }
+
+    companion object {
+        private const val INITIAL_SEED_COUNT = 4
+        private const val LIFE_ITEM_ID = 44L
     }
 }

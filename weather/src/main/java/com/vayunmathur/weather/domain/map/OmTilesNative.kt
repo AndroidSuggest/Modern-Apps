@@ -7,14 +7,19 @@ package com.vayunmathur.weather.domain.map
  * instead of crashing.
  */
 object OmTilesNative {
-
+    // Broad catch is deliberate: loadLibrary throws UnsatisfiedLinkError (an Error,
+    // not an Exception) plus undocumented RuntimeExceptions on some ABIs.
+    @Suppress("TooGenericExceptionCaught")
     val isAvailable: Boolean =
         try {
             System.loadLibrary("weather_om")
             android.util.Log.i("OmMap", "libweather_om loaded")
             true
-        } catch (t: Throwable) {
-            android.util.Log.e("OmMap", "System.loadLibrary(weather_om) failed", t)
+        } catch (e: Exception) {
+            android.util.Log.e("OmMap", "System.loadLibrary(weather_om) failed", e)
+            false
+        } catch (e: UnsatisfiedLinkError) {
+            android.util.Log.e("OmMap", "System.loadLibrary(weather_om) failed", e)
             false
         }
 

@@ -4,6 +4,7 @@ import com.vayunmathur.library.util.localizedAmPmMarker
 import kotlinx.datetime.format.DateTimeFormat
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
@@ -30,6 +31,15 @@ class OpeningHours(val rawString: String) {
 
     companion object {
         fun from(input: String): OpeningHours = OpeningHours(input)
+
+        /** Hours per day (24:00 wraps to 00:00); max valid hour/minute values. */
+        private const val HOURS_PER_DAY = 24
+        private const val MAX_HOUR = 23
+        private const val MAX_MINUTE = 59
+        /** Days per week, for the day-range walk. */
+        private const val DAYS_PER_WEEK = 7
+        /** Days scanned forward for the next status change. */
+        private const val NEXT_CHANGE_DAYS = 7
 
         /** OSM spells an all-day interval `00:00-24:00`, which normalises to this. */
         private val ALL_DAY = TimeInterval(LocalTime(0, 0), LocalTime(0, 0))
@@ -107,7 +117,7 @@ class OpeningHours(val rawString: String) {
                     var curr = start
                     while (curr != end) {
                         days.add(curr)
-                        curr = DayOfWeek.entries[(curr.ordinal + 1) % 7]
+                        curr = DayOfWeek.entries[(curr.ordinal + 1) % DAYS_PER_WEEK]
                     }
                     days.add(end)
                 } else {
@@ -147,14 +157,18 @@ class OpeningHours(val rawString: String) {
             val parts = time.trim().split(":")
             if (parts.isEmpty() || parts[0].isBlank()) return null
             return try {
-                var hour = parts[0].toInt()
-                val minute = if (parts.size > 1) parts[1].toIntOrNull() ?: 0 else 0
-                if (hour >= 24) hour -= 24
-                if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null
-                LocalTime(hour, minute)
+                buildTime(parts[0].toInt(), parts.getOrNull(1))
             } catch (_: NumberFormatException) {
                 null
             }
+        }
+
+        /** Hour/minute with 24:00 wrap and range checks, or null. */
+        private fun buildTime(hour: Int, minutePart: String?): LocalTime? {
+            val minute = minutePart?.toIntOrNull() ?: 0
+            val wrapped = if (hour >= HOURS_PER_DAY) hour - HOURS_PER_DAY else hour
+            if (wrapped !in 0..MAX_HOUR || minute !in 0..MAX_MINUTE) return null
+            return LocalTime(wrapped, minute)
         }
     }
 
@@ -172,26 +186,33 @@ class OpeningHours(val rawString: String) {
         val timeZone = TimeZone.currentSystemDefault()
 
         // Check today and the next 6 days
-        for (i in 0..7) {
+        for (i in 0..NEXT_CHANGE_DAYS) {
             val date = current.toInstant(timeZone)
                 .plus(i, DateTimeUnit.DAY, timeZone)
                 .toLocalDateTime(timeZone)
                 .date
 
-            val dayOfWeek = date.dayOfWeek
-            val rule = rules.findLast { it.days.contains(dayOfWeek) } ?: continue
-
-            // Collect all relevant times for this day
-            val changeTimes = rule.intervals.flatMap { listOf(it.start, it.end) }.distinct().sorted()
-
-            for (time in changeTimes) {
-                val candidate = LocalDateTime(date, time)
-                if (candidate > current && isOpen(candidate) != currentlyOpen) {
-                    return candidate
-                }
-            }
+            changeOnDay(date, current, currentlyOpen)?.let { return it }
         }
         return current
+    }
+
+    /** First status-changing boundary on [date] after [current], or null. */
+    private fun changeOnDay(
+        date: LocalDate,
+        current: LocalDateTime,
+        currentlyOpen: Boolean,
+    ): LocalDateTime? {
+        val rule = rules.findLast { it.days.contains(date.dayOfWeek) } ?: return null
+        // Collect all relevant times for this day
+        val changeTimes = rule.intervals.flatMap { listOf(it.start, it.end) }.distinct().sorted()
+        for (time in changeTimes) {
+            val candidate = LocalDateTime(date, time)
+            if (candidate > current && isOpen(candidate) != currentlyOpen) {
+                return candidate
+            }
+        }
+        return null
     }
 
     fun openingHours(): Map<DayOfWeek, String> {

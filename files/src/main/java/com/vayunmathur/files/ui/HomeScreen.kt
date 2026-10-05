@@ -3,11 +3,20 @@ package com.vayunmathur.files.ui
 import android.text.format.Formatter
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,7 +30,25 @@ import com.vayunmathur.files.platform.FileCategory
 import com.vayunmathur.files.platform.FilesActions
 import com.vayunmathur.files.platform.HomeUiState
 import com.vayunmathur.files.platform.StorageInfo
-import com.vayunmathur.library.ui.*
+import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconClose
+import com.vayunmathur.library.ui.IconDelete
+import com.vayunmathur.library.ui.IconDescription
+import com.vayunmathur.library.ui.IconDownload
+import com.vayunmathur.library.ui.IconFolder
+import com.vayunmathur.library.ui.IconImage
+import com.vayunmathur.library.ui.IconLibraryMusic
+import com.vayunmathur.library.ui.IconMenu
+import com.vayunmathur.library.ui.IconVideoCamera
+import com.vayunmathur.library.ui.LazyListScaffold
+import com.vayunmathur.library.ui.LinearProgressIndicator
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.SnackbarHost
+import com.vayunmathur.library.ui.SnackbarHostState
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TopAppBar
+import com.vayunmathur.library.ui.appBarScrollBehavior
 import java.io.File
 @Composable
 fun HomeScreen(
@@ -70,11 +97,31 @@ fun HomeScreen(
                     .padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                CategoryTile(stringResource(R.string.cat_images), { IconImage(tint = COLOR_IMAGE) }) { actions.openCategory(FileCategory.IMAGES) }
-                CategoryTile(stringResource(R.string.cat_videos), { IconVideoCamera(tint = COLOR_VIDEO) }) { actions.openCategory(FileCategory.VIDEOS) }
-                CategoryTile(stringResource(R.string.cat_audio), { IconLibraryMusic(tint = COLOR_AUDIO) }) { actions.openCategory(FileCategory.AUDIO) }
-                CategoryTile(stringResource(R.string.cat_documents), { IconDescription(tint = COLOR_DOC) }) { actions.openCategory(FileCategory.DOCUMENTS) }
-                CategoryTile(stringResource(R.string.cat_downloads), { IconDownload(tint = COLOR_APK) }) { actions.openCategory(FileCategory.DOWNLOADS) }
+                CategoryTile(
+                    stringResource(R.string.cat_images),
+                    { IconImage(tint = COLOR_IMAGE) },
+                    { actions.openCategory(FileCategory.IMAGES) },
+                )
+                CategoryTile(
+                    stringResource(R.string.cat_videos),
+                    { IconVideoCamera(tint = COLOR_VIDEO) },
+                    { actions.openCategory(FileCategory.VIDEOS) },
+                )
+                CategoryTile(
+                    stringResource(R.string.cat_audio),
+                    { IconLibraryMusic(tint = COLOR_AUDIO) },
+                    { actions.openCategory(FileCategory.AUDIO) },
+                )
+                CategoryTile(
+                    stringResource(R.string.cat_documents),
+                    { IconDescription(tint = COLOR_DOC) },
+                    { actions.openCategory(FileCategory.DOCUMENTS) },
+                )
+                CategoryTile(
+                    stringResource(R.string.cat_downloads),
+                    { IconDownload(tint = COLOR_APK) },
+                    { actions.openCategory(FileCategory.DOWNLOADS) },
+                )
             }
         }
 
@@ -87,7 +134,9 @@ fun HomeScreen(
                     subtitle = null,
                     onClick = { bm.realFile?.let { actions.openBookmark(it) } },
                     trailing = {
-                        IconButton(onClick = { bm.realFile?.let { actions.removeBookmark(it) } }) { IconClose() }
+                        IconButton(onClick = {
+                            bm.realFile?.let { actions.removeBookmark(it) }
+                        }) { IconClose() }
                     },
                 )
             }
@@ -172,7 +221,11 @@ private fun HomeRow(
         Column(Modifier.weight(1f)) {
             Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
             subtitle?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
             }
         }
         trailing?.invoke()

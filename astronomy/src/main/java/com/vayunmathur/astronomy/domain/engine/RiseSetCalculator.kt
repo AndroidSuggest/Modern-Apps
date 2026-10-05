@@ -1,6 +1,9 @@
 package com.vayunmathur.astronomy.domain.engine
 
-import kotlin.math.*
+import kotlin.math.abs
+import kotlin.math.acos
+import kotlin.math.cos
+import kotlin.math.sin
 
 object RiseSetCalculator {
     data class RiseTransitSet(
@@ -14,7 +17,13 @@ object RiseSetCalculator {
     const val H0_SUN_DEG = -0.833
     const val H0_STAR_DEG = -0.5667
 
-    fun calc(jd0: Double, latRad: Double, lonRad: Double, getRaDec: (Double) -> RaDec, h0Deg: Double = H0_STAR_DEG): RiseTransitSet {
+    fun calc(
+        jd0: Double,
+        latRad: Double,
+        lonRad: Double,
+        getRaDec: (Double) -> RaDec,
+        h0Deg: Double = H0_STAR_DEG,
+    ): RiseTransitSet {
         val h0Rad = h0Deg.toRad()
         val jdNoon = jd0 + 0.5
         val raDecNoon = getRaDec(jdNoon)
@@ -52,13 +61,23 @@ object RiseSetCalculator {
         }
         var lo = (bestT - 0.1).coerceAtLeast(0.0); var hi = (bestT + 0.1).coerceAtMost(1.0)
         repeat(20) {
-            val mid = (lo + hi) / 2; val jdMid = jd0 + mid; val lstMid = TimeEngine.lstRad(jdMid, lonRad); val raMid = getRaDec(jdMid).raRad; val haMid = (lstMid - raMid).normalizePi()
+            val mid = (lo + hi) / 2
+            val jdMid = jd0 + mid
+            val lstMid = TimeEngine.lstRad(jdMid, lonRad)
+            val raMid = getRaDec(jdMid).raRad
+            val haMid = (lstMid - raMid).normalizePi()
             if (haMid > 0) hi = mid else lo = mid
         }
         return jd0 + (lo + hi) / 2
     }
 
-    private fun findCrossing(jdLo: Double, jdHi: Double, h0Rad: Double, altAt: (Double) -> Double, rising: Boolean): Double? {
+    private fun findCrossing(
+        jdLo: Double,
+        jdHi: Double,
+        h0Rad: Double,
+        altAt: (Double) -> Double,
+        rising: Boolean,
+    ): Double? {
         var lo = jdLo; var hi = jdHi
         var fLo = altAt(lo) - h0Rad; var fHi = altAt(hi) - h0Rad
         if (fLo * fHi > 0) {

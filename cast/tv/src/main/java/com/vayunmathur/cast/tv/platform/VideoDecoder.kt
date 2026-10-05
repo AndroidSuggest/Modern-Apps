@@ -84,7 +84,15 @@ class VideoDecoder(private val surface: Surface, private val codec: VideoCodec) 
                     },
             )
             true
-        } catch (e: Exception) {
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "could not start the ${codec.label} decoder", e)
+            release()
+            false
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "could not start the ${codec.label} decoder", e)
+            release()
+            false
+        } catch (e: UnsupportedOperationException) {
             Log.w(TAG, "could not start the ${codec.label} decoder", e)
             release()
             false
@@ -113,7 +121,9 @@ class VideoDecoder(private val surface: Surface, private val codec: VideoCodec) 
             val flags = if (isKeyFrame) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
             active.queueInputBuffer(index, 0, data.size, presentationTimeUs, flags)
             true
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
+            dropped(e)
+        } catch (e: IllegalArgumentException) {
             dropped(e)
         }
     }
@@ -125,7 +135,7 @@ class VideoDecoder(private val surface: Surface, private val codec: VideoCodec) 
      * has entered a broken state would otherwise log 30 stack traces a second, which is how the audio
      * path once buried its own root cause under 2,634 of them.
      */
-    private fun dropped(cause: Exception?): Boolean {
+    private fun dropped(cause: RuntimeException?): Boolean {
         framesDropped++
         if (cause != null && !tracedFailure) {
             tracedFailure = true
@@ -168,6 +178,9 @@ class VideoDecoder(private val surface: Surface, private val codec: VideoCodec) 
 
     companion object {
 
+        /** Bit rate per Mbit/s, for the human-readable line in `limits`. */
+        private const val MICROS_PER_UNIT = 1_000_000.0
+
         /**
          * What to put in `TV_IDENTITY` - the whole reason the receiver is ours.
          *
@@ -209,7 +222,7 @@ class VideoDecoder(private val surface: Surface, private val codec: VideoCodec) 
                     TAG,
                     "advertising ${codec.label} up to ${advertised.maxWidth}x" +
                         "${advertised.maxHeight} @ ${advertised.maxFrameRate}fps, " +
-                        "${advertised.maxBitRate / 1_000_000.0} Mbit/s from $name (hardware)",
+                        "${advertised.maxBitRate / MICROS_PER_UNIT} Mbit/s from $name (hardware)",
                 )
                 advertised
             },

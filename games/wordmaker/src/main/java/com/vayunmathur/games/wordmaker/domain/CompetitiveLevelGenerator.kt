@@ -57,18 +57,25 @@ class CompetitiveLevelGenerator(private val words: List<String>) {
                 val wordsToTry = (mandatory + others).take(15)
 
                 val placed = mutableListOf<String>()
-                if (placeWords(grid, wordsToTry, placed, rows, cols, rng) &&
-                    placed.size >= 6 && mandatory.all { it in placed }
-                ) {
-                    val wheel = wheelLetters(placed)
-                    val distinct = wheel.toSet().size
-                    if (wheel.size in 5..8 && distinct >= 4) {
-                        return CrosswordData.fromString(gridToString(grid))
-                    }
+                val succeeded = placeWords(grid, wordsToTry, placed, rows, cols, rng)
+                if (succeeded && isAcceptableBoard(placed, mandatory)) {
+                    return CrosswordData.fromString(gridToString(grid))
                 }
             }
         }
         return null
+    }
+
+    /** Enough placed words, all mandatory ones present, and a usable letter wheel. */
+    private fun isAcceptableBoard(placed: List<String>, mandatory: List<String>): Boolean {
+        if (placed.size < MIN_PLACED_WORDS) return false
+        if (!mandatory.all { it in placed }) return false
+        return hasUsableWheel(wheelLetters(placed))
+    }
+
+    private fun hasUsableWheel(wheel: List<Char>): Boolean {
+        if (wheel.size !in MIN_WHEEL_LETTERS..MAX_WHEEL_LETTERS) return false
+        return wheel.toSet().size >= MIN_WHEEL_DISTINCT
     }
 
     private fun counts(word: String): Map<Char, Int> {
@@ -146,24 +153,43 @@ class CompetitiveLevelGenerator(private val words: List<String>) {
         cols: Int
     ): Boolean {
         if (horizontal) {
-            if (c + word.length > cols) return false
-            for (i in word.indices) {
-                val ch = grid[r][c + i]
-                if (ch != ' ' && ch != word[i]) return false
-                if (ch == ' ' && !checkNeighbors(grid, r, c + i, true, rows, cols)) return false
-            }
-            if (c > 0 && grid[r][c - 1] != ' ') return false
-            if (c + word.length < cols && grid[r][c + word.length] != ' ') return false
-        } else {
-            if (r + word.length > rows) return false
-            for (i in word.indices) {
-                val ch = grid[r + i][c]
-                if (ch != ' ' && ch != word[i]) return false
-                if (ch == ' ' && !checkNeighbors(grid, r + i, c, false, rows, cols)) return false
-            }
-            if (r > 0 && grid[r - 1][c] != ' ') return false
-            if (r + word.length < rows && grid[r + word.length][c] != ' ') return false
+            return canPlaceRun(
+                word = word,
+                length = cols,
+                start = c,
+                cellAt = { i -> grid[r][c + i] },
+                neighborsClear = { i -> checkNeighbors(grid, r, c + i, true, rows, cols) },
+                beforeBlocked = c > 0 && grid[r][c - 1] != ' ',
+                afterBlocked = c + word.length < cols && grid[r][c + word.length] != ' ',
+            )
         }
+        return canPlaceRun(
+            word = word,
+            length = rows,
+            start = r,
+            cellAt = { i -> grid[r + i][c] },
+            neighborsClear = { i -> checkNeighbors(grid, r + i, c, false, rows, cols) },
+            beforeBlocked = r > 0 && grid[r - 1][c] != ' ',
+            afterBlocked = r + word.length < rows && grid[r + word.length][c] != ' ',
+        )
+    }
+
+    private fun canPlaceRun(
+        word: String,
+        length: Int,
+        start: Int,
+        cellAt: (Int) -> Char,
+        neighborsClear: (Int) -> Boolean,
+        beforeBlocked: Boolean,
+        afterBlocked: Boolean,
+    ): Boolean {
+        if (start + word.length > length) return false
+        for (i in word.indices) {
+            val ch = cellAt(i)
+            if (ch != ' ' && ch != word[i]) return false
+            if (ch == ' ' && !neighborsClear(i)) return false
+        }
+        if (beforeBlocked || afterBlocked) return false
         return true
     }
 
@@ -225,6 +251,10 @@ class CompetitiveLevelGenerator(private val words: List<String>) {
         private const val COMMON_LIMIT = 20000
         private const val WHEEL_ATTEMPTS = 60
         private const val PLACEMENT_ATTEMPTS = 120
+        private const val MIN_PLACED_WORDS = 6
+        private const val MIN_WHEEL_LETTERS = 5
+        private const val MAX_WHEEL_LETTERS = 8
+        private const val MIN_WHEEL_DISTINCT = 4
 
         /**
          * Loads and de-dupes the common word list shipped under assets/wordgen/, mirroring the
@@ -232,62 +262,75 @@ class CompetitiveLevelGenerator(private val words: List<String>) {
          * frequency order preserved, bad words removed).
          */
         fun fromAssets(context: Context): CompetitiveLevelGenerator {
-            val badExact = runCatching {
-                context.assets.open("wordgen/bad-words.txt").bufferedReader().useLines { lines ->
-                    lines.map { it.trim().uppercase() }.filter { it.isNotEmpty() }.toHashSet()
-                }
-            }.getOrDefault(hashSetOf())
+            val badExact = loadBadWords(context)
+            val badSubstrings = substringBlocklist(badExact)
+            val words = loadCommonWords(context) { !isBadWord(it, badExact, badSubstrings) }
+            return CompetitiveLevelGenerator(words)
+        }
 
-            // Good Christian family filtering:
-            // - Exact matches always blocked (DAMN, HELL, FRIGGING, NIGGAH, ASS, etc)
-            // - Substring blocked for severe slurs len>=4 (NIGGAH contains NIGGA) but NOT for
-            //   swear-adjacent euphemisms where innocent embedding is common:
-            //   FRIG in REFRIGERATOR, HELL in SHELL, CRAP in SCRAP, HECK in CHECK, etc.
-            // - 3-letter innocent substrings ASS/TIT/SEX/CUM allowed as substring (CLASS, TITLE)
-            // Must apply to vertical words as well as horizontal during generation.
-            val christianExactOnly = setOf(
-                "FRIGGING","FRIGGIN","FRIGGED","FRIG","FRIKKIN","FRIKKING","FRICKING","FRICKIN","FRICK",
-                "FECKING","FECKIN","FECK","FREAKING","FREAKIN",
-                "DAMN","DAMNED","DAMNING","DAMNABLY","DAMNDEST","DAMMIT","GODDAMN","GODDAMNED","GODDAM",
-                "HELL","HELLS","HELLISH",
-                "CRAP","CRAPPY","CRAPPER",
-                "PISS","PISSED","PISSER","PISSING","PISSY",
-                "DARN","DARNED","DARNDEST","DANG","DANGED",
-                "HECK","HECKLE","HECKLING","HECKLED","HECKLER",
-                "BLOODY","BLOODILY"
-            )
-            val innocent3 = setOf("ASS", "TIT", "SEX", "CUM")
-            val badSubstrings = badExact.filter { word ->
-                val alpha = word.all { c -> c in 'A'..'Z' }
-                if (!alpha) return@filter false
-                if (word in christianExactOnly) return@filter false // exact-only
-                when {
-                    word.length >= 4 -> true
-                    word.length == 3 && word !in innocent3 -> true
-                    else -> false
-                }
+        private fun loadBadWords(context: Context): Set<String> = runCatching {
+            context.assets.open("wordgen/bad-words.txt").bufferedReader().useLines { lines ->
+                lines.map { it.trim().uppercase() }.filter { it.isNotEmpty() }.toHashSet()
             }
+        }.getOrDefault(hashSetOf())
 
-            fun isBadWord(w: String): Boolean {
-                if (w in badExact) return true
-                for (b in badSubstrings) {
-                    if (b in w) return true
-                }
-                return false
+        private fun substringBlocklist(badExact: Set<String>): List<String> = badExact.filter { word ->
+            val alpha = word.all { c -> c in 'A'..'Z' }
+            if (!alpha) return@filter false
+            if (word in EXACT_ONLY_WORDS) return@filter false // exact-only
+            when {
+                word.length >= MIN_SUBSTRING_BLOCK_LENGTH -> true
+                word.length == SHORT_WORD_LENGTH && word !in INNOCENT_SHORT_WORDS -> true
+                else -> false
             }
+        }
 
+        private fun isBadWord(word: String, badExact: Set<String>, badSubstrings: List<String>): Boolean {
+            if (word in badExact) return true
+            return badSubstrings.any { it in word }
+        }
+
+        private fun loadCommonWords(context: Context, keep: (String) -> Boolean): List<String> {
             val seen = HashSet<String>()
             val words = ArrayList<String>()
             context.assets.open("wordgen/common_words_list.txt").bufferedReader().useLines { lines ->
                 for (raw in lines) {
                     val w = raw.trim().uppercase()
-                    if (w.isNotEmpty() && w.all { it in 'A'..'Z' } && w !in seen && !isBadWord(w)) {
+                    if (isKeepableWord(w, seen, keep)) {
                         seen.add(w)
                         words.add(w)
                     }
                 }
             }
-            return CompetitiveLevelGenerator(words)
+            return words
         }
+
+        private fun isKeepableWord(
+            w: String,
+            seen: Set<String>,
+            keep: (String) -> Boolean,
+        ): Boolean {
+            if (w.isEmpty() || w in seen || !keep(w)) return false
+            return w.all { it in 'A'..'Z' }
+        }
+
+        // Good Christian family filtering:
+        // - Exact matches always blocked (DAMN, HELL, FRIGGING, NIGGAH, ASS, etc)
+        // - Substring blocked for severe slurs len>=4 (NIGGAH contains NIGGA) but NOT for
+        //   swear-adjacent euphemisms where innocent embedding is common:
+        //   FRIG in REFRIGERATOR, HELL in SHELL, CRAP in SCRAP, HECK in CHECK, etc.
+        // - 3-letter innocent substrings ASS/TIT/SEX/CUM allowed as substring (CLASS, TITLE)
+        // Must apply to vertical words as well as horizontal during generation.
+        private val EXACT_ONLY_WORDS = setOf(
+            "FRIGGING", "FRIGGIN", "FRIGGED", "FRIG", "FRIKKIN", "FRIKKING", "FRICKING", "FRICKIN",
+            "FRICK", "FECKING", "FECKIN", "FECK", "FREAKING", "FREAKIN", "DAMN", "DAMNED", "DAMNING",
+            "DAMNABLY", "DAMNDEST", "DAMMIT", "GODDAMN", "GODDAMNED", "GODDAM", "HELL", "HELLS",
+            "HELLISH", "CRAP", "CRAPPY", "CRAPPER", "PISS", "PISSED", "PISSER", "PISSING", "PISSY",
+            "DARN", "DARNED", "DARNDEST", "DANG", "DANGED", "HECK", "HECKLE", "HECKLING", "HECKLED",
+            "HECKLER", "BLOODY", "BLOODILY",
+        )
+        private val INNOCENT_SHORT_WORDS = setOf("ASS", "TIT", "SEX", "CUM")
+        private const val MIN_SUBSTRING_BLOCK_LENGTH = 4
+        private const val SHORT_WORD_LENGTH = 3
     }
 }

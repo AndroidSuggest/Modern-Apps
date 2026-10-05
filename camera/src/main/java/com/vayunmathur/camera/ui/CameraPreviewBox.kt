@@ -274,7 +274,6 @@ internal fun BoxWithConstraintsScope.CameraPreviewBox(
             isStitching = state.panoStitching,
             guideDots = state.panoDots,
             currentAngle = state.panoCurrentAngle,
-            sweepDirection = state.panoDirection,
             currentPitch = state.panoPitch,
             modifier = previewSize
         )

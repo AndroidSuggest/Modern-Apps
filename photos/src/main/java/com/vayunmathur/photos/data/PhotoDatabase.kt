@@ -25,7 +25,11 @@ interface PhotoDao {
     // trash, people) groups/sorts by date descending anyway, so the composition
     // pass now groups pre-ordered rows instead of sorting the whole library on
     // the main thread — cutting first-load jank without changing what's shown.
-    @Query("SELECT id, name, uri, date, width, height, dateModified, exifSet, lat, `long`, duration, fullWidth, fullHeight, croppedWidth, croppedHeight, croppedLeft, croppedTop, projectionType, isTrashed, faceScanned, ocrScanned, clipScanned, mimeType, album FROM Photo ORDER BY date DESC")
+    @Query(
+        "SELECT id, name, uri, date, width, height, dateModified, exifSet, lat, `long`, duration, " +
+            "fullWidth, fullHeight, croppedWidth, croppedHeight, croppedLeft, croppedTop, projectionType, " +
+            "isTrashed, faceScanned, ocrScanned, clipScanned, mimeType, album FROM Photo ORDER BY date DESC"
+    )
     fun getAllFlow(): Flow<List<Photo>>
 
     @Query("SELECT * FROM Photo WHERE id = :id")
@@ -57,7 +61,10 @@ interface PhotoDao {
     @Query("UPDATE Photo SET album = :album WHERE id IN (:ids)")
     suspend fun setAlbum(ids: List<Long>, album: String?)
 
-    @Query("SELECT * FROM Photo WHERE isTrashed = 0 AND (ocrText LIKE '%' || :query || '%' OR name LIKE '%' || :query || '%') ORDER BY date DESC")
+    @Query(
+        "SELECT * FROM Photo WHERE isTrashed = 0 AND " +
+            "(ocrText LIKE '%' || :query || '%' OR name LIKE '%' || :query || '%') ORDER BY date DESC"
+    )
     suspend fun searchPhotos(query: String): List<Photo>
 
     /** Photos already scanned by OCR (numerator of the search-index progress bar). */
@@ -75,6 +82,22 @@ interface PhotoDao {
     @Query("SELECT count(*) FROM Photo WHERE isTrashed = 0 AND duration IS NULL")
     fun getIndexTargetCountFlow(): Flow<Int>
 
+    /** Photos with a stored embedding, i.e. actually indexed (progress numerator). */
+    @Query("SELECT count(*) FROM Photo WHERE clipEmbedding IS NOT NULL AND isTrashed = 0 AND duration IS NULL")
+    fun getClipCountFlow(): Flow<Int>
+
+    /** Photos already scanned for faces (numerator of the progress bar). */
+    @Query("SELECT count(*) FROM Photo WHERE faceScanned = 1 AND isTrashed = 0 AND duration IS NULL")
+    fun getFaceScannedCountFlow(): Flow<Int>
+}
+
+/**
+ * Indexing reads/writes (OCR, CLIP, faces, EXIF backfill), split out of
+ * [PhotoDao] so neither interface exceeds the function-count cap. Served by
+ * [PhotoScanRepository]; the only DAO consumer is the repository layer.
+ */
+@Dao
+interface PhotoScanDao {
     // The three getUnscannedFor* queries project into [PhotoScanTarget] rather
     // than selecting whole rows: a photo awaiting OCR/CLIP/face work has, by
     // definition, nothing on it worth loading, and `SELECT *` pulled every
@@ -82,14 +105,23 @@ interface PhotoDao {
     // served by index_Photo_date, so the workers no longer sort in memory.
 
     /** Not-yet-OCR'd images (skips videos and trashed items). */
-    @Query("SELECT id, uri, date, width, height FROM Photo WHERE ocrScanned = 0 AND isTrashed = 0 AND duration IS NULL ORDER BY date DESC")
+    @Query(
+        "SELECT id, uri, date, width, height FROM Photo " +
+            "WHERE ocrScanned = 0 AND isTrashed = 0 AND duration IS NULL ORDER BY date DESC"
+    )
     suspend fun getUnscannedForOCR(): List<PhotoScanTarget>
 
-    @Query("SELECT id, uri, date, width, height FROM Photo WHERE faceScanned = 0 AND isTrashed = 0 AND duration IS NULL ORDER BY date DESC")
+    @Query(
+        "SELECT id, uri, date, width, height FROM Photo " +
+            "WHERE faceScanned = 0 AND isTrashed = 0 AND duration IS NULL ORDER BY date DESC"
+    )
     suspend fun getUnscannedForFaces(): List<PhotoScanTarget>
 
     /** Not-yet-CLIP-embedded images (skips videos and trashed items). */
-    @Query("SELECT id, uri, date, width, height FROM Photo WHERE clipScanned = 0 AND isTrashed = 0 AND duration IS NULL ORDER BY date DESC")
+    @Query(
+        "SELECT id, uri, date, width, height FROM Photo " +
+            "WHERE clipScanned = 0 AND isTrashed = 0 AND duration IS NULL ORDER BY date DESC"
+    )
     suspend fun getUnscannedForClip(): List<PhotoScanTarget>
 
     /** Photos still needing EXIF/XMP parsing. */
@@ -173,10 +205,6 @@ interface PhotoDao {
         }
     }
 
-    /** Photos with a stored embedding, i.e. actually indexed (progress numerator). */
-    @Query("SELECT count(*) FROM Photo WHERE clipEmbedding IS NOT NULL AND isTrashed = 0 AND duration IS NULL")
-    fun getClipCountFlow(): Flow<Int>
-
     /** Lightweight (id, embedding) rows for semantic search; excludes trashed. */
     @Query("SELECT id, clipEmbedding FROM Photo WHERE clipEmbedding IS NOT NULL AND isTrashed = 0")
     suspend fun getClipEmbeddings(): List<PhotoEmbedding>
@@ -184,10 +212,6 @@ interface PhotoDao {
     /** Wipe every stored CLIP embedding (used when the model/version changes). */
     @Query("UPDATE Photo SET clipEmbedding = NULL, clipScanned = 0")
     suspend fun resetClipScanned()
-
-    /** Photos already scanned for faces (numerator of the progress bar). */
-    @Query("SELECT count(*) FROM Photo WHERE faceScanned = 1 AND isTrashed = 0 AND duration IS NULL")
-    fun getFaceScannedCountFlow(): Flow<Int>
 
     @Query("UPDATE Photo SET faceScanned = 0")
     suspend fun resetFaceScanned()
@@ -239,20 +263,20 @@ data class PhotoExifTarget(
     val uri: String,
 )
 
-/** One photo's OCR output, for the batched write in [PhotoDao.setOcrResults]. */
+/** One photo's OCR output, for the batched write in [PhotoScanDao.setOcrResults]. */
 data class OcrResult(
     val id: Long,
     val text: String?,
     val boxes: String?,
 )
 
-/** One photo's semantic embedding, for the batched write in [PhotoDao.setClipResults]. */
+/** One photo's semantic embedding, for the batched write in [PhotoScanDao.setClipResults]. */
 data class ClipResult(
     val id: Long,
     val embedding: ByteArray?,
 )
 
-/** One photo's parsed EXIF/XMP, for the batched write in [PhotoDao.setExifResults]. */
+/** One photo's parsed EXIF/XMP, for the batched write in [PhotoScanDao.setExifResults]. */
 data class ExifResult(
     val id: Long,
     val lat: Double?,
@@ -263,10 +287,16 @@ data class ExifResult(
 @Database(entities = [Photo::class, Person::class, PhotoFace::class], version = 18, exportSchema = false)
 abstract class PhotoDatabase : RoomDatabase() {
     abstract fun photoDao(): PhotoDao
+    abstract fun photoScanDao(): PhotoScanDao
     abstract fun faceDao(): FaceDao
 
     companion object : com.vayunmathur.library.util.DatabaseMigrations {
-        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+        override val migrations: List<Migration> = listOf(
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
+            MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
+            MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16,
+            MIGRATION_16_17, MIGRATION_17_18,
+        )
     }
 }
 
@@ -299,8 +329,14 @@ val MIGRATION_6_7 = Migration(6, 7) {
     // templates for contacts and library photos. SQL mirrors Room's generated
     // schema exactly so schema validation passes.
     it.execSQL("ALTER TABLE Photo ADD COLUMN faceScanned INTEGER NOT NULL DEFAULT 0")
-    it.execSQL("CREATE TABLE IF NOT EXISTS `ContactFace` (`contactKey` TEXT NOT NULL, `name` TEXT NOT NULL, `embedding` BLOB NOT NULL, `photoUri` TEXT NOT NULL, PRIMARY KEY(`contactKey`))")
-    it.execSQL("CREATE TABLE IF NOT EXISTS `PhotoFace` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `photoId` INTEGER NOT NULL, `embedding` BLOB NOT NULL, `contactKey` TEXT, `contactName` TEXT)")
+    it.execSQL(
+        "CREATE TABLE IF NOT EXISTS `ContactFace` (`contactKey` TEXT NOT NULL, `name` TEXT NOT NULL, " +
+            "`embedding` BLOB NOT NULL, `photoUri` TEXT NOT NULL, PRIMARY KEY(`contactKey`))"
+    )
+    it.execSQL(
+        "CREATE TABLE IF NOT EXISTS `PhotoFace` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`photoId` INTEGER NOT NULL, `embedding` BLOB NOT NULL, `contactKey` TEXT, `contactName` TEXT)"
+    )
     it.execSQL("CREATE INDEX IF NOT EXISTS `index_PhotoFace_photoId` ON `PhotoFace` (`photoId`)")
 }
 
@@ -312,8 +348,15 @@ val MIGRATION_7_8 = Migration(7, 8) {
     // Photo data itself is untouched. SQL mirrors Room's generated schema.
     it.execSQL("DROP TABLE IF EXISTS ContactFace")
     it.execSQL("DROP TABLE IF EXISTS PhotoFace")
-    it.execSQL("CREATE TABLE IF NOT EXISTS `Person` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `centroid` BLOB NOT NULL, `faceCount` INTEGER NOT NULL, `repPhotoId` INTEGER NOT NULL, `repLeft` REAL NOT NULL, `repTop` REAL NOT NULL, `repRight` REAL NOT NULL, `repBottom` REAL NOT NULL)")
-    it.execSQL("CREATE TABLE IF NOT EXISTS `PhotoFace` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `photoId` INTEGER NOT NULL, `clusterId` INTEGER NOT NULL, `embedding` BLOB NOT NULL)")
+    it.execSQL(
+        "CREATE TABLE IF NOT EXISTS `Person` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`centroid` BLOB NOT NULL, `faceCount` INTEGER NOT NULL, `repPhotoId` INTEGER NOT NULL, " +
+            "`repLeft` REAL NOT NULL, `repTop` REAL NOT NULL, `repRight` REAL NOT NULL, `repBottom` REAL NOT NULL)"
+    )
+    it.execSQL(
+        "CREATE TABLE IF NOT EXISTS `PhotoFace` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`photoId` INTEGER NOT NULL, `clusterId` INTEGER NOT NULL, `embedding` BLOB NOT NULL)"
+    )
     it.execSQL("CREATE INDEX IF NOT EXISTS `index_PhotoFace_photoId` ON `PhotoFace` (`photoId`)")
     it.execSQL("CREATE INDEX IF NOT EXISTS `index_PhotoFace_clusterId` ON `PhotoFace` (`clusterId`)")
     it.execSQL("UPDATE Photo SET faceScanned = 0")
@@ -382,7 +425,7 @@ val MIGRATION_11_12 = Migration(11, 12) {
 val MIGRATION_12_13 = Migration(12, 13) {
     // Add MediaStore's MIME_TYPE, which tells animated GIFs apart from stills.
     // Existing rows stay NULL until the next sync backfills them; see
-    // PhotoDao.countMissingMimeType.
+    // PhotoScanDao.countMissingMimeType.
     it.execSQL("ALTER TABLE Photo ADD COLUMN mimeType TEXT")
 }
 
@@ -421,8 +464,16 @@ val MIGRATION_15_16 = Migration(15, 16) {
     // SQL mirrors Room's generated schema exactly so schema validation passes.
     it.execSQL("DROP TABLE IF EXISTS Person")
     it.execSQL("DROP TABLE IF EXISTS PhotoFace")
-    it.execSQL("CREATE TABLE IF NOT EXISTS `Person` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `centroid` BLOB NOT NULL, `faceCount` INTEGER NOT NULL, `name` TEXT)")
-    it.execSQL("CREATE TABLE IF NOT EXISTS `PhotoFace` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `photoId` INTEGER NOT NULL, `clusterId` INTEGER NOT NULL, `embedding` BLOB NOT NULL, `left` REAL NOT NULL, `top` REAL NOT NULL, `right` REAL NOT NULL, `bottom` REAL NOT NULL, `srcWidth` INTEGER NOT NULL, `srcHeight` INTEGER NOT NULL)")
+    it.execSQL(
+        "CREATE TABLE IF NOT EXISTS `Person` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`centroid` BLOB NOT NULL, `faceCount` INTEGER NOT NULL, `name` TEXT)"
+    )
+    it.execSQL(
+        "CREATE TABLE IF NOT EXISTS `PhotoFace` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`photoId` INTEGER NOT NULL, `clusterId` INTEGER NOT NULL, `embedding` BLOB NOT NULL, " +
+            "`left` REAL NOT NULL, `top` REAL NOT NULL, `right` REAL NOT NULL, `bottom` REAL NOT NULL, " +
+            "`srcWidth` INTEGER NOT NULL, `srcHeight` INTEGER NOT NULL)"
+    )
     it.execSQL("CREATE INDEX IF NOT EXISTS `index_PhotoFace_photoId` ON `PhotoFace` (`photoId`)")
     it.execSQL("CREATE INDEX IF NOT EXISTS `index_PhotoFace_clusterId` ON `PhotoFace` (`clusterId`)")
     it.execSQL("UPDATE Photo SET faceScanned = 0")

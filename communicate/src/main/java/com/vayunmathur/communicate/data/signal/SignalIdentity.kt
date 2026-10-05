@@ -31,7 +31,7 @@ internal fun SignalClient.reportIdentityChange(peerAci: String, newIdentityKey: 
     pendingIdentityChanges[peerAci] = newIdentityKey
     Log.w(TAG, "identity key changed for $peerAci")
     scope.launch {
-        _events.emit(
+        eventsMutable.emit(
             SignalEvent.IdentityKeyChanged(
                 conversationId = SignalProtocol.toConversationId(peerAci, null as ByteArray?),
                 peerAci = peerAci,
@@ -96,7 +96,6 @@ suspend fun SignalClient.acceptIdentityChange(peerAci: String, expectedKeyHex: S
  */
 internal suspend fun SignalClient.linkPniToAci(
     senderAci: String,
-    senderDeviceId: Int,
     pniSignature: SignalServiceProtos.PniSignatureMessage,
 ) {
     val e = e2e ?: return
@@ -115,19 +114,17 @@ internal suspend fun SignalClient.linkPniToAci(
         Log.i(TAG, "cannot verify the PNI signature for $senderAci: missing an identity key")
         return
     }
-    val verified = try {
-        IdentityKey(pniIdentity).verifyAlternateIdentity(
-            IdentityKey(aciIdentity),
-            pniSignature.signature.toByteArray(),
-        )
-    } catch (t: Throwable) {
-        Log.w(TAG, "PNI signature verification failed for $senderAci", t)
-        false
-    }
-    if (!verified) {
-        Log.w(TAG, "invalid PNI signature from $senderAci; not associating it with $pniServiceId")
-        return
-    }
+    if (!verifyPniSignature(senderAci, pniServiceId, aciIdentity, pniIdentity, pniSignature)) return
+    mergePniContact(database, senderAci, pniServiceId, pniRaw)
+}
+
+/** Merge the PNI contact row into the ACI after verification. */
+private suspend fun SignalClient.mergePniContact(
+    database: SignalDatabase,
+    senderAci: String,
+    pniServiceId: String,
+    pniRaw: String,
+) {
     val contact = try {
         database.contactDao().getByPni(pniServiceId) ?: database.contactDao().getByPni(pniRaw)
     } catch (_: Exception) {
@@ -143,9 +140,33 @@ internal suspend fun SignalClient.linkPniToAci(
         database.contactDao().deleteByPhone(contact.phoneE164)
         database.contactDao().upsert(contact.copy(aci = senderAci))
         Log.i(TAG, "associated $senderAci with ${contact.phoneE164} via a verified PNI signature")
-    } catch (t: Throwable) {
-        Log.w(TAG, "could not associate $senderAci with ${contact.phoneE164}", t)
+    } catch (expected: Throwable) {
+        Log.w(TAG, "could not associate $senderAci with ${contact.phoneE164}", expected)
     }
+}
+
+/** Verify a PNI alternate-identity signature, logging failures. */
+private suspend fun SignalClient.verifyPniSignature(
+    senderAci: String,
+    pniServiceId: String,
+    aciIdentity: ByteArray,
+    pniIdentity: ByteArray,
+    pniSignature: SignalServiceProtos.PniSignatureMessage,
+): Boolean {
+    val verified = try {
+        IdentityKey(pniIdentity).verifyAlternateIdentity(
+            IdentityKey(aciIdentity),
+            pniSignature.signature.toByteArray(),
+        )
+    } catch (expected: Throwable) {
+        Log.w(TAG, "PNI signature verification failed for $senderAci", expected)
+        false
+    }
+    if (!verified) {
+        Log.w(TAG, "invalid PNI signature from $senderAci; not associating it with $pniServiceId")
+        return false
+    }
+    return true
 }
 
 /** The contact behind a service id, matched on ACI or PNI. */

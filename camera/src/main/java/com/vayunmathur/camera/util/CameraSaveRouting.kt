@@ -31,10 +31,10 @@ internal fun CameraViewModel.prepareStillSave(displayName: String): PendingStill
     // launch / settings toggle and can be stale or null (issue #731).
     updateLocation()
     val metadata = ImageCapture.Metadata().apply {
-        if (_locationEnabled.value) location = lastLocation
+        if (locationEnabledMutable.value) location = lastLocation
         isReversedHorizontal = mirrorCaptures
     }
-    val target = _saveTarget.value
+    val target = saveTargetMutable.value
     if (target is SaveTarget.SafTree) {
         val doc = SafDocuments.createImageDoc(app.contentResolver, target.treeUri, displayName)
         if (doc != null) {
@@ -46,7 +46,9 @@ internal fun CameraViewModel.prepareStillSave(displayName: String): PendingStill
                     return PendingStill(options, doc, stream, displayName)
                 }
                 Log.w("CameraViewModel", "Could not open SAF doc for $displayName; using MediaStore")
-            } catch (e: Exception) {
+            } catch (e: java.io.FileNotFoundException) {
+                Log.w("CameraViewModel", "SAF still save failed for $displayName; using MediaStore", e)
+            } catch (e: SecurityException) {
                 Log.w("CameraViewModel", "SAF still save failed for $displayName; using MediaStore", e)
             }
         } else {
@@ -79,7 +81,7 @@ internal fun PendingStill.resolveUri(results: ImageCapture.OutputFileResults): U
  * blocking I/O on the calling thread — invoke from Dispatchers.IO.
  */
 internal fun CameraViewModel.saveStillBytes(displayName: String, bytes: ByteArray): Uri? {
-    val target = _saveTarget.value
+    val target = saveTargetMutable.value
     if (target is SaveTarget.SafTree) {
         val doc = SafDocuments.createImageDoc(app.contentResolver, target.treeUri, displayName)
         if (doc != null) {
@@ -97,7 +99,7 @@ internal fun CameraViewModel.saveStillBytes(displayName: String, bytes: ByteArra
 
 /** Same as [saveStillBytes] for a [bitmap]. */
 internal fun CameraViewModel.saveStillBitmap(displayName: String, bitmap: Bitmap): Uri? {
-    val target = _saveTarget.value
+    val target = saveTargetMutable.value
     if (target is SaveTarget.SafTree) {
         val doc = SafDocuments.createImageDoc(app.contentResolver, target.treeUri, displayName)
         if (doc != null) {
@@ -115,7 +117,7 @@ internal fun CameraViewModel.saveStillBitmap(displayName: String, bitmap: Bitmap
 
 /** Copies a staged video [file] to the current target. Invoke from Dispatchers.IO. */
 internal fun CameraViewModel.saveVideoStaged(displayName: String, file: java.io.File): Uri? {
-    val target = _saveTarget.value
+    val target = saveTargetMutable.value
     if (target is SaveTarget.SafTree) {
         val doc = SafDocuments.createVideoDoc(app.contentResolver, target.treeUri, "$displayName.mp4")
         if (doc != null) {
@@ -136,7 +138,7 @@ internal fun CameraViewModel.saveVideoStaged(displayName: String, file: java.io.
  * tree resolves to a real path on primary storage. No-op otherwise.
  */
 internal fun CameraViewModel.scanSafDoc(docUri: Uri) {
-    val target = _saveTarget.value as? SaveTarget.SafTree ?: return
+    val target = saveTargetMutable.value as? SaveTarget.SafTree ?: return
     val base = SafDocuments.primaryPath(target.treeUri) ?: return
     val name = try {
         app.contentResolver.query(docUri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
@@ -146,7 +148,7 @@ internal fun CameraViewModel.scanSafDoc(docUri: Uri) {
     } ?: return
     try {
         MediaScannerConnection.scanFile(app, arrayOf("$base/$name"), null, null)
-    } catch (e: Exception) {
+    } catch (e: IllegalStateException) {
         Log.w("CameraViewModel", "Media scan failed for $name", e)
     }
 }

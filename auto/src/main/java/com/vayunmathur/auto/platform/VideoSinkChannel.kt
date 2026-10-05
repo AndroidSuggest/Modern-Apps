@@ -4,7 +4,6 @@ import android.content.Context
 import android.media.MediaCodec
 import android.os.Handler
 import android.os.Looper
-import com.vayunmathur.library.carhost.HostNavState
 import android.os.SystemClock
 import android.util.Log
 import android.view.Choreographer
@@ -15,7 +14,6 @@ import com.vayunmathur.auto.protocol.DisplayRouteKind
 import com.vayunmathur.auto.protocol.DisplayRoutePolicy
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalMessage
-import com.vayunmathur.auto.protocol.NavSnapshot
 import com.vayunmathur.auto.protocol.VideoCodec
 import com.vayunmathur.auto.protocol.gal.MediaAck
 import com.vayunmathur.auto.protocol.gal.MediaSetupRequest
@@ -53,6 +51,9 @@ class VideoSinkChannel(
     @Volatile
     private var display: CarDisplay? = null
 
+    /** Channel id doubles as the GAL service id. */
+    val channelId: Int get() = service.id
+
     /** Posts teardown and vsync control onto the main thread. */
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -83,28 +84,8 @@ class VideoSinkChannel(
      */
     @Volatile
     private var streamStarted = false
-
-    /**
-     * Forwards nav-card map surfaces to the session mirror when the render
-     * pair comes up after this was set. Cached like [nowPlayingSource] for
-     * displays created later.
-     */
-    @Volatile
-    private var mapSurfaceListener: ((Surface?, Int, Int) -> Unit)? = null
-
-    /**
-     * Where the car card's now-playing comes from and where its taps go.
-     * [get] is read when the render pair comes up (plus every snapshot pushed
-     * via [setNowPlaying]); [onTap] toggles phone playback. `null` until the
-     * service wires the media monitor -- unset means the card shows empty.
-     */
-    private var nowPlayingSource: NowPlayingSource? = null
-
-    /** Prev/next transport callbacks; see [setTransportCallbacks]. */
-    private var transportCallbacks: TransportCallbacks? = null
-
-    /** Map palette applier; see [setMapDarkApplier]. */
-    private var mapDarkApplier: ((Boolean) -> Unit)? = null
+    /** Display delegation: feeds, actions and pushes; the channel keeps the wire protocol. */
+    internal val wiring = VideoSinkWiring(current = { display })
 
     /**
      * Frames emitted since the last vsync drain. `drain()` invokes [sendFrame]
@@ -125,15 +106,6 @@ class VideoSinkChannel(
         service.mediaSink.videoConfigsList.firstOrNull()
 
     /**
-     * The frame rate the stream runs at, set in [startStreaming] from the
-     * accepted config (forced to 30 when the entry reports none). Restarting
-     * the frame invalidator on a focus flap reuses this, never re-reads discovery.
-     */
-    private var negotiatedFps = DEFAULT_FRAME_RATE
-
-    val channelId: Int get() = service.id
-
-    /**
      * Current car-display size in pixels, or null before streaming starts.
      * The input sink scales head-unit touch pixels into this space.
      */
@@ -143,179 +115,17 @@ class VideoSinkChannel(
         return config.codecResolution.dimensions()
     }
 
-    /** Wires the now-playing feed from the media monitor; see [nowPlayingSource]. */
-    fun setNowPlayingSource(get: () -> NowPlayingInfo?, onTap: () -> Unit) {
-        nowPlayingSource = NowPlayingSource(get, onTap)
-        nowPlayingSource?.get()?.let { info ->
-            if (info.shouldShowCard()) display?.setNowPlaying(info)
-        }
-        // Late transport wiring must reach an already-up display too.
-        transportCallbacks?.let { callbacks ->
-            display?.onPreviousTap = callbacks.onPrevious
-            display?.onNextTap = callbacks.onNext
-        }
-    }
-
-    /**
-     * Wires the media transport callbacks (prev/next) from the media monitor.
-     * Stored like [nowPlayingSource] so a display created later still gets
-     * them; applied immediately when the render pair is already up.
-     */
-    fun setTransportCallbacks(onPrevious: () -> Unit, onNext: () -> Unit) {
-        transportCallbacks = TransportCallbacks(onPrevious, onNext)
-        display?.onPreviousTap = onPrevious
-        display?.onNextTap = onNext
-    }
-
-    /**
-     * Wires the map palette applier (`CarAppHost.setNight`) so one
-     * [setNightDark] call restyles the rail/cards/drawer and the hosted map.
-     * Stored for displays created later; applied immediately when up.
-     */
-    fun setMapDarkApplier(applier: (Boolean) -> Unit) {
-        mapDarkApplier = applier
-        display?.mapDarkApplier = applier
-    }
-
-    /**
-     * Pushes night + parked state to the car UI. Night restyles the rail,
-     * cards, drawer and (via [setMapDarkApplier]) the map palette; parked
-     * raises the driving-restriction gate. No-ops with no display up; the
-     * display caches both for presentations created later.
-     */
-    fun setNightDark(dark: Boolean) {
-        display?.setNight(dark)
-    }
-
-    /** Pushes parked state to the driving-restriction gate; see [setNightDark]. */
-    fun setParkedBrowsingGate(parked: Boolean) {
-        display?.setParkedBrowsingGate(parked)
-    }
-
-    /** Closes the drawer at trip end; see `CarDisplay.setParked`. */
-    fun closeDrawerOnPark() {
-        display?.setParked(true)
-    }
-
-    /**
-     * Wires the phone-status feed for the rail cluster. Stored for displays
-     * created later; the cluster pulls the latest snapshot on its 1Hz tick.
-     * The source lambda is enough -- the display polls it, so nothing needs
-     * pushing here.
-     */
-    fun setPhoneStatusSource(get: () -> PhoneStatus?) {
-        phoneStatusSource = get
-        display?.phoneStatusSource = get
-    }
-
-    /**
-     * Wires the active-call feed + card actions. The snapshot pushes
-     * immediately when the render pair is up; actions route to the bound
-     * InCallService via the service. Stored for displays created later.
-     */
-    fun setCallSource(
-        get: () -> ActiveCallInfo?,
-        onAnswer: () -> Unit,
-        onEnd: () -> Unit,
-        onHold: () -> Unit,
-        onMute: () -> Unit,
-    ) {
-        callSource = get
-        storedCallActions = CallActions(onAnswer, onEnd, onHold, onMute)
-        display?.onAnswerCall = onAnswer
-        display?.onEndCall = onEnd
-        display?.onHoldToggle = onHold
-        display?.onMuteToggle = onMute
-        display?.setActiveCall(get())
-    }
-
-    /** Latest call snapshot getter; see [setCallSource]. */
-    private var callSource: (() -> ActiveCallInfo?)? = null
-
-    /**
-     * Pushes one active-call snapshot into the car card, if the render pair
-     * is up. The service calls this on every InCall callback so the card
-     * tracks ringing/active/held without waiting for a poll.
-     */
-    fun setActiveCall(info: ActiveCallInfo?) {
-        display?.setActiveCall(info)
-    }
-
-    /** Stored call actions for displays created later; see [setCallSource]. */
-    private var storedCallActions: CallActions? = null
-
-    /**
-     * Forwards the map-surface touch hookup to the display. Stored for
-     * displays created later; applied immediately when the render pair is
-     * already up.
-     */
-    fun setMapTouchForwarder(forward: (Int, Float, Float) -> Boolean) {
-        mapTouchForwarder = forward
-        display?.mapTouchForwarder = forward
-    }
-
-    /** Map-touch hookup for displays created later; see [setMapTouchForwarder]. */
-    private var mapTouchForwarder: ((Int, Float, Float) -> Boolean)? = null
-
-    /** Phone-status getter; see [setPhoneStatusSource]. */
-    private var phoneStatusSource: (() -> PhoneStatus?)? = null
-    fun setNavSource(
-        get: () -> NavSnapshot?,
-        onMapSurface: (Surface?, Int, Int) -> Unit,
-    ) {
-        display?.setMapSurfaceListener(onMapSurface)
-        mapSurfaceListener = onMapSurface
-        get()?.let { display?.setNavSnapshot(it) }
-    }
-
-    /**
-     * Pushes one hosted template state into the car card, if the render pair
-     * is up. The session host calls this on every template invalidate so the
-     * header tracks the app without waiting for a poll.
-     */
-    fun setHostNavState(state: HostNavState) {
-        display?.setHostNavState(state)
-    }
-
-    /**
-     * Pushes one snapshot to the car card, if the render pair is up. The
-     * service calls this on every media-monitor update so the card tracks
-     * playback without waiting for the encoder pump.
-     *
-     * The [NowPlayingInfo.shouldShowCard] gate lives in the card itself; this
-     * forwards unconditionally so a pause still clears a stale "Playing".
-     */
-    fun setNowPlaying(info: NowPlayingInfo) {
-        if (info.shouldShowCard()) {
-            display?.setNowPlaying(info)
-        } else {
-            // Second gate: never hand an idle snapshot to a render pair that
-            // came up later via [setNowPlayingSource] either. The cached source
-            // still updates so resume re-shows instantly.
-            display?.hideNowPlaying()
-        }
-    }
-
-    /**
-     * Pushes one guidance snapshot to the nav banner, if the render pair is
-     * up. The service calls this on every guidance-monitor update; the banner
-     * itself decides show vs GONE.
-     */
-    fun setNavSnapshot(snapshot: NavSnapshot) {
-        display?.setNavSnapshot(snapshot)
-    }
-
     /**
      * Injects one scaled head-unit touch frame into the car UI, if the render
      * pair is up. The ch8 owner scales first; this only forwards. False means
      * "no display yet", and the frame is dropped rather than queued.
      *
      * Single-pointer DOWN on the now-playing card is consumed as a media
-     * toggle via [handleCarTap]; everything else dispatches into the view
-     * tree (app tiles, scroll) like before.
+     * toggle; everything else dispatches into the view tree (app tiles,
+     * scroll) like before.
      */
     fun injectTouch(touch: ScaledTouch): Boolean =
-        display?.injectTouch(
+        display?.input?.injectTouch(
             touch.action,
             touch.pointers.map { Triple(it.x.toFloat(), it.y.toFloat(), it.pointerId) },
             touch.actionIndex,
@@ -323,11 +133,11 @@ class VideoSinkChannel(
 
     /** Injects one head-unit key press or release; false with no display up. */
     fun injectKey(keycode: Int, down: Boolean): Boolean =
-        display?.injectKey(keycode, down) ?: false
+        display?.input?.injectKey(keycode, down) ?: false
 
     /** Injects one head-unit scroll tick; false with no display up. */
     fun injectScroll(delta: Int): Boolean =
-        display?.injectScroll(delta) ?: false
+        display?.input?.injectScroll(delta) ?: false
 
     /** Step 1. Called once the channel is open. */
     fun requestSetup() {
@@ -349,7 +159,7 @@ class VideoSinkChannel(
      */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(16)} for channel $channelId")
+            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         when (type) {
@@ -361,7 +171,7 @@ class VideoSinkChannel(
             // the 0x800B sync pulse -- never answered, never fatal.
             GalMessage.Video.UPDATE_UI_CONFIG_REQUEST ->
                 Log.d(TAG, "update-ui-config response (${payload.size}B); observed")
-            else -> Log.d(TAG, "unhandled video message 0x${type.toString(16)}")
+            else -> Log.d(TAG, "unhandled video message 0x${type.toString(HEX_RADIX)}")
         }
     }
 
@@ -441,7 +251,6 @@ class VideoSinkChannel(
         // advertise 60 but only ack ~30, and the negotiated rate caps the frame
         // invalidator below. A non-positive entry falls back to 30.
         val frameRate = negotiateFrameRate(config)
-        negotiatedFps = frameRate
         val density = config?.density?.takeIf { it > 0 } ?: DEFAULT_DENSITY
 
         Log.i(TAG, "starting video ${width}x$height @${frameRate} dpi $density")
@@ -460,32 +269,7 @@ class VideoSinkChannel(
             holdsProjectionRole = MaosRoleStatus.isProjectionRoleHeld(context),
         ) == DisplayRouteKind.TRUSTED
         display = CarDisplay(context, width, height, density, trusted = trusted).also {
-            val source = nowPlayingSource
-            it.onMediaTap = source?.onTap
-            transportCallbacks?.let { callbacks ->
-                it.onPreviousTap = callbacks.onPrevious
-                it.onNextTap = callbacks.onNext
-            }
-            mapDarkApplier?.let { applier -> it.mapDarkApplier = applier }
-            mapTouchForwarder?.let { forward -> it.mapTouchForwarder = forward }
-            phoneStatusSource?.let { source -> it.phoneStatusSource = source }
-            callSource?.let { source ->
-                // Call actions are service-owned; re-read the current
-                // callbacks from the stored source wiring (see setCallSource).
-                it.setActiveCall(source())
-            }
-            storedCallActions?.let { actions ->
-                it.onAnswerCall = actions.onAnswer
-                it.onEndCall = actions.onEnd
-                it.onHoldToggle = actions.onHold
-                it.onMuteToggle = actions.onMute
-            }
-            source?.get()?.let { info ->
-                if (info.shouldShowCard()) it.setNowPlaying(info)
-            }
-            mapSurfaceListener?.let { forward ->
-                it.setMapSurfaceListener { surface, w, h -> forward(surface, w, h) }
-            }
+            wiring.applyInitial(it)
             it.show(surface)
             it.startFrameInvalidation(frameRate)
         }
@@ -662,11 +446,11 @@ class VideoSinkChannel(
      */
     private fun negotiateFrameRate(accepted: VideoConfiguration?): Int {
         accepted?.frameRate?.takeIf { it >= MIN_SANE_FPS }?.let { return it }
-        val sibling = service.mediaSink.videoConfigsList.firstOrNull { it.frameRate == 30 }
+        val sibling = service.mediaSink.videoConfigsList.firstOrNull { it.frameRate == DEFAULT_FRAME_RATE }
         if (sibling != null) {
             Log.i(TAG, "accepted config reports no usable rate; using offered 30fps entry")
             configuration = sibling
-            return 30
+            return DEFAULT_FRAME_RATE
         }
         Log.i(
             TAG,
@@ -691,25 +475,40 @@ class VideoSinkChannel(
     }
 
     private fun VideoResolution?.dimensions(): Pair<Int, Int> = when (this) {
-        VideoResolution.VIDEO_1280x720 -> 1280 to 720
-        VideoResolution.VIDEO_1920x1080 -> 1920 to 1080
-        VideoResolution.VIDEO_2560x1440 -> 2560 to 1440
-        VideoResolution.VIDEO_3840x2160 -> 3840 to 2160
-        VideoResolution.VIDEO_720x1280 -> 720 to 1280
-        VideoResolution.VIDEO_1080x1920 -> 1080 to 1920
-        VideoResolution.VIDEO_1440x2560 -> 1440 to 2560
-        VideoResolution.VIDEO_2160x3840 -> 2160 to 3840
+        VideoResolution.VIDEO_1280x720 -> DIM_1280 to DIM_720
+        VideoResolution.VIDEO_1920x1080 -> DIM_1920 to DIM_1080
+        VideoResolution.VIDEO_2560x1440 -> DIM_2560 to DIM_1440
+        VideoResolution.VIDEO_3840x2160 -> DIM_3840 to DIM_2160
+        VideoResolution.VIDEO_720x1280 -> DIM_720 to DIM_1280
+        VideoResolution.VIDEO_1080x1920 -> DIM_1080 to DIM_1920
+        VideoResolution.VIDEO_1440x2560 -> DIM_1440 to DIM_2560
+        VideoResolution.VIDEO_2160x3840 -> DIM_2160 to DIM_3840
         // 800x480 is the DHU default and a sane fallback for anything unrecognised.
-        else -> 800 to 480
+        else -> DIM_800 to DIM_480
     }
 
     private companion object {
         const val TAG = "MaAuto.Video"
 
+        /** Radix for hex message-id logging. */
+        const val HEX_RADIX = 16
+
         /** `MediaSetupRequest.media_type`: 1 audio, 3 video. */
         const val MEDIA_TYPE_VIDEO = 3
         const val DEFAULT_FRAME_RATE = 30
         const val DEFAULT_DENSITY = 160
+
+        /** Pixel dimensions by value; shared across the resolution table above. */
+        const val DIM_720 = 720
+        const val DIM_480 = 480
+        const val DIM_800 = 800
+        const val DIM_1080 = 1080
+        const val DIM_1280 = 1280
+        const val DIM_1440 = 1440
+        const val DIM_1920 = 1920
+        const val DIM_2160 = 2160
+        const val DIM_2560 = 2560
+        const val DIM_3840 = 3840
 
         /**
          * Floor for an offered rate we will honor. Below this the head unit

@@ -80,6 +80,10 @@ object PersonalHealthRecords {
         client = healthConnectClient
     }
 
+    // Broad catch is deliberate: this is the availability probe whose contract is to
+    // never throw, and the Health Connect client throws undocumented RuntimeExceptions
+    // (not just declared ones) when the module is missing or outdated.
+    @Suppress("TooGenericExceptionCaught")
     fun isAvailable(): Boolean = try {
         client.features.getFeatureStatus(HealthConnectFeatures.FEATURE_PERSONAL_HEALTH_RECORD) ==
             HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
@@ -95,6 +99,10 @@ object PersonalHealthRecords {
      * because the user can delete a data source from Health Connect's own settings at any time and a
      * stale cached id would make every subsequent write fail.
      */
+    // Broad catch is deliberate: a rejected data source must not cost the user the entry
+    // they just typed — the Room row simply stays unmirrored and a later import reconciles.
+    // The Health Connect client throws undocumented RuntimeExceptions, not just declared ones.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun dataSourceId(): String? {
         if (!isAvailable()) return null
         return dataSourceMutex.withLock {
@@ -132,6 +140,9 @@ object PersonalHealthRecords {
     }
 
     /** Writes one FHIR resource, returning its Health Connect id or null if the write did not land. */
+    // Broad catch is deliberate: a rejected resource must not cost the user the entry they
+    // just typed, so failures are logged and swallowed and the Room row stays unmirrored.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun upsert(dataSourceId: String, data: String): String? = try {
         client.upsertMedicalResources(
             listOf(UpsertMedicalResourceRequest(dataSourceId, FHIR_VERSION, data))
@@ -141,6 +152,9 @@ object PersonalHealthRecords {
         null
     }
 
+    // Broad catch is deliberate: delete is best-effort cleanup — a stale mirror row is
+    // harmless next to a crash, and the client throws undocumented RuntimeExceptions.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun delete(dataSourceId: String, fhirResourceType: Int, fhirResourceId: String) {
         if (!isAvailable()) return
         try {
@@ -167,6 +181,9 @@ object PersonalHealthRecords {
      * Not restricted to this app's own data source: the point of reading is to surface immunisations
      * and medications a health system has synced in, which by definition live somewhere else.
      */
+    // Broad catch is deliberate: an unreadable category must yield an empty list rather
+    // than failing the whole import, and the client throws undocumented RuntimeExceptions.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun readAll(medicalResourceType: Int): List<RawResource> {
         if (!isAvailable()) return emptyList()
         return try {

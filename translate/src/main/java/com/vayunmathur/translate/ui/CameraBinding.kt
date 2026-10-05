@@ -42,6 +42,10 @@ import java.util.concurrent.ExecutorService
 import android.graphics.Rect
 
 /** CameraX binding: preview + analysis tied to one field of view, with OCR fill. */
+// Broad catches are deliberate: CameraX and the OCR pipeline throw undocumented
+// RuntimeExceptions (not just CameraException/IOException), which read as
+// "frame dropped" or "camera unavailable" rather than a crash.
+@Suppress("TooGenericExceptionCaught")
 @Composable
 internal fun CameraBinding(
     context: android.content.Context,
@@ -124,8 +128,8 @@ internal fun CameraBinding(
             inFlight.store(true)
             val bmp = try {
                 proxy.toBitmap()
-            } catch (t: Throwable) {
-                Log.e(TAG, "toBitmap failed", t)
+            } catch (e: Exception) {
+                Log.e(TAG, "toBitmap failed", e)
                 null
             }
             val rotation = proxy.imageInfo.rotationDegrees
@@ -156,8 +160,8 @@ internal fun CameraBinding(
                         OverlayBox(box.corners.map { Offset(it.x, it.y) }, box.text)
                     }
                     frozenFrame.value = upright
-                } catch (t: Throwable) {
-                    Log.e(TAG, "Frame analysis failed", t)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Frame analysis failed", e)
                 } finally {
                     // Measure the gap from the *end* of the pass, so a slow OCR run
                     // doesn't immediately trigger the next one.
@@ -191,8 +195,8 @@ internal fun CameraBinding(
             // Safe (and required) only after binding — setting it on the builder would
             // change the frame [ANALYSIS_SIZE] is resolved in.
             analysis.targetRotation = boundRotation
-        } catch (t: Throwable) {
-            Log.e(TAG, "Camera bind failed", t)
+        } catch (e: Exception) {
+            Log.e(TAG, "Camera bind failed", e)
         }
     }
 }
@@ -265,3 +269,4 @@ internal fun TranslationLoop(
         }
     }
 }
+

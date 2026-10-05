@@ -40,11 +40,7 @@ object DoseSchedule {
         from: Instant,
         timeZone: TimeZone = TimeZone.currentSystemDefault(),
     ): Instant? {
-        if (!schedule.enabled) return null
-        val times = schedule.times.filter { it in 0 until SECONDS_PER_DAY }.sorted()
-        if (times.isEmpty()) return null
-        if (schedule.interval < 1) return null
-        if (schedule.repeatUnit == RepeatUnit.Weekly && schedule.daysOfWeek == 0) return null
+        if (!isUsable(schedule)) return null
 
         val startDate = from.toLocalDateTime(timeZone).date
 
@@ -53,14 +49,35 @@ object DoseSchedule {
             val endDate = schedule.endDate
             if (endDate != null && date > endDate) return null
 
-            if (isDoseDay(schedule, date)) {
-                for (seconds in times) {
-                    val candidate = LocalDateTime(date, LocalTime.fromSecondOfDay(seconds))
-                        .toInstant(timeZone)
-                    if (candidate > from) return candidate
-                }
-            }
+            firstDoseOn(schedule, date, from, timeZone)?.let { return it }
             date = date.plus(1, DateTimeUnit.DAY)
+        }
+        return null
+    }
+
+    /** Guards that reject a schedule before any date arithmetic runs. */
+    private fun isUsable(schedule: MedicationSchedule): Boolean {
+        if (!schedule.enabled) return false
+        if (schedule.times.filter { it in 0 until SECONDS_PER_DAY }.isEmpty()) return false
+        if (schedule.interval < 1) return false
+        if (schedule.repeatUnit == RepeatUnit.Weekly && schedule.daysOfWeek == 0) return false
+        return true
+    }
+
+    /** The first dose due on [date] strictly after [from], or null if none that day. */
+    private fun firstDoseOn(
+        schedule: MedicationSchedule,
+        date: LocalDate,
+        from: Instant,
+        timeZone: TimeZone,
+    ): Instant? {
+        if (!isDoseDay(schedule, date)) return null
+        val times = schedule.times.filter { it in 0 until SECONDS_PER_DAY }.sorted()
+        if (times.isEmpty()) return null
+        for (seconds in times) {
+            val candidate = LocalDateTime(date, LocalTime.fromSecondOfDay(seconds))
+                .toInstant(timeZone)
+            if (candidate > from) return candidate
         }
         return null
     }

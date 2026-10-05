@@ -57,7 +57,9 @@ object AlbumMediaStore {
                 if (resolver.update(photo.uri.toUri(), values, null, null) > 0) {
                     moved += photo.id
                 }
-            } catch (e: Exception) {
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Failed to move photo ${photo.id} to album=$album", e)
+            } catch (e: IllegalArgumentException) {
                 Log.e(TAG, "Failed to move photo ${photo.id} to album=$album", e)
             }
         }

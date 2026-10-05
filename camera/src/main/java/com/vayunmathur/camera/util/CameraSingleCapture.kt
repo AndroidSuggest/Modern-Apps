@@ -18,148 +18,219 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalCamera2Interop::class)
 internal fun CameraViewModel.captureSinglePhoto() {
     val capture = imageCapture ?: return
-    _isCapturing.value = true
+    isCapturingMutable.value = true
     val fileName = "IMG_${MediaStoreSaver.timestamp()}.jpg"
     val pending = prepareStillSave(fileName) ?: run {
-        _isCapturing.value = false
+        isCapturingMutable.value = false
         return
     }
+    val plan = buildSingleCapturePlan(pending) ?: run {
+        isCapturingMutable.value = false
+        return
+    }
+    if (plan.nightExposure != null && plan.cam2Control != null) {
+        applyNightExposureThen(plan, ::runSingleCapture)
+    } else {
+        runSingleCapture(plan)
+    }
+}
+
+/** Everything doCapture/runSingleCapture needs, resolved up front. */
+private data class SingleCapturePlan(
+    val capture: ImageCapture,
+    val pending: PendingStill,
+    val outputOptions: ImageCapture.OutputFileOptions,
+    val exposureNanos: Long?,
+    val nightIso: Int?,
+    val cam2Control: androidx.camera.camera2.interop.Camera2CameraControl?,
+    val nightExposure: NightExposure?,
+    val warmth: Float,
+    val shadows: Float,
+    val mirror: Boolean,
+    val bokeh: Boolean,
+    val strength: Float
+)
+
+/**
+ * Resolves the capture use cases, night override and preview-effect state.
+ * Null when there is no save target (caller clears the in-flight flag).
+ */
+@OptIn(ExperimentalCamera2Interop::class)
+private fun CameraViewModel.buildSingleCapturePlan(pending: PendingStill): SingleCapturePlan? {
+    val capture = imageCapture ?: return null
     val outputOptions = pending.outputOptions
 
-    val stop = CameraViewModel.EXPOSURE_TIME_STOPS[_exposureTimeIndex.value]
+    val stop = CameraViewModel.EXPOSURE_TIME_STOPS[exposureTimeIndexMutable.value]
     // Manual shutter/ISO are already applied live via applyManualControls(); the only transient
     // per-capture override here is the night-mode emulation (fully-auto exposure + night active).
     // Skip it when the vendor NIGHT extension preview is bound: that session runs its own
     // multi-frame AE and rejects Camera2-interop AE_MODE_OFF/manual-exposure options, which makes
     // the capture fail. In that case a plain takePicture() lets the extension produce the shot.
-    val nightExposure = if (nightModeActive.value && isExposureAuto() && !_nightPreviewActive.value)
-        computeNightExposure() else null
+    val nightExposure = if (nightModeActive.value && isExposureAuto() && !nightPreviewActiveMutable.value) {
+        computeNightExposure()
+    } else {
+        null
+    }
     // Used only to drive the long-exposure countdown overlay.
     val exposureNanos = stop.nanos ?: nightExposure?.nanos
-    val nightIso = nightExposure?.iso
     val cam2Control = try {
         boundCamera?.cameraControl?.let {
             androidx.camera.camera2.interop.Camera2CameraControl.from(it)
         }
-    } catch (e: Exception) { Log.w("CameraViewModel", "Camera2 control unavailable", e); null }
+    } catch (e: IllegalArgumentException) {
+        Log.w("CameraViewModel", "Camera2 control unavailable", e)
+        null
+    }
+    return SingleCapturePlan(
+        capture = capture,
+        pending = pending,
+        outputOptions = outputOptions,
+        exposureNanos = exposureNanos,
+        nightIso = nightExposure?.iso,
+        cam2Control = cam2Control,
+        nightExposure = nightExposure,
+        warmth = warmthMutable.value,
+        shadows = shadowsMutable.value,
+        mirror = mirrorCaptures,
+        bokeh = cameraModeMutable.value == CameraMode.PORTRAIT,
+        strength = blurStrengthMutable.value
+    )
+}
+
+/** Applies the transient night exposure, then runs the capture (or the capture directly). */
+@OptIn(ExperimentalCamera2Interop::class)
+private fun CameraViewModel.applyNightExposureThen(plan: SingleCapturePlan, doCapture: (SingleCapturePlan) -> Unit) {
+    try {
+        val options = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
+            .setCaptureRequestOption(
+                android.hardware.camera2.CaptureRequest.CONTROL_AE_MODE,
+                android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_OFF
+            )
+            .setCaptureRequestOption(
+                android.hardware.camera2.CaptureRequest.SENSOR_EXPOSURE_TIME,
+                plan.nightExposure!!.nanos
+            )
+        if (plan.nightIso != null) {
+            options.setCaptureRequestOption(
+                android.hardware.camera2.CaptureRequest.SENSOR_SENSITIVITY,
+                plan.nightIso
+            )
+        }
+        plan.cam2Control!!.setCaptureRequestOptions(options.build())
+            .addListener({ doCapture(plan) }, ContextCompat.getMainExecutor(app))
+    } catch (e: IllegalStateException) {
+        Log.w("CameraViewModel", "Failed to set night exposure", e)
+        doCapture(plan)
+    } catch (e: IllegalArgumentException) {
+        Log.w("CameraViewModel", "Failed to set night exposure", e)
+        doCapture(plan)
+    }
+}
+
+/** Runs the single capture described by [plan] (night override already applied). */
+private fun CameraViewModel.runSingleCapture(plan: SingleCapturePlan) {
+    if (plan.exposureNanos != null && plan.exposureNanos >= CameraViewModel.NIGHT_TARGET_EXPOSURE_NANOS) {
+        startLongExposureCountdown(plan.exposureNanos)
+    }
 
     fun restoreAfterNight() {
         // Undo the transient night override by re-asserting the (auto) manual-control state.
-        if (nightExposure != null) applyManualControls()
+        if (plan.nightExposure != null) applyManualControls()
     }
 
-    fun doCapture() {
-        if (exposureNanos != null && exposureNanos >= 250_000_000L) {
-            startLongExposureCountdown(exposureNanos)
-        }
     fun finishCapture(uri: Uri?) {
-            _isCapturing.value = false
-            stopLongExposureCountdown()
-            restoreAfterNight()
-            pending.closeStream()
-            if (uri != null) setLastCaptureUri(uri)
-        }
-
-        val warmth = _warmth.value
-        val shadows = _shadows.value
-        val mirror = mirrorCaptures
-        val bokeh = _cameraMode.value == CameraMode.PORTRAIT
-        val strength = _blurStrength.value
-        if (bokeh || warmth != 0f || shadows != 0f) {
-            // The warmth/shadows adjustment and the portrait bokeh only live in the preview
-            // RenderEffect, so bake them into the pixels here: capture in-memory, re-run the
-            // same shader/color matrix over the full-resolution frame, then re-encode.
-            // Re-encoding drops the JPEG's EXIF, so we copy it back from the original frame
-            // (plus GPS and the orientation tag) to match the normal path.
-            // Caveat: this processed path is always SDR JPEG — decoding to an ARGB_8888 bitmap
-            // discards any Ultra HDR gain map, so processed captures lose HDR even when
-            // Ultra HDR is otherwise active. Normal (unprocessed) captures keep the gain map.
-            capture.takePicture(
-                ContextCompat.getMainExecutor(app),
-                object : ImageCapture.OnImageCapturedCallback() {
-                    override fun onCaptureSuccess(image: ImageProxy) {
-                        val degrees = image.imageInfo.rotationDegrees
-                        // cropRect reflects setCropAspectRatio; apply it to the decoded bitmap
-                        // since the raw JPEG buffer is always full-frame for in-memory captures.
-                        val cropRect = Rect(image.cropRect)
-                        val sourceJpeg = try {
-                            image.planes[0].buffer.let { buf ->
-                                ByteArray(buf.remaining()).also { buf.get(it) }
-                            }
-                        } finally {
-                            image.close()
-                        }
-                        viewModelScope.launch {
-                            val uri = withContext(Dispatchers.IO) {
-                                runCatching {
-                                    val decodedRaw = BitmapFactory.decodeByteArray(sourceJpeg, 0, sourceJpeg.size)
-                                        ?: error("Could not decode captured frame")
-                                    val decoded = cropToRect(decodedRaw, cropRect)
-                                    // The bokeh renderer folds the colour matrix and the mirror in
-                                    // as it composites; it leaves `decoded` alone if it can't run,
-                                    // so fall back to the plain colour pass.
-                                    val adjusted = (if (bokeh) {
-                                        stillBokeh.render(decoded, degrees, strength, warmth, shadows, mirror)
-                                    } else null)
-                                        ?: applyColorAdjustments(decoded, warmth, shadows, mirror)
-                                    val name = "IMG_${MediaStoreSaver.timestamp()}.jpg"
-                                    saveStillBitmap(name, adjusted)
-                                        ?.also { writeCaptureExif(it, sourceJpeg, degrees, mirrored = mirror) }
-                                        .also { adjusted.recycle() }
-                                }.getOrNull()
-                            }
-                            finishCapture(uri)
-                        }
-                    }
-                    override fun onError(exception: ImageCaptureException) {
-                        Log.e("CameraViewModel", "Adjusted capture failed", exception)
-                        finishCapture(null)
-                    }
-                }
-            )
-            return
-        }
-
-        capture.takePicture(
-            outputOptions,
-            ContextCompat.getMainExecutor(app),
-            object : ImageCapture.OnImageSavedCallback {
-                override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                    finishCapture(pending.resolveUri(outputFileResults))
-                }
-                override fun onError(exception: ImageCaptureException) {
-                    finishCapture(null)
-                }
-            }
-        )
+        isCapturingMutable.value = false
+        stopLongExposureCountdown()
+        restoreAfterNight()
+        plan.pending.closeStream()
+        if (uri != null) setLastCaptureUri(uri)
     }
 
-    if (nightExposure != null && cam2Control != null) {
-        try {
-            val options = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
-                .setCaptureRequestOption(
-                    android.hardware.camera2.CaptureRequest.CONTROL_AE_MODE,
-                    android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_OFF
-                )
-                .setCaptureRequestOption(
-                    android.hardware.camera2.CaptureRequest.SENSOR_EXPOSURE_TIME,
-                    nightExposure.nanos
-                )
-            if (nightIso != null) {
-                options.setCaptureRequestOption(
-                    android.hardware.camera2.CaptureRequest.SENSOR_SENSITIVITY,
-                    nightIso
-                )
-            }
-            cam2Control.setCaptureRequestOptions(options.build())
-                .addListener({ doCapture() }, ContextCompat.getMainExecutor(app))
-        } catch (e: Exception) {
-            Log.w("CameraViewModel", "Failed to set night exposure", e)
-            doCapture()
-        }
-    } else {
-        doCapture()
+    if (plan.bokeh || plan.warmth != 0f || plan.shadows != 0f) {
+        captureProcessedSingle(plan, ::finishCapture)
+        return
     }
+
+    plan.capture.takePicture(
+        plan.outputOptions,
+        ContextCompat.getMainExecutor(app),
+        object : ImageCapture.OnImageSavedCallback {
+            override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                finishCapture(plan.pending.resolveUri(outputFileResults))
+            }
+            override fun onError(exception: ImageCaptureException) {
+                finishCapture(null)
+            }
+        }
+    )
+}
+
+/**
+ * In-memory capture with the preview's bokeh/colour baked in (plus EXIF copied back),
+ * since the warmth/shadows adjustment and portrait bokeh only live in the preview
+ * RenderEffect. Re-encoding drops the JPEG's EXIF, so it is copied back from the
+ * original frame (plus GPS and the orientation tag) to match the normal path.
+ * Caveat: this processed path is always SDR JPEG — decoding to an ARGB_8888 bitmap
+ * discards any Ultra HDR gain map, so processed captures lose HDR even when
+ * Ultra HDR is otherwise active. Normal (unprocessed) captures keep the gain map.
+ */
+private fun CameraViewModel.captureProcessedSingle(
+    plan: SingleCapturePlan,
+    finishCapture: (Uri?) -> Unit
+) {
+    plan.capture.takePicture(
+        ContextCompat.getMainExecutor(app),
+        object : ImageCapture.OnImageCapturedCallback() {
+            override fun onCaptureSuccess(image: ImageProxy) {
+                val degrees = image.imageInfo.rotationDegrees
+                // cropRect reflects setCropAspectRatio; apply it to the decoded bitmap
+                // since the raw JPEG buffer is always full-frame for in-memory captures.
+                val cropRect = Rect(image.cropRect)
+                val sourceJpeg = try {
+                    image.planes[0].buffer.let { buf ->
+                        ByteArray(buf.remaining()).also { buf.get(it) }
+                    }
+                } finally {
+                    image.close()
+                }
+                viewModelScope.launch {
+                    val uri = withContext(Dispatchers.IO) {
+                        runCatching {
+                            processSingleFrame(plan, sourceJpeg, cropRect, degrees)
+                        }.getOrNull()
+                    }
+                    finishCapture(uri)
+                }
+            }
+            override fun onError(exception: ImageCaptureException) {
+                Log.e("CameraViewModel", "Adjusted capture failed", exception)
+                finishCapture(null)
+            }
+        }
+    )
+}
+
+/** Decodes, adjusts, re-encodes and saves one processed frame. */
+private fun CameraViewModel.processSingleFrame(
+    plan: SingleCapturePlan,
+    sourceJpeg: ByteArray,
+    cropRect: Rect,
+    degrees: Int
+): Uri? {
+    val decodedRaw = BitmapFactory.decodeByteArray(sourceJpeg, 0, sourceJpeg.size)
+        ?: error("Could not decode captured frame")
+    val decoded = cropToRect(decodedRaw, cropRect)
+    // The bokeh renderer folds the colour matrix and the mirror in
+    // as it composites; it leaves `decoded` alone if it can't run,
+    // so fall back to the plain colour pass.
+    val adjusted = (if (plan.bokeh) {
+        stillBokeh.render(decoded, degrees, plan.strength, plan.warmth, plan.shadows, plan.mirror)
+    } else null)
+        ?: applyColorAdjustments(decoded, plan.warmth, plan.shadows, plan.mirror)
+    val name = "IMG_${MediaStoreSaver.timestamp()}.jpg"
+    return saveStillBitmap(name, adjusted)
+        ?.also { writeCaptureExif(it, sourceJpeg, degrees, mirrored = plan.mirror) }
+        .also { adjusted.recycle() }
 }
 
 /**
@@ -170,15 +241,15 @@ internal fun CameraViewModel.captureSinglePhoto() {
  */
 fun CameraViewModel.capturePhotoForResult(onSaved: (Bitmap?) -> Unit, onError: () -> Unit) {
     val capture = imageCapture ?: return onError()
-    if (_isCapturing.value) return
-    _isCapturing.value = true
+    if (isCapturingMutable.value) return
+    isCapturingMutable.value = true
     val executor = ContextCompat.getMainExecutor(app)
     val outputUri = resultOutputUri
 
     // Portrait bokeh / warmth / shadows only exist in the preview, so a shot taken in those
     // modes has to be re-processed before it goes back to the caller, exactly as
     // captureSinglePhoto() does for the gallery.
-    if (_cameraMode.value == CameraMode.PORTRAIT || _warmth.value != 0f || _shadows.value != 0f) {
+    if (cameraModeMutable.value == CameraMode.PORTRAIT || warmthMutable.value != 0f || shadowsMutable.value != 0f) {
         capturePhotoForResultProcessed(capture, outputUri, onSaved, onError)
         return
     }
@@ -186,17 +257,20 @@ fun CameraViewModel.capturePhotoForResult(onSaved: (Bitmap?) -> Unit, onError: (
     if (outputUri != null) {
         val outputStream = try {
             app.contentResolver.openOutputStream(outputUri)
-        } catch (e: Exception) {
+        } catch (e: java.io.FileNotFoundException) {
+            Log.e("CameraViewModel", "Could not open EXTRA_OUTPUT for writing", e)
+            null
+        } catch (e: SecurityException) {
             Log.e("CameraViewModel", "Could not open EXTRA_OUTPUT for writing", e)
             null
         }
         if (outputStream == null) {
-            _isCapturing.value = false
+            isCapturingMutable.value = false
             return onError()
         }
         val metadata = ImageCapture.Metadata().apply {
             updateLocation()
-            if (_locationEnabled.value) location = lastLocation
+            if (locationEnabledMutable.value) location = lastLocation
             isReversedHorizontal = mirrorCaptures
         }
         val outputOptions = ImageCapture.OutputFileOptions.Builder(outputStream)
@@ -204,11 +278,11 @@ fun CameraViewModel.capturePhotoForResult(onSaved: (Bitmap?) -> Unit, onError: (
             .build()
         capture.takePicture(outputOptions, executor, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                _isCapturing.value = false
+                isCapturingMutable.value = false
                 onSaved(null)
             }
             override fun onError(exception: ImageCaptureException) {
-                _isCapturing.value = false
+                isCapturingMutable.value = false
                 Log.e("CameraViewModel", "IMAGE_CAPTURE to EXTRA_OUTPUT failed", exception)
                 onError()
             }
@@ -216,7 +290,7 @@ fun CameraViewModel.capturePhotoForResult(onSaved: (Bitmap?) -> Unit, onError: (
     } else {
         capture.takePicture(executor, object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
-                _isCapturing.value = false
+                isCapturingMutable.value = false
                 val mirror = mirrorCaptures
                 val thumbnail = try {
                     downscaledThumbnail(image, mirror)
@@ -226,7 +300,7 @@ fun CameraViewModel.capturePhotoForResult(onSaved: (Bitmap?) -> Unit, onError: (
                 onSaved(thumbnail)
             }
             override fun onError(exception: ImageCaptureException) {
-                _isCapturing.value = false
+                isCapturingMutable.value = false
                 Log.e("CameraViewModel", "IMAGE_CAPTURE thumbnail capture failed", exception)
                 onError()
             }
@@ -246,11 +320,11 @@ internal fun CameraViewModel.capturePhotoForResultProcessed(
     onSaved: (Bitmap?) -> Unit,
     onError: () -> Unit,
 ) {
-    val warmth = _warmth.value
-    val shadows = _shadows.value
+    val warmth = warmthMutable.value
+    val shadows = shadowsMutable.value
     val mirror = mirrorCaptures
-    val bokeh = _cameraMode.value == CameraMode.PORTRAIT
-    val strength = _blurStrength.value
+    val bokeh = cameraModeMutable.value == CameraMode.PORTRAIT
+    val strength = blurStrengthMutable.value
 
     capture.takePicture(
         ContextCompat.getMainExecutor(app),
@@ -297,7 +371,7 @@ internal fun CameraViewModel.capturePhotoForResultProcessed(
                             }
                         }
                     }
-                    _isCapturing.value = false
+                    isCapturingMutable.value = false
                     result.fold(
                         onSuccess = { onSaved(it) },
                         onFailure = {
@@ -308,7 +382,7 @@ internal fun CameraViewModel.capturePhotoForResultProcessed(
                 }
             }
             override fun onError(exception: ImageCaptureException) {
-                _isCapturing.value = false
+                isCapturingMutable.value = false
                 Log.e("CameraViewModel", "Processed IMAGE_CAPTURE capture failed", exception)
                 onError()
             }

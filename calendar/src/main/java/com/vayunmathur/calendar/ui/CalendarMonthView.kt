@@ -131,7 +131,7 @@ fun MonthCalendarView(
         Column(Modifier.fillMaxSize().padding(4.dp), Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(4.dp)) {
                 val headerStart = weeks.first()
-                (0..6).forEach { i ->
+                for (i in 0..6) {
                     val d = headerStart.plus(DatePeriod(days = i))
                     Text(
                         localizedDayOfWeekNames(DateNameStyle.SHORT)[d.dayOfWeek.isoDayNumber - 1],

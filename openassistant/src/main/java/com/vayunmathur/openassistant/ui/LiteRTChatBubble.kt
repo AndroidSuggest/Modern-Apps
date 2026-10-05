@@ -112,8 +112,8 @@ fun ChatBubble(message: Message) {
                                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                     }
                                     context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    Log.w("LiteRTChatUi", "Failed to open link: $url", e)
+                                } catch (expected: Exception) {
+                                    Log.w("LiteRTChatUi", "Failed to open link: $url", expected)
                                 }
                             },
                             modifier = Modifier.align(Alignment.End)

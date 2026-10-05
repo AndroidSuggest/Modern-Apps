@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.Flow
  * Single owner of [HealthDatabase]. Replaces every `buildDatabase<HealthDatabase>()`
  * call site (MainActivity, HealthSyncWorker) and the global `HealthAPI.db` lateinit.
  */
+// Delegation facade by design: one thin passthrough per DAO query so callers never
+// touch a DAO directly. Splitting it would only move the same method count elsewhere.
+@Suppress("TooManyFunctions")
 class HealthRepository private constructor(context: Context) :
     RoomRepository<HealthDatabase>(context, HealthDatabase::class) {
 
@@ -21,24 +24,51 @@ class HealthRepository private constructor(context: Context) :
 
     fun getRecordsFlow(type: RecordType): Flow<List<Record>> = dao.getRecordsFlow(type)
     suspend fun getLastRecord(type: RecordType): Record? = dao.getLastRecord(type)
-    fun sumInRange(type: RecordType, startTime: kotlin.time.Instant, endTime: kotlin.time.Instant): Flow<Double> =
-        dao.sumInRange(type, startTime, endTime)
-    fun sumNutritionInRange(type: RecordType, startTime: kotlin.time.Instant, endTime: kotlin.time.Instant): Flow<NutritionData> =
-        dao.sumNutritionInRange(type, startTime, endTime)
-    fun minInRange(type: RecordType, startTime: kotlin.time.Instant, endTime: kotlin.time.Instant): Flow<Double?> =
-        dao.minInRange(type, startTime, endTime)
-    fun maxInRange(type: RecordType, startTime: kotlin.time.Instant, endTime: kotlin.time.Instant): Flow<Double?> =
-        dao.maxInRange(type, startTime, endTime)
-    fun getAllInRange(type: RecordType, startTime: kotlin.time.Instant, endTime: kotlin.time.Instant): Flow<List<Record>> =
-        dao.getAllInRange(type, startTime, endTime)
-    suspend fun getDailySums(type: RecordType, startTime: kotlin.time.Instant, endTime: kotlin.time.Instant): List<HealthDao.DailySum> =
-        dao.getDailySums(type, startTime, endTime)
-    suspend fun getHourlySums(type: RecordType, startTime: Long, endTime: Long): List<HealthDao.HourlySum> =
-        dao.getHourlySums(type, startTime, endTime)
-    suspend fun getDailyAvgs(type: RecordType, startTime: kotlin.time.Instant, endTime: kotlin.time.Instant): List<HealthDao.DailySum> =
-        dao.getDailyAvgs(type, startTime, endTime)
-    suspend fun getHourlyAvgs(type: RecordType, startTime: Long, endTime: Long): List<HealthDao.HourlySum> =
-        dao.getHourlyAvgs(type, startTime, endTime)
+    fun sumInRange(
+        type: RecordType,
+        startTime: kotlin.time.Instant,
+        endTime: kotlin.time.Instant,
+    ): Flow<Double> = dao.sumInRange(type, startTime, endTime)
+    fun sumNutritionInRange(
+        type: RecordType,
+        startTime: kotlin.time.Instant,
+        endTime: kotlin.time.Instant,
+    ): Flow<NutritionData> = dao.sumNutritionInRange(type, startTime, endTime)
+    fun minInRange(
+        type: RecordType,
+        startTime: kotlin.time.Instant,
+        endTime: kotlin.time.Instant,
+    ): Flow<Double?> = dao.minInRange(type, startTime, endTime)
+    fun maxInRange(
+        type: RecordType,
+        startTime: kotlin.time.Instant,
+        endTime: kotlin.time.Instant,
+    ): Flow<Double?> = dao.maxInRange(type, startTime, endTime)
+    fun getAllInRange(
+        type: RecordType,
+        startTime: kotlin.time.Instant,
+        endTime: kotlin.time.Instant,
+    ): Flow<List<Record>> = dao.getAllInRange(type, startTime, endTime)
+    suspend fun getDailySums(
+        type: RecordType,
+        startTime: kotlin.time.Instant,
+        endTime: kotlin.time.Instant,
+    ): List<HealthDao.DailySum> = dao.getDailySums(type, startTime, endTime)
+    suspend fun getHourlySums(
+        type: RecordType,
+        startTime: Long,
+        endTime: Long,
+    ): List<HealthDao.HourlySum> = dao.getHourlySums(type, startTime, endTime)
+    suspend fun getDailyAvgs(
+        type: RecordType,
+        startTime: kotlin.time.Instant,
+        endTime: kotlin.time.Instant,
+    ): List<HealthDao.DailySum> = dao.getDailyAvgs(type, startTime, endTime)
+    suspend fun getHourlyAvgs(
+        type: RecordType,
+        startTime: Long,
+        endTime: Long,
+    ): List<HealthDao.HourlySum> = dao.getHourlyAvgs(type, startTime, endTime)
 
     suspend fun upsert(records: List<Record>) = dao.upsert(records)
     suspend fun deleteByIds(ids: List<String>) = dao.deleteByIds(ids)
@@ -62,9 +92,12 @@ class HealthRepository private constructor(context: Context) :
     suspend fun deleteServingUnit(unit: ServingUnit) = dao.deleteServingUnit(unit)
     suspend fun getUnitsForIngredient(ingredientId: String): List<ServingUnit> = dao.getUnitsForIngredient(ingredientId)
 
-    suspend fun insertRecipeIngredient(recipeIngredient: RecipeIngredient) = dao.insertRecipeIngredient(recipeIngredient)
-    suspend fun deleteRecipeIngredient(recipeIngredient: RecipeIngredient) = dao.deleteRecipeIngredient(recipeIngredient)
-    suspend fun getIngredientsForRecipe(recipeId: String): List<RecipeIngredient> = dao.getIngredientsForRecipe(recipeId)
+    suspend fun insertRecipeIngredient(recipeIngredient: RecipeIngredient) =
+        dao.insertRecipeIngredient(recipeIngredient)
+    suspend fun deleteRecipeIngredient(recipeIngredient: RecipeIngredient) =
+        dao.deleteRecipeIngredient(recipeIngredient)
+    suspend fun getIngredientsForRecipe(recipeId: String): List<RecipeIngredient> =
+        dao.getIngredientsForRecipe(recipeId)
 
     // Medical history — vaccinations, medications and their attachments
     suspend fun upsertVaccination(entry: VaccinationEntry) = medicalDao.upsertVaccination(entry)
@@ -136,7 +169,10 @@ class HealthRepository private constructor(context: Context) :
     suspend fun getDoseEvent(id: String): DoseEvent? = medicalDao.getDoseEvent(id)
     suspend fun deleteDosesFor(medicationId: String) = medicalDao.deleteDosesFor(medicationId)
 
-    /** Expose underlying [HealthDatabase] for call sites that need transactional access (prefer adding a method here instead). */
+    /**
+     * Expose underlying [HealthDatabase] for call sites that need transactional access
+     * (prefer adding a method here instead).
+     */
     internal val database: HealthDatabase get() = db
 
     companion object {

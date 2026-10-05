@@ -10,7 +10,7 @@ import java.time.Instant
 import kotlin.uuid.Uuid
 
 fun MedicalViewModel.saveAllergyDraft() {
-    val draft = _allergyDraft.value
+    val draft = allergyDraftState.value
     if (draft.displayName.isBlank()) return
     viewModelScope.launch {
         val existing = draft.editingId?.let { repository.getAllergy(it) }
@@ -58,7 +58,7 @@ private suspend fun MedicalViewModel.mirrorAllergy(id: String) {
 }
 
 fun MedicalViewModel.saveConditionDraft() {
-    val draft = _conditionDraft.value
+    val draft = conditionDraftState.value
     if (draft.displayName.isBlank()) return
     viewModelScope.launch {
         val existing = draft.editingId?.let { repository.getCondition(it) }
@@ -105,7 +105,7 @@ private suspend fun MedicalViewModel.mirrorCondition(id: String) {
 }
 
 fun MedicalViewModel.saveLabDraft() {
-    val draft = _labDraft.value
+    val draft = labDraftState.value
     if (draft.displayName.isBlank()) return
     viewModelScope.launch {
         val existing = draft.editingId?.let { repository.getLabResult(it) }

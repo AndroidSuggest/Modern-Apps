@@ -16,7 +16,10 @@ abstract class BaseBackupAgent : BackupAgent() {
     open val extraFiles: List<File> = emptyList()
     open val dbCodec: DbBackupCodec? = null
     
-    private val BACKUP_KEY = "full_backup"
+    companion object {
+        private const val BACKUP_KEY = "full_backup"
+        private const val STATE_TIMESTAMP_BYTES = 8
+    }
 
     override fun onBackup(
         oldState: ParcelFileDescriptor?,
@@ -25,7 +28,15 @@ abstract class BaseBackupAgent : BackupAgent() {
     ) {
         val backupFile = File(cacheDir, "backup.zip")
         FileOutputStream(backupFile).use { fos ->
-            BackupHelper.performFullBackup(this, dbConfigs, datastoreNames, prefNames, extraFiles, fos, dbCodec)
+            BackupHelper.performFullBackup(
+                this,
+                dbConfigs,
+                datastoreNames,
+                prefNames,
+                extraFiles,
+                fos,
+                dbCodec
+            )
         }
 
         val lastModified = backupFile.lastModified()
@@ -62,7 +73,15 @@ abstract class BaseBackupAgent : BackupAgent() {
                 val extraFilesMapping = extraFiles.associateBy { it.name }
                 
                 restoreFile.inputStream().use { fis ->
-                    BackupHelper.performFullRestore(this, dbConfigs, datastoreNames, prefNames, extraFilesMapping, fis, dbCodec)
+                    BackupHelper.performFullRestore(
+                        this,
+                        dbConfigs,
+                        datastoreNames,
+                        prefNames,
+                        extraFilesMapping,
+                        fis,
+                        dbCodec
+                    )
                 }
                 
                 restoreFile.delete()
@@ -76,7 +95,7 @@ abstract class BaseBackupAgent : BackupAgent() {
     private fun readState(pfd: ParcelFileDescriptor): Long {
         FileInputStream(pfd.fileDescriptor).use { fis ->
             val bytes = fis.readBytes()
-            if (bytes.size >= 8) {
+            if (bytes.size >= STATE_TIMESTAMP_BYTES) {
                 return java.nio.ByteBuffer.wrap(bytes).long
             }
         }
@@ -85,7 +104,9 @@ abstract class BaseBackupAgent : BackupAgent() {
 
     private fun writeState(pfd: ParcelFileDescriptor, timestamp: Long) {
         FileOutputStream(pfd.fileDescriptor).use { fos ->
-            fos.write(java.nio.ByteBuffer.allocate(8).putLong(timestamp).array())
+            fos.write(
+                java.nio.ByteBuffer.allocate(STATE_TIMESTAMP_BYTES).putLong(timestamp).array()
+            )
         }
     }
     

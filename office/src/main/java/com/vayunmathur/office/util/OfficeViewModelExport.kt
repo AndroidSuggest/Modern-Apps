@@ -8,27 +8,49 @@ import android.net.Uri
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.library.ui.odf.EpubExporter
+import com.vayunmathur.library.ui.odf.HtmlOdfConverter
+import com.vayunmathur.library.ui.odf.LatexExporter
+import com.vayunmathur.library.ui.odf.MarkdownOdfConverter
+import com.vayunmathur.library.ui.odf.OdfContentBlock
+import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.library.ui.odf.OdfSerializer
+import com.vayunmathur.library.ui.odf.OdfSlideElement
+import com.vayunmathur.library.ui.odf.OoxmlExporter
+import com.vayunmathur.library.ui.odf.PdfExporter
+import com.vayunmathur.library.ui.odf.RtfOdfConverter
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.office.R
+import com.vayunmathur.office.odf.OdfMath
 import kotlin.io.encoding.Base64
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import com.vayunmathur.office.odf.*
-import com.vayunmathur.library.ui.odf.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import com.vayunmathur.office.R
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 // --- Export (split from OfficeViewModel.kt for file length) ---
+
+/** Quote a CSV cell when it contains the delimiter, quotes, or newlines. */
+private fun escapeCsvCell(text: String, delimiter: Char): String {
+    if (needsCsvQuoting(text, delimiter)) {
+        return "\"${text.replace("\"", "\"\"")}\""
+    }
+    return text
+}
+
+/** True when a CSV cell needs quoting. */
+private fun needsCsvQuoting(text: String, delimiter: Char): Boolean =
+    text.contains(delimiter) || text.contains('"') || text.contains('\n') || text.contains('\r')
 
 fun OfficeViewModel.exportCsv(delimiter: Char = ','): String {
     val doc = (state.value as? OfficeViewModel.ViewState.Loaded)?.document as? OdfDocument.Spreadsheet ?: return ""
@@ -36,10 +58,7 @@ fun OfficeViewModel.exportCsv(delimiter: Char = ','): String {
     val sheet = doc.sheets.firstOrNull() ?: return ""
     for (row in sheet.rows) {
         sb.appendLine(row.cells.joinToString(delimiter.toString()) { cell ->
-            val text = cell.text
-            if (text.contains(delimiter) || text.contains('"') || text.contains('\n') || text.contains('\r')) {
-                "\"${text.replace("\"", "\"\"")}\""
-            } else text
+            escapeCsvCell(cell.text, delimiter)
         })
     }
     return sb.toString()
@@ -82,13 +101,15 @@ fun OfficeViewModel.exportLatex(): String {
 
 /** EPUB export for text documents (empty for other types). */
 fun OfficeViewModel.exportEpub(): ByteArray {
-    val doc = (state.value as? OfficeViewModel.ViewState.Loaded)?.document as? OdfDocument.TextDocument ?: return ByteArray(0)
+    val doc =
+        (state.value as? OfficeViewModel.ViewState.Loaded)?.document as? OdfDocument.TextDocument ?: return ByteArray(0)
     return EpubExporter.export(doc)
 }
 
 /** PDF export for text documents (empty for other types). */
 fun OfficeViewModel.exportPdf(): ByteArray {
-    val doc = (state.value as? OfficeViewModel.ViewState.Loaded)?.document as? OdfDocument.TextDocument ?: return ByteArray(0)
+    val doc =
+        (state.value as? OfficeViewModel.ViewState.Loaded)?.document as? OdfDocument.TextDocument ?: return ByteArray(0)
     return PdfExporter.export(doc)
 }
 
@@ -103,52 +124,86 @@ fun OfficeViewModel.exportAsPlainText(): String {
     val sb = StringBuilder()
     when (doc) {
         is OdfDocument.TextDocument -> {
-            for (block in doc.content) {
-                when (block) {
-                    is OdfContentBlock.Paragraph -> sb.appendLine(block.paragraph.spans.joinToString("") { it.text })
-                    is OdfContentBlock.Table -> {
-                        for (row in block.table.rows)
-                            sb.appendLine(row.cells.filterNot { it.isCovered }.joinToString("\t") { cell -> cell.paragraphs.joinToString(" ") { p -> p.spans.joinToString("") { it.text } } })
-                    }
-                    is OdfContentBlock.PageBreak -> sb.appendLine("---")
-                    is OdfContentBlock.Image -> sb.appendLine("[Image]")
-                    is OdfContentBlock.Chart -> sb.appendLine("[Chart]")
-                    is OdfContentBlock.Formula -> sb.appendLine("[Formula] " + OdfMath.parse(block.mathml)?.let { OdfMath.toText(it) }.orEmpty())
-                    is OdfContentBlock.TableOfContents -> {
-                        sb.appendLine(block.title)
-                        for (entry in block.entries) sb.appendLine(entry.spans.joinToString("") { it.text })
-                    }
-                    is OdfContentBlock.SectionStart, OdfContentBlock.SectionEnd -> {}
-                }
-            }
+            for (block in doc.content) appendTextBlockPlain(sb, block)
         }
-        is OdfDocument.Spreadsheet -> {
-            for (sheet in doc.sheets) {
-                sb.appendLine("=== ${sheet.name} ===")
-                for (row in sheet.rows) sb.appendLine(row.cells.filterNot { it.isCovered }.joinToString("\t") { it.text })
-                sb.appendLine()
-            }
-        }
+        is OdfDocument.Spreadsheet -> appendSheetPlain(sb, doc)
         is OdfDocument.Presentation -> {
             for (slide in doc.slides) {
                 sb.appendLine("=== ${slide.name} ===")
-                for (el in slide.elements) when (el) {
-                    is OdfSlideElement.Frame -> for (p in el.frame.paragraphs) sb.appendLine(p.spans.joinToString("") { it.text })
-                    is OdfSlideElement.Shape -> for (p in el.shape.text) sb.appendLine(p.spans.joinToString("") { it.text })
-                }
+                appendSlideElementsPlain(sb, slide.elements)
                 sb.appendLine()
             }
         }
         is OdfDocument.Drawing -> {
             for (page in doc.pages) {
                 sb.appendLine("=== ${page.name} ===")
-                for (el in page.elements) when (el) {
-                    is OdfSlideElement.Frame -> for (p in el.frame.paragraphs) sb.appendLine(p.spans.joinToString("") { it.text })
-                    is OdfSlideElement.Shape -> for (p in el.shape.text) sb.appendLine(p.spans.joinToString("") { it.text })
-                }
+                appendSlideElementsPlain(sb, page.elements)
                 sb.appendLine()
             }
         }
     }
     return sb.toString()
+}
+
+/** One text-document block as plain text. */
+private fun appendTextBlockPlain(sb: StringBuilder, block: OdfContentBlock) {
+    when (block) {
+        is OdfContentBlock.Paragraph -> {
+            sb.appendLine(block.paragraph.spans.joinToString("") { it.text })
+        }
+        is OdfContentBlock.Table -> {
+            for (row in block.table.rows) {
+                val line = row.cells.filterNot { it.isCovered }.joinToString("\t") { cell ->
+                    cell.paragraphs.joinToString(" ") { p ->
+                        p.spans.joinToString("") { it.text }
+                    }
+                }
+                sb.appendLine(line)
+            }
+        }
+        is OdfContentBlock.PageBreak -> sb.appendLine("---")
+        is OdfContentBlock.Image -> sb.appendLine("[Image]")
+        is OdfContentBlock.Chart -> sb.appendLine("[Chart]")
+        is OdfContentBlock.Formula -> {
+            val text = OdfMath.parse(block.mathml)?.let { OdfMath.toText(it) }.orEmpty()
+            sb.appendLine("[Formula] $text")
+        }
+        is OdfContentBlock.TableOfContents -> {
+            sb.appendLine(block.title)
+            for (entry in block.entries) {
+                sb.appendLine(entry.spans.joinToString("") { it.text })
+            }
+        }
+        is OdfContentBlock.SectionStart, OdfContentBlock.SectionEnd -> {}
+    }
+}
+
+/** One sheet as plain text. */
+private fun appendSheetPlain(sb: StringBuilder, doc: OdfDocument.Spreadsheet) {
+    for (sheet in doc.sheets) {
+        sb.appendLine("=== ${sheet.name} ===")
+        for (row in sheet.rows) {
+            val line = row.cells.filterNot { it.isCovered }.joinToString("\t") { it.text }
+            sb.appendLine(line)
+        }
+        sb.appendLine()
+    }
+}
+
+/** Slide/drawing elements as plain-text paragraphs. */
+private fun appendSlideElementsPlain(sb: StringBuilder, elements: List<OdfSlideElement>) {
+    for (el in elements) {
+        when (el) {
+            is OdfSlideElement.Frame -> {
+                for (p in el.frame.paragraphs) {
+                    sb.appendLine(p.spans.joinToString("") { it.text })
+                }
+            }
+            is OdfSlideElement.Shape -> {
+                for (p in el.shape.text) {
+                    sb.appendLine(p.spans.joinToString("") { it.text })
+                }
+            }
+        }
+    }
 }

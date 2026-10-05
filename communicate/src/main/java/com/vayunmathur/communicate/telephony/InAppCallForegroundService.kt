@@ -107,7 +107,7 @@ class InAppCallForegroundService : Service() {
             .setStyle(
                 Notification.CallStyle.forIncomingCall(
                     caller,
-                    serviceActionIntent(ACTION_HANGUP, 3),
+                    serviceActionIntent(ACTION_HANGUP, HANGUP_REQUEST_CODE),
                     serviceActionIntent(ACTION_ANSWER, 2),
                 ),
             )
@@ -130,7 +130,9 @@ class InAppCallForegroundService : Service() {
             else -> getString(R.string.inapp_ongoing_call)
         }
         return Notification.Builder(this, CHANNEL_ID)
-            .setStyle(Notification.CallStyle.forOngoingCall(caller, serviceActionIntent(ACTION_HANGUP, 3)))
+            .setStyle(Notification.CallStyle.forOngoingCall(
+                caller,
+                serviceActionIntent(ACTION_HANGUP, HANGUP_REQUEST_CODE)))
             .setContentTitle(title)
             .setSmallIcon(android.R.drawable.sym_action_call)
             .setCategory(Notification.CATEGORY_CALL)
@@ -173,6 +175,7 @@ class InAppCallForegroundService : Service() {
 
         private const val ACTION_ANSWER = "com.vayunmathur.communicate.inappcall.ANSWER_CALL"
         private const val ACTION_HANGUP = "com.vayunmathur.communicate.inappcall.HANGUP_CALL"
+        private const val HANGUP_REQUEST_CODE = 3
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(

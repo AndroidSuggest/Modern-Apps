@@ -11,7 +11,10 @@ import com.vayunmathur.findfamily.domain.NoShowPolicy
 import com.vayunmathur.findfamily.uwb.UwbEnvelope
 import com.vayunmathur.findfamily.uwb.UwbEnvelopeKind
 import com.vayunmathur.findfamily.uwb.UwbInbox
+import com.vayunmathur.findfamily.data.Waypoint
+import com.vayunmathur.findfamily.tracker.PoweredOffKeyStore
 import com.vayunmathur.findfamily.tracker.poweredOffGrantSigningBytes
+import com.vayunmathur.findfamily.uwb.PoweredOffGrant
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlin.io.encoding.Base64
@@ -27,6 +30,12 @@ internal val GEOFENCE_MAX_ACCURACY_METERS: Double
 
 /** How far past a geofence's radius a fix has to be before it counts as having left. */
 internal const val WAYPOINT_EXIT_HYSTERESIS = 1.2
+
+/** Battery level at or below which a low-battery alert fires once per crossing. */
+private const val LOW_BATTERY_THRESHOLD = 15f
+
+/** Assumed battery when no prior fix exists to compare against. */
+private const val FULL_BATTERY = 100f
 
 /**
  * Persists a batch of freshly-decrypted peer locations and inserts unknown senders.
@@ -48,7 +57,11 @@ internal suspend fun LocationTrackingService.processIncomingLocations(incoming: 
     val knownSource = incoming.filter { it.source != LocationSource.UNKNOWN }
     if (knownSource.size != incoming.size) {
         val dropped = incoming.filter { it.source == LocationSource.UNKNOWN }.map { it.userid.toULong() }.distinct()
-        Log.w("FF-Heartbeat", "dropped ${incoming.size - knownSource.size} fix(es) from newer peer(s) with an unrecognised source: $dropped")
+        val droppedCount = incoming.size - knownSource.size
+        Log.w(
+            "FF-Heartbeat",
+            "dropped $droppedCount fix(es) from newer peer(s) with an unrecognised source: $dropped"
+        )
     }
     // Low-accuracy fixes are never used: anything worse than the intake gate never
     // reaches Room, the map, or latestLocations.
@@ -56,14 +69,20 @@ internal suspend fun LocationTrackingService.processIncomingLocations(incoming: 
         it.acc.isFinite() && it.acc >= 0f && it.acc <= MAX_FIX_ACCURACY_METERS
     }
     if (locList.size != knownSource.size) {
-        Log.i("FF-Heartbeat", "dropped ${knownSource.size - locList.size} fix(es) worse than ${MAX_FIX_ACCURACY_METERS}m")
+        Log.i(
+            "FF-Heartbeat",
+            "dropped ${knownSource.size - locList.size} fix(es) worse than ${MAX_FIX_ACCURACY_METERS}m"
+        )
     }
     if (locList.isEmpty()) return
     val currentUsers = repository.getAllUsers()
     val userIDs = currentUsers.map { it.id }
 
     val usersRecieved = locList.map { it.userid }.distinct()
-    Log.d("FF-Heartbeat", "received userids=${usersRecieved.map{ it.toULong() }} self=${Networking.userid.toULong()} known=${userIDs.map{ it.toULong() }}")
+    val receivedIds = usersRecieved.map { it.toULong() }
+    val knownIds = userIDs.map { it.toULong() }
+    val selfId = Networking.userid.toULong()
+    Log.d("FF-Heartbeat", "received userids=$receivedIds self=$selfId known=$knownIds")
     val newUsers = usersRecieved.filter { it !in userIDs && it != Networking.userid }
     Log.d("FF-Heartbeat", "newUsers to insert=${newUsers.map{ it.toULong() }}")
     repository.insertUsersIgnore(newUsers.map {
@@ -107,71 +126,117 @@ internal suspend fun LocationTrackingService.enrichIncomingLocations(
 ) {
     val currentUsers = repository.getAllUsers()
     val currentWaypoints = repository.getAllWaypoints()
-
     currentUsers.forEach { user ->
-        // Self never receives its own published location, so fall back to the latest
-        // stored fix; otherwise "me" never gets its waypoint recomputed.
-        val lastLoc = if (user.id == Networking.userid) latestMap[Networking.userid]
-        else locList.filter { it.userid == user.id }.maxByOrNull { it.timestamp }
-        lastLoc ?: return@forEach
-        val lastSavedLoc = latestMap[user.id]
+        enrichOneUser(user, locList, latestMap, currentWaypoints)
+    }
+}
 
-        if (lastLoc.battery <= 15f && (lastSavedLoc?.battery ?: 100f) > 15f) {
-            if (user.id != Networking.userid) {
-                createNotificationWithCategory(user.name, getString(R.string.notification_low_battery, user.name), "BATTERY_LOW", user.id)
-            }
+private suspend fun LocationTrackingService.enrichOneUser(
+    user: User,
+    locList: List<LocationValue>,
+    latestMap: Map<Long, LocationValue>,
+    currentWaypoints: List<Waypoint>,
+) {
+    // Self never receives its own published location, so fall back to the latest
+    // stored fix; otherwise "me" never gets its waypoint recomputed.
+    val lastLoc = if (user.id == Networking.userid) latestMap[Networking.userid]
+    else locList.filter { it.userid == user.id }.maxByOrNull { it.timestamp }
+    lastLoc ?: return
+    val lastSavedLoc = latestMap[user.id]
+    maybeNotifyLowBattery(user, lastLoc, lastSavedLoc)
+    val prevId = user.lastWaypointId
+    val currentId = resolveWaypointId(prevId, lastLoc, currentWaypoints)
+    val currentWaypoint = currentWaypoints.find { it.id == currentId }
+    val displayName = resolveDisplayName(currentWaypoint, lastLoc)
+    if (currentId != prevId || displayName != user.locationName) {
+        // Atomic partial update — avoids stale snapshot via copy() + upsert()
+        // clobbering sharingAutoToggleAt / sendingEnabled and accidentally
+        // disabling sharing when you didn't intend it.
+        repository.updateLocationMeta(
+            id = user.id,
+            locationName = displayName,
+            lastWaypointId = currentId,
+            lastLocationChangeTime = lastLoc.timestamp.epochSeconds
+        )
+    }
+    maybeNotifyEntryExit(user, prevId, currentId, currentWaypoint, displayName, currentWaypoints)
+}
+
+private fun LocationTrackingService.maybeNotifyLowBattery(
+    user: User,
+    lastLoc: LocationValue,
+    lastSavedLoc: LocationValue?,
+) {
+    if (lastLoc.battery > LOW_BATTERY_THRESHOLD) return
+    if ((lastSavedLoc?.battery ?: FULL_BATTERY) <= LOW_BATTERY_THRESHOLD) return
+    if (user.id == Networking.userid) return
+    createNotificationWithCategory(
+        user.name,
+        getString(R.string.notification_low_battery, user.name),
+        "BATTERY_LOW",
+        user.id
+    )
+}
+
+private fun LocationTrackingService.resolveWaypointId(
+    prevId: Long?,
+    lastLoc: LocationValue,
+    currentWaypoints: List<Waypoint>,
+): Long? {
+    val accuracy = lastLoc.acc.toDouble()
+    // A fix that cannot say which side of the boundary it is on must not move the
+    // answer. A stationary phone on network fixes wanders far enough to cross and
+    // re-cross a 100 m geofence every few seconds, and every crossing notified.
+    if (accuracy > GEOFENCE_MAX_ACCURACY_METERS) return prevId
+    // Entering needs the whole error circle inside; leaving needs it wholly
+    // outside the hysteresis margin, so the edge cases stay where they were.
+    val entered = currentWaypoints.find {
+        havershine(it.coord, lastLoc.coord) + accuracy < it.range
+    }
+    if (entered != null) return entered.id
+    val stillInsidePrev = prevId?.let { pid ->
+        currentWaypoints.find { it.id == pid }?.let {
+            havershine(it.coord, lastLoc.coord) - accuracy < it.range * WAYPOINT_EXIT_HYSTERESIS
         }
+    } ?: false
+    return prevId.takeIf { stillInsidePrev }
+}
 
-        val accuracy = lastLoc.acc.toDouble()
-        val prevId = user.lastWaypointId
-        // A fix that cannot say which side of the boundary it is on must not move the
-        // answer. A stationary phone on network fixes wanders far enough to cross and
-        // re-cross a 100 m geofence every few seconds, and every crossing notified.
-        val currentId: Long? = if (accuracy > GEOFENCE_MAX_ACCURACY_METERS) {
-            prevId
-        } else {
-            // Entering needs the whole error circle inside; leaving needs it wholly
-            // outside the hysteresis margin, so the edge cases stay where they were.
-            val entered = currentWaypoints.find {
-                havershine(it.coord, lastLoc.coord) + accuracy < it.range
-            }
-            val stillInsidePrev = prevId?.let { pid ->
-                currentWaypoints.find { it.id == pid }?.let {
-                    havershine(it.coord, lastLoc.coord) - accuracy < it.range * WAYPOINT_EXIT_HYSTERESIS
-                }
-            } ?: false
-            entered?.id ?: prevId.takeIf { stillInsidePrev }
-        }
-        val currentWaypoint = currentWaypoints.find { it.id == currentId }
+private suspend fun LocationTrackingService.resolveDisplayName(
+    currentWaypoint: Waypoint?,
+    lastLoc: LocationValue,
+): String {
+    // Display name: prefer the waypoint we are in, then the geocoded address.
+    if (currentWaypoint != null) return currentWaypoint.name
+    val address = runCatching {
+        fetchAddress(lastLoc.coord.lat, lastLoc.coord.lon)
+    }.getOrNull()
+    return address?.featureName ?: address?.thoroughfare ?: "Unknown Location"
+}
 
-        // Display name: prefer the waypoint we are in, then the geocoded address.
-        val displayName = currentWaypoint?.name
-            ?: runCatching { fetchAddress(lastLoc.coord.lat, lastLoc.coord.lon) }.getOrNull()?.let {
-                it.featureName ?: it.thoroughfare
-            }
-            ?: "Unknown Location"
-
-        if (currentId != prevId || displayName != user.locationName) {
-            // Atomic partial update — avoids stale snapshot via copy() + upsert()
-            // clobbering sharingAutoToggleAt / sendingEnabled and accidentally
-            // disabling sharing when you didn't intend it.
-            repository.updateLocationMeta(
-                id = user.id,
-                locationName = displayName,
-                lastWaypointId = currentId,
-                lastLocationChangeTime = lastLoc.timestamp.epochSeconds
-            )
-        }
-
-        if (currentId != prevId && user.id != Networking.userid) {
-            if (currentId != null) {
-                val enteredName = currentWaypoint?.name ?: displayName
-                notifyEntryExit(user, getString(R.string.notification_entered_waypoint, user.name, enteredName), arrival = true)
-            } else if (prevId != null) {
-                val exitedName = currentWaypoints.find { it.id == prevId }?.name ?: user.locationName
-                notifyEntryExit(user, getString(R.string.notification_exited_waypoint, user.name, exitedName), arrival = false)
-            }
-        }
+private fun LocationTrackingService.maybeNotifyEntryExit(
+    user: User,
+    prevId: Long?,
+    currentId: Long?,
+    currentWaypoint: Waypoint?,
+    displayName: String,
+    currentWaypoints: List<Waypoint>,
+) {
+    if (currentId == prevId || user.id == Networking.userid) return
+    if (currentId != null) {
+        val enteredName = currentWaypoint?.name ?: displayName
+        notifyEntryExit(
+            user,
+            getString(R.string.notification_entered_waypoint, user.name, enteredName),
+            arrival = true
+        )
+    } else if (prevId != null) {
+        val exitedName = currentWaypoints.find { it.id == prevId }?.name ?: user.locationName
+        notifyEntryExit(
+            user,
+            getString(R.string.notification_exited_waypoint, user.name, exitedName),
+            arrival = false
+        )
     }
 }
 
@@ -219,11 +284,18 @@ internal suspend fun LocationTrackingService.handleUwbEnvelopes(list: List<UwbEn
  *  - the grant is older than one we already hold, which happens when a revoke-triggered
  *    redistribution overtakes the grant it replaces.
  */
-internal suspend fun LocationTrackingService.acceptPoweredOffGrant(envelope: UwbEnvelope) {
-    val store = poweredOffKeys ?: return
-    val grant = envelope.recovery ?: return
+private fun LocationTrackingService.grantContextOrNull(
+    envelope: UwbEnvelope,
+): Triple<PoweredOffKeyStore, PoweredOffGrant, Long>? {
+    val store = poweredOffKeys ?: return null
+    val grant = envelope.recovery ?: return null
     val ownerId = envelope.sender.toLong()
-    if (ownerId == 0L || ownerId == Networking.userid) return
+    if (ownerId == 0L || ownerId == Networking.userid) return null
+    return Triple(store, grant, ownerId)
+}
+
+internal suspend fun LocationTrackingService.acceptPoweredOffGrant(envelope: UwbEnvelope) {
+    val (store, grant, ownerId) = grantContextOrNull(envelope) ?: return
     if (repository.getUser(ownerId) == null) {
         Log.w(LocationTrackingService.TAG_POWERED_OFF, "recovery grant from unknown sender, ignored")
         return

@@ -20,6 +20,9 @@ private const val TAG = "ScreenTimeReceiver"
  */
 class TimerReachedReceiver : BroadcastReceiver() {
 
+    // Broad catch is deliberate: onReceive must not throw, and the coordinator path
+    // throws undocumented RuntimeExceptions (not just SQLiteException).
+    @Suppress("TooGenericExceptionCaught")
     override fun onReceive(context: Context, intent: Intent) {
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: run {
             Log.w(TAG, "timer callback with no package")
@@ -30,8 +33,8 @@ class TimerReachedReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 Coordinator(app).onTimerReached(packageName)
-            } catch (t: Throwable) {
-                Log.e(TAG, "could not enforce the timer for $packageName", t)
+            } catch (e: Exception) {
+                Log.e(TAG, "could not enforce the timer for $packageName", e)
             } finally {
                 pending.finish()
             }
@@ -57,14 +60,17 @@ class TimerReachedReceiver : BroadcastReceiver() {
 /** Fired at each wind-down boundary. Re-arms the next one through [Coordinator]. */
 class ScheduleReceiver : BroadcastReceiver() {
 
+    // Broad catch is deliberate: onReceive must not throw, and the coordinator path
+    // throws undocumented RuntimeExceptions (not just SQLiteException).
+    @Suppress("TooGenericExceptionCaught")
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 Coordinator(app).reconcile()
-            } catch (t: Throwable) {
-                Log.e(TAG, "schedule reconcile failed", t)
+            } catch (e: Exception) {
+                Log.e(TAG, "schedule reconcile failed", e)
             } finally {
                 pending.finish()
             }
@@ -85,6 +91,9 @@ class ScheduleReceiver : BroadcastReceiver() {
  */
 class BootReceiver : BroadcastReceiver() {
 
+    // Broad catch is deliberate: onReceive must not throw, and the coordinator path
+    // throws undocumented RuntimeExceptions (not just SQLiteException).
+    @Suppress("TooGenericExceptionCaught")
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED &&
             intent.action != Intent.ACTION_LOCKED_BOOT_COMPLETED
@@ -96,11 +105,12 @@ class BootReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 Coordinator(app).reconcile()
-            } catch (t: Throwable) {
-                Log.e(TAG, "boot reconcile failed", t)
+            } catch (e: Exception) {
+                Log.e(TAG, "boot reconcile failed", e)
             } finally {
                 pending.finish()
             }
         }
     }
 }
+

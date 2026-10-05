@@ -106,18 +106,22 @@ data class CodeUiState(
 }
 
 /**
- * Editor callbacks. Every method has a no-op default so a preview can render the screens
- * without supplying behaviour — [Noop] is the whole implementation a preview needs.
+ * Editor callbacks, split into role interfaces so no single interface exceeds the
+ * function budget. Every method has a no-op default so a preview can render the screens
+ * without supplying behaviour — [CodeActions.Noop] is the whole implementation a preview needs.
  *
  * Tabs and tree rows are addressed by index because that is all the state carries; the
  * ViewModel still owns the [OpenTab]/[TreeNode] behind each one.
  */
-interface CodeActions {
+interface CodeTabActions {
     fun selectTab(index: Int) {}
     fun closeTab(index: Int) {}
 
-    /** Expand/collapse a directory row, or open a file row in a tab. */
-    fun toggleNode(index: Int) {}
+    /** Open a second editor pane (or close it if already open). */
+    fun toggleSplit() {}
+
+    /** Report that a split pane gained focus, so shared actions target it ([secondary] = the 2nd pane). */
+    fun focusPane(secondary: Boolean) {}
 
     fun undo() {}
     fun redo() {}
@@ -138,15 +142,34 @@ interface CodeActions {
 
     /** Apply an edit to the secondary split pane's tab. */
     fun onSecondaryEditorChange(new: TextFieldValue) {}
+}
 
-    /** Open a second editor pane (or close it if already open). */
-    fun toggleSplit() {}
+/** File-tree and project-file callbacks. */
+interface CodeTreeActions {
+    /** Expand/collapse a directory row, or open a file row in a tab. */
+    fun toggleNode(index: Int) {}
 
-    /** Report that a split pane gained focus, so shared actions target it ([secondary] = the 2nd pane). */
-    fun focusPane(secondary: Boolean) {}
+    /** Create a file under the given parent row (null = tree root) and open it in a tab. */
+    fun createFile(parentIndex: Int?, name: String) {}
 
-    // ---- Line editing ----
+    /** Create a folder under the given parent row (null = tree root). */
+    fun createFolder(parentIndex: Int?, name: String) {}
 
+    /** Rename the file/folder at [index]. */
+    fun renameNode(index: Int, newName: String) {}
+
+    /** Delete the file/folder at [index], closing any tabs it (or its descendants) backs. */
+    fun deleteNode(index: Int) {}
+
+    /** Open a file by absolute path (from quick-open or the recent-files list). */
+    fun openPath(path: String) {}
+
+    /** Rebuild the cached [CodeUiState.projectFiles] list (called when quick-open is shown). */
+    fun refreshProjectFiles() {}
+}
+
+/** Line editing, find/replace, formatting and folding callbacks. */
+interface CodeEditActions {
     /** Toggle the line comment on the line(s) the selection touches (no-op if the language has none). */
     fun toggleComment() {}
 
@@ -162,19 +185,6 @@ interface CodeActions {
     /** Delete the line(s) the selection touches. */
     fun deleteLine() {}
 
-    // ---- Autocomplete ----
-
-    /** Recompute completions for the current caret position. */
-    fun requestCompletions() {}
-
-    /** Accept a completion, replacing the current word (or expanding a snippet). */
-    fun acceptCompletion(item: Completion) {}
-
-    /** Hide the completion popup. */
-    fun dismissCompletions() {}
-
-    // ---- Tools ----
-
     /** Pretty-print the current file if it is JSON or XML (single undo step). */
     fun formatDocument() {}
 
@@ -186,8 +196,6 @@ interface CodeActions {
 
     /** Move the caret to the start of [line] (1-based). */
     fun goToLine(line: Int) {}
-
-    // ---- Folding (experimental editor) ----
 
     /** Toggle the fold at [headerLine] (0-based) in the active tab. */
     fun toggleFold(headerLine: Int) {}
@@ -206,45 +214,41 @@ interface CodeActions {
 
     /** Replace every regex match in the current file (supports `$1` group refs). */
     fun replaceAllRegex(pattern: String, replacement: String, caseSensitive: Boolean) {}
+}
 
-    // ---- Project search ----
+/** Search, completion and quick-open callbacks. */
+interface CodeSearchActions {
+    /** Recompute completions for the current caret position. */
+    fun requestCompletions() {}
+
+    /** Accept a completion, replacing the current word (or expanding a snippet). */
+    fun acceptCompletion(item: Completion) {}
+
+    /** Hide the completion popup. */
+    fun dismissCompletions() {}
 
     /** Search every text file under the open folder for [query]. */
     fun searchProject(query: String, caseSensitive: Boolean, useRegex: Boolean) {}
 
     /** Open the file for a search result and jump to its line. */
     fun openSearchResult(result: SearchResult) {}
+}
 
-    // ---- Quick-open ----
-
-    /** Open a file by absolute path (from quick-open or the recent-files list). */
-    fun openPath(path: String) {}
-
-    /** Rebuild the cached [CodeUiState.projectFiles] list (called when quick-open is shown). */
-    fun refreshProjectFiles() {}
-
-    // ---- File operations ----
-
-    /** Create a file under the given parent row (null = tree root) and open it in a tab. */
-    fun createFile(parentIndex: Int?, name: String) {}
-
-    /** Create a folder under the given parent row (null = tree root). */
-    fun createFolder(parentIndex: Int?, name: String) {}
-
-    /** Rename the file/folder at [index]. */
-    fun renameNode(index: Int, newName: String) {}
-
-    /** Delete the file/folder at [index], closing any tabs it (or its descendants) backs. */
-    fun deleteNode(index: Int) {}
-
-    // ---- Settings ----
-
+/** Editor setting callbacks. */
+interface CodeSettingsActions {
     fun setFontSize(size: Int) {}
     fun setTabWidth(width: Int) {}
     fun setThemeMode(mode: String) {}
     fun setAutoIndent(enabled: Boolean) {}
     fun setAutoCloseBrackets(enabled: Boolean) {}
+}
 
+interface CodeActions :
+    CodeTabActions,
+    CodeTreeActions,
+    CodeEditActions,
+    CodeSearchActions,
+    CodeSettingsActions {
     companion object {
         val Noop: CodeActions = object : CodeActions {}
     }

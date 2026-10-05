@@ -2,6 +2,8 @@ package com.vayunmathur.library.network
 
 import android.content.Context
 import android.util.Log
+import java.io.IOException
+import java.security.GeneralSecurityException
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
@@ -36,68 +38,107 @@ object BundledTrust {
             return null
         }
 
-        try {
-            val cf = CertificateFactory.getInstance("X.509")
-            val ks = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
-
-            var loaded = 0
-            if (bundle.includeSystemIssuers()) {
-                // Seed from the platform store so every public-CA host keeps
-                // validating; the bundled assets below only ADD ecosystem roots.
-                val systemTmf = TrustManagerFactory.getInstance(
-                    TrustManagerFactory.getDefaultAlgorithm(),
-                ).apply { init(null as KeyStore?) }
-                val systemIssuers = systemTmf.trustManagers
-                    .filterIsInstance<X509TrustManager>()
-                    .flatMap { it.acceptedIssuers.toList() }
-                for ((idx, cert) in systemIssuers.withIndex()) {
-                    ks.setCertificateEntry("system-$idx", cert)
-                    loaded++
-                }
-            }
-            for ((idx, path) in assetPaths.withIndex()) {
-                try {
-                    context.assets.open(path).use { ins ->
-                        val cert = cf.generateCertificate(ins) as? X509Certificate
-                        if (cert != null) {
-                            ks.setCertificateEntry("ca-$idx-${path.hashCode()}", cert)
-                            loaded++
-                        } else {
-                            Log.w(TAG, "Asset $path did not decode to X509Certificate")
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Missing asset is expected during early dev before DERs are bundled.
-                    Log.w(TAG, "Failed to load CA asset $path: ${e.message}")
-                }
-            }
-
-            if (loaded == 0) {
-                Log.w(TAG, "No CAs loaded for bundle $bundle (checked ${assetPaths.size} assets) — falling back to system trust")
-                return null
-            }
-
-            val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply {
-                init(ks)
-            }
-            val trustManager = tmf.trustManagers.firstOrNull { it is X509TrustManager } as? X509TrustManager
-            if (trustManager == null) {
-                Log.e(TAG, "No X509TrustManager found for bundle $bundle")
-                return null
-            }
-
-            val sslContext = SSLContext.getInstance("TLS").apply {
-                init(null, tmf.trustManagers, null)
-            }
-
-            val pair = sslContext.socketFactory to trustManager
-            cache = cache + (bundle to pair)
-            Log.i(TAG, "Bundle $bundle loaded $loaded roots")
-            return pair
-        } catch (e: Exception) {
+        return try {
+            buildFactory(context, bundle, assetPaths)
+        } catch (e: GeneralSecurityException) {
             Log.e(TAG, "Failed to create factory for bundle $bundle", e)
+            null
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to create factory for bundle $bundle", e)
+            null
+        }
+    }
+
+    private fun buildFactory(
+        context: Context,
+        bundle: TrustBundle,
+        assetPaths: List<String>,
+    ): Pair<SSLSocketFactory, X509TrustManager>? {
+        val cf = CertificateFactory.getInstance("X.509")
+        val ks = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
+
+        val loaded = seedSystemIssuers(ks, bundle) + loadBundledAssets(context, cf, ks, assetPaths)
+
+        if (loaded == 0) {
+            Log.w(
+                TAG,
+                "No CAs loaded for bundle $bundle (checked ${assetPaths.size} assets)" +
+                    " — falling back to system trust",
+            )
             return null
         }
+
+        val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply {
+            init(ks)
+        }
+        val trustManager = tmf.trustManagers.firstOrNull { it is X509TrustManager } as? X509TrustManager
+        if (trustManager == null) {
+            Log.e(TAG, "No X509TrustManager found for bundle $bundle")
+            return null
+        }
+
+        val sslContext = SSLContext.getInstance("TLS").apply {
+            init(null, tmf.trustManagers, null)
+        }
+
+        val pair = sslContext.socketFactory to trustManager
+        cache = cache + (bundle to pair)
+        Log.i(TAG, "Bundle $bundle loaded $loaded roots")
+        return pair
+    }
+
+    private fun seedSystemIssuers(ks: KeyStore, bundle: TrustBundle): Int {
+        if (!bundle.includeSystemIssuers()) return 0
+        // Seed from the platform store so every public-CA host keeps
+        // validating; the bundled assets below only ADD ecosystem roots.
+        val systemTmf = TrustManagerFactory.getInstance(
+            TrustManagerFactory.getDefaultAlgorithm(),
+        ).apply { init(null as KeyStore?) }
+        val systemIssuers = systemTmf.trustManagers
+            .filterIsInstance<X509TrustManager>()
+            .flatMap { it.acceptedIssuers.toList() }
+        systemIssuers.forEachIndexed { idx, cert ->
+            ks.setCertificateEntry("system-$idx", cert)
+        }
+        return systemIssuers.size
+    }
+
+    private fun loadBundledAssets(
+        context: Context,
+        cf: CertificateFactory,
+        ks: KeyStore,
+        assetPaths: List<String>,
+    ): Int {
+        var loaded = 0
+        assetPaths.forEachIndexed { idx, path ->
+            if (loadOneAsset(context, cf, ks, idx, path)) loaded++
+        }
+        return loaded
+    }
+
+    private fun loadOneAsset(
+        context: Context,
+        cf: CertificateFactory,
+        ks: KeyStore,
+        idx: Int,
+        path: String,
+    ): Boolean {
+        try {
+            context.assets.open(path).use { ins ->
+                val cert = cf.generateCertificate(ins) as? X509Certificate
+                if (cert != null) {
+                    ks.setCertificateEntry("ca-$idx-${path.hashCode()}", cert)
+                    return true
+                }
+                Log.w(TAG, "Asset $path did not decode to X509Certificate")
+            }
+        } catch (e: IOException) {
+            // Missing asset is expected during early dev before DERs are bundled.
+            Log.w(TAG, "Failed to load CA asset $path: ${e.message}")
+        } catch (e: GeneralSecurityException) {
+            Log.w(TAG, "Failed to load CA asset $path: ${e.message}")
+        }
+        return false
     }
 
     /** For tests / debug: clear cache. */

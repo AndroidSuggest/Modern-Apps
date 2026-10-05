@@ -45,6 +45,26 @@ class Yin(val windowSize: Int, val sampleRate: Double) {
     fun analyse(x: DoubleArray, offset: Int, minHz: Double, maxHz: Double): YinResult? {
         require(offset + windowSize <= x.size) { "window runs past the end of the buffer" }
 
+        val rms = measurePower(x, offset)
+        correlateFrames(x, offset)
+        formDifference()
+        normalizeDifference()
+
+        val range = lagRange(minHz, maxHz) ?: return null
+        val chosen = chooseLag(range.first, range.last)
+
+        val refined = parabolicMinimum(normalised, chosen)
+        if (refined <= 0.0) return null
+        return YinResult(
+            periodSamples = refined,
+            frequencyHz = sampleRate / refined,
+            aperiodicity = normalised[chosen],
+            rms = rms,
+            belowThreshold = normalised[chosen] < ABSOLUTE_THRESHOLD,
+        )
+    }
+
+    private fun measurePower(x: DoubleArray, offset: Int): Double {
         var energy = 0.0
         for (j in 0 until windowSize) {
             val v = x[offset + j]
@@ -52,8 +72,10 @@ class Yin(val windowSize: Int, val sampleRate: Double) {
             cumulativePower[j + 1] = energy
         }
         cumulativePower[0] = 0.0
-        val rms = sqrt(energy / windowSize)
+        return sqrt(energy / windowSize)
+    }
 
+    private fun correlateFrames(x: DoubleArray, offset: Int) {
         re.fill(0.0)
         im.fill(0.0)
         reB.fill(0.0)
@@ -72,51 +94,56 @@ class Yin(val windowSize: Int, val sampleRate: Double) {
             im[k] = ar * bi - ai * br
         }
         fft.inverse(re, im)
+    }
 
+    private fun formDifference() {
         val headPower = cumulativePower[half]
         for (tau in 0 until half) {
             val tailPower = cumulativePower[tau + half] - cumulativePower[tau]
             difference[tau] = (headPower + tailPower - 2.0 * re[tau]).coerceAtLeast(0.0)
         }
+    }
 
+    private fun normalizeDifference() {
         normalised[0] = 1.0
         var running = 0.0
         for (tau in 1 until half) {
             running += difference[tau]
             normalised[tau] = if (running > 0.0) difference[tau] * tau / running else 1.0
         }
+    }
 
+    private fun lagRange(minHz: Double, maxHz: Double): IntRange? {
         val tauMin = ceil(sampleRate / maxHz).toInt().coerceAtLeast(2)
         val tauMax = floor(sampleRate / minHz).toInt().coerceAtMost(half - 2)
         if (tauMin >= tauMax) return null
+        return tauMin..tauMax
+    }
 
+    private fun chooseLag(tauMin: Int, tauMax: Int): Int {
         // YIN step 4: the *first* local minimum under the absolute threshold, not the global
         // one. This single choice is what prevents the classic octave-too-low error.
-        var chosen = -1
+        val firstBelow = scanFirstBelowThreshold(tauMin, tauMax)
+        if (firstBelow >= 0) return firstBelow
+        return scanGlobalMinimum(tauMin, tauMax)
+    }
+
+    private fun scanFirstBelowThreshold(tauMin: Int, tauMax: Int): Int {
         var tau = tauMin
         while (tau <= tauMax) {
             if (normalised[tau] < ABSOLUTE_THRESHOLD) {
                 while (tau + 1 <= tauMax && normalised[tau + 1] < normalised[tau]) tau++
-                chosen = tau
-                break
+                return tau
             }
             tau++
         }
-        if (chosen < 0) {
-            var best = tauMin
-            for (t in tauMin..tauMax) if (normalised[t] < normalised[best]) best = t
-            chosen = best
-        }
+        return -1
+    }
 
-        val refined = parabolicMinimum(normalised, chosen)
-        if (refined <= 0.0) return null
-        return YinResult(
-            periodSamples = refined,
-            frequencyHz = sampleRate / refined,
-            aperiodicity = normalised[chosen],
-            rms = rms,
-            belowThreshold = normalised[chosen] < ABSOLUTE_THRESHOLD,
-        )
+    private fun scanGlobalMinimum(tauMin: Int, tauMax: Int): Int {
+        var best = tauMin
+        for (t in tauMin..tauMax) if (normalised[t] < normalised[best]) best = t
+        return best
     }
 
     private companion object {

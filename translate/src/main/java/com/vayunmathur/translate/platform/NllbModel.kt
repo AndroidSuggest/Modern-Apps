@@ -49,7 +49,7 @@ object NllbModel {
      * external files directory, which nothing else will ever remove. Kept as names
      * rather than a wildcard so a future file of ours cannot be caught by it.
      */
-    private val RETIRED_DIR = "small100"
+    private const val RETIRED_DIR = "small100"
     private val RETIRED = listOf(
         "small100.maml",
         "tokenizer.bin",

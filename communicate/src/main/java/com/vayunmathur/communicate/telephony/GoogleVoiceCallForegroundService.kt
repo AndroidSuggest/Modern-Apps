@@ -107,7 +107,7 @@ class GoogleVoiceCallForegroundService : Service() {
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
                 getString(R.string.call_decline),
-                serviceActionIntent(ACTION_HANGUP, 3),
+                serviceActionIntent(ACTION_HANGUP, HANGUP_REQUEST_CODE),
             )
             .build()
     }
@@ -132,7 +132,7 @@ class GoogleVoiceCallForegroundService : Service() {
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
                 getString(R.string.call_end),
-                serviceActionIntent(ACTION_HANGUP, 3),
+                serviceActionIntent(ACTION_HANGUP, HANGUP_REQUEST_CODE),
             )
             .build()
     }
@@ -171,6 +171,7 @@ class GoogleVoiceCallForegroundService : Service() {
         private const val NOTIFICATION_ID = 4711
         private const val ACTION_ANSWER = "com.vayunmathur.communicate.googlevoice.ANSWER_CALL"
         private const val ACTION_HANGUP = "com.vayunmathur.communicate.googlevoice.HANGUP_CALL"
+        private const val HANGUP_REQUEST_CODE = 3
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(

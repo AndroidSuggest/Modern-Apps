@@ -11,7 +11,7 @@ import java.time.Instant
 import kotlin.uuid.Uuid
 
 fun MedicalViewModel.saveMedicationDraft() {
-    val draft = _medicationDraft.value
+    val draft = medicationDraftState.value
     if (draft.ingredient.isBlank()) return
     viewModelScope.launch {
         val existing = draft.editingId?.let { repository.getMedication(it) }

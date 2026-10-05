@@ -253,6 +253,16 @@ internal class PolyphaseResampler(
         const val MIN_TAPS_PER_PHASE = 16
         const val MAX_TAPS_PER_PHASE = 192
 
+        private const val KAISER_HIGH_ATTENUATION_DB = 50.0
+        private const val KAISER_LOW_ATTENUATION_DB = 21.0
+        private const val KAISER_HIGH_COEF_A = 0.1102
+        private const val KAISER_HIGH_OFFSET = 8.7
+        private const val KAISER_MID_COEF_A = 0.5842
+        private const val KAISER_MID_EXPONENT = 0.4
+        private const val KAISER_MID_COEF_B = 0.07886
+        private const val BESSEL_MAX_TERMS = 40
+        private const val BESSEL_EPSILON = 1e-16
+
         /**
          * Splits one prototype low-pass into `L` phases.
          *
@@ -280,9 +290,11 @@ internal class PolyphaseResampler(
 
         /** Kaiser's β for a given stopband attenuation, for the 21..50 dB and >50 dB cases. */
         fun kaiserBeta(attenuationDb: Double): Double = when {
-            attenuationDb > 50 -> 0.1102 * (attenuationDb - 8.7)
-            attenuationDb >= 21 -> 0.5842 * Math.pow(attenuationDb - 21, 0.4) +
-                0.07886 * (attenuationDb - 21)
+            attenuationDb > KAISER_HIGH_ATTENUATION_DB ->
+                KAISER_HIGH_COEF_A * (attenuationDb - KAISER_HIGH_OFFSET)
+            attenuationDb >= KAISER_LOW_ATTENUATION_DB ->
+                KAISER_MID_COEF_A * Math.pow(attenuationDb - KAISER_LOW_ATTENUATION_DB, KAISER_MID_EXPONENT) +
+                KAISER_MID_COEF_B * (attenuationDb - KAISER_LOW_ATTENUATION_DB)
             else -> 0.0
         }
 
@@ -294,10 +306,10 @@ internal class PolyphaseResampler(
             var term = 1.0
             val half = x / 2.0
             var k = 1
-            while (k < 40) {
+            while (k < BESSEL_MAX_TERMS) {
                 term *= half * half / (k * k)
                 sum += term
-                if (term < sum * 1e-16) break
+                if (term < sum * BESSEL_EPSILON) break
                 k++
             }
             return sum

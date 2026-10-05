@@ -118,34 +118,14 @@ class LocalDomPoTokenProvider(context: Context) : YoutubeSessionPoTokenProvider 
         return YoutubeSessionPoToken(state.bootstrap.visitorData, encoded)
     }
 
-    fun prewarmSessionPoToken(
-        localization: Localization,
-        contentCountry: ContentCountry,
-        loggedIn: Boolean,
-    ) {
+    fun prewarmSessionPoToken() {
         warmUp()
     }
 
     private fun getState(): MintState {
         while (true) {
             val task = ensureInitializationTask()
-            val state = try {
-                task.get()
-            } catch (error: InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw SabrProtocolException("Global PO token initialization interrupted", error)
-            } catch (error: ExecutionException) {
-                synchronized(initializationLock) {
-                    if (initializationTask === task) {
-                        initializationTask = null
-                    }
-                }
-                val cause = error.cause ?: error
-                throw SabrProtocolException(
-                    "Global PO token initialization failed: ${cause.message}",
-                    cause,
-                )
-            }
+            val state = awaitTask(task)
             if (!state.generator.isExpired()) {
                 return state
             }
@@ -158,42 +138,96 @@ class LocalDomPoTokenProvider(context: Context) : YoutubeSessionPoTokenProvider 
         }
     }
 
+    @Throws(SabrProtocolException::class)
+    private fun awaitTask(task: FutureTask<MintState>): MintState {
+        return try {
+            task.get()
+        } catch (error: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw SabrProtocolException("Global PO token initialization interrupted", error)
+        } catch (error: ExecutionException) {
+            dropFailedTask(task)
+            val cause = error.cause ?: error
+            throw SabrProtocolException(
+                "Global PO token initialization failed: ${cause.message}",
+                cause,
+            )
+        }
+    }
+
+    private fun dropFailedTask(task: FutureTask<MintState>) {
+        synchronized(initializationLock) {
+            if (initializationTask === task) {
+                initializationTask = null
+            }
+        }
+    }
+
     private fun ensureInitializationTask(): FutureTask<MintState> {
         initializationTask?.let { return it }
         synchronized(initializationLock) {
             initializationTask?.let { return it }
-            val task = FutureTask {
-                val bootstrap = fetchHomeBootstrap()
-                if (bootstrap.binding == YoutubePoTokenBinding.NONE) {
-                    throw SabrProtocolException(
-                        "YouTube home does not enable a supported PO token binding",
-                    )
-                }
-                val generator = LocalDomPoTokenGenerator.create(appContext, bootstrap)
-                try {
-                    val sessionPoToken =
-                        if (bootstrap.binding == YoutubePoTokenBinding.SESSION) {
-                            generator.mint(bootstrap.visitorData)
-                        } else {
-                            null
-                        }
-                    Log.i(
-                        TAG,
-                        "Global PO minter ready client=${bootstrap.clientName} " +
-                            "version=${bootstrap.clientVersion} " +
-                            "binding=${bootstrap.binding}",
-                    )
-                    MintState(bootstrap, generator, sessionPoToken)
-                } catch (error: Throwable) {
-                    generator.close()
-                    throw error
-                }
-            }
+            val task = FutureTask { buildMintState() }
             initializationTask = task
             initializationExecutor.execute(task)
             return task
         }
     }
+
+    @Throws(SabrProtocolException::class)
+    private fun buildMintState(): MintState {
+        val bootstrap = fetchHomeBootstrap()
+        if (bootstrap.binding == YoutubePoTokenBinding.NONE) {
+            throw unsupportedBindingException()
+        }
+        val generator = LocalDomPoTokenGenerator.create(appContext, bootstrap)
+        return mintStateOrClose(generator, bootstrap)
+    }
+
+    @Throws(SabrProtocolException::class)
+    private fun mintStateOrClose(
+        generator: LocalDomPoTokenGenerator,
+        bootstrap: YoutubePageAttestationBootstrap,
+    ): MintState {
+        var minted: MintState? = null
+        var failure: Exception? = null
+        try {
+            minted = MintState(bootstrap, generator, mintSessionToken(generator, bootstrap))
+        } catch (error: IllegalStateException) {
+            failure = error
+        } catch (error: java.io.IOException) {
+            failure = error
+        } catch (error: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+            failure = error
+        }
+        minted?.let { return it }
+        generator.close()
+        throw checkNotNull(failure) { "Mint state build failed" }
+    }
+
+    @Throws(SabrProtocolException::class)
+    private fun mintSessionToken(
+        generator: LocalDomPoTokenGenerator,
+        bootstrap: YoutubePageAttestationBootstrap,
+    ): ByteArray? {
+        val sessionPoToken =
+            if (bootstrap.binding == YoutubePoTokenBinding.SESSION) {
+                generator.mint(bootstrap.visitorData)
+            } else {
+                null
+            }
+        Log.i(
+            TAG,
+            "Global PO minter ready client=${bootstrap.clientName} " +
+                "version=${bootstrap.clientVersion} " +
+                "binding=${bootstrap.binding}",
+        )
+        return sessionPoToken
+    }
+
+    private fun unsupportedBindingException() = SabrProtocolException(
+        "YouTube home does not enable a supported PO token binding",
+    )
 
     private fun fetchHomeBootstrap(): YoutubePageAttestationBootstrap {
         val downloader = NewPipe.getDownloader()
@@ -205,7 +239,7 @@ class LocalDomPoTokenProvider(context: Context) : YoutubeSessionPoTokenProvider 
                 "User-Agent" to listOf(SharedWebViewRuntime.USER_AGENT),
             ),
         )
-        if (response.responseCode() != 200) {
+        if (response.responseCode() != HTTP_OK) {
             throw SabrProtocolException(
                 "YouTube home initialization failed: ${response.responseCode()}",
             )
@@ -217,6 +251,7 @@ class LocalDomPoTokenProvider(context: Context) : YoutubeSessionPoTokenProvider 
         private const val TAG = "SabrLocalDomPoToken"
         private const val YOUTUBE_HOME = "https://www.youtube.com"
         private const val ANONYMOUS_COOKIE = "PREF=hl=en&gl=US"
+        private const val HTTP_OK = 200
 
         @Volatile
         private var sharedInstance: LocalDomPoTokenProvider? = null

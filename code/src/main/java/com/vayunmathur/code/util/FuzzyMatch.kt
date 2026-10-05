@@ -46,49 +46,66 @@ private fun gapPenalty(gap: Int): Int =
 fun fuzzyScore(query: String, candidate: String): Int? {
     if (query.isEmpty()) return 0
     if (candidate.length < query.length) return null
+    return FuzzyScorer(query, candidate).score()
+}
 
+private class FuzzyScorer(val query: String, val candidate: String) {
     // For query char qi, `positions` are the candidate indices where it matches and `scores` the
     // best score for an alignment ending at that index. Each layer only depends on the previous.
     var prevScores = IntArray(0)
     var prevPositions = IntArray(0)
 
-    for (qi in query.indices) {
+    fun score(): Int? {
+        for (qi in query.indices) {
+            if (!scoreLayer(qi)) return null
+        }
+        val best = prevScores.maxOrNull() ?: return null
+        // Mild preference for shorter candidates when scores are otherwise equal.
+        return best - candidate.length / LENGTH_TIE_BREAKER
+    }
+
+    private fun scoreLayer(qi: Int): Boolean {
         val qc = query[qi]
         val positions = ArrayList<Int>()
         val scores = ArrayList<Int>()
         for (ci in candidate.indices) {
             if (!candidate[ci].matchesIgnoreCase(qc)) continue
-            var charScore = MATCH_SCORE
-            if (isBoundary(candidate, ci)) charScore += BOUNDARY_BONUS
-            if (candidate[ci] == qc) charScore += CASE_BONUS
-
-            val best: Int? = if (qi == 0) {
-                charScore - minOf(ci, MAX_LEADING_GAP_PENALTY)
-            } else {
-                var b = Int.MIN_VALUE
-                for (k in prevPositions.indices) {
-                    val pj = prevPositions[k]
-                    if (pj >= ci) break // positions are ascending; no earlier predecessor remains
-                    val gap = ci - pj - 1
-                    val consecutive = if (gap == 0) CONSECUTIVE_BONUS else 0
-                    val cand = prevScores[k] + charScore + consecutive - gapPenalty(gap)
-                    if (cand > b) b = cand
-                }
-                if (b == Int.MIN_VALUE) null else b
-            }
-            if (best != null) {
+            scorePosition(qi, qc, ci)?.let { best ->
                 positions.add(ci)
                 scores.add(best)
             }
         }
-        if (positions.isEmpty()) return null
+        if (positions.isEmpty()) return false
         prevPositions = positions.toIntArray()
         prevScores = scores.toIntArray()
+        return true
     }
 
-    val best = prevScores.maxOrNull() ?: return null
-    // Mild preference for shorter candidates when scores are otherwise equal.
-    return best - candidate.length / LENGTH_TIE_BREAKER
+    private fun scorePosition(qi: Int, qc: Char, ci: Int): Int? {
+        val charScore = charScore(qc, ci)
+        if (qi == 0) return charScore - minOf(ci, MAX_LEADING_GAP_PENALTY)
+        return bestPredecessor(ci, charScore)
+    }
+
+    private fun charScore(qc: Char, ci: Int): Int {
+        var score = MATCH_SCORE
+        if (isBoundary(candidate, ci)) score += BOUNDARY_BONUS
+        if (candidate[ci] == qc) score += CASE_BONUS
+        return score
+    }
+
+    private fun bestPredecessor(ci: Int, charScore: Int): Int? {
+        var best = Int.MIN_VALUE
+        for (k in prevPositions.indices) {
+            val pj = prevPositions[k]
+            if (pj >= ci) break // positions are ascending; no earlier predecessor remains
+            val gap = ci - pj - 1
+            val consecutive = if (gap == 0) CONSECUTIVE_BONUS else 0
+            val cand = prevScores[k] + charScore + consecutive - gapPenalty(gap)
+            if (cand > best) best = cand
+        }
+        return if (best == Int.MIN_VALUE) null else best
+    }
 }
 
 /**

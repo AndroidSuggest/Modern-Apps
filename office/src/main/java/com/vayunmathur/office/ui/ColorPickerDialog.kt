@@ -48,7 +48,10 @@ fun ColorPickerDialog(title: String, onColorSelected: (Long?) -> Unit, onDismiss
                                     .border(1.dp, Color.Gray, CircleShape)
                                     .clickable { onColorSelected(c); onDismiss() }
                             ) {
-                                if (c == null) Text("∅", Modifier.align(Alignment.Center), style = MaterialTheme.typography.labelSmall)
+                                if (c == null) Text(
+                                    "∅",
+                                    Modifier.align(Alignment.Center),
+                                    style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }

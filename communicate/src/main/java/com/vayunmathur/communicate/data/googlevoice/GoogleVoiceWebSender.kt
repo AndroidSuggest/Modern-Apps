@@ -150,7 +150,10 @@ object GoogleVoiceWebSender {
         // autocomplete/overlay (recipient chip) to work, but the opaque Compose content covers it
         // (invisible) and receives all touches, so it stays hidden and non-interactive.
         val decor = activity.window.decorView as ViewGroup
-        decor.addView(wv, 0, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        decor.addView(
+            wv,
+            0,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         webView = wv
         return wv
     }
@@ -216,6 +219,11 @@ object GoogleVoiceWebSender {
         val num = recipient.replace("\"", "")
         val body = text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
         val wantsAttachment = if (hasAttachments) "true" else "false"
+        return automationScriptHead(num, body, wantsAttachment) + automationScriptTail()
+    }
+
+    /** First half of the WebView automation JS (helpers + composer dump). */
+    private fun automationScriptHead(num: String, body: String, wantsAttachment: String): String {
         return """
             (function(){
               function log(m){ try{ AndroidGV.log(""+m);}catch(e){} }
@@ -252,7 +260,12 @@ object GoogleVoiceWebSender {
                   }
                   // Dump the composer DOM once shortly after opening.
                   if(!B.dataset.gvDump2 && (step-(parseInt(B.dataset.gvOpenStep)||0))>=2){ B.dataset.gvDump2='1'; log('DUMP2 '+JSON.stringify(labels()).slice(0,1200)); dumpFields('FIELDS'); }
+            """.trimIndent()
+    }
 
+    /** Second half of the WebView automation JS (recipient/message/send + poller). */
+    private fun automationScriptTail(): String {
+        return """
                   // 2) Recipient input: prefer placeholder/label mentioning name/phone; exclude Search.
                   function findRecip(){ var ins=qa('input,textarea').filter(vis); for(var i=0;i<ins.length;i++){ var s=lbl(ins[i])+' '+ph(ins[i]); if(s.indexOf('search')<0 && (s.indexOf('name')>=0||s.indexOf('phone')>=0||s.indexOf('recipient')>=0)) return ins[i]; } for(var j=0;j<ins.length;j++){ var t=(ins[j].type||'text').toLowerCase(); if((t==='text'||t==='tel') && (lbl(ins[j])+ph(ins[j])).indexOf('search')<0) return ins[j]; } return null; }
                   // 3) Message box: a visible textarea/contenteditable, preferring message/text hints.

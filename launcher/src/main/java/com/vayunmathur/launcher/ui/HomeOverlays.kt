@@ -39,7 +39,6 @@ internal fun BoxScope.HomeOverlays(
     iconScale: Float,
     folderAnchor: Rect,
     folder: Animatable<Float, AnimationVector1D>,
-    onOpenMenu: (Long, Rect) -> Unit,
     onCloseFolder: () -> Unit,
     drag: LauncherDragController,
 ) {
@@ -74,7 +73,6 @@ internal fun BoxScope.HomeOverlays(
             iconScale = iconScale,
             anchor = folderAnchor,
             progress = { folder.value },
-            onOpenItemMenu = onOpenMenu,
             onDragLeft = onCloseFolder,
             onDismiss = onCloseFolder,
         )

@@ -28,12 +28,22 @@ internal fun CameraViewModel.bindSession(
 
 /** Tears down whatever session is currently bound and clears the shared preview surface. */
 fun CameraViewModel.teardownSession() {
-    Log.d("NightPreview", "teardownSession() START thread=${Thread.currentThread().name} surface=${_surfaceRequest.value?.resolution} photoActive=${_photoSessionActive.value} nightPreviewActive=${_nightPreviewActive.value} highSpeedActive=${_highSpeedActive.value} videoActive=${_videoSessionActive.value} boundCamera=${boundCamera != null} provider=${cameraProvider != null}")
+    Log.d(
+        "NightPreview",
+        "teardownSession() START thread=${Thread.currentThread().name} " +
+            "surface=${surfaceRequestMutable.value?.resolution} " +
+            "photoActive=${photoSessionActiveMutable.value} " +
+            "nightPreviewActive=${nightPreviewActiveMutable.value} " +
+            "highSpeedActive=${highSpeedActiveMutable.value} " +
+            "videoActive=${videoSessionActiveMutable.value} boundCamera=${boundCamera != null} " +
+            "provider=${cameraProvider != null}"
+    )
     stopObservingNightModeIndicator()
     stopObservingExtensionStrength()
     stopObservingExtensionCameraState()
-    // CRITICAL: clear stale SurfaceRequest BEFORE unbind so CameraXViewfinder drops dead texture immediately (black-frame trap fix)
-    _surfaceRequest.value = null
+    // CRITICAL: clear stale SurfaceRequest BEFORE unbind so CameraXViewfinder drops dead texture
+    // immediately (black-frame trap fix)
+    surfaceRequestMutable.value = null
     Log.d("NightPreview", "teardownSession() cleared surfaceRequest -> null to avoid black-frame trap")
     currentRecording?.stop()
     currentRecording = null
@@ -41,24 +51,24 @@ fun CameraViewModel.teardownSession() {
     highSpeedRecording = null
     // Reset recording/timer state: the session they belonged to is gone (e.g. app
     // backgrounded mid-recording via repeatOnLifecycle). Without this the timer keeps
-    // ticking with _isRecording=true while nothing records (phantom indicator), and a
+    // ticking with isRecordingMutable=true while nothing records (phantom indicator), and a
     // pending shutter timer would fire capturePhoto() into the next session unprompted.
-    // _isCapturing is also reset: a capture in flight across teardown never completes
+    // isCapturingMutable is also reset: a capture in flight across teardown never completes
     // (its session is gone), and a stuck true would deaden the shutter on resume.
     recordingTimerJob?.cancel()
     recordingTimerJob = null
     timerCountdownJob?.cancel()
     timerCountdownJob = null
-    _isRecording.value = false
-    _recordingPaused.value = false
-    _recordingDurationSec.value = 0
-    _timerCountdown.value = 0
-    _isCapturing.value = false
+    isRecordingMutable.value = false
+    recordingPausedMutable.value = false
+    recordingDurationSecMutable.value = 0
+    timerCountdownMutable.value = 0
+    isCapturingMutable.value = false
     stopLongExposureCountdown()
     try {
         imageAnalysis?.clearAnalyzer()
         Log.d("NightPreview", "teardownSession() cleared analyzer previous=${desiredAnalyzer?.javaClass?.simpleName}")
-    } catch (e: Exception) {
+    } catch (e: IllegalStateException) {
         Log.e("NightPreview", "teardownSession() clearAnalyzer failed (swallowed before)", e)
     }
     // desiredAnalyzer is deliberately kept: teardown runs on every rebind and the next bind
@@ -68,7 +78,7 @@ fun CameraViewModel.teardownSession() {
     try {
         cameraProvider?.unbindAll()
         Log.d("NightPreview", "teardownSession() unbindAll SUCCESS")
-    } catch (e: Exception) {
+    } catch (e: IllegalStateException) {
         Log.e("NightPreview", "teardownSession() unbindAll FAILED (was hidden)", e)
     }
     boundCamera = null
@@ -77,13 +87,13 @@ fun CameraViewModel.teardownSession() {
     videoCapture = null
     highSpeedVideoCapture = null
     cameraProvider = null
-    _photoSessionActive.value = false
-    _analysisStreamActive.value = false
-    _nightPreviewActive.value = false
-    _highSpeedActive.value = false
-    _videoSessionActive.value = false
-    _videoSnapshotSupported.value = false
-    _focusLocked.value = false
+    photoSessionActiveMutable.value = false
+    analysisStreamActiveMutable.value = false
+    nightPreviewActiveMutable.value = false
+    highSpeedActiveMutable.value = false
+    videoSessionActiveMutable.value = false
+    videoSnapshotSupportedMutable.value = false
+    focusLockedMutable.value = false
     // Note: night-mode detection is intentionally NOT reset here. Teardown
     // runs on every night<->normal preview rebind, and resetting would clear
     // nightModeActive mid-swap and thrash the session. Explicit resets live in
@@ -98,17 +108,29 @@ fun CameraViewModel.teardownSession() {
 }
 
 internal fun CameraViewModel.av1SupportedByCamera(cameraInfo: androidx.camera.core.CameraInfo): Boolean = try {
-    val caps = androidx.camera.video.Recorder.getVideoCapabilities(cameraInfo, android.media.MediaFormat.MIMETYPE_VIDEO_AV1)
+    val caps = androidx.camera.video.Recorder.getVideoCapabilities(
+        cameraInfo,
+        android.media.MediaFormat.MIMETYPE_VIDEO_AV1
+    )
     caps?.getSupportedQualities(androidx.camera.core.DynamicRange.SDR)?.isNotEmpty() == true
-} catch (e: Exception) {
+} catch (e: IllegalStateException) {
+    Log.w("VideoSession", "Could not query AV1 video capabilities", e)
+    false
+} catch (e: IllegalArgumentException) {
     Log.w("VideoSession", "Could not query AV1 video capabilities", e)
     false
 }
 
 internal fun CameraViewModel.hevcSupportedByCamera(cameraInfo: androidx.camera.core.CameraInfo): Boolean = try {
-    val caps = androidx.camera.video.Recorder.getVideoCapabilities(cameraInfo, android.media.MediaFormat.MIMETYPE_VIDEO_HEVC)
+    val caps = androidx.camera.video.Recorder.getVideoCapabilities(
+        cameraInfo,
+        android.media.MediaFormat.MIMETYPE_VIDEO_HEVC
+    )
     caps?.getSupportedQualities(androidx.camera.core.DynamicRange.SDR)?.isNotEmpty() == true
-} catch (e: Exception) {
+} catch (e: IllegalStateException) {
+    Log.w("VideoSession", "Could not query HEVC video capabilities", e)
+    false
+} catch (e: IllegalArgumentException) {
     Log.w("VideoSession", "Could not query HEVC video capabilities", e)
     false
 }
@@ -117,7 +139,10 @@ internal fun CameraViewModel.hlgSupportedByCamera(cameraInfo: androidx.camera.co
     androidx.camera.video.Recorder.getVideoCapabilities(cameraInfo)
         .supportedDynamicRanges
         .contains(androidx.camera.core.DynamicRange.HLG_10_BIT)
-} catch (e: Exception) {
+} catch (e: IllegalStateException) {
+    Log.w("VideoSession", "Could not query HLG10 dynamic-range support", e)
+    false
+} catch (e: IllegalArgumentException) {
     Log.w("VideoSession", "Could not query HLG10 dynamic-range support", e)
     false
 }
@@ -137,7 +162,9 @@ internal fun CameraViewModel.hlgSupportedByCamera(cameraInfo: androidx.camera.co
  * crop-switch flicker.
  */
 @OptIn(ExperimentalCamera2Interop::class)
-internal fun CameraViewModel.highestFpsRange(cameraInfo: androidx.camera.core.CameraInfo): android.util.Range<Int>? = try {
+internal fun CameraViewModel.highestFpsRange(
+    cameraInfo: androidx.camera.core.CameraInfo
+): android.util.Range<Int>? = try {
     val ranges = androidx.camera.camera2.interop.Camera2CameraInfo.from(cameraInfo)
         .getCameraCharacteristic(
             android.hardware.camera2.CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES
@@ -148,24 +175,27 @@ internal fun CameraViewModel.highestFpsRange(cameraInfo: androidx.camera.core.Ca
     if (fixed.isNotEmpty()) {
         // Prefer exact 30fps; Cinematic with EIS often can't do fixed 60 uncropped, so
         // stick to 30 for cinematic.
-        if (_cameraMode.value == CameraMode.CINEMATIC) {
-            fixed.firstOrNull { it.upper == 30 }
-                ?: fixed.filter { it.upper <= 30 }.maxByOrNull { it.upper }
-                ?: fixed.minByOrNull { kotlin.math.abs(it.upper - 30) }
+        if (cameraModeMutable.value == CameraMode.CINEMATIC) {
+            fixed.firstOrNull { it.upper == VIDEO_FPS_STANDARD }
+                ?: fixed.filter { it.upper <= VIDEO_FPS_STANDARD }.maxByOrNull { it.upper }
+                ?: fixed.minByOrNull { kotlin.math.abs(it.upper - VIDEO_FPS_STANDARD) }
         } else {
             // For normal VIDEO/TIMELAPSE allow 60fps if available, but still fixed.
-            fixed.firstOrNull { it.upper == 30 }
-                ?: fixed.firstOrNull { it.upper == 60 }
-                ?: fixed.filter { it.upper <= 30 }.maxByOrNull { it.upper }
-                ?: fixed.filter { it.upper <= 60 }.maxByOrNull { it.upper }
-                ?: fixed.minByOrNull { kotlin.math.abs(it.upper - 30) }
+            fixed.firstOrNull { it.upper == VIDEO_FPS_STANDARD }
+                ?: fixed.firstOrNull { it.upper == VIDEO_FPS_HIGH }
+                ?: fixed.filter { it.upper <= VIDEO_FPS_STANDARD }.maxByOrNull { it.upper }
+                ?: fixed.filter { it.upper <= VIDEO_FPS_HIGH }.maxByOrNull { it.upper }
+                ?: fixed.minByOrNull { kotlin.math.abs(it.upper - VIDEO_FPS_STANDARD) }
         }
     } else {
         // No fixed ranges: don't force a variable range like [30,60] — return null so
         // CameraX chooses a stable default and avoids the flicker.
         null
     }
-} catch (e: Exception) {
+} catch (e: IllegalStateException) {
+    Log.w("VideoSession", "Could not query supported frame-rate ranges", e)
+    null
+} catch (e: IllegalArgumentException) {
     Log.w("VideoSession", "Could not query supported frame-rate ranges", e)
     null
 }
@@ -192,10 +222,17 @@ internal fun CameraViewModel.preferredStabilizationMode(cameraInfo: androidx.cam
         ) -> android.hardware.camera2.CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON
         else -> null
     }
-} catch (e: Exception) {
+} catch (e: IllegalStateException) {
+    Log.w("VideoSession", "Could not query video stabilization modes", e)
+    null
+} catch (e: IllegalArgumentException) {
     Log.w("VideoSession", "Could not query video stabilization modes", e)
     null
 }
+
+/** Preferred fixed video frame rates (fps). */
+private const val VIDEO_FPS_STANDARD = 30
+private const val VIDEO_FPS_HIGH = 60
 
 /** Applies max-fps + (optional) stabilization capture options onto a Preview/VideoCapture builder. */
 @OptIn(ExperimentalCamera2Interop::class)
@@ -217,13 +254,29 @@ internal fun <T> CameraViewModel.applyVideoCaptureRequestOptions(
                 stabilizationMode
             )
         }
-    } catch (e: Exception) {
+    } catch (e: IllegalStateException) {
+        Log.w("VideoSession", "Could not apply Camera2 video capture options", e)
+    } catch (e: IllegalArgumentException) {
         Log.w("VideoSession", "Could not apply Camera2 video capture options", e)
     }
 }
 
-fun CameraViewModel.getImageCaptureFlashMode(): Int = when (_flashMode.value) {
+fun CameraViewModel.getImageCaptureFlashMode(): Int = when (flashModeMutable.value) {
     FlashMode.ON -> ImageCapture.FLASH_MODE_ON
     FlashMode.OFF -> ImageCapture.FLASH_MODE_OFF
     FlashMode.AUTO -> ImageCapture.FLASH_MODE_AUTO
+}
+
+/**
+ * Best-effort unbind used inside bind-retry catch blocks: logs (with [tag]) instead of
+ * throwing so the retry ladder keeps walking the lens list.
+ */
+internal fun unbindQuietly(provider: ProcessCameraProvider, tag: String = "NightPreview") {
+    try {
+        provider.unbindAll()
+    } catch (e: IllegalStateException) {
+        Log.e(tag, "unbindAll in catch FAILED (hidden)", e)
+    } catch (e: IllegalArgumentException) {
+        Log.e(tag, "unbindAll in catch FAILED (hidden)", e)
+    }
 }

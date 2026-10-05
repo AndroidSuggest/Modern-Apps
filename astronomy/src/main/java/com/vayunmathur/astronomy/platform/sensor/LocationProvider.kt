@@ -21,20 +21,33 @@ object LocationProvider {
     suspend fun currentLocation(context: Context): Location? {
         if (!hasPermission(context)) return null
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
-        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter { lm.isProviderEnabled(it) }
+        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            .filter { lm.isProviderEnabled(it) }
         if (providers.isEmpty()) return null
-        providers.mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }.maxByOrNull { it.time }?.let { return it }
+        providers.mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
+            .maxByOrNull { it.time }
+            ?.let { return it }
         return suspendCancellableCoroutine { cont ->
             val listeners = mutableListOf<android.location.LocationListener>()
             var resumed = false
             providers.forEach { provider ->
                 val listener = object : android.location.LocationListener {
                     override fun onLocationChanged(location: Location) {
-                        if (!resumed) { resumed = true; listeners.forEach { runCatching { lm.removeUpdates(it) } }; cont.resume(location) }
+                        if (!resumed) {
+                            resumed = true
+                            listeners.forEach { runCatching { lm.removeUpdates(it) } }
+                            cont.resume(location)
+                        }
                     }
                     override fun onProviderDisabled(provider: String) {}
                     override fun onProviderEnabled(provider: String) {}
-                    @Deprecated("Deprecated") override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+                    @Deprecated("Deprecated")
+                    override fun onStatusChanged(
+                        provider: String?,
+                        status: Int,
+                        extras: android.os.Bundle?,
+                    ) {
+                    }
                 }
                 listeners += listener
                 runCatching { lm.requestLocationUpdates(provider, 0L, 0f, listener, android.os.Looper.getMainLooper()) }

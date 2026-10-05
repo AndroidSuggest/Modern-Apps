@@ -64,11 +64,11 @@ class LearnViewModel(application: Application) : AndroidViewModel(application) {
 
     private val opponentDelayMs = 700L
 
-    // Lichess-style scoring (ui/learn/src/score.ts): apple/capture/scenario = 50,
-    // completion bonus 500/300/100 by move count, and piece values for value levels.
-    private val applePoints = 50
-    private val capturePoints = 50
-    private val scenarioPoints = 50
+    // Lichess-style scoring (see LearnRules.kt): apple/capture/scenario points,
+    // completion bonus by move count, and piece values for value levels.
+    private val applePoints = SCORE_APPLE
+    private val capturePoints = SCORE_CAPTURE
+    private val scenarioPoints = SCORE_SCENARIO
     private var stageScore = 0
 
     fun loadStage(categoryKey: String, stageKey: String) {
@@ -110,7 +110,6 @@ class LearnViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startLevel(stage: LearnStage, index: Int) {
         token++
-        val myToken = token
         val level = stage.levels[index]
         val board = LearnRepository.buildBoard(level)
         sideToMove = fenSide(level.fen)
@@ -132,9 +131,10 @@ class LearnViewModel(application: Application) : AndroidViewModel(application) {
 
         // Scenario levels where the opponent moves first (e.g. en passant setup).
         if (level.goalType == "scenario" && sideToMove != level.playerColor) {
+            val myToken = token
             viewModelScope.launch {
                 delay(opponentDelayMs)
-                if (token == myToken) playOpponentScenario(myToken)
+                if (token == myToken) playOpponentScenario()
             }
         }
     }
@@ -190,7 +190,7 @@ class LearnViewModel(application: Application) : AndroidViewModel(application) {
 
         // Pawn reaching the last rank: let the player pick the promotion piece
         // (some lessons need underpromotion). The dialog then calls onPromote.
-        if (moving.type == PieceType.PAWN && (to.row == 0 || to.row == 7)) {
+        if (moving.type == PieceType.PAWN && isLastRank(to)) {
             val promoBoard = board.movePiece(from, to)
             _uiState.update { it.copy(board = promoBoard, selectedPiece = null) }
             return
@@ -215,7 +215,13 @@ class LearnViewModel(application: Application) : AndroidViewModel(application) {
         finishPlayerMove(level, newBoard, newApples, newMoves, promoPos, state.playerColor)
     }
 
-    private fun addMovePoints(level: LearnLevel, apples: Set<Position>, to: Position, preMove: Board, player: PieceColor) {
+    private fun addMovePoints(
+        level: LearnLevel,
+        apples: Set<Position>,
+        to: Position,
+        preMove: Board,
+        player: PieceColor,
+    ) {
         if (to in apples) {
             stageScore += applePoints
         } else if (level.pointsForCapture) {
@@ -226,7 +232,14 @@ class LearnViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun finishPlayerMove(level: LearnLevel, newBoard: Board, apples: Set<Position>, moves: Int, to: Position, player: PieceColor) {
+    private fun finishPlayerMove(
+        level: LearnLevel,
+        newBoard: Board,
+        apples: Set<Position>,
+        moves: Int,
+        to: Position,
+        player: PieceColor,
+    ) {
         // A move that hangs a piece (per detectCapture) fails — and the opponent is
         // shown grabbing the hanging piece, like Lichess.
         val capture = detectCaptureMove(level, newBoard, player)
@@ -238,7 +251,7 @@ class LearnViewModel(application: Application) : AndroidViewModel(application) {
         val failed = isFailingMove(level, newBoard, player, moves)
         val outcome = when {
             failed -> LearnStatus.Failed
-            isSuccess(level, newBoard, apples, moves, player) -> LearnStatus.Completed
+            isSuccess(level, newBoard, apples, player) -> LearnStatus.Completed
             else -> LearnStatus.Playing
         }
 
@@ -284,11 +297,11 @@ class LearnViewModel(application: Application) : AndroidViewModel(application) {
         val myToken = token
         viewModelScope.launch {
             delay(opponentDelayMs)
-            if (token == myToken) playOpponentScenario(myToken)
+            if (token == myToken) playOpponentScenario()
         }
     }
 
-    private fun playOpponentScenario(myToken: Int) {
+    private fun playOpponentScenario() {
         val state = _uiState.value
         val level = state.level ?: return
         val move = level.scenario.getOrNull(scenarioIndex) ?: return
@@ -315,7 +328,7 @@ class LearnViewModel(application: Application) : AndroidViewModel(application) {
         var stageStars = _uiState.value.stageStars
         if (outcome == LearnStatus.Completed) {
             val level = _uiState.value.level
-            stars = if (level != null) starsFor(level, moves) else 3
+            stars = if (level != null) starsFor(level, moves) else MAX_STARS
             stageScore += levelBonus(stars)
             stageStars = persistStars(_uiState.value.stage, _uiState.value.levelIndex, stars, stageStars)
         }
@@ -349,105 +362,6 @@ class LearnViewModel(application: Application) : AndroidViewModel(application) {
             val punished = board.movePiece(capture.first, capture.second)
             _uiState.update { it.copy(board = punished, status = LearnStatus.Failed) }
         }
-    }
-
-    // ---- Goal evaluation ----
-
-    private fun isSuccess(level: LearnLevel, board: Board, apples: Set<Position>, moves: Int, player: PieceColor): Boolean {
-        val opponent = player.opposite
-        return when (level.goalType) {
-            "info" -> true
-            "apples" -> apples.isEmpty()
-            "captureAll" -> countColor(board, opponent) == 0
-            "protection" -> true // survived one move without a detectCapture failure
-            "check" -> board.isKingInCheck(opponent)
-            "checkIn" -> board.isKingInCheck(opponent)
-            "escapeCheck" -> !board.isKingInCheck(player)
-            "mate" -> board.isCheckmate(opponent)
-            "castle" -> board.lastMove?.isCastling == true
-            else -> apples.isEmpty()
-        }
-    }
-
-    /** The opponent's punishing capture if this move hangs a piece, else null. */
-    private fun detectCaptureMove(level: LearnLevel, board: Board, player: PieceColor): Pair<Position, Position>? {
-        if (level.goalType == "info") return null
-        val opp = player.opposite
-        return when (level.detectCapture) {
-            "all" -> captures(board, opp).firstOrNull()
-            "unprotected" -> captures(board, opp).firstOrNull { (from, to) ->
-                val after = board.movePiece(from, to)
-                positionsOf(after, player).none { after.isValidMove(it, to) }
-            }
-            else -> null
-        }
-    }
-
-    /** Non-capture failure conditions: path constraints and single-move goals not met. */
-    private fun isFailingMove(level: LearnLevel, board: Board, player: PieceColor, moves: Int): Boolean {
-        val opponent = player.opposite
-
-        // Pawn-stage path constraints.
-        if (level.failIfWhitePawnOn.isNotEmpty()) {
-            val bad = level.failIfWhitePawnOn.map { square(it) }
-            if (bad.any { board.pieces[it.row][it.col]?.let { p -> p.type == PieceType.PAWN && p.color == PieceColor.WHITE } == true }) return true
-        }
-        if (level.failIfPieceOffPath.isNotEmpty()) {
-            val allowed = level.failIfPieceOffPath.map { square(it) }.toSet()
-            val strayed = board.pieces.flatMapIndexed { r, row ->
-                row.mapIndexedNotNull { c, p -> if (p != null) Position(r, c) else null }
-            }.any { it !in allowed }
-            if (strayed) return true
-        }
-
-        // Single-move goals that weren't achieved this move.
-        return when (level.goalType) {
-            "check" -> !board.isKingInCheck(opponent)
-            "checkIn" -> !board.isKingInCheck(opponent) && moves >= (level.n ?: level.nbMoves)
-            "escapeCheck" -> board.isKingInCheck(player)
-            "mate" -> !board.isCheckmate(opponent)
-            else -> false
-        }
-    }
-
-    private fun countColor(board: Board, color: PieceColor): Int =
-        board.pieces.sumOf { row -> row.count { it?.color == color } }
-
-    private fun positionsOf(board: Board, color: PieceColor): List<Position> =
-        board.pieces.flatMapIndexed { r, row ->
-            row.mapIndexedNotNull { c, p -> if (p?.color == color) Position(r, c) else null }
-        }
-
-    /** Legal captures available to [attacker] against the other side. */
-    private fun captures(board: Board, attacker: PieceColor): List<Pair<Position, Position>> {
-        val targets = positionsOf(board, attacker.opposite)
-        return positionsOf(board, attacker).flatMap { from ->
-            targets.filter { to -> board.isValidMove(from, to) }.map { from to it }
-        }
-    }
-
-    private fun promotionFor(piece: com.vayunmathur.games.chess.data.Piece, to: Position): PieceType? =
-        if (piece.type == PieceType.PAWN && (to.row == 0 || to.row == 7)) PieceType.QUEEN else null
-
-    private fun fenSide(fen: String): PieceColor =
-        if (fen.split(" ").getOrNull(1) == "b") PieceColor.BLACK else PieceColor.WHITE
-
-    private fun starsFor(level: LearnLevel, moves: Int): Int {
-        val par = level.nbMoves
-        return when {
-            moves <= par -> 3
-            moves <= par + maxOf(1, par / 4) -> 2
-            else -> 1
-        }
-    }
-
-    private fun levelBonus(stars: Int): Int = when (stars) {
-        3 -> 500; 2 -> 300; else -> 100
-    }
-
-    private fun pieceValue(type: PieceType): Int = when (type) {
-        PieceType.QUEEN -> 90; PieceType.ROOK -> 50; PieceType.BISHOP -> 30
-        PieceType.KNIGHT -> 30; PieceType.PAWN -> 10; PieceType.KING -> 0
     }
 
     // ---- Progress persistence ----

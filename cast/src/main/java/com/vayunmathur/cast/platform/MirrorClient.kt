@@ -50,6 +50,13 @@ private const val TAG = "MirrorClient"
  */
 private const val RECONFIGURE_TIMEOUT_MS = 5_000L
 
+/** The UDP port range a TV may name: 0 means "none", and anything past 65535 is not a port. */
+private const val MIN_UDP_PORT = 1
+private const val MAX_UDP_PORT = 65535
+
+/** Bits per megabit, for turning a decoder bitrate into a log line. */
+private const val BITS_PER_MEGABIT = 1_000_000.0
+
 /** Whether the TV took a content session, and why not if it did not. */
 sealed interface ContentOutcome {
 
@@ -176,11 +183,21 @@ class MirrorClient(
             Log.w(TAG, "the TV speaks version ${identity.version}; we speak $PROTOCOL_VERSION")
             return HandshakeOutcome.Failed(ClientFailure.VersionMismatch)
         }
-        transcript.add(identityFrame.body)
+        rememberIdentity(identityFrame.body, identity)
+
+        return exchangeSecret(identity)
+    }
+
+    private fun rememberIdentity(body: ByteArray, identity: TvIdentity) {
+        transcript.add(body)
         receiverName = identity.receiverName
         receiverId = identity.receiverId
         limits = identity.limits
         displayModes = identity.displayModes
+        logReceiverCapabilities(identity)
+    }
+
+    private fun logReceiverCapabilities(identity: TvIdentity) {
         if (identity.displayModes.isEmpty()) {
             Log.w(TAG, "'${identity.receiverName}' reported no panel modes; a desktop will use phone geometry")
         } else {
@@ -200,10 +217,12 @@ class MirrorClient(
                 TAG,
                 "'${identity.receiverName}' decodes ${codec.codec.label} up to " +
                     "${codec.maxWidth}x${codec.maxHeight} @ ${codec.maxFrameRate}fps, " +
-                    "${codec.maxBitRate / 1_000_000.0} Mbit/s",
+                    "${codec.maxBitRate / BITS_PER_MEGABIT} Mbit/s",
             )
         }
+    }
 
+    private fun exchangeSecret(identity: TvIdentity): HandshakeOutcome {
         val bundle = ProtocolBase64.decode(identity.publicBundle)
             ?: return HandshakeOutcome.Failed(ClientFailure.Protocol)
         val secret = SessionKeys.newSecret()
@@ -223,6 +242,14 @@ class MirrorClient(
 
         val required = socket.receive()?.message as? PairRequired
             ?: return HandshakeOutcome.Failed(ClientFailure.Unreachable)
+        return answerPairRequired(required, sessionKeys, frozen)
+    }
+
+    private fun answerPairRequired(
+        required: PairRequired,
+        sessionKeys: SessionKeys,
+        frozen: ByteArray,
+    ): HandshakeOutcome {
         if (required.code) {
             // The TV does not know us - either we have never paired, or it was reset since. Either way
             // the key we may be holding is worthless and the user has to read the screen.
@@ -312,7 +339,7 @@ class MirrorClient(
         socket.send(config) ?: return HandshakeOutcome.Failed(ClientFailure.StreamRefused)
         val ready = socket.receive()?.message as? StreamReady
             ?: return HandshakeOutcome.Failed(ClientFailure.StreamRefused)
-        if (ready.udpPort !in 1..65535) {
+        if (ready.udpPort !in MIN_UDP_PORT..MAX_UDP_PORT) {
             Log.w(TAG, "the TV named udp port ${ready.udpPort}")
             return HandshakeOutcome.Failed(ClientFailure.StreamRefused)
         }
@@ -371,7 +398,7 @@ class MirrorClient(
             Log.w(TAG, "'$receiverName' did not answer a mid-session STREAM_CONFIG")
             return HandshakeOutcome.Failed(ClientFailure.StreamRefused)
         }
-        if (ready.udpPort !in 1..65535) {
+        if (ready.udpPort !in MIN_UDP_PORT..MAX_UDP_PORT) {
             Log.w(TAG, "the TV named udp port ${ready.udpPort}")
             return HandshakeOutcome.Failed(ClientFailure.StreamRefused)
         }

@@ -132,8 +132,8 @@ class AssistantViewModel(
             audioRecorder = WavRecorder(context, file, viewModelScope).apply { start() }
             _recordedAudioPath.value = file.absolutePath
             _isRecording.value = true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start recording", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "Failed to start recording", expected)
             audioRecorder = null
             _recordedAudioPath.value = null
             _isRecording.value = false
@@ -219,8 +219,8 @@ class AssistantViewModel(
                         Log.i(TAG, "Deleted legacy model file $name")
                     }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error cleaning up legacy model file", e)
+            } catch (expected: Exception) {
+                Log.e(TAG, "Error cleaning up legacy model file", expected)
             }
         }
     }
@@ -257,8 +257,8 @@ class AssistantViewModel(
                     ds.setDouble("progress_$name", 0.0)
                 }
                 ds.setLong("siglip_model_version", SiglipEmbedder.MODEL_VERSION.toLong())
-            } catch (e: Exception) {
-                Log.e(TAG, "Error cleaning up stale SigLIP2 model files", e)
+            } catch (expected: Exception) {
+                Log.e(TAG, "Error cleaning up stale SigLIP2 model files", expected)
             }
         }
     }

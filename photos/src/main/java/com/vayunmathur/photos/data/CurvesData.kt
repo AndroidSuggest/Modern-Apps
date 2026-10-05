@@ -3,6 +3,12 @@ package com.vayunmathur.photos.data
 import android.graphics.Bitmap
 import android.graphics.ColorMatrix
 
+private const val ALPHA_SHIFT = 24
+private const val RED_SHIFT = 16
+private const val GREEN_SHIFT = 8
+private const val CHANNEL_MAX = 255
+private const val CHANNEL_MAX_F = 255f
+
 data class CurveControlPoint(val x: Float, val y: Float)
 
 enum class CurveChannel { Combined, Red, Green, Blue }
@@ -81,13 +87,13 @@ fun CurvesAdjustment.applyLutToBitmap(bitmap: Bitmap): Bitmap {
             var r = (p shr 16) and 0xFF
             var g = (p shr 8) and 0xFF
             var b = p and 0xFF
-            r = (combinedLut[r] * 255f).toInt().coerceIn(0, 255)
-            g = (combinedLut[g] * 255f).toInt().coerceIn(0, 255)
-            b = (combinedLut[b] * 255f).toInt().coerceIn(0, 255)
-            r = (rLut[r] * 255f).toInt().coerceIn(0, 255)
-            g = (gLut[g] * 255f).toInt().coerceIn(0, 255)
-            b = (bLut[b] * 255f).toInt().coerceIn(0, 255)
-            (a shl 24) or (r shl 16) or (g shl 8) or b
+            r = (combinedLut[r] * CHANNEL_MAX_F).toInt().coerceIn(0, CHANNEL_MAX)
+            g = (combinedLut[g] * CHANNEL_MAX_F).toInt().coerceIn(0, CHANNEL_MAX)
+            b = (combinedLut[b] * CHANNEL_MAX_F).toInt().coerceIn(0, CHANNEL_MAX)
+            r = (rLut[r] * CHANNEL_MAX_F).toInt().coerceIn(0, CHANNEL_MAX)
+            g = (gLut[g] * CHANNEL_MAX_F).toInt().coerceIn(0, CHANNEL_MAX)
+            b = (bLut[b] * CHANNEL_MAX_F).toInt().coerceIn(0, CHANNEL_MAX)
+            (a shl ALPHA_SHIFT) or (r shl RED_SHIFT) or (g shl GREEN_SHIFT) or b
         }
     }
 }

@@ -6,7 +6,7 @@ import com.android.tools.screenshot.PreviewTest
 import com.vayunmathur.calculator.util.AngleMode
 import com.vayunmathur.calculator.util.CalculatorActions
 import com.vayunmathur.calculator.util.CalculatorUiState
-import com.vayunmathur.calculator.util.CalculatorViewModel
+import com.vayunmathur.calculator.util.GraphTabColors
 import com.vayunmathur.calculator.util.FeatureKind
 import com.vayunmathur.calculator.util.GraphActions
 import com.vayunmathur.calculator.util.GraphFunction
@@ -79,7 +79,7 @@ class MetadataPreviews {
     @Preview(name = "2-graph", device = PHONE, showSystemUi = true)
     @Composable
     fun Preview2Graph() {
-        val colors = CalculatorViewModel.FunctionColors
+        val colors = GraphTabColors
         DynamicTheme(darkTheme = true) {
             GraphScreen(
                 state = GraphUiState(

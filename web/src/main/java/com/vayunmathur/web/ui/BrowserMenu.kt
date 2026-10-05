@@ -36,6 +36,12 @@ import com.vayunmathur.web.platform.BrowserUtils
 import com.vayunmathur.web.platform.PwaHelper
 import com.vayunmathur.web.platform.PwaInfo
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.addBookmark
+import com.vayunmathur.web.platform.getPwaInfo
+import com.vayunmathur.web.platform.getTabTitle
+import com.vayunmathur.web.platform.installAsPwa
+import com.vayunmathur.web.platform.newTab
+import com.vayunmathur.web.platform.removeBookmark
 
 /**
  * Overflow menu for the browser chrome: nav, shields, reload, install/pin,

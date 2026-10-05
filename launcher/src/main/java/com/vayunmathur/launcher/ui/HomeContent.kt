@@ -292,7 +292,6 @@ fun HomeContent(
             iconScale = state.iconScale,
             folderAnchor = folderAnchor,
             folder = folder,
-            onOpenMenu = onOpenMenu,
             onCloseFolder = onCloseFolder,
             drag = drag,
         )

@@ -18,17 +18,28 @@ class PuzzleFormatTest {
 
     private fun encodeRecord(fen: String, moves: String, rating: Int): ByteArray {
         val parts = fen.split(" ")
-        val placement = parts[0]
-        val side = parts[1]
-        val castling = parts[2]
-        val ep = parts[3]
+        val board = encodePlacement(parts[0])
+        val out = ByteArrayOutputStream()
+        for (b in 0 until 32) {
+            out.write(board[2 * b] or (board[2 * b + 1] shl 4))
+        }
+        out.write(sideAndCastlingBits(parts[1], parts[2]))
+        out.write(epSquare(parts[3]))
+        writeShortLE(out, rating)
+        writeMoves(out, moves)
+        return out.toByteArray()
+    }
 
+    private fun encodePlacement(placement: String): IntArray {
         val board = IntArray(64)
         var row = 0
         var col = 0
         for (ch in placement) {
             when {
-                ch == '/' -> { row++; col = 0 }
+                ch == '/' -> {
+                    row++
+                    col = 0
+                }
                 ch.isDigit() -> col += ch - '0'
                 else -> {
                     val type = when (ch.lowercaseChar()) {
@@ -40,34 +51,39 @@ class PuzzleFormatTest {
                 }
             }
         }
+        return board
+    }
 
-        val out = ByteArrayOutputStream()
-        for (b in 0 until 32) {
-            out.write(board[2 * b] or (board[2 * b + 1] shl 4))
-        }
+    private fun sideAndCastlingBits(side: String, castling: String): Int {
         var cbits = 0
         if (castling.contains('K')) cbits = cbits or 1
         if (castling.contains('Q')) cbits = cbits or 2
         if (castling.contains('k')) cbits = cbits or 4
         if (castling.contains('q')) cbits = cbits or 8
         val stm = if (side == "w") 0 else 1
-        out.write(stm or (cbits shl 1))
+        return stm or (cbits shl 1)
+    }
 
-        val epSq = if (ep == "-") 0xFF else (8 - (ep[1] - '0')) * 8 + (ep[0] - 'a')
-        out.write(epSq)
+    private fun epSquare(ep: String): Int {
+        if (ep == "-") return 0xFF
+        return (8 - (ep[1] - '0')) * 8 + (ep[0] - 'a')
+    }
 
-        writeShortLE(out, rating)
+    private fun writeMoves(out: ByteArrayOutputStream, moves: String) {
         val moveList = if (moves.isBlank()) emptyList() else moves.split(" ")
         out.write(moveList.size)
         for (uci in moveList) {
-            val fromSq = (8 - (uci[1] - '0')) * 8 + (uci[0] - 'a')
-            val toSq = (8 - (uci[3] - '0')) * 8 + (uci[2] - 'a')
-            val promo = if (uci.length >= 5) when (uci[4]) {
-                'q' -> 1; 'r' -> 2; 'b' -> 3; 'n' -> 4; else -> 0
-            } else 0
-            writeShortLE(out, fromSq or (toSq shl 6) or (promo shl 12))
+            writeShortLE(out, encodedMove(uci))
         }
-        return out.toByteArray()
+    }
+
+    private fun encodedMove(uci: String): Int {
+        val fromSq = (8 - (uci[1] - '0')) * 8 + (uci[0] - 'a')
+        val toSq = (8 - (uci[3] - '0')) * 8 + (uci[2] - 'a')
+        val promo = if (uci.length >= 5) when (uci[4]) {
+            'q' -> 1; 'r' -> 2; 'b' -> 3; 'n' -> 4; else -> 0
+        } else 0
+        return fromSq or (toSq shl 6) or (promo shl 12)
     }
 
     private class ByteArrayOutputStream {

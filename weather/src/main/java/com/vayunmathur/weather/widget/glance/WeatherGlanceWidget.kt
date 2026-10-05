@@ -76,6 +76,9 @@ class WeatherGlanceWidget : GlanceAppWidget() {
         }
     }
 
+    // Broad catch is deliberate: a widget preview must never throw into the host,
+    // and Glance plus Room throw undocumented RuntimeExceptions.
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
         try {
             provideContent {
@@ -83,7 +86,7 @@ class WeatherGlanceWidget : GlanceAppWidget() {
                     WeatherPreviewContent()
                 }
             }
-        } catch (e: Throwable) {
+        } catch (e: Exception) {
             Log.e("WeatherWidget", "providePreview failed", e)
             try {
                 provideContent {
@@ -104,12 +107,15 @@ class WeatherGlanceWidget : GlanceAppWidget() {
                         }
                     }
                 }
-            } catch (_: Throwable) {
+            } catch (ignored: Exception) {
                 // prevent crash of preview host on API 35+
             }
         }
     }
 
+    // Broad catch is deliberate: a snapshot miss renders as a dash, and Room plus
+    // kotlinx.serialization throw undocumented RuntimeExceptions (not just IOException).
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun loadWeatherSnapshot(context: Context): WidgetWeather? {
         return try {
             val repo = WeatherRepository.get(context)
@@ -131,6 +137,7 @@ class WeatherGlanceWidget : GlanceAppWidget() {
                 isDay = current.isDay != 0,
             )
         } catch (e: Exception) {
+            Log.d("WeatherWidget", "no cached snapshot yet", e)
             null
         }
     }

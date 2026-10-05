@@ -1,7 +1,6 @@
 package com.vayunmathur.web.platform
 
 import android.net.Uri
-import androidx.lifecycle.viewModelScope
 import com.vayunmathur.web.data.DownloadEntry
 import com.vayunmathur.web.data.StorageInfo
 import kotlinx.coroutines.launch
@@ -35,8 +34,8 @@ fun WebViewModel.updateStorageFootprint(
     hasServiceWorker: Boolean,
     estBytes: Long
 ) {
-    viewModelScope.launch {
-        val existing = repository.storageInfoByOrigin(origin)
+    scope.launch {
+        val existing = repository.storage.byOrigin(origin)
         val info = if (existing != null) {
             existing.copy(
                 cookieCount = cookieCount,
@@ -58,32 +57,33 @@ fun WebViewModel.updateStorageFootprint(
                 lastSeen = System.currentTimeMillis()
             )
         }
-        repository.upsertStorageInfo(info)
+        repository.storage.upsert(info)
     }
 }
 
 fun WebViewModel.clearSiteData(origin: String) {
-    viewModelScope.launch {
-        repository.deleteStorageInfoOrigin(origin)
-        repository.deleteSitePermissionOrigin(origin)
+    scope.launch {
+        repository.storage.deleteOrigin(origin)
+        repository.permissions.deleteOrigin(origin)
     }
 }
 
 fun WebViewModel.clearAllSiteData() {
-    viewModelScope.launch {
-        repository.clearAllStorageInfos()
-        repository.clearAllSitePermissions()
+    scope.launch {
+        repository.storage.clearAll()
+        repository.permissions.clearAll()
     }
 }
 
 // ---- Downloads ----
 
 fun WebViewModel.addDownload(url: String, fileName: String, mime: String?, length: Long) {
-    viewModelScope.launch {
-        repository.upsertDownload(DownloadEntry(url = url, fileName = fileName, mimeType = mime, contentLength = length))
+    scope.launch {
+        val entry = DownloadEntry(url = url, fileName = fileName, mimeType = mime, contentLength = length)
+        repository.downloads.upsert(entry)
     }
 }
 
 fun WebViewModel.clearAllDownloads() {
-    viewModelScope.launch { repository.clearAllDownloads() }
+    scope.launch { repository.downloads.clearAll() }
 }

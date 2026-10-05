@@ -47,7 +47,7 @@ internal fun EditPhotoToolOverlays(state: EditPhotoEditorState) {
     state.selection?.let { if (state.selDragStart == null) SelectionMaskOverlay(it) }
     val blurAdj = state.document.activeAdjustment<BlurAdj>()
     if (state.editorMode == EditorMode.LensBlur && blurAdj != null && !blurAdj.blur.isIdentity()) {
-        BlurOverlay(blurParams = blurAdj.blur, onBlurChanged = { state.vm.updateActiveAdjustment(BlurAdj(it)) })
+        BlurOverlay(blurParams = blurAdj.blur, onBlurChanged = { state.vm.adjustments.updateActiveAdjustment(BlurAdj(it)) })
     }
     if (state.editorMode == EditorMode.Selective) {
         MaskOverlay(mask = state.currentSelectiveMask, showMask = state.showSelectiveMask, onMaskChanged = { state.currentSelectiveMask = it })
@@ -64,7 +64,7 @@ internal fun EditPhotoToolOverlays(state: EditPhotoEditorState) {
         Box(modifier = Modifier.fillMaxSize().pointerInput(Unit) {
             detectTapGestures { o ->
                 val nx = o.x / size.width; val ny = o.y / size.height
-                state.vm.applyToActivePixelLayer { RedEyeSpots(listOf(RedEyeSpot(nx, ny, state.brushSize))).applyToBitmap(it) }
+                state.vm.pixel.applyToActivePixelLayer { RedEyeSpots(listOf(RedEyeSpot(nx, ny, state.brushSize))).applyToBitmap(it) }
             }
         })
     }
@@ -94,7 +94,7 @@ internal fun EditPhotoToolOverlays(state: EditPhotoEditorState) {
                             tool = state.liquifyTool, x = nx, y = ny,
                             radius = state.liquifyRadius, strength = state.liquifyStrength,
                         )
-                        state.vm.applyToActivePixelLayer {
+                        state.vm.pixel.applyToActivePixelLayer {
                             LiquifyParams(listOf(op)).applyToBitmap(it)
                         }
                     }
@@ -113,7 +113,7 @@ internal fun EditPhotoToolOverlays(state: EditPhotoEditorState) {
                             x = nx, y = ny, dx = ddx, dy = ddy,
                             radius = state.liquifyRadius, strength = state.liquifyStrength,
                         )
-                        state.vm.applyToActivePixelLayer {
+                        state.vm.pixel.applyToActivePixelLayer {
                             LiquifyParams(listOf(op)).applyToBitmap(it)
                         }
                         liqStart = change.position
@@ -195,7 +195,7 @@ internal fun EditPhotoPaintOverlays(state: EditPhotoEditorState) {
                 },
                 onDragEnd = {
                     if (state.maskPoints.isNotEmpty()) {
-                        state.vm.paintOnActiveMask(state.maskPoints, state.maskBrushSize, if (state.maskPaintReveal) 1f else 0f)
+                        state.vm.layers.paintOnActiveMask(state.maskPoints, state.maskBrushSize, if (state.maskPaintReveal) 1f else 0f)
                         state.maskPoints = emptyList()
                     }
                 },
@@ -207,7 +207,7 @@ internal fun EditPhotoPaintOverlays(state: EditPhotoEditorState) {
             detectTapGestures { o ->
                 val nx = (o.x / size.width).coerceIn(0f, 1f)
                 val ny = (o.y / size.height).coerceIn(0f, 1f)
-                state.vm.applyToActivePixelLayer { floodFillBitmap(it, nx, ny, state.paintColor.toArgb(), state.fillTolerance) }
+                state.vm.pixel.applyToActivePixelLayer { floodFillBitmap(it, nx, ny, state.paintColor.toArgb(), state.fillTolerance) }
             }
         })
     }
@@ -230,16 +230,16 @@ internal fun EditPhotoPaintOverlays(state: EditPhotoEditorState) {
                     val y1 = (e.y / state.currentViewportHeight).coerceIn(0f, 1f)
                     val argb = state.paintColor.toArgb()
                     when (state.editorMode) {
-                        EditorMode.GradientTool -> state.vm.applyToActivePixelLayer {
+                        EditorMode.GradientTool -> state.vm.pixel.applyToActivePixelLayer {
                             drawGradientBitmap(it, x0, y0, x1, y1, argb)
                         }
-                        EditorMode.ShapeRect -> state.vm.applyToActivePixelLayer {
+                        EditorMode.ShapeRect -> state.vm.pixel.applyToActivePixelLayer {
                             drawShapeBitmap(it, PaintShape.Rectangle, minOf(x0, x1), minOf(y0, y1), maxOf(x0, x1), maxOf(y0, y1), argb, state.shapeStrokeWidth)
                         }
-                        EditorMode.ShapeEllipse -> state.vm.applyToActivePixelLayer {
+                        EditorMode.ShapeEllipse -> state.vm.pixel.applyToActivePixelLayer {
                             drawShapeBitmap(it, PaintShape.Ellipse, minOf(x0, x1), minOf(y0, y1), maxOf(x0, x1), maxOf(y0, y1), argb, state.shapeStrokeWidth)
                         }
-                        EditorMode.ShapeLine -> state.vm.applyToActivePixelLayer {
+                        EditorMode.ShapeLine -> state.vm.pixel.applyToActivePixelLayer {
                             drawShapeBitmap(it, PaintShape.Line, x0, y0, x1, y1, argb, state.shapeStrokeWidth)
                         }
                         else -> {}

@@ -23,6 +23,7 @@ import com.vayunmathur.contacts.data.isSimAccountType
 import com.vayunmathur.contacts.util.ContactDetailsUiState
 import com.vayunmathur.contacts.util.ContactPlatforms
 import com.vayunmathur.contacts.util.ContactViewModel
+import com.vayunmathur.contacts.util.contactFlow
 import com.vayunmathur.contacts.util.ContactsActions
 import com.vayunmathur.contacts.util.PackageUtils
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -56,7 +57,7 @@ fun ContactDetailsPage(
 ) {
     val context = LocalContext.current
     val contactsList by viewModel.contacts.collectAsStateWithLifecycle()
-    val contactFromFlow by remember { viewModel.getContactFlow(contactId) }.collectAsStateWithLifecycle(initialValue = null)
+    val contactFromFlow by remember { viewModel.contactFlow(contactId) }.collectAsStateWithLifecycle(initialValue = null)
     val contactFromProvider by produceState<Contact?>(initialValue = null, contactId, contactsList.size) {
         value = withContext(Dispatchers.IO) {
             viewModel.getContact(contactId) ?: com.vayunmathur.contacts.data.Contact.getContact(context, contactId)
@@ -129,7 +130,7 @@ fun ContactDetailsPage(
     )
 }
 
-private const val StaggerWindowMillis = 400L
+private const val STAGGER_WINDOW_MILLIS = 400L
 
 /**
  * The contact details page, with no dependency on the ViewModel so it can be rendered from
@@ -150,7 +151,7 @@ fun ContactDetailsScreen(
     // composed because the user scrolled to it, and delaying that would just feel like lag.
     var arriving by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
-        delay(StaggerWindowMillis)
+        delay(STAGGER_WINDOW_MILLIS)
         arriving = false
     }
 

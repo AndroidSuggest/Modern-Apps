@@ -29,12 +29,28 @@ fun Navigation(viewModel: PipesViewModel) {
     GameHubComposeHook("pipes", viewModel.achievementsManager)
     Box(Modifier.fillMaxSize()) {
         MainNavigation(backStack) {
-            entry<Route.PackSelector> { PackScreen(backStack, viewModel, onOpenGameCenter = { backStack.add(Route.GameCenter) }) }
+            entry<Route.PackSelector> {
+                PackScreen(
+                    backStack,
+                    viewModel,
+                    onOpenGameCenter = { backStack.add(Route.GameCenter) },
+                )
+            }
             entry<Route.LevelSelector> { LevelScreen(backStack, viewModel, it.packIndex) }
-            entry<Route.Game>(metadata = FullscreenPage()) { GameScreen(backStack, viewModel, it.packIndex, it.levelIndex) }
+            entry<Route.Game>(metadata = FullscreenPage()) {
+                GameScreen(backStack, viewModel, it.packIndex, it.levelIndex)
+            }
             entry<Route.DailySelector> { DailyLevelScreen(backStack, viewModel) }
-            entry<Route.DailyGame>(metadata = FullscreenPage()) { GameScreen(backStack, viewModel, PipesViewModel.DAILY_PACK_INDEX, it.levelIndex) }
-            entry<Route.GameCenter> { GameCenterScreen(backupAgent = AppBackupAgent(), manager = viewModel.achievementsManager, onBack = { backStack.pop() }) }
+            entry<Route.DailyGame>(metadata = FullscreenPage()) {
+                GameScreen(backStack, viewModel, PipesViewModel.DAILY_PACK_INDEX, it.levelIndex)
+            }
+            entry<Route.GameCenter> {
+                GameCenterScreen(
+                    backupAgent = AppBackupAgent(),
+                    manager = viewModel.achievementsManager,
+                    onBack = { backStack.pop() },
+                )
+            }
             entry<Route.Settings> { SettingsPage(backStack, viewModel) }
         }
         newAchievement?.let { AchievementNotification(it) { viewModel.dismissAchievementNotification() } }

@@ -19,7 +19,11 @@ import com.vayunmathur.office.R
 fun FootnoteDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf("") }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.insert_footnote)) },
-        text = { TextField(value = text, onValueChange = { text = it }, label = { Text(stringResource(R.string.footnote_text)) }, modifier = Modifier.fillMaxWidth()) },
+        text = { TextField(
+            value = text,
+            onValueChange = { text = it },
+            label = { Text(stringResource(R.string.footnote_text)) },
+            modifier = Modifier.fillMaxWidth()) },
         confirmButton = { TextButton(onClick = { if (text.isNotBlank()) { onAdd(text); onDismiss() } }) { Text(stringResource(R.string.insert)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } })
 }

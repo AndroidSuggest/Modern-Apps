@@ -81,7 +81,6 @@ internal fun ModeSelector(
 
 @Composable
 internal fun BottomBar(
-    cameraMode: CameraMode,
     isPhotoType: Boolean,
     iconRotation: Float,
     onPickerChanged: (Boolean) -> Unit,

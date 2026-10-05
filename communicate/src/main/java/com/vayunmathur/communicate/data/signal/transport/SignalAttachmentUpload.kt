@@ -45,8 +45,8 @@ object SignalAttachmentUpload {
                 headers = mapOf("Authorization" to "Basic $authHeader"),
                 sslSocketFactory = sslSocketFactory,
             )
-        } catch (t: Throwable) {
-            Log.w(TAG, "upload form fetch failed", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "upload form fetch failed", expected)
             return null
         }
         if (!resp.isSuccess) {
@@ -59,8 +59,8 @@ object SignalAttachmentUpload {
     internal fun parseForm(body: String, warn: (String) -> Unit = { Log.w(TAG, it) }): UploadForm? {
         val root = try {
             json.parseToJsonElement(body).jsonObject
-        } catch (e: Exception) {
-            warn("unparseable upload form: ${e.message}")
+        } catch (expected: Exception) {
+            warn("unparseable upload form: ${expected.message}")
             return null
         }
         val cdn = try { root["cdn"]?.jsonPrimitive?.int } catch (_: Exception) { null }
@@ -110,8 +110,8 @@ object SignalAttachmentUpload {
             )
             if (!resp.isSuccess) Log.w(TAG, "attachment upload rejected: ${resp.status} ${resp.statusMessage}")
             resp.isSuccess
-        } catch (t: Throwable) {
-            Log.w(TAG, "attachment upload failed", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "attachment upload failed", expected)
             false
         }
     }

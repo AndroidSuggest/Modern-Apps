@@ -84,6 +84,14 @@ import kotlinx.coroutines.withContext
 internal val ChessBoardMaxWidth = 560.dp
 internal val ChessSidePanelWidth = 300.dp
 
+private const val NEW_GAME_DIALOG_WIDTH_FRACTION = 0.9f
+private const val DIFFICULTY_OPTION_COUNT = 4
+private const val COLOR_OPTION_COUNT = 2
+private const val FAST_WIN_MAX_MOVES = 40
+private const val FLIPPED_ROTATION = 180f
+private const val CAPTURE_HINT_FRACTION = 0.92f
+private const val EMPTY_HINT_FRACTION = 0.30f
+
 /**
  * The new-game picker.
  *
@@ -96,81 +104,132 @@ fun NewGameDialog(onNewGame: (GameMode) -> Unit, onDismiss: () -> Unit = {}, aiA
     var showSettings by remember { mutableStateOf<((PieceColor, Difficulty) -> Unit)?>(null) }
 
     showSettings?.let { startGame ->
-        var selectedColor by remember { mutableStateOf(PieceColor.WHITE) }
-        var selectedDifficulty by remember {mutableStateOf(Difficulty.INTERMEDIATE)}
-        AlertDialog(
-            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-            modifier = Modifier.fillMaxWidth(0.9f),
-            onDismissRequest = { showSettings = null },
-            title = { Text(stringResource(R.string.start_new_game)) },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.play_as))
-                        SingleChoiceSegmentedButtonRow {
-                            PieceColor.entries.zip(listOf(stringResource(R.string.color_white), stringResource(R.string.color_black)))
-                                .forEachIndexed { idx, (value, label) ->
-                                    SegmentedButton(
-                                        shape = SegmentedButtonDefaults.itemShape(idx, 2),
-                                        onClick = { selectedColor = value },
-                                        selected = selectedColor == value,
-                                        label = {
-                                            Text(
-                                                label,
-                                                style = MaterialTheme.typography.labelSmall
-                                            )
-                                        }
-                                    )
-                                }
-                        }
+        AiSettingsDialog(onStart = startGame, onDismiss = { showSettings = null })
+    } ?: NewGameChoiceDialog(
+        onNewGame = onNewGame,
+        onDismiss = onDismiss,
+        aiAvailable = aiAvailable,
+        onShowSettings = { showSettings = it }
+    )
+}
+
+@Composable
+private fun AiSettingsDialog(
+    onStart: (PieceColor, Difficulty) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selectedColor by remember { mutableStateOf(PieceColor.WHITE) }
+    var selectedDifficulty by remember { mutableStateOf(Difficulty.INTERMEDIATE) }
+    AlertDialog(
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        modifier = Modifier.fillMaxWidth(NEW_GAME_DIALOG_WIDTH_FRACTION),
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.start_new_game)) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.play_as))
+                    ColorPicker(selectedColor = selectedColor, onSelect = { selectedColor = it })
+                }
+                Spacer(Modifier.height(16.dp))
+                DifficultyPicker(selectedDifficulty = selectedDifficulty, onSelect = { selectedDifficulty = it })
+                Spacer(Modifier.height(16.dp))
+                Button({
+                    onStart(selectedColor, selectedDifficulty)
+                }, Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.start_game))
+                }
+            }
+        },
+        confirmButton = { }
+    )
+}
+
+@Composable
+private fun ColorPicker(
+    selectedColor: PieceColor,
+    onSelect: (PieceColor) -> Unit,
+) {
+    SingleChoiceSegmentedButtonRow {
+        val colorLabels = listOf(
+            stringResource(R.string.color_white),
+            stringResource(R.string.color_black)
+        )
+        PieceColor.entries.zip(colorLabels)
+            .forEachIndexed { idx, (value, label) ->
+                SegmentedButton(
+                    shape = SegmentedButtonDefaults.itemShape(idx, COLOR_OPTION_COUNT),
+                    onClick = { onSelect(value) },
+                    selected = selectedColor == value,
+                    label = {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelSmall
+                        )
                     }
-                    Spacer(Modifier.height(16.dp))
-                    SingleChoiceSegmentedButtonRow {
-                        Difficulty.entries.zip(listOf(stringResource(R.string.difficulty_easy), stringResource(R.string.difficulty_medium), stringResource(R.string.difficulty_hard), stringResource(R.string.difficulty_master))).forEachIndexed { idx, (value, label) ->
-                            SegmentedButton(
-                                shape = SegmentedButtonDefaults.itemShape(idx, 4),
-                                onClick = { selectedDifficulty = value },
-                                selected = selectedDifficulty == value,
-                                label = { Text(label, style = MaterialTheme.typography.labelSmall) }
-                            )
-                        }
+                )
+            }
+    }
+}
+
+@Composable
+private fun DifficultyPicker(
+    selectedDifficulty: Difficulty,
+    onSelect: (Difficulty) -> Unit,
+) {
+    SingleChoiceSegmentedButtonRow {
+        val difficultyLabels = listOf(
+            stringResource(R.string.difficulty_easy),
+            stringResource(R.string.difficulty_medium),
+            stringResource(R.string.difficulty_hard),
+            stringResource(R.string.difficulty_master)
+        )
+        Difficulty.entries.zip(difficultyLabels)
+            .forEachIndexed { idx, (value, label) ->
+                SegmentedButton(
+                    shape = SegmentedButtonDefaults.itemShape(idx, DIFFICULTY_OPTION_COUNT),
+                    onClick = { onSelect(value) },
+                    selected = selectedDifficulty == value,
+                    label = {
+                        Text(label, style = MaterialTheme.typography.labelSmall)
                     }
-                    Spacer(Modifier.height(16.dp))
-                    Button({
-                        startGame(selectedColor, selectedDifficulty)
-                    }, Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.start_game))
+                )
+            }
+    }
+}
+
+@Composable
+private fun NewGameChoiceDialog(
+    onNewGame: (GameMode) -> Unit,
+    onDismiss: () -> Unit,
+    aiAvailable: Boolean,
+    onShowSettings: (((PieceColor, Difficulty) -> Unit)?) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.new_game)) },
+        text = {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Button(onClick = { onNewGame(GameMode.TwoPlayer) }) {
+                    Text(stringResource(R.string.two_player_local))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                if (aiAvailable) {
+                    Button(onClick = {
+                        onShowSettings { color, difficulty ->
+                            onNewGame(GameMode.VsAI(color, difficulty))
+                        }
+                    }) {
+                        Text(stringResource(R.string.human_vs_ai))
                     }
                 }
-            },
-            confirmButton = { }
-        )
-    } ?:
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text(text = stringResource(R.string.new_game)) },
-            text = {
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Button(onClick = { onNewGame(GameMode.TwoPlayer) }) {
-                        Text(stringResource(R.string.two_player_local))
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (aiAvailable) {
-                        Button(onClick = {
-                            showSettings = { color, difficulty ->
-                                onNewGame(GameMode.VsAI(color, difficulty))
-                            }
-                        }) {
-                            Text(stringResource(R.string.human_vs_ai))
-                        }
-                    }
-                }
-            },
-            confirmButton = {}
-        )
+            }
+        },
+        confirmButton = {}
+    )
 }
 
 /** Binds [ChessViewModel] to the stateless [ChessGameScreen] and drives the achievements. */
@@ -184,11 +243,27 @@ fun ChessGame(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
-    LaunchedEffect(uiState.board.lastMove) {
-        val lastMove = uiState.board.lastMove ?: return@LaunchedEffect
+    MoveAchievements(state = uiState, achievementsManager = achievementsManager)
+    WinAchievements(state = uiState, viewModel = viewModel, achievementsManager = achievementsManager)
+
+    ChessGameScreen(
+        state = uiState,
+        actions = viewModel,
+        onNewGame = onNewGame,
+        onOpenGameCenter = onOpenGameCenter
+    )
+}
+
+@Composable
+private fun MoveAchievements(
+    state: ChessUiState,
+    achievementsManager: AchievementsManager,
+) {
+    LaunchedEffect(state.board.lastMove) {
+        val lastMove = state.board.lastMove ?: return@LaunchedEffect
         // The engine's replies land in the same board state as the human's moves, so credit the
         // move only when the side that made it is the one the player is sitting on.
-        val playedByPlayer = when (val mode = uiState.gameMode) {
+        val playedByPlayer = when (val mode = state.gameMode) {
             is GameMode.VsAI -> lastMove.piece.color == mode.playerColor
             GameMode.TwoPlayer -> true
         }
@@ -200,47 +275,58 @@ fun ChessGame(
             achievementsManager.onAchievementUnlocked("promoted")
         }
     }
+}
 
-    LaunchedEffect(uiState.gameResult) {
+@Composable
+private fun WinAchievements(
+    state: ChessUiState,
+    viewModel: ChessViewModel,
+    achievementsManager: AchievementsManager,
+) {
+    val context = LocalContext.current
+    LaunchedEffect(state.gameResult) {
         // Drive achievements off the typed game result, not the localized status text, so they
         // work in every locale. Only a checkmate counts as a "win"; draws unlock nothing here.
-        val result = uiState.gameResult as? GameResult.Checkmate ?: return@LaunchedEffect
-        val mode = uiState.gameMode
+        val result = state.gameResult as? GameResult.Checkmate ?: return@LaunchedEffect
+        val mode = state.gameMode
         val playerWins = when (mode) {
             is GameMode.VsAI -> result.winner == mode.playerColor
             GameMode.TwoPlayer -> true // local play: the side that delivered mate is "the player"
         }
 
         if (playerWins) {
-            achievementsManager.onAchievementUnlocked("first_mate")
-
-            if (uiState.board.moves.size <= 40) {
-                achievementsManager.onAchievementUnlocked("won_fast")
-            }
-
-            if (mode is GameMode.VsAI && mode.difficulty >= Difficulty.ADVANCED) {
-                achievementsManager.onAchievementUnlocked("win_vs_ai_hard")
-            }
-
-            // Only tick the persistent win counter once per game. This effect re-runs when the
-            // Game screen re-enters composition (e.g. returning from the achievements screen), and
-            // the outcome is still a win, so without this guard the count would climb each time.
-            if (viewModel.claimWinScoring()) {
-                val ds = DataStoreUtils.getInstance(context)
-                val currentWins = (ds.getLong("chess_wins_count") ?: 0L) + 1
-                ds.setLong("chess_wins_count", currentWins)
-                achievementsManager.onProgressUpdated("win_10", currentWins.toInt())
-                achievementsManager.onProgressUpdated("win_50", currentWins.toInt())
-            }
+            recordWin(state, mode, viewModel, achievementsManager, context)
         }
     }
+}
 
-    ChessGameScreen(
-        state = uiState,
-        actions = viewModel,
-        onNewGame = onNewGame,
-        onOpenGameCenter = onOpenGameCenter
-    )
+private suspend fun recordWin(
+    state: ChessUiState,
+    mode: GameMode,
+    viewModel: ChessViewModel,
+    achievementsManager: AchievementsManager,
+    context: android.content.Context,
+) {
+    achievementsManager.onAchievementUnlocked("first_mate")
+
+    if (state.board.moves.size <= FAST_WIN_MAX_MOVES) {
+        achievementsManager.onAchievementUnlocked("won_fast")
+    }
+
+    if (mode is GameMode.VsAI && mode.difficulty >= Difficulty.ADVANCED) {
+        achievementsManager.onAchievementUnlocked("win_vs_ai_hard")
+    }
+
+    // Only tick the persistent win counter once per game. This effect re-runs when the
+    // Game screen re-enters composition (e.g. returning from the achievements screen), and
+    // the outcome is still a win, so without this guard the count would climb each time.
+    if (viewModel.claimWinScoring()) {
+        val ds = DataStoreUtils.getInstance(context)
+        val currentWins = (ds.getLong("chess_wins_count") ?: 0L) + 1
+        ds.setLong("chess_wins_count", currentWins)
+        achievementsManager.onProgressUpdated("win_10", currentWins.toInt())
+        achievementsManager.onProgressUpdated("win_50", currentWins.toInt())
+    }
 }
 
 /**
@@ -276,19 +362,6 @@ fun ChessGameScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Sized by the caller: the space left for the board differs per orientation, and in
-            // portrait it is whatever the surrounding chrome does not take.
-            val boardComposable = @Composable { side: Dp ->
-                Box(Modifier.size(side)) {
-                    BoardGrid(
-                        board = state.board,
-                        selectedPiece = state.selectedPiece,
-                        isFlipped = state.isBoardFlipped,
-                        turn = state.turn,
-                        onSquareClick = actions::onSquareClick
-                    )
-                }
-            }
             // Read in this scope: BoxWithConstraintsScope members are not reachable by implicit
             // receiver from inside the Row/Column lambdas below.
             val fullSide = minOf(maxWidth, maxHeight)
@@ -297,101 +370,144 @@ fun ChessGameScreen(
             // moves/history panel beside it, and the board itself never splits.
             // Smaller windows keep the orientation-based layout below.
             if (isExpandedWidth()) {
-                Row(
-                    Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                        Box(Modifier.widthIn(max = ChessBoardMaxWidth).fillMaxWidth()) {
-                            BoardGrid(
-                                board = state.board,
-                                selectedPiece = state.selectedPiece,
-                                isFlipped = state.isBoardFlipped,
-                                turn = state.turn,
-                                onSquareClick = actions::onSquareClick
-                            )
-                        }
-                    }
-                    Column(
-                        Modifier
-                            .width(ChessSidePanelWidth)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CapturedPiecesRow(state.board.capturedByBlack)
-                        MovesList(moves = state.board.moves, turn = state.turn)
-                        CapturedPiecesRow(state.board.capturedByWhite)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = onNewGame) {
-                            Text(stringResource(R.string.new_game))
-                        }
-                        state.gameStatus?.let {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(it, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
+                ExpandedGameLayout(state = state, actions = actions, onNewGame = onNewGame)
             } else if (maxWidth > maxHeight) {
-                Row(
-                    Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    boardComposable(fullSide)
-                    Column(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CapturedPiecesRow(state.board.capturedByBlack)
-                        MovesList(moves = state.board.moves, turn = state.turn)
-                        CapturedPiecesRow(state.board.capturedByWhite)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = onNewGame) {
-                            Text(stringResource(R.string.new_game))
-                        }
-                        state.gameStatus?.let {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(it, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
+                LandscapeGameLayout(
+                    state = state,
+                    actions = actions,
+                    onNewGame = onNewGame,
+                    boardSide = fullSide
+                )
             } else {
-                // Everything except the board is laid out at its own height, so the New Game button
-                // is always on screen; the board takes what is left over and shrinks instead. A
-                // fixed full-width board plus this much chrome overflows the screen at large
-                // display or font sizes, which used to push the button out of reach entirely.
-                Column(
-                    Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    CapturedPiecesRow(state.board.capturedByBlack)
-                    MovesList(moves = state.board.moves, turn = state.turn)
-                    BoxWithConstraints(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        boardComposable(minOf(maxWidth, maxHeight))
-                    }
-                    CapturedPiecesRow(state.board.capturedByWhite)
-                    Button(onClick = onNewGame) {
-                        Text(stringResource(R.string.new_game))
-                    }
-
-                    state.gameStatus?.let {
-                        Text(it, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
+                PortraitGameLayout(state = state, actions = actions, onNewGame = onNewGame)
             }
+        }
+    }
+}
+
+@Composable
+private fun GameBoardGrid(
+    state: ChessUiState,
+    actions: ChessActions,
+) {
+    BoardGrid(
+        board = state.board,
+        selectedPiece = state.selectedPiece,
+        isFlipped = state.isBoardFlipped,
+        turn = state.turn,
+        onSquareClick = actions::onSquareClick
+    )
+}
+
+@Composable
+private fun GameSidePanel(
+    state: ChessUiState,
+    onNewGame: () -> Unit,
+) {
+    CapturedPiecesRow(state.board.capturedByBlack)
+    MovesList(moves = state.board.moves, turn = state.turn)
+    CapturedPiecesRow(state.board.capturedByWhite)
+    Spacer(modifier = Modifier.height(16.dp))
+    Button(onClick = onNewGame) {
+        Text(stringResource(R.string.new_game))
+    }
+    state.gameStatus?.let {
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(it, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun ExpandedGameLayout(
+    state: ChessUiState,
+    actions: ChessActions,
+    onNewGame: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+            Box(Modifier.widthIn(max = ChessBoardMaxWidth).fillMaxWidth()) {
+                GameBoardGrid(state = state, actions = actions)
+            }
+        }
+        Column(
+            Modifier
+                .width(ChessSidePanelWidth)
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            GameSidePanel(state = state, onNewGame = onNewGame)
+        }
+    }
+}
+
+@Composable
+private fun LandscapeGameLayout(
+    state: ChessUiState,
+    actions: ChessActions,
+    onNewGame: () -> Unit,
+    boardSide: Dp,
+) {
+    Row(
+        Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(boardSide)) {
+            GameBoardGrid(state = state, actions = actions)
+        }
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            GameSidePanel(state = state, onNewGame = onNewGame)
+        }
+    }
+}
+
+@Composable
+private fun PortraitGameLayout(
+    state: ChessUiState,
+    actions: ChessActions,
+    onNewGame: () -> Unit,
+) {
+    // Everything except the board is laid out at its own height, so the New Game button
+    // is always on screen; the board takes what is left over and shrinks instead. A
+    // fixed full-width board plus this much chrome overflows the screen at large
+    // display or font sizes, which used to push the button out of reach entirely.
+    Column(
+        Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        CapturedPiecesRow(state.board.capturedByBlack)
+        MovesList(moves = state.board.moves, turn = state.turn)
+        BoxWithConstraints(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(Modifier.size(minOf(maxWidth, maxHeight))) {
+                GameBoardGrid(state = state, actions = actions)
+            }
+        }
+        CapturedPiecesRow(state.board.capturedByWhite)
+        Button(onClick = onNewGame) {
+            Text(stringResource(R.string.new_game))
+        }
+
+        state.gameStatus?.let {
+            Text(it, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -406,9 +522,17 @@ fun MovesList(moves: List<Move>, turn: PieceColor) {
         ) {
             item {
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
-                    Text(stringResource(R.string.color_white), fontWeight = if (turn == PieceColor.WHITE) FontWeight.Bold else FontWeight.Normal)
+                    val whiteBold = turn == PieceColor.WHITE
+                    val blackBold = turn == PieceColor.BLACK
+                    Text(
+                        stringResource(R.string.color_white),
+                        fontWeight = if (whiteBold) FontWeight.Bold else FontWeight.Normal
+                    )
                     VerticalDivider(color = MaterialTheme.colorScheme.primary)
-                    Text(stringResource(R.string.color_black), fontWeight = if (turn == PieceColor.BLACK) FontWeight.Bold else FontWeight.Normal)
+                    Text(
+                        stringResource(R.string.color_black),
+                        fontWeight = if (blackBold) FontWeight.Bold else FontWeight.Normal
+                    )
                 }
             }
             items(moves.chunked(2)) { move ->
@@ -468,6 +592,59 @@ private val lightSquareColor = Color(0xFFBBBBBB)
 private val darkSquareColor = Color.Gray
 private val lastMoveColor = Color(0xFF4CAF50)
 private val moveHintColor = Color(0x66000000)
+private const val BOARD_SQUARES = 8
+
+private data class SquareHighlight(
+    val selected: Boolean,
+    val kingInCheck: Boolean,
+    val lastMove: Boolean,
+)
+
+private fun squareHighlight(
+    board: com.vayunmathur.games.chess.data.Board,
+    selectedPiece: Position?,
+    row: Int,
+    col: Int,
+    turn: PieceColor,
+    lastMove: com.vayunmathur.games.chess.data.Move?,
+): SquareHighlight {
+    val piece = board.pieces[row][col]
+    return SquareHighlight(
+        selected = selectedPiece?.let { it.row == row && it.col == col } ?: false,
+        kingInCheck = board.isKingInCheck(turn) &&
+            piece?.type == PieceType.KING && piece.color == turn,
+        lastMove = lastMove?.let {
+            (it.start.row == row && it.start.col == col) ||
+                (it.end.row == row && it.end.col == col)
+        } ?: false,
+    )
+}
+
+private fun squareBaseColor(row: Int, col: Int): Color =
+    if ((row + col) % 2 == 0) lightSquareColor else darkSquareColor
+
+private fun highlightModifier(highlight: SquareHighlight): Modifier {
+    return when {
+        highlight.selected -> Modifier.border(2.dp, Color.Yellow)
+        highlight.kingInCheck -> Modifier.border(2.dp, Color.Red)
+        highlight.lastMove -> Modifier.border(3.dp, lastMoveColor)
+        else -> Modifier
+    }
+}
+
+private fun legalDestinations(
+    board: com.vayunmathur.games.chess.data.Board,
+    selectedPiece: Position?,
+): Set<Position> {
+    val sel = selectedPiece ?: return emptySet()
+    return buildSet {
+        for (i in 0 until BOARD_SQUARES) {
+            for (j in 0 until BOARD_SQUARES) {
+                if (board.isValidMove(sel, Position(i, j))) add(Position(i, j))
+            }
+        }
+    }
+}
 
 @Composable
 fun BoardGrid(
@@ -478,16 +655,9 @@ fun BoardGrid(
     onSquareClick: (Position) -> Unit,
     showLastMove: Boolean = false
 ) {
-    val isKingInCheck = board.isKingInCheck(turn)
     // The squares the selected piece can legally move to (for move-hint dots).
     val destinations = remember(board, selectedPiece) {
-        val sel = selectedPiece
-        if (sel == null) emptySet()
-        else buildSet {
-            for (i in board.pieces.indices) for (j in board.pieces[i].indices) {
-                if (board.isValidMove(sel, Position(i, j))) add(Position(i, j))
-            }
-        }
+        legalDestinations(board, selectedPiece)
     }
     // The puzzle board seeds a synthetic zero-length lastMove to encode turn; skip it.
     val lastMove = board.lastMove?.takeIf { showLastMove && it.start != it.end }
@@ -495,61 +665,53 @@ fun BoardGrid(
         Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .graphicsLayer { if (isFlipped) rotationZ = 180f }
+            .graphicsLayer { if (isFlipped) rotationZ = FLIPPED_ROTATION }
     ) {
         for (i in board.pieces.indices) {
-            Row(modifier = Modifier.weight(1f)) {
-                for (j in board.pieces[i].indices) {
-                    val piece = board.pieces[i][j]
-                    val isSelected = selectedPiece?.let { it.row == i && it.col == j } ?: false
-                    val isKingInCheckSquare =
-                        isKingInCheck && piece?.type == PieceType.KING && piece.color == turn
-                    val isLastMoveSquare = lastMove?.let {
-                        (it.start.row == i && it.start.col == j) || (it.end.row == i && it.end.col == j)
-                    } ?: false
-                    val color = if ((i + j) % 2 == 0) lightSquareColor else darkSquareColor
+            BoardRow(
+                board = board,
+                row = i,
+                selectedPiece = selectedPiece,
+                isFlipped = isFlipped,
+                turn = turn,
+                lastMove = lastMove,
+                destinations = destinations,
+                onSquareClick = onSquareClick
+            )
+        }
+    }
+}
 
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .background(color)
-                            .clickable {
-                                onSquareClick(Position(i, j))
-                            }
-                            .then(
-                                when {
-                                    isSelected -> Modifier.border(2.dp, Color.Yellow)
-                                    isKingInCheckSquare -> Modifier.border(2.dp, Color.Red)
-                                    isLastMoveSquare -> Modifier.border(3.dp, lastMoveColor)
-                                    else -> Modifier
-                                }
-                            )
-                    ) {
-                        piece?.let {
-                            ChessPiece(it, isFlipped = isFlipped)
-                        }
-                        if (Position(i, j) in destinations) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                if (piece != null) {
-                                    // Capturable square: a ring around the piece.
-                                    Box(
-                                        Modifier
-                                            .fillMaxSize(0.92f)
-                                            .border(3.dp, moveHintColor, CircleShape)
-                                    )
-                                } else {
-                                    // Empty square: a centered dot.
-                                    Box(
-                                        Modifier
-                                            .fillMaxSize(0.30f)
-                                            .clip(CircleShape)
-                                            .background(moveHintColor)
-                                    )
-                                }
-                            }
-                        }
+@Composable
+private fun BoardRow(
+    board: com.vayunmathur.games.chess.data.Board,
+    row: Int,
+    selectedPiece: Position?,
+    isFlipped: Boolean,
+    turn: PieceColor,
+    lastMove: com.vayunmathur.games.chess.data.Move?,
+    destinations: Set<Position>,
+    onSquareClick: (Position) -> Unit,
+) {
+    Row(modifier = Modifier.weight(1f)) {
+        for (j in board.pieces[row].indices) {
+            val piece = board.pieces[row][j]
+            val highlight = squareHighlight(board, selectedPiece, row, j, turn, lastMove)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .aspectRatio(1f)
+                    .background(squareBaseColor(row, j))
+                    .clickable {
+                        onSquareClick(Position(row, j))
                     }
+                    .then(highlightModifier(highlight))
+            ) {
+                piece?.let {
+                    ChessPiece(it, isFlipped = isFlipped)
+                }
+                if (Position(row, j) in destinations) {
+                    MoveHintDot(piece != null)
                 }
             }
         }
@@ -557,32 +719,59 @@ fun BoardGrid(
 }
 
 @Composable
-fun ChessPiece(piece: Piece, size: Dp? = null, isFlipped: Boolean = false) {
-    val description = when(piece.color) {
-        PieceColor.WHITE -> when(piece.type) {
-            PieceType.KING -> stringResource(R.string.piece_white_king)
-            PieceType.QUEEN -> stringResource(R.string.piece_white_queen)
-            PieceType.ROOK -> stringResource(R.string.piece_white_rook)
-            PieceType.BISHOP -> stringResource(R.string.piece_white_bishop)
-            PieceType.KNIGHT -> stringResource(R.string.piece_white_knight)
-            PieceType.PAWN -> stringResource(R.string.piece_white_pawn)
-        }
-        PieceColor.BLACK -> when(piece.type) {
-            PieceType.KING -> stringResource(R.string.piece_black_king)
-            PieceType.QUEEN -> stringResource(R.string.piece_black_queen)
-            PieceType.ROOK -> stringResource(R.string.piece_black_rook)
-            PieceType.BISHOP -> stringResource(R.string.piece_black_bishop)
-            PieceType.KNIGHT -> stringResource(R.string.piece_black_knight)
-            PieceType.PAWN -> stringResource(R.string.piece_black_pawn)
+private fun MoveHintDot(occupied: Boolean) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        if (occupied) {
+            // Capturable square: a ring around the piece.
+            Box(
+                Modifier
+                    .fillMaxSize(CAPTURE_HINT_FRACTION)
+                    .border(3.dp, moveHintColor, CircleShape)
+            )
+        } else {
+            // Empty square: a centered dot.
+            Box(
+                Modifier
+                    .fillMaxSize(EMPTY_HINT_FRACTION)
+                    .clip(CircleShape)
+                    .background(moveHintColor)
+            )
         }
     }
+}
+
+@Composable
+fun ChessPiece(piece: Piece, size: Dp? = null, isFlipped: Boolean = false) {
+    val description = stringResource(pieceDescriptionRes(piece))
     Image(
         painterResource(id = piece.type.resID),
         description,
         (if (size != null) Modifier.size(size) else Modifier.fillMaxSize())
-            .graphicsLayer { if (isFlipped) rotationZ = 180f },
+            .graphicsLayer { if (isFlipped) rotationZ = FLIPPED_ROTATION },
         colorFilter = ColorFilter.tint(if (piece.color == PieceColor.WHITE) Color.White else Color.Black)
     )
+}
+
+private fun pieceDescriptionRes(piece: Piece): Int {
+    return if (piece.color == PieceColor.WHITE) whitePieceRes(piece.type) else blackPieceRes(piece.type)
+}
+
+private fun whitePieceRes(type: PieceType): Int = when (type) {
+    PieceType.KING -> R.string.piece_white_king
+    PieceType.QUEEN -> R.string.piece_white_queen
+    PieceType.ROOK -> R.string.piece_white_rook
+    PieceType.BISHOP -> R.string.piece_white_bishop
+    PieceType.KNIGHT -> R.string.piece_white_knight
+    PieceType.PAWN -> R.string.piece_white_pawn
+}
+
+private fun blackPieceRes(type: PieceType): Int = when (type) {
+    PieceType.KING -> R.string.piece_black_king
+    PieceType.QUEEN -> R.string.piece_black_queen
+    PieceType.ROOK -> R.string.piece_black_rook
+    PieceType.BISHOP -> R.string.piece_black_bishop
+    PieceType.KNIGHT -> R.string.piece_black_knight
+    PieceType.PAWN -> R.string.piece_black_pawn
 }
 
 @Composable

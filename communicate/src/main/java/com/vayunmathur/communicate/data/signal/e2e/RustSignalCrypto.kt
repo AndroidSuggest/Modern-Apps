@@ -17,17 +17,20 @@ import android.util.Log
 object RustSignalCrypto {
 
     private const val TAG = "RustSignalCrypto"
+    private const val KEYPAIR_SIZE = 64
+    private const val PRIVATE_KEY_SIZE = 32
+    private const val ENCRYPT_PARTS = 3
 
     val isAvailable: Boolean = try {
         System.loadLibrary("communicate_signal")
         Log.i(TAG, "libcommunicate_signal loaded (Signal)")
         true
-    } catch (t: Throwable) {
-        if (t.message?.contains("already loaded", ignoreCase = true) == true) {
+    } catch (expected: Throwable) {
+        if (expected.message?.contains("already loaded", ignoreCase = true) == true) {
             Log.i(TAG, "libcommunicate_signal already loaded")
             true
         } else {
-            Log.e(TAG, "System.loadLibrary(communicate_signal) failed", t)
+            Log.e(TAG, "System.loadLibrary(communicate_signal) failed", expected)
             false
         }
     }
@@ -63,7 +66,9 @@ object RustSignalCrypto {
         kyberPreKeyId: Int,
         kyberPreKeyPublic: ByteArray,     // 1569B = 0x08 || 1568 (tag intact)
         kyberPreKeySignature: ByteArray,  // XEdDSA over kyber pub serialize
-        kyberCiphertext: ByteArray,       // 1568B raw from encaps (server-provided or locally generated; 0x08 tag handled in Rust libsignal path; for stub keep as raw)
+        kyberCiphertext: ByteArray,
+        // 1568B raw from encaps (server-provided or locally generated; 0x08 tag
+        // handled in Rust libsignal path; for stub keep as raw)
     ): ByteArray?
 
     /** Legacy overload without Kyber for incremental migration; delegates to above with empty Kyber. */
@@ -118,7 +123,10 @@ object RustSignalCrypto {
      * fetched live from GET /v1/certificate/delivery and validated via CertificateValidator.
      * This JNI stub is retained for tests; production calls SealedSessionCipher.encrypt().
      */
-    @JvmStatic external fun sealedSenderEncrypt(plaintext: ByteArray, recipientAci: String, recipientDeviceId: Int): ByteArray?
+    @JvmStatic external fun sealedSenderEncrypt(
+        plaintext: ByteArray,
+        recipientAci: String,
+        recipientDeviceId: Int): ByteArray?
     @JvmStatic external fun sealedSenderDecrypt(ciphertext: ByteArray): ByteArray?
 
     // -- Convenience helpers --
@@ -126,22 +134,26 @@ object RustSignalCrypto {
     data class KeyPair(val privateKey: ByteArray, val publicKey: ByteArray)
 
     fun generateKeyPairSplit(): KeyPair {
-        val blob = generateKeyPair() ?: throw RuntimeException("Rust generateKeyPair returned null")
-        if (blob.size != 64) throw RuntimeException("generateKeyPair expected 64 bytes, got ${blob.size}")
-        return KeyPair(blob.copyOfRange(0, 32), blob.copyOfRange(32, 64))
+        val blob = generateKeyPair() ?: throw IllegalStateException("Rust generateKeyPair returned null")
+        if (blob.size != KEYPAIR_SIZE) {
+            throw IllegalStateException("generateKeyPair expected 64 bytes, got ${blob.size}")
+        }
+        return KeyPair(
+            blob.copyOfRange(0, PRIVATE_KEY_SIZE),
+            blob.copyOfRange(PRIVATE_KEY_SIZE, KEYPAIR_SIZE))
     }
 
     data class EncryptResult(val isPreKey: Boolean, val body: ByteArray, val newSession: ByteArray)
     fun encryptSplit(sessionBytes: ByteArray, plaintext: ByteArray): EncryptResult {
-        val out = encrypt(sessionBytes, plaintext) ?: throw RuntimeException("Rust encrypt returned null")
-        if (out.size != 3) throw RuntimeException("encrypt expected 3 parts, got ${out.size}")
+        val out = encrypt(sessionBytes, plaintext) ?: throw IllegalStateException("Rust encrypt returned null")
+        if (out.size != ENCRYPT_PARTS) throw IllegalStateException("encrypt expected 3 parts, got ${out.size}")
         return EncryptResult(out[0].isNotEmpty() && out[0][0].toInt() != 0, out[1], out[2])
     }
 
     data class DecryptResult(val plaintext: ByteArray, val newSession: ByteArray)
     fun decryptMessageSplit(sessionBytes: ByteArray, ciphertext: ByteArray): DecryptResult {
-        val out = decryptMessage(sessionBytes, ciphertext) ?: throw RuntimeException("Rust decryptMessage null")
-        if (out.size != 2) throw RuntimeException("decryptMessage expected 2 parts")
+        val out = decryptMessage(sessionBytes, ciphertext) ?: throw IllegalStateException("Rust decryptMessage null")
+        if (out.size != 2) throw IllegalStateException("decryptMessage expected 2 parts")
         return DecryptResult(out[0], out[1])
     }
 
@@ -153,9 +165,15 @@ object RustSignalCrypto {
         kyberSecretKey: ByteArray?,
         preKeyMessageBytes: ByteArray,
     ): DecryptResult {
-        val out = decryptPreKeyMessage(localIdentityPrivate, localIdentityPublic, signedPreKeyPrivate, oneTimePrivate, kyberSecretKey, preKeyMessageBytes)
-            ?: throw RuntimeException("Rust decryptPreKeyMessage null")
-        if (out.size != 2) throw RuntimeException("decryptPreKey expected 2 parts")
+        val out = decryptPreKeyMessage(
+            localIdentityPrivate,
+            localIdentityPublic,
+            signedPreKeyPrivate,
+            oneTimePrivate,
+            kyberSecretKey,
+            preKeyMessageBytes)
+            ?: throw IllegalStateException("Rust decryptPreKeyMessage null")
+        if (out.size != 2) throw IllegalStateException("decryptPreKey expected 2 parts")
         return DecryptResult(out[0], out[1])
     }
 

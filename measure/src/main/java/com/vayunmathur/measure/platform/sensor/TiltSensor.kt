@@ -119,13 +119,17 @@ class TiltSensor(context: Context) : SensorEventListener {
 
     @Suppress("DEPRECATION")
     private fun displayRotationDeg(): Int = when (windowManager?.defaultDisplay?.rotation) {
-        Surface.ROTATION_90 -> 90
-        Surface.ROTATION_180 -> 180
-        Surface.ROTATION_270 -> 270
-        else -> 0
+        Surface.ROTATION_90 -> QUARTER_TURN_DEG
+        Surface.ROTATION_180 -> HALF_TURN_DEG
+        Surface.ROTATION_270 -> THREE_QUARTER_TURN_DEG
+        else -> NO_ROTATION_DEG
     }
 
     private companion object {
         const val ALPHA = 0.2
+        const val NO_ROTATION_DEG = 0
+        const val QUARTER_TURN_DEG = 90
+        const val HALF_TURN_DEG = 180
+        const val THREE_QUARTER_TURN_DEG = 270
     }
 }

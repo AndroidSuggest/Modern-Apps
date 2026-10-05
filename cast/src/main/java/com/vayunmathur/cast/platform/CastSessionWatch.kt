@@ -75,7 +75,7 @@ internal fun CastController.startWatch(
         // Read before the teardown clears it, so a failure already on screen survives a socket that
         // then closed without a reason of its own - otherwise the message a user has to read would
         // be replaced by a blank idle state.
-        val standing = _failure.value
+        val standing = failureMutable.value
         // Cleared first: teardown cancels watchJob, and this coroutine *is* watchJob.
         watchJob = null
         teardown()
@@ -89,8 +89,8 @@ internal fun CastController.startWatch(
             standing
         }
         if (message != null) {
-            _failure.value = message
-            _mirrorPhase.value = MirrorPhase.Failed
+            failureMutable.value = message
+            mirrorPhaseMutable.value = MirrorPhase.Failed
         }
         CastService.stop(appContext)
     }

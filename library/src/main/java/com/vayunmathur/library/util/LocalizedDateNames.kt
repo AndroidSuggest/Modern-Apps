@@ -35,6 +35,9 @@ enum class DateNameStyle(internal val icuWidth: Int) {
 // TextStyle.FULL resolved to, so inflected locales keep the wording they had before.
 private const val CONTEXT = DateFormatSymbols.FORMAT
 
+private const val MONTH_COUNT = 12
+private const val DAYS_IN_WEEK = 7
+
 // Pin the calendar to Gregorian. DateFormatSymbols.getInstance(locale) would follow the
 // locale's *preferred* calendar (islamic-umalqura for ar-SA, persian for fa-IR, ...) and hand
 // back that calendar's month names, which would then be used to label Gregorian dates.
@@ -45,7 +48,7 @@ fun localizedMonthNames(
     style: DateNameStyle,
     locale: Locale = Locale.getDefault(),
 ): List<String> =
-    symbols(locale).getMonths(CONTEXT, style.icuWidth).take(12)
+    symbols(locale).getMonths(CONTEXT, style.icuWidth).take(MONTH_COUNT)
 
 /**
  * Localized AM/PM markers as `am to pm` — "AM"/"PM" in en, "ص"/"م" in ar, "午前"/"午後" in ja.
@@ -76,11 +79,19 @@ fun localizedDayOfWeekNames(
 ): List<String> {
     // ICU indexes weekdays by Calendar.SUNDAY(1)..Calendar.SATURDAY(7); slot 0 is unused.
     val weekdays = symbols(locale).getWeekdays(CONTEXT, style.icuWidth)
-    return listOf(
-        Calendar.MONDAY, Calendar.TUESDAY, Calendar.WEDNESDAY, Calendar.THURSDAY,
-        Calendar.FRIDAY, Calendar.SATURDAY, Calendar.SUNDAY,
-    ).map { weekdays[it] }
+    return isoWeekdays.map { weekdays[it] }
 }
+
+/** ISO day numbers for each weekday, Monday = 1 .. Sunday = 7. */
+private val isoWeekdays = listOf(
+    Calendar.MONDAY,
+    Calendar.TUESDAY,
+    Calendar.WEDNESDAY,
+    Calendar.THURSDAY,
+    Calendar.FRIDAY,
+    Calendar.SATURDAY,
+    Calendar.SUNDAY,
+)
 
 /**
  * The locale's first day of the week as an ISO day number (Monday = 1 .. Sunday = 7),
@@ -88,18 +99,26 @@ fun localizedDayOfWeekNames(
  */
 fun localeFirstDayOfWeek(locale: Locale = Locale.getDefault()): Int =
     when (LocalePreferences.getFirstDayOfWeek(locale)) {
-        LocalePreferences.FirstDayOfWeek.MONDAY -> 1
-        LocalePreferences.FirstDayOfWeek.TUESDAY -> 2
-        LocalePreferences.FirstDayOfWeek.WEDNESDAY -> 3
-        LocalePreferences.FirstDayOfWeek.THURSDAY -> 4
-        LocalePreferences.FirstDayOfWeek.FRIDAY -> 5
-        LocalePreferences.FirstDayOfWeek.SATURDAY -> 6
-        LocalePreferences.FirstDayOfWeek.SUNDAY -> 7
-        else -> 7
+        LocalePreferences.FirstDayOfWeek.MONDAY -> ISO_MONDAY
+        LocalePreferences.FirstDayOfWeek.TUESDAY -> ISO_TUESDAY
+        LocalePreferences.FirstDayOfWeek.WEDNESDAY -> ISO_WEDNESDAY
+        LocalePreferences.FirstDayOfWeek.THURSDAY -> ISO_THURSDAY
+        LocalePreferences.FirstDayOfWeek.FRIDAY -> ISO_FRIDAY
+        LocalePreferences.FirstDayOfWeek.SATURDAY -> ISO_SATURDAY
+        LocalePreferences.FirstDayOfWeek.SUNDAY -> ISO_SUNDAY
+        else -> ISO_SUNDAY
     }
+
+private const val ISO_MONDAY = 1
+private const val ISO_TUESDAY = 2
+private const val ISO_WEDNESDAY = 3
+private const val ISO_THURSDAY = 4
+private const val ISO_FRIDAY = 5
+private const val ISO_SATURDAY = 6
+private const val ISO_SUNDAY = 7
 
 /** The week's ISO day numbers starting at the locale's first day, e.g. `[7,1,2,3,4,5,6]` in en-US. */
 fun localeWeekDayNumbers(locale: Locale = Locale.getDefault()): List<Int> {
     val first = localeFirstDayOfWeek(locale)
-    return List(7) { (first - 1 + it) % 7 + 1 }
+    return List(DAYS_IN_WEEK) { (first - 1 + it) % DAYS_IN_WEEK + 1 }
 }

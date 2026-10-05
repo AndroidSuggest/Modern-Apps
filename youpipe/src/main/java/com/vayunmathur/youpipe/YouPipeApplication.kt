@@ -29,11 +29,7 @@ class YouPipeApplication : Application() {
 
         Thread({
             try {
-                poTokenProvider.prewarmSessionPoToken(
-                    NewPipe.getPreferredLocalization(),
-                    NewPipe.getPreferredContentCountry(),
-                    false,
-                )
+                poTokenProvider.prewarmSessionPoToken()
             } catch (_: Throwable) {
                 // Prewarm is best-effort; token minting will retry lazily on first use.
             }

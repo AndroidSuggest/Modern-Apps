@@ -15,6 +15,10 @@ import org.whispersystems.signalservice.internal.push.SignalServiceProtos
  *
  * Extension functions on [SignalClient]; behavior identical, call sites unchanged.
  */
+private const val HTTP_UNAUTHORIZED = 401
+private const val HTTP_MISMATCH = 409
+private const val HTTP_STALE = 410
+
 // ---- internal single send path: Content -> encrypted -> PUT /v1/messages/{aci} ----
 
 /**
@@ -93,17 +97,17 @@ internal suspend fun SignalClient.ensureLocalPreKeys() {
     }
     var upload = try {
         e.ensureLocalPreKeys()
-    } catch (t: Throwable) {
+    } catch (expected: Throwable) {
         preKeysPrepared.set(false)
-        Log.w(TAG, "could not prepare local pre-keys", t)
+        Log.w(TAG, "could not prepare local pre-keys", expected)
         return
     }
 
     if (upload.signedPreKey == null && !signedPreKeyMatchesServer(e)) {
         upload = try {
             upload.copy(signedPreKey = e.rotateSignedPreKeyNow())
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not rotate the signed pre-key", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not rotate the signed pre-key", expected)
             upload
         }
     }
@@ -132,8 +136,8 @@ private suspend fun SignalClient.signedPreKeyMatchesServer(e: SignalE2E): Boolea
     val ourAci = authData?.aci?.takeIf { it.isNotEmpty() } ?: return true
     val bundles = try {
         SignalKeysApi.fetchPreKeys(ourAci, authData?.deviceId ?: PRIMARY_DEVICE_ID, basicAuthHeader(), signalTls())
-    } catch (t: Throwable) {
-        Log.i(TAG, "could not fetch our own bundle to verify the signed pre-key", t)
+    } catch (expected: Throwable) {
+        Log.i(TAG, "could not fetch our own bundle to verify the signed pre-key", expected)
         return true
     }
     val ours = bundles.firstOrNull { it.deviceId == (authData?.deviceId ?: PRIMARY_DEVICE_ID) }
@@ -178,8 +182,8 @@ internal suspend fun SignalClient.runContactDiscovery(ctx: Context): Boolean {
                 (result.transportError?.let { " ($it)" } ?: ""),
         )
         result.transportError == null
-    } catch (t: Throwable) {
-        Log.w(TAG, "contact discovery failed", t)
+    } catch (expected: Throwable) {
+        Log.w(TAG, "contact discovery failed", expected)
         false
     } finally {
         discoveryRunning.set(false)
@@ -244,60 +248,94 @@ private suspend fun SignalClient.sendEncryptedTo(
     // devices we encrypt for, so the whole encrypt-and-send has to be redone. [timestamp] comes from
     // the message itself and is never regenerated — it is both the message's identity for dedup and a
     // value the recipient checks against the DataMessage.
-    for (attempt in 1..SEND_ATTEMPTS) {
-        val targets = e.deviceIdsWithSessions(aci)
-        val messages = ArrayList<SignalPayload.OutgoingPushMessage>(targets.size)
-        var primaryFailed = false
-        for (deviceId in targets) {
-            try {
-                val enc = if (sealedSender != null) {
-                    e.sealedSenderEncrypt(aci, deviceId, padded, sealedSender.certificate)
-                } else {
-                    e.encryptDM(aci, deviceId, padded)
-                }
-                messages.add(
-                    SignalPayload.OutgoingPushMessage(
-                        type = SignalPayload.envelopeTypeFor(enc.ciphertextType),
-                        destinationDeviceId = deviceId,
-                        destinationRegistrationId = enc.remoteRegistrationId,
-                        content = enc.data,
-                    ),
-                )
-            } catch (u: UntrustedIdentityException) {
-                // Already reported by the store; abandon the send rather than encrypting to a key
-                // the user has not accepted.
-                Log.w(TAG, "untrusted identity for $aci:$deviceId, abandoning send")
-                return false
-            } catch (t: Throwable) {
-                Log.w(TAG, "encrypt failed for $aci:$deviceId", t)
-                if (deviceId == PRIMARY_DEVICE_ID) primaryFailed = true
-            }
-        }
-        if (primaryFailed) {
-            // Delivering to linked devices but not the recipient's primary is not a send.
-            Log.w(TAG, "could not encrypt for $aci's primary device, abandoning send")
-            return false
-        }
-        if (messages.isEmpty()) {
-            Log.w(TAG, "no device of $aci could be encrypted for")
-            return false
-        }
-        if (messages.size < targets.size) {
-            Log.w(TAG, "sending to ${messages.size} of ${targets.size} devices for $aci")
-        }
-
-        val body = SignalPayload.buildPutMessagesBody(aci, messages, timestamp, urgent = urgent)
-        when (val outcome = putMessages(aci, body, sealedSender?.accessKey)) {
-            is SignalClient.SendOutcome.Success -> return true
-            is SignalClient.SendOutcome.Failed -> return false
-            is SignalClient.SendOutcome.DeviceSetChanged -> {
-                if (!reconcileDevices(e, aci, outcome.status, outcome.body)) return false
-                Log.i(TAG, "device set for $aci changed (${outcome.status}), retrying send")
-            }
+    repeat(SEND_ATTEMPTS) {
+        when (sendEncryptedAttempt(e, aci, padded, sealedSender, timestamp, urgent)) {
+            true -> return true
+            false -> return false
+            null -> Unit // device set reconciled; retry
         }
     }
     Log.w(TAG, "giving up on $aci after $SEND_ATTEMPTS attempts to resolve its device set")
     return false
+}
+
+/**
+ * One encrypt-and-send attempt; returns true on success, false when the send
+ * is abandoned or must stop retrying. Device-set changes are reconciled and
+ * reported via null (caller retries).
+ */
+private suspend fun SignalClient.sendEncryptedAttempt(
+    e: SignalE2E,
+    aci: String,
+    padded: ByteArray,
+    sealedSender: SignalClient.SealedSenderAccess?,
+    timestamp: Long,
+    urgent: Boolean,
+): Boolean? {
+    val targets = e.deviceIdsWithSessions(aci)
+    val messages = encryptForTargets(e, aci, padded, sealedSender, targets) ?: return false
+    if (messages.isEmpty()) {
+        Log.w(TAG, "no device of $aci could be encrypted for")
+        return false
+    }
+    if (messages.size < targets.size) {
+        Log.w(TAG, "sending to ${messages.size} of ${targets.size} devices for $aci")
+    }
+    val body = SignalPayload.buildPutMessagesBody(aci, messages, timestamp, urgent = urgent)
+    return when (val outcome = putMessages(aci, body, sealedSender?.accessKey)) {
+        is SignalClient.SendOutcome.Success -> true
+        is SignalClient.SendOutcome.Failed -> false
+        is SignalClient.SendOutcome.DeviceSetChanged -> {
+            if (!reconcileDevices(e, aci, outcome.status, outcome.body)) false
+            else {
+                Log.i(TAG, "device set for $aci changed (${outcome.status}), retrying send")
+                null
+            }
+        }
+    }
+}
+
+/** Encrypt [padded] for every target device; null when the send must be abandoned. */
+private suspend fun SignalClient.encryptForTargets(
+    e: SignalE2E,
+    aci: String,
+    padded: ByteArray,
+    sealedSender: SignalClient.SealedSenderAccess?,
+    targets: Set<Int>,
+): ArrayList<SignalPayload.OutgoingPushMessage>? {
+    val messages = ArrayList<SignalPayload.OutgoingPushMessage>(targets.size)
+    var primaryFailed = false
+    for (deviceId in targets) {
+        try {
+            val enc = if (sealedSender != null) {
+                e.sealedSenderEncrypt(aci, deviceId, padded, sealedSender.certificate)
+            } else {
+                e.encryptDM(aci, deviceId, padded)
+            }
+            messages.add(
+                SignalPayload.OutgoingPushMessage(
+                    type = SignalPayload.envelopeTypeFor(enc.ciphertextType),
+                    destinationDeviceId = deviceId,
+                    destinationRegistrationId = enc.remoteRegistrationId,
+                    content = enc.data,
+                ),
+            )
+        } catch (ignored: UntrustedIdentityException) {
+            // Already reported by the store; abandon the send rather than encrypting to a key
+            // the user has not accepted.
+            Log.w(TAG, "untrusted identity for $aci:$deviceId, abandoning send")
+            return null
+        } catch (expected: Throwable) {
+            Log.w(TAG, "encrypt failed for $aci:$deviceId", expected)
+            if (deviceId == PRIMARY_DEVICE_ID) primaryFailed = true
+        }
+    }
+    if (primaryFailed) {
+        // Delivering to linked devices but not the recipient's primary is not a send.
+        Log.w(TAG, "could not encrypt for $aci's primary device, abandoning send")
+        return null
+    }
+    return messages
 }
 
 /**
@@ -315,7 +353,10 @@ private suspend fun SignalClient.sealedSenderFor(aci: String): SignalClient.Seal
     return SignalClient.SealedSenderAccess(certificate, accessKey)
 }
 
-internal suspend fun SignalClient.putMessages(aci: String, jsonBody: ByteArray, accessKey: ByteArray?): SignalClient.SendOutcome {
+internal suspend fun SignalClient.putMessages(
+    aci: String,
+    jsonBody: ByteArray,
+    accessKey: ByteArray?): SignalClient.SendOutcome {
     // Sealed sends go over the credential-free socket. A 401 means the access key was refused, so
     // retry over the authenticated socket with the same body — the recipient still receives a sealed
     // envelope, which official clients expect on an identified channel (SignalServiceCipher logs
@@ -323,9 +364,13 @@ internal suspend fun SignalClient.putMessages(aci: String, jsonBody: ByteArray, 
     // alternative is not delivering at all.
     if (accessKey != null) {
         val outcome = putMessagesOverSocket(unauthSocket, aci, jsonBody, accessKey)
-        if (outcome != null && !(outcome is SignalClient.SendOutcome.Failed && outcome.status == 401)) return outcome
+        if (outcome != null && !isAuthRefused(outcome)) return outcome
         if (outcome != null) Log.i(TAG, "sealed send to $aci refused with 401, retrying authenticated")
     }
+
+    /** True when the outcome is an auth refusal (retry authenticated). */
+    private fun isAuthRefused(outcome: SignalClient.SendOutcome): Boolean =
+        outcome is SignalClient.SendOutcome.Failed && outcome.status == HTTP_UNAUTHORIZED
     val identified = putMessagesOverSocket(socket, aci, jsonBody, accessKey = null)
     if (identified != null) return identified
     return putMessagesOverRest(aci, jsonBody)
@@ -351,7 +396,9 @@ private suspend fun SignalClient.putMessagesOverSocket(
 
     return when {
         result.isSuccess -> SignalClient.SendOutcome.Success
-        result.status == 409 || result.status == 410 -> SignalClient.SendOutcome.DeviceSetChanged(result.status, result.body)
+        result.status == HTTP_MISMATCH || result.status == HTTP_STALE -> SignalClient.SendOutcome.DeviceSetChanged(
+            result.status,
+            result.body)
         else -> {
             Log.w(TAG, "PUT messages to $aci rejected: ${result.status} ${result.message}")
             SignalClient.SendOutcome.Failed(result.status)
@@ -371,10 +418,12 @@ private suspend fun SignalClient.putMessagesOverRest(aci: String, jsonBody: Byte
         headers = headers,
         body = jsonBody,
         sslSocketFactory = signalTls(),
-    )
+    val identified = putMessagesOverSocket(socket, aci, jsonBody, accessKey = null)
     when {
         resp.isSuccess -> SignalClient.SendOutcome.Success
-        resp.status == 409 || resp.status == 410 -> SignalClient.SendOutcome.DeviceSetChanged(resp.status, resp.bytes)
+        resp.status == HTTP_MISMATCH || resp.status == HTTP_STALE -> {
+            SignalClient.SendOutcome.DeviceSetChanged(resp.status, resp.bytes)
+        }
         else -> {
             Log.w(TAG, "PUT messages to $aci rejected: ${resp.status} ${resp.statusMessage}")
             SignalClient.SendOutcome.Failed(resp.status)
@@ -400,16 +449,16 @@ private suspend fun SignalClient.reconcileDevices(e: SignalE2E, aci: String, sta
 
     val bundles = try {
         SignalKeysApi.fetchPreKeys(aci, 1, basicAuthHeader(), signalTls())
-    } catch (t: Throwable) {
-        Log.w(TAG, "prekey fetch for changed devices of $aci failed", t)
+    } catch (expected: Throwable) {
+        Log.w(TAG, "prekey fetch for changed devices of $aci failed", expected)
         return changed
     }
     for (device in bundles.filter { it.deviceId in devices.fetch }) {
         try {
             e.processPreKeyBundle(aci, device.deviceId, device.bundle)
             changed = true
-        } catch (t: Throwable) {
-            Log.w(TAG, "failed to build session for $aci:${device.deviceId}", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "failed to build session for $aci:${device.deviceId}", expected)
         }
     }
     return changed
@@ -422,11 +471,11 @@ private suspend fun SignalClient.reconcileDevices(e: SignalE2E, aci: String, sta
 internal suspend fun SignalClient.establishSession(e: SignalE2E, aci: String): Boolean {
     val bundles = try {
         SignalKeysApi.fetchPreKeys(aci, 1, basicAuthHeader(), signalTls())
-    } catch (u: SignalKeysApi.UnregisteredUserException) {
-        Log.w(TAG, "cannot send to $aci: ${u.message}")
+    } catch (expected: SignalKeysApi.UnregisteredUserException) {
+        Log.w(TAG, "cannot send to $aci: ${expected.message}")
         return false
-    } catch (t: Throwable) {
-        Log.w(TAG, "prekey fetch failed for $aci", t)
+    } catch (expected: Throwable) {
+        Log.w(TAG, "prekey fetch failed for $aci", expected)
         return false
     }
     if (bundles.isEmpty()) {
@@ -436,12 +485,12 @@ internal suspend fun SignalClient.establishSession(e: SignalE2E, aci: String): B
     for (device in bundles) {
         try {
             e.processPreKeyBundle(aci, device.deviceId, device.bundle)
-        } catch (u: UntrustedIdentityException) {
+        } catch (ignored: UntrustedIdentityException) {
             // The store has already reported the change; a new session must not be built on a key
             // the user has not accepted.
             Log.w(TAG, "untrusted identity for $aci:${device.deviceId}, not building a session")
-        } catch (t: Throwable) {
-            Log.w(TAG, "failed to build session for $aci:${device.deviceId}", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "failed to build session for $aci:${device.deviceId}", expected)
         }
     }
     return e.hasSession(aci, 1)

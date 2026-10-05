@@ -150,6 +150,11 @@ class NoteSalience(
      */
     fun fit(observation: DoubleArray): SalienceFit {
         require(observation.size == CQT_BINS) { "expected $CQT_BINS bins" }
+        val y = runFista(observation)
+        return normalizeFit(y, observation)
+    }
+
+    private fun runFista(observation: DoubleArray): DoubleArray {
         val y = DoubleArray(NOTE_COUNT)
         val z = DoubleArray(NOTE_COUNT)
         val gradient = DoubleArray(NOTE_COUNT)
@@ -157,56 +162,84 @@ class NoteSalience(
         var momentum = 1.0
 
         repeat(ITERATIONS) {
-            residual.fill(0.0)
-            for (note in 0 until NOTE_COUNT) {
-                val weight = z[note]
-                if (weight == 0.0) continue
-                val column = dictionary[note]
-                for (bin in 0 until CQT_BINS) residual[bin] += weight * column[bin]
-            }
-            for (bin in 0 until CQT_BINS) residual[bin] -= observation[bin]
-            for (note in 0 until NOTE_COUNT) {
-                val column = dictionary[note]
-                var acc = 0.0
-                for (bin in 0 until CQT_BINS) acc += column[bin] * residual[bin]
-                gradient[note] = acc
-            }
-            val nextMomentum = (1.0 + sqrt(1.0 + 4.0 * momentum * momentum)) / 2.0
-            val blend = (momentum - 1.0) / nextMomentum
-            for (note in 0 until NOTE_COUNT) {
-                val updated = (z[note] - stepSize * gradient[note]).coerceAtLeast(0.0)
-                z[note] = updated + blend * (updated - y[note])
-                y[note] = updated
-            }
-            momentum = nextMomentum
+            formResidual(z, observation, residual)
+            accumulateGradient(residual, gradient)
+            momentum = advanceWeights(y, z, gradient, momentum)
         }
+        return y
+    }
 
-        // The loop above leaves a residual for the extrapolated point z, which is not the
-        // returned solution. Re-form it for y so the reported fit describes the answer.
+    private fun formResidual(weights: DoubleArray, observation: DoubleArray, residual: DoubleArray) {
         residual.fill(0.0)
         for (note in 0 until NOTE_COUNT) {
-            val weight = y[note]
+            val weight = weights[note]
             if (weight == 0.0) continue
             val column = dictionary[note]
             for (bin in 0 until CQT_BINS) residual[bin] += weight * column[bin]
         }
-        var residualEnergy = 0.0
-        var observedEnergy = 0.0
-        for (bin in 0 until CQT_BINS) {
-            val error = residual[bin] - observation[bin]
-            residualEnergy += error * error
-            observedEnergy += observation[bin] * observation[bin]
+        for (bin in 0 until CQT_BINS) residual[bin] -= observation[bin]
+    }
+
+    private fun accumulateGradient(residual: DoubleArray, gradient: DoubleArray) {
+        for (note in 0 until NOTE_COUNT) {
+            val column = dictionary[note]
+            var acc = 0.0
+            for (bin in 0 until CQT_BINS) acc += column[bin] * residual[bin]
+            gradient[note] = acc
         }
-        val explained = if (observedEnergy > 0.0) {
-            (1.0 - residualEnergy / observedEnergy).coerceIn(0.0, 1.0)
-        } else {
-            0.0
+    }
+
+    private fun advanceWeights(
+        y: DoubleArray,
+        z: DoubleArray,
+        gradient: DoubleArray,
+        momentum: Double,
+    ): Double {
+        val nextMomentum = (1.0 + sqrt(1.0 + 4.0 * momentum * momentum)) / 2.0
+        val blend = (momentum - 1.0) / nextMomentum
+        for (note in 0 until NOTE_COUNT) {
+            val updated = (z[note] - stepSize * gradient[note]).coerceAtLeast(0.0)
+            z[note] = updated + blend * (updated - y[note])
+            y[note] = updated
         }
+        return nextMomentum
+    }
+
+    private fun normalizeFit(y: DoubleArray, observation: DoubleArray): SalienceFit {
+        // The loop above leaves a residual for the extrapolated point z, which is not the
+        // returned solution. Re-form it for y so the reported fit describes the answer.
+        val residual = DoubleArray(CQT_BINS)
+        formModelOnly(y, residual)
+        val explained = explainedVariance(residual, observation)
 
         val peak = y.max()
         if (peak <= 0.0) return SalienceFit(y, 0.0, explained)
         for (note in 0 until NOTE_COUNT) y[note] /= peak
         return SalienceFit(y, peak, explained)
+    }
+
+    private fun formModelOnly(weights: DoubleArray, residual: DoubleArray) {
+        residual.fill(0.0)
+        for (note in 0 until NOTE_COUNT) {
+            val weight = weights[note]
+            if (weight == 0.0) continue
+            val column = dictionary[note]
+            for (bin in 0 until CQT_BINS) residual[bin] += weight * column[bin]
+        }
+    }
+
+    private fun explainedVariance(model: DoubleArray, observation: DoubleArray): Double {
+        var residualEnergy = 0.0
+        var observedEnergy = 0.0
+        for (bin in 0 until CQT_BINS) {
+            val error = model[bin] - observation[bin]
+            residualEnergy += error * error
+            observedEnergy += observation[bin] * observation[bin]
+        }
+        return when {
+            observedEnergy > 0.0 -> (1.0 - residualEnergy / observedEnergy).coerceIn(0.0, 1.0)
+            else -> 0.0
+        }
     }
 
     /**

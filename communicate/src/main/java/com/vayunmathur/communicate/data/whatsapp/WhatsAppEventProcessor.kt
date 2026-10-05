@@ -21,13 +21,17 @@ class WhatsAppEventProcessor(private val db: WhatsAppDatabase) {
     private val reactions = db.cachedReactionDao()
     private val conversations = db.conversationDao()
 
+    private companion object {
+        private const val MS_PER_SECOND = 1000L
+    }
+
     fun start(events: SharedFlow<WhatsAppEvent>) {
         scope.launch {
             events.collect { event ->
                 try {
                     handle(event)
-                } catch (t: Throwable) {
-                    Log.e(TAG, "failed to process ${event::class.simpleName}", t)
+                } catch (expected: Throwable) {
+                    Log.e(TAG, "failed to process ${event::class.simpleName}", expected)
                 }
             }
         }
@@ -39,169 +43,181 @@ class WhatsAppEventProcessor(private val db: WhatsAppDatabase) {
 
     private suspend fun handle(event: WhatsAppEvent) {
         when (event) {
-            is WhatsAppEvent.IncomingMessage -> {
-                val cid = chatJid(event.conversationId)
-                // Only bump unread for a genuinely new message — the same stanza can be delivered
-                // more than once (live + offline replay/retry), which otherwise over-counts.
-                val isNew = messages.get(event.messageId) == null
-                val sd = WhatsAppServiceData(
-                    senderName = event.senderName,
-                    senderJid = event.senderId,
-                    pollQuestion = event.pollQuestion,
-                    pollOptions = event.pollOptions.map { PollOptionData(it) },
-                    mediaUrl = event.attachments.firstOrNull()?.url,
-                    mediaMime = event.attachments.firstOrNull()?.mimeType,
-                    mediaName = event.attachments.firstOrNull()?.fileName,
-                )
-                messages.upsert(
-                    WhatsAppCachedMessage(
-                        messageId = event.messageId,
-                        conversationJid = cid,
-                        body = event.body,
-                        timestamp = event.timestamp,
-                        outgoing = false,
-                        senderJid = event.senderId ?: "",
-                        senderName = event.senderName ?: "",
-                        mediaUrl = event.attachments.firstOrNull()?.url,
-                        mediaMime = event.attachments.firstOrNull()?.mimeType,
-                        mediaName = event.attachments.firstOrNull()?.fileName,
-                        serviceData = event.serviceData ?: sd.serialize(),
-                    ),
-                )
-                touchConversation(cid, event.timestamp, incrementUnread = isNew)
-            }
-
-            is WhatsAppEvent.MessageUpdate -> {
-                messages.upsert(
-                    WhatsAppCachedMessage(
-                        messageId = event.messageId,
-                        conversationJid = chatJid(event.conversationId),
-                        body = event.body,
-                        timestamp = event.timestamp,
-                        outgoing = event.outgoing,
-                        senderJid = event.senderId ?: "",
-                        senderName = event.senderName ?: "",
-                        mediaMime = event.mediaMime,
-                        mediaName = event.mediaName,
-                        serviceData = event.serviceData,
-                    ),
-                )
-                touchConversation(chatJid(event.conversationId), event.timestamp, incrementUnread = false)
-            }
-
-            is WhatsAppEvent.MessageEdited -> {
-                messages.markEdited(event.messageId, event.newBody)
-                mergeServiceData(event.messageId) { it.copy(isEdited = true) }
-            }
-
-            is WhatsAppEvent.MessageDeleted -> {
-                messages.markRevoked(event.messageId)
-                mergeServiceData(event.messageId) { it.copy(isRevoked = true) }
-            }
-
-            is WhatsAppEvent.ReactionReceived -> {
-                reactions.upsert(
-                    WhatsAppCachedReaction(event.messageId, event.emoji, event.senderId, System.currentTimeMillis()),
-                )
-                refreshReactions(event.messageId)
-            }
-
-            is WhatsAppEvent.ReactionRemoved -> {
-                reactions.remove(event.messageId, event.senderId)
-                refreshReactions(event.messageId)
-            }
-
-            is WhatsAppEvent.PollVote -> {
-                mergeServiceData(event.pollMessageId) { sd ->
-                    val updated = sd.pollOptions.map { opt ->
-                        if (opt.name in event.optionNames && event.voterId !in opt.voters) {
-                            opt.copy(voteCount = opt.voteCount + 1, voters = opt.voters + event.voterId)
-                        } else {
-                            opt
-                        }
-                    }
-                    sd.copy(pollOptions = updated)
-                }
-            }
-
-            is WhatsAppEvent.ConversationUpdate -> {
-                val jid = chatJid(event.conversationId)
-                touchConversation(jid, event.lastTimestamp, incrementUnread = false)
-                // Persist group metadata (name + participants) so groups render named/flagged and
-                // survive restarts. Only overwrite with non-empty values so a later bare update
-                // (e.g. a plain message touch) doesn't clobber a good name/participant list.
-                val isGroup = event.isGroup || jid.endsWith("@g.us")
-                val participantsJson = participantsJsonFromServiceData(event.serviceData)
-                if (isGroup || !event.peerName.isNullOrBlank() || participantsJson != null) {
-                    val existing = conversations.getConversation(jid) ?: WhatsAppConversation(chatJid = jid)
-                    conversations.upsert(
-                        existing.copy(
-                            isGroup = isGroup || existing.isGroup,
-                            name = event.peerName?.takeIf { it.isNotBlank() } ?: existing.name,
-                            participants = participantsJson ?: existing.participants,
-                        ),
-                    )
-                }
-            }
-
-            is WhatsAppEvent.ConversationDeleted -> {
-                messages.deleteConversation(chatJid(event.conversationId))
-                conversations.delete(chatJid(event.conversationId))
-            }
-
-            is WhatsAppEvent.ReadReceipt -> {
-                // Advance the outgoing message's tick: delivery → Delivered (grey ✓✓), read → Read
-                // (blue ✓✓). The client emits one event per message id (incl. <list><item> batches),
-                // so a single update per event covers the batch case.
-                event.messageId?.let { id ->
-                    if (event.isDelivery) messages.markDelivered(id) else messages.markReadStatus(id)
-                }
-            }
-
-            is WhatsAppEvent.HistorySync -> {
-                val rows = ArrayList<WhatsAppCachedMessage>()
-                for (conv in event.conversations) {
-                    for (m in conv.messages) {
-                        rows.add(
-                            WhatsAppCachedMessage(
-                                messageId = m.messageId,
-                                conversationJid = chatJid(conv.conversationId),
-                                body = m.body,
-                                timestamp = m.timestamp,
-                                outgoing = m.outgoing,
-                                senderJid = m.senderId ?: "",
-                                senderName = m.senderName ?: "",
-                                serviceData = m.serviceData,
-                            ),
-                        )
-                    }
-                    val newest = conv.messages.maxOfOrNull { it.timestamp } ?: 0L
-                    touchConversation(chatJid(conv.conversationId), newest, incrementUnread = false)
-                }
-                if (rows.isNotEmpty()) messages.upsertAll(rows)
-            }
-
-            is WhatsAppEvent.CallEnded -> {
-                // Persist a call-log row (Phase D 3e). Best-effort; peer/name/direction come from
-                // the live call state if still present.
-                val st = com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.state.value
-                runCatching {
-                    callLog.upsert(
-                        WhatsAppCallLog(
-                            callId = event.callId,
-                            peerJid = st.peerJid,
-                            peerName = st.peerName,
-                            outgoing = st.phase == com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallPhase.Outgoing,
-                            video = st.isVideo,
-                            startTime = System.currentTimeMillis() - event.durationSeconds * 1000,
-                            durationSeconds = event.durationSeconds,
-                            outcome = event.reason,
-                        ),
-                    )
-                }
-            }
-
+            is WhatsAppEvent.IncomingMessage -> handleIncomingMessage(event)
+            is WhatsAppEvent.MessageUpdate -> handleMessageUpdate(event)
+            is WhatsAppEvent.MessageEdited -> handleMessageEdited(event)
+            is WhatsAppEvent.MessageDeleted -> handleMessageDeleted(event)
+            is WhatsAppEvent.ReactionReceived -> handleReactionReceived(event)
+            is WhatsAppEvent.ReactionRemoved -> handleReactionRemoved(event)
+            is WhatsAppEvent.PollVote -> handlePollVote(event)
+            is WhatsAppEvent.ConversationUpdate -> handleConversationUpdate(event)
+            is WhatsAppEvent.ConversationDeleted -> handleConversationDeleted(event)
+            is WhatsAppEvent.ReadReceipt -> handleReadReceipt(event)
+            is WhatsAppEvent.HistorySync -> handleHistorySync(event)
+            is WhatsAppEvent.CallEnded -> handleCallEnded(event)
             else -> { /* StateChanged, receipts, typing, presence, call offer/state, etc. — not persisted here. */ }
+        }
+    }
+    private suspend fun handleIncomingMessage(event: WhatsAppEvent.IncomingMessage) {
+        val cid = chatJid(event.conversationId)
+        // Only bump unread for a genuinely new message — the same stanza can be delivered
+        // more than once (live + offline replay/retry), which otherwise over-counts.
+        val isNew = messages.get(event.messageId) == null
+        val sd = WhatsAppServiceData(
+            senderName = event.senderName,
+            senderJid = event.senderId,
+            pollQuestion = event.pollQuestion,
+            pollOptions = event.pollOptions.map { PollOptionData(it) },
+            mediaUrl = event.attachments.firstOrNull()?.url,
+            mediaMime = event.attachments.firstOrNull()?.mimeType,
+            mediaName = event.attachments.firstOrNull()?.fileName,
+        )
+        messages.upsert(
+            WhatsAppCachedMessage(
+                messageId = event.messageId,
+                conversationJid = cid,
+                body = event.body,
+                timestamp = event.timestamp,
+                outgoing = false,
+                senderJid = event.senderId ?: "",
+                senderName = event.senderName ?: "",
+                mediaUrl = event.attachments.firstOrNull()?.url,
+                mediaMime = event.attachments.firstOrNull()?.mimeType,
+                mediaName = event.attachments.firstOrNull()?.fileName,
+                serviceData = event.serviceData ?: sd.serialize(),
+            ),
+        )
+        touchConversation(cid, event.timestamp, incrementUnread = isNew)
+    }
+
+    private suspend fun handleMessageUpdate(event: WhatsAppEvent.MessageUpdate) {
+        messages.upsert(
+            WhatsAppCachedMessage(
+                messageId = event.messageId,
+                conversationJid = chatJid(event.conversationId),
+                body = event.body,
+                timestamp = event.timestamp,
+                outgoing = event.outgoing,
+                senderJid = event.senderId ?: "",
+                senderName = event.senderName ?: "",
+                mediaMime = event.mediaMime,
+                mediaName = event.mediaName,
+                serviceData = event.serviceData,
+            ),
+        )
+        touchConversation(chatJid(event.conversationId), event.timestamp, incrementUnread = false)
+    }
+
+    private suspend fun handleMessageEdited(event: WhatsAppEvent.MessageEdited) {
+        messages.markEdited(event.messageId, event.newBody)
+        mergeServiceData(event.messageId) { it.copy(isEdited = true) }
+    }
+
+    private suspend fun handleMessageDeleted(event: WhatsAppEvent.MessageDeleted) {
+        messages.markRevoked(event.messageId)
+        mergeServiceData(event.messageId) { it.copy(isRevoked = true) }
+    }
+
+    private suspend fun handleReactionReceived(event: WhatsAppEvent.ReactionReceived) {
+        reactions.upsert(
+            WhatsAppCachedReaction(event.messageId, event.emoji, event.senderId, System.currentTimeMillis()),
+        )
+        refreshReactions(event.messageId)
+    }
+
+    private suspend fun handleReactionRemoved(event: WhatsAppEvent.ReactionRemoved) {
+        reactions.remove(event.messageId, event.senderId)
+        refreshReactions(event.messageId)
+    }
+
+    private suspend fun handlePollVote(event: WhatsAppEvent.PollVote) {
+        mergeServiceData(event.pollMessageId) { sd ->
+            val updated = sd.pollOptions.map { opt ->
+                if (opt.name in event.optionNames && event.voterId !in opt.voters) {
+                    opt.copy(voteCount = opt.voteCount + 1, voters = opt.voters + event.voterId)
+                } else {
+                    opt
+                }
+            }
+            sd.copy(pollOptions = updated)
+        }
+    }
+
+    private suspend fun handleConversationUpdate(event: WhatsAppEvent.ConversationUpdate) {
+        val jid = chatJid(event.conversationId)
+        touchConversation(jid, event.lastTimestamp, incrementUnread = false)
+        // Persist group metadata (name + participants) so groups render named/flagged and
+        // survive restarts. Only overwrite with non-empty values so a later bare update
+        // (e.g. a plain message touch) doesn't clobber a good name/participant list.
+        val isGroup = event.isGroup || jid.endsWith("@g.us")
+        val participantsJson = participantsJsonFromServiceData(event.serviceData)
+        if (isGroup || !event.peerName.isNullOrBlank() || participantsJson != null) {
+            val existing = conversations.getConversation(jid) ?: WhatsAppConversation(chatJid = jid)
+            conversations.upsert(
+                existing.copy(
+                    isGroup = isGroup || existing.isGroup,
+                    name = event.peerName?.takeIf { it.isNotBlank() } ?: existing.name,
+                    participants = participantsJson ?: existing.participants,
+                ),
+            )
+        }
+    }
+
+    private suspend fun handleConversationDeleted(event: WhatsAppEvent.ConversationDeleted) {
+        messages.deleteConversation(chatJid(event.conversationId))
+        conversations.delete(chatJid(event.conversationId))
+    }
+
+    private suspend fun handleReadReceipt(event: WhatsAppEvent.ReadReceipt) {
+        // Advance the outgoing message's tick: delivery → Delivered (grey ✓✓), read → Read
+        // (blue ✓✓). The client emits one event per message id (incl. <list><item> batches),
+        // so a single update per event covers the batch case.
+        event.messageId?.let { id ->
+            if (event.isDelivery) messages.markDelivered(id) else messages.markReadStatus(id)
+        }
+    }
+
+    private suspend fun handleHistorySync(event: WhatsAppEvent.HistorySync) {
+        val rows = ArrayList<WhatsAppCachedMessage>()
+        for (conv in event.conversations) {
+            for (m in conv.messages) {
+                rows.add(
+                    WhatsAppCachedMessage(
+                        messageId = m.messageId,
+                        conversationJid = chatJid(conv.conversationId),
+                        body = m.body,
+                        timestamp = m.timestamp,
+                        outgoing = m.outgoing,
+                        senderJid = m.senderId ?: "",
+                        senderName = m.senderName ?: "",
+                        serviceData = m.serviceData,
+                    ),
+                )
+            }
+            val newest = conv.messages.maxOfOrNull { it.timestamp } ?: 0L
+            touchConversation(chatJid(conv.conversationId), newest, incrementUnread = false)
+        }
+        if (rows.isNotEmpty()) messages.upsertAll(rows)
+    }
+
+    private suspend fun handleCallEnded(event: WhatsAppEvent.CallEnded) {
+        // Persist a call-log row (Phase D 3e). Best-effort; peer/name/direction come from
+        // the live call state if still present.
+        val st = com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.state.value
+        runCatching {
+            callLog.upsert(
+                WhatsAppCallLog(
+                    callId = event.callId,
+                    peerJid = st.peerJid,
+                    peerName = st.peerName,
+                    outgoing =
+                        st.phase == com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallPhase.Outgoing,
+                    video = st.isVideo,
+                    startTime = System.currentTimeMillis() - event.durationSeconds * MS_PER_SECOND,
+                    durationSeconds = event.durationSeconds,
+                    outcome = event.reason,
+                ),
+            )
         }
     }
 

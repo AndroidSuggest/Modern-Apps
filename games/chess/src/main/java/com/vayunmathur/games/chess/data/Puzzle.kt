@@ -29,6 +29,52 @@ object PuzzleRepository {
     private const val ASSET_NAME = "puzzles.dat"
     private const val HEADER_SIZE = 8
     private const val EP_NONE = 0xFF
+    private const val BOARD_BYTES = 32
+    private const val FLAGS_OFF = 32
+    private const val EP_OFF = 33
+    private const val RATING_OFF = 34
+    private const val MOVE_COUNT_OFF = 36
+    private const val MOVES_OFF = 37
+    private const val RECORD_BASE = 37
+    private const val SQUARES_PER_BYTE = 2
+    private const val NIBBLE_MASK = 0x0F
+    private const val NIBBLE_BITS = 4
+    private const val COLOR_BIT = 3
+    private const val MOVE_BITS = 16
+    private const val SQUARE_MASK = 0x3F
+    private const val SQUARE_SHIFT = 6
+    private const val PROMO_MASK = 0x07
+    private const val PROMO_SHIFT = 12
+    private const val BOARD_DIM = 8
+    private const val SIDE_BIT = 0x01
+    private const val WHITE_KING_BIT = 0x02
+    private const val WHITE_QUEEN_BIT = 0x04
+    private const val BLACK_KING_BIT = 0x08
+    private const val BLACK_QUEEN_BIT = 0x10
+    private const val BYTE_MASK = 0xFF
+    private const val U16_MASK = 0xFFFF
+    private const val BYTE_BITS = 8
+    private const val COUNT_OFFSET = 4
+    private const val MAGIC_0 = 'C'
+    private const val MAGIC_1 = 'P'
+    private const val MAGIC_2 = 'Z'
+    private const val MAGIC_3 = '1'
+    private const val MAGIC_INDEX_0 = 0
+    private const val MAGIC_INDEX_1 = 1
+    private const val MAGIC_INDEX_2 = 2
+    private const val MAGIC_INDEX_3 = 3
+    private const val NIBBLE_EMPTY = 0
+    private const val TYPE_MASK = 0x07
+    private const val NIBBLE_KING = 1
+    private const val NIBBLE_QUEEN = 2
+    private const val NIBBLE_ROOK = 3
+    private const val NIBBLE_BISHOP = 4
+    private const val NIBBLE_KNIGHT = 5
+    private const val NIBBLE_PAWN = 6
+    private const val PROMO_QUEEN = 1
+    private const val PROMO_ROOK = 2
+    private const val PROMO_BISHOP = 3
+    private const val PROMO_KNIGHT = 4
 
     private var data: ByteArray? = null
     private var offsets: IntArray = IntArray(0)
@@ -44,21 +90,23 @@ object PuzzleRepository {
         val bytes = context.assets.open(ASSET_NAME).use { it.readBytes() }
         require(bytes.size >= HEADER_SIZE) { "puzzles.dat too small" }
         require(
-            bytes[0] == 'C'.code.toByte() && bytes[1] == 'P'.code.toByte() &&
-                bytes[2] == 'Z'.code.toByte() && bytes[3] == '1'.code.toByte()
+            bytes[MAGIC_INDEX_0] == MAGIC_0.code.toByte() &&
+                bytes[MAGIC_INDEX_1] == MAGIC_1.code.toByte() &&
+                bytes[MAGIC_INDEX_2] == MAGIC_2.code.toByte() &&
+                bytes[MAGIC_INDEX_3] == MAGIC_3.code.toByte()
         ) { "puzzles.dat: bad magic" }
 
         val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-        val n = bb.getInt(4)
+        val n = bb.getInt(COUNT_OFFSET)
         val offs = IntArray(n)
         val rts = IntArray(n)
 
         var off = HEADER_SIZE
         for (i in 0 until n) {
             offs[i] = off
-            rts[i] = bb.getShort(off + 34).toInt() and 0xFFFF
-            val moveCount = bytes[off + 36].toInt() and 0xFF
-            off += 37 + 2 * moveCount
+            rts[i] = bb.getShort(off + RATING_OFF).toInt() and U16_MASK
+            val moveCount = bytes[off + MOVE_COUNT_OFF].toInt() and BYTE_MASK
+            off += RECORD_BASE + MOVE_BITS / BYTE_BITS * moveCount
         }
 
         data = bytes
@@ -94,36 +142,40 @@ object PuzzleRepository {
         val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
 
         val grid = MutableList(8) { MutableList<Piece?>(8) { null } }
-        for (b in 0 until 32) {
-            val byte = bytes[off + b].toInt() and 0xFF
-            placeNibble(grid, 2 * b, byte and 0x0F)
-            placeNibble(grid, 2 * b + 1, (byte shr 4) and 0x0F)
+        for (b in 0 until BOARD_BYTES) {
+            val byte = bytes[off + b].toInt() and BYTE_MASK
+            placeNibble(grid, SQUARES_PER_BYTE * b, byte and NIBBLE_MASK)
+            placeNibble(grid, SQUARES_PER_BYTE * b + 1, (byte shr NIBBLE_BITS) and NIBBLE_MASK)
         }
 
-        val flags = bytes[off + 32].toInt() and 0xFF
-        val sideToMove = if (flags and 0x01 == 0) PieceColor.WHITE else PieceColor.BLACK
+        val flags = bytes[off + FLAGS_OFF].toInt() and BYTE_MASK
+        val sideToMove = if (flags and SIDE_BIT == 0) PieceColor.WHITE else PieceColor.BLACK
         val castling = CastlingRights(
-            whiteKing = flags and 0x02 != 0,
-            whiteQueen = flags and 0x04 != 0,
-            blackKing = flags and 0x08 != 0,
-            blackQueen = flags and 0x10 != 0
+            whiteKing = flags and WHITE_KING_BIT != 0,
+            whiteQueen = flags and WHITE_QUEEN_BIT != 0,
+            blackKing = flags and BLACK_KING_BIT != 0,
+            blackQueen = flags and BLACK_QUEEN_BIT != 0
         )
 
-        val epByte = bytes[off + 33].toInt() and 0xFF
-        val epSquare = if (epByte == EP_NONE) null else Position(epByte / 8, epByte % 8)
-        val rating = bb.getShort(off + 34).toInt() and 0xFFFF
+        val epByte = bytes[off + EP_OFF].toInt() and BYTE_MASK
+        val epSquare = if (epByte == EP_NONE) {
+            null
+        } else {
+            Position(epByte / BOARD_DIM, epByte % BOARD_DIM)
+        }
+        val rating = bb.getShort(off + RATING_OFF).toInt() and U16_MASK
 
-        val moveCount = bytes[off + 36].toInt() and 0xFF
+        val moveCount = bytes[off + MOVE_COUNT_OFF].toInt() and BYTE_MASK
         val solution = ArrayList<PuzzleMove>(moveCount)
         for (i in 0 until moveCount) {
-            val m = bb.getShort(off + 37 + 2 * i).toInt() and 0xFFFF
-            val fromSq = m and 0x3F
-            val toSq = (m shr 6) and 0x3F
-            val promo = (m shr 12) and 0x07
+            val m = bb.getShort(off + MOVES_OFF + MOVE_BITS / BYTE_BITS * i).toInt() and U16_MASK
+            val fromSq = m and SQUARE_MASK
+            val toSq = (m shr SQUARE_SHIFT) and SQUARE_MASK
+            val promo = (m shr PROMO_SHIFT) and PROMO_MASK
             solution.add(
                 PuzzleMove(
-                    from = Position(fromSq / 8, fromSq % 8),
-                    to = Position(toSq / 8, toSq % 8),
+                    from = Position(fromSq / BOARD_DIM, fromSq % BOARD_DIM),
+                    to = Position(toSq / BOARD_DIM, toSq % BOARD_DIM),
                     promotion = promoType(promo)
                 )
             )
@@ -134,18 +186,25 @@ object PuzzleRepository {
     }
 
     private fun placeNibble(grid: MutableList<MutableList<Piece?>>, square: Int, nibble: Int) {
-        if (nibble == 0) return
-        val type = when (nibble and 0x07) {
-            1 -> PieceType.KING; 2 -> PieceType.QUEEN; 3 -> PieceType.ROOK
-            4 -> PieceType.BISHOP; 5 -> PieceType.KNIGHT; 6 -> PieceType.PAWN
+        if (nibble == NIBBLE_EMPTY) return
+        val type = when (nibble and TYPE_MASK) {
+            NIBBLE_KING -> PieceType.KING
+            NIBBLE_QUEEN -> PieceType.QUEEN
+            NIBBLE_ROOK -> PieceType.ROOK
+            NIBBLE_BISHOP -> PieceType.BISHOP
+            NIBBLE_KNIGHT -> PieceType.KNIGHT
+            NIBBLE_PAWN -> PieceType.PAWN
             else -> return
         }
-        val color = if ((nibble shr 3) and 0x01 == 0) PieceColor.WHITE else PieceColor.BLACK
-        grid[square / 8][square % 8] = Piece(type, color)
+        val color = if ((nibble shr COLOR_BIT) and 0x01 == 0) PieceColor.WHITE else PieceColor.BLACK
+        grid[square / BOARD_DIM][square % BOARD_DIM] = Piece(type, color)
     }
 
     private fun promoType(code: Int): PieceType? = when (code) {
-        1 -> PieceType.QUEEN; 2 -> PieceType.ROOK; 3 -> PieceType.BISHOP; 4 -> PieceType.KNIGHT
+        PROMO_QUEEN -> PieceType.QUEEN
+        PROMO_ROOK -> PieceType.ROOK
+        PROMO_BISHOP -> PieceType.BISHOP
+        PROMO_KNIGHT -> PieceType.KNIGHT
         else -> null
     }
 

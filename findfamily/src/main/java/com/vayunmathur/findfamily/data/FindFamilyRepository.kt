@@ -35,8 +35,11 @@ class FindFamilyRepository private constructor(context: Context) :
 
     val users: Flow<List<User>> get() = userDao.getAllFlow()
     val waypoints: Flow<List<Waypoint>> get() = waypointDao.getAllFlow()
-    val temporaryLinks: Flow<List<TemporaryLink>> get() = temporaryLinkDao.getAllFlow()
-    val noShowAlerts: Flow<List<NoShowAlert>> get() = noShowAlertDao.getAllFlow()
+
+    /** Share-link rows, owned by [temporaryLinkStore]. */
+    val temporaryLinks: Flow<List<TemporaryLink>> get() = temporaryLinkStore.allFlow
+    /** No-show watch rows, owned by [noShowAlertStore]. */
+    val noShowAlerts: Flow<List<NoShowAlert>> get() = noShowAlertStore.allFlow
 
     /** Latest [LocationValue] per user id (the "present" position of everyone). */
     val latestLocationByUser: Flow<Map<Long, LocationValue>>
@@ -107,26 +110,18 @@ class FindFamilyRepository private constructor(context: Context) :
     suspend fun deleteLocationsOlderThan(cutoffEpochSeconds: Long) =
         locationValueDao.deleteOlderThan(cutoffEpochSeconds)
 
-    // ------------------------------------------------------------------
-    // TemporaryLink reads / writes
-    // ------------------------------------------------------------------
+    /**
+     * Share-link rows. Exposed as a store (rather than flat repository methods)
+     * so the repository stays under the function cap — call sites use
+     * `repository.temporaryLinkStore.*`.
+     */
+    val temporaryLinkStore: TemporaryLinkStore get() = TemporaryLinkStore(temporaryLinkDao)
 
-    suspend fun getAllTemporaryLinks(): List<TemporaryLink> = temporaryLinkDao.getAll()
-    suspend fun upsertTemporaryLink(link: TemporaryLink): Long = temporaryLinkDao.upsert(link)
-    suspend fun deleteTemporaryLink(link: TemporaryLink): Int = temporaryLinkDao.delete(link)
-
-    // ------------------------------------------------------------------
-    // NoShowAlert reads / writes
-    // ------------------------------------------------------------------
-
-    suspend fun getNoShowAlert(id: Long): NoShowAlert? = noShowAlertDao.get(id)
-    suspend fun getAllNoShowAlerts(): List<NoShowAlert> = noShowAlertDao.getAll()
-    suspend fun getDueNoShowAlerts(nowEpochSeconds: Long): List<NoShowAlert> =
-        noShowAlertDao.getDue(nowEpochSeconds)
-    suspend fun upsertNoShowAlert(alert: NoShowAlert): Long = noShowAlertDao.upsert(alert)
-    suspend fun deleteNoShowAlert(alert: NoShowAlert): Int = noShowAlertDao.delete(alert)
-    suspend fun markNoShowAlertFired(id: Long): Int = noShowAlertDao.markFired(id)
-    suspend fun rearmNoShowAlert(id: Long): Int = noShowAlertDao.rearm(id)
+    /**
+     * No-show watch rows. Same arrangement as [temporaryLinkStore]:
+     * call sites use `repository.noShowAlertStore.*`.
+     */
+    val noShowAlertStore: NoShowAlertStore get() = NoShowAlertStore(noShowAlertDao)
 
     companion object {
         @Volatile
@@ -138,4 +133,24 @@ class FindFamilyRepository private constructor(context: Context) :
                 instance ?: FindFamilyRepository(context).also { instance = it }
             }
     }
+}
+
+/** Thin facade over [TemporaryLinkDao], owned by [FindFamilyRepository]. */
+internal class TemporaryLinkStore(private val dao: TemporaryLinkDao) {
+    val allFlow: Flow<List<TemporaryLink>> get() = dao.getAllFlow()
+    suspend fun getAll(): List<TemporaryLink> = dao.getAll()
+    suspend fun upsert(link: TemporaryLink): Long = dao.upsert(link)
+    suspend fun delete(link: TemporaryLink): Int = dao.delete(link)
+}
+
+/** Thin facade over [NoShowAlertDao], owned by [FindFamilyRepository]. */
+internal class NoShowAlertStore(private val dao: NoShowAlertDao) {
+    val allFlow: Flow<List<NoShowAlert>> get() = dao.getAllFlow()
+    suspend fun get(id: Long): NoShowAlert? = dao.get(id)
+    suspend fun getAll(): List<NoShowAlert> = dao.getAll()
+    suspend fun getDue(nowEpochSeconds: Long): List<NoShowAlert> = dao.getDue(nowEpochSeconds)
+    suspend fun upsert(alert: NoShowAlert): Long = dao.upsert(alert)
+    suspend fun delete(alert: NoShowAlert): Int = dao.delete(alert)
+    suspend fun markFired(id: Long): Int = dao.markFired(id)
+    suspend fun rearm(id: Long): Int = dao.rearm(id)
 }

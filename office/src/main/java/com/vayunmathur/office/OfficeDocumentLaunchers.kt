@@ -43,6 +43,18 @@ class DocumentLaunchers(
     val replaceImage: ManagedActivityResultLauncher<String, Uri?>,
 )
 
+private fun writeExportText(context: android.content.Context, uri: Uri, text: String) {
+    if (text.isNotEmpty()) {
+        context.contentResolver.openOutputStream(uri)?.writer()?.use { w -> w.write(text) }
+    }
+}
+
+private fun writeExportBytes(context: android.content.Context, uri: Uri, bytes: ByteArray) {
+    if (bytes.isNotEmpty()) {
+        context.contentResolver.openOutputStream(uri)?.use { o -> o.write(bytes) }
+    }
+}
+
 @Composable
 fun rememberDocumentLaunchers(
     viewModel: OfficeViewModel,
@@ -50,70 +62,153 @@ fun rememberDocumentLaunchers(
     onPickImageBytes: (name: String, bytes: ByteArray) -> Unit,
 ): DocumentLaunchers {
     val context = LocalContext.current
-    val saveAsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri -> uri?.let { viewModel.save(it) } }
-    val csvExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-        uri?.let {
-            val csv = viewModel.exportCsv()
-            context.contentResolver.openOutputStream(it)?.writer()?.use { w -> w.write(csv) }
-        }
+    val saveAsLauncher = rememberSaveAsLauncher(viewModel)
+    val imagePickerLauncher = rememberImagePickerLauncher(context, onPickImageBytes)
+    val replaceImageLauncher = rememberReplaceImageLauncher(context, holder)
+    val flatExportLauncher = rememberFlatExportLauncher(context, viewModel)
+    val sheetExports = rememberSheetExportLaunchers(context, viewModel)
+    val docExports = rememberDocExportLaunchers(context, viewModel)
+    return DocumentLaunchers(
+        saveAsLauncher,
+        sheetExports.csv,
+        imagePickerLauncher,
+        flatExportLauncher,
+        docExports.markdown,
+        docExports.txt,
+        sheetExports.tsv,
+        docExports.ooxml,
+        docExports.html,
+        docExports.rtf,
+        docExports.latex,
+        docExports.epub,
+        docExports.pdf,
+        replaceImageLauncher,
+    )
+}
+
+/** Save-as launcher. */
+@Composable
+private fun rememberSaveAsLauncher(viewModel: OfficeViewModel) =
+    rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { uri -> uri?.let { viewModel.save(it) } }
+
+/** Reads picked image bytes and forwards them. */
+@Composable
+private fun rememberImagePickerLauncher(
+    context: android.content.Context,
+    onPickImageBytes: (name: String, bytes: ByteArray) -> Unit,
+) = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    uri?.let {
+        try {
+            val bytes = context.contentResolver.openInputStream(it)?.use { s -> s.readBytes() } ?: return@let
+            val name = it.lastPathSegment?.substringAfterLast('/') ?: "image.png"
+            onPickImageBytes(name, bytes)
+        } catch (_: Exception) {}
     }
-    val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
-            try {
-                val bytes = context.contentResolver.openInputStream(it)?.use { s -> s.readBytes() } ?: return@let
-                val name = it.lastPathSegment?.substringAfterLast('/') ?: "image.png"
-                onPickImageBytes(name, bytes)
-            } catch (_: Exception) {}
-        }
+}
+
+/** Replace-image launcher (invokes the pending replace action). */
+@Composable
+private fun rememberReplaceImageLauncher(
+    context: android.content.Context,
+    holder: DocumentScreenState,
+) = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val fn = holder.pendingReplace
+    holder.pendingReplace = null
+    uri?.let {
+        try {
+            val bytes = context.contentResolver.openInputStream(it)?.use { s -> s.readBytes() } ?: return@let
+            val name = it.lastPathSegment?.substringAfterLast('/') ?: "image.png"
+            fn?.invoke(name, bytes)
+        } catch (_: Exception) {}
     }
-    val flatExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/xml")) { uri ->
+}
+
+/** Flat-ODF export launcher. */
+@Composable
+private fun rememberFlatExportLauncher(context: android.content.Context, viewModel: OfficeViewModel) =
+    rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/xml")) { uri ->
         uri?.let {
             val xml = viewModel.exportFlat()
             if (xml.isNotEmpty()) context.contentResolver.openOutputStream(it)?.writer()?.use { w -> w.write(xml) }
         }
     }
-    val markdownExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
-        uri?.let { val t = viewModel.exportMarkdown(); if (t.isNotEmpty()) context.contentResolver.openOutputStream(it)?.writer()?.use { w -> w.write(t) } }
-    }
-    val txtExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
-        uri?.let { val t = viewModel.exportAsPlainText(); if (t.isNotEmpty()) context.contentResolver.openOutputStream(it)?.writer()?.use { w -> w.write(t) } }
-    }
-    val tsvExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/tab-separated-values")) { uri ->
-        uri?.let { val t = viewModel.exportCsv('\t'); if (t.isNotEmpty()) context.contentResolver.openOutputStream(it)?.writer()?.use { w -> w.write(t) } }
-    }
-    val ooxmlExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        uri?.let { val bytes = viewModel.exportOoxml(); if (bytes.isNotEmpty()) context.contentResolver.openOutputStream(it)?.use { o -> o.write(bytes) } }
-    }
-    val htmlExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/html")) { uri ->
-        uri?.let { val t = viewModel.exportHtml(); if (t.isNotEmpty()) context.contentResolver.openOutputStream(it)?.writer()?.use { w -> w.write(t) } }
-    }
-    val rtfExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/rtf")) { uri ->
-        uri?.let { val t = viewModel.exportRtf(); if (t.isNotEmpty()) context.contentResolver.openOutputStream(it)?.writer()?.use { w -> w.write(t) } }
-    }
-    val latexExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/x-tex")) { uri ->
-        uri?.let { val t = viewModel.exportLatex(); if (t.isNotEmpty()) context.contentResolver.openOutputStream(it)?.writer()?.use { w -> w.write(t) } }
-    }
-    val epubExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/epub+zip")) { uri ->
-        uri?.let { val bytes = viewModel.exportEpub(); if (bytes.isNotEmpty()) context.contentResolver.openOutputStream(it)?.use { o -> o.write(bytes) } }
-    }
-    val pdfExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        uri?.let { val bytes = viewModel.exportPdf(); if (bytes.isNotEmpty()) context.contentResolver.openOutputStream(it)?.use { o -> o.write(bytes) } }
-    }
-    val replaceImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        val fn = holder.pendingReplace
-        holder.pendingReplace = null
+
+/** CSV/TSV sheet export launchers. */
+private class SheetExports(val csv: ManagedDocLauncher, val tsv: ManagedDocLauncher)
+
+private typealias ManagedDocLauncher =
+    androidx.activity.compose.ManagedActivityResultLauncher<String, android.net.Uri?>
+
+/** CSV + TSV export launchers. */
+@Composable
+private fun rememberSheetExportLaunchers(
+    context: android.content.Context,
+    viewModel: OfficeViewModel,
+): SheetExports {
+    val csv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri?.let {
-            try {
-                val bytes = context.contentResolver.openInputStream(it)?.use { s -> s.readBytes() } ?: return@let
-                val name = it.lastPathSegment?.substringAfterLast('/') ?: "image.png"
-                fn?.invoke(name, bytes)
-            } catch (_: Exception) {}
+            val csvText = viewModel.exportCsv()
+            context.contentResolver.openOutputStream(it)?.writer()?.use { w -> w.write(csvText) }
         }
     }
-    return DocumentLaunchers(
-        saveAsLauncher, csvExportLauncher, imagePickerLauncher, flatExportLauncher,
-        markdownExportLauncher, txtExportLauncher, tsvExportLauncher, ooxmlExportLauncher,
-        htmlExportLauncher, rtfExportLauncher, latexExportLauncher, epubExportLauncher,
-        pdfExportLauncher, replaceImageLauncher,
-    )
+    val tsv =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/tab-separated-values")) { uri ->
+            uri?.let { writeExportText(context, it, viewModel.exportCsv('\t')) }
+        }
+    return SheetExports(csv, tsv)
+}
+
+/** Document export launchers (ooxml/html/rtf/latex/epub/pdf/markdown/txt). */
+private class DocExports(
+    val markdown: ManagedDocLauncher,
+    val txt: ManagedDocLauncher,
+    val ooxml: ManagedDocLauncher,
+    val html: ManagedDocLauncher,
+    val rtf: ManagedDocLauncher,
+    val latex: ManagedDocLauncher,
+    val epub: ManagedDocLauncher,
+    val pdf: ManagedDocLauncher,
+)
+
+/** Text + binary document export launchers. */
+@Composable
+private fun rememberDocExportLaunchers(
+    context: android.content.Context,
+    viewModel: OfficeViewModel,
+): DocExports {
+    val markdown =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
+            uri?.let { writeExportText(context, it, viewModel.exportMarkdown()) }
+        }
+    val txt =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+            uri?.let { writeExportText(context, it, viewModel.exportAsPlainText()) }
+        }
+    val ooxml =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+            uri?.let { writeExportBytes(context, it, viewModel.exportOoxml()) }
+        }
+    val html =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/html")) { uri ->
+            uri?.let { writeExportText(context, it, viewModel.exportHtml()) }
+        }
+    val rtf =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/rtf")) { uri ->
+            uri?.let { writeExportText(context, it, viewModel.exportRtf()) }
+        }
+    val latex =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/x-tex")) { uri ->
+            uri?.let { writeExportText(context, it, viewModel.exportLatex()) }
+        }
+    val epub =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/epub+zip")) { uri ->
+            uri?.let { writeExportBytes(context, it, viewModel.exportEpub()) }
+        }
+    val pdf =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+            uri?.let { writeExportBytes(context, it, viewModel.exportPdf()) }
+        }
+    return DocExports(markdown, txt, ooxml, html, rtf, latex, epub, pdf)
 }

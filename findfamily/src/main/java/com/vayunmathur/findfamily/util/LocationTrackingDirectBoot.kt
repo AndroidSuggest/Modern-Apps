@@ -73,6 +73,8 @@ internal fun LocationTrackingService.startDirectBootTracking() {
 }
 
 /** The pre-unlock equivalent of [syncHeartbeat]: publish only, no database, no enrichment. */
+// Broad catch is deliberate: one peer's publish failure must not abort the pre-unlock publish loop.
+@Suppress("TooGenericExceptionCaught")
 internal suspend fun LocationTrackingService.publishDirectBoot(targets: List<DirectBootStore.Target>) {
     val location = lastKnownLocation ?: run {
         Log.d(LocationTrackingService.TAG_DIRECT_BOOT, "no fix yet")
@@ -90,7 +92,11 @@ internal suspend fun LocationTrackingService.publishDirectBoot(targets: List<Dir
         Clock.System.now(),
         battery,
     )
-    Log.d(LocationTrackingService.TAG_DIRECT_BOOT, "publishing ${location.latitude},${location.longitude} acc=${location.accuracy} to ${targets.size} peer(s)")
+    val locSummary = "${location.latitude},${location.longitude} acc=${location.accuracy}"
+    Log.d(
+        LocationTrackingService.TAG_DIRECT_BOOT,
+        "publishing $locSummary to ${targets.size} peer(s)"
+    )
     targets.forEach {
         try {
             Networking.publishLocation(lv, it.id, it.bundle)
@@ -102,6 +108,8 @@ internal suspend fun LocationTrackingService.publishDirectBoot(targets: List<Dir
     }
 }
 
+// Broad catch is deliberate: handover failures must be logged, never crash the unlock receiver path.
+@Suppress("TooGenericExceptionCaught")
 internal fun LocationTrackingService.onUserUnlocked() {
     serviceScope.launch {
         Log.i(LocationTrackingService.TAG_DIRECT_BOOT, "user unlocked; handing over to the normal path")

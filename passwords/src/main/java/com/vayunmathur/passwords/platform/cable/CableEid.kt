@@ -32,6 +32,12 @@ object CableEid {
     const val ROUTING_ID_SIZE = 3
     const val TAG_SIZE = 4
 
+    private const val AES_KEY_BYTES = 32
+    private const val DOMAIN_ID_LOW_OFFSET = 14
+    private const val DOMAIN_ID_HIGH_OFFSET = 15
+    private const val DOMAIN_ID_HIGH_SHIFT = 8
+    private const val BYTE_MASK = 0xFF
+
     /** Google's 16-bit service-data UUID used for caBLE v2 adverts. */
     const val SERVICE_DATA_UUID16 = 0xFDE2
 
@@ -47,8 +53,8 @@ object CableEid {
         val eid = ByteArray(EID_SIZE)
         System.arraycopy(nonce, 0, eid, 1, NONCE_SIZE)
         System.arraycopy(routingId, 0, eid, 1 + NONCE_SIZE, ROUTING_ID_SIZE)
-        eid[14] = (domainId and 0xFF).toByte()
-        eid[15] = ((domainId ushr 8) and 0xFF).toByte()
+        eid[DOMAIN_ID_LOW_OFFSET] = (domainId and BYTE_MASK).toByte()
+        eid[DOMAIN_ID_HIGH_OFFSET] = ((domainId ushr DOMAIN_ID_HIGH_SHIFT) and BYTE_MASK).toByte()
         return eid
     }
 
@@ -57,8 +63,8 @@ object CableEid {
         require(plaintextEid.size == EID_SIZE) { "EID must be $EID_SIZE bytes" }
         require(eidKey.size == CableKeys.EID_KEY_SIZE) { "EID key must be ${CableKeys.EID_KEY_SIZE} bytes" }
 
-        val aesKey = eidKey.copyOfRange(0, 32)
-        val hmacKey = eidKey.copyOfRange(32, 64)
+        val aesKey = eidKey.copyOfRange(0, AES_KEY_BYTES)
+        val hmacKey = eidKey.copyOfRange(AES_KEY_BYTES, CableKeys.EID_KEY_SIZE)
 
         val cipher = Cipher.getInstance("AES/ECB/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(aesKey, "AES"))

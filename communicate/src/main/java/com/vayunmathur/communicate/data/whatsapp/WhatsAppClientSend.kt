@@ -23,6 +23,8 @@ import org.json.JSONObject
 // re-encrypt and resend to a specific device when the peer asks for a retry
 // (<receipt type="retry">). Without this, a message the recipient can't decrypt is acked
 // locally (send "succeeds") but is never actually delivered.
+private const val LOG_URL_PREFIX_LENGTH = 40
+
 internal data class SentDM(
     val to: String,
     val type: String,
@@ -35,14 +37,19 @@ internal data class SentDM(
  * the outgoing echo under the same id that delivery/read receipts reference), or null on failure.
  */
 suspend fun WhatsAppClient.sendMessage(conversationId: String, body: String): String? {
-    if (_state.value !is State.Connected) { WhatsAppDiag.log(TAG, "send: not connected"); return null }
+    if (stateMutable.value !is State.Connected) { WhatsAppDiag.log(TAG, "send: not connected"); return null }
     val ws = webSocket ?: return null
 
-    val to = extractJid(conversationId) ?: run { WhatsAppDiag.log(TAG, "send: bad convId $conversationId"); return null }
+    val to = extractJid(conversationId) ?: run { WhatsAppDiag.log(
+        TAG,
+        "send: bad convId $conversationId"); return null }
     val id = WhatsAppProtocol.generateMessageId(authData?.wid)
     WhatsAppDiag.log(TAG, "send: building message to $to")
 
-    val node = buildEncryptedTextNode(to, id, body) ?: run { WhatsAppDiag.log(TAG, "send: build FAILED (no enc)"); return null }
+    val node = buildEncryptedTextNode(
+        to,
+        id,
+        body) ?: run { WhatsAppDiag.log(TAG, "send: build FAILED (no enc)"); return null }
     pendingMessageIDs.add(id)
     val sent = ws.send(WhatsAppProtocol.encodeNode(node))
     if (!sent) pendingMessageIDs.remove(id)
@@ -64,7 +71,7 @@ suspend fun WhatsAppClient.sendMessageAdvanced(
     quoted: WhatsAppProtocol.QuotedContext? = null,
     linkPreview: WhatsAppProtocol.LinkPreview? = null,
 ): String? {
-    if (_state.value !is State.Connected) { WhatsAppDiag.log(TAG, "sendAdv: not connected"); return null }
+    if (stateMutable.value !is State.Connected) { WhatsAppDiag.log(TAG, "sendAdv: not connected"); return null }
     val ws = webSocket ?: return null
     val to = extractJid(conversationId) ?: return null
     val id = WhatsAppProtocol.generateMessageId(authData?.wid)
@@ -79,7 +86,8 @@ suspend fun WhatsAppClient.sendMessageAdvanced(
     pendingMessageIDs.add(id)
     val sent = ws.send(WhatsAppProtocol.encodeNode(node))
     if (!sent) pendingMessageIDs.remove(id)
-    WhatsAppDiag.log(TAG, "sendAdv: sent=$sent id=$id mentions=${mentionedJids.size} quoted=${quoted != null} preview=${linkPreview != null}")
+    WhatsAppDiag.log(TAG, "sendAdv: sent=$sent id=$id mentions=${mentionedJids.size}" +
+        "quoted=${quoted != null} preview=${linkPreview != null}")
     return if (sent) id else null
 }
 
@@ -93,11 +101,22 @@ suspend fun WhatsAppClient.sendMessageAdvanced(
  * the same Signal fan-out used for messages, then wraps it in a `<call><offer>` stanza.
  */
 suspend fun WhatsAppClient.sendCallOffer(conversationId: String, video: Boolean = false): Boolean {
-    if (_state.value !is State.Connected) { WhatsAppDiag.log(TAG, "call: not connected"); return false }
+    if (stateMutable.value !is State.Connected) { WhatsAppDiag.log(TAG, "call: not connected"); return false }
     val ws = webSocket ?: return false
     val auth = authData ?: return false
     val crypto = ensureE2E(auth) ?: return false
     val to = extractJid(conversationId) ?: return false
+    return sendCallOfferTo(ws, auth, crypto, to, video)
+}
+
+/** Encrypt a call key for the peer's (and our) devices and send the offer stanza. */
+private suspend fun WhatsAppClient.sendCallOfferTo(
+    ws: WhatsAppSocket,
+    auth: WhatsAppAuthData,
+    crypto: WhatsAppE2E,
+    to: String,
+    video: Boolean,
+): Boolean {
     val ownUser = auth.wid.substringBefore("@").substringBefore(":").substringBefore(".")
     val callId = WhatsAppProtocol.generateMessageId(auth.wid)
     val stanzaId = WhatsAppProtocol.generateMessageId(auth.wid)
@@ -107,7 +126,13 @@ suspend fun WhatsAppClient.sendCallOffer(conversationId: String, video: Boolean 
         getUserDevices(listOf("$ownUser@s.whatsapp.net"))).distinct()
     val (encs, _) = encryptForDevices(crypto, devices, ownUser, auth.wid, padded, null)
     if (encs.isEmpty()) { WhatsAppDiag.log(TAG, "call: no devices to encrypt to"); return false }
-    val node = com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallSignaling.buildOffer(to, callId, auth.wid, video, encs, stanzaId)
+    val node = com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallSignaling.buildOffer(
+        to,
+        callId,
+        auth.wid,
+        video,
+        encs,
+        stanzaId)
     val sent = ws.send(WhatsAppProtocol.encodeNode(node))
     WhatsAppDiag.log(TAG, "call: offer sent=$sent callId=$callId to=$to devices=${encs.size}")
     return sent
@@ -118,7 +143,11 @@ suspend fun WhatsAppClient.rejectCall(from: String, callId: String, callCreator:
     val ws = webSocket ?: return false
     return ws.send(
         WhatsAppProtocol.encodeNode(
-            com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallSignaling.buildReject(from, callId, callCreator, generateMessageId()),
+            com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallSignaling.buildReject(
+                from,
+                callId,
+                callCreator,
+                generateMessageId()),
         ),
     )
 }
@@ -134,7 +163,10 @@ fun WhatsAppClient.placeCall(conversationId: String, video: Boolean = false) {
  * recipient's devices and our own other devices (via usync), establishing sessions as needed.
  * Group recipients (@g.us) use the sender-key (skmsg) path. Returns null on failure.
  */
-internal suspend fun WhatsAppClient.buildEncryptedTextNode(to: String, id: String, body: String): WhatsAppProtocol.Node? {
+internal suspend fun WhatsAppClient.buildEncryptedTextNode(
+    to: String,
+    id: String,
+    body: String): WhatsAppProtocol.Node? {
     if (to.contains("@g.us")) {
         return buildEncryptedGroupTextNode(to, id, body)
     }
@@ -191,7 +223,10 @@ internal suspend fun WhatsAppClient.buildEncryptedMessageNode(
  * Build a group text message. Delegates to [buildEncryptedGroupMessageNode] with a plain
  * conversation proto.
  */
-internal suspend fun WhatsAppClient.buildEncryptedGroupTextNode(groupJid: String, id: String, body: String): WhatsAppProtocol.Node? =
+internal suspend fun WhatsAppClient.buildEncryptedGroupTextNode(
+    groupJid: String,
+    id: String,
+    body: String): WhatsAppProtocol.Node? =
     buildEncryptedGroupMessageNode(groupJid, id, WhatsAppProtocol.buildConversationMessage(body))
 
 /**
@@ -218,8 +253,8 @@ internal suspend fun WhatsAppClient.buildEncryptedGroupMessageNode(
 
     val skmsgCiphertext = try {
         crypto.encryptGroup(groupJid, contentPadded)
-    } catch (e: Exception) {
-        Log.e(TAG, "Group sender-key encrypt failed for $groupJid", e)
+    } catch (expected: Exception) {
+        Log.e(TAG, "Group sender-key encrypt failed for $groupJid", expected)
         return null
     }
     val skdmBytes = crypto.createSenderKeyDistribution(groupJid)
@@ -273,7 +308,7 @@ internal suspend fun WhatsAppClient.buildEncryptedGroupMessageNode(
 // UNVERIFIED: stored at pair time; null until paired with the new pairing flow.
 internal fun WhatsAppClient.accountDeviceIdentity(): ByteArray? {
     val b64 = authData?.accountSignedDeviceIdentity?.takeIf { it.isNotEmpty() } ?: return null
-    return try { Base64.decode(b64, Base64.NO_WRAP) } catch (e: Exception) { null }
+    return try { Base64.decode(b64, Base64.NO_WRAP) } catch (ignored: Exception) { null }
 }
 
 internal data class MediaUploadResult(
@@ -286,7 +321,7 @@ internal suspend fun WhatsAppClient.uploadMedia(
     mediaType: String,
     token: String,
 ): MediaUploadResult = withContext(Dispatchers.IO) {
-    val conn = mediaConn() ?: throw Exception("media_conn unavailable (no upload host/auth)")
+    val conn = mediaConn() ?: throw IllegalStateException("media_conn unavailable (no upload host/auth)")
     val (host, auth) = conn
     // whatsmeow upload.go: mmsType "image"/"video"/"audio"/"document"; stickers use the image bucket.
     val mmsType = if (mediaType == "sticker") "image" else mediaType
@@ -302,16 +337,17 @@ internal suspend fun WhatsAppClient.uploadMedia(
         mapOf(
             "Origin" to "https://web.whatsapp.com",
             "Referer" to "https://web.whatsapp.com/",
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
         ),
         encryptedData,
         connectTimeoutMs = MEDIA_CONNECT_TIMEOUT_MS,
         readTimeoutMs = MEDIA_READ_TIMEOUT_MS,
     )
     if (!response.isSuccess) {
-        throw Exception("Media upload failed: HTTP ${response.status}")
+        throw IllegalStateException("Media upload failed: HTTP ${response.status}")
     }
-    if (response.bytes.isEmpty()) throw Exception("Empty upload response")
+    if (response.bytes.isEmpty()) throw IllegalStateException("Empty upload response")
     val json = JSONObject(response.text)
     MediaUploadResult(
         url = json.getString("url"),
@@ -325,25 +361,13 @@ suspend fun WhatsAppClient.sendMedia(
     mimeType: String,
     fileName: String?
 ): Boolean {
-    if (_state.value !is State.Connected) return false
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val to = extractJid(conversationId) ?: return false
     val id = WhatsAppProtocol.generateMessageId(authData?.wid)
 
-    val mediaType = when {
-        mimeType == "image/webp" -> "sticker"
-        mimeType.startsWith("image/") -> "image"
-        mimeType.startsWith("video/") -> "video"
-        mimeType.startsWith("audio/") -> "audio"
-        else -> "document"
-    }
-    val mediaKeyStr = when (mediaType) {
-        "sticker" -> WhatsAppProtocol.MEDIA_KEY_STICKER
-        "image" -> WhatsAppProtocol.MEDIA_KEY_IMAGE
-        "video" -> WhatsAppProtocol.MEDIA_KEY_VIDEO
-        "audio" -> WhatsAppProtocol.MEDIA_KEY_AUDIO
-        else -> WhatsAppProtocol.MEDIA_KEY_DOCUMENT
-    }
+    val mediaType = mediaTypeFor(mimeType)
+    val mediaKeyStr = mediaKeyFor(mediaType)
 
     pendingMessageIDs.add(id)
     if (bytes.size > MAX_FILE_SIZE) {
@@ -352,37 +376,69 @@ suspend fun WhatsAppClient.sendMedia(
         return false
     }
     return try {
-        WhatsAppDiag.log(TAG, "media: start type=$mediaType size=${bytes.size} to=$to")
-        val enc = WhatsAppProtocol.encryptMedia(bytes, mediaKeyStr)
-        val token = Base64.encodeToString(enc.fileEncSha256, Base64.URL_SAFE or Base64.NO_WRAP)
-        WhatsAppDiag.log(TAG, "media: encrypted, uploading…")
-        val upload = uploadMedia(enc.encryptedData, mediaType, token)
-        WhatsAppDiag.log(TAG, "media: uploaded url=${upload.url.take(40)}")
-        val proto = WhatsAppProtocol.buildMediaProto(
-            upload.url, upload.directPath,
-            enc.mediaKey, enc.fileSha256, enc.fileEncSha256, enc.fileLength,
-            mimeType, fileName, mediaType
-        )
-        // Media must be Signal-encrypted + fanned out like any other message (an
-        // unencrypted node is dropped) and carry stanza type "media" + a "mediatype"
-        // enc attr. Ref whatsmeow send.go getTypeFromMessage / prepareMessageNode.
-        val encAttrs = mapOf("mediatype" to mediaType)
-        val node = if (to.contains("@g.us")) {
-            buildEncryptedGroupMessageNode(to, id, proto, type = "media", extraEncAttrs = encAttrs)
-        } else {
-            buildEncryptedMessageNode(to, id, proto, "media", extraEncAttrs = encAttrs)
-        } ?: run {
-            WhatsAppDiag.log(TAG, "media: build node FAILED (encryption produced no recipients)")
-            pendingMessageIDs.remove(id); return false
-        }
-        val sent = ws.send(WhatsAppProtocol.encodeNode(node))
-        WhatsAppDiag.log(TAG, "media: stanza sent=$sent id=$id")
-        if (!sent) pendingMessageIDs.remove(id)
-        sent
-    } catch (e: Exception) {
-        WhatsAppDiag.log(TAG, "media: FAILED ${e.message}")
-        Log.e(TAG, "Failed to send media", e)
+        sendMediaPayload(ws, to, id, bytes, mimeType, fileName, mediaType, mediaKeyStr)
+    } catch (expected: Exception) {
+        WhatsAppDiag.log(TAG, "media: FAILED ${expected.message}")
+        Log.e(TAG, "Failed to send media", expected)
         pendingMessageIDs.remove(id)
         false
     }
+}
+
+/** Media type string for a MIME type. */
+private fun mediaTypeFor(mimeType: String): String = when {
+    mimeType == "image/webp" -> "sticker"
+    mimeType.startsWith("image/") -> "image"
+    mimeType.startsWith("video/") -> "video"
+    mimeType.startsWith("audio/") -> "audio"
+    else -> "document"
+}
+
+/** Media key string for a media type. */
+private fun mediaKeyFor(mediaType: String): String = when (mediaType) {
+    "sticker" -> WhatsAppProtocol.MEDIA_KEY_STICKER
+    "image" -> WhatsAppProtocol.MEDIA_KEY_IMAGE
+    "video" -> WhatsAppProtocol.MEDIA_KEY_VIDEO
+    "audio" -> WhatsAppProtocol.MEDIA_KEY_AUDIO
+    else -> WhatsAppProtocol.MEDIA_KEY_DOCUMENT
+}
+
+/** Encrypt, upload, build, and send the media stanza. */
+private suspend fun WhatsAppClient.sendMediaPayload(
+    ws: com.vayunmathur.communicate.data.whatsapp.transport.WhatsAppSocket,
+    to: String,
+    id: String,
+    bytes: ByteArray,
+    mimeType: String,
+    fileName: String?,
+    mediaType: String,
+    mediaKeyStr: String,
+): Boolean {
+    WhatsAppDiag.log(TAG, "media: start type=$mediaType size=${bytes.size} to=$to")
+    val enc = WhatsAppProtocol.encryptMedia(bytes, mediaKeyStr)
+    val token = Base64.encodeToString(enc.fileEncSha256, Base64.URL_SAFE or Base64.NO_WRAP)
+    WhatsAppDiag.log(TAG, "media: encrypted, uploading…")
+    val upload = uploadMedia(enc.encryptedData, mediaType, token)
+    WhatsAppDiag.log(TAG, "media: uploaded url=${upload.url.take(LOG_URL_PREFIX_LENGTH)}")
+    val proto = WhatsAppProtocol.buildMediaProto(
+        upload.url, upload.directPath,
+        enc.mediaKey, enc.fileSha256, enc.fileEncSha256, enc.fileLength,
+        mimeType, fileName, mediaType
+    )
+    // Media must be Signal-encrypted + fanned out like any other message (an
+    // unencrypted node is dropped) and carry stanza type "media" + a "mediatype"
+    // enc attr. Ref whatsmeow send.go getTypeFromMessage / prepareMessageNode.
+    val encAttrs = mapOf("mediatype" to mediaType)
+    val node = if (to.contains("@g.us")) {
+        buildEncryptedGroupMessageNode(to, id, proto, type = "media", extraEncAttrs = encAttrs)
+    } else {
+        buildEncryptedMessageNode(to, id, proto, "media", extraEncAttrs = encAttrs)
+    } ?: run {
+        WhatsAppDiag.log(TAG, "media: build node FAILED (encryption produced no recipients)")
+        pendingMessageIDs.remove(id); return false
+    }
+    val sent = ws.send(WhatsAppProtocol.encodeNode(node))
+    WhatsAppDiag.log(TAG, "media: stanza sent=$sent id=$id")
+    if (!sent) pendingMessageIDs.remove(id)
+    return sent
 }

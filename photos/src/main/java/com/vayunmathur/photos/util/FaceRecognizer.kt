@@ -12,6 +12,7 @@ import androidx.core.graphics.scale
 import com.vayunmathur.library.ml.DetectedFaceBox
 import com.vayunmathur.library.ml.FaceDetector
 import com.vayunmathur.library.ml.FaceEmbedder
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.sqrt
@@ -66,6 +67,9 @@ object FaceRecognizer {
 
     private const val TAG = "FaceRecognizer"
 
+    private const val FACE_MARGIN_FRACTION = 0.15f
+    private const val MIN_FACE_SIZE_PX = 8
+
     // Canonical eye positions inside the aligned crop (ArcFace 5-point template).
     private const val LEFT_EYE_X = 38.2946f / 112f
     private const val RIGHT_EYE_X = 73.5318f / 112f
@@ -90,6 +94,11 @@ object FaceRecognizer {
     /** True if the native models could be loaded and the device has fp16 compute. */
     fun modelsAvailable(context: Context): Boolean = ensureInit(context)
 
+    private fun closeQuietly() {
+        try { detector?.close() } catch (_: IllegalStateException) { /* already closed */ }
+        try { embedder?.close() } catch (_: IllegalStateException) { /* already closed */ }
+    }
+
     @Synchronized
     private fun ensureInit(context: Context): Boolean {
         if (detector != null && embedder != null) return true
@@ -110,10 +119,16 @@ object FaceRecognizer {
             detector = newDetector
             embedder = newEmbedder
             true
-        } catch (e: Throwable) {
+        } catch (e: IllegalStateException) {
             Log.e(TAG, "Face models unavailable", e)
-            try { detector?.close() } catch (_: Exception) {}
-            try { embedder?.close() } catch (_: Exception) {}
+            closeQuietly()
+            detector = null
+            embedder = null
+            initFailed = true
+            false
+        } catch (e: IOException) {
+            Log.e(TAG, "Face models unavailable", e)
+            closeQuietly()
             detector = null
             embedder = null
             initFailed = true
@@ -132,7 +147,11 @@ object FaceRecognizer {
 
         val faces = try {
             det.detect(argb)
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "Face detection failed", e)
+            if (argb != bitmap) argb.recycle()
+            return emptyList()
+        } catch (e: IllegalArgumentException) {
             Log.e(TAG, "Face detection failed", e)
             if (argb != bitmap) argb.recycle()
             return emptyList()
@@ -140,29 +159,33 @@ object FaceRecognizer {
 
         val out = ArrayList<DetectedFace>(faces.size)
         for (f in faces) {
-            val rect = faceRect(f, argb.width, argb.height) ?: continue
-            val aligned = alignFace(argb, f, rect) ?: continue
-            try {
-                // Null means the inference failed on this crop; the others may still be
-                // fine, so skip this face rather than abandoning the photo.
-                val raw = emb.embed(aligned)
-                if (raw == null) {
-                    Log.e(TAG, "Face embedding failed")
-                    continue
-                }
-                out += DetectedFace(
-                    embedding = l2Normalize(raw),
-                    left = f.left,
-                    top = f.top,
-                    right = f.right,
-                    bottom = f.bottom,
-                )
-            } finally {
-                aligned.recycle()
-            }
+            embedOneFace(emb, argb, f)?.let { out += it }
         }
         if (argb != bitmap) argb.recycle()
         return out
+    }
+
+    /** Embed a single detected face, or null when it should be skipped. */
+    private fun embedOneFace(emb: FaceEmbedder, argb: Bitmap, f: DetectedFaceBox): DetectedFace? {
+        val rect = faceRect(f, argb.width, argb.height) ?: return null
+        val aligned = alignFace(argb, f, rect) ?: return null
+        try {
+            // Null means the inference failed on this crop; the others may still be
+            // fine, so skip this face rather than abandoning the photo.
+            val raw = emb.embed(aligned) ?: run {
+                Log.e(TAG, "Face embedding failed")
+                return null
+            }
+            return DetectedFace(
+                embedding = l2Normalize(raw),
+                left = f.left,
+                top = f.top,
+                right = f.right,
+                bottom = f.bottom,
+            )
+        } finally {
+            aligned.recycle()
+        }
     }
 
     /**
@@ -204,13 +227,13 @@ object FaceRecognizer {
     private fun faceRect(f: DetectedFaceBox, w: Int, h: Int): Rect? {
         val bw = (f.right - f.left) * w
         val bh = (f.bottom - f.top) * h
-        val marginX = bw * 0.15f
-        val marginY = bh * 0.15f
+        val marginX = bw * FACE_MARGIN_FRACTION
+        val marginY = bh * FACE_MARGIN_FRACTION
         val left = (f.left * w - marginX).toInt().coerceIn(0, w - 1)
         val top = (f.top * h - marginY).toInt().coerceIn(0, h - 1)
         val right = (f.right * w + marginX).toInt().coerceIn(left + 1, w)
         val bottom = (f.bottom * h + marginY).toInt().coerceIn(top + 1, h)
-        if (right - left < 8 || bottom - top < 8) return null
+        if (right - left < MIN_FACE_SIZE_PX || bottom - top < MIN_FACE_SIZE_PX) return null
         return Rect(left, top, right, bottom)
     }
 

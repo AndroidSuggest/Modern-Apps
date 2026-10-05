@@ -10,10 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
-import com.vayunmathur.library.ui.ExpandVisibility
-import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.Surface
-import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,9 +18,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -36,8 +32,15 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
-import com.vayunmathur.office.odf.*
-import com.vayunmathur.library.ui.odf.*
+import com.vayunmathur.library.ui.ExpandVisibility
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.odf.OdfCondFormat
+import com.vayunmathur.library.ui.odf.OdfParagraph
+import com.vayunmathur.library.ui.odf.OdfSpan
+import com.vayunmathur.library.ui.odf.ParagraphStyle
+import com.vayunmathur.library.ui.odf.listPrefixFor
 
 internal fun evalCondFormat(rules: List<OdfCondFormat>, numeric: Double?, text: String): OdfCondFormat? {
     val re = Regex("(value\\(\\)|cell-content\\(\\))\\s*(<=|>=|<>|=|<|>)\\s*(.+)")
@@ -72,7 +75,11 @@ private fun paragraphBaseStyle(style: ParagraphStyle): TextStyle = when (style) 
 }
 
 @Composable
-fun ParagraphView(paragraph: OdfParagraph, searchQuery: String = "", fontSizeMultiplier: Float = 1f, nightTextColor: Color = Color.Unspecified) {
+fun ParagraphView(
+    paragraph: OdfParagraph,
+    searchQuery: String = "",
+    fontSizeMultiplier: Float = 1f,
+    nightTextColor: Color = Color.Unspecified) {
     val baseStyle = paragraphBaseStyle(paragraph.style)
     val prefix = listPrefixFor(paragraph)
     val hasLinks = paragraph.spans.any { it.href != null }
@@ -97,7 +104,8 @@ fun ParagraphView(paragraph: OdfParagraph, searchQuery: String = "", fontSizeMul
             if (span.underline) decorations.add(TextDecoration.Underline)
             if (span.strikethrough) decorations.add(TextDecoration.LineThrough)
             val rawFontSize = span.fontSize?.sp ?: baseStyle.fontSize
-            val baseFontSize = if (rawFontSize != TextUnit.Unspecified) rawFontSize * fontSizeMultiplier else rawFontSize
+            val baseFontSize =
+                if (rawFontSize != TextUnit.Unspecified) rawFontSize * fontSizeMultiplier else rawFontSize
             val effectiveFontSize = if ((span.superscript || span.subscript) && baseFontSize != TextUnit.Unspecified) baseFontSize * 0.7f else baseFontSize
             val spanColor = span.color
             val spanTextColor = when {
@@ -127,16 +135,21 @@ fun ParagraphView(paragraph: OdfParagraph, searchQuery: String = "", fontSizeMul
                     val idx = remaining.indexOf(searchQuery, ignoreCase = true)
                     if (idx < 0) { linkOrPlain(span, spanStyle, remaining); break }
                     if (idx > 0) linkOrPlain(span, spanStyle, remaining.substring(0, idx))
-                    withStyle(spanStyle.copy(color = onHighlightColor, background = highlightColor)) { append(remaining.substring(idx, idx + searchQuery.length)) }
+                    withStyle(spanStyle.copy(
+                        color = onHighlightColor,
+                        background = highlightColor)) { append(remaining.substring(idx, idx + searchQuery.length)) }
                     remaining = remaining.substring(idx + searchQuery.length)
                 }
             } else linkOrPlain(span, spanStyle, shownText)
         }
     }
 
-    val indentDp = if (paragraph.marginLeft > 0 || paragraph.listLevel > 1) (paragraph.marginLeft + maxOf(0, paragraph.listLevel - 1) * 16f).dp else 0.dp
+    val indentDp = if (paragraph.marginLeft > 0 || paragraph.listLevel > 1) (paragraph.marginLeft + maxOf(
+        0,
+        paragraph.listLevel - 1) * 16f).dp else 0.dp
     val verticalPadding = when (paragraph.style) {
-        ParagraphStyle.HEADING1 -> 12.dp; ParagraphStyle.HEADING2 -> 10.dp; ParagraphStyle.HEADING3 -> 8.dp; ParagraphStyle.HEADING4 -> 6.dp
+        ParagraphStyle.HEADING1 ->
+            12.dp; ParagraphStyle.HEADING2 -> 10.dp; ParagraphStyle.HEADING3 -> 8.dp; ParagraphStyle.HEADING4 -> 6.dp
         ParagraphStyle.BODY -> 2.dp; ParagraphStyle.LIST_ITEM -> 1.dp; ParagraphStyle.TABLE_HEADER -> 4.dp
     }
     val topPad = if (paragraph.marginTop > 0) paragraph.marginTop.dp else verticalPadding
@@ -151,8 +164,15 @@ fun ParagraphView(paragraph: OdfParagraph, searchQuery: String = "", fontSizeMul
         fs * fontSizeMultiplier * lh
     } ?: TextUnit.Unspecified
     val scaledStyle = if (fontSizeMultiplier != 1f && baseStyle.fontSize != TextUnit.Unspecified) {
-        baseStyle.copy(fontSize = baseStyle.fontSize * fontSizeMultiplier, textAlign = paragraph.alignment ?: TextAlign.Unspecified, lineHeight = lineHeight, color = if (nightTextColor != Color.Unspecified) nightTextColor else baseStyle.color)
-    } else baseStyle.copy(textAlign = paragraph.alignment ?: TextAlign.Unspecified, lineHeight = lineHeight, color = if (nightTextColor != Color.Unspecified) nightTextColor else baseStyle.color)
+        baseStyle.copy(
+            fontSize = baseStyle.fontSize * fontSizeMultiplier,
+            textAlign = paragraph.alignment ?: TextAlign.Unspecified,
+            lineHeight = lineHeight,
+            color = if (nightTextColor != Color.Unspecified) nightTextColor else baseStyle.color)
+    } else baseStyle.copy(
+        textAlign = paragraph.alignment ?: TextAlign.Unspecified,
+        lineHeight = lineHeight,
+        color = if (nightTextColor != Color.Unspecified) nightTextColor else baseStyle.color)
 
     if (hasLinks || hasAnnotations) {
         var expandedAnnotation by remember { mutableStateOf<String?>(null) }
@@ -160,7 +180,9 @@ fun ParagraphView(paragraph: OdfParagraph, searchQuery: String = "", fontSizeMul
             @Suppress("DEPRECATION")
             ClickableText(text = annotatedString, style = scaledStyle, modifier = modifier, onClick = { offset ->
                 annotatedString.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { a ->
-                    try { context.startActivity(Intent(Intent.ACTION_VIEW, a.item.toUri())) } catch (_: Exception) {}; return@ClickableText
+                    try { context.startActivity(Intent(
+                        Intent.ACTION_VIEW,
+                        a.item.toUri())) } catch (_: Exception) {}; return@ClickableText
                 }
                 annotatedString.getStringAnnotations("ANNOTATION", offset, offset).firstOrNull()?.let { a ->
                     expandedAnnotation = if (expandedAnnotation == a.item) null else a.item
@@ -171,7 +193,10 @@ fun ParagraphView(paragraph: OdfParagraph, searchQuery: String = "", fontSizeMul
     } else Text(text = annotatedString, style = scaledStyle, modifier = modifier)
 }
 
-private fun androidx.compose.ui.text.AnnotatedString.Builder.linkOrPlain(span: OdfSpan, style: SpanStyle, text: String) {
+private fun androidx.compose.ui.text.AnnotatedString.Builder.linkOrPlain(
+    span: OdfSpan,
+    style: SpanStyle,
+    text: String) {
     val href = span.href
     if (href != null) {
         val s = length; withStyle(style) { append(text) }; addStringAnnotation("URL", href, s, length)
@@ -183,10 +208,20 @@ private fun AnnotationPopup(content: String) {
     val parts = content.split("\n", limit = 2)
     val author = parts[0].ifEmpty { null }
     val body = if (parts.size > 1) parts[1] else ""
-    Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
         Column(modifier = Modifier.padding(12.dp)) {
-            if (author != null) Text(author, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
-            if (body.isNotEmpty()) Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+            if (author != null) Text(
+                author,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onTertiaryContainer)
+            if (body.isNotEmpty()) Text(
+                body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer)
         }
     }
 }

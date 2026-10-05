@@ -18,11 +18,13 @@ class WeatherRefreshWorker(
     workerParams: WorkerParameters
 ) : CoroutineWorker(context, workerParams) {
 
+    // Broad catches are deliberate: a worker must return Result, never throw, and
+    // network plus Room throw undocumented RuntimeExceptions (not just IOException).
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun doWork(): Result {
         return try {
             val repo = WeatherRepository.get(context)
             val locations = repo.getLocations()
-
             for (location in locations) {
                 try {
                     val forecast = WeatherApi.forecast(location.latitude, location.longitude)
@@ -34,7 +36,6 @@ class WeatherRefreshWorker(
                     Log.w(TAG, "Failed to refresh weather for ${location.name}: ${e.message}")
                 }
             }
-
             WeatherGlanceWidget().updateAll(context)
             WeatherBlobGlanceWidget().updateAll(context)
             Result.success()

@@ -7,7 +7,7 @@ import com.vayunmathur.library.intents.maps.DirectionsSegment
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.util.AssistantIntent
 import com.vayunmathur.maps.data.SpecificFeature
-import com.vayunmathur.maps.util.OfflineRouter
+import com.vayunmathur.maps.util.OfflineRouterRoadRoutes
 import com.vayunmathur.maps.util.RouteService
 import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.serializer
@@ -17,7 +17,7 @@ import kotlinx.serialization.serializer
  * (`com.vayunmathur.maps.permissions.ACCESS_MAPS`) NoDisplay
  * [AssistantIntent][com.vayunmathur.library.util.AssistantIntent].
  *
- * The route is planned by the same on-device [OfflineRouter.getRouteForMode] the app itself
+ * The route is planned by the same on-device [OfflineRouterRoadRoutes.getRouteForMode] the app itself
  * uses, and mapped to a [DirectionsResult] carrying the polyline plus the per-step traffic
  * [speedRatio][RouteService.Step.speedRatio] — the colour input the caller needs to draw the
  * route with maps' own red/amber/green congestion ramp (see maps' `RouteOverlayBuilder`).
@@ -48,7 +48,7 @@ class DirectionsIntent : AssistantIntent<DirectionsRequest, DirectionsResult>(
                 ),
             ),
         )
-        val route = OfflineRouter.getRouteForMode(this, request, start, parseMode(input.mode))
+        val route = OfflineRouterRoadRoutes.getRouteForMode(this, request, start, parseMode(input.mode))
             ?: return EMPTY
         return route.toDirectionsResult()
     }

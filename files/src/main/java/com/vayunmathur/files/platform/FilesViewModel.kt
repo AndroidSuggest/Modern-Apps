@@ -1,35 +1,18 @@
 package com.vayunmathur.files.platform
 
 import android.app.Application
-import android.app.PendingIntent
-import android.content.Context
-import android.content.Intent
 import android.net.Uri
-import android.os.Environment
-import android.os.FileObserver
 import android.os.StatFs
 import android.text.format.Formatter
-import android.webkit.MimeTypeMap
-import androidx.core.content.FileProvider
-import androidx.core.content.edit
-import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.vayunmathur.files.R
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
-import java.util.concurrent.atomic.AtomicInteger
+import java.io.IOException
 import java.util.zip.ZipFile
 
 /**
@@ -51,362 +34,13 @@ data class FileBrowserItem(
     val mediaUri: Uri? = null,
 )
 
-class FilesViewModel(application: Application) : AndroidViewModel(application), FilesActions {
-
-    private val prefs =
-        application.getSharedPreferences("files_prefs", Context.MODE_PRIVATE)
-
-    private val _isFilesGranted = MutableStateFlow(Environment.isExternalStorageManager())
-    val isFilesGranted: StateFlow<Boolean> = _isFilesGranted.asStateFlow()
-
-    fun refreshPermissions() {
-        val granted = Environment.isExternalStorageManager()
-        if (_isFilesGranted.value != granted) {
-            _isFilesGranted.value = granted
-            if (granted) {
-                loadDirectory()
-                loadHome()
-            }
-        }
-    }
-
-    private val _hasPromptedNotifications =
-        MutableStateFlow(prefs.getBoolean("has_prompted_notifications", false))
-    val hasPromptedNotifications: StateFlow<Boolean> = _hasPromptedNotifications.asStateFlow()
-
-    fun setNotificationsPrompted() {
-        prefs.edit { putBoolean("has_prompted_notifications", true) }
-        _hasPromptedNotifications.value = true
-    }
-
-    // ---- Navigation ----
-    val rootDirectory: File = Environment.getExternalStorageDirectory()
-
-    internal val _currentDirectory = MutableStateFlow(rootDirectory)
-    val currentDirectory: StateFlow<File> = _currentDirectory.asStateFlow()
-
-    private val _zipPath = MutableStateFlow<File?>(null)
-    val zipPath: StateFlow<File?> = _zipPath.asStateFlow()
-
-    /**
-     * Emitted once an archive has been confirmed readable, so that navigation happens only for a zip
-     * that actually opens. Validation is IO, so it cannot be done by the caller before navigating.
-     */
-    private val _zipOpened = MutableSharedFlow<File>(extraBufferCapacity = 4)
-    val zipOpened: SharedFlow<File> = _zipOpened.asSharedFlow()
-
-    private val _zipInternalPath = MutableStateFlow("")
-    val zipInternalPath: StateFlow<String> = _zipInternalPath.asStateFlow()
-
-    fun isZipMode(): Boolean = _zipPath.value != null
-
-    // ---- Listing ----
-    private val _entries =
-        MutableStateFlow<Pair<List<FileBrowserItem>, List<FileBrowserItem>>>(emptyList<FileBrowserItem>() to emptyList())
-    val entries: StateFlow<Pair<List<FileBrowserItem>, List<FileBrowserItem>>> = _entries.asStateFlow()
-
-    // ---- Selection (only valid in real FS mode) ----
-    internal val _selectedPaths = MutableStateFlow<Set<FileBrowserItem>>(emptySet())
-    val selectedPaths: StateFlow<Set<FileBrowserItem>> = _selectedPaths.asStateFlow()
-
-    override fun clearSelection() {
-        if (_selectedPaths.value.isNotEmpty()) _selectedPaths.value = emptySet()
-    }
-
-    override fun addToSelection(item: FileBrowserItem) {
-        if (isZipMode()) return
-        _selectedPaths.value = _selectedPaths.value + item
-    }
-
-    override fun toggleSelection(item: FileBrowserItem) {
-        if (isZipMode()) return
-        val current = _selectedPaths.value
-        _selectedPaths.value = if (current.any { it.key == item.key }) {
-            current.filterNot { it.key == item.key }.toSet()
-        } else {
-            current + item
-        }
-    }
-
-    override fun selectAll() {
-        if (isZipMode()) return
-        val (dirs, files) = _entries.value
-        _selectedPaths.value = (dirs + files).toSet()
-    }
-
-    // ---- Sort, view mode, search ----
-    private val _sortBy = MutableStateFlow(
-        runCatching { SortBy.valueOf(prefs.getString("sort_by", null) ?: "NAME") }
-            .getOrDefault(SortBy.NAME)
-    )
-    val sortBy: StateFlow<SortBy> = _sortBy.asStateFlow()
-
-    private val _sortAscending = MutableStateFlow(prefs.getBoolean("sort_ascending", true))
-    val sortAscending: StateFlow<Boolean> = _sortAscending.asStateFlow()
-
-    private val _viewMode = MutableStateFlow(
-        runCatching { ViewMode.valueOf(prefs.getString("view_mode", null) ?: "LIST") }
-            .getOrDefault(ViewMode.LIST)
-    )
-    val viewMode: StateFlow<ViewMode> = _viewMode.asStateFlow()
-
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
-    private val _isSearchActive = MutableStateFlow(false)
-    val isSearchActive: StateFlow<Boolean> = _isSearchActive.asStateFlow()
-
-    override fun setSortBy(sortBy: SortBy) {
-        if (_sortBy.value == sortBy) return
-        _sortBy.value = sortBy
-        prefs.edit { putString("sort_by", sortBy.name) }
-        loadDirectory()
-    }
-
-    override fun toggleSortDirection() {
-        setSortAscending(!_sortAscending.value)
-    }
-
-    override fun setSortAscending(ascending: Boolean) {
-        if (_sortAscending.value == ascending) return
-        _sortAscending.value = ascending
-        prefs.edit { putBoolean("sort_ascending", ascending) }
-        loadDirectory()
-    }
-
-    private val downloadsDir: File get() = File(rootDirectory, "Download")
-
-    /**
-     * Apply the sensible default sort when *entering* a folder: the Downloads folder shows
-     * newest-first (by date), which is what people usually want there; every other folder
-     * uses the persisted global sort. This only sets the in-memory sort, so an explicit
-     * choice via the menu (which persists) still wins while you stay in the folder.
-     */
-    private fun applyDirDefaults(path: File) {
-        if (path.absolutePath == downloadsDir.absolutePath) {
-            _sortBy.value = SortBy.DATE
-            _sortAscending.value = false
-        } else {
-            _sortBy.value = runCatching {
-                SortBy.valueOf(prefs.getString("sort_by", null) ?: "NAME")
-            }.getOrDefault(SortBy.NAME)
-            _sortAscending.value = prefs.getBoolean("sort_ascending", true)
-        }
-    }
-
-    override fun toggleViewMode() {
-        val next = if (_viewMode.value == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST
-        _viewMode.value = next
-        prefs.edit { putString("view_mode", next.name) }
-    }
-
-    override fun setSearchActive(active: Boolean) {
-        _isSearchActive.value = active
-        if (!active) _searchQuery.value = ""
-    }
-
-    override fun setSearchQuery(query: String) {
-        _searchQuery.value = query
-    }
-
-    // ---- Hidden files ----
-    private val _showHidden = MutableStateFlow(prefs.getBoolean("show_hidden", false))
-    val showHidden: StateFlow<Boolean> = _showHidden.asStateFlow()
-
-    override fun toggleHidden() {
-        val next = !_showHidden.value
-        _showHidden.value = next
-        prefs.edit { putBoolean("show_hidden", next) }
-        loadDirectory()
-    }
-
-    // ---- Create ----
-    override fun createFolder(name: String) {
-        if (isZipMode() || name.isBlank()) return
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val dir = uniqueDestination(_currentDirectory.value, name.trim())
-                if (dir.mkdirs()) loadDirectory()
-                else emit(getApplication<Application>().getString(R.string.create_failed))
-            } catch (e: Exception) {
-                emitMoveFailed(e)
-            }
-        }
-    }
-
-    override fun createFile(name: String) {
-        if (isZipMode() || name.isBlank()) return
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val file = uniqueDestination(_currentDirectory.value, name.trim())
-                if (file.createNewFile()) loadDirectory()
-                else emit(getApplication<Application>().getString(R.string.create_failed))
-            } catch (e: Exception) {
-                emitMoveFailed(e)
-            }
-        }
-    }
-
-    override fun openWith(item: FileBrowserItem) {
-        val ctx = getApplication<Application>()
-        val file = item.realFile ?: return
-        val uri = try {
-            FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
-        } catch (e: Exception) {
-            emitMoveFailed(e)
-            return
-        }
-        val view = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mimeFor(file))
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        val chooser = Intent.createChooser(view, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        viewModelScope.launch { _intents.emit(chooser) }
-    }
-
-    // ---- Home screen: storage, recents, bookmarks, categories ----
-    private val _categoryTitle = MutableStateFlow<String?>(null)
-    val categoryTitle: StateFlow<String?> = _categoryTitle.asStateFlow()
-
-    private val _storage = MutableStateFlow<StorageInfo?>(null)
-    val storage: StateFlow<StorageInfo?> = _storage.asStateFlow()
-
-    private val _recents = MutableStateFlow<List<FileBrowserItem>>(emptyList())
-    val recents: StateFlow<List<FileBrowserItem>> = _recents.asStateFlow()
-
-    private val _bookmarks = MutableStateFlow(loadBookmarks())
-    val bookmarks: StateFlow<List<FileBrowserItem>> = _bookmarks.asStateFlow()
-
-    fun loadHome() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _storage.value = readStorage()
-            _bookmarks.value = loadBookmarks()
-            _recents.value = queryRecents()
-        }
-    }
-
-    override fun goHome() {
-        _categoryTitle.value = null
-        _zipPath.value = null
-        _zipInternalPath.value = ""
-        clearSelection()
-        _trashSelection.value = emptySet()
-        _pendingPermanentDelete.value = null
-        observerJob?.cancel()
-        loadHome()
-    }
-
-    override fun openInternalStorage() {
-        _categoryTitle.value = null
-        navigateTo(rootDirectory)
-    }
-
-    override fun openBookmark(path: File) {
-        _categoryTitle.value = null
-        navigateTo(path)
-    }
-
-    override fun openCategory(category: FileCategory) {
-        if (category == FileCategory.DOWNLOADS) {
-            val dl = File(rootDirectory, "Download")
-            openBookmark(if (dl.isDirectory) dl else rootDirectory)
-            return
-        }
-        _zipPath.value = null
-        _categoryTitle.value = getApplication<Application>().getString(categoryLabel(category))
-        clearSelection()
-        observerJob?.cancel()
-        viewModelScope.launch(Dispatchers.IO) {
-            _entries.value = emptyList<FileBrowserItem>() to sortItems(queryCategory(category))
-        }
-    }
-
-    override fun addBookmark(item: FileBrowserItem) {
-        val path = item.realFile ?: return
-        val set = (prefs.getStringSet("bookmarks", emptySet()) ?: emptySet()).toMutableSet()
-        set.add(path.absolutePath)
-        prefs.edit { putStringSet("bookmarks", set) }
-        _bookmarks.value = loadBookmarks()
-        emit(getApplication<Application>().getString(R.string.bookmark_added))
-    }
-
-    override fun removeBookmark(path: File) {
-        val set = (prefs.getStringSet("bookmarks", emptySet()) ?: emptySet()).toMutableSet()
-        set.remove(path.absolutePath)
-        prefs.edit { putStringSet("bookmarks", set) }
-        _bookmarks.value = loadBookmarks()
-    }
-
-    private fun loadBookmarks(): List<FileBrowserItem> = loadBookmarkItems(prefs)
-
-    private fun readStorage(): StorageInfo = try {
-        val stat = StatFs(rootDirectory.absolutePath)
-        StorageInfo(totalBytes = stat.totalBytes, freeBytes = stat.availableBytes)
-    } catch (_: Exception) {
-        StorageInfo(0, 0)
-    }
-
-    private fun categoryLabel(c: FileCategory): Int = when (c) {
-        FileCategory.IMAGES -> R.string.cat_images
-        FileCategory.VIDEOS -> R.string.cat_videos
-        FileCategory.AUDIO -> R.string.cat_audio
-        FileCategory.DOCUMENTS -> R.string.cat_documents
-        FileCategory.DOWNLOADS -> R.string.cat_downloads
-    }
-
-    private fun queryCategory(category: FileCategory): List<FileBrowserItem> =
-        queryCategoryItems(getApplication(), category)
-
-    private fun queryRecents(): List<FileBrowserItem> =
-        queryRecentItems(getApplication())
-
-    private fun File.toItem() = toBrowserItem()
-
-    // ---- Clipboard (copy/cut/paste), share and archive live in FilesClipboard.kt. ----
-    internal val _clipboard = MutableStateFlow<List<File>>(emptyList())
-    val clipboard: StateFlow<List<File>> = _clipboard.asStateFlow()
-
-    internal val _clipboardIsCut = MutableStateFlow(false)
-    val clipboardIsCut: StateFlow<Boolean> = _clipboardIsCut.asStateFlow()
-
-    override fun copySelection() = copyFilesToClipboard()
-
-    override fun cutSelection() = cutFilesToClipboard()
-
-    override fun clearClipboard() {
-        _clipboard.value = emptyList()
-        _clipboardIsCut.value = false
-    }
-
-    override fun pasteHere() = pasteClipboardHere()
-
-    override fun shareSelection() = shareSelectedFiles()
-
-    internal fun mimeFor(file: File): String = mimeForFile(file)
-
-    /** A destination in [dir] named [name], suffixed with " (n)" if that already exists. */
-    private fun uniqueDestination(dir: File, name: String): File =
-        com.vayunmathur.files.platform.uniqueDestination(dir, name)
-
-    // ---- Share URIs ----
-    internal val _incomingUris = MutableStateFlow<List<Uri>?>(null)
-    val incomingUris: StateFlow<List<Uri>?> = _incomingUris.asStateFlow()
-
-    fun setIncomingUris(uris: List<Uri>) { _incomingUris.value = uris }
-    fun clearIncomingUris() { _incomingUris.value = null }
-
-    // ---- Events ----
-    internal val _snackbarMessages = MutableSharedFlow<String>(extraBufferCapacity = 8)
-    val snackbarMessages: SharedFlow<String> = _snackbarMessages.asSharedFlow()
-
-    internal val _intents = MutableSharedFlow<Intent>(extraBufferCapacity = 4)
-    val intents: SharedFlow<Intent> = _intents.asSharedFlow()
-
-    private var observerJob: Job? = null
-    private var loadJob: Job? = null
-    // Guards against a stale reload (e.g. a FileObserver event that snapshots the
-    // directory mid-deletion) overwriting a newer one. Only the latest load wins.
-    private val loadGeneration = AtomicInteger(0)
+/**
+ * The file-browser view model: one inheritance chain (core → browse → edit → share →
+ * home → trash → this class) so every layer sees one `this`. This class itself only
+ * wires the chain together — loads the first listing and observer — and implements the
+ * top-level [FilesActions]: everything else is delegated to a layer by construction.
+ */
+class FilesViewModel(application: Application) : FilesTrashModel(application), FilesActions {
 
     init {
         loadDirectory()
@@ -414,349 +48,82 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         loadHome()
     }
 
-    fun loadDirectory() {
-        val gen = loadGeneration.incrementAndGet()
-        loadJob?.cancel()
-        val zipFile = _zipPath.value
-        val dir = _currentDirectory.value
-        val inner = _zipInternalPath.value
-        loadJob = viewModelScope.launch(Dispatchers.IO) {
-            val listed = if (zipFile == null) listRealDir(dir) else listZipDir(zipFile, inner)
-            val sorted = sortEntries(listed)
-            if (gen == loadGeneration.get()) {
-                _entries.value = sorted
-            }
-        }
-    }
-
-    private fun sortEntries(
-        entries: Pair<List<FileBrowserItem>, List<FileBrowserItem>>
-    ): Pair<List<FileBrowserItem>, List<FileBrowserItem>> =
-        sortItems(entries.first) to sortItems(entries.second)
-
-    private fun sortItems(items: List<FileBrowserItem>): List<FileBrowserItem> {
-        val cmp: Comparator<FileBrowserItem> = when (_sortBy.value) {
-            SortBy.NAME -> compareBy { it.name.lowercase() }
-            SortBy.DATE -> compareBy { it.lastModified }
-            SortBy.SIZE -> compareBy { it.size ?: -1L }
-            SortBy.TYPE -> compareBy<FileBrowserItem> {
-                it.name.substringAfterLast('.', "").lowercase()
-            }.thenBy { it.name.lowercase() }
-        }
-        val sorted = items.sortedWith(cmp)
-        return if (_sortAscending.value) sorted else sorted.reversed()
-    }
-
-    private fun restartObserver() {
-        observerJob?.cancel()
-        if (isZipMode()) {
-            observerJob = null
-            return
-        }
-        val dir = _currentDirectory.value
-        observerJob = viewModelScope.launch {
-            val observer = object : FileObserver(dir, CREATE or DELETE or MOVED_FROM or MOVED_TO) {
-                override fun onEvent(event: Int, path: String?) { loadDirectory() }
-            }
-            observer.startWatching()
-            try { awaitCancellation() } finally { observer.stopWatching() }
-        }
-    }
-
-    override fun navigateTo(path: File) {
-        if (isZipMode()) {
-            _zipPath.value = null
-            _zipInternalPath.value = ""
-        }
-        _categoryTitle.value = null
-        _currentDirectory.value = path
-        applyDirDefaults(path)
-        clearSelection()
-        _trashSelection.value = emptySet()
-        _pendingPermanentDelete.value = null
-        loadDirectory()
-        restartObserver()
-    }
-
-    override fun navigateIntoZipDir(dirName: String) {
-        val current = _zipInternalPath.value
-        val newPath = if (current.isEmpty()) dirName else "$current/$dirName"
-        _zipInternalPath.value = newPath
-        clearSelection()
-        loadDirectory()
-    }
-
-    override fun navigateToZipInternalPath(fullInternalPath: String) {
-        _zipInternalPath.value = fullInternalPath
-        clearSelection()
-        loadDirectory()
-    }
-
-    override fun navigateToZipParentRealFolder(target: File) {
-        // breadcrumb click on real-FS part while in zip mode → exit zip
-        _zipPath.value = null
-        _zipInternalPath.value = ""
-        _currentDirectory.value = target
-        clearSelection()
-        loadDirectory()
-        restartObserver()
-    }
-
-    /**
-     * Back within a screen, not between screens.
-     *
-     * Directory, archive and category traversal used to live here, walking the location state by
-     * hand. That is the navigation back stack's job now - one entry per level - and doing it in both
-     * places meant the predictive-back preview showed one destination while this produced another.
-     * What is left is the part that is genuinely not navigation: dismissing a selection.
-     */
-    override fun handleBack(): Boolean {
-        if (_selectedPaths.value.isNotEmpty()) { clearSelection(); return true }
-        return false
-    }
-
-    override fun rename(item: FileBrowserItem, newName: String) {
-        if (isZipMode()) return
-        val path = item.realFile ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val target = File(path.parentFile, newName)
-                path.atomicMoveTo(target)
-                clearSelection()
-                loadDirectory()
-            } catch (e: Exception) { emitMoveFailed(e) }
-        }
-    }
-
-    override fun deleteSelection() {
-        if (isZipMode()) return
-        trashSelection()
-    }
-
-    override fun confirmPermanentDelete() {
-        if (isZipMode()) return
-        confirmPendingPermanentDelete()
-    }
-
-    override fun dismissPermanentDelete() {
-        _pendingPermanentDelete.value = null
-    }
-
-    /** Reloads the system-trash listing. Called by the navigation layer for a `Route.Trash`. */
-    fun showTrash() {
-        _categoryTitle.value = null
-        _zipPath.value = null
-        _zipInternalPath.value = ""
-        clearSelection()
-        observerJob?.cancel()
-        loadTrash()
-    }
-
-    override fun toggleTrashSelection(item: FileBrowserItem) {
-        val current = _trashSelection.value
-        _trashSelection.value = if (current.any { it.key == item.key }) {
-            current.filterNot { it.key == item.key }.toSet()
-        } else {
-            current + item
-        }
-    }
-
-    override fun clearTrashSelection() {
-        if (_trashSelection.value.isNotEmpty()) _trashSelection.value = emptySet()
-    }
-
-    override fun restoreTrashSelection() = restoreTrashed()
-
-    override fun deleteForeverTrashSelection() = deleteTrashedForever()
-
-    override fun emptyTrash() = emptySystemTrash()
-
-    /** Called after a trash/restore/delete consent dialog resolves; refreshes both listings. */
-    fun onTrashConsentResult(granted: Boolean) = onTrashConsentResolved(granted)
-
-    override fun moveInto(sources: List<File>, target: File) {
-        if (isZipMode()) return
-        if (!target.isDirectory) return
-        moveFiles(sources, target) { source -> source != target && !target.absolutePath.startsWith(source.absolutePath) }
-    }
-
-    override fun moveToBreadcrumb(sources: List<File>, target: File) {
-        if (isZipMode()) return
-        moveFiles(sources, target) { source -> source.parentFile != target && source != target }
-    }
-
-    private fun moveFiles(sources: List<File>, target: File, canMove: (File) -> Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
-            var movedAny = false
-            var lastError: Exception? = null
-            sources.forEach { source ->
-                if (canMove(source)) {
-                    try {
-                        val dest = File(target, source.name)
-                        source.atomicMoveTo(dest)
-                        movedAny = true
-                    } catch (e: Exception) { lastError = e }
-                }
-            }
-            if (movedAny) { clearSelection(); loadDirectory() }
-            lastError?.let { emitMoveFailed(it) }
-        }
-    }
-
-    /**
-     * Checks the archive can be read and, if so, reports it via [zipOpened] for the navigation layer
-     * to act on. Deliberately changes no state: a corrupt archive should leave the user where they
-     * are, with a message, rather than navigate into a listing that cannot load.
-     */
-    override fun openZipFile(item: FileBrowserItem) {
-        val file = item.realFile ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                ZipFile(file).use { _ -> }
-                _zipOpened.emit(file)
-            } catch (e: Exception) {
-                emit(getApplication<Application>().getString(R.string.could_not_open_zip, e.localizedMessage))
-            }
-        }
-    }
-
-    /** Loads a location inside an archive. Called by the navigation layer for a `Route.Zip`. */
-    fun showZip(zip: File, internalPath: String) {
-        _categoryTitle.value = null
-        _zipPath.value = zip
-        _zipInternalPath.value = internalPath
-        _currentDirectory.value = File("/") // placeholder not used in zip mode
-        clearSelection()
-        loadDirectory()
-        restartObserver()
-    }
-
-    override fun archive(archiveName: String) = archiveSelection(archiveName)
-
-    fun unzip(zipItem: FileBrowserItem, destPath: File) {
+    override fun unzip(zipItem: FileBrowserItem, destPath: File) {
         val zipFile = zipItem.realFile ?: return
         val ctx = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
-            val freeBytes = runCatching { StatFs(destPath.absolutePath).availableBytes }.getOrDefault(0L)
-            val budget = ArchiveLimits.extractionBudget(freeBytes)
+            unzipTo(zipFile, destPath, ctx)
+        }
+    }
 
-            // What the archive says it expands to. Turning an oversized one away here means the user
-            // finds out before anything is written; UnzipWorker still enforces the budget itself,
-            // because these figures come from the archive and a crafted one can under-report.
-            val declared = runCatching {
-                ZipFile(zipFile).use { zf ->
-                    val entries = zf.entries().asSequence().toList()
-                    if (entries.size > ArchiveLimits.MAX_ENTRIES) return@runCatching Long.MAX_VALUE
-                    ArchiveLimits.declaredUncompressedSize(entries.asSequence().map { it.size })
-                }
-            }.getOrNull()
+    private suspend fun unzipTo(zipFile: File, destPath: File, ctx: Application) {
+        val budget = ArchiveLimits.extractionBudget(freeBytesOf(destPath))
 
-            if (declared != null && declared > budget) {
-                emit(
-                    ctx.getString(
-                        R.string.zip_too_large_to_extract,
-                        Formatter.formatShortFileSize(ctx, declared),
-                        Formatter.formatShortFileSize(ctx, budget),
-                    )
-                )
-                return@launch
+        // What the archive says it expands to. Turning an oversized one away here means the user
+        // finds out before anything is written; UnzipWorker still enforces the budget itself,
+        // because these figures come from the archive and a crafted one can under-report.
+        val declared = declaredSizeOf(zipFile)
+        if (declared != null && declared > budget) {
+            emitOversizedArchive(ctx, declared, budget)
+            return
+        }
+
+        val unzipWork = OneTimeWorkRequestBuilder<UnzipWorker>().setInputData(
+            workDataOf(
+                "zip_path" to zipFile.absolutePath,
+                "dest_path" to destPath.absolutePath,
+                "size_budget" to budget,
+            )
+        ).build()
+        WorkManager.getInstance(ctx).enqueue(unzipWork)
+        clearSelection()
+        emit(ctx.getString(R.string.unzipping_started_to, destPath.name))
+    }
+
+    private fun freeBytesOf(destPath: File): Long = runCatching {
+        StatFs(destPath.absolutePath).availableBytes
+    }.getOrDefault(0L)
+
+    private fun declaredSizeOf(zipFile: File): Long? = runCatching {
+        ZipFile(zipFile).use { zf ->
+            val zipEntries = zf.entries().asSequence().toList()
+            if (zipEntries.size > ArchiveLimits.MAX_ENTRIES) {
+                return@runCatching Long.MAX_VALUE
             }
-
-            val unzipWork = OneTimeWorkRequestBuilder<UnzipWorker>().setInputData(
-                workDataOf(
-                    "zip_path" to zipFile.absolutePath,
-                    "dest_path" to destPath.absolutePath,
-                    "size_budget" to budget,
-                )
-            ).build()
-            WorkManager.getInstance(ctx).enqueue(unzipWork)
-            clearSelection()
-            emit(ctx.getString(R.string.unzipping_started_to, destPath.name))
+            ArchiveLimits.declaredUncompressedSize(zipEntries.asSequence().map { it.size })
         }
+    }.getOrNull()
+
+    private fun emitOversizedArchive(ctx: Application, declared: Long, budget: Long) {
+        emit(
+            ctx.getString(
+                R.string.zip_too_large_to_extract,
+                Formatter.formatShortFileSize(ctx, declared),
+                Formatter.formatShortFileSize(ctx, budget),
+            )
+        )
     }
-
-    override fun saveIncomingUris() = saveSharedUrisHere()
-
-    override fun openFile(item: FileBrowserItem) {
-        val ctx = getApplication<Application>()
-        if (isZipMode()) {
-            emit(ctx.getString(R.string.zip_browse_only))
-            return
-        }
-        val file = item.realFile ?: return
-        val extension = file.extension
-        val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "*/*"
-        val uri = try {
-            FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
-        } catch (e: Exception) {
-            emitMoveFailed(e)
-            return
-        }
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mimeType)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        }
-        viewModelScope.launch { _intents.emit(intent) }
-    }
-
-    // ---- APK install ----
-    /** The APK waiting to be installed once the user grants the "install unknown apps" permission. */
-    internal var pendingApkInstall: File? = null
-
-    internal val _installPermissionRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    /** Emitted when an APK was tapped but Files lacks permission to install; UI opens settings. */
-    val installPermissionRequests: SharedFlow<Unit> = _installPermissionRequests.asSharedFlow()
-
-    // ---- System trash ----
-    internal val _trashedItems = MutableStateFlow<List<FileBrowserItem>>(emptyList())
-    val trashedItems: StateFlow<List<FileBrowserItem>> = _trashedItems.asStateFlow()
-
-    internal val _trashSelection = MutableStateFlow<Set<FileBrowserItem>>(emptySet())
-    val trashSelection: StateFlow<Set<FileBrowserItem>> = _trashSelection.asStateFlow()
-
-    internal val _pendingPermanentDelete = MutableStateFlow<List<FileBrowserItem>?>(null)
-    val pendingPermanentDelete: StateFlow<List<FileBrowserItem>?> = _pendingPermanentDelete.asStateFlow()
-
-    /**
-     * System trash/restore/delete consent requests. Every MediaStore trash mutation needs a
-     * user-confirmed PendingIntent, so the UI fires these via StartIntentSenderForResult —
-     * same shape as [installPermissionRequests].
-     */
-    internal val _trashConsentRequests = MutableSharedFlow<PendingIntent>(extraBufferCapacity = 4)
-    val trashConsentRequests: SharedFlow<PendingIntent> = _trashConsentRequests.asSharedFlow()
-
-    /** Snackbar for the operation whose consent dialog just resolved. Set before emitting. */
-    internal var _pendingTrashMessage: String? = null
-
-    override fun installApk(item: FileBrowserItem) = installApkFile(item)
 
     /** Called by the UI after returning from the "install unknown apps" settings screen. */
     fun onInstallPermissionResult() = onApkInstallPermissionResult()
 
-    fun showMessage(message: String) { emit(message) }
-    internal fun emit(message: String) { viewModelScope.launch { _snackbarMessages.emit(message) } }
-    internal fun emitMoveFailed(e: Exception) {
-        emit(getApplication<Application>().getString(R.string.move_failed, e.localizedMessage))
-    }
-
-    private fun listRealDir(dir: File): Pair<List<FileBrowserItem>, List<FileBrowserItem>> =
-        listRealDirItems(dir, _showHidden.value)
-
-    private fun listZipDir(zipFile: File, internalDir: String): Pair<List<FileBrowserItem>, List<FileBrowserItem>> =
-        listZipDirItems(zipFile, internalDir)
-
-    internal fun File.atomicMoveTo(target: File) {
-        try {
-            java.nio.file.Files.move(this.toPath(), target.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)
-        } catch (_: Exception) {
-            if (!this.renameTo(target)) {
-                if (this.isDirectory) {
-                    this.copyRecursively(target, overwrite = true)
-                    this.deleteRecursively()
-                } else {
-                    this.copyTo(target, overwrite = true)
-                    this.delete()
-                }
+    /**
+     * Checks the archive can be read and, if so, reports it via [zipOpened] for the navigation
+     * layer to act on. Deliberately changes no state: a corrupt archive should leave the user
+     * where they are, with a message, rather than navigate into a listing that cannot load.
+     */
+    internal fun openZipChecked(zipFile: File) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                ZipFile(zipFile).use { _ -> }
+                zipOpenedState.emit(zipFile)
+            } catch (e: IOException) {
+                emit(
+                    getApplication<Application>().getString(
+                        R.string.could_not_open_zip,
+                        e.localizedMessage
+                    )
+                )
             }
         }
     }

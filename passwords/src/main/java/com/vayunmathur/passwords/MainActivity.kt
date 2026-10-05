@@ -50,7 +50,7 @@ class MainActivity : FragmentActivity() {
                 setContent {
                     DynamicTheme {
                         OfflineAware {
-                            Navigation(passwordsViewModel, passphrase)
+                            Navigation(passwordsViewModel)
                         }
                     }
                 }

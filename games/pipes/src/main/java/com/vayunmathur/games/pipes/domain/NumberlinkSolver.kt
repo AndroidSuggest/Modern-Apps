@@ -127,7 +127,7 @@ internal object NumberlinkSolver {
                         x = y
                         y = 0
                     }
-                } while (x < 0 || x >= cols || y < 0 || y >= rows)
+                } while (isOutside(x, y))
             }
             for (i in 0 until size) {
                 val cx = cellX[i]
@@ -140,6 +140,8 @@ internal object NumberlinkSolver {
         }
 
         private fun key(x: Int, y: Int) = keys[y * cols + x]
+
+        private fun isOutside(x: Int, y: Int) = x < 0 || x >= cols || y < 0 || y >= rows
 
         fun classify(): Verdict {
             for (k in 0 until size) if (table[k] == HOLE) mates[k] = INTERIOR

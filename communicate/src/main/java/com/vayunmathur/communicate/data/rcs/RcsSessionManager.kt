@@ -23,19 +23,32 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 object RcsSessionManager {
     internal const val TAG = "RcsSession"
+    private const val MAX_SESSION_AGE_MS = 5 * 60 * 1000L
+    private const val MAX_SESSION_IDLE_MS = 30 * 60 * 1000L
+    internal const val TAG_LENGTH = 8
+    internal const val DEFAULT_MSRP_PORT = 2855
+    private val SUCCESS_CODES = 200..299
+    private const val REDIRECT_CODES = 300
 
-    internal val _sessions = MutableStateFlow<Map<String, RcsSession>>(emptyMap())
-    val sessions: StateFlow<Map<String, RcsSession>> = _sessions.asStateFlow()
+    private const val CPM_ICSI_REF = "urn%3Aurn-7%3A3gpp-service.ims.icsi.oma.cpm.session"
+
+    /** CPM session Contact header for [from] with this device's IMEI instance id. */
+    internal fun contactHeader(from: String, imei: String?): String =
+        "Contact: <$from>;+sip.instance=\"<urn:gsma:imei:${imei ?: "unknown"}>\"" +
+            ";+g.3gpp.icsi-ref=\"$CPM_ICSI_REF\"\r\n"
+
+    internal val sessionsMutable = MutableStateFlow<Map<String, RcsSession>>(emptyMap())
+    val sessions: StateFlow<Map<String, RcsSession>> = sessionsMutable.asStateFlow()
 
     /** Transaction id (Via branch) → session, for response routing. */
     internal val transactions = ConcurrentHashMap<String, String>()
 
     /** Typing state per conversation: conversationId → (active, updatedAt). */
-    private val _typing = MutableStateFlow<Map<String, Boolean>>(emptyMap())
-    val typing: StateFlow<Map<String, Boolean>> = _typing.asStateFlow()
+    internal val typingMutable = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val typing: StateFlow<Map<String, Boolean>> = typingMutable.asStateFlow()
 
     /** Active session for [conversationId], or null. */
-    fun sessionFor(conversationId: String): RcsSession? = _sessions.value[conversationId]
+    fun sessionFor(conversationId: String): RcsSession? = sessionsMutable.value[conversationId]
 
     /**
      * Start an outgoing 1:1 CPM session: INVITE with SDP-for-MSRP offer to the
@@ -64,7 +77,7 @@ object RcsSessionManager {
         if (!ok) return null
         val dialogId = "$callId:$localTag"
         transactions[branch] = dialogId
-        _sessions.value = _sessions.value + (conversationId to RcsSession(
+        sessionsMutable.value = sessionsMutable.value + (conversationId to RcsSession(
             dialogId = dialogId,
             callId = callId,
             localTag = localTag,
@@ -101,7 +114,7 @@ object RcsSessionManager {
         if (!ok) return null
         val dialogId = "$callId:$localTag"
         transactions[branch] = dialogId
-        _sessions.value = _sessions.value + (conversationId to RcsSession(
+        sessionsMutable.value = sessionsMutable.value + (conversationId to RcsSession(
             dialogId = dialogId,
             callId = callId,
             localTag = localTag,
@@ -124,27 +137,27 @@ object RcsSessionManager {
      */
     fun sweepStaleSessions(
         nowMs: Long = System.currentTimeMillis(),
-        maxAgeMs: Long = 5 * 60 * 1000L,
-        maxIdleMs: Long = 30 * 60 * 1000L,
+        maxAgeMs: Long = MAX_SESSION_AGE_MS,
+        maxIdleMs: Long = MAX_SESSION_IDLE_MS,
     ): List<String> {
         if (!RcsFeature.enabled) return emptyList()
         val dropped = mutableListOf<String>()
-        for ((conversationId, session) in _sessions.value) {
+        for ((conversationId, session) in sessionsMutable.value) {
             if (session.isFocus) continue
             val age = nowMs - session.createdAt
             val incomplete = session.remoteTag.isBlank() && age > maxAgeMs
             val idle = session.remoteTag.isNotBlank() &&
                 session.msrpRemotePath == null && age > maxIdleMs
             if (incomplete || idle) {
-                _sessions.value = _sessions.value - conversationId
-                _pendingOffers.remove(session.callId)
-                _answerFingerprints.remove(session.callId)
+                sessionsMutable.value = sessionsMutable.value - conversationId
+                pendingOffersMutable.remove(session.callId)
+                answerFingerprintsMutable.remove(session.callId)
                 RcsMsrpListen.dropPending(conversationId)
                 dropped += conversationId
             }
         }
         transactions.entries.removeIf { (_, dialogId) ->
-            _sessions.value.values.none { it.dialogId == dialogId }
+            sessionsMutable.value.values.none { it.dialogId == dialogId }
         }
         return dropped
     }
@@ -196,10 +209,10 @@ object RcsSessionManager {
      */
     suspend fun acceptIncoming(conversationId: String): Boolean {
         if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return false
-        val session = _sessions.value[conversationId] ?: return false
+        val session = sessionsMutable.value[conversationId] ?: return false
         val cfg = RcsSipTransport.lastConfigSnapshot()
         val from = cfg?.publicUserId?.takeIf { it.isNotBlank() } ?: "sip:local@rcs"
-        val offered = _pendingOffers[session.callId]
+        val offered = pendingOffersMutable[session.callId]
         // Passive answer when the offerer is active-only and we can listen.
         // The offer's fingerprint (when present) pins the accept-side TLS.
         val offerSdp = offered?.sdp.orEmpty()
@@ -226,7 +239,7 @@ object RcsSessionManager {
             append("To: <$from>;tag=${session.localTag}\r\n")
             append("Call-ID: ${session.callId}\r\n")
             append("CSeq: 1 INVITE\r\n")
-            append("Contact: <$from>;+sip.instance=\"<urn:gsma:imei:${cfg?.imei ?: "unknown"}>\";+g.3gpp.icsi-ref=\"urn%3Aurn-7%3A3gpp-service.ims.icsi.oma.cpm.session\"\r\n")
+            append(contactHeader(from, cfg?.imei))
             append("Content-Type: application/sdp\r\n")
             append("Content-Length: ${bytes.size}\r\n")
         }
@@ -235,9 +248,9 @@ object RcsSessionManager {
             // Record the offerer's path/setup for connect-out — unless we
             // answered passive, in which case THEY connect to our listen
             // path and the accept loop completes the session.
-            val offer = _pendingOffers.remove(session.callId)
+            val offer = pendingOffersMutable.remove(session.callId)
             if (offer != null) {
-                _sessions.value = _sessions.value + (conversationId to session.copy(
+                sessionsMutable.value = sessionsMutable.value + (conversationId to session.copy(
                     msrpRemotePath = offer.remotePath,
                     msrpSetup = offer.setup,
                     msrpLocalPath = passivePath ?: session.msrpLocalPath,
@@ -254,7 +267,7 @@ object RcsSessionManager {
      */
     suspend fun declineIncoming(conversationId: String): Boolean {
         if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return false
-        val session = _sessions.value[conversationId] ?: return true
+        val session = sessionsMutable.value[conversationId] ?: return true
         val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
         val startLine = "SIP/2.0 488 Not Acceptable Here"
         val headers = buildString {
@@ -264,8 +277,8 @@ object RcsSessionManager {
             append("Content-Length: 0\r\n")
         }
         val ok = RcsSipTransport.sendSipMessage(startLine, headers, ByteArray(0))
-        _pendingOffers.remove(session.callId)
-        _sessions.value = _sessions.value - conversationId
+        pendingOffersMutable.remove(session.callId)
+        sessionsMutable.value = sessionsMutable.value - conversationId
         return ok
     }
 
@@ -279,13 +292,13 @@ object RcsSessionManager {
         val peerFingerprint: String? = null,
     )
 
-    internal val _pendingOffers = ConcurrentHashMap<String, PendingOffer>()
+    internal val pendingOffersMutable = ConcurrentHashMap<String, PendingOffer>()
 
     /** Peer's SDP answer fingerprint for an outgoing session ([callId]). */
-    internal val _answerFingerprints = ConcurrentHashMap<String, String>()
+    internal val answerFingerprintsMutable = ConcurrentHashMap<String, String>()
 
     /** Stashed answer fingerprint for [callId], or null when absent. */
-    fun peerFingerprint(callId: String): String? = _answerFingerprints[callId]
+    fun peerFingerprint(callId: String): String? = answerFingerprintsMutable[callId]
 
     /**
      * Send a MESSAGE inside [conversationId]'s confirmed dialog (in-dialog
@@ -298,12 +311,12 @@ object RcsSessionManager {
         contentType: String = "message/cpim",
     ): Boolean {
         if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return false
-        val session = _sessions.value[conversationId]
+        val session = sessionsMutable.value[conversationId]
             ?.takeIf { it.confirmed && it.remoteTag.isNotBlank() } ?: return false
         val req = RcsSipDialog.buildInDialogMessage(session, body, contentType)
         val ok = RcsSipTransport.sendSipMessage(req.startLine, req.headers, req.body)
         if (ok) {
-            _sessions.value = _sessions.value + (
+            sessionsMutable.value = sessionsMutable.value + (
                 conversationId to session.copy(nextCseq = req.nextCseq)
                 )
         }
@@ -312,12 +325,12 @@ object RcsSessionManager {
 
     /** Tear down the session for [conversationId] with in-dialog BYE. */
     suspend fun terminateSession(conversationId: String): Boolean {
-        val session = _sessions.value[conversationId] ?: return true
+        val session = sessionsMutable.value[conversationId] ?: return true
         val ok = if (session.confirmed && session.remoteTag.isNotBlank()) {
             // Confirmed dialog: in-dialog BYE with next CSeq + route set.
             val req = RcsSipDialog.buildInDialogBye(session)
             val sent = RcsSipTransport.sendSipMessage(req.startLine, req.headers, req.body)
-            _sessions.value = _sessions.value + (
+            sessionsMutable.value = sessionsMutable.value + (
                 conversationId to session.copy(nextCseq = req.nextCseq)
                 )
             sent
@@ -334,9 +347,9 @@ object RcsSessionManager {
             RcsSipTransport.sendSipMessage(startLine, headers, ByteArray(0))
         }
         transactions.entries.removeIf { it.value == session.dialogId }
-        _sessions.value = _sessions.value - conversationId
-        _pendingOffers.remove(session.callId)
-        _answerFingerprints.remove(session.callId)
+        sessionsMutable.value = sessionsMutable.value - conversationId
+        pendingOffersMutable.remove(session.callId)
+        answerFingerprintsMutable.remove(session.callId)
         RcsMsrpListen.dropPending(conversationId)
         if (session.remoteTag.isNotBlank()) {
             // Tell the framework the dialog is gone so it releases delegate
@@ -361,66 +374,74 @@ object RcsSessionManager {
         sdpAnswer: String?,
         responseHeaders: String = "",
     ) {
-        val entry = _sessions.value.entries.firstOrNull { it.value.callId == callId } ?: return
+        val entry = sessionsMutable.value.entries.firstOrNull { it.value.callId == callId } ?: return
         val session = entry.value
-        if (statusCode in 200..299 && !remoteTag.isNullOrBlank()) {
-            val (localPath, remotePath) = parseSdpPaths(sdpAnswer)
-            val setup = parseSdpSetup(sdpAnswer)
-            val (contact, routeSet) = RcsSipDialog.parseDialogRoute(responseHeaders)
-            // TLS sticks when WE offered secure and the answer keeps it
-            // (secure answer SDP); a plaintext answer to our secure offer is
-            // a downgrade — honor it and run plaintext.
-            val answerSecure = isSecureSdp(sdpAnswer)
-            // Stash the answer's fingerprint for the TLS client pin check
-            // and the listen-side accept pin check.
-            RcsMsrpTls.parseFingerprint(sdpAnswer)?.second?.let { fp ->
-                _answerFingerprints[callId] = fp
-                RcsMsrpListen.notePeerFingerprint(entry.key, fp)
-            }
-            val established = session.copy(
-                remoteTag = remoteTag,
-                msrpLocalPath = localPath ?: session.msrpLocalPath,
-                msrpRemotePath = remotePath,
-                msrpSetup = setup,
-                msrpSecure = session.msrpSecure && answerSecure,
-                remoteContact = contact ?: session.remoteContact,
-                routeSet = if (routeSet.isNotEmpty()) routeSet else session.routeSet,
-            )
-            _sessions.value = _sessions.value + (entry.key to established)
-            // Usable when: peer is passive/actpass (we connect out, the v1
-            // path), OR peer is active and we have a listen path (they
-            // connect to us — the accept loop completes the session), OR our
-            // offer carried a listen path and the answer kept any path
-            // (actpass negotiation leaves the direction to the answerer).
-            val peerActive = setup == MsrpSetup.ACTIVE
-            val usable = remotePath != null && (
-                !peerActive ||
-                    established.msrpLocalPath?.contains("msrp://") == true &&
-                    RcsMsrpListen.isListening()
-                )
-            Log.i(TAG, "Session established ${session.dialogId} setup=$setup usable=$usable")
-            if (!usable) {
-                _sessions.value = _sessions.value + (entry.key to
-                    (_sessions.value[entry.key] ?: established).copy(msrpRemotePath = null))
-            }
-            // ACK the 2xx (RFC 3261 §13): same CSeq number as the INVITE,
-            // Request-URI = answer Contact, confirmed dialog either way.
-            val acked = runCatching {
-                val (ackLine, ackHeaders) = RcsSipDialog.buildAck(
-                    (_sessions.value[entry.key] ?: established).copy(remoteTag = remoteTag),
-                )
-                RcsSipTransport.sendSipMessage(ackLine, ackHeaders, ByteArray(0))
-            }.getOrDefault(false)
-            _sessions.value = _sessions.value + (entry.key to
-                ((_sessions.value[entry.key] ?: established).copy(confirmed = true)))
-            if (!acked) Log.w(TAG, "ACK not accepted for $callId (dialog unconfirmed at SIP layer)")
-        } else if (statusCode >= 300) {
-            Log.w(TAG, "Session failed $callId code=$statusCode")
-            transactions.entries.removeIf { it.value == session.dialogId }
-            _sessions.value = _sessions.value - entry.key
-            _answerFingerprints.remove(callId)
-            RcsMsrpListen.dropPending(entry.key)
+        if (statusCode in SUCCESS_CODES && !remoteTag.isNullOrBlank()) {
+            establishSession(entry.key, session, remoteTag, sdpAnswer, callId, responseHeaders)
+        } else if (statusCode >= REDIRECT_CODES) {
+            failSession(entry.key, session, callId, statusCode)
         }
+    }
+
+    /** Apply a 2xx answer: paths, fingerprint, usability, ACK. */
+    private suspend fun establishSession(
+        key: String,
+        session: RcsSession,
+        remoteTag: String,
+        sdpAnswer: String?,
+        callId: String,
+        responseHeaders: String,
+    ) {
+        val (localPath, remotePath) = parseSdpPaths(sdpAnswer)
+        val setup = parseSdpSetup(sdpAnswer)
+        val (contact, routeSet) = RcsSipDialog.parseDialogRoute(responseHeaders)
+        // TLS sticks when WE offered secure and the answer keeps it
+        // (secure answer SDP); a plaintext answer to our secure offer is
+        // a downgrade — honor it and run plaintext.
+        val answerSecure = isSecureSdp(sdpAnswer)
+        // Stash the answer's fingerprint for the TLS client pin check
+        // and the listen-side accept pin check.
+        RcsMsrpTls.parseFingerprint(sdpAnswer)?.second?.let { fp ->
+            answerFingerprintsMutable[callId] = fp
+            RcsMsrpListen.notePeerFingerprint(key, fp)
+        }
+        val established = session.copy(
+            remoteTag = remoteTag,
+            msrpLocalPath = localPath ?: session.msrpLocalPath,
+            msrpRemotePath = remotePath,
+            msrpSetup = setup,
+            msrpSecure = session.msrpSecure && answerSecure,
+            remoteContact = contact ?: session.remoteContact,
+            routeSet = if (routeSet.isNotEmpty()) routeSet else session.routeSet,
+        )
+        sessionsMutable.value = sessionsMutable.value + (key to established)
+        // Usable when: peer is passive/actpass (we connect out, the v1
+        // path), OR peer is active and we have a listen path (they
+        // connect to us — the accept loop completes the session), OR our
+        // offer carried a listen path and the answer kept any path
+        // (actpass negotiation leaves the direction to the answerer).
+        val peerActive = setup == MsrpSetup.ACTIVE
+        val usable = remotePath != null && (
+            !peerActive ||
+                established.msrpLocalPath?.contains("msrp://") == true &&
+                RcsMsrpListen.isListening()
+            )
+        Log.i(TAG, "Session established ${session.dialogId} setup=$setup usable=$usable")
+        if (!usable) {
+            sessionsMutable.value = sessionsMutable.value + (key to
+                (sessionsMutable.value[key] ?: established).copy(msrpRemotePath = null))
+        }
+        // ACK the 2xx (RFC 3261 §13): same CSeq number as the INVITE,
+        // Request-URI = answer Contact, confirmed dialog either way.
+        val acked = runCatching {
+            val (ackLine, ackHeaders) = RcsSipDialog.buildAck(
+                (sessionsMutable.value[key] ?: established).copy(remoteTag = remoteTag),
+            )
+            RcsSipTransport.sendSipMessage(ackLine, ackHeaders, ByteArray(0))
+        }.getOrDefault(false)
+        sessionsMutable.value = sessionsMutable.value + (key to
+            ((sessionsMutable.value[key] ?: established).copy(confirmed = true)))
+        if (!acked) Log.w(TAG, "ACK not accepted for $callId (dialog unconfirmed at SIP layer)")
     }
 
     /**
@@ -430,15 +451,15 @@ object RcsSessionManager {
      * session re-establishment. Never throws.
      */
     fun onDialogError(callId: String, statusCode: Int) {
-        val entry = _sessions.value.entries.firstOrNull { it.value.callId == callId }
+        val entry = sessionsMutable.value.entries.firstOrNull { it.value.callId == callId }
         if (entry != null) {
-            _sessions.value = _sessions.value - entry.key
+            sessionsMutable.value = sessionsMutable.value - entry.key
             RcsMsrpListen.dropPending(entry.key)
             backoffUntil[entry.key] = System.currentTimeMillis() + DIALOG_ERROR_BACKOFF_MS
             Log.w(TAG, "Dialog error $statusCode for ${entry.key}; backing off")
         }
-        _pendingOffers.remove(callId)
-        _answerFingerprints.remove(callId)
+        pendingOffersMutable.remove(callId)
+        answerFingerprintsMutable.remove(callId)
         transactions.entries.removeIf { it.value.endsWith(callId) }
         RcsSipTransport.cleanupSession(callId)
     }
@@ -474,75 +495,31 @@ object RcsSessionManager {
         toUri: String? = null,
     ): RcsSession? {
         return when (method.uppercase()) {
-            "INVITE" -> {
-                // INVITE to a focus URI we host: record the joiner, keyed to the
-                // hosted conversation (the caller answers with acceptIncoming on
-                // the hosted thread; relay fans their messages out).
-                val target = (toUri ?: "") + "\n" + body
-                hostedConversationFor(target)?.let { hosted ->
-                    noteFocusJoin(hosted.focusUri, fromUri)
-                    return RcsSession(
-                        dialogId = "$callId:focus-in",
-                        callId = callId,
-                        localTag = UUID.randomUUID().toString().take(8),
-                        remoteTag = fromTag.orEmpty(),
-                        remoteUri = fromUri,
-                        conversationId = hosted.conversationId,
-                        isGroup = true,
-                    )
-                }
-                val conversationId = fromUri.substringAfter("sip:").substringBefore("@")
-                    .takeIf { it.isNotBlank() } ?: fromUri
-                // Stash the offerer's path/setup for acceptIncoming connect-out.
-                _pendingOffers[callId] = PendingOffer(
-                    remotePath = Regex("a=path:(\\S+)", RegexOption.IGNORE_CASE).find(body)
-                        ?.groupValues?.getOrNull(1)?.trim(),
-                    setup = parseSdpSetup(body),
-                    sdp = body,
-                    peerFingerprint = RcsMsrpTls.parseFingerprint(body)?.second,
-                )
-                val session = RcsSession(
-                    dialogId = "$callId:in",
-                    callId = callId,
-                    localTag = UUID.randomUUID().toString().take(8),
-                    remoteTag = fromTag.orEmpty(),
-                    remoteUri = fromUri,
-                    conversationId = conversationId,
-                )
-                _sessions.value = _sessions.value + (conversationId to session)
-                session
-            }
+            "INVITE" -> onInviteRequest(callId, fromUri, body, fromTag, toUri)
             "BYE" -> {
-                val entry = _sessions.value.entries.firstOrNull { it.value.callId == callId }
-                if (entry != null) _sessions.value = _sessions.value - entry.key
+                val entry = sessionsMutable.value.entries.firstOrNull { it.value.callId == callId }
+                if (entry != null) sessionsMutable.value = sessionsMutable.value - entry.key
                 null
             }
             "ACK" -> {
                 // ACK to our 200 OK: the incoming dialog is confirmed. Match
                 // by Call-ID (the session was stored under the sender id).
-                val entry = _sessions.value.entries.firstOrNull { it.value.callId == callId }
+                val entry = sessionsMutable.value.entries.firstOrNull { it.value.callId == callId }
                 if (entry != null) {
-                    _sessions.value = _sessions.value + (
+                    sessionsMutable.value = sessionsMutable.value + (
                         entry.key to entry.value.copy(confirmed = true)
                         )
                 }
                 null
             }
             "MESSAGE" -> {
-                val conversationId = fromUri.substringAfter("sip:").substringBefore("@")
-                if (contentType?.contains("imdn", ignoreCase = true) == true) {
-                    RcsImdn.onReportReceived(body)
-                } else if (contentType?.contains("im-composing", ignoreCase = true) == true ||
-                    parseIsComposingBody(body) != null
-                ) {
-                    val active = parseIsComposingBody(body) ?: false
-                    _typing.value = _typing.value + (conversationId to active)
-                }
+                onMessageRequest(fromUri, contentType, body)
                 null
             }
             else -> null
         }
     }
+
 
     /**
      * Build an INVITE with SDP-for-MSRP offer (TestRcsApp SipUtils.buildInvite
@@ -552,133 +529,6 @@ object RcsSessionManager {
      * P-Preferred-Service (CPM URN), Route (Service-Route), User-Agent,
      * P-Access-Network-Info when configured.
      */
-    fun buildInvite(
-        targetUri: String,
-        callId: String,
-        localTag: String,
-        branch: String,
-        conversationId: String,
-        subject: String? = null,
-        listenPath: String? = null,
-        tlsFingerprint: String? = null,
-    ): Triple<String, String, ByteArray> {
-        val cfg = RcsSipTransport.lastConfigSnapshot()
-        val from = cfg?.publicUserId?.takeIf { it.isNotBlank() } ?: "sip:local@rcs"
-        val sdp = buildSdpOffer(cfg?.msrpLocalIp, listenPath, tlsFingerprint)
-        val bytes = sdp.toByteArray(Charsets.UTF_8)
-        val startLine = "INVITE $targetUri SIP/2.0"
-        val headers = buildString {
-            append("Via: SIP/2.0/TCP local;branch=$branch\r\n")
-            append("Max-Forwards: 70\r\n")
-            append("From: <$from>;tag=$localTag\r\n")
-            append("To: <$targetUri>\r\n")
-            append("Call-ID: $callId\r\n")
-            append("CSeq: 1 INVITE\r\n")
-            append("Contact: <$from>;+sip.instance=\"<urn:gsma:imei:${cfg?.imei ?: "unknown"}>\";+g.3gpp.icsi-ref=\"urn%3Aurn-7%3A3gpp-service.ims.icsi.oma.cpm.session\"\r\n")
-            append("Conversation-ID: $conversationId\r\n")
-            append("Contribution-ID: ${UUID.randomUUID()}\r\n")
-            append("Accept-Contact: *;+g.3gpp.icsi-ref=\"urn%3Aurn-7%3A3gpp-service.ims.icsi.oma.cpm.session\"\r\n")
-            append("P-Preferred-Identity: <$from>\r\n")
-            append("P-Preferred-Service: urn:urn-7:3gpp-service.ims.icsi.oma.cpm.session\r\n")
-            if (subject != null) append("Subject: $subject\r\n")
-            cfg?.serviceRoute?.takeIf { it.isNotBlank() }?.let { append("Route: <$it>\r\n") }
-            cfg?.pani?.takeIf { it.isNotBlank() }?.let { append("P-Access-Network-Info: $it\r\n") }
-            append("User-Agent: ${cfg?.userAgent ?: "Communicate-RCS/1.0"}\r\n")
-            append("Content-Type: application/sdp\r\n")
-            append("Content-Length: ${bytes.size}\r\n")
-        }
-        return Triple(startLine, headers, bytes)
-    }
-
-    /**
-     * SDP offer: `setup:actpass` + listen path when we can accept inbound
-     * TCP ([listenPath] from [RcsMsrpListen]), else the v1 `setup:active`
-     * connect-out offer with an unroutable placeholder path.
-     *
-     * TLS (RFC 4976): when our identity is available ([tlsFingerprint]
-     * non-null) the offer is `TCP/TLS/MSRP` with an `msrps://` path +
-     * `a=fingerprint`, so a TLS-capable peer answers secure; otherwise plain
-     * `TCP/MSRP`. The media proto/paths always agree (never a TLS path on a
-     * plaintext `m=` line).
-     */
-    internal fun buildSdpOffer(
-        localIp: String?,
-        listenPath: String?,
-        tlsFingerprint: String? = null,
-    ): String {
-        val ip = localIp?.takeIf { it.isNotBlank() } ?: "0.0.0.0"
-        val secure = tlsFingerprint != null
-        val (path, port, setup) = if (listenPath != null) {
-            Triple(
-                if (secure) listenPath.withScheme("msrps") else listenPath,
-                RcsMsrpListen.listenPort() ?: 2855,
-                "actpass",
-            )
-        } else {
-            Triple(
-                "${if (secure) "msrps" else "msrp"}://${UUID.randomUUID()}.invalid:2855/${UUID.randomUUID()};tcp",
-                2855,
-                "active",
-            )
-        }
-        val proto = if (secure) "TCP/TLS/MSRP" else "TCP/MSRP"
-        return buildString {
-            append("v=0\r\n")
-            append("o=- ${System.currentTimeMillis()} ${System.currentTimeMillis()} IN IP4 $ip\r\n")
-            append("s=-\r\n")
-            append("c=IN IP4 $ip\r\n")
-            append("t=0 0\r\n")
-            append("m=message $port $proto *\r\n")
-            append("a=path:$path\r\n")
-            append("a=accept-types:message/cpim text/plain message/imdn+xml application/im-iscomposing+xml\r\n")
-            append("a=setup:$setup\r\n")
-            if (secure) append("a=fingerprint:${RcsMsrpTls.FINGERPRINT_HASH} $tlsFingerprint\r\n")
-        }
-    }
-
-    /**
-     * SDP answer: `setup:passive` + listen path when we are accepting the
-     * offerer's TCP connection ([passivePath] non-null), else the v1
-     * `setup:active` answer (we connect out to the offerer). [secure]
-     * mirrors the offerer's choice: a TLS offer (`TCP/TLS/MSRP`,
-     * `msrps://`, or `a=fingerprint`) gets a TLS answer with our
-     * fingerprint; otherwise plaintext.
-     */
-    internal fun buildSdpAnswer(
-        localIp: String?,
-        passivePath: String? = null,
-        secure: Boolean = false,
-        tlsFingerprint: String? = null,
-    ): String {
-        val ip = localIp?.takeIf { it.isNotBlank() } ?: "0.0.0.0"
-        val useTls = secure && tlsFingerprint != null
-        val (path, port, setup) = if (passivePath != null) {
-            Triple(
-                if (useTls) passivePath.withScheme("msrps") else passivePath,
-                RcsMsrpListen.listenPort() ?: 2855,
-                "passive",
-            )
-        } else {
-            Triple(
-                "${if (useTls) "msrps" else "msrp"}://${UUID.randomUUID()}.invalid:2855/${UUID.randomUUID()};tcp",
-                2855,
-                "active",
-            )
-        }
-        val proto = if (useTls) "TCP/TLS/MSRP" else "TCP/MSRP"
-        return buildString {
-            append("v=0\r\n")
-            append("o=- ${System.currentTimeMillis()} ${System.currentTimeMillis()} IN IP4 $ip\r\n")
-            append("s=-\r\n")
-            append("c=IN IP4 $ip\r\n")
-            append("t=0 0\r\n")
-            append("m=message $port $proto *\r\n")
-            append("a=path:$path\r\n")
-            append("a=accept-types:message/cpim text/plain message/imdn+xml application/im-iscomposing+xml\r\n")
-            append("a=setup:$setup\r\n")
-            if (useTls) append("a=fingerprint:${RcsMsrpTls.FINGERPRINT_HASH} $tlsFingerprint\r\n")
-        }
-    }
 
     private fun parseSdpPaths(sdp: String?): Pair<String?, String?> {
         if (sdp.isNullOrBlank()) return null to null
@@ -688,7 +538,7 @@ object RcsSessionManager {
     }
 
     /** Rewrite an `msrp(s)://` path's scheme (e.g. advertise `msrps://`). */
-    private fun String.withScheme(scheme: String): String {
+    internal fun String.withScheme(scheme: String): String {
         val rest = substringAfter("://", missingDelimiterValue = this)
         return if (rest === this) this else "$scheme://$rest"
     }
@@ -703,7 +553,7 @@ object RcsSessionManager {
 
     /** True when [callId] matches a live session dialog (re-INVITE/UPDATE target). */
     fun isKnownDialog(callId: String): Boolean =
-        _sessions.value.values.any { it.callId == callId }
+        sessionsMutable.value.values.any { it.callId == callId }
 
     /**
      * Apply a re-INVITE's SDP to a live dialog (§1.5): update the bound
@@ -711,16 +561,16 @@ object RcsSessionManager {
      * sync service's job — it observes the session map. Never throws.
      */
     fun onReInvite(callId: String, sdp: String) {
-        val entry = _sessions.value.entries.firstOrNull { it.value.callId == callId } ?: return
+        val entry = sessionsMutable.value.entries.firstOrNull { it.value.callId == callId } ?: return
         val session = entry.value
         val (localPath, remotePath) = parseSdpPaths(sdp)
         val setup = parseSdpSetup(sdp) ?: session.msrpSetup
         val secure = isSecureSdp(sdp)
         RcsMsrpTls.parseFingerprint(sdp)?.second?.let { fp ->
-            _answerFingerprints[callId] = fp
+            answerFingerprintsMutable[callId] = fp
             RcsMsrpListen.notePeerFingerprint(entry.key, fp)
         }
-        _sessions.value = _sessions.value + (entry.key to session.copy(
+        sessionsMutable.value = sessionsMutable.value + (entry.key to session.copy(
             msrpRemotePath = remotePath ?: session.msrpRemotePath,
             msrpSetup = setup,
             msrpSecure = secure,
@@ -735,7 +585,7 @@ object RcsSessionManager {
      * no session exists.
      */
     fun currentSdpFor(conversationId: String): ByteArray? {
-        val session = _sessions.value[conversationId] ?: return null
+        val session = sessionsMutable.value[conversationId] ?: return null
         val cfg = RcsSipTransport.lastConfigSnapshot()
         val ip = cfg?.msrpLocalIp?.takeIf { it.isNotBlank() } ?: "0.0.0.0"
         val path = session.msrpLocalPath ?: return null
@@ -760,9 +610,9 @@ object RcsSessionManager {
 
     /** Hosted-focus lookup: which focus a To-URI/SDP blob targets. */
     private data class HostedTarget(val focusUri: String, val conversationId: String)
-    private fun hostedConversationFor(target: String): HostedTarget? {
+    internal fun hostedConversationFor(target: String): HostedTarget? {
         if (target.isBlank()) return null
-        for ((conversationId, session) in _sessions.value) {
+        for ((conversationId, session) in sessionsMutable.value) {
             if (!session.isFocus) continue
             if (target.contains(session.remoteUri, ignoreCase = true)) {
                 return HostedTarget(session.remoteUri, conversationId)

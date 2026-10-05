@@ -32,9 +32,9 @@ import kotlin.math.roundToInt
  * long-exposure countdown here.
  */
 internal suspend fun CameraViewModel.captureNightPhotoExtension() {
-    _isCapturing.value = true
+    isCapturingMutable.value = true
     // Drop the photo session so the UI's analyzer effect re-attaches PhotoAnalyzer once we restore.
-    _photoSessionActive.value = false
+    photoSessionActiveMutable.value = false
     try {
         val provider = ProcessCameraProvider.awaitInstance(app)
         cameraProvider = provider
@@ -47,13 +47,13 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
         }
         provider.unbindAll()
         imageAnalysis = null
-        _analysisStreamActive.value = false
+        analysisStreamActiveMutable.value = false
 
-        val baseSelector = lensSelector(_lensFacing.value, _selectedLens.value)
+        val baseSelector = lensSelector(lensFacingMutable.value, selectedLensMutable.value)
         val nightSelector = mgr.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.NIGHT)
 
         val preview = Preview.Builder().build()
-        preview.setSurfaceProvider { request -> _surfaceRequest.value = request }
+        preview.setSurfaceProvider { request -> surfaceRequestMutable.value = request }
 
         val owner = ManualLifecycleOwner()
         owner.start()
@@ -93,13 +93,15 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
             )
         }
         if (savedUri != null) setLastCaptureUri(savedUri)
-    } catch (e: Exception) {
+    } catch (e: IllegalStateException) {
+        Log.e("CameraViewModel", "Night extension capture path failed", e)
+    } catch (e: IllegalArgumentException) {
         Log.e("CameraViewModel", "Night extension capture path failed", e)
     } finally {
-        // Rebind the normal 3-stream session; sets _photoSessionActive=true so the UI re-attaches
+        // Rebind the normal 3-stream session; sets photoSessionActiveMutable=true so the UI re-attaches
         // PhotoAnalyzer. If teardown interrupted us, this is superseded by the lifecycle rebind.
         setupPhotoSession()
-        _isCapturing.value = false
+        isCapturingMutable.value = false
     }
 }
 
@@ -110,39 +112,52 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
  * is empty or the merge fails, so the user always gets a shot.
  */
 internal fun CameraViewModel.captureNightPhotoCustom() {
-    _isCapturing.value = true
+    isCapturingMutable.value = true
     val perFrame = computeNightExposure(CameraViewModel.NIGHT_BURST_PER_FRAME_NANOS)
     // The countdown overlay shows the total burst duration.
     startLongExposureCountdown(perFrame.nanos * NightCaptureEngine.NIGHT_BURST_COUNT)
 
-    captureNightBurst(perFrame) { frames ->
-        if (frames.isEmpty()) {
-            Log.w("CameraViewModel", "Night burst produced no frames; falling back to single capture")
+    captureNightBurst(perFrame, ::onNightBurstDone)
+}
+
+/** Handles the finished night burst: merges + saves, or falls back to single capture. */
+private fun CameraViewModel.onNightBurstDone(frames: List<Bitmap>) {
+    if (frames.isEmpty()) {
+        Log.w("CameraViewModel", "Night burst produced no frames; falling back to single capture")
+        stopLongExposureCountdown()
+        captureSinglePhoto()
+        return
+    }
+    viewModelScope.launch {
+        val uri = withContext(Dispatchers.Default) {
+            mergeNightFrames(frames)
+        }
+        if (uri != null) {
+            finishNightMerge(uri)
+        } else {
+            Log.w("CameraViewModel", "Night merge failed; falling back to single capture")
             stopLongExposureCountdown()
             captureSinglePhoto()
-            return@captureNightBurst
         }
-        viewModelScope.launch {
-            val uri = withContext(Dispatchers.Default) {
-                val merged = NightCaptureEngine.merge(frames)
-                frames.forEach { it.recycle() }
-                merged?.let { bmp ->
-                    saveStillBitmap("IMG_${MediaStoreSaver.timestamp()}.jpg", bmp)
-                        .also { bmp.recycle() }
-                }
-            }
-            if (uri != null) {
-                // Merged pixels are already upright/mirrored, so the orientation tag is normal.
-                withContext(Dispatchers.IO) { writeCaptureExif(uri, null, 0) }
-                _isCapturing.value = false
-                stopLongExposureCountdown()
-                setLastCaptureUri(uri)
-            } else {
-                Log.w("CameraViewModel", "Night merge failed; falling back to single capture")
-                stopLongExposureCountdown()
-                captureSinglePhoto()
-            }
-        }
+    }
+}
+
+/** Completes a successful night merge: stamps EXIF, clears state, publishes the URI. */
+private suspend fun CameraViewModel.finishNightMerge(uri: Uri) {
+    // Merged pixels are already upright/mirrored, so the orientation tag is normal.
+    withContext(Dispatchers.IO) { writeCaptureExif(uri, null, 0) }
+    isCapturingMutable.value = false
+    stopLongExposureCountdown()
+    setLastCaptureUri(uri)
+}
+
+/** Merges the burst via the native engine and saves the bitmap; null on failure. */
+private suspend fun CameraViewModel.mergeNightFrames(frames: List<Bitmap>): Uri? {
+    val merged = NightCaptureEngine.merge(frames)
+    frames.forEach { it.recycle() }
+    return merged?.let { bmp ->
+        saveStillBitmap("IMG_${MediaStoreSaver.timestamp()}.jpg", bmp)
+            .also { bmp.recycle() }
     }
 }
 
@@ -158,23 +173,60 @@ internal fun CameraViewModel.captureNightPhotoCustom() {
  */
 @OptIn(ExperimentalCamera2Interop::class)
 internal fun CameraViewModel.captureNightBurst(exposure: NightExposure, onDone: (List<Bitmap>) -> Unit) {
-    val capture = imageCapture ?: run {
+    if (imageCapture == null) {
         onDone(emptyList())
         return
     }
-    val cam2Control = try {
+    val cam2Control = camera2ControlQuietly()
+    val driver = NightBurstDriver(
+        viewModel = this,
+        cam2Control = cam2Control,
+        mirror = mirrorCaptures,
+        exposure = exposure,
+        onDone = onDone
+    )
+    driver.start()
+}
+
+/** Camera2 control handle; null (logged) when unavailable. */
+@OptIn(ExperimentalCamera2Interop::class)
+private fun CameraViewModel.camera2ControlQuietly():
+    androidx.camera.camera2.interop.Camera2CameraControl? {
+    return try {
         boundCamera?.cameraControl?.let {
             androidx.camera.camera2.interop.Camera2CameraControl.from(it)
         }
-    } catch (e: Exception) {
+    } catch (e: IllegalArgumentException) {
         Log.w("CameraViewModel", "Camera2 control unavailable", e)
         null
     }
-    val mirror = mirrorCaptures
-    val collected = mutableListOf<Bitmap>()
-    var alreadyDone = false
+}
 
-    fun restore3A() {
+/**
+ * Owns one night-burst sequence: locks the night exposure, fires full-resolution
+ * captures back-to-back, converts each to an upright bitmap and restores 3A + the
+ * manual-control state when done.
+ */
+@OptIn(ExperimentalCamera2Interop::class)
+private class NightBurstDriver(
+    private val viewModel: CameraViewModel,
+    private val cam2Control: androidx.camera.camera2.interop.Camera2CameraControl?,
+    private val mirror: Boolean,
+    private val exposure: NightExposure,
+    private val onDone: (List<Bitmap>) -> Unit
+) {
+    private val collected = mutableListOf<Bitmap>()
+    private var alreadyDone = false
+
+    fun start() {
+        if (cam2Control != null) {
+            viewModel.lockNightExposure(cam2Control, exposure, ::takeNext)
+        } else {
+            takeNext()
+        }
+    }
+
+    private fun restore3A() {
         if (cam2Control != null) {
             try {
                 cam2Control.setCaptureRequestOptions(
@@ -185,54 +237,39 @@ internal fun CameraViewModel.captureNightBurst(exposure: NightExposure, onDone: 
                         .clearCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_AWB_LOCK)
                         .build()
                 )
-            } catch (e: Exception) {
+            } catch (e: IllegalStateException) {
+                Log.w("CameraViewModel", "Failed to restore auto 3A after night burst", e)
+            } catch (e: IllegalArgumentException) {
                 Log.w("CameraViewModel", "Failed to restore auto 3A after night burst", e)
             }
         }
     }
 
-    fun finish() {
+    private fun finish() {
         if (alreadyDone) return
         alreadyDone = true
         restore3A()
         // Re-assert (auto) manual-control state to fully undo night override.
         try {
-            applyManualControls()
+            viewModel.applyManualControls()
         } catch (_: Exception) {}
         onDone(collected.toList())
     }
 
-    fun takeNext() {
+    private fun takeNext() {
         if (collected.size >= NightCaptureEngine.NIGHT_BURST_COUNT) {
             finish()
             return
         }
-        val cap = imageCapture ?: run {
+        val cap = viewModel.imageCapture ?: run {
             finish()
             return
         }
         cap.takePicture(
-            ContextCompat.getMainExecutor(app),
+            ContextCompat.getMainExecutor(viewModel.app),
             object : ImageCapture.OnImageCapturedCallback() {
                 override fun onCaptureSuccess(image: ImageProxy) {
-                    try {
-                        // toBitmap() is provided by CameraX (used also in BokehAnalyzer).
-                        // Apply the session's cropRect (setCropAspectRatio): the raw frame is
-                        // always full-frame, so without this the burst ignores the non-4:3 crop.
-                        val cropRect = android.graphics.Rect(image.cropRect)
-                        val raw = cropToRect(image.toBitmap(), cropRect)
-                        val matrix = Matrix().apply {
-                            postRotate(image.imageInfo.rotationDegrees.toFloat())
-                            if (mirror) postScale(-1f, 1f)
-                        }
-                        val upright = Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, matrix, true)
-                        if (upright !== raw) raw.recycle()
-                        collected.add(upright)
-                    } catch (e: Exception) {
-                        Log.w("CameraViewModel", "Failed to convert night frame", e)
-                    } finally {
-                        image.close()
-                    }
+                    convertFrame(image)
                     takeNext()
                 }
 
@@ -244,34 +281,63 @@ internal fun CameraViewModel.captureNightBurst(exposure: NightExposure, onDone: 
         )
     }
 
-    // Lock AE off + set per-frame night exposure/ISO + lock AWB to avoid color drift, then start burst.
-    if (cam2Control != null) {
+    /** Converts one burst frame to an upright bitmap and collects it. */
+    private fun convertFrame(image: ImageProxy) {
         try {
-            val optsBuilder = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
-                .setCaptureRequestOption(
-                    android.hardware.camera2.CaptureRequest.CONTROL_AE_MODE,
-                    android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_OFF
-                )
-                .setCaptureRequestOption(
-                    android.hardware.camera2.CaptureRequest.SENSOR_EXPOSURE_TIME,
-                    exposure.nanos
-                )
-                .setCaptureRequestOption(
-                    android.hardware.camera2.CaptureRequest.CONTROL_AWB_LOCK, true
-                )
-            exposure.iso?.let {
-                optsBuilder.setCaptureRequestOption(
-                    android.hardware.camera2.CaptureRequest.SENSOR_SENSITIVITY, it
-                )
+            // toBitmap() is provided by CameraX (used also in BokehAnalyzer).
+            // Apply the session's cropRect (setCropAspectRatio): the raw frame is
+            // always full-frame, so without this the burst ignores the non-4:3 crop.
+            val cropRect = android.graphics.Rect(image.cropRect)
+            val raw = viewModel.cropToRect(image.toBitmap(), cropRect)
+            val matrix = Matrix().apply {
+                postRotate(image.imageInfo.rotationDegrees.toFloat())
+                if (mirror) postScale(-1f, 1f)
             }
-            cam2Control.setCaptureRequestOptions(optsBuilder.build())
-                .addListener({ takeNext() }, ContextCompat.getMainExecutor(app))
-        } catch (e: Exception) {
-            Log.w("CameraViewModel", "Failed to set night exposure for burst", e)
-            takeNext()
+            val upright = Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, matrix, true)
+            if (upright !== raw) raw.recycle()
+            collected.add(upright)
+        } catch (e: IllegalStateException) {
+            Log.w("CameraViewModel", "Failed to convert night frame", e)
+        } catch (e: IllegalArgumentException) {
+            Log.w("CameraViewModel", "Failed to convert night frame", e)
+        } finally {
+            image.close()
         }
-    } else {
-        takeNext()
+    }
+}
+
+/** Locks AE off + night exposure/ISO + AWB, then runs [onLocked]. Falls through on failure. */
+private fun CameraViewModel.lockNightExposure(
+    cam2Control: androidx.camera.camera2.interop.Camera2CameraControl,
+    exposure: NightExposure,
+    onLocked: () -> Unit
+) {
+    try {
+        val optsBuilder = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
+            .setCaptureRequestOption(
+                android.hardware.camera2.CaptureRequest.CONTROL_AE_MODE,
+                android.hardware.camera2.CameraMetadata.CONTROL_AE_MODE_OFF
+            )
+            .setCaptureRequestOption(
+                android.hardware.camera2.CaptureRequest.SENSOR_EXPOSURE_TIME,
+                exposure.nanos
+            )
+            .setCaptureRequestOption(
+                android.hardware.camera2.CaptureRequest.CONTROL_AWB_LOCK, true
+            )
+        exposure.iso?.let {
+            optsBuilder.setCaptureRequestOption(
+                android.hardware.camera2.CaptureRequest.SENSOR_SENSITIVITY, it
+            )
+        }
+        cam2Control.setCaptureRequestOptions(optsBuilder.build())
+            .addListener({ onLocked() }, ContextCompat.getMainExecutor(app))
+    } catch (e: IllegalStateException) {
+        Log.w("CameraViewModel", "Failed to set night exposure for burst", e)
+        onLocked()
+    } catch (e: IllegalArgumentException) {
+        Log.w("CameraViewModel", "Failed to set night exposure for burst", e)
+        onLocked()
     }
 }
 
@@ -283,7 +349,9 @@ internal data class NightExposure(val nanos: Long, val iso: Int?)
  * Falls back to [targetNanos] (and auto ISO) if the characteristics are unavailable.
  */
 @OptIn(ExperimentalCamera2Interop::class)
-internal fun CameraViewModel.computeNightExposure(targetNanos: Long = CameraViewModel.NIGHT_TARGET_EXPOSURE_NANOS): NightExposure {
+internal fun CameraViewModel.computeNightExposure(
+    targetNanos: Long = CameraViewModel.NIGHT_TARGET_EXPOSURE_NANOS
+): NightExposure {
     val fallback = NightExposure(targetNanos, null)
     return try {
         val cam = boundCamera ?: return fallback
@@ -302,26 +370,30 @@ internal fun CameraViewModel.computeNightExposure(targetNanos: Long = CameraView
                 .coerceIn(it.lower, it.upper)
         }
         NightExposure(nanos, iso)
-    } catch (e: Exception) {
+    } catch (e: IllegalArgumentException) {
         Log.w("CameraViewModel", "Failed to read sensor ranges for night mode", e)
         fallback
     }
 }
 
+/** Nanos per millisecond; countdown tick step. */
+private const val NANOS_PER_MILLI = 1_000_000L
+private const val LONG_EXPOSURE_TICK_MS = 50L
+
 internal fun CameraViewModel.startLongExposureCountdown(nanos: Long) {
-    val durationMs = nanos / 1_000_000
-    _longExposureProgress.value = 1f
-    _longExposureRemaining.value = formatExposureRemaining(durationMs)
+    val durationMs = nanos / NANOS_PER_MILLI
+    longExposureProgressMutable.value = 1f
+    longExposureRemainingMutable.value = formatExposureRemaining(durationMs)
     longExposureTimerJob?.cancel()
     longExposureTimerJob = viewModelScope.launch {
         val start = System.currentTimeMillis()
         while (true) {
             val elapsed = System.currentTimeMillis() - start
             val remaining = (durationMs - elapsed).coerceAtLeast(0)
-            _longExposureProgress.value = remaining.toFloat() / durationMs
-            _longExposureRemaining.value = formatExposureRemaining(remaining)
+            longExposureProgressMutable.value = remaining.toFloat() / durationMs
+            longExposureRemainingMutable.value = formatExposureRemaining(remaining)
             if (remaining <= 0) break
-            delay(50)
+            delay(LONG_EXPOSURE_TICK_MS)
         }
     }
 }
@@ -329,8 +401,8 @@ internal fun CameraViewModel.startLongExposureCountdown(nanos: Long) {
 internal fun CameraViewModel.stopLongExposureCountdown() {
     longExposureTimerJob?.cancel()
     longExposureTimerJob = null
-    _longExposureProgress.value = 0f
-    _longExposureRemaining.value = ""
+    longExposureProgressMutable.value = 0f
+    longExposureRemainingMutable.value = ""
 }
 
 private fun formatExposureRemaining(ms: Long): String {

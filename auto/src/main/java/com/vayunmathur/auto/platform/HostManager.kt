@@ -38,20 +38,27 @@ class HostManager(private val context: Context) {
 
     /** Binds every discovered app that is not already bound. */
     fun bindAll(apps: List<DiscoveredApp>) {
-        for (app in apps) {
-            val key = app.component
-            if (sessions.containsKey(key)) continue
-            val category = app.categories.firstOrNull() ?: continue
-            val session = HostSession(context, key, category) { template ->
-                val id = key.flattenToString()
-                _templates.value += id to template
-                CarLauncherState.setTemplate(id, template)
-                HostTemplateBus.publish(key, template)
-            }
-            sessions[key] = session
-            session.bind()
+        for (app in apps) bindMissing(app)
+        dropGone(apps)
+    }
+
+    /** Binds one app unless it is already bound or has no category. */
+    private fun bindMissing(app: DiscoveredApp) {
+        val key = app.component
+        if (sessions.containsKey(key)) return
+        val category = app.categories.firstOrNull() ?: return
+        val session = HostSession(context, key, category) { template ->
+            val id = key.flattenToString()
+            _templates.value += id to template
+            CarLauncherState.setTemplate(id, template)
+            HostTemplateBus.publish(template)
         }
-        // Drop sessions whose app disappeared.
+        sessions[key] = session
+        session.bind()
+    }
+
+    /** Drops sessions whose app disappeared. */
+    private fun dropGone(apps: List<DiscoveredApp>) {
         val alive = apps.map { it.component }.toSet()
         val gone = sessions.keys - alive
         for (key in gone) {
@@ -158,8 +165,8 @@ object HostTemplateBus {
     /** Legacy nav state for the pre-Phase-C card; null until first parse. */
     val legacyNav: StateFlow<HostNavState?> = _legacyNav.asStateFlow()
 
-    /** Publishes one parsed template from [component]'s session. */
-    fun publish(component: ComponentName, template: HostTemplate) {
+    /** Publishes one parsed template. */
+    fun publish(template: HostTemplate) {
         toLegacy(template)?.let { _legacyNav.value = it }
     }
 

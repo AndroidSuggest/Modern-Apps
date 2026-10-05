@@ -32,8 +32,8 @@ object SignalCallingApi {
                 headers = mapOf("Authorization" to "Basic $authHeader"),
                 sslSocketFactory = sslSocketFactory,
             )
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not fetch calling relays", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not fetch calling relays", expected)
             return emptyList()
         }
         if (!resp.isSuccess) {
@@ -51,8 +51,8 @@ object SignalCallingApi {
     ): List<PeerConnection.IceServer> {
         val relays = try {
             json.parseToJsonElement(body).jsonObject["relays"]?.jsonArray
-        } catch (e: Exception) {
-            warn("unparseable calling relays response: ${e.message}")
+        } catch (expected: Exception) {
+            warn("unparseable calling relays response: ${expected.message}")
             return emptyList()
         } ?: return emptyList()
 
@@ -62,7 +62,12 @@ object SignalCallingApi {
             val password = relay["password"]?.jsonPrimitive?.contentOrNull()
             // Prefer urlsWithIps: they skip a DNS lookup, which matters on a call setup path.
             val urls = (relay["urlsWithIps"] ?: relay["urls"])?.let { urlsElement ->
-                try { urlsElement.jsonArray.mapNotNull { it.jsonPrimitive.contentOrNull() } } catch (_: Exception) { null }
+                val parsed = try {
+                    urlsElement.jsonArray.mapNotNull { it.jsonPrimitive.contentOrNull() }
+                } catch (_: Exception) {
+                    null
+                }
+                parsed
             }?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
             val hostname = relay["hostname"]?.jsonPrimitive?.contentOrNull()
 
@@ -75,8 +80,8 @@ object SignalCallingApi {
                         if (!hostname.isNullOrEmpty()) setHostname(hostname)
                     }
                     .createIceServer()
-            } catch (t: Throwable) {
-                warn("skipping an unusable ICE server: ${t.message}")
+            } catch (expected: Throwable) {
+                warn("skipping an unusable ICE server: ${expected.message}")
                 null
             }
         }

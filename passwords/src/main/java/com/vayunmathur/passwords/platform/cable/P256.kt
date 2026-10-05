@@ -28,6 +28,8 @@ object P256 {
     const val COORD_SIZE = 32
     const val DH_OUTPUT_SIZE = 32
 
+    private const val UNCOMPRESSED_PREFIX = 0x04
+
     // secp256r1 domain parameters, obtained from the platform (no BC).
     private val ecSpec: ECParameterSpec = run {
         val params = AlgorithmParameters.getInstance("EC")
@@ -44,7 +46,7 @@ object P256 {
     /** Serializes a public key as the 65-byte uncompressed X9.62 form. */
     fun toUncompressed(publicKey: PublicKey): ByteArray {
         val w = (publicKey as ECPublicKey).w
-        return byteArrayOf(0x04) + fixed(w.affineX) + fixed(w.affineY)
+        return byteArrayOf(UNCOMPRESSED_PREFIX.toByte()) + fixed(w.affineX) + fixed(w.affineY)
     }
 
     /** Serializes a public key as the 33-byte compressed X9.62 form. */

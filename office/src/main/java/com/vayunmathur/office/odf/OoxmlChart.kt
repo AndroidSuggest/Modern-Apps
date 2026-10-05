@@ -23,122 +23,181 @@ internal object OoxmlChart {
     /** Parses chart XML; returns null if no plottable series were found. */
     fun parse(xml: String, theme: OoxmlTheme = OoxmlTheme.DEFAULT): OdfChart? {
         val parser = OoxmlXml.newParser(xml)
-        var type = ChartType.BAR
-        var stacked = false
-        var barDirCol = true
-        var typeSeen = false
-        var title: String? = null
-        var xAxisTitle: String? = null
-        var yAxisTitle: String? = null
-        var legend = false
-        var inCatAx = false
-        var inValAx = false
-        val series = mutableListOf<SeriesAccum>()
-
+        val acc = ChartAcc()
         var e = parser.eventType
         while (e != XmlPullParser.END_DOCUMENT) {
-            if (e == XmlPullParser.START_TAG) {
-                when (val n = parser.name) {
-                    "barChart", "bar3DChart" -> { if (!typeSeen) { type = ChartType.BAR; typeSeen = true } }
-                    "lineChart", "line3DChart" -> { if (!typeSeen) { type = ChartType.LINE; typeSeen = true } }
-                    "pieChart", "pie3DChart", "ofPieChart" -> { if (!typeSeen) { type = ChartType.PIE; typeSeen = true } }
-                    "doughnutChart" -> { if (!typeSeen) { type = ChartType.DONUT; typeSeen = true } }
-                    "areaChart", "area3DChart" -> { if (!typeSeen) { type = ChartType.AREA; typeSeen = true } }
-                    "scatterChart" -> { if (!typeSeen) { type = ChartType.SCATTER; typeSeen = true } }
-                    "radarChart" -> { if (!typeSeen) { type = ChartType.RADAR; typeSeen = true } }
-                    "bubbleChart" -> { if (!typeSeen) { type = ChartType.BUBBLE; typeSeen = true } }
-                    "barDir" -> barDirCol = OoxmlXml.attr(parser, "val") != "bar"
-                    "grouping" -> { val g = OoxmlXml.attr(parser, "val"); if (g == "stacked" || g == "percentStacked") stacked = true }
-                    "catAx" -> inCatAx = true
-                    "valAx" -> inValAx = true
-                    "legend" -> legend = true
-                    "title" -> {
-                        val t = readTitleText(parser)
-                        when {
-                            inCatAx -> xAxisTitle = t
-                            inValAx -> yAxisTitle = t
-                            else -> title = t
-                        }
-                    }
-                    "ser" -> series.add(parseSeries(parser, theme))
-                }
-            } else if (e == XmlPullParser.END_TAG) {
-                when (parser.name) { "catAx" -> inCatAx = false; "valAx" -> inValAx = false }
-            }
+            if (e == XmlPullParser.START_TAG) applyChartStart(parser, acc, theme)
+            else if (e == XmlPullParser.END_TAG) applyChartEnd(parser, acc)
             e = parser.next()
         }
+        return buildChart(acc)
+    }
 
-        if (series.isEmpty() || series.all { it.vals.isEmpty() }) return null
-        if (type == ChartType.BAR && stacked) type = ChartType.STACKED_BAR
+    private class ChartAcc(
+        var type: ChartType = ChartType.BAR,
+        var stacked: Boolean = false,
+        var barDirCol: Boolean = true,
+        var typeSeen: Boolean = false,
+        var title: String? = null,
+        var xAxisTitle: String? = null,
+        var yAxisTitle: String? = null,
+        var legend: Boolean = false,
+        var inCatAx: Boolean = false,
+        var inValAx: Boolean = false,
+        val series: MutableList<SeriesAccum> = mutableListOf(),
+    )
 
+    private fun applyChartStart(parser: XmlPullParser, acc: ChartAcc, theme: OoxmlTheme) {
+        if (applyChartTypeTag(parser, acc)) return
+        when (parser.name) {
+            "barDir" -> acc.barDirCol = OoxmlXml.attr(parser, "val") != "bar"
+            "grouping" -> applyGroupingTag(parser, acc)
+            "catAx" -> acc.inCatAx = true
+            "valAx" -> acc.inValAx = true
+            "legend" -> acc.legend = true
+            "title" -> applyChartTitleTag(parser, acc)
+            "ser" -> acc.series.add(parseSeries(parser, theme))
+        }
+    }
+
+    private fun applyChartTypeTag(parser: XmlPullParser, acc: ChartAcc): Boolean {
+        val t = chartTypeFor(parser.name) ?: return false
+        if (!acc.typeSeen) { acc.type = t; acc.typeSeen = true }
+        return true
+    }
+
+    private fun chartTypeFor(name: String): ChartType? = when (name) {
+        "barChart", "bar3DChart" -> ChartType.BAR
+        "lineChart", "line3DChart" -> ChartType.LINE
+        "pieChart", "pie3DChart", "ofPieChart" -> ChartType.PIE
+        "doughnutChart" -> ChartType.DONUT
+        "areaChart", "area3DChart" -> ChartType.AREA
+        "scatterChart" -> ChartType.SCATTER
+        "radarChart" -> ChartType.RADAR
+        "bubbleChart" -> ChartType.BUBBLE
+        else -> null
+    }
+
+    private fun applyGroupingTag(parser: XmlPullParser, acc: ChartAcc) {
+        val g = OoxmlXml.attr(parser, "val")
+        if (g == "stacked" || g == "percentStacked") acc.stacked = true
+    }
+
+    private fun applyChartTitleTag(parser: XmlPullParser, acc: ChartAcc) {
+        val t = readTitleText(parser)
+        when {
+            acc.inCatAx -> acc.xAxisTitle = t
+            acc.inValAx -> acc.yAxisTitle = t
+            else -> acc.title = t
+        }
+    }
+
+    private fun applyChartEnd(parser: XmlPullParser, acc: ChartAcc) {
+        when (parser.name) { "catAx" -> acc.inCatAx = false; "valAx" -> acc.inValAx = false }
+    }
+
+    private fun buildChart(acc: ChartAcc): OdfChart? {
+        if (acc.series.isEmpty() || acc.series.all { it.vals.isEmpty() }) return null
+        var type = acc.type
+        if (type == ChartType.BAR && acc.stacked) type = ChartType.STACKED_BAR
         // Preserve idx alignment: densify by point index so a series missing a point (idx 0,1,3)
         // stays aligned with its categories instead of shifting later points left.
-        val maxIdx = series.flatMap { it.cats.keys + it.vals.keys }.maxOrNull() ?: -1
-        val catSource = series.maxByOrNull { it.cats.size }?.cats ?: sortedMapOf()
+        val maxIdx = acc.series.flatMap { it.cats.keys + it.vals.keys }.maxOrNull() ?: -1
+        val catSource = acc.series.maxByOrNull { it.cats.size }?.cats ?: sortedMapOf()
         val categories = (0..maxIdx).map { catSource[it] ?: "" }
-        val odfSeries = series.mapIndexed { i, s ->
-            OdfChartSeries(
-                name = s.name ?: "Series ${i + 1}",
-                values = (0..maxIdx).map { s.vals[it] ?: 0f },
-                color = s.color,
-                dataLabels = s.dataLabels
-            )
-        }
+        val odfSeries = acc.series.mapIndexed { i, s -> buildSeries(s, i, maxIdx) }
         return OdfChart(
             type = type,
             categories = categories,
             series = odfSeries,
-            title = title,
-            legend = legend,
-            xAxisTitle = if (barDirCol) xAxisTitle else yAxisTitle,
-            yAxisTitle = if (barDirCol) yAxisTitle else xAxisTitle,
-            stacked = stacked
+            title = acc.title,
+            legend = acc.legend,
+            xAxisTitle = if (acc.barDirCol) acc.xAxisTitle else acc.yAxisTitle,
+            yAxisTitle = if (acc.barDirCol) acc.yAxisTitle else acc.xAxisTitle,
+            stacked = acc.stacked
         )
     }
+
+    private fun buildSeries(s: SeriesAccum, i: Int, maxIdx: Int): OdfChartSeries {
+        return OdfChartSeries(
+            name = s.name ?: "Series ${i + 1}",
+            values = (0..maxIdx).map { s.vals[it] ?: 0f },
+            color = s.color,
+            dataLabels = s.dataLabels
+        )
+    }
+
+    private class SeriesState(
+        var cache: String? = null,
+        var inTx: Boolean = false,
+        var inSpPr: Boolean = false,
+        var inLn: Boolean = false,
+        var inDLbls: Boolean = false,
+        val txt: StringBuilder = StringBuilder(),
+        var curIdx: Int = 0,
+    )
 
     private fun parseSeries(parser: XmlPullParser, theme: OoxmlTheme): SeriesAccum {
         val s = SeriesAccum()
         val depth = parser.depth
-        var cache: String? = null      // "cat" | "val" | null
-        var inTx = false
-        var inSpPr = false
-        var inLn = false
-        var inDLbls = false
-        val txt = StringBuilder()
-        var curIdx = 0
+        val st = SeriesState()
         var e = parser.next()
         while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "ser")) {
             if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) when (parser.name) {
-                "tx" -> inTx = true
-                "cat", "xVal" -> cache = "cat"
-                "val", "yVal" -> cache = "val"
-                "spPr" -> inSpPr = true
-                "ln" -> inLn = true
-                "dLbls" -> inDLbls = true
-                "showVal" -> if (inDLbls && OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))) s.dataLabels = true
-                "pt" -> curIdx = OoxmlXml.attr(parser, "idx")?.toIntOrNull() ?: curIdx
-                "v" -> {
-                    val v = OoxmlXml.readElementText(parser, "v")
-                    when {
-                        inTx -> txt.append(v)
-                        cache == "cat" -> s.cats[curIdx] = v
-                        cache == "val" -> v.toFloatOrNull()?.let { s.vals[curIdx] = it }
-                    }
-                }
-                "srgbClr", "schemeClr", "sysClr", "prstClr", "scrgbClr" ->
-                    // Capture the first color in spPr — for line/scatter series it lives inside <a:ln>.
-                    if (inSpPr && s.color == null) s.color = OoxmlColor.parse(parser, theme)
-            } else if (e == XmlPullParser.END_TAG) when (parser.name) {
-                "tx" -> { inTx = false; if (s.name == null && txt.isNotBlank()) s.name = txt.toString(); txt.clear() }
-                "cat", "val", "xVal", "yVal" -> cache = null
-                "spPr" -> inSpPr = false
-                "ln" -> inLn = false
-                "dLbls" -> inDLbls = false
-            }
+            if (e == XmlPullParser.START_TAG) applySeriesStart(parser, theme, s, st)
+            else if (e == XmlPullParser.END_TAG) applySeriesEnd(parser, s, st)
             e = parser.next()
         }
         return s
+    }
+
+    private fun applySeriesStart(parser: XmlPullParser, theme: OoxmlTheme, s: SeriesAccum, st: SeriesState) {
+        when (parser.name) {
+            "tx" -> st.inTx = true
+            "cat", "xVal" -> st.cache = "cat"
+            "val", "yVal" -> st.cache = "val"
+            "spPr" -> st.inSpPr = true
+            "ln" -> st.inLn = true
+            "dLbls" -> st.inDLbls = true
+            "showVal" -> applyShowValTag(parser, s, st)
+            "pt" -> st.curIdx = OoxmlXml.attr(parser, "idx")?.toIntOrNull() ?: st.curIdx
+            "v" -> applySeriesValueTag(parser, s, st)
+            "srgbClr", "schemeClr", "sysClr", "prstClr", "scrgbClr" -> applySeriesColorTag(parser, theme, s, st)
+        }
+    }
+
+    private fun applyShowValTag(parser: XmlPullParser, s: SeriesAccum, st: SeriesState) {
+        if (st.inDLbls && OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))) s.dataLabels = true
+    }
+
+    private fun applySeriesValueTag(parser: XmlPullParser, s: SeriesAccum, st: SeriesState) {
+        val v = OoxmlXml.readElementText(parser, "v")
+        when {
+            st.inTx -> st.txt.append(v)
+            st.cache == "cat" -> s.cats[st.curIdx] = v
+            st.cache == "val" -> v.toFloatOrNull()?.let { s.vals[st.curIdx] = it }
+        }
+    }
+
+    private fun applySeriesColorTag(parser: XmlPullParser, theme: OoxmlTheme, s: SeriesAccum, st: SeriesState) {
+        // Capture the first color in spPr — for line/scatter series it lives inside <a:ln>.
+        if (st.inSpPr && s.color == null) s.color = OoxmlColor.parse(parser, theme)
+    }
+
+    private fun applySeriesEnd(parser: XmlPullParser, s: SeriesAccum, st: SeriesState) {
+        when (parser.name) {
+            "tx" -> finishTxTag(s, st)
+            "cat", "val", "xVal", "yVal" -> st.cache = null
+            "spPr" -> st.inSpPr = false
+            "ln" -> st.inLn = false
+            "dLbls" -> st.inDLbls = false
+        }
+    }
+
+    private fun finishTxTag(s: SeriesAccum, st: SeriesState) {
+        st.inTx = false
+        if (s.name == null && st.txt.isNotBlank()) s.name = st.txt.toString()
+        st.txt.clear()
     }
 
     /** Reads all a:t / c:v text inside a `c:title` element (consumes through its END_TAG). */

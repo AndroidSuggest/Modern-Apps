@@ -91,9 +91,17 @@ class RtpPacketizer(
     sequenceNumberStart: Int = 0,
 ) {
 
-    private var sequenceNumber = sequenceNumberStart and 0xffff
+    private var sequenceNumber = sequenceNumberStart and SEQUENCE_MASK
 
     val maxPayloadSize: Int get() = maxPacketSize - MAX_HEADER_SIZE
+
+    private companion object {
+        private const val SEQUENCE_MASK = 0xffff
+        private const val SSRC_MASK = 0xffff_ffffL
+        private const val BYTE_SHIFT_HIGH = 24
+        private const val BYTE_SHIFT_MID_HIGH = 16
+        private const val BYTE_SHIFT_MID_LOW = 8
+    }
 
     /**
      * How many packets [payloadSize] bytes will take.
@@ -121,9 +129,9 @@ class RtpPacketizer(
         val marker = if (packetId == total - 1) RTP_MARKER_BIT else 0
         out[i++] = (marker or payloadType).toByte()
         i = out.putShort(i, sequenceNumber)
-        sequenceNumber = (sequenceNumber + 1) and 0xffff
-        i = out.putInt(i, frame.rtpTimestamp and 0xffff_ffffL)
-        i = out.putInt(i, senderSsrc and 0xffff_ffffL)
+        sequenceNumber = (sequenceNumber + 1) and SEQUENCE_MASK
+        i = out.putInt(i, frame.rtpTimestamp and SSRC_MASK)
+        i = out.putInt(i, senderSsrc and SSRC_MASK)
 
         // Cast header. The reference-frame-id bit is always set, which is what makes the header 19
         // bytes rather than 18.
@@ -140,15 +148,26 @@ class RtpPacketizer(
 }
 
 internal fun ByteArray.putShort(offset: Int, value: Int): Int {
-    this[offset] = (value ushr 8).toByte()
+    this[offset] = (value ushr RtpPacketizerByte.SHIFT_LOW).toByte()
     this[offset + 1] = value.toByte()
     return offset + 2
 }
 
 internal fun ByteArray.putInt(offset: Int, value: Long): Int {
-    this[offset] = (value ushr 24).toByte()
-    this[offset + 1] = (value ushr 16).toByte()
-    this[offset + 2] = (value ushr 8).toByte()
-    this[offset + 3] = value.toByte()
-    return offset + 4
+    this[offset] = (value ushr RtpPacketizerByte.SHIFT_HIGH).toByte()
+    this[offset + RtpPacketizerByte.INDEX_1] = (value ushr RtpPacketizerByte.SHIFT_MID_HIGH).toByte()
+    this[offset + RtpPacketizerByte.INDEX_2] = (value ushr RtpPacketizerByte.SHIFT_MID_LOW).toByte()
+    this[offset + RtpPacketizerByte.INDEX_3] = value.toByte()
+    return offset + RtpPacketizerByte.INT_BYTES
+}
+
+private object RtpPacketizerByte {
+    const val SHIFT_LOW = 8
+    const val SHIFT_MID_LOW = 8
+    const val SHIFT_MID_HIGH = 16
+    const val SHIFT_HIGH = 24
+    const val INDEX_1 = 1
+    const val INDEX_2 = 2
+    const val INDEX_3 = 3
+    const val INT_BYTES = 4
 }

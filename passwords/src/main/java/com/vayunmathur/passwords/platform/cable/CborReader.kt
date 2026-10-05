@@ -24,35 +24,41 @@ class CborReader(private val bytes: ByteArray, private var pos: Int = 0) {
     /** Reads a single CBOR data item, advancing the cursor. */
     fun readValue(): Any? {
         val initial = readByte()
-        val major = (initial.toInt() and 0xFF) ushr 5
-        val minor = initial.toInt() and 0x1F
+        val major = (initial.toInt() and BYTE_MASK) ushr MAJOR_SHIFT
+        val minor = initial.toInt() and MINOR_MASK
         return when (major) {
             MAJOR_UNSIGNED -> readArg(minor)
             MAJOR_NEGATIVE -> -1L - readArg(minor)
             MAJOR_BYTE_STRING -> readBytes(readArg(minor).toIntChecked())
             MAJOR_TEXT_STRING -> String(readBytes(readArg(minor).toIntChecked()), Charsets.UTF_8)
-            MAJOR_ARRAY -> {
-                val n = readArg(minor).toIntChecked()
-                ArrayList<Any?>(n).apply { repeat(n) { add(readValue()) } }
-            }
-            MAJOR_MAP -> {
-                val n = readArg(minor).toIntChecked()
-                LinkedHashMap<Any, Any?>(n * 2).apply {
-                    repeat(n) {
-                        val k = readValue() ?: error("CBOR map key must not be null")
-                        put(k, readValue())
-                    }
-                }
-            }
-            MAJOR_SIMPLE -> when (minor) {
-                SIMPLE_FALSE -> false
-                SIMPLE_TRUE -> true
-                SIMPLE_NULL -> null
-                SIMPLE_UNDEFINED -> null
-                else -> error("Unsupported CBOR simple value: $minor")
-            }
+            MAJOR_ARRAY -> readArray(minor)
+            MAJOR_MAP -> readMap(minor)
+            MAJOR_SIMPLE -> readSimple(minor)
             else -> error("Unsupported CBOR major type: $major")
         }
+    }
+
+    private fun readArray(minor: Int): List<Any?> {
+        val n = readArg(minor).toIntChecked()
+        return ArrayList<Any?>(n).apply { repeat(n) { add(readValue()) } }
+    }
+
+    private fun readMap(minor: Int): Map<Any, Any?> {
+        val n = readArg(minor).toIntChecked()
+        return LinkedHashMap<Any, Any?>(n * 2).apply {
+            repeat(n) {
+                val k = readValue() ?: error("CBOR map key must not be null")
+                put(k, readValue())
+            }
+        }
+    }
+
+    private fun readSimple(minor: Int): Any? = when (minor) {
+        SIMPLE_FALSE -> false
+        SIMPLE_TRUE -> true
+        SIMPLE_NULL -> null
+        SIMPLE_UNDEFINED -> null
+        else -> error("Unsupported CBOR simple value: $minor")
     }
 
     /** Reads a value expected to be an integer. */
@@ -69,17 +75,17 @@ class CborReader(private val bytes: ByteArray, private var pos: Int = 0) {
     }
 
     private fun readArg(minor: Int): Long = when (minor) {
-        in 0..23 -> minor.toLong()
-        24 -> readByte().toLong() and 0xFF
-        25 -> readUInt(2)
-        26 -> readUInt(4)
-        27 -> readUInt(8)
+        in 0..ARG_IMMEDIATE_MAX -> minor.toLong()
+        ARG_UINT8 -> readByte().toLong() and BYTE_MASK
+        ARG_UINT16 -> readUInt(UINT16_BYTES)
+        ARG_UINT32 -> readUInt(UINT32_BYTES)
+        ARG_UINT64 -> readUInt(UINT64_BYTES)
         else -> error("Unsupported CBOR additional-info: $minor")
     }
 
     private fun readUInt(n: Int): Long {
         var value = 0L
-        repeat(n) { value = (value shl 8) or (readByte().toLong() and 0xFF) }
+        repeat(n) { value = (value shl BYTE_SHIFT) or (readByte().toLong() and BYTE_MASK) }
         return value
     }
 
@@ -111,6 +117,19 @@ class CborReader(private val bytes: ByteArray, private var pos: Int = 0) {
         private const val SIMPLE_TRUE = 21
         private const val SIMPLE_NULL = 22
         private const val SIMPLE_UNDEFINED = 23
+
+        private const val ARG_IMMEDIATE_MAX = 23
+        private const val ARG_UINT8 = 24
+        private const val ARG_UINT16 = 25
+        private const val ARG_UINT32 = 26
+        private const val ARG_UINT64 = 27
+        private const val BYTE_MASK = 0xFF
+        private const val BYTE_SHIFT = 8
+        private const val UINT16_BYTES = 2
+        private const val UINT32_BYTES = 4
+        private const val UINT64_BYTES = 8
+        private const val MAJOR_SHIFT = 5
+        private const val MINOR_MASK = 0x1F
 
         /** Decodes a single top-level CBOR value from [bytes]. */
         fun decode(bytes: ByteArray): Any? = CborReader(bytes).readValue()

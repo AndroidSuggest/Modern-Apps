@@ -13,14 +13,20 @@ data class GvAccount(
 )
 
 /** Folder/tab enum for `api2thread/list` (slot 0). Values observed 1–5 in capture 2. */
+private const val FOLDER_ALL = 1
+private const val FOLDER_INBOX = 2
+private const val FOLDER_CALLS = 3
+private const val FOLDER_VOICEMAIL = 4
+private const val FOLDER_SPAM = 5
+
 enum class GvFolder(val id: Int) {
-    All(1),
-    Inbox(2),
+    All(FOLDER_ALL),
+    Inbox(FOLDER_INBOX),
     // 3/4/5 map to calls/voicemail/spam-style folders; exact mapping is unproven from the
     // wire (see voice-documentation.md "Folder Navigation Shape").
-    Calls(3),
-    Voicemail(4),
-    Spam(5),
+    Calls(FOLDER_CALLS),
+    Voicemail(FOLDER_VOICEMAIL),
+    Spam(FOLDER_SPAM),
 }
 
 data class GvMessage(

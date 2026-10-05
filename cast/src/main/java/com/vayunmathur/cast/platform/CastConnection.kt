@@ -17,6 +17,7 @@ import com.vayunmathur.library.util.AppMessages
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
+import java.io.IOException
 
 private const val TAG = "CastController"
 
@@ -32,16 +33,16 @@ private const val TAG = "CastController"
  * tapping the same device again retries rather than doing nothing.
  */
 fun CastController.connect(context: Context, device: CastDevice, thenMirror: Boolean = true) {
-    val phase = _sessionState.value.phase
+    val phase = sessionStateMutable.value.phase
     val live = phase != ClientPhase.Idle && phase != ClientPhase.Failed
-    if (_device.value?.id == device.id && live) return
+    if (deviceMutable.value?.id == device.id && live) return
     val appContext = context.applicationContext
     pendingMirror = thenMirror
     scope.launch {
         teardown()
-        _device.value = device
-        _isConnecting.value = true
-        _sessionState.value = ClientState(phase = ClientPhase.Connecting)
+        deviceMutable.value = device
+        isConnectingMutable.value = true
+        sessionStateMutable.value = ClientState(phase = ClientPhase.Connecting)
 
         if (device.protocolVersion != 0 && device.protocolVersion != PROTOCOL_VERSION) {
             // Said before connecting rather than after a failed handshake: the TXT record already
@@ -53,14 +54,14 @@ fun CastController.connect(context: Context, device: CastDevice, thenMirror: Boo
         val newSocket = ControlSocket(device.host, device.port)
         try {
             newSocket.connect()
-        } catch (e: Exception) {
-            Log.w(TAG, "could not open a control channel to ${device.host}:${device.port}", e)
-            _isConnecting.value = false
-            _device.value = null
-            _sessionState.value = ClientState()
-            AppMessages.show(
-                appContext.getString(R.string.cast_connect_failed, device.friendlyName),
-            )
+        } catch (e: IOException) {
+            failConnect(appContext, device, e)
+            return@launch
+        } catch (e: IllegalArgumentException) {
+            failConnect(appContext, device, e)
+            return@launch
+        } catch (e: SecurityException) {
+            failConnect(appContext, device, e)
             return@launch
         }
         socket = newSocket
@@ -84,12 +85,12 @@ fun CastController.connect(context: Context, device: CastDevice, thenMirror: Boo
                 onPaired(appContext, device, newClient, outcome.deviceKey, thenMirror)
             }
             is HandshakeOutcome.NeedsCode -> {
-                _sessionState.value = ClientState(
+                sessionStateMutable.value = ClientState(
                     phase = ClientPhase.AwaitingCode,
                     receiverName = newClient.receiverName,
                     attemptsLeft = outcome.attemptsLeft,
                 )
-                _isConnecting.value = false
+                isConnectingMutable.value = false
             }
             is HandshakeOutcome.Failed -> fail(appContext, outcome.reason)
             is HandshakeOutcome.Ready -> Unit // begin() cannot produce this.
@@ -107,11 +108,11 @@ fun CastController.submitPairCode(context: Context, code: String) {
     val appContext = context.applicationContext
     scope.launch {
         val activeClient = client ?: return@launch
-        val device = _device.value ?: return@launch
+        val device = deviceMutable.value ?: return@launch
         when (val outcome = mutex.withLock { activeClient.enterCode(code) }) {
             is HandshakeOutcome.Paired ->
                 onPaired(appContext, device, activeClient, outcome.deviceKey, pendingMirror)
-            is HandshakeOutcome.NeedsCode -> _sessionState.update {
+            is HandshakeOutcome.NeedsCode -> sessionStateMutable.update {
                 it.copy(
                     phase = ClientPhase.AwaitingCode,
                     // -1 means "that was not even six digits", so the allowance is unchanged.
@@ -143,11 +144,11 @@ internal suspend fun CastController.onPaired(
         // is why the refusal message tells them to re-pair.
         MirrorPreferences.clearDemotedCodecs(context, receiverId)
     }
-    _sessionState.value = ClientState(
+    sessionStateMutable.value = ClientState(
         phase = ClientPhase.Paired,
         receiverName = activeClient.receiverName,
     )
-    _isConnecting.value = false
+    isConnectingMutable.value = false
     // **No watch loop yet.** `awaitEnd` reads the socket, and `configureStream` still has a
     // request/response to do on it - a second reader would consume the STREAM_READY that
     // negotiation is waiting for. The watch starts once the exchange is finished; until then a dead
@@ -169,12 +170,26 @@ fun CastController.disconnect(context: Context) {
 }
 
 internal suspend fun CastController.fail(context: Context, reason: ClientFailure) {
-    _sessionState.value = ClientState(
+    sessionStateMutable.value = ClientState(
         phase = ClientPhase.Failed,
         receiverName = client?.receiverName,
         failure = reason,
     )
-    _isConnecting.value = false
+    isConnectingMutable.value = false
     teardown(keepFailure = true)
     CastService.stop(context)
+}
+
+private fun CastController.failConnect(
+    appContext: Context,
+    device: CastDevice,
+    e: Exception,
+) {
+    Log.w(TAG, "could not open a control channel to ${device.host}:${device.port}", e)
+    isConnectingMutable.value = false
+    deviceMutable.value = null
+    sessionStateMutable.value = ClientState()
+    AppMessages.show(
+        appContext.getString(R.string.cast_connect_failed, device.friendlyName),
+    )
 }

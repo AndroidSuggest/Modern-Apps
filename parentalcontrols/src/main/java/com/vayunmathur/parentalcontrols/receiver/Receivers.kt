@@ -21,6 +21,9 @@ private const val TAG = "ParentalControlsReceiver"
  */
 class LimitReachedReceiver : BroadcastReceiver() {
 
+    // Broad catch is deliberate: onReceive must not throw, and the enforcer path
+    // throws undocumented RuntimeExceptions (not just SQLiteException).
+    @Suppress("TooGenericExceptionCaught")
     override fun onReceive(context: Context, intent: Intent) {
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: run {
             Log.w(TAG, "limit callback with no package")
@@ -31,8 +34,8 @@ class LimitReachedReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 Enforcer(app).onLimitReached(packageName)
-            } catch (t: Throwable) {
-                Log.e(TAG, "could not enforce the limit for $packageName", t)
+            } catch (e: Exception) {
+                Log.e(TAG, "could not enforce the limit for $packageName", e)
             } finally {
                 pending.finish()
             }
@@ -58,6 +61,9 @@ class LimitReachedReceiver : BroadcastReceiver() {
 /** Fired at each supervised-window boundary. Re-arms the next one through [Enforcer]. */
 class BedtimeReceiver : BroadcastReceiver() {
 
+    // Broad catch is deliberate: onReceive must not throw, and the enforcer path
+    // throws undocumented RuntimeExceptions (not just SQLiteException).
+    @Suppress("TooGenericExceptionCaught")
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         val pending = goAsync()
@@ -66,8 +72,8 @@ class BedtimeReceiver : BroadcastReceiver() {
                 // reconcile plus entry notifications for windows that just opened - not a bare
                 // reconcile, or the child would never learn why apps just closed.
                 Enforcer(app).onWindowBoundary()
-            } catch (t: Throwable) {
-                Log.e(TAG, "window boundary failed", t)
+            } catch (e: Exception) {
+                Log.e(TAG, "window boundary failed", e)
             } finally {
                 pending.finish()
             }
@@ -89,6 +95,9 @@ class BedtimeReceiver : BroadcastReceiver() {
  */
 class BootReceiver : BroadcastReceiver() {
 
+    // Broad catch is deliberate: onReceive must not throw, and the enforcer path
+    // throws undocumented RuntimeExceptions (not just SQLiteException).
+    @Suppress("TooGenericExceptionCaught")
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED &&
             intent.action != Intent.ACTION_LOCKED_BOOT_COMPLETED
@@ -100,11 +109,12 @@ class BootReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 Enforcer(app).reconcile()
-            } catch (t: Throwable) {
-                Log.e(TAG, "boot reconcile failed", t)
+            } catch (e: Exception) {
+                Log.e(TAG, "boot reconcile failed", e)
             } finally {
                 pending.finish()
             }
         }
     }
 }
+

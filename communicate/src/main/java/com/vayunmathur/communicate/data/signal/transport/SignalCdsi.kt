@@ -55,8 +55,8 @@ object SignalCdsi {
                 headers = mapOf("Authorization" to "Basic $authHeader"),
                 sslSocketFactory = sslSocketFactory,
             )
-        } catch (t: Throwable) {
-            Log.w(TAG, "CDSI auth fetch failed", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "CDSI auth fetch failed", expected)
             return null
         }
         if (!resp.isSuccess) {
@@ -69,8 +69,8 @@ object SignalCdsi {
     internal fun parseCredentials(body: String, warn: (String) -> Unit = { Log.w(TAG, it) }): Credentials? {
         val root = try {
             json.parseToJsonElement(body).jsonObject
-        } catch (e: Exception) {
-            warn("unparseable CDSI auth response: ${e.message}")
+        } catch (expected: Exception) {
+            warn("unparseable CDSI auth response: ${expected.message}")
             return null
         }
         val username = try { root["username"]?.jsonPrimitive?.content } catch (_: Exception) { null }
@@ -97,14 +97,15 @@ object SignalCdsi {
         if (previousE164s.isEmpty() && newE164s.isEmpty()) return LookupResult(emptyList(), token)
         return try {
             performLookup(credentials, previousE164s, newE164s, token)
-        } catch (t: Throwable) {
-            val cause = if (t is java.util.concurrent.ExecutionException) t.cause ?: t else t
+        } catch (expected1: Throwable) {
+            val cause =
+                if (expected1 is java.util.concurrent.ExecutionException) expected1.cause ?: expected1 else expected1
             if (cause is CdsiInvalidTokenException && token != null) {
                 Log.i(TAG, "CDSI token no longer valid, retrying as a full lookup")
                 try {
                     performLookup(credentials, emptySet(), previousE164s + newE164s, null)
-                } catch (retry: Throwable) {
-                    Log.w(TAG, "CDSI lookup failed", retry)
+                } catch (expected: Throwable) {
+                    Log.w(TAG, "CDSI lookup failed", expected)
                     null
                 }
             } else {

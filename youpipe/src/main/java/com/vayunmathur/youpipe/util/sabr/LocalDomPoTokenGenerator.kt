@@ -39,7 +39,12 @@ internal class LocalDomPoTokenGenerator private constructor(
                 "Local DOM BotGuard helper injection",
             )
             downloadAndRunBotguard()
-        } catch (error: Throwable) {
+        } catch (error: IllegalStateException) {
+            failInitialization(error)
+        } catch (error: java.io.IOException) {
+            failInitialization(error)
+        } catch (error: InterruptedException) {
+            Thread.currentThread().interrupt()
             failInitialization(error)
         }
     }
@@ -48,12 +53,28 @@ internal class LocalDomPoTokenGenerator private constructor(
     @Throws(SabrProtocolException::class)
     fun mint(identifier: String): ByteArray {
         if (closed) {
-            throw SabrProtocolException("Local DOM PO token generator is closed")
+            throw closedGeneratorException()
         }
         val waiter = TokenWaiter()
         synchronized(tokenWaiters) {
             tokenWaiters[identifier] = waiter
         }
+        postTokenRequest(identifier)
+        awaitToken(identifier, waiter)
+        return validatedToken(waiter)
+    }
+
+    @Throws(SabrProtocolException::class)
+    private fun validatedToken(waiter: TokenWaiter): ByteArray {
+        waiter.error.get()?.let {
+            throw tokenFailedException(it)
+        }
+        return waiter.token.get()?.takeIf { it.isNotEmpty() }
+            ?: throw emptyTokenException()
+    }
+
+    @Throws(SabrProtocolException::class)
+    private fun postTokenRequest(identifier: String) {
         val u8Identifier = stringToSabrU8(identifier)
         val posted = runtime.evaluateJavascript(
             "pipepipeSabrObtainPoToken(" + jsString(sessionId) + ", "
@@ -61,34 +82,45 @@ internal class LocalDomPoTokenGenerator private constructor(
             null,
         ) { error -> onTokenError(identifier, error) }
         if (!posted) {
-            synchronized(tokenWaiters) {
-                tokenWaiters.remove(identifier)
-            }
-            throw SabrProtocolException("Could not post Local DOM PO token generation")
+            discardWaiter(identifier)
+            throw postFailedException()
         }
+    }
+
+    @Throws(SabrProtocolException::class)
+    private fun awaitToken(identifier: String, waiter: TokenWaiter) {
         try {
             if (!waiter.latch.await(TOKEN_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                synchronized(tokenWaiters) {
-                    tokenWaiters.remove(identifier)
-                }
-                throw SabrProtocolException("Local DOM PO token generation timed out")
+                discardWaiter(identifier)
+                throw tokenTimeoutException()
             }
         } catch (error: InterruptedException) {
             Thread.currentThread().interrupt()
-            synchronized(tokenWaiters) {
-                tokenWaiters.remove(identifier)
-            }
+            discardWaiter(identifier)
             throw SabrProtocolException("Local DOM PO token generation interrupted", error)
         }
-        waiter.error.get()?.let {
-            throw SabrProtocolException("Local DOM PO token generation failed: ${it.message}", it)
-        }
-        val token = waiter.token.get()
-        if (token == null || token.isEmpty()) {
-            throw SabrProtocolException("Local DOM PO token generation returned no token")
-        }
-        return token
     }
+
+    private fun discardWaiter(identifier: String) {
+        synchronized(tokenWaiters) {
+            tokenWaiters.remove(identifier)
+        }
+    }
+
+    private fun closedGeneratorException() =
+        SabrProtocolException("Local DOM PO token generator is closed")
+
+    private fun postFailedException() =
+        SabrProtocolException("Could not post Local DOM PO token generation")
+
+    private fun tokenTimeoutException() =
+        SabrProtocolException("Local DOM PO token generation timed out")
+
+    private fun tokenFailedException(cause: Throwable) =
+        SabrProtocolException("Local DOM PO token generation failed: ${cause.message}", cause)
+
+    private fun emptyTokenException() =
+        SabrProtocolException("Local DOM PO token generation returned no token")
 
     fun isExpired(): Boolean {
         return !::expirationInstant.isInitialized || Instant.now().isAfter(expirationInstant)
@@ -132,13 +164,15 @@ internal class LocalDomPoTokenGenerator private constructor(
                     ),
                     data.toByteArray(),
                 )
-                if (response.responseCode() != 200) {
+                if (response.responseCode() != HTTP_OK) {
                     throw SabrProtocolException(
                         "Local DOM BotGuard request failed: ${response.responseCode()}",
                     )
                 }
                 onSuccess(response.responseBody())
-            } catch (error: Throwable) {
+            } catch (error: java.io.IOException) {
+                onError(error)
+            } catch (error: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
                 onError(error)
             }
         }, "SabrLocalDomPoTokenJnn").start()
@@ -159,13 +193,15 @@ internal class LocalDomPoTokenGenerator private constructor(
                         "Accept" to listOf("*/*"),
                     ),
                 )
-                if (response.responseCode() != 200) {
+                if (response.responseCode() != HTTP_OK) {
                     throw SabrProtocolException(
                         "Local DOM BotGuard GET failed: ${response.responseCode()}",
                     )
                 }
                 onSuccess(response.responseBody())
-            } catch (error: Throwable) {
+            } catch (error: java.io.IOException) {
+                onError(error)
+            } catch (error: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
                 onError(error)
             }
         }, "SabrLocalDomPoTokenJnnGet").start()
@@ -188,7 +224,7 @@ internal class LocalDomPoTokenGenerator private constructor(
         } ?: return
         try {
             waiter.token.set(csvU8ToByteArray(poTokenU8))
-        } catch (error: Throwable) {
+        } catch (error: IllegalArgumentException) {
             waiter.error.set(error)
         } finally {
             waiter.latch.countDown()
@@ -240,13 +276,15 @@ internal class LocalDomPoTokenGenerator private constructor(
             onSuccess = { body ->
                 try {
                     val (integrityToken, expirationSeconds) = parseSabrIntegrityTokenData(body)
-                    expirationInstant = Instant.now().plusSeconds(expirationSeconds - 600)
+                    expirationInstant = Instant.now().plusSeconds(expirationSeconds - EXPIRATION_SKEW_SECONDS)
                     runtime.evaluateJavascript(
                         "pipepipeSabrCreateMinter(" + jsString(sessionId) + ", "
                             + integrityToken + ");",
                         null,
                     ) { error -> failInitialization(error) }
-                } catch (error: Throwable) {
+                } catch (error: IllegalArgumentException) {
+                    failInitialization(error)
+                } catch (error: IllegalStateException) {
                     failInitialization(error)
                 }
             },
@@ -294,6 +332,8 @@ internal class LocalDomPoTokenGenerator private constructor(
         private const val INIT_TIMEOUT_MS = 60_000L
         private const val GOOGLE_API_KEY = "AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw"
         private const val REQUEST_KEY = "O43z0dpjhgX20SCx4KAo"
+        private const val EXPIRATION_SKEW_SECONDS = 600L
+        private const val HTTP_OK = 200
 
         @Throws(SabrProtocolException::class)
         fun create(
@@ -303,16 +343,7 @@ internal class LocalDomPoTokenGenerator private constructor(
             val init = InitWaiter()
             val generator = LocalDomPoTokenGenerator(context, init, bootstrap)
             generator.loadScriptAndInitialize()
-            try {
-                if (!init.latch.await(INIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                    generator.close()
-                    throw SabrProtocolException("Local DOM PO token initialization timed out")
-                }
-            } catch (error: InterruptedException) {
-                Thread.currentThread().interrupt()
-                generator.close()
-                throw SabrProtocolException("Local DOM PO token initialization interrupted", error)
-            }
+            awaitInitialization(init, generator)
             init.error.get()?.let {
                 throw SabrProtocolException(
                     "Local DOM PO token initialization failed: ${it.message}",
@@ -320,8 +351,28 @@ internal class LocalDomPoTokenGenerator private constructor(
                 )
             }
             return init.generator.get()
-                ?: throw SabrProtocolException("Local DOM PO token initialization returned no result")
+                ?: throw initEmptyException()
         }
+
+        @Throws(SabrProtocolException::class)
+        private fun awaitInitialization(init: InitWaiter, generator: LocalDomPoTokenGenerator) {
+            try {
+                if (!init.latch.await(INIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                    generator.close()
+                    throw initTimeoutException()
+                }
+            } catch (error: InterruptedException) {
+                Thread.currentThread().interrupt()
+                generator.close()
+                throw SabrProtocolException("Local DOM PO token initialization interrupted", error)
+            }
+        }
+
+        private fun initTimeoutException() =
+            SabrProtocolException("Local DOM PO token initialization timed out")
+
+        private fun initEmptyException() =
+            SabrProtocolException("Local DOM PO token initialization returned no result")
 
         private fun jsString(value: String): String {
             return "\"" + value

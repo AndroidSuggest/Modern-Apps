@@ -29,6 +29,7 @@ object RcsTyping {
 
     /** Minimum gap between active reports (avoid a MESSAGE per keystroke). */
     const val ACTIVE_THROTTLE_MS = 10_000L
+    private const val IDLE_SLACK_MS = 500L
 
     /**
      * Send an is-composing notification to [recipient]. Prefers the
@@ -36,7 +37,6 @@ object RcsTyping {
      * the leg accepted. Never throws.
      */
     suspend fun sendComposing(
-        context: Context,
         recipient: String,
         active: Boolean,
     ): Boolean = withContext(Dispatchers.IO) {
@@ -76,7 +76,7 @@ object RcsTypingThrottle {
 
     private val clocks = java.util.concurrent.ConcurrentHashMap<String, Clock>()
 
-    suspend fun onDraftChanged(context: Context, recipient: String, draft: String) {
+    suspend fun onDraftChanged(recipient: String, draft: String) {
         if (!RcsFeature.enabled || recipient.isBlank()) return
         val now = System.currentTimeMillis()
         val clock = clocks.getOrPut(recipient) { Clock() }
@@ -84,23 +84,23 @@ object RcsTypingThrottle {
             // Cleared: idle immediately (once).
             if (clock.idleDueMs != 0L) {
                 clock.idleDueMs = 0L
-                RcsTyping.sendComposing(context, recipient, false)
+                RcsTyping.sendComposing(recipient, false)
             }
             return
         }
         if (now - clock.lastActiveSentMs >= RcsTyping.ACTIVE_THROTTLE_MS) {
             clock.lastActiveSentMs = now
-            RcsTyping.sendComposing(context, recipient, true)
+            RcsTyping.sendComposing(recipient, true)
         }
         clock.idleDueMs = now + RcsTyping.IDLE_AFTER_MS
         // Schedule the idle report (idempotent: only the latest due fires).
         val due = clock.idleDueMs
         CoroutineScope(Dispatchers.IO).launch {
-            delay(RcsTyping.IDLE_AFTER_MS + 500L)
+            delay(RcsTyping.IDLE_AFTER_MS + IDLE_SLACK_MS)
             val current = clocks[recipient] ?: return@launch
             if (current.idleDueMs == due && System.currentTimeMillis() >= due) {
                 current.idleDueMs = 0L
-                RcsTyping.sendComposing(context.applicationContext, recipient, false)
+                RcsTyping.sendComposing(recipient, false)
             }
         }
     }

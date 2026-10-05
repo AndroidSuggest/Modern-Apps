@@ -22,6 +22,8 @@ import kotlin.math.sqrt
 
 private const val EARTH_RADIUS_M = 6_371_008.8
 private const val DEG_TO_RAD = PI / 180.0
+/** Windowed-snap miss threshold (m): fall back to a full scan beyond this. */
+private const val WINDOW_FALLBACK_M = 200.0
 
 /**
  * Cheap equirectangular distance approximation. Plenty accurate for the
@@ -158,7 +160,7 @@ class PolylineIndex(val route: Route) {
         val end = min(segmentCount - 1, lastSegmentIndex + windowRadius)
         val windowed = bestSnapInRange(position, start, end)
         val touchesBoundary = (start == 0) || (end == segmentCount - 1)
-        return if (!touchesBoundary && windowed.distanceOffRoute > 200.0) {
+        return if (!touchesBoundary && windowed.distanceOffRoute > WINDOW_FALLBACK_M) {
             // Window probably missed the actual nearest segment (long
             // tunnel, big U-turn, GPS jump). Fall back to a full scan.
             bestSnapInRange(position, 0, segmentCount - 1)

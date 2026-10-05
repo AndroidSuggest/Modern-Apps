@@ -116,7 +116,7 @@ class SensorChannel(
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(16)} for channel $channelId")
+            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         // Sweep subscribes the head unit never answered: each surfaces once
@@ -157,7 +157,7 @@ class SensorChannel(
                 Log.w(TAG, "sensor error: ${inbound.type} status=${inbound.status}")
                 onEvent(SensorEvent.SensorError(inbound.type.name, inbound.status))
             }
-            is InboundSensor.Observed -> Log.d(TAG, "unhandled sensor message 0x${type.toString(16)}")
+            is InboundSensor.Observed -> Log.d(TAG, "unhandled sensor message 0x${type.toString(HEX_RADIX)}")
         }
     }
 
@@ -193,5 +193,8 @@ class SensorChannel(
 
     private companion object {
         const val TAG = "MaAuto.Sensors"
+
+        /** Radix for hex message-id logging. */
+        const val HEX_RADIX = 16
     }
 }

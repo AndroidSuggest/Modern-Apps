@@ -29,12 +29,20 @@ class WeatherCarAppService : CarAppService() {
 
     // API 6+: per-display sessions. Cluster sessions still get the locations
     // list — the host picks which templates it allows.
-    @RequiresCarApi(6)
+    @RequiresCarApi(PER_DISPLAY_SESSION_API)
     override fun onCreateSession(sessionInfo: SessionInfo): Session = WeatherCarSession()
 
     // API 9 (experimental): keep MA brand styling on hosts that offer it.
-    @RequiresCarApi(9)
+    @RequiresCarApi(APP_THEME_API)
     @ExperimentalCarApi
     override fun getCarAppThemeSource(): Int =
         CarAppService.THEME_SOURCE_APP
+
+    private companion object {
+        /** Car-app API level for per-display sessions. */
+        const val PER_DISPLAY_SESSION_API = 6
+
+        /** Car-app API level for app-provided themes. */
+        const val APP_THEME_API = 9
+    }
 }

@@ -1,6 +1,8 @@
 package com.vayunmathur.library.util
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -21,6 +23,21 @@ fun rememberGameHubClient(gameId: String): GameHubClient {
     return remember(gameId) { GameHubClient(context, gameId) }
 }
 
+private fun gameDisplayName(gameId: String): String = when (gameId) {
+    "chess" -> "Chess"
+    "solitaire" -> "Solitaire"
+    "alchemist" -> "Alchemist"
+    "pipes" -> "Pipes"
+    "unblockjam" -> "Unblock Jam"
+    "wordmaker" -> "Wordmaker"
+    "logicgate" -> "Logic Gates"
+    "sudoku" -> "Sudoku"
+    "minesweeper" -> "Minesweeper"
+    "nonogram" -> "Nonogram"
+    "arrows" -> "Arrows"
+    else -> gameId.replaceFirstChar { it.uppercase() }
+}
+
 private fun resolveGameMetadata(
     context: Context,
     gameId: String,
@@ -29,26 +46,33 @@ private fun resolveGameMetadata(
     if (explicit != null) return explicit
     return GameMetadata(
         gameId = gameId,
-        displayName = when (gameId) {
-            "chess" -> "Chess"
-            "solitaire" -> "Solitaire"
-            "alchemist" -> "Alchemist"
-            "pipes" -> "Pipes"
-            "unblockjam" -> "Unblock Jam"
-            "wordmaker" -> "Wordmaker"
-            "logicgate" -> "Logic Gates"
-            "sudoku" -> "Sudoku"
-            "minesweeper" -> "Minesweeper"
-            "nonogram" -> "Nonogram"
-            "arrows" -> "Arrows"
-            else -> gameId.replaceFirstChar { it.uppercase() }
-        },
+        displayName = gameDisplayName(gameId),
         description = null,
-        versionName = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName } catch (_: Exception) { null },
-        versionCode = try { context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode } catch (_: Exception) { null }
+        versionName = packageVersionName(context),
+        versionCode = packageVersionCode(context)
     )
 }
 
+private fun packageVersionName(context: Context): String? {
+    return try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    }
+}
+
+private fun packageVersionCode(context: Context): Long? {
+    return try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(context.packageName, 0).versionCode.toLong()
+        }
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    }
+}
 /**
  * One-liner hook: registers game + achievement defs into hub, tracks sessions via lifecycle.
  * Registration happens immediately on open (by gameId), not gated on achievementsManager.

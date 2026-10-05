@@ -61,7 +61,7 @@ internal class LyftCardTokenizer(
         }
         Log.d(TAG, "POST /v1/tokenization_strategies -> ${resp.status} (${resp.bytes.size} bytes)")
         if (!resp.isSuccess) {
-            Log.w(TAG, "tokenization_strategies failed: ${resp.text.take(200)}")
+            Log.w(TAG, "tokenization_strategies failed: ${resp.text.take(ERROR_BODY_PREVIEW_MAX)}")
             return null
         }
         val config = parseConfig(resp)
@@ -100,27 +100,29 @@ internal class LyftCardTokenizer(
             ?: return null
         val strategies = root["strategies"]?.jsonArray?.mapNotNull { it as? JsonObject }
             ?: return null
-        strategies.firstNotNullOfOrNull { s ->
-            (s["stripe_card_setup_intent_data"] as? JsonObject)?.let { d ->
-                d.lyftStr("api_key")?.let { apiKey ->
-                    TokenizerConfig(
-                        provider = "stripe_setup_intent",
-                        key = apiKey,
-                        clientSecret = d.lyftStr("client_secret"),
-                        setupIntentId = d.lyftStr("setup_intent_id"),
-                        stripeApiVersion = d.lyftStr("stripe_api_version"),
-                    )
-                }
-            }
+        strategies.firstNotNullOfOrNull(::setupIntentConfig)?.let { return it }
+        strategies.firstNotNullOfOrNull { s: JsonObject ->
+            val data = s["stripe_card_data"] as? JsonObject ?: return@firstNotNullOfOrNull null
+            val apiKey = data.lyftStr("api_key") ?: return@firstNotNullOfOrNull null
+            TokenizerConfig("stripe", apiKey)
         }?.let { return it }
-        strategies.firstNotNullOfOrNull { s ->
-            (s["stripe_card_data"] as? JsonObject)?.lyftStr("api_key")
-                ?.let { TokenizerConfig("stripe", it) }
-        }?.let { return it }
-        return strategies.firstNotNullOfOrNull { s ->
-            (s["braintree_card_data"] as? JsonObject)?.lyftStr("api_key")
-                ?.let { TokenizerConfig("braintree", it) }
+        return strategies.firstNotNullOfOrNull { s: JsonObject ->
+            val data = s["braintree_card_data"] as? JsonObject ?: return@firstNotNullOfOrNull null
+            val apiKey = data.lyftStr("api_key") ?: return@firstNotNullOfOrNull null
+            TokenizerConfig("braintree", apiKey)
         }
+    }
+
+    private fun setupIntentConfig(strategy: JsonObject): TokenizerConfig? {
+        val data = strategy["stripe_card_setup_intent_data"] as? JsonObject ?: return null
+        val apiKey = data.lyftStr("api_key") ?: return null
+        return TokenizerConfig(
+            provider = "stripe_setup_intent",
+            key = apiKey,
+            clientSecret = data.lyftStr("client_secret"),
+            setupIntentId = data.lyftStr("setup_intent_id"),
+            stripeApiVersion = data.lyftStr("stripe_api_version"),
+        )
     }
 
     fun parseConfigProto(bytes: ByteArray): TokenizerConfig? {
@@ -129,21 +131,21 @@ internal class LyftCardTokenizer(
         // stripe_card_setup_intent_data (tag 22): api_key(1), client_secret(2), setup_intent_id(3),
         // stripe_api_version(4).
         strategies.firstNotNullOfOrNull { s ->
-            s.message(22)?.let { d ->
-                d.string(1)?.let { apiKey ->
+            s.message(SETUP_INTENT_STRATEGY_FIELD)?.let { d ->
+                d.string(API_KEY_FIELD)?.let { apiKey ->
                     TokenizerConfig(
                         provider = "stripe_setup_intent",
                         key = apiKey,
-                        clientSecret = d.string(2),
-                        setupIntentId = d.string(3),
-                        stripeApiVersion = d.string(4),
+                        clientSecret = d.string(CLIENT_SECRET_FIELD),
+                        setupIntentId = d.string(SETUP_INTENT_ID_FIELD),
+                        stripeApiVersion = d.string(STRIPE_API_VERSION_FIELD),
                     )
                 }
             }
         }?.let { return it }
-        strategies.firstNotNullOfOrNull { it.message(10)?.string(1) }
+        strategies.firstNotNullOfOrNull { it.message(STRIPE_STRATEGY_FIELD)?.string(API_KEY_FIELD) }
             ?.let { return TokenizerConfig("stripe", it) }
-        return strategies.firstNotNullOfOrNull { it.message(11)?.string(1) }
+        return strategies.firstNotNullOfOrNull { it.message(BRAINTREE_STRATEGY_FIELD)?.string(API_KEY_FIELD) }
             ?.let { TokenizerConfig("braintree", it) }
     }
 
@@ -203,12 +205,12 @@ internal class LyftCardTokenizer(
         val root = runCatching { json.parseToJsonElement(resp.text) as? JsonObject }.getOrNull()
         if (!resp.isSuccess) {
             val msg = root?.get("error")?.jsonObject?.lyftStr("message")
-                ?: "Stripe HTTP ${resp.status}: ${resp.text.take(200)}"
+                ?: "Stripe HTTP ${resp.status}: ${resp.text.take(ERROR_BODY_PREVIEW_MAX)}"
             return TokenizeResult.Err(msg)
         }
         val pm = root?.lyftStr("payment_method")
             ?: return TokenizeResult.Err("Stripe returned no payment_method")
-        Log.d(TAG, "Stripe SetupIntent confirmed ••${card.last4} -> ${pm.take(8)}…")
+        Log.d(TAG, "Stripe SetupIntent confirmed ••${card.last4} -> ${pm.take(TOKEN_LOG_PREFIX_LENGTH)}…")
         // mt00.provider for a Stripe card is jju.h(qbe0.STRIPE.name()) = "stripe".
         return TokenizeResult.Ok("stripe", token = pm, nonce = null, version = "STRIPE_SETUP_INTENT")
     }
@@ -244,11 +246,11 @@ internal class LyftCardTokenizer(
         val root = runCatching { json.parseToJsonElement(resp.text) as? JsonObject }.getOrNull()
         if (!resp.isSuccess) {
             val msg = root?.get("error")?.jsonObject?.lyftStr("message")
-                ?: "Stripe HTTP ${resp.status}: ${resp.text.take(200)}"
+                ?: "Stripe HTTP ${resp.status}: ${resp.text.take(ERROR_BODY_PREVIEW_MAX)}"
             return TokenizeResult.Err(msg)
         }
         val tok = root?.lyftStr("id") ?: return TokenizeResult.Err("Stripe returned no token")
-        Log.d(TAG, "Stripe tokenized ••${card.last4} -> ${tok.take(8)}…")
+        Log.d(TAG, "Stripe tokenized ••${card.last4} -> ${tok.take(TOKEN_LOG_PREFIX_LENGTH)}…")
         return TokenizeResult.Ok("stripe", token = tok, nonce = null, version = "STRIPE_TOKEN")
     }
 
@@ -296,14 +298,14 @@ internal class LyftCardTokenizer(
         val errors = root?.get("errors")?.jsonArray
         if (!resp.isSuccess || !errors.isNullOrEmpty()) {
             val msg = errors?.firstOrNull()?.jsonObject?.lyftStr("message")
-                ?: "Braintree HTTP ${resp.status}: ${resp.text.take(200)}"
+                ?: "Braintree HTTP ${resp.status}: ${resp.text.take(ERROR_BODY_PREVIEW_MAX)}"
             return TokenizeResult.Err(msg)
         }
         val nonce = root?.get("data")?.jsonObject
             ?.get("tokenizeCreditCard")?.jsonObject
             ?.lyftStr("token")
             ?: return TokenizeResult.Err("Braintree returned no nonce")
-        Log.d(TAG, "Braintree tokenized ••${card.last4} -> nonce ${nonce.take(6)}…")
+        Log.d(TAG, "Braintree tokenized ••${card.last4} -> nonce ${nonce.take(NONCE_LOG_PREFIX_LENGTH)}…")
         return TokenizeResult.Ok("braintree", token = null, nonce = nonce)
     }
 
@@ -329,8 +331,61 @@ internal class LyftCardTokenizer(
 
     private companion object {
         private const val TAG = "LyftCardTokenizer"
+
+        /** How much of a processor error body is logged — enough to identify it, never card data. */
+        private const val ERROR_BODY_PREVIEW_MAX = 200
+        /** Logged prefix of a Stripe token/payment-method id — the rest is redacted. */
+        private const val TOKEN_LOG_PREFIX_LENGTH = 8
+        /** Logged prefix of a Braintree nonce — the rest is redacted. */
+        private const val NONCE_LOG_PREFIX_LENGTH = 6
+        /** Visible prefix length when logging a redacted processor key. */
+        private const val REDACTED_KEY_PREFIX_LENGTH = 8
+
+        // TokenizationStrategy (`sbe0`) field tags: which processor a strategy is for.
+        private const val STRIPE_STRATEGY_FIELD = 10
+        private const val BRAINTREE_STRATEGY_FIELD = 11
+        private const val SETUP_INTENT_STRATEGY_FIELD = 22
+        // SetupIntent strategy (`uhc0`) field tags.
+        private const val API_KEY_FIELD = 1
+        private const val CLIENT_SECRET_FIELD = 2
+        private const val SETUP_INTENT_ID_FIELD = 3
+        private const val STRIPE_API_VERSION_FIELD = 4
     }
 }
 
+/**
+ * Which processor to tokenize a new card with, and that processor's client [key]. For the modern
+ * Stripe SetupIntent strategy (`sbe0` tag 22, `uhc0`) the extra SetupIntent fields are carried too.
+ */
+internal data class TokenizerConfig(
+    val provider: String,
+    val key: String,
+    val clientSecret: String? = null,
+    val setupIntentId: String? = null,
+    val stripeApiVersion: String? = null,
+)
+
+/**
+ * Outcome of tokenizing a card at the processor: a Stripe [token] or a Braintree [nonce], plus the
+ * [version] (`it00`) the server needs to interpret a Stripe token (STRIPE_TOKEN vs
+ * STRIPE_SETUP_INTENT); null for processors that don't send one (Braintree).
+ */
+internal sealed interface TokenizeResult {
+    data class Ok(
+        val provider: String,
+        val token: String?,
+        val nonce: String?,
+        val version: String? = null,
+    ) : TokenizeResult
+
+    data class Err(val message: String) : TokenizeResult
+}
+
 private fun redactKey(key: String): String =
-    if (key.length <= 8) "***" else "${key.take(8)}…(len ${key.length})"
+    if (key.length <= REDACTED_KEY_PREFIX_LENGTH) {
+        "***"
+    } else {
+        "${key.take(REDACTED_KEY_PREFIX_LENGTH)}…(len ${key.length})"
+    }
+
+private const val REDACTED_KEY_PREFIX_LENGTH = 8

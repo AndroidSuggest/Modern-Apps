@@ -48,22 +48,16 @@ object SabrNgSessionStore {
         localization: Localization,
         tokenMinter: ((Boolean) -> ByteArray?)? = null
     ): SabrNgSourceSpec {
-        val videoFormat = selectVideoFormat(info, preferredVideoItag)
-            ?: throw IOException("No SABR video format for $videoId (itag=$preferredVideoItag)")
-        val audioFormat = selectAudioFormat(info, preferredAudioItag, preferredAudioTrackId)
-            ?: throw IOException("No SABR audio format for $videoId (itag=$preferredAudioItag)")
+        val videoFormat = requireVideoFormat(info, videoId, preferredVideoItag)
+        val audioFormat = requireAudioFormat(info, videoId, preferredAudioItag, preferredAudioTrackId)
         val token = poToken ?: info.getPoToken() ?: ByteArray(0)
         val initByItag = fetchInitializationSegments(
             videoId, info, listOf(audioFormat, videoFormat), token, tokenMinter
         )
         val audioInit = initByItag[audioFormat.getItag()]
-            ?: throw IOException(
-                "SABR did not return an audio init segment for $videoId (itag=${audioFormat.getItag()})"
-            )
+            ?: throw missingInitIOException(videoId, "audio", audioFormat.getItag())
         val videoInit = initByItag[videoFormat.getItag()]
-            ?: throw IOException(
-                "SABR did not return a video init segment for $videoId (itag=${videoFormat.getItag()})"
-            )
+            ?: throw missingInitIOException(videoId, "video", videoFormat.getItag())
         return SabrNgSourceSpec(
             videoId, info, audioFormat, videoFormat, localization, audioInit, videoInit,
             poToken ?: info.getPoToken()
@@ -119,6 +113,26 @@ object SabrNgSessionStore {
         }
         return initByItag
     }
+
+    @Throws(IOException::class)
+    private fun requireVideoFormat(
+        info: YoutubeSabrInfo,
+        videoId: String,
+        preferredItag: Int,
+    ): YoutubeSabrInfo.Format = selectVideoFormat(info, preferredItag)
+        ?: throw IOException("No SABR video format for $videoId (itag=$preferredItag)")
+
+    @Throws(IOException::class)
+    private fun requireAudioFormat(
+        info: YoutubeSabrInfo,
+        videoId: String,
+        preferredItag: Int,
+        preferredAudioTrackId: String?,
+    ): YoutubeSabrInfo.Format = selectAudioFormat(info, preferredItag, preferredAudioTrackId)
+        ?: throw IOException("No SABR audio format for $videoId (itag=$preferredItag)")
+
+    private fun missingInitIOException(videoId: String, kind: String, itag: Int): IOException =
+        IOException("SABR did not return a $kind init segment for $videoId (itag=$itag)")
 
     private fun selectVideoFormat(
         info: YoutubeSabrInfo,

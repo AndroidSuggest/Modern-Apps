@@ -45,7 +45,7 @@ class AppResolver(private val context: Context) {
         parsed: PacketInspector.ParsedPacket,
         direction: ConnectionTracker.Direction,
     ): ResolvedApp {
-        if (parsed.protocolNumber != 6 && parsed.protocolNumber != 17) return UNKNOWN
+        if (parsed.protocolNumber != PROTO_TCP && parsed.protocolNumber != PROTO_UDP) return UNKNOWN
 
         val local = if (direction == ConnectionTracker.Direction.TX) parsed.srcIp else parsed.dstIp
         val localPort = if (direction == ConnectionTracker.Direction.TX) parsed.srcPort else parsed.dstPort
@@ -89,7 +89,7 @@ class AppResolver(private val context: Context) {
 
             // An unconnected UDP socket (the common case for DNS and some QUIC stacks) has no peer
             // recorded in the kernel, so it only matches against a wildcard remote.
-            if (uid == Process.INVALID_UID && protocol == 17) {
+            if (uid == Process.INVALID_UID && protocol == PROTO_UDP) {
                 val wildcard = socketAddress(if (localIp.contains(':')) "::" else "0.0.0.0", 0)
                 if (wildcard != null) uid = cm.getConnectionOwnerUid(protocol, local, wildcard)
             }
@@ -103,7 +103,8 @@ class AppResolver(private val context: Context) {
         } catch (se: SecurityException) {
             Log.w(TAG, "SecurityException getConnectionOwnerUid", se)
             null
-        } catch (_: Exception) {
+        } catch (expected: IllegalArgumentException) {
+            Log.w(TAG, "bad socket address for getConnectionOwnerUid", expected)
             null
         }
     }
@@ -111,18 +112,28 @@ class AppResolver(private val context: Context) {
     /** Builds an address from a numeric literal only — never let this hit the resolver. */
     private fun socketAddress(ip: String, port: Int): InetSocketAddress? = try {
         InetSocketAddress(InetAddress.getByName(ip), port)
-    } catch (_: Exception) {
+    } catch (expected: IllegalArgumentException) {
+        Log.w(TAG, "bad address $ip:$port", expected)
+        null
+    } catch (expected: SecurityException) {
+        Log.w(TAG, "blocked address $ip:$port", expected)
         null
     }
 
     private fun describe(uid: Int): ResolvedApp {
-        if (uid == 0) return ResolvedApp(0, null, "root")
+        if (uid == ROOT_UID) return ResolvedApp(0, null, "root")
 
-        val pkg = try { packageManager.getPackagesForUid(uid)?.let(::pickPackage) } catch (_: Exception) { null }
+        val pkg = try {
+            packageManager.getPackagesForUid(uid)?.let(::pickPackage)
+        } catch (expected: PackageManager.NameNotFoundException) {
+            Log.w(TAG, "packages for uid $uid gone", expected)
+            null
+        }
         if (pkg != null) {
             val label = try {
                 packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
-            } catch (_: Exception) {
+            } catch (expected: PackageManager.NameNotFoundException) {
+                Log.w(TAG, "label for $pkg gone", expected)
                 ""
             }
             return ResolvedApp(uid, pkg, label.ifBlank { pkg })
@@ -131,7 +142,12 @@ class AppResolver(private val context: Context) {
         systemLabel(uid)?.let { return ResolvedApp(uid, null, it) }
 
         // Shared UIDs report as "shared:android.uid.foo"; better than showing a bare number.
-        val name = try { packageManager.getNameForUid(uid) } catch (_: Exception) { null }
+        val name = try {
+            packageManager.getNameForUid(uid)
+        } catch (expected: SecurityException) {
+            Log.w(TAG, "name for uid $uid blocked", expected)
+            null
+        }
         if (!name.isNullOrBlank()) {
             return ResolvedApp(uid, null, name.removePrefix("shared:"))
         }
@@ -162,7 +178,7 @@ class AppResolver(private val context: Context) {
     }
 
     private fun <K, V> lru(max: Int): MutableMap<K, V> =
-        object : LinkedHashMap<K, V>(64, 0.75f, true) {
+        object : LinkedHashMap<K, V>(LRU_INITIAL_CAPACITY, LRU_LOAD_FACTOR, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>) = size > max
         }
 
@@ -171,6 +187,11 @@ class AppResolver(private val context: Context) {
         private const val MAX_FLOWS = 4096
         private const val RETRY_COOLDOWN_MS = 300L
         private const val DNS_UID = 1051
+        private const val PROTO_TCP = 6
+        private const val PROTO_UDP = 17
+        private const val ROOT_UID = 0
+        private const val LRU_INITIAL_CAPACITY = 64
+        private const val LRU_LOAD_FACTOR = 0.75f
 
         /** uid -1 marks "not attributed yet" so a later packet on the same flow can still upgrade it. */
         val UNKNOWN = ResolvedApp(uid = -1, packageName = null, appLabel = "Unknown")

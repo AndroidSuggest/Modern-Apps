@@ -7,6 +7,7 @@ import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.util.Log
 import java.io.File
+import java.io.IOException
 import java.nio.ByteBuffer
 
 /**
@@ -24,6 +25,8 @@ object OpusRemuxer {
 
     private const val TAG = "OpusRemuxer"
     private const val INITIAL_BUFFER_SIZE = 1 * 1024 * 1024
+
+    private data class AudioTrack(val index: Int, val format: MediaFormat)
 
     /**
      * Returns the Ogg/Opus bytes, or null if the input has no readable Opus track or the
@@ -44,8 +47,8 @@ object OpusRemuxer {
                 Log.w(TAG, "remux failed: muxToOgg returned false (in=${webmOpus.size})")
                 null
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "remux threw: ${e.javaClass.simpleName}: ${e.message}", e)
+        } catch (expected: IOException) {
+            Log.w(TAG, "remux threw: ${expected.javaClass.simpleName}: ${expected.message}", expected)
             null
         } finally {
             input.delete()
@@ -59,50 +62,20 @@ object OpusRemuxer {
         try {
             extractor = MediaExtractor().apply { setDataSource(input.absolutePath) }
 
-            var trackIndex = -1
-            var format: MediaFormat? = null
-            for (i in 0 until extractor.trackCount) {
-                val candidate = extractor.getTrackFormat(i)
-                val mime = candidate.getString(MediaFormat.KEY_MIME) ?: continue
-                Log.i(TAG, "remux track $i mime=$mime")
-                if (mime.startsWith("audio/")) {
-                    trackIndex = i
-                    format = candidate
-                    break
-                }
-            }
-            if (trackIndex == -1 || format == null) {
+            val track = findAudioTrack(extractor) ?: run {
                 Log.w(TAG, "remux: no audio track found in ${extractor.trackCount} tracks")
                 return false
             }
-
             muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_OGG)
-            val muxerTrack = muxer.addTrack(format)
+            val muxerTrack = muxer.addTrack(track.format)
             muxer.start()
-            extractor.selectTrack(trackIndex)
+            extractor.selectTrack(track.index)
 
-            var buffer = ByteBuffer.allocate(INITIAL_BUFFER_SIZE)
-            val info = MediaCodec.BufferInfo()
-            var samples = 0
-            while (true) {
-                buffer.clear()
-                var sampleSize = extractor.readSampleData(buffer, 0)
-                if (sampleSize < 0) break
-                if (sampleSize > buffer.capacity()) {
-                    buffer = ByteBuffer.allocate(sampleSize)
-                    buffer.clear()
-                    sampleSize = extractor.readSampleData(buffer, 0)
-                    if (sampleSize < 0) break
-                }
-                info.set(0, sampleSize, extractor.sampleTime, bufferFlagsFor(extractor.sampleFlags))
-                muxer.writeSampleData(muxerTrack, buffer, info)
-                extractor.advance()
-                samples++
-            }
+            val samples = copySamples(extractor, muxer, muxerTrack)
             Log.i(TAG, "remux: copied $samples samples")
             return true
-        } catch (e: Exception) {
-            Log.w(TAG, "remux muxToOgg threw: ${e.javaClass.simpleName}: ${e.message}", e)
+        } catch (expected: IOException) {
+            Log.w(TAG, "remux muxToOgg threw: ${expected.javaClass.simpleName}: ${expected.message}", expected)
             return false
         } finally {
             runCatching { extractor?.release() }
@@ -111,6 +84,64 @@ object OpusRemuxer {
                 runCatching { it.release() }
             }
         }
+    }
+
+    private fun findAudioTrack(extractor: MediaExtractor): AudioTrack? {
+        val candidates = (0 until extractor.trackCount).map { i ->
+            i to extractor.getTrackFormat(i)
+        }
+        for ((i, candidate) in candidates) {
+            val mime = mimeOf(candidate) ?: continue
+            Log.i(TAG, "remux track $i mime=$mime")
+            if (isAudioMime(mime)) return AudioTrack(i, candidate)
+        }
+        return null
+    }
+
+    private fun mimeOf(format: MediaFormat): String? =
+        format.getString(MediaFormat.KEY_MIME)
+
+    private fun isAudioMime(mime: String): Boolean = mime.startsWith("audio/")
+
+    private fun copySamples(extractor: MediaExtractor, muxer: MediaMuxer, muxerTrack: Int): Int {
+        val info = MediaCodec.BufferInfo()
+        val state = CopyState(ByteBuffer.allocate(INITIAL_BUFFER_SIZE))
+        while (state.advance(extractor, muxer, muxerTrack, info)) {
+            // advance() returns false at end of stream.
+        }
+        return state.samples
+    }
+
+    private class CopyState(var buffer: ByteBuffer) {
+        var samples = 0
+        private var pendingSize: Int? = null
+
+        fun advance(
+            extractor: MediaExtractor,
+            muxer: MediaMuxer,
+            muxerTrack: Int,
+            info: MediaCodec.BufferInfo,
+        ): Boolean {
+            val size = pendingSize ?: readSample(extractor, buffer) ?: return false
+            if (pendingSize == null && size > buffer.capacity()) {
+                buffer = ByteBuffer.allocate(size)
+                pendingSize = size
+                return true
+            }
+            pendingSize = null
+            val actual = readSample(extractor, buffer) ?: return false
+            info.set(0, actual, extractor.sampleTime, bufferFlagsFor(extractor.sampleFlags))
+            muxer.writeSampleData(muxerTrack, buffer, info)
+            extractor.advance()
+            samples++
+            return true
+        }
+    }
+
+    private fun readSample(extractor: MediaExtractor, buffer: ByteBuffer): Int? {
+        buffer.clear()
+        val sampleSize = extractor.readSampleData(buffer, 0)
+        return if (sampleSize < 0) null else sampleSize
     }
 
     // MediaExtractor.SAMPLE_FLAG_* and MediaCodec.BUFFER_FLAG_* are distinct constant spaces.

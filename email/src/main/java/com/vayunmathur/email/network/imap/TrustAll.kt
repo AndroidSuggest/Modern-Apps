@@ -19,6 +19,27 @@ import java.net.Socket
  */
 object TrustAll {
 
+    private val KNOWN_SUFFIXES = setOf(".gmail.com")
+
+    private val EXACT_KNOWN_HOSTS = setOf(
+        "imap.gmail.com",
+        "smtp.gmail.com",
+        "imap.mail.yahoo.com",
+        "smtp.mail.yahoo.com",
+        "imap.aol.com",
+        "smtp.aol.com",
+        "imap.fastmail.com",
+        "smtp.fastmail.com",
+        "imap.mail.me.com",
+        "smtp.mail.me.com",
+        "outlook.office365.com",
+        "smtp-mail.outlook.com",
+        "smtp.office365.com",
+        "outlook.office.com",
+        "imap-mail.outlook.com",
+        "imap.outlook.com",
+    )
+
     private val TRUST_ALL_MANAGERS: Array<TrustManager> = arrayOf(
         object : X509TrustManager {
             override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
@@ -43,15 +64,8 @@ object TrustAll {
     /** Known good hosts where we want strict system trust. */
     fun isKnownHost(host: String): Boolean {
         val h = host.lowercase()
-        return h == "imap.gmail.com" || h.endsWith(".gmail.com") ||
-            h == "smtp.gmail.com" ||
-            h == "imap.mail.yahoo.com" || h == "smtp.mail.yahoo.com" ||
-            h == "imap.aol.com" || h == "smtp.aol.com" ||
-            h == "imap.fastmail.com" || h == "smtp.fastmail.com" ||
-            h == "imap.mail.me.com" || h == "smtp.mail.me.com" ||
-            h == "outlook.office365.com" || h == "smtp-mail.outlook.com" ||
-            h == "smtp.office365.com" || h == "outlook.office.com" ||
-            h == "imap-mail.outlook.com" || h == "imap.outlook.com"
+        if (h in EXACT_KNOWN_HOSTS) return true
+        return KNOWN_SUFFIXES.any { h.endsWith(it) }
     }
 
     fun socketFactoryFor(host: String, forceTrustAll: Boolean): SSLSocketFactory {

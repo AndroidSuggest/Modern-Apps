@@ -58,8 +58,8 @@ class MadladHandle private constructor(private val directory: File) : AutoClosea
         } else {
             try {
                 create(directory)
-            } catch (e: Throwable) {
-                Log.e(TAG, "cannot open the MADLAD model in $directory", e)
+            } catch (expected: Exception) {
+                Log.e(TAG, "cannot open the MADLAD model in $directory", expected)
                 0L
             }
         }

@@ -195,11 +195,11 @@ fun ContactItem(
     if (dropdownList != null) {
         Column(modifier = modifier.fillMaxWidth()) {
             content()
-            dropdownList.forEachIndexed { idx, it ->
+            dropdownList.forEachIndexed { idx, label ->
                 Spacer(Modifier.height(4.dp))
                 ListItem(
                     content = {
-                        Text(text = it)
+                        Text(text = label)
                     },
                     modifier = Modifier.clickable {
                         dropdownListClick(idx)

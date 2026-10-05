@@ -110,10 +110,13 @@ class VoiceInput(private val context: Context) {
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
 
+        // Broad catch is deliberate: startListening throws undocumented
+        // RuntimeExceptions (not just SecurityException) on some builds.
+        @Suppress("TooGenericExceptionCaught")
         try {
             sr.startListening(intent)
-        } catch (t: Throwable) {
-            Log.e(TAG, "startListening failed", t)
+        } catch (e: Exception) {
+            Log.e(TAG, "startListening failed", e)
             onFailure(VoiceFailure.OTHER)
         }
     }

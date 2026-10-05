@@ -23,7 +23,13 @@ sealed interface Route : NavKey {
     @Serializable
     data class NewTimerDialog(val lengthSeconds: Int? = null, val message: String? = null) : Route
     @Serializable
-    data class NewAlarmDialog(val hour: Int? = null, val minutes: Int? = null, val message: String? = null, val days: ArrayList<Int>? = null, val skipUi: Boolean = false) : Route
+    data class NewAlarmDialog(
+        val hour: Int? = null,
+        val minutes: Int? = null,
+        val message: String? = null,
+        val days: ArrayList<Int>? = null,
+        val skipUi: Boolean = false,
+    ) : Route
     @Serializable
     data class AlarmSetTimeDialog(val id: Long, val time: LocalTime) : Route
 }

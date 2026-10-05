@@ -61,114 +61,174 @@ class UpdateCheckWorker(
         // WorkManager can cold-start the process without MainActivity initializing TLS.
         NetworkClient.init(context, TrustBundle.STANDARD)
         val scope = CoroutineScope(SupervisorJob())
+        try {
+            runCheck(scope)
+        } finally {
+            scope.cancel()
+        }
+        Result.success()
+    } catch (expected: java.io.IOException) {
+        Log.w(TAG, "Update check failed", expected)
+        Result.retry()
+    } catch (expected: IllegalStateException) {
+        Log.w(TAG, "Update check failed", expected)
+        Result.retry()
+    } catch (expected: SecurityException) {
+        Log.w(TAG, "Update check failed", expected)
+        Result.retry()
+    }
+
+    private data class CheckEnv(
+        val scope: CoroutineScope,
+        val db: AppDatabase,
+        val catalog: CatalogRepository,
+        val installedRepo: InstalledAppsRepository,
+        val play: PlayRepository,
+        val accrescent: AccrescentRepository,
+        val grapheneOS: GrapheneOSRepository,
+        val settings: SettingsRepository,
+    )
+
+    private suspend fun runCheck(scope: CoroutineScope) {
         val db = AppStoreDatabaseRepository.get(context).database
-        val catalog = CatalogRepository(context, db, scope)
-        val installedRepo = InstalledAppsRepository(context)
-        val play = PlayRepository(context)
-        val accrescent = AccrescentRepository(context, db)
-        val grapheneOS = GrapheneOSRepository(context)
-        val settings = SettingsRepository(context, scope)
-        val enabled = settings.readEnabledSources()
+        val env = CheckEnv(
+            scope = scope,
+            db = db,
+            catalog = CatalogRepository(context, db, scope),
+            installedRepo = InstalledAppsRepository(context),
+            play = PlayRepository(context),
+            accrescent = AccrescentRepository(context, db),
+            grapheneOS = GrapheneOSRepository(context),
+            settings = SettingsRepository(context, scope),
+        )
+        val enabled = env.settings.readEnabledSources()
 
-        catalog.sync(enabled)
-        installedRepo.refresh()
-        if (AppSource.PLAYSTORE in enabled) play.restore()
+        env.catalog.sync(enabled)
+        env.installedRepo.refresh()
+        if (AppSource.PLAYSTORE in enabled) env.play.restore()
 
-        val installed = installedRepo.updatable.value
-        val fromCatalog = catalog.updatesFor(installed)
+        val updates = collectUpdates(env, enabled)
+        reportUpdates(env, updates)
 
+        env.accrescent.shutdown()
+    }
+
+    private suspend fun collectUpdates(
+        env: CheckEnv,
+        enabled: Set<AppSource>,
+    ): List<UnifiedApp> {
+        val installed = env.installedRepo.updatable.value
+        val fromCatalog = env.catalog.updatesFor(installed)
+        val fromPlay = playUpdates(env, enabled, installed)
+        val fromAccrescent = accrescentUpdates(env, enabled, installed)
+        val fromGrapheneOS = grapheneOSUpdates(env, installed)
+
+        // The surviving row's source decides which download-and-verify path the update takes,
+        // so it has to be the same precedence the rest of the store uses.
+        return (fromCatalog + fromPlay + fromAccrescent + fromGrapheneOS)
+            .sortedBy { it.source.priority }
+            .distinctBy { it.packageName }
+    }
+
+    private suspend fun playUpdates(
+        env: CheckEnv,
+        enabled: Set<AppSource>,
+        installed: List<InstalledInfo>,
+    ): List<UnifiedApp> {
         // Only Play can answer for packages the offline catalogues have never heard of — except
         // the Sandboxed Google Play components, which Play also hosts but must never update
         // here: only the builds GrapheneOS re-hosts are the ones this device can use. Their
         // updates come from GrapheneOS's own signed index instead, below.
-        val index = catalog.packageIndex.value
-        val fromPlay = if (AppSource.PLAYSTORE in enabled) {
-            val unknown = installed
-                .filter {
-                    it.packageName !in index &&
-                        it.packageName !in SandboxedGooglePlay.PACKAGES
-                }
-                .map { it.packageName }
-            val remote = play.details(unknown).associateBy { it.packageName }
-            installed.mapNotNull { inst ->
-                remote[inst.packageName]?.takeIf { it.versionCode > inst.versionCode }
+        if (AppSource.PLAYSTORE !in enabled) return emptyList()
+        val index = env.catalog.packageIndex.value
+        val unknown = installed
+            .filter {
+                it.packageName !in index &&
+                    it.packageName !in SandboxedGooglePlay.PACKAGES
             }
-        } else {
-            emptyList()
+            .map { it.packageName }
+        val remote = env.play.details(unknown).associateBy { it.packageName }
+        return installed.mapNotNull { inst ->
+            remote[inst.packageName]?.takeIf { it.versionCode > inst.versionCode }
         }
+    }
 
+    private suspend fun accrescentUpdates(
+        env: CheckEnv,
+        enabled: Set<AppSource>,
+        installed: List<InstalledInfo>,
+    ): List<UnifiedApp> {
         // Accrescent: refresh its signed allowlist, then ask its API for a newer build of each
         // installed package it vouches for. Auto-install still routes through InstallCoordinator,
         // which re-verifies signer + min-version before committing.
-        val fromAccrescent = if (AppSource.ACCRESCENT in enabled) {
-            accrescent.refreshRepoData()
-            val accrescentIds = accrescent.appIds()
-            installed
-                .filter { it.packageName in accrescentIds }
-                .mapNotNull { inst ->
-                    val update = runCatching {
-                        accrescent.updateInfo(inst.packageName, inst.versionCode)
-                    }.getOrNull() ?: return@mapNotNull null
-                    val details = accrescent.details(inst.packageName) ?: UnifiedApp(
-                        packageName = inst.packageName,
-                        source = AppSource.ACCRESCENT,
-                        name = inst.packageName.substringAfterLast('.'),
-                    )
-                    details.copy(versionCode = update.versionCode, versionName = update.versionName)
-                }
-        } else {
-            emptyList()
-        }
+        if (AppSource.ACCRESCENT !in enabled) return emptyList()
+        env.accrescent.refreshRepoData()
+        val accrescentIds = env.accrescent.appIds()
+        return installed
+            .filter { it.packageName in accrescentIds }
+            .mapNotNull { inst ->
+                val update = runCatching {
+                    env.accrescent.updateInfo(inst.packageName, inst.versionCode)
+                }.getOrNull() ?: return@mapNotNull null
+                val details = env.accrescent.details(inst.packageName) ?: UnifiedApp(
+                    packageName = inst.packageName,
+                    source = AppSource.ACCRESCENT,
+                    name = inst.packageName.substringAfterLast('.'),
+                )
+                details.copy(versionCode = update.versionCode, versionName = update.versionName)
+            }
+    }
 
+    private suspend fun grapheneOSUpdates(
+        env: CheckEnv,
+        installed: List<InstalledInfo>,
+    ): List<UnifiedApp> {
         // GrapheneOS: refresh its signed index and offer a newer build of each Sandboxed
         // Google Play component that is installed. Skipped on stock Android, where these
         // packages cannot work at all for want of the OS's gmscompat layer.
-        val fromGrapheneOS = if (RestrictedPackages.isGrapheneOS(context)) {
-            grapheneOS.refresh(SandboxedGooglePlay.PACKAGES).getOrNull().orEmpty()
-                .mapNotNull { entry ->
-                    val current = installed.firstOrNull { it.packageName == entry.packageName }
-                        ?: return@mapNotNull null
-                    entry.toUnifiedApp().takeIf { it.versionCode > current.versionCode }
-                }
-        } else {
-            emptyList()
-        }
-
-        // The surviving row's source decides which download-and-verify path the update takes,
-        // so it has to be the same precedence the rest of the store uses.
-        val updates = (fromCatalog + fromPlay + fromAccrescent + fromGrapheneOS)
-            .sortedBy { it.source.priority }
-            .distinctBy { it.packageName }
-
-        val autoInstall = settings.readAutoInstallUpdates()
-
-        if (autoInstall && updates.isNotEmpty()) {
-            val eligible = updates.filter { canSilentlyUpdate(it.packageName) }
-            if (eligible.isNotEmpty()) {
-                autoInstall(eligible, db, play, accrescent, grapheneOS, scope)
-                installedRepo.refresh()
+        if (!RestrictedPackages.isGrapheneOS(context)) return emptyList()
+        return env.grapheneOS.refresh(SandboxedGooglePlay.PACKAGES).getOrNull().orEmpty()
+            .mapNotNull { entry ->
+                val current = installed.firstOrNull { it.packageName == entry.packageName }
+                    ?: return@mapNotNull null
+                entry.toUnifiedApp().takeIf { it.versionCode > current.versionCode }
             }
-            // Only nag about the updates we could not apply on our own.
-            val remaining = updates.filterNot { canSilentlyUpdate(it.packageName) }
-            notifyIfChanged(
-                remaining.map { it.packageName }.toSortedSet(),
-                remaining.size,
-                needsConfirmation = true,
-            )
-        } else {
+    }
+
+    private suspend fun reportUpdates(env: CheckEnv, updates: List<UnifiedApp>) {
+        val autoInstall = env.settings.readAutoInstallUpdates()
+
+        if (!autoInstall || updates.isEmpty()) {
             notifyIfChanged(
                 updates.map { it.packageName }.toSortedSet(),
                 updates.size,
                 needsConfirmation = false,
             )
+            return
         }
+        val eligible = updates.filter { canSilentlyUpdate(it.packageName) }
+        if (eligible.isNotEmpty()) {
+            autoInstall(eligible, env)
+            env.installedRepo.refresh()
+        }
+        // Only nag about the updates we could not apply on our own.
+        val remaining = updates.filterNot { canSilentlyUpdate(it.packageName) }
+        notifyIfChanged(
+            remaining.map { it.packageName }.toSortedSet(),
+            remaining.size,
+            needsConfirmation = true,
+        )
+    }
 
-        accrescent.shutdown()
-        scope.cancel()
-        Result.success()
-    } catch (e: Exception) {
-        Log.w(TAG, "Update check failed", e)
-        Result.retry()
+    private suspend fun autoInstall(eligible: List<UnifiedApp>, env: CheckEnv) {
+        autoInstall(
+            eligible,
+            env.db,
+            env.play,
+            env.accrescent,
+            env.grapheneOS,
+            env.scope,
+        )
     }
 
     /**

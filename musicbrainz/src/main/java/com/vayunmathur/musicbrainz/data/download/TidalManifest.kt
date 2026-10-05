@@ -86,26 +86,40 @@ object TidalManifest {
      * initialization segment.
      */
     private fun parseMpd(xml: String): Pair<String, List<String>> {
+        val doc = parseXml(xml) ?: throw IllegalArgumentException("Tidal DASH manifest is not XML")
+        val codecs = mpdCodecs(doc)
+        val mediaTemplate = mpdMediaTemplate(doc)
+        val total = mpdSegmentCount(doc)
+        val urls = (0..total).map { mediaTemplate.replace("\$Number\$", it.toString()) }
+        return codecs to urls
+    }
+
+    private fun parseXml(xml: String): org.w3c.dom.Document? {
         val factory = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = false
         }
-        val doc = factory.newDocumentBuilder().parse(InputSource(StringReader(xml)))
+        return runCatching {
+            factory.newDocumentBuilder().parse(InputSource(StringReader(xml)))
+        }.getOrNull()
+    }
 
+    private fun mpdCodecs(doc: org.w3c.dom.Document): String {
         val representation = doc.getElementsByTagName("Representation").item(0)
             ?: throw IllegalArgumentException("Tidal DASH manifest has no Representation")
-        val codecs = representation.attributes?.getNamedItem("codecs")?.nodeValue.orEmpty()
-
         // Reject DRM the same way the BTS path rejects a non-NONE encryptionType: a protected
         // stream would download into an unplayable file, which is worse than failing.
         if (doc.getElementsByTagName("ContentProtection").length > 0) {
             throw IllegalArgumentException("Tidal DASH stream is protected")
         }
+        return representation.attributes?.getNamedItem("codecs")?.nodeValue.orEmpty()
+    }
 
-        val template = doc.getElementsByTagName("SegmentTemplate").item(0)
+    private fun mpdMediaTemplate(doc: org.w3c.dom.Document): String =
+        doc.getElementsByTagName("SegmentTemplate").item(0)?.attributes
+            ?.getNamedItem("media")?.nodeValue
             ?: throw IllegalArgumentException("Tidal DASH manifest has no SegmentTemplate")
-        val mediaTemplate = template.attributes?.getNamedItem("media")?.nodeValue
-            ?: throw IllegalArgumentException("Tidal DASH manifest has no media template")
 
+    private fun mpdSegmentCount(doc: org.w3c.dom.Document): Int {
         val timeline = doc.getElementsByTagName("S")
         var total = 0
         for (i in 0 until timeline.length) {
@@ -113,9 +127,7 @@ object TidalManifest {
             val repeat = timeline.item(i).attributes?.getNamedItem("r")?.nodeValue?.toIntOrNull()
             if (repeat != null) total += repeat
         }
-
-        val urls = (0..total).map { mediaTemplate.replace("\$Number\$", it.toString()) }
-        return codecs to urls
+        return total
     }
 
     private fun suffixFor(codecs: String, audioQuality: String): String = when {

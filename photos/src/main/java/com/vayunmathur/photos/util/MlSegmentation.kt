@@ -37,6 +37,7 @@ fun segmentSubject(context: Context, bitmap: Bitmap, onResult: (Selection?) -> U
 }
 
 private const val FG_THRESHOLD = 0.5f
+private const val FEATHER_RADIUS = 1.5f
 
 /**
  * Serialises the segmenter, which is not thread-safe.
@@ -76,7 +77,10 @@ private fun runSegmenter(context: Context, bitmap: Bitmap): Selection? {
     // Normalise to 0..1 (U²-Net output isn't guaranteed to span the full range).
     var lo = Float.MAX_VALUE
     var hi = -Float.MAX_VALUE
-    for (v in saliency) { if (v < lo) lo = v; if (v > hi) hi = v }
+    for (v in saliency) {
+        lo = minOf(lo, v)
+        hi = maxOf(hi, v)
+    }
     val range = (hi - lo).takeIf { it > 1e-6f } ?: 1f
 
     // Upsample the model mask to the (w,h) selection grid and threshold.
@@ -90,5 +94,5 @@ private fun runSegmenter(context: Context, bitmap: Bitmap): Selection? {
         }
     }
 
-    return Selection(mask, w, h).applyFeather(1.5f)
+    return Selection(mask, w, h).applyFeather(FEATHER_RADIUS)
 }

@@ -31,18 +31,51 @@ object BeaconKeys {
     private const val CID_MASK = (1L shl CID_BITS) - 1
     private const val AREA_MASK = (1L shl AREA_BITS) - 1
 
+    /** Octets in a BSSID string. */
+    private const val MAC_OCTETS = 6
+
+    /** Hex chars per MAC octet. */
+    private const val MAC_OCTET_HEX = 2
+
+    /** Radix for parsing MAC octets. */
+    private const val HEX_RADIX = 16
+
+    /** Max value of one MAC octet. */
+    private const val OCTET_MAX = 0xFF
+
+    /** Bits per MAC octet, for big-endian packing. */
+    private const val OCTET_BITS = 8
+
+    /** Bit shift of the first octet in a 48-bit MAC key. */
+    private const val FIRST_OCTET_SHIFT = 40
+
+    /** Locally-administered/multicast bits of the first octet. */
+    private const val RANDOMIZED_MAC_BITS = 0x03L
+
+    /** Bits per PLMN field (MCC/MNC) in the cell key. */
+    private const val PLMN_FIELD_BITS = 10
+
+    /** Mask for a 10-bit PLMN field. */
+    private const val PLMN_MASK = 0x3FFL
+
+    /** Bits for the radio-type field in the cell key. */
+    private const val RADIO_FIELD_BITS = 4
+
+    /** Mask for the 4-bit radio field. */
+    private const val RADIO_MASK = 0xFL
+
     /** Parse `"aa:bb:cc:dd:ee:ff"` to a 48-bit key, big-endian (OUI in the high bits). */
     fun parseMac(bssid: String): Long? {
         val parts = bssid.split(":")
-        if (parts.size != 6) return null
+        if (parts.size != MAC_OCTETS) return null
         var v = 0L
         for (p in parts) {
-            if (p.length != 2) return null
+            if (p.length != MAC_OCTET_HEX) return null
             // toIntOrNull(16) accepts a leading '-', which would sign-extend into every
             // higher octet, so the range check is load-bearing and not just defensive.
-            val b = p.toIntOrNull(16) ?: return null
-            if (b < 0 || b > 0xFF) return null
-            v = (v shl 8) or b.toLong()
+            val b = p.toIntOrNull(HEX_RADIX) ?: return null
+            if (b < 0 || b > OCTET_MAX) return null
+            v = (v shl OCTET_BITS) or b.toLong()
         }
         return v
     }
@@ -57,17 +90,17 @@ object BeaconKeys {
      * key that is guaranteed to be absent.
      */
     fun isRandomizedMac(mac: Long): Boolean {
-        val firstOctet = (mac ushr 40) and 0xFF
-        return (firstOctet and 0x03L) != 0L
+        val firstOctet = (mac ushr FIRST_OCTET_SHIFT) and OCTET_MAX.toLong()
+        return (firstOctet and RANDOMIZED_MAC_BITS) != 0L
     }
 
     /** High 64 bits of the cell key: the PLMN, occupying key bits 64..83. */
     fun cellKeyHi(id: BeaconId.Cell): Long =
-        ((id.mcc.toLong() and 0x3FF) shl 10) or (id.mnc.toLong() and 0x3FF)
+        ((id.mcc.toLong() and PLMN_MASK) shl PLMN_FIELD_BITS) or (id.mnc.toLong() and PLMN_MASK)
 
     /** Low 64 bits of the cell key: radio type, area code and cell id. */
     fun cellKeyLo(id: BeaconId.Cell): Long =
-        ((id.radio.wire.toLong() and 0xF) shl (CID_BITS + AREA_BITS)) or
+        ((id.radio.wire.toLong() and RADIO_MASK) shl (CID_BITS + AREA_BITS)) or
             ((id.tacOrLac.toLong() and AREA_MASK) shl CID_BITS) or
             (id.cellId and CID_MASK)
 }

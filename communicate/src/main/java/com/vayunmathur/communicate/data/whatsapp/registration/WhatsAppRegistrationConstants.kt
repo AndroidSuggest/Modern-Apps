@@ -24,7 +24,8 @@ object WhatsAppRegistrationConstants {
 
     /** PBKDF2 salt, Base64 (p000X/ES3.java:7). */
     const val TOKEN_SALT_B64 =
-        "PkTwKSZqUfAUyR0rPQ8hYJ0wNsQQ3dW1+3SCnyTXIfEAxxS75FwkDf47wNv/c8pP3p0GXKR6OOQmhyERwx74fw1RYSU10I4r1gyBVDbRJ40pidjM41G1I1oN"
+        "PkTwKSZqUfAUyR0rPQ8hYJ0wNsQQ3dW1+3SCnyTXIfEAxxS75FwkDf47wNv/c8pP3p0GXKR6OOQmhyERwx74fw1RYSU10I4r1gy" +
+            "BVDbRJ40pidjM41G1I1oN"
 
     /** PBKDF2 iteration count (C34029EuU.A01 → C00L.A08 arg 128). */
     const val TOKEN_PBKDF2_ITERATIONS = 128

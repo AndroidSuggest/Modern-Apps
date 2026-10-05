@@ -18,6 +18,19 @@ import java.util.regex.Pattern
 object MimeParser {
 
     private const val TAG = "MimeParser"
+    private const val HEADER_SEPARATOR_CRLFCRLF_LEN = 4
+    private const val HEADER_SEPARATOR_LFLF_LEN = 2
+    private const val HEADER_SEPARATOR_CRLFLF_LEN = 3
+    private const val CRLF_SECOND = 1
+    private const val CRLF_THIRD = 2
+    private const val CRLF_FOURTH = 3
+    private const val QP_HEX_RADIX = 16
+    private const val QP_HEX_PAIR_LEN = 3
+    private const val QP_SOFT_BREAK_LEN = 3
+    private const val QP_SOFT_BREAK_LF_LEN = 2
+    private const val MAX_FILENAME_LEN = 120
+    private const val HEADER_SNIFF_LEN = 1024
+    private const val EMPTY_BODY_SIZE = 0
 
     data class ContentTypeInfo(val mainType: String, val subType: String, val params: Map<String, String>) {
         val fullType: String get() = "$mainType/$subType"
@@ -64,147 +77,198 @@ object MimeParser {
     }
 
     fun parseHeaderBlockBytes(headerBytes: ByteArray): Map<String, String> {
-        val str = try { String(headerBytes, Charsets.UTF_8) } catch (_: Exception) { String(headerBytes, Charsets.ISO_8859_1) }
+        val str = try {
+            String(headerBytes, Charsets.UTF_8)
+        } catch (_: Exception) {
+            String(headerBytes, Charsets.ISO_8859_1)
+        }
         return parseHeadersString(str)
     }
 
     fun parsePart(rawPartBytes: ByteArray, partId: String): ParsedPart {
-        val sep = findHeaderBodySeparator(rawPartBytes)
-        val headerBytes: ByteArray
-        val bodyBytes: ByteArray
-        if (sep != null) {
-            val (sepStart, sepLen) = sep
-            headerBytes = rawPartBytes.copyOfRange(0, sepStart)
-            bodyBytes = if (sepStart + sepLen < rawPartBytes.size) rawPartBytes.copyOfRange(sepStart + sepLen, rawPartBytes.size) else ByteArray(0)
-        } else {
-            headerBytes = rawPartBytes
-            bodyBytes = ByteArray(0)
-        }
-        val headerStr = String(headerBytes, Charsets.ISO_8859_1)
-        val headers = parseHeadersString(headerStr)
-        val ct = parseContentType(headers["content-type"])
-        val disp = parseDisposition(headers["content-disposition"])
-        val cte = (headers["content-transfer-encoding"] ?: "7bit").lowercase().trim()
-        val cidRaw = headers["content-id"]?.let { extractCid(it) }
+        return PartParser.parse(rawPartBytes, partId)
+    }
 
-        if (ct.isMultipart) {
+    private object PartParser {
+        fun parse(rawPartBytes: ByteArray, partId: String): ParsedPart {
+            val (headerBytes, bodyBytes) = splitHeaderBody(rawPartBytes)
+            val headerStr = String(headerBytes, Charsets.ISO_8859_1)
+            val headers = parseHeadersString(headerStr)
+            val ct = parseContentType(headers["content-type"])
+            val disp = parseDisposition(headers["content-disposition"])
+            val cte = (headers["content-transfer-encoding"] ?: "7bit").lowercase().trim()
+            val cidRaw = headers["content-id"]?.let { extractCid(it) }
+
+            if (ct.isMultipart) {
+                return parseMultipart(headers, headerStr, ct, disp, cidRaw, cte, bodyBytes, partId)
+            }
+
+            val decoded = decodeCte(bodyBytes, cte)
+            val bodyText = decodeTextBody(ct, decoded)
+
+            return ParsedPart(
+                headers,
+                headerStr,
+                ct,
+                disp,
+                cidRaw,
+                cte,
+                bodyBytes,
+                decoded,
+                emptyList(),
+                partId,
+                bodyText,
+            )
+        }
+
+        private fun splitHeaderBody(rawPartBytes: ByteArray): Pair<ByteArray, ByteArray> {
+            val sep = findHeaderBodySeparator(rawPartBytes)
+                ?: return rawPartBytes to ByteArray(EMPTY_BODY_SIZE)
+            val (sepStart, sepLen) = sep
+            val headerBytes = rawPartBytes.copyOfRange(0, sepStart)
+            val bodyBytes = if (sepStart + sepLen < rawPartBytes.size) {
+                rawPartBytes.copyOfRange(sepStart + sepLen, rawPartBytes.size)
+            } else {
+                ByteArray(EMPTY_BODY_SIZE)
+            }
+            return headerBytes to bodyBytes
+        }
+
+        private fun parseMultipart(
+            headers: Map<String, String>,
+            headerStr: String,
+            ct: ContentTypeInfo,
+            disp: DispositionInfo?,
+            cidRaw: String?,
+            cte: String,
+            bodyBytes: ByteArray,
+            partId: String,
+        ): ParsedPart {
             val boundary = ct.params["boundary"]
             if (boundary.isNullOrBlank()) {
-                return ParsedPart(headers, headerStr, ct, disp, cidRaw, cte, bodyBytes, ByteArray(0), emptyList(), partId)
+                return ParsedPart(
+                    headers,
+                    headerStr,
+                    ct,
+                    disp,
+                    cidRaw,
+                    cte,
+                    bodyBytes,
+                    ByteArray(EMPTY_BODY_SIZE),
+                    emptyList(),
+                    partId,
+                )
             }
             val subPartsBytes = splitMultipart(bodyBytes, boundary)
             val children = subPartsBytes.mapIndexed { idx, b ->
                 val childId = if (partId.isEmpty()) idx.toString() else "$partId.$idx"
-                parsePart(b, childId)
+                parse(b, childId)
             }
-            return ParsedPart(headers, headerStr, ct, disp, cidRaw, cte, bodyBytes, ByteArray(0), children, partId)
+            return ParsedPart(
+                headers,
+                headerStr,
+                ct,
+                disp,
+                cidRaw,
+                cte,
+                bodyBytes,
+                ByteArray(EMPTY_BODY_SIZE),
+                children,
+                partId,
+            )
         }
 
-        val decoded = decodeCte(bodyBytes, cte)
-        var bodyText: String? = null
-        if (ct.isText) {
+        private fun decodeTextBody(ct: ContentTypeInfo, decoded: ByteArray): String? {
+            if (!ct.isText) return null
             val charset = ct.params["charset"] ?: "utf-8"
-            bodyText = decodeCharset(decoded, charset)
+            return decodeCharset(decoded, charset)
         }
-
-        return ParsedPart(headers, headerStr, ct, disp, cidRaw, cte, bodyBytes, decoded, emptyList(), partId, bodyText)
     }
 
-    fun collectBodyAndAttachments(root: ParsedPart, uid: Long, accountEmail: String, folderName: String): Triple<String?, Boolean, List<Attachment>> {
-        var finalBody: String? = null
-        var finalIsHtml = false
+    fun collectBodyAndAttachments(
+        root: ParsedPart,
+        uid: Long,
+        accountEmail: String,
+        folderName: String,
+    ): Triple<String?, Boolean, List<Attachment>> {
+        val collector = BodyCollector(uid, accountEmail, folderName)
+        collector.walk(root)
+        return Triple(collector.body, collector.isHtml, collector.attachments)
+    }
+
+    private class BodyCollector(
+        private val uid: Long,
+        private val accountEmail: String,
+        private val folderName: String,
+    ) {
+        var body: String? = null
+        var isHtml = false
         val attachments = mutableListOf<Attachment>()
 
-        fun extractSingle(part: ParsedPart): Triple<String?, Boolean, List<Attachment>> {
+        fun walk(part: ParsedPart) {
+            if (part.contentType.isMultipart) {
+                part.children.forEach { walkChild(it) }
+            } else {
+                absorb(extractSingle(part))
+            }
+        }
+
+        private fun walkChild(child: ParsedPart) {
+            if (child.contentType.isMultipart) {
+                walk(child)
+                return
+            }
+            absorb(extractSingle(child))
+        }
+
+        private fun absorb(triple: Triple<String?, Boolean, List<Attachment>>) {
+            val (b, h, a) = triple
+            attachments.addAll(a)
+            if (b == null) return
+            if (body == null || (h && !isHtml)) {
+                body = b
+                isHtml = h
+            }
+        }
+
+        private fun extractSingle(part: ParsedPart): Triple<String?, Boolean, List<Attachment>> {
             val ct = part.contentType
-            val cid = part.contentId
-            val isInlineImage = cid != null && (ct.isImage || part.disposition?.isInline == true || ct.fullType.startsWith("image/", true))
-            if (isInlineImage) return Triple(null, false, emptyList())
+            if (isInlineImage(part)) return Triple(null, false, emptyList())
             val filename = part.disposition?.filename ?: ct.params["name"]
             if (!filename.isNullOrBlank() || part.disposition?.isAttachment == true) {
-                val fn = sanitizeFilename(filename ?: "unnamed")
-                val mime = ct.fullType
-                return Triple(null, false, listOf(Attachment(accountEmail, folderName, uid, part.partId, fn, mime, part.decodedBytes.size.toLong())))
+                return Triple(null, false, listOf(toAttachment(part, filename ?: "unnamed")))
             }
             if (ct.isText) {
-                return when (ct.subType.lowercase()) {
-                    "html" -> Triple(part.bodyText, true, emptyList())
-                    "plain" -> Triple(part.bodyText, false, emptyList())
-                    else -> Triple(part.bodyText, ct.subType.equals("html", true), emptyList())
-                }
+                return Triple(part.bodyText, ct.subType.equals("html", true), emptyList())
             }
             return Triple(null, false, emptyList())
         }
 
-        fun walk(part: ParsedPart) {
-            if (part.contentType.isMultipart) {
-                for (child in part.children) {
-                    if (child.contentType.isMultipart) {
-                        walk(child)
-                    } else {
-                        val (b, h, a) = extractSingle(child)
-                        attachments.addAll(a)
-                        if (b != null) {
-                            if (finalBody == null || (h && !finalIsHtml)) {
-                                finalBody = b
-                                finalIsHtml = h
-                            }
-                        }
-                    }
-                }
-            } else {
-                val (b, h, a) = extractSingle(part)
-                if (b != null) {
-                    finalBody = b
-                    finalIsHtml = h
-                }
-                attachments.addAll(a)
-            }
+        private fun isInlineImage(part: ParsedPart): Boolean {
+            val ct = part.contentType
+            val cid = part.contentId ?: return false
+            return ct.isImage || part.disposition?.isInline == true || ct.fullType.startsWith("image/", true)
         }
 
-        walk(root)
-        return Triple(finalBody, finalIsHtml, attachments)
+        private fun toAttachment(part: ParsedPart, filename: String): Attachment {
+            val fn = sanitizeFilename(filename)
+            val mime = part.contentType.fullType
+            return Attachment(
+                accountEmail,
+                folderName,
+                uid,
+                part.partId,
+                fn,
+                mime,
+                part.decodedBytes.size.toLong(),
+            )
+        }
     }
 
     fun parseEmlToParsedMessage(emlBytes: ByteArray, syntheticId: Long, context: Context): ParsedEml {
         val root = parsePart(emlBytes, "")
-        var body: String? = null
-        var isHtml = false
-        val emlAttachments = mutableListOf<EmlAttachment>()
-        val cidMap = mutableMapOf<String, File>()
-
-        fun walkForEml(part: ParsedPart) {
-            if (part.contentType.isMultipart) {
-                part.children.forEach { walkForEml(it) }
-                return
-            }
-            val cid = part.contentId
-            if (cid != null && (part.contentType.isImage || part.disposition?.isInline == true)) {
-                val dir = File(context.cacheDir, "eml_cid/$syntheticId").also { it.mkdirs() }
-                val rawName = part.disposition?.filename ?: "${cid.hashCode()}.bin"
-                val safeName = rawName.replace(Regex("[/\\\\]"), "_").take(80).ifBlank { "${cid.hashCode()}.bin" }
-                val out = File(dir, safeName)
-                try {
-                    if (!out.exists()) out.writeBytes(part.decodedBytes)
-                    cidMap[cid] = out
-                } catch (_: Exception) {}
-                return
-            }
-            val filename = part.disposition?.filename ?: part.contentType.params["name"]
-            if (!filename.isNullOrBlank() || part.disposition?.isAttachment == true) {
-                val mime = part.contentType.fullType
-                emlAttachments.add(EmlAttachment(fileName = filename ?: "unnamed", mimeType = mime, bytes = part.decodedBytes))
-            } else if (part.contentType.isText) {
-                val txt = part.bodyText
-                if (txt != null) {
-                    if (body == null || (part.contentType.subType.equals("html", true) && !isHtml)) {
-                        body = txt
-                        isHtml = part.contentType.subType.equals("html", true)
-                    }
-                }
-            }
-        }
-        walkForEml(root)
+        val collector = EmlCollector(context, syntheticId)
+        collector.walk(root)
 
         val headers = root.headers
         val from = headers["from"]?.let { decodeHeader(it) } ?: ""
@@ -230,15 +294,68 @@ object MimeParser {
             cc = cc,
             date = dateStr,
             dateMillis = dateMillis,
-            body = body,
-            isHtml = isHtml,
+            body = collector.body,
+            isHtml = collector.isHtml,
             isRead = true,
             references = refs,
-            hasAttachments = emlAttachments.isNotEmpty(),
+            hasAttachments = collector.attachments.isNotEmpty(),
             listUnsubscribe = listUnsub,
             listUnsubscribePost = listUnsubPost
         )
-        return ParsedEml(emailMessage, emlAttachments, cidMap)
+        return ParsedEml(emailMessage, collector.attachments, collector.cidMap)
+    }
+
+    private class EmlCollector(private val context: Context, private val syntheticId: Long) {
+        var body: String? = null
+        var isHtml = false
+        val attachments = mutableListOf<EmlAttachment>()
+        val cidMap = mutableMapOf<String, File>()
+
+        fun walk(part: ParsedPart) {
+            if (part.contentType.isMultipart) {
+                part.children.forEach { walk(it) }
+                return
+            }
+            if (absorbInlineImage(part)) return
+            absorbAttachmentOrText(part)
+        }
+
+        private fun absorbInlineImage(part: ParsedPart): Boolean {
+            val cid = part.contentId ?: return false
+            if (!(part.contentType.isImage || part.disposition?.isInline == true)) return false
+            val dir = File(context.cacheDir, "eml_cid/$syntheticId").also { it.mkdirs() }
+            val rawName = part.disposition?.filename ?: "${cid.hashCode()}.bin"
+            val safeName = rawName.replace(Regex("[/\\\\]"), "_").take(MAX_FILENAME_LEN).ifBlank {
+                "${cid.hashCode()}.bin"
+            }
+            val out = File(dir, safeName)
+            try {
+                if (!out.exists()) out.writeBytes(part.decodedBytes)
+                cidMap[cid] = out
+            } catch (_: Exception) {}
+            return true
+        }
+
+        private fun absorbAttachmentOrText(part: ParsedPart) {
+            val filename = part.disposition?.filename ?: part.contentType.params["name"]
+            if (!filename.isNullOrBlank() || part.disposition?.isAttachment == true) {
+                val mime = part.contentType.fullType
+                attachments.add(
+                    EmlAttachment(
+                        fileName = filename ?: "unnamed",
+                        mimeType = mime,
+                        bytes = part.decodedBytes,
+                    ),
+                )
+                return
+            }
+            if (!part.contentType.isText) return
+            val txt = part.bodyText ?: return
+            if (body == null || (part.contentType.subType.equals("html", true) && !isHtml)) {
+                body = txt
+                isHtml = part.contentType.subType.equals("html", true)
+            }
+        }
     }
 
     fun extractCidMap(context: Context, rfc822Bytes: ByteArray, uid: Long): Map<String, File> {
@@ -247,19 +364,32 @@ object MimeParser {
     }
 
     private fun extractCidMapInternal(context: Context, root: ParsedPart, uid: Long): Map<String, File> {
-        val map = mutableMapOf<String, File>()
         val dir = File(context.cacheDir, "cid/$uid").also { it.mkdirs() }
+        val collector = CidCollector(dir)
+        collector.walk(root)
+        collector.reconcileMetas()
+        return collector.map
+    }
+
+    private class CidCollector(private val dir: File) {
+        val map = mutableMapOf<String, File>()
 
         fun walk(part: ParsedPart) {
             if (part.contentType.isMultipart) {
                 part.children.forEach { walk(it) }
                 return
             }
+            absorb(part)
+        }
+
+        private fun absorb(part: ParsedPart) {
             val cid = part.contentId ?: return
             if (cid.isBlank()) return
-            val isInline = part.contentType.isImage || part.disposition?.isInline == true || part.contentType.fullType.startsWith("image/", true)
-            if (!isInline) return
-            val safeName = (part.disposition?.filename ?: "${cid.hashCode()}.bin").replace(Regex("[/\\\\]"), "_").take(80).ifBlank { "${cid.hashCode()}.bin" }
+            if (!isInline(part)) return
+            val safeName = (part.disposition?.filename ?: "${cid.hashCode()}.bin")
+                .replace(Regex("[/\\\\]"), "_")
+                .take(MAX_FILENAME_LEN)
+                .ifBlank { "${cid.hashCode()}.bin" }
             val outFile = File(dir, safeName)
             if (!outFile.exists()) {
                 try { outFile.writeBytes(part.decodedBytes) } catch (_: Exception) {}
@@ -269,71 +399,114 @@ object MimeParser {
                 try { File(dir, "$cid.meta").writeText(outFile.name) } catch (_: Exception) {}
             }
         }
-        walk(root)
-        try {
-            dir.listFiles { f -> f.name.endsWith(".meta") }?.forEach { meta ->
-                val cid = meta.name.removeSuffix(".meta")
-                if (cid !in map) {
-                    val targetName = try { meta.readText().trim() } catch (_: Exception) { null }
-                    if (targetName != null) {
-                        val file = File(dir, targetName)
-                        if (file.exists()) map[cid] = file
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-        return map
+
+        private fun isInline(part: ParsedPart): Boolean {
+            return part.contentType.isImage ||
+                part.disposition?.isInline == true ||
+                part.contentType.fullType.startsWith("image/", true)
+        }
+
+        fun reconcileMetas() {
+            try {
+                dir.listFiles { f -> f.name.endsWith(".meta") }?.forEach { reconcileOne(it) }
+            } catch (_: Exception) {}
+        }
+
+        private fun reconcileOne(meta: File) {
+            val cid = meta.name.removeSuffix(".meta")
+            if (cid in map) return
+            val targetName = try { meta.readText().trim() } catch (_: Exception) { null } ?: return
+            val file = File(dir, targetName)
+            if (file.exists()) map[cid] = file
+        }
     }
 
     // ---- Header / CT handling ----
 
+    private object SeparatorMatcher {
+        fun matchesCrlfCrlf(bytes: ByteArray, i: Int): Boolean {
+            return bytes[i] == '\r'.code.toByte() &&
+                bytes[i + CRLF_SECOND] == '\n'.code.toByte() &&
+                bytes[i + CRLF_THIRD] == '\r'.code.toByte() &&
+                bytes[i + CRLF_FOURTH] == '\n'.code.toByte()
+        }
+
+        fun matchesLfLf(bytes: ByteArray, i: Int): Boolean {
+            return bytes[i] == '\n'.code.toByte() && bytes[i + CRLF_SECOND] == '\n'.code.toByte()
+        }
+
+        fun matchesCrlfLf(bytes: ByteArray, i: Int): Boolean {
+            return bytes[i] == '\r'.code.toByte() &&
+                bytes[i + CRLF_SECOND] == '\n'.code.toByte() &&
+                bytes[i + CRLF_THIRD] == '\n'.code.toByte()
+        }
+    }
+
     private fun findHeaderBodySeparator(bytes: ByteArray): Pair<Int, Int>? {
-        for (i in 0 until bytes.size - 3) {
-            if (bytes[i] == '\r'.code.toByte() && bytes[i + 1] == '\n'.code.toByte() && bytes[i + 2] == '\r'.code.toByte() && bytes[i + 3] == '\n'.code.toByte()) {
-                return Pair(i, 4)
+        for (i in 0 until bytes.size - HEADER_SEPARATOR_CRLFCRLF_LEN + 1) {
+            if (SeparatorMatcher.matchesCrlfCrlf(bytes, i)) {
+                return Pair(i, HEADER_SEPARATOR_CRLFCRLF_LEN)
             }
         }
-        for (i in 0 until bytes.size - 1) {
-            if (bytes[i] == '\n'.code.toByte() && bytes[i + 1] == '\n'.code.toByte()) {
-                return Pair(i, 2)
+        for (i in 0 until bytes.size - HEADER_SEPARATOR_LFLF_LEN + 1) {
+            if (SeparatorMatcher.matchesLfLf(bytes, i)) {
+                return Pair(i, HEADER_SEPARATOR_LFLF_LEN)
             }
         }
-        for (i in 0 until bytes.size - 2) {
-            if (bytes[i] == '\r'.code.toByte() && bytes[i + 1] == '\n'.code.toByte() && bytes[i + 2] == '\n'.code.toByte()) {
-                return Pair(i, 3)
+        for (i in 0 until bytes.size - HEADER_SEPARATOR_CRLFLF_LEN + 1) {
+            if (SeparatorMatcher.matchesCrlfLf(bytes, i)) {
+                return Pair(i, HEADER_SEPARATOR_CRLFLF_LEN)
             }
         }
         return null
     }
 
     fun parseHeadersString(headerStr: String): Map<String, String> {
-        val map = mutableMapOf<String, String>()
-        var currentKey: String? = null
-        var currentVal = StringBuilder()
+        val builder = HeaderBlockBuilder()
         val lines = headerStr.split("\r\n", "\n")
         for (rawLine in lines) {
-            if (rawLine.isEmpty()) continue
+            builder.absorb(rawLine)
+        }
+        return builder.build()
+    }
+
+    private class HeaderBlockBuilder {
+        private val map = mutableMapOf<String, String>()
+        private var currentKey: String? = null
+        private var currentVal = StringBuilder()
+
+        fun absorb(rawLine: String) {
+            if (rawLine.isEmpty()) return
             val isContinuation = rawLine.firstOrNull()?.let { it == ' ' || it == '\t' } == true
             if (isContinuation && currentKey != null) {
                 currentVal.append(' ').append(rawLine.trim())
             } else {
-                if (currentKey != null) {
-                    map[currentKey.lowercase()] = currentVal.toString().trim()
-                }
-                val colonIdx = rawLine.indexOf(':')
-                if (colonIdx == -1) {
-                    currentKey = null
-                    currentVal = StringBuilder()
-                    continue
-                }
-                currentKey = rawLine.substring(0, colonIdx).trim()
-                currentVal = StringBuilder(rawLine.substring(colonIdx + 1).trim())
+                absorbNewHeader(rawLine)
             }
         }
-        if (currentKey != null) {
-            map[currentKey.lowercase()] = currentVal.toString().trim()
+
+        private fun absorbNewHeader(rawLine: String) {
+            val key = currentKey
+            if (key != null) {
+                map[key.lowercase()] = currentVal.toString().trim()
+            }
+            val colonIdx = rawLine.indexOf(':')
+            if (colonIdx == -1) {
+                currentKey = null
+                currentVal = StringBuilder()
+                return
+            }
+            currentKey = rawLine.substring(0, colonIdx).trim()
+            currentVal = StringBuilder(rawLine.substring(colonIdx + 1).trim())
         }
-        return map
+
+        fun build(): Map<String, String> {
+            val key = currentKey
+            if (key != null) {
+                map[key.lowercase()] = currentVal.toString().trim()
+            }
+            return map
+        }
     }
 
     fun parseContentType(raw: String?): ContentTypeInfo {
@@ -358,48 +531,64 @@ object MimeParser {
     }
 
     private fun parseHeaderParams(paramStr: String): Map<String, String> {
+        val parser = HeaderParamParser(paramStr)
+        parser.parse()
+        return parser.result
+    }
+
+    private class HeaderParamParser(private val paramStr: String) {
         val result = mutableMapOf<String, String>()
-        var i = 0
-        var keySb = StringBuilder()
-        var valSb = StringBuilder()
-        var inKey = true
-        var inQuotes = false
-        var currentKey = ""
-        while (i < paramStr.length) {
-            val c = paramStr[i]
-            if (inKey) {
-                if (c == '=') {
-                    currentKey = keySb.toString().trim()
-                    keySb = StringBuilder()
-                    inKey = false
-                    valSb = StringBuilder()
-                } else if (c == ';' && !inQuotes) {
-                    keySb = StringBuilder()
-                } else {
-                    keySb.append(c)
-                }
-            } else {
-                if (!inQuotes && c == '"') {
-                    inQuotes = true
-                } else if (inQuotes && c == '"') {
-                    inQuotes = false
-                } else if (!inQuotes && c == ';') {
-                    val v = valSb.toString().trim().removeSurrounding("\"")
-                    if (currentKey.isNotBlank()) result[currentKey.trim()] = v
-                    currentKey = ""
-                    keySb = StringBuilder()
-                    valSb = StringBuilder()
-                    inKey = true
-                } else {
-                    valSb.append(c)
-                }
+        private var i = 0
+        private var keySb = StringBuilder()
+        private var valSb = StringBuilder()
+        private var inKey = true
+        private var inQuotes = false
+        private var currentKey = ""
+
+        fun parse() {
+            while (i < paramStr.length) {
+                val c = paramStr[i]
+                if (inKey) parseKeyChar(c) else parseValueChar(c)
+                i++
             }
-            i++
+            if (!inKey && currentKey.isNotBlank()) {
+                result[currentKey.trim()] = valSb.toString().trim().removeSurrounding("\"")
+            }
         }
-        if (!inKey && currentKey.isNotBlank()) {
-            result[currentKey.trim()] = valSb.toString().trim().removeSurrounding("\"")
+
+        private fun parseKeyChar(c: Char) {
+            if (c == '=') {
+                currentKey = keySb.toString().trim()
+                keySb = StringBuilder()
+                inKey = false
+                valSb = StringBuilder()
+            } else if (c == ';' && !inQuotes) {
+                keySb = StringBuilder()
+            } else {
+                keySb.append(c)
+            }
         }
-        return result
+
+        private fun parseValueChar(c: Char) {
+            if (!inQuotes && c == '"') {
+                inQuotes = true
+            } else if (inQuotes && c == '"') {
+                inQuotes = false
+            } else if (!inQuotes && c == ';') {
+                commitValue()
+            } else {
+                valSb.append(c)
+            }
+        }
+
+        private fun commitValue() {
+            val v = valSb.toString().trim().removeSurrounding("\"")
+            if (currentKey.isNotBlank()) result[currentKey.trim()] = v
+            currentKey = ""
+            keySb = StringBuilder()
+            valSb = StringBuilder()
+            inKey = true
+        }
     }
 
     fun extractCid(rawCidHeader: String): String? {
@@ -413,8 +602,8 @@ object MimeParser {
             "base64" -> try {
                 val str = String(bytes, Charsets.US_ASCII).replace(Regex("\\s"), "")
                 if (str.isEmpty()) ByteArray(0) else Base64.decode(str, Base64.DEFAULT)
-            } catch (e: Exception) {
-                Log.w(TAG, "base64 decode failed: ${e.message}")
+            } catch (ignored: Exception) {
+                Log.w(TAG, "base64 decode failed: ${ignored.message}")
                 bytes
             }
             "quoted-printable" -> decodeQuotedPrintable(bytes)
@@ -426,36 +615,50 @@ object MimeParser {
         val out = ByteArrayOutputStream()
         var i = 0
         while (i < bytes.size) {
-            val b = bytes[i]
-            if (b == '='.code.toByte()) {
-                if (i + 1 >= bytes.size) break
-                val next = bytes[i + 1]
-                if (next == '\r'.code.toByte()) {
-                    if (i + 2 < bytes.size && bytes[i + 2] == '\n'.code.toByte()) {
-                        i += 3
-                        continue
-                    }
-                } else if (next == '\n'.code.toByte()) {
-                    i += 2
-                    continue
-                }
-                if (i + 2 < bytes.size) {
-                    val h1 = bytes[i + 1].toInt().toChar()
-                    val h2 = bytes[i + 2].toInt().toChar()
-                    try {
-                        out.write("$h1$h2".toInt(16))
-                        i += 3
-                        continue
-                    } catch (_: Exception) {}
-                }
-                out.write(b.toInt())
-                i++
-            } else {
-                out.write(b.toInt())
-                i++
-            }
+            i = QpDecoder.decodeNext(bytes, i, out)
         }
         return out.toByteArray()
+    }
+
+    private object QpDecoder {
+        fun decodeNext(bytes: ByteArray, i: Int, out: ByteArrayOutputStream): Int {
+            val b = bytes[i]
+            if (b != '='.code.toByte()) {
+                out.write(b.toInt())
+                return i + 1
+            }
+            if (i + 1 >= bytes.size) return bytes.size
+            val softBreak = softBreakLen(bytes, i)
+            if (softBreak > 0) return i + softBreak
+            return decodeHex(bytes, i, out)
+        }
+
+        private fun softBreakLen(bytes: ByteArray, i: Int): Int {
+            val next = bytes[i + 1]
+            if (next == '\r'.code.toByte()) {
+                if (i + QP_SOFT_BREAK_LEN - 1 < bytes.size &&
+                    bytes[i + QP_SOFT_BREAK_LEN - 1] == '\n'.code.toByte()
+                ) {
+                    return QP_HEX_PAIR_LEN
+                }
+                return 0
+            }
+            if (next == '\n'.code.toByte()) return QP_SOFT_BREAK_LF_LEN
+            return 0
+        }
+
+        private fun decodeHex(bytes: ByteArray, i: Int, out: ByteArrayOutputStream): Int {
+            if (i + QP_HEX_PAIR_LEN - 1 < bytes.size) {
+                val h1 = bytes[i + 1].toInt().toChar()
+                val h2 = bytes[i + 2].toInt().toChar()
+                try {
+                    out.write("$h1$h2".toInt(QP_HEX_RADIX))
+                    return i + QP_HEX_PAIR_LEN
+                } catch (_: Exception) {}
+            }
+            out.write(bytes[i].toInt())
+            return i + 1
+        }
     }
 
     fun decodeCharset(bytes: ByteArray, charsetName: String): String {
@@ -548,7 +751,7 @@ object MimeParser {
         if (n.contains("=?")) n = decodeHeader(n)
         n = n.substringAfterLast('/').substringAfterLast('\\')
         n = n.replace(Regex("[\\r\\n\"]"), "_")
-        if (n.length > 120) n = n.take(120)
+        if (n.length > MAX_FILENAME_LEN) n = n.take(MAX_FILENAME_LEN)
         return n.ifBlank { "attachment" }
     }
 
@@ -556,48 +759,81 @@ object MimeParser {
         if (boundary.isBlank()) return emptyList()
         val bodyStr = String(bodyBytes, Charsets.ISO_8859_1)
         val delim = "--$boundary"
-        data class DelimPos(val start: Int, val end: Int, val isClose: Boolean)
-
-        val positions = mutableListOf<DelimPos>()
-        var searchFrom = 0
-        while (true) {
-            val idx = bodyStr.indexOf(delim, searchFrom)
-            if (idx == -1) break
-            var lineEnd = bodyStr.indexOf('\n', idx)
-            if (lineEnd == -1) lineEnd = bodyStr.length else lineEnd++
-            val afterDelimPart = if (idx + delim.length < bodyStr.length) {
-                val nl = bodyStr.indexOf('\n', idx)
-                if (nl == -1) bodyStr.substring(idx + delim.length) else bodyStr.substring(idx + delim.length, nl)
-            } else ""
-            val isClose = afterDelimPart.trim().startsWith("--")
-            positions.add(DelimPos(idx, lineEnd, isClose))
-            if (isClose) break
-            searchFrom = lineEnd
-        }
+        val positions = MultipartSplitter.scan(bodyStr, delim)
 
         if (positions.size < 2) {
-            if (positions.size == 1 && !positions[0].isClose) {
-                val start = positions[0].end
-                if (start < bodyStr.length) return listOf(bodyStr.substring(start).toByteArray(Charsets.ISO_8859_1))
-            }
-            return emptyList()
+            return MultipartSplitter.singleFallback(bodyStr, positions)
         }
 
         val result = mutableListOf<ByteArray>()
         for (i in 0 until positions.size - 1) {
             val cur = positions[i]
             if (cur.isClose) break
-            val next = positions[i + 1]
-            var partStart = cur.end
+            MultipartSplitter.slice(bodyStr, cur, positions[i + 1])?.let { result.add(it) }
+        }
+        return result
+    }
+
+    private data class DelimPos(val start: Int, val end: Int, val isClose: Boolean)
+
+    private object MultipartSplitter {
+        fun scan(bodyStr: String, delim: String): List<DelimPos> {
+            val positions = mutableListOf<DelimPos>()
+            var searchFrom = 0
+            var done = false
+            while (!done) {
+                val idx = bodyStr.indexOf(delim, searchFrom)
+                if (idx == -1) {
+                    done = true
+                } else {
+                    positions.add(scanOne(bodyStr, delim, idx))
+                    if (positions.last().isClose) {
+                        done = true
+                    } else {
+                        searchFrom = positions.last().end
+                    }
+                }
+            }
+            return positions
+        }
+
+        private fun scanOne(bodyStr: String, delim: String, idx: Int): DelimPos {
+            var lineEnd = bodyStr.indexOf('\n', idx)
+            if (lineEnd == -1) lineEnd = bodyStr.length else lineEnd++
+            return DelimPos(idx, lineEnd, isCloseDelimiter(bodyStr, delim, idx))
+        }
+
+        private fun isCloseDelimiter(bodyStr: String, delim: String, idx: Int): Boolean {
+            if (idx + delim.length >= bodyStr.length) return false
+            val nl = bodyStr.indexOf('\n', idx)
+            val afterDelimPart = if (nl == -1) {
+                bodyStr.substring(idx + delim.length)
+            } else {
+                bodyStr.substring(idx + delim.length, nl)
+            }
+            return afterDelimPart.trim().startsWith("--")
+        }
+
+        fun singleFallback(bodyStr: String, positions: List<DelimPos>): List<ByteArray> {
+            if (positions.size == 1 && !positions[0].isClose) {
+                val start = positions[0].end
+                if (start < bodyStr.length) {
+                    return listOf(bodyStr.substring(start).toByteArray(Charsets.ISO_8859_1))
+                }
+            }
+            return emptyList()
+        }
+
+        fun slice(bodyStr: String, cur: DelimPos, next: DelimPos): ByteArray? {
+            val partStart = cur.end
             var partEnd = next.start
             if (partEnd >= 2 && bodyStr[partEnd - 1] == '\n') {
                 partEnd--
                 if (partEnd > 0 && bodyStr[partEnd - 1] == '\r') partEnd--
             }
-            if (partStart > partEnd) continue
-            result.add(bodyStr.substring(partStart, partEnd).toByteArray(Charsets.ISO_8859_1))
+            if (partStart > partEnd) return null
+            return bodyStr.substring(partStart, partEnd).toByteArray(Charsets.ISO_8859_1)
         }
-        return result
     }
 
     fun extractHeaderValue(headers: Map<String, String>, name: String): String? {

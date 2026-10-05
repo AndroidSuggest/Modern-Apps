@@ -37,7 +37,9 @@ object DeviceInfoProvider {
         } else {
             buildDeviceProperties(context)
         }
-    } catch (_: Exception) {
+    } catch (_: android.content.res.Resources.NotFoundException) {
+        buildDeviceProperties(context)
+    } catch (_: java.io.IOException) {
         buildDeviceProperties(context)
     }
 
@@ -46,6 +48,28 @@ object DeviceInfoProvider {
         val pm = context.packageManager
         val gsf = GsfVersionProvider.get(context)
 
+        setBuildProps(props)
+        setConfigProps(context, props)
+        setDisplayProps(context, props)
+
+        // ABIs
+        props.setProperty("Platforms", Build.SUPPORTED_ABIS.joinToString(","))
+        setFeatureProps(pm, props)
+        setLocaleProps(context, props)
+        setSharedLibProps(pm, props)
+        setGlProps(props)
+        setGsfProps(gsf, props)
+
+        props.setProperty("Client", "android-google")
+        props.setProperty("Roaming", "mobile-notroaming")
+        props.setProperty("TimeZone", "UTC-10")
+        props.setProperty("CellOperator", "310")
+        props.setProperty("SimOperator", "38")
+
+        return props
+    }
+
+    private fun setBuildProps(props: Properties) {
         // Build.*
         props.setProperty("Ro.product.brand", Build.BRAND)
         props.setProperty("Ro.product.name", Build.PRODUCT)
@@ -69,16 +93,22 @@ object DeviceInfoProvider {
         props.setProperty("Build.RADIO", Build.getRadioVersion() ?: "unknown")
         props.setProperty("Build.SDK_INT", Build.VERSION.SDK_INT.toString())
         props.setProperty("Build.RELEASE", Build.VERSION.RELEASE ?: "13")
+    }
 
+    private fun setConfigProps(context: Context, props: Properties) {
         // Config
         val config = context.resources.configuration
         props.setProperty("TouchScreen", config.touchscreen.toString())
         props.setProperty("Keyboard", config.keyboard.toString())
         props.setProperty("Navigation", config.navigation.toString())
-        props.setProperty("ScreenLayout", (config.screenLayout and Configuration.SCREENLAYOUT_SIZE_MASK).toString())
+        val screenSize = (config.screenLayout and Configuration.SCREENLAYOUT_SIZE_MASK).toString()
+        props.setProperty("ScreenLayout", screenSize)
         props.setProperty("HasHardKeyboard", (config.keyboard == Configuration.KEYBOARD_QWERTY).toString())
-        props.setProperty("HasFiveWayNavigation", (config.navigation == Configuration.NAVIGATION_DPAD).toString())
+        val hasDpad = (config.navigation == Configuration.NAVIGATION_DPAD).toString()
+        props.setProperty("HasFiveWayNavigation", hasDpad)
+    }
 
+    private fun setDisplayProps(context: Context, props: Properties) {
         // Display
         try {
             val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -88,62 +118,70 @@ object DeviceInfoProvider {
             props.setProperty("Screen.Density", metrics.densityDpi.toString())
             props.setProperty("Screen.Width", metrics.widthPixels.toString())
             props.setProperty("Screen.Height", metrics.heightPixels.toString())
-        } catch (_: Exception) {
-            props.setProperty("Screen.Density", "420")
-            props.setProperty("Screen.Width", "1080")
-            props.setProperty("Screen.Height", "1920")
+        } catch (_: SecurityException) {
+            setFallbackDisplayProps(props)
+        } catch (_: IllegalStateException) {
+            setFallbackDisplayProps(props)
         }
+    }
 
-        // ABIs
-        props.setProperty("Platforms", Build.SUPPORTED_ABIS.joinToString(","))
+    private fun setFallbackDisplayProps(props: Properties) {
+        props.setProperty("Screen.Density", "420")
+        props.setProperty("Screen.Width", "1080")
+        props.setProperty("Screen.Height", "1920")
+    }
 
+    private fun setFeatureProps(pm: PackageManager, props: Properties) {
         // Features
         try {
             val features = pm.systemAvailableFeatures.mapNotNull { it.name }.joinToString(",")
             props.setProperty("Features", features)
-        } catch (_: Exception) {
+        } catch (_: SecurityException) {
             props.setProperty("Features", "")
         }
+    }
 
+    private fun setLocaleProps(context: Context, props: Properties) {
         // Locales
         try {
             val locales = context.assets.locales?.joinToString(",") ?: Locale.getDefault().toString()
             props.setProperty("Locales", locales)
-        } catch (_: Exception) {
+        } catch (_: java.io.IOException) {
             props.setProperty("Locales", "en_US")
         }
+    }
 
+    private fun setSharedLibProps(pm: PackageManager, props: Properties) {
         // Shared libs
         try {
             val libs = pm.systemSharedLibraryNames?.joinToString(",") ?: ""
             props.setProperty("SharedLibraries", libs)
-        } catch (_: Exception) {
+        } catch (_: SecurityException) {
             props.setProperty("SharedLibraries", "")
         }
+    }
 
+    private fun setGlProps(props: Properties) {
         // GL - best effort
-        props.setProperty("GL.Version", "OpenGL ES 3.0")
+        props.setProperty("GL.Version", EglExtensionProvider.GL_VERSION)
         props.setProperty("GL.Extensions", "")
         props.setProperty("GL.EGL.Extensions", "")
+    }
 
+    private fun setGsfProps(gsf: GsfVersion, props: Properties) {
         // GSF / Vending
         props.setProperty("GSF.version", gsf.gsfVersionCode.toString())
         props.setProperty("Vending.version", gsf.vendingVersionCode.toString())
         props.setProperty("Vending.versionString", gsf.vendingVersionString)
-
-        props.setProperty("Client", "android-google")
-        props.setProperty("Roaming", "mobile-notroaming")
-        props.setProperty("TimeZone", "UTC-10")
-        props.setProperty("CellOperator", "310")
-        props.setProperty("SimOperator", "38")
-
-        return props
     }
 
     /**
      * Convert our Properties to gplayapi's DeviceInfoProvider
      */
-    fun toGplayDeviceInfoProvider(props: Properties, locale: String = Locale.getDefault().toString()): com.aurora.gplayapi.data.providers.DeviceInfoProvider {
+    fun toGplayDeviceInfoProvider(
+        props: Properties,
+        locale: String = Locale.getDefault().toString()
+    ): com.aurora.gplayapi.data.providers.DeviceInfoProvider {
         return com.aurora.gplayapi.data.providers.DeviceInfoProvider(props, locale)
     }
 }

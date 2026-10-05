@@ -18,14 +18,14 @@ object DateMillisBackfill {
 
     fun runIfNeeded(scope: CoroutineScope, context: Context) {
         scope.launch(Dispatchers.IO) {
-            val dao = EmailRepository.get(context).getDatabase().emailDao()
+            val dao = EmailRepository.get(context).getDatabase().queryDao()
             // Java's `Date.toString()` format, e.g. "Wed Nov 27 14:30:00 PST 2024".
             val fmt = SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy", Locale.US)
             var batch = dao.getRowsWithZeroDateMillis()
             var fixed = 0
             while (batch.isNotEmpty()) {
                 for (row in batch) {
-                    val parsed = try { fmt.parse(row.date)?.time } catch (e: Exception) { null }
+                    val parsed = try { fmt.parse(row.date)?.time } catch (_: Exception) { null }
                     // Use 1 instead of 0 for unparseable dates so they don't keep getting
                     // re-processed forever (they'll sort to the bottom but won't loop).
                     val value = parsed?.takeIf { it > 0L } ?: 1L

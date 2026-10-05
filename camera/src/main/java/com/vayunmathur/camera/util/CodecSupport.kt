@@ -17,7 +17,7 @@ object CodecSupport {
     private val supportedVideoMimeTypes: List<String> by lazy {
         try {
             Recorder.getSupportedVideoMimeTypes()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }

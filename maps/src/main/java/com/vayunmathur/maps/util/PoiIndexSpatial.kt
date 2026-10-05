@@ -8,6 +8,15 @@ package com.vayunmathur.maps.util
  * [forEachInCells] when the grid is present.
  */
 
+/** Cell size: one int32 per CSR array slot. */
+private const val CELL_SLOT_BYTES = 4
+/** Degrees of latitude per metre, so a metre radius becomes a degree box. */
+private const val METERS_PER_DEGREE_LAT = 111_320.0
+/** Smallest cosine kept, so the longitude span stays finite at the poles. */
+private const val MIN_COS_LAT = 1e-6
+/** Stored ints are degrees × 10⁷. */
+private const val E7_PER_DEGREE = 1e7
+
 /** Cell offset along one axis. Must match `cell_axis` in `poi_side.rs`. */
 private fun PoiIndex.Mapped.axis(value: Int, origin: Int): Int {
     val d = value.toLong() - origin.toLong()
@@ -24,7 +33,7 @@ private fun PoiIndex.Mapped.cellIndexOf(cellId: Int): Int {
     var hi = cellCount
     while (lo < hi) {
         val mid = (lo + hi) ushr 1
-        val v = buf.getInt(PoiIndex.SPATIAL_HEADER_BYTES + 4 * mid)
+        val v = buf.getInt(PoiIndex.SPATIAL_HEADER_BYTES + CELL_SLOT_BYTES * mid)
         if (v == cellId) return mid
         if (v < cellId) lo = mid + 1 else hi = mid
     }
@@ -33,10 +42,15 @@ private fun PoiIndex.Mapped.cellIndexOf(cellId: Int): Int {
 
 /** CSR prefix entry [i], i.e. where cell `i`'s ordinals begin. */
 private fun PoiIndex.Mapped.cellOff(i: Int): Int =
-    spatial!!.getInt(PoiIndex.SPATIAL_HEADER_BYTES + 4 * cellCount + 4 * i)
+    spatial!!.getInt(
+        PoiIndex.SPATIAL_HEADER_BYTES + CELL_SLOT_BYTES * cellCount + CELL_SLOT_BYTES * i
+    )
 
 private fun PoiIndex.Mapped.gridOrdinal(k: Int): Int =
-    spatial!!.getInt(PoiIndex.SPATIAL_HEADER_BYTES + 4 * cellCount + 4 * (cellCount + 1) + 4 * k)
+    spatial!!.getInt(
+        PoiIndex.SPATIAL_HEADER_BYTES + CELL_SLOT_BYTES * cellCount +
+            CELL_SLOT_BYTES * (cellCount + 1) + CELL_SLOT_BYTES * k
+    )
 
 internal fun PoiIndex.Mapped.forEachInCells(
     minLatE7: Int,
@@ -81,17 +95,17 @@ internal fun PoiIndex.nearest(
     maxMeters: Double = 250.0,
 ): List<PoiIndex.PoiRecord> {
     val m = mappedForQuery() ?: return emptyList()
-    val dLat = maxMeters / 111_320.0
-    val cosLat = Math.cos(Math.toRadians(lat)).coerceAtLeast(1e-6)
-    val dLon = maxMeters / (111_320.0 * cosLat)
-    val minLatE7 = ((lat - dLat) * 1e7).toInt()
-    val maxLatE7 = ((lat + dLat) * 1e7).toInt()
-    val minLonE7 = ((lon - dLon) * 1e7).toInt()
-    val maxLonE7 = ((lon + dLon) * 1e7).toInt()
+    val dLat = maxMeters / METERS_PER_DEGREE_LAT
+    val cosLat = Math.cos(Math.toRadians(lat)).coerceAtLeast(MIN_COS_LAT)
+    val dLon = maxMeters / (METERS_PER_DEGREE_LAT * cosLat)
+    val minLatE7 = ((lat - dLat) * E7_PER_DEGREE).toInt()
+    val maxLatE7 = ((lat + dLat) * E7_PER_DEGREE).toInt()
+    val minLonE7 = ((lon - dLon) * E7_PER_DEGREE).toInt()
+    val maxLonE7 = ((lon + dLon) * E7_PER_DEGREE).toInt()
 
     val hits = ArrayList<Hit>()
     m.forEachInBbox(minLatE7, maxLatE7, minLonE7, maxLonE7) { i, latE7, lonE7 ->
-        hits.add(Hit(i, distanceSq(latE7 / 1e7, lonE7 / 1e7, lat, lon)))
+        hits.add(Hit(i, distanceSq(latE7 / E7_PER_DEGREE, lonE7 / E7_PER_DEGREE, lat, lon)))
         true
     }
     // Stable, so records at an equal distance stay in file order — the tie-break the
@@ -115,10 +129,10 @@ internal fun PoiIndex.inViewport(
 ): List<PoiIndex.PoiRecord> {
     val m = mappedForQuery() ?: return emptyList()
     if (cap <= 0) return emptyList()
-    val minLatE7 = (south * 1e7).toInt()
-    val maxLatE7 = (north * 1e7).toInt()
-    val minLonE7 = (west * 1e7).toInt()
-    val maxLonE7 = (east * 1e7).toInt()
+    val minLatE7 = (south * E7_PER_DEGREE).toInt()
+    val maxLatE7 = (north * E7_PER_DEGREE).toInt()
+    val minLonE7 = (west * E7_PER_DEGREE).toInt()
+    val maxLonE7 = (east * E7_PER_DEGREE).toInt()
     val out = ArrayList<PoiIndex.PoiRecord>(minOf(cap, m.count))
     m.forEachInBbox(minLatE7, maxLatE7, minLonE7, maxLonE7) { i, _, _ ->
         out.add(m.record(i))

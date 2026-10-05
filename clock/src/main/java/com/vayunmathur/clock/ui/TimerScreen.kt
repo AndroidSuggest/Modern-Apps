@@ -13,7 +13,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.vayunmathur.clock.Route
 import com.vayunmathur.clock.ui.components.TimerCard
 import com.vayunmathur.clock.ui.components.TimerKeypadContent
 import com.vayunmathur.clock.platform.TimerActions
@@ -24,7 +23,6 @@ import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.LazyListScaffold
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.ui.isExpandedWidth
-import com.vayunmathur.library.util.NavBackStack
 
 /**
  * The timer tab — keypad while there is nothing to show, countdown cards otherwise — with
@@ -34,7 +32,6 @@ import com.vayunmathur.library.util.NavBackStack
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimerScreen(
-    backStack: NavBackStack<Route>,
     state: TimerUiState,
     actions: TimerActions,
     initialAddingTimer: Boolean = false,

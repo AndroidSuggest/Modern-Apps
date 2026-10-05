@@ -61,6 +61,39 @@ object FoodDatabase {
     /** Magic + version + row count + five section lengths. */
     private const val HEADER_BYTES = 29
 
+    /** Header layout pieces: 4 magic bytes, 1 version byte, u32 row count, section lengths. */
+    private const val VERSION_BYTES = 1
+
+    /** Sections in the columnar asset: ids, scores, names, brands, nutrient blobs. */
+    private const val SECTION_COUNT = 5
+
+    /** Positions in the section-offset table. */
+    private const val SECTION_IDS = 0
+    private const val SECTION_SCORES = 1
+    private const val SECTION_NAMES = 2
+    private const val SECTION_BRANDS = 3
+    private const val SECTION_BLOBS = 4
+
+    /** Bytes in a little-endian u32 header field. */
+    private const val U32_BYTES = 4
+
+    /** Progress is reported every 8k rows. */
+    private const val PROGRESS_MASK = 0x1FFFL
+
+    /** Bind positions of the row-insert statement, in column order. */
+    private const val BIND_ID = 1
+    private const val BIND_NAME = 2
+    private const val BIND_BRANDS = 3
+    private const val BIND_NUTRIENTS = 4
+    private const val BIND_SCORE = 5
+
+    /** The unpacked database runs about three times the compressed asset; reserve that. */
+    private const val DB_SIZE_FACTOR = 3
+
+    /** Brotli decoder window and stream-copy buffer. */
+    private const val BROTLI_BUFFER = 64 * 1024
+    private const val COPY_BUFFER = 256 * 1024
+
     /**
      * Schema this build can read. Bumped in lockstep with
      * `generate_food_db.py`. Not merely advisory: [search] ranks with `bm25()`,
@@ -75,6 +108,16 @@ object FoodDatabase {
 
     /** Leading bytes of a nutrient blob holding the presence bitmap. */
     private const val BITMAP_BYTES = 6
+
+    /** Blob bit-packing widths; the format is documented on [decodeNutrients]. */
+    private const val BITS_PER_BYTE = 8
+    private const val BYTE_MASK = 0xFFL
+    private const val BYTE_MASK_INT = 0xFF
+    private const val VARINT_PAYLOAD_MASK = 0x7F
+    private const val VARINT_CONTINUATION = 0x80
+    private const val VARINT_SHIFT = 7
+    private const val EXPONENT_BITS = 4
+    private const val EXPONENT_MASK = 0xFL
 
     /** Decimal exponents a blob can encode; the exponent field is four bits. */
     private val POW10 = DoubleArray(16) { Math.pow(10.0, it.toDouble()) }
@@ -139,7 +182,10 @@ object FoodDatabase {
         appContext.assets.open(ASSET_META).bufferedReader().use {
             json.decodeFromString<Meta>(it.readText())
         }
-    } catch (e: Exception) {
+    } catch (e: IOException) {
+        android.util.Log.e(TAG, "No bundled food database asset: ${e.message}", e)
+        null
+    } catch (e: IllegalArgumentException) {
         android.util.Log.e(TAG, "No bundled food database asset: ${e.message}", e)
         null
     }
@@ -150,7 +196,10 @@ object FoodDatabase {
         return try {
             val meta = json.decodeFromString<Meta>(metaFile.readText())
             if (meta.schemaVersion == SUPPORTED_SCHEMA_VERSION) meta else null
-        } catch (e: Exception) {
+        } catch (e: IOException) {
+            android.util.Log.e(TAG, "Unreadable unpacked metadata: ${e.message}", e)
+            null
+        } catch (e: IllegalArgumentException) {
             android.util.Log.e(TAG, "Unreadable unpacked metadata: ${e.message}", e)
             null
         }
@@ -169,7 +218,7 @@ object FoodDatabase {
                     SQLiteDatabase.OPEN_READONLY,
                     null,
                 ).also { handle = it }
-            } catch (e: Exception) {
+            } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
                 android.util.Log.e(TAG, "Failed to open food database: ${e.message}", e)
                 null
             }
@@ -256,7 +305,7 @@ object FoodDatabase {
                     }
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
             android.util.Log.e(TAG, "Search Error: ${e.message}", e)
             emptyList()
         }
@@ -280,7 +329,7 @@ object FoodDatabase {
                     if (!cursor.moveToFirst()) return@use null
                     decodeNutrients(if (cursor.isNull(0)) ByteArray(0) else cursor.getBlob(0))
                 }
-        } catch (e: Exception) {
+        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
             android.util.Log.e(TAG, "Fetch Data Error: ${e.message}", e)
             null
         }
@@ -306,25 +355,16 @@ object FoodDatabase {
     internal fun decodeNutrients(blob: ByteArray): NutritionData {
         val v = DoubleArray(NUTRIENT_COUNT)
         if (blob.size >= BITMAP_BYTES) {
-            var present = 0L
-            for (i in 0 until BITMAP_BYTES) {
-                present = present or ((blob[i].toLong() and 0xFF) shl (8 * i))
-            }
-
+            val present = readPresenceBitmap(blob)
             var p = BITMAP_BYTES
             for (slot in 0 until NUTRIENT_COUNT) {
-                if ((present shr slot) and 1L == 0L) continue
-                if (p >= blob.size) break
-
-                var acc = 0L
-                var shift = 0
-                while (p < blob.size) {
-                    val byte = blob[p++].toInt() and 0xFF
-                    acc = acc or ((byte and 0x7F).toLong() shl shift)
-                    if (byte < 0x80) break
-                    shift += 7
-                }
-                v[slot] = (acc shr 4).toDouble() / POW10[(acc and 0xF).toInt()]
+                // Unset slots cost no bytes; a truncated blob ends the value section early and
+                // the remaining slots read as zero. p only grows, so skipping is equivalent to
+                // stopping once past the end.
+                if (p >= blob.size || (present shr slot) and 1L == 0L) continue
+                val (value, next) = readVarint(blob, p)
+                p = next
+                v[slot] = decodeValue(value)
             }
         }
 
@@ -373,6 +413,33 @@ object FoodDatabase {
         )
     }
 
+    /** Little-endian presence bitmap from the blob's leading bytes. */
+    private fun readPresenceBitmap(blob: ByteArray): Long {
+        var present = 0L
+        for (i in 0 until BITMAP_BYTES) {
+            present = present or ((blob[i].toLong() and BYTE_MASK) shl (BITS_PER_BYTE * i))
+        }
+        return present
+    }
+
+    /** One LEB128 varint at [offset], returning the value and the offset past it. */
+    private fun readVarint(blob: ByteArray, offset: Int): Pair<Long, Int> {
+        var acc = 0L
+        var shift = 0
+        var p = offset
+        while (p < blob.size) {
+            val byte = blob[p++].toInt() and BYTE_MASK_INT
+            acc = acc or ((byte and VARINT_PAYLOAD_MASK).toLong() shl shift)
+            if (byte < VARINT_CONTINUATION) return acc to p
+            shift += VARINT_SHIFT
+        }
+        return acc to p
+    }
+
+    /** `(mantissa << 4) | exponent` packed form to a double. */
+    private fun decodeValue(packed: Long): Double =
+        (packed shr EXPONENT_BITS).toDouble() / POW10[(packed and EXPONENT_MASK).toInt()]
+
     // --- Building ------------------------------------------------------------
 
     /**
@@ -393,9 +460,9 @@ object FoodDatabase {
             while (true) {
                 val byte = stream.read()
                 if (byte < 0) throw java.io.EOFException("truncated asset")
-                result = result or ((byte and 0x7F).toLong() shl shift)
-                if (byte < 0x80) return result
-                shift += 7
+                result = result or ((byte and VARINT_PAYLOAD_MASK).toLong() shl shift)
+                if (byte < VARINT_CONTINUATION) return result
+                shift += VARINT_SHIFT
             }
         }
 
@@ -432,38 +499,7 @@ object FoodDatabase {
      * than incrementally, both of which matter at this row count.
      */
     private suspend fun buildDatabase(source: File, target: File, onRow: (Long) -> Unit) {
-        val header = ByteArray(HEADER_BYTES)
-        java.io.FileInputStream(source).use { input ->
-            var read = 0
-            while (read < HEADER_BYTES) {
-                val n = input.read(header, read, HEADER_BYTES - read)
-                if (n < 0) throw java.io.IOException("asset is shorter than its header")
-                read += n
-            }
-        }
-        require(header.copyOfRange(0, 4).contentEquals(MAGIC)) { "asset has the wrong magic" }
-        require(header[4].toInt() == SUPPORTED_SCHEMA_VERSION) {
-            "asset is format ${header[4].toInt()}, this build reads $SUPPORTED_SCHEMA_VERSION"
-        }
-
-        fun u32(at: Int): Long =
-            (header[at].toLong() and 0xFF) or
-                ((header[at + 1].toLong() and 0xFF) shl 8) or
-                ((header[at + 2].toLong() and 0xFF) shl 16) or
-                ((header[at + 3].toLong() and 0xFF) shl 24)
-
-        val rowCount = u32(5)
-        // Sections follow the header back to back, so each offset is the sum
-        // of the lengths before it.
-        var offset = HEADER_BYTES.toLong()
-        val offsets = LongArray(5)
-        for (i in 0 until 5) {
-            offsets[i] = offset
-            offset += u32(9 + 4 * i)
-        }
-        if (offset != source.length()) {
-            throw java.io.IOException("asset is ${source.length()} bytes, header describes $offset")
-        }
+        val (rowCount, offsets) = readSectionOffsets(source)
 
         target.delete()
         val db = SQLiteDatabase.openOrCreateDatabase(target.absolutePath, "", null, null)
@@ -488,40 +524,7 @@ object FoodDatabase {
                 """.trimIndent()
             )
 
-            Section(source, offsets[0]).use { ids ->
-            Section(source, offsets[1]).use { scores ->
-            Section(source, offsets[2]).use { names ->
-            Section(source, offsets[3]).use { brands ->
-            Section(source, offsets[4]).use { blobs ->
-                val insert = db.compileStatement(
-                    "INSERT INTO products (id, product_name, brands, nutrients, score) " +
-                        "VALUES (?, ?, ?, ?, ?)"
-                )
-                db.beginTransaction()
-                try {
-                    var id = 0L
-                    for (row in 0 until rowCount) {
-                        // Ids ascend, so the asset stores them as deltas.
-                        id += ids.readVarint()
-                        insert.clearBindings()
-                        insert.bindLong(1, id)
-                        insert.bindString(2, names.readString())
-                        insert.bindString(3, brands.readString())
-                        insert.bindBlob(4, blobs.readBlob())
-                        insert.bindLong(5, scores.readByte().toLong())
-                        insert.executeInsert()
-
-                        if (row and 0x1FFF == 0L) {
-                            currentCoroutineContext().ensureActive()
-                            onRow(row)
-                        }
-                    }
-                    db.setTransactionSuccessful()
-                } finally {
-                    db.endTransaction()
-                }
-            }}}}}
-
+            insertRows(db, source, offsets, rowCount, onRow)
             onRow(rowCount)
 
             // detail=none: no token positions, which bm25() does not need -
@@ -547,6 +550,122 @@ object FoodDatabase {
         }
     }
 
+    /** Row count and the five section offsets from the asset header. */
+    private fun readSectionOffsets(source: File): Pair<Long, LongArray> {
+        val header = ByteArray(HEADER_BYTES)
+        java.io.FileInputStream(source).use { input ->
+            var read = 0
+            while (read < HEADER_BYTES) {
+                val n = input.read(header, read, HEADER_BYTES - read)
+                if (n < 0) throw java.io.IOException("asset is shorter than its header")
+                read += n
+            }
+        }
+        require(header.copyOfRange(0, MAGIC.size).contentEquals(MAGIC)) {
+            "asset has the wrong magic"
+        }
+        require(header[MAGIC.size].toInt() == SUPPORTED_SCHEMA_VERSION) {
+            "asset is format ${header[MAGIC.size].toInt()}, " +
+                "this build reads $SUPPORTED_SCHEMA_VERSION"
+        }
+
+        fun u32(at: Int): Long {
+            var value = 0L
+            for (b in 0 until U32_BYTES) {
+                value = value or (
+                    (header[at + b].toLong() and BYTE_MASK) shl (BITS_PER_BYTE * b)
+                    )
+            }
+            return value
+        }
+
+        val rowCount = u32(MAGIC.size + VERSION_BYTES)
+        // Sections follow the header back to back, so each offset is the sum
+        // of the lengths before it.
+        var offset = HEADER_BYTES.toLong()
+        val offsets = LongArray(SECTION_COUNT)
+        for (i in 0 until SECTION_COUNT) {
+            offsets[i] = offset
+            offset += u32(MAGIC.size + VERSION_BYTES + U32_BYTES + U32_BYTES * i)
+        }
+        if (offset != source.length()) {
+            throw java.io.IOException(
+                "asset is ${source.length()} bytes, header describes $offset"
+            )
+        }
+        return rowCount to offsets
+    }
+
+    /** Bulk-inserts every row in one transaction, reporting progress as it goes. */
+    private suspend fun insertRows(
+        db: SQLiteDatabase,
+        source: File,
+        offsets: LongArray,
+        rowCount: Long,
+        onRow: (Long) -> Unit,
+    ) {
+        val sections = mutableListOf<Section>()
+        try {
+            offsets.forEach { sections += Section(source, it) }
+            insertSections(
+                db,
+                sections[SECTION_IDS],
+                sections[SECTION_SCORES],
+                sections[SECTION_NAMES],
+                sections[SECTION_BRANDS],
+                sections[SECTION_BLOBS],
+                rowCount,
+                onRow,
+            )
+        } finally {
+            sections.forEach { section ->
+                try {
+                    section.close()
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
+    private suspend fun insertSections(
+        db: SQLiteDatabase,
+        ids: Section,
+        scores: Section,
+        names: Section,
+        brands: Section,
+        blobs: Section,
+        rowCount: Long,
+        onRow: (Long) -> Unit,
+    ) {
+        val insert = db.compileStatement(
+            "INSERT INTO products (id, product_name, brands, nutrients, score) " +
+                "VALUES (?, ?, ?, ?, ?)"
+        )
+        db.beginTransaction()
+        try {
+            var id = 0L
+            for (row in 0 until rowCount) {
+                // Ids ascend, so the asset stores them as deltas.
+                id += ids.readVarint()
+                insert.clearBindings()
+                insert.bindLong(BIND_ID, id)
+                insert.bindString(BIND_NAME, names.readString())
+                insert.bindString(BIND_BRANDS, brands.readString())
+                insert.bindBlob(BIND_NUTRIENTS, blobs.readBlob())
+                insert.bindLong(BIND_SCORE, scores.readByte().toLong())
+                insert.executeInsert()
+
+                if (row and PROGRESS_MASK == 0L) {
+                    currentCoroutineContext().ensureActive()
+                    onRow(row)
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     /**
      * Build the database from the bundled asset if that hasn't happened yet.
      *
@@ -559,6 +678,10 @@ object FoodDatabase {
      * checksum is needed: the bytes come from the APK, which the platform has
      * already verified.
      */
+    // Broad catch inside is deliberate: the APK bytes are trusted but the disk is not —
+    // any failure mode (I/O, storage, decode) lands in the same Failed status with the
+    // previous database left in place, and cancellation still rethrows.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun prepare(): Result<Meta> = withContext(Dispatchers.IO) {
         prepareMutex.withLock {
             val asset = assetMeta()
@@ -577,7 +700,7 @@ object FoodDatabase {
 
             // The decompressed asset and the database it builds are both on
             // disk at once, and the database runs appreciably larger.
-            val needed = asset.bytes * 3
+            val needed = asset.bytes * DB_SIZE_FACTOR
             val free = allocateForDatabase(needed)
             if (free in 1 until needed) {
                 return@withLock fail("Not enough free space for the food database")
@@ -588,33 +711,12 @@ object FoodDatabase {
             partDbFile.delete()
 
             try {
-                BrotliInputStream(appContext.assets.open(ASSET_BIN), 64 * 1024).use { input ->
-                    partBinFile.outputStream().buffered().use { output ->
-                        val buffer = ByteArray(256 * 1024)
-                        while (true) {
-                            currentCoroutineContext().ensureActive()
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            if (read == 0) continue
-                            output.write(buffer, 0, read)
-                        }
-                    }
-                }
-
+                decompressAsset()
                 buildDatabase(partBinFile, partDbFile) { row ->
                     _status.value = Status.Preparing(row, asset.rows)
                 }
                 partBinFile.delete()
-
-                closeHandle()
-                dbFile.delete()
-                if (!partDbFile.renameTo(dbFile)) {
-                    partDbFile.delete()
-                    return@withLock fail("Couldn't save the food database")
-                }
-                metaFile.writeText(json.encodeToString(asset))
-
-                _status.value = Status.Ready(asset)
+                swapInDatabase(asset)
                 Result.success(asset)
             } catch (e: Exception) {
                 partBinFile.delete()
@@ -627,6 +729,34 @@ object FoodDatabase {
                 fail(e.message ?: "Couldn't prepare the food database")
             }
         }
+    }
+
+    /** Decompresses the bundled asset into the `.part` file. */
+    private suspend fun decompressAsset() {
+        BrotliInputStream(appContext.assets.open(ASSET_BIN), BROTLI_BUFFER).use { input ->
+            partBinFile.outputStream().buffered().use { output ->
+                val buffer = ByteArray(COPY_BUFFER)
+                var read = input.read(buffer)
+                while (read >= 0) {
+                    currentCoroutineContext().ensureActive()
+                    if (read > 0) output.write(buffer, 0, read)
+                    read = input.read(buffer)
+                }
+            }
+        }
+    }
+
+    /** Swaps the `.part` database into place and records the new metadata. */
+    private fun swapInDatabase(asset: Meta) {
+        closeHandle()
+        dbFile.delete()
+        if (!partDbFile.renameTo(dbFile)) {
+            partDbFile.delete()
+            throw IOException("Couldn't save the food database")
+        }
+        metaFile.writeText(json.encodeToString(asset))
+
+        _status.value = Status.Ready(asset)
     }
 
     /**

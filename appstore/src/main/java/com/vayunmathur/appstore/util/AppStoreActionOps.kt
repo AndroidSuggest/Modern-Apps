@@ -48,7 +48,7 @@ internal fun AppStoreViewModel.installImpl(app: UnifiedApp) {
  */
 internal fun AppStoreViewModel.installSandboxedGooglePlayImpl() {
     viewModelScope.launch {
-        for (app in _sandboxedGooglePlay.value) {
+        for (app in sandboxedGooglePlayFlow.value) {
             installer.install(app)
         }
         delay(INSTALL_SETTLE_MS)

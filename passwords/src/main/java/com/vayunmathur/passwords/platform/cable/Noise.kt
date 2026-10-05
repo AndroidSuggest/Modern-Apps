@@ -39,7 +39,7 @@ class NoiseResponder(
     private var peerEphemeral: PublicKey? = null
 
     init {
-        require(psk.size == 32) { "Noise psk must be 32 bytes" }
+        require(psk.size == PSK_BYTES) { "Noise psk must be $PSK_BYTES bytes" }
         symmetric.mixHash(byteArrayOf(1))          // KN prologue byte
         symmetric.mixHash(initiatorStaticBytes)    // pre-message `-> s`
         symmetric.mixKeyAndHash(psk)               // psk0
@@ -80,6 +80,12 @@ class NoiseResponder(
 
     /** Noise SymmetricState (h, ck, and the handshake CipherState). */
     private class SymmetricState {
+        private companion object {
+            private const val NONCE_INDEX_0 = 0
+            private const val NONCE_INDEX_1 = 1
+            private const val NONCE_INDEX_2 = 2
+            private const val NONCE_INDEX_3 = 3
+        }
         private var ck: ByteArray
         private var h: ByteArray
         private var key: ByteArray? = null
@@ -87,7 +93,7 @@ class NoiseResponder(
 
         init {
             val name = PROTOCOL_NAME.toByteArray(Charsets.US_ASCII)
-            h = name + ByteArray(32 - name.size)  // name (31 bytes) zero-padded to 32
+            h = name + ByteArray(HASH_BYTES - name.size)  // name (31 bytes) zero-padded to 32
             ck = h.copyOf()
         }
 
@@ -128,14 +134,14 @@ class NoiseResponder(
 
         /** AES-256-GCM with AD = h and nonce = big-endian uint32(counter) || 8 zeros. */
         private fun aead(mode: Int, k: ByteArray, input: ByteArray): ByteArray {
-            val nonceBytes = ByteArray(12)
-            nonceBytes[0] = ((nonce ushr 24) and 0xFF).toByte()
-            nonceBytes[1] = ((nonce ushr 16) and 0xFF).toByte()
-            nonceBytes[2] = ((nonce ushr 8) and 0xFF).toByte()
-            nonceBytes[3] = (nonce and 0xFF).toByte()
+            val nonceBytes = ByteArray(NONCE_BYTES)
+            nonceBytes[NONCE_INDEX_0] = ((nonce ushr BYTE_SHIFT_HIGH) and BYTE_MASK).toByte()
+            nonceBytes[NONCE_INDEX_1] = ((nonce ushr BYTE_SHIFT_MID_HIGH) and BYTE_MASK).toByte()
+            nonceBytes[NONCE_INDEX_2] = ((nonce ushr BYTE_SHIFT_MID_LOW) and BYTE_MASK).toByte()
+            nonceBytes[NONCE_INDEX_3] = (nonce and BYTE_MASK).toByte()
             nonce++
             return Cipher.getInstance("AES/GCM/NoPadding").run {
-                init(mode, SecretKeySpec(k, "AES"), GCMParameterSpec(128, nonceBytes))
+                init(mode, SecretKeySpec(k, "AES"), GCMParameterSpec(GCM_TAG_BITS, nonceBytes))
                 updateAAD(h)
                 doFinal(input)
             }
@@ -144,6 +150,14 @@ class NoiseResponder(
 
     companion object {
         const val PROTOCOL_NAME = "Noise_KNpsk0_P256_AESGCM_SHA256"
+        private const val PSK_BYTES = 32
+        private const val HASH_BYTES = 32
+        private const val NONCE_BYTES = 12
+        private const val BYTE_MASK = 0xFF
+        private const val BYTE_SHIFT_HIGH = 24
+        private const val BYTE_SHIFT_MID_HIGH = 16
+        private const val BYTE_SHIFT_MID_LOW = 8
+        private const val GCM_TAG_BITS = 128
 
         private fun sha256(data: ByteArray): ByteArray =
             MessageDigest.getInstance("SHA-256").digest(data)

@@ -42,60 +42,80 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
         val request = inputData.toDownloadRequest() ?: return@withContext Result.failure()
         val key = request.key
         try {
-            val prefs = MusicBrainzPrefs(applicationContext)
-            val treeUri = prefs.musicFolderUri()
-                ?: return@withContext fail(key, "No music folder selected")
-
-            DownloadQueue.update(DownloadState.Searching, key)
-            val audio = resolveAudio(request, prefs)
-                ?: return@withContext fail(key, "No audio source found")
-
-            DownloadQueue.update(DownloadState.Downloading, key)
-            val raw = download(audio.urls) { progress ->
-                DownloadQueue.update(DownloadState.Downloading, key, progress)
-            } ?: return@withContext fail(key, "Download failed")
-
-            DownloadQueue.update(DownloadState.Tagging, key)
-            val cover = CoverArtCache.get(request.releaseId, request.releaseGroupId)
-            val lyrics = Lyrics.fetch(request.artist, request.title, request.album, request.durationMs)
-            android.util.Log.i(
-                "MBDownload",
-                "tagging '${request.title}': passthrough=${audio.isOpusPassthrough} " +
-                    "source=${audio.suffix} bitrate=${audio.bitrate} raw=${raw.size} " +
-                    "cover=${cover?.size ?: 0} lyrics=${lyrics?.length ?: 0}",
-            )
-
-            // Every download is filed as a tagged `.opus`. A stream that is already 48 kHz
-            // Opus is only rewrapped into Ogg; everything else is re-encoded. A failure here
-            // fails the download rather than writing one of the formats being replaced.
-            val ogg = ConvertLimit.withPermit {
-                if (audio.isOpusPassthrough) {
-                    OpusRemuxer.remux(applicationContext, raw)
-                } else {
-                    // Re-encoding is the slowest step in the download by a wide margin, so it
-                    // reports progress of its own; without it the row sits still long enough
-                    // to look like a hang and invite the user to cancel a working download.
-                    OpusTranscoder.transcode(raw, { isStopped }) { progress ->
-                        DownloadQueue.update(DownloadState.Tagging, key, progress)
-                    }
-                }
-            } ?: return@withContext fail(key, "Could not convert the download to Opus")
-
-            val tagged = OggOpusTagger.tag(ogg, request.toVorbisTags(cover, lyrics)) ?: ogg
-            android.util.Log.i(
-                "MBDownload",
-                "writing '${request.title}' as .opus: ogg=${ogg.size} tagged=${tagged.size}",
-            )
-
-            val written = writeToLibrary(treeUri, request, "opus", "audio/ogg", tagged)
-                ?: return@withContext fail(key, "Could not write to music folder")
-
-            recordInIndex(written, request, tagged.size)
-            DownloadQueue.update(DownloadState.Done, key, 1f)
-            Result.success()
-        } catch (e: Exception) {
+            runDownload(request, key)
+        } catch (e: java.io.IOException) {
+            fail(key, e.message ?: "Download failed")
+        } catch (e: IllegalStateException) {
+            fail(key, e.message ?: "Download failed")
+        } catch (e: IllegalArgumentException) {
             fail(key, e.message ?: "Download failed")
         }
+    }
+
+    private suspend fun runDownload(request: DownloadRequest, key: String): Result {
+        val prefs = MusicBrainzPrefs(applicationContext)
+        val treeUri = prefs.musicFolderUri() ?: return fail(key, "No music folder selected")
+
+        DownloadQueue.update(DownloadState.Searching, key)
+        val audio = resolveAudio(request, prefs) ?: return fail(key, "No audio source found")
+
+        val raw = fetchAudio(audio, key) ?: return fail(key, "Download failed")
+        val tagged = convertAudio(request, audio, raw, key)
+            ?: return fail(key, "Could not convert the download to Opus")
+
+        val written = writeToLibrary(treeUri, request, "opus", "audio/ogg", tagged)
+            ?: return fail(key, "Could not write to music folder")
+
+        recordInIndex(written, request, tagged.size)
+        DownloadQueue.update(DownloadState.Done, key, 1f)
+        return Result.success()
+    }
+
+    private suspend fun fetchAudio(audio: ResolvedAudio, key: String): ByteArray? {
+        DownloadQueue.update(DownloadState.Downloading, key)
+        return download(audio.urls) { progress ->
+            DownloadQueue.update(DownloadState.Downloading, key, progress)
+        }
+    }
+
+    private suspend fun convertAudio(
+        request: DownloadRequest,
+        audio: ResolvedAudio,
+        raw: ByteArray,
+        key: String,
+    ): ByteArray? {
+        DownloadQueue.update(DownloadState.Tagging, key)
+        val cover = CoverArtCache.get(request.releaseId, request.releaseGroupId)
+        val lyrics = Lyrics.fetch(request.artist, request.title, request.album, request.durationMs)
+        android.util.Log.i(
+            "MBDownload",
+            "tagging '${request.title}': passthrough=${audio.isOpusPassthrough} " +
+                "source=${audio.suffix} bitrate=${audio.bitrate} raw=${raw.size} " +
+                "cover=${cover?.size ?: 0} lyrics=${lyrics?.length ?: 0}",
+        )
+
+        // Every download is filed as a tagged `.opus`. A stream that is already 48 kHz
+        // Opus is only rewrapped into Ogg; everything else is re-encoded. A failure here
+        // fails the download rather than writing one of the formats being replaced.
+        val ogg = ConvertLimit.withPermit {
+            if (audio.isOpusPassthrough) {
+                OpusRemuxer.remux(applicationContext, raw)
+            } else {
+                // Re-encoding is the slowest step in the download by a wide margin, so it
+                // reports progress of its own; without it the row sits still long enough
+                // to look like a hang and invite the user to cancel a working download.
+                OpusTranscoder.transcode(raw, { isStopped }) { progress ->
+                    DownloadQueue.update(DownloadState.Tagging, key, progress)
+                }
+            }
+        } ?: return null
+
+        val tagged = OggOpusTagger.tag(ogg, request.toVorbisTags(cover, lyrics)) ?: ogg
+        android.util.Log.i(
+            "MBDownload",
+            "writing '${request.title}' as .opus: ogg=${ogg.size} tagged=${tagged.size}",
+        )
+        return tagged
     }
 
     /**
@@ -155,32 +175,67 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
         var lastReported = 0L
         for ((index, url) in urls.withIndex()) {
             if (isStopped) return null
-            val response = NetworkClient.stream(url) { stream, resp ->
-                if (stream == null || !resp.isSuccess) return@stream
-                val chunk = ByteArray(READ_BUFFER)
-                while (!stream.isClosedForRead) {
-                    if (isStopped) return@stream
-                    val read = stream.read(chunk)
-                    if (read <= 0) break
-                    buffer.write(chunk, 0, read)
-                    if (expected > 0) {
-                        val now = System.currentTimeMillis()
-                        if (now - lastReported > PROGRESS_INTERVAL_MS) {
-                            lastReported = now
-                            onProgress((buffer.size().toFloat() / expected).coerceIn(0f, 1f))
-                        }
-                    }
-                }
-            }
+            lastReported = downloadSegment(url, buffer, expected, lastReported, onProgress)
             // A missing segment would leave a file that stops playing part-way through, so
             // a segmented stream fails outright rather than being written incomplete.
-            if (!response.isSuccess && urls.size > 1) return null
+            val response = lastDownloadResponse
+            if (response != null && !response.isSuccess && urls.size > 1) return null
             if (urls.size > 1) onProgress((index + 1).toFloat() / urls.size)
         }
         // Being stopped abandons the read mid-segment, so what is buffered is a truncated
         // file; writing it would leave the library holding a track that never plays through.
         if (isStopped) return null
         return buffer.toByteArray().takeIf { it.isNotEmpty() }
+    }
+
+    private var lastDownloadResponse: com.vayunmathur.library.network.SimpleResponse? = null
+
+    private suspend fun downloadSegment(
+        url: String,
+        buffer: ByteArrayOutputStream,
+        expected: Long,
+        lastReported: Long,
+        onProgress: (Float) -> Unit,
+    ): Long {
+        var reported = lastReported
+        val response = NetworkClient.stream(url) { stream, resp ->
+            if (stream == null || !resp.isSuccess) return@stream
+            reported = pumpStream(stream, buffer, expected, reported, onProgress)
+        }
+        lastDownloadResponse = response
+        return reported
+    }
+
+    private suspend fun pumpStream(
+        stream: com.vayunmathur.library.network.NetworkDataStream,
+        buffer: ByteArrayOutputStream,
+        expected: Long,
+        lastReported: Long,
+        onProgress: (Float) -> Unit,
+    ): Long {
+        var reported = lastReported
+        val chunk = ByteArray(READ_BUFFER)
+        while (!stream.isClosedForRead) {
+            if (isStopped) return reported
+            val read = stream.read(chunk)
+            if (read <= 0) break
+            buffer.write(chunk, 0, read)
+            reported = reportProgress(buffer, expected, reported, onProgress)
+        }
+        return reported
+    }
+
+    private fun reportProgress(
+        buffer: ByteArrayOutputStream,
+        expected: Long,
+        lastReported: Long,
+        onProgress: (Float) -> Unit,
+    ): Long {
+        if (expected <= 0) return lastReported
+        val now = System.currentTimeMillis()
+        if (now - lastReported <= PROGRESS_INTERVAL_MS) return lastReported
+        onProgress((buffer.size().toFloat() / expected).coerceIn(0f, 1f))
+        return now
     }
 
     /** Files the track as `<Album artist>/<Album>/NN Title.ext` under the chosen folder. */
@@ -270,8 +325,10 @@ private fun DownloadRequest.toVorbisTags(cover: ByteArray?, lyrics: String?) = V
 )
 
 /** PNG files start with an 8-byte signature whose second byte is `P`. */
+private const val PNG_SIGNATURE_LENGTH = 8
+private const val PNG_TYPE_INDEX = 1
 private fun ByteArray?.isPng(): Boolean =
-    this != null && size > 8 && this[1] == 'P'.code.toByte()
+    this != null && size > PNG_SIGNATURE_LENGTH && this[PNG_TYPE_INDEX] == 'P'.code.toByte()
 
 /**
  * Bounds how many tracks convert to Opus at once.

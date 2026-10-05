@@ -61,7 +61,8 @@ object ContactPlatformRows {
         ops.add(
             ContentProviderOperation.newDelete(syncUri(ContactsContract.Data.CONTENT_URI))
                 .withSelection(
-                    "${ContactsContract.Data.MIMETYPE} IN (${(WHATSAPP_MIMES + SIGNAL_MIMES).joinToString(",") { "?" }})",
+                    "${ContactsContract.Data.MIMETYPE} IN" +
+                        "(${(WHATSAPP_MIMES + SIGNAL_MIMES).joinToString(",") { "?" }})",
                     (WHATSAPP_MIMES + SIGNAL_MIMES).toTypedArray(),
                 )
                 .build(),
@@ -70,22 +71,23 @@ object ContactPlatformRows {
         var rows = 0
         for (entry in reachable) {
             if (!entry.whatsApp && !entry.signal) continue
-            val rawContactId = ourRawContactFor(context, entry.e164) ?: continue
-            if (entry.whatsApp) {
-                WHATSAPP_MIMES.forEach { mime -> ops.add(insertRow(rawContactId, mime, entry.e164, "WhatsApp")) }
-                rows += WHATSAPP_MIMES.size
-            }
-            if (entry.signal) {
-                SIGNAL_MIMES.forEach { mime -> ops.add(insertRow(rawContactId, mime, entry.e164, "Signal")) }
-                rows += SIGNAL_MIMES.size
+            ourRawContactFor(context, entry.e164)?.let { rawContactId ->
+                if (entry.whatsApp) {
+                    WHATSAPP_MIMES.forEach { mime -> ops.add(insertRow(rawContactId, mime, entry.e164, "WhatsApp")) }
+                    rows += WHATSAPP_MIMES.size
+                }
+                if (entry.signal) {
+                    SIGNAL_MIMES.forEach { mime -> ops.add(insertRow(rawContactId, mime, entry.e164, "Signal")) }
+                    rows += SIGNAL_MIMES.size
+                }
             }
         }
 
         try {
             context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
             Log.i(TAG, "published $rows platform rows for ${reachable.size} contacts")
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not publish platform rows", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not publish platform rows", expected)
         }
     }
 
@@ -135,8 +137,8 @@ object ContactPlatformRows {
                 },
             )
             id
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not create a raw contact for $e164", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not create a raw contact for $e164", expected)
             null
         }
     }
@@ -149,8 +151,8 @@ object ContactPlatformRows {
             arrayOf(ACCOUNT_TYPE, e164),
             null,
         )?.use { cursor: Cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
-    } catch (t: Throwable) {
-        Log.w(TAG, "could not look up our raw contact for $e164", t)
+    } catch (expected: Throwable) {
+        Log.w(TAG, "could not look up our raw contact for $e164", expected)
         null
     }
 
@@ -171,9 +173,9 @@ object ContactPlatformRows {
         val present = manager.getAccountsByType(ACCOUNT_TYPE).any { it.name == ACCOUNT_NAME }
         if (!present) manager.addAccountExplicitly(account, null, null)
         true
-    } catch (t: Throwable) {
+    } catch (expected: Throwable) {
         // Adding an account of another app's type needs a matching signature; log rather than fail the sync.
-        Log.i(TAG, "could not ensure the contacts account exists: ${t.message}")
+        Log.i(TAG, "could not ensure the contacts account exists: ${expected.message}")
         false
     }
 }

@@ -13,8 +13,11 @@ object StitchNative {
         System.loadLibrary("camera_stitch")
         Log.i("StitchNative", "libcamera_stitch loaded")
         true
-    } catch (t: Throwable) {
-        Log.e("StitchNative", "System.loadLibrary(camera_stitch) failed", t)
+    } catch (e: UnsatisfiedLinkError) {
+        Log.e("StitchNative", "System.loadLibrary(camera_stitch) failed", e)
+        false
+    } catch (e: SecurityException) {
+        Log.e("StitchNative", "System.loadLibrary(camera_stitch) failed", e)
         false
     }
 

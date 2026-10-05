@@ -67,7 +67,7 @@ class SolitaireStatsRepository(context: Context) {
         saveStats(mode, variant, stats.copy(gamesPlayed = stats.gamesPlayed + 1))
     }
 
-    fun recordGameWon(mode: GameMode, variant: String, timeSeconds: Int, moves: Int) {
+    fun recordGameWon(mode: GameMode, variant: String, timeSeconds: Int) {
         val stats = getStats(mode, variant)
         val newStreak = stats.currentWinStreak + 1
         saveStats(

@@ -141,7 +141,12 @@ class DoseSoundService : Service() {
 
     private fun startVibration() {
         vibrator = getSystemService(VibratorManager::class.java)?.defaultVibrator
-        vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 500, 500), 0))
+        vibrator?.vibrate(
+            VibrationEffect.createWaveform(
+                longArrayOf(0, VIBRATION_STEP_MS, VIBRATION_STEP_MS),
+                0,
+            ),
+        )
     }
 
     override fun onDestroy() {
@@ -158,5 +163,6 @@ class DoseSoundService : Service() {
     companion object {
         const val EXTRA_MEDICATION_NAME = "MEDICATION_NAME"
         private const val TAG = "DoseSoundService"
+        private const val VIBRATION_STEP_MS = 500L
     }
 }

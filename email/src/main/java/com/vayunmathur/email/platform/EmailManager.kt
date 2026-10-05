@@ -162,5 +162,21 @@ class EmailManager {
         references: String? = null,
         from: String? = null,
         asHtml: Boolean = false,
-    ) = SmtpClient.sendMessage(context, server, user, auth, to, subject, body, cc, bcc, attachments, inlineImages, inReplyTo, references, from, asHtml)
+    ) = SmtpClient.sendMessage(
+        context,
+        server,
+        user,
+        auth,
+        to,
+        subject,
+        body,
+        cc,
+        bcc,
+        attachments,
+        inlineImages,
+        inReplyTo,
+        references,
+        from,
+        asHtml,
+    )
 }

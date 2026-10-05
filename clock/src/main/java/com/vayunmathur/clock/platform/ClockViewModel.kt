@@ -296,6 +296,9 @@ class ClockViewModel(
     private fun loadCities() {
         val ctx = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
+            // Broad catch is deliberate: a corrupt asset throws undocumented
+            // RuntimeExceptions from the parser, not just IOException.
+            @Suppress("TooGenericExceptionCaught")
             val map = try {
                 ctx.assets.open("cities.bin").use { parseCitiesBin(it) }
             } catch (e: Exception) {

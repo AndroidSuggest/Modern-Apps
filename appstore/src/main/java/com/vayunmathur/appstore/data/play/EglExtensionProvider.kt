@@ -6,6 +6,6 @@ package com.vayunmathur.appstore.data.play
  */
 object EglExtensionProvider {
     val eglExtensions: List<String> = emptyList()
-    fun getGlVersion(): String = "OpenGL ES 3.0"
+    const val GL_VERSION = "OpenGL ES 3.0"
     fun getGlExtensions(): List<String> = emptyList()
 }

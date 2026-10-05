@@ -97,7 +97,12 @@ object OtaInstaller {
      *
      * A failure here deletes the file. Keeping it would leave an unverified multi-gigabyte blob
      * on disk that the resume logic would happily treat as a completed download next time.
+     *
+     * Broad catch is deliberate: IOException, GeneralSecurityException and SecurityException
+     * all mean the package is not one we signed, and an unanticipated exception type must
+     * not become an accidental pass.
      */
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun verifySignature(
         packageFile: File,
         onProgress: (percent: Int) -> Unit,
@@ -133,6 +138,9 @@ object OtaInstaller {
         val payloadProperties: List<String>,
     )
 
+    // Broad catch is deliberate: zip reads and metadata parsing throw undocumented
+    // RuntimeExceptions (not just IOException), all meaning "unreadable package".
+    @Suppress("TooGenericExceptionCaught")
     private fun readContents(packageFile: File): Contents? = try {
         ZipFile(packageFile).use { zip ->
             val metadataEntry = zip.getEntry(ENTRY_METADATA)
@@ -194,6 +202,9 @@ object OtaInstaller {
      * never started, so no completion callback will ever arrive and the continuation has to be
      * resumed here or this suspends forever.
      */
+    // Broad catch is deliberate: the update_engine binder binding throws undocumented
+    // RuntimeExceptions (not just SecurityException) when unavailable.
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun applyPayload(
         packageFile: File,
         payloadOffset: Long,
@@ -265,6 +276,9 @@ object OtaInstaller {
         }
         continuation.invokeOnCancellation { runCatching { engine.cancel() } }
 
+        // Broad catch is deliberate: a rejected payload throws undocumented
+        // RuntimeExceptions, and no completion callback follows a rejection.
+        @Suppress("TooGenericExceptionCaught")
         try {
             // update_engine opens this path as its own uid, not ours, so it has to be readable
             // by others. Without it applyPayload fails on open.
@@ -290,3 +304,4 @@ object OtaInstaller {
         if (isActive) resume(result)
     }
 }
+

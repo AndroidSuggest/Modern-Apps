@@ -1,4 +1,5 @@
 impl Reader {
+    #[cfg(unix)]
     fn open(fd: i32, offset: i64) -> Option<Reader> {
         let dupfd = unsafe { libc::dup(fd) };
         if dupfd < 0 {
@@ -6,6 +7,12 @@ impl Reader {
         }
         let file = unsafe { File::from_raw_fd(dupfd) };
         Reader::from_src(Src { file, base: offset as u64 })
+    }
+
+    /// Host fallback: `fd` is an APK asset descriptor, meaningless off-device.
+    #[cfg(not(unix))]
+    fn open(_fd: i32, _offset: i64) -> Option<Reader> {
+        None
     }
 
     /// Open a `.geodb` straight from a filesystem path (base offset 0). Test-only: the

@@ -53,7 +53,7 @@ fun parseOcrLayout(json: String?): OcrLayout? {
     if (json.isNullOrBlank()) return null
     return try {
         ocrJson.decodeFromString<OcrLayout>(json).takeIf { it.w > 0 && it.h > 0 }
-    } catch (e: Exception) {
+    } catch (e: IllegalArgumentException) {
         Log.w("OcrLayout", "Failed to parse stored OCR layout", e)
         null
     }

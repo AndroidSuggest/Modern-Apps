@@ -49,14 +49,18 @@ data class NowPlayingInfo(
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is NowPlayingInfo) return false
-        if (title != other.title) return false
-        if (artist != other.artist) return false
-        if (playing != other.playing) return false
-        if (positionMs != other.positionMs) return false
-        if (durationMs != other.durationMs) return false
-        if (hasPrevious != other.hasPrevious) return false
-        if (hasNext != other.hasNext) return false
-        if (displayIcon !== other.displayIcon) return false
+        return matchesScalars(other) && matchesIcon(other) && matchesArtwork(other)
+    }
+
+    private fun matchesScalars(other: NowPlayingInfo): Boolean =
+        title == other.title && artist == other.artist && playing == other.playing &&
+            positionMs == other.positionMs && durationMs == other.durationMs &&
+            hasPrevious == other.hasPrevious && hasNext == other.hasNext
+
+    private fun matchesIcon(other: NowPlayingInfo): Boolean =
+        displayIcon === other.displayIcon
+
+    private fun matchesArtwork(other: NowPlayingInfo): Boolean {
         if (artworkData == null && other.artworkData == null) return true
         if (artworkData == null || other.artworkData == null) return false
         return artworkData.contentEquals(other.artworkData)

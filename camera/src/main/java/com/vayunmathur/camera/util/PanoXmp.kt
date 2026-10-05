@@ -11,6 +11,15 @@ object PanoXmp {
 
     private const val XMP_NAMESPACE = "http://ns.adobe.com/xap/1.0/\u0000"
 
+    // JPEG segment markers/fields (APP1 XMP injection).
+    private const val JPEG_MARKER_PREFIX = 0xFF
+    private const val JPEG_SOI_SECOND = 0xD8
+    private const val JPEG_APP1 = 0xE1
+    private const val JPEG_SEGMENT_MAX = 0xFFFF
+    private const val JPEG_BYTE_MASK = 0xFF
+    private const val LENGTH_FIELD_BYTES = 2
+    private const val HIGH_BYTE_SHIFT = 8
+
     /** Emit a standard XMP packet carrying the GPano fields for [info]. */
     fun buildGPanoXmp(info: PanoInfo): String = buildString {
         append("<?xpacket begin=\"\uFEFF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>")
@@ -39,23 +48,23 @@ object PanoXmp {
      */
     fun injectXmp(jpeg: ByteArray, xmp: String): ByteArray {
         // Not a JPEG (no SOI) — return unchanged rather than corrupting it.
-        if (jpeg.size < 2 || jpeg[0] != 0xFF.toByte() || jpeg[1] != 0xD8.toByte()) return jpeg
+        if (jpeg.size < 2 || jpeg[0] != JPEG_MARKER_PREFIX.toByte() || jpeg[1] != JPEG_SOI_SECOND.toByte()) return jpeg
 
         val nsBytes = XMP_NAMESPACE.toByteArray(Charsets.UTF_8)
         val xmpBytes = xmp.toByteArray(Charsets.UTF_8)
         val payloadLen = nsBytes.size + xmpBytes.size
         val segmentLen = payloadLen + 2 // includes the 2-byte length field itself
-        if (segmentLen > 0xFFFF) return jpeg
+        if (segmentLen > JPEG_SEGMENT_MAX) return jpeg
 
-        val out = ByteArrayOutputStream(jpeg.size + segmentLen + 2)
+        val out = ByteArrayOutputStream(jpeg.size + segmentLen + LENGTH_FIELD_BYTES)
         // SOI
-        out.write(0xFF)
-        out.write(0xD8)
+        out.write(JPEG_MARKER_PREFIX)
+        out.write(JPEG_SOI_SECOND)
         // APP1 marker + length + payload
-        out.write(0xFF)
-        out.write(0xE1)
-        out.write((segmentLen shr 8) and 0xFF)
-        out.write(segmentLen and 0xFF)
+        out.write(JPEG_MARKER_PREFIX)
+        out.write(JPEG_APP1)
+        out.write((segmentLen shr HIGH_BYTE_SHIFT) and JPEG_BYTE_MASK)
+        out.write(segmentLen and JPEG_BYTE_MASK)
         out.write(nsBytes)
         out.write(xmpBytes)
         // Rest of the original JPEG after the SOI.

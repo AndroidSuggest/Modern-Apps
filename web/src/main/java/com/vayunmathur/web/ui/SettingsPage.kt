@@ -51,6 +51,13 @@ import com.vayunmathur.web.platform.SearchEngine
 import com.vayunmathur.web.platform.WebViewModel
 import com.vayunmathur.web.platform.clearAllDownloads
 import com.vayunmathur.web.platform.clearAllSiteData
+import com.vayunmathur.web.platform.clearHistory
+import com.vayunmathur.web.platform.updateBlockThirdParty
+import com.vayunmathur.web.platform.updateCacheMode
+import com.vayunmathur.web.platform.updateDesktopMode
+import com.vayunmathur.web.platform.updateJsEnabled
+import com.vayunmathur.web.platform.updateSearchBarAtBottom
+import com.vayunmathur.web.platform.updateSearchEngine
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

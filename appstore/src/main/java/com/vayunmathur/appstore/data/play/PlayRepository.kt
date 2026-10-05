@@ -98,7 +98,10 @@ class PlayRepository(private val context: Context) {
             } else {
                 invalidate()
             }
-        } catch (_: Exception) {
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "restore auth failed", expected)
+        } catch (expected: IllegalStateException) {
+            Log.w(TAG, "restore auth failed", expected)
         }
     }
 
@@ -118,8 +121,10 @@ class PlayRepository(private val context: Context) {
             return block(PlayStoreApi(cached, httpClient))
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "Play call failed; cycling anonymous account", e)
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "Play call failed; cycling anonymous account", expected)
+        } catch (expected: IllegalStateException) {
+            Log.w(TAG, "Play call failed; cycling anonymous account", expected)
         }
 
         invalidate()
@@ -128,8 +133,11 @@ class PlayRepository(private val context: Context) {
             block(PlayStoreApi(fresh, httpClient))
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "Play call failed again after cycling", e)
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "Play call failed again after cycling", expected)
+            null
+        } catch (expected: IllegalStateException) {
+            Log.w(TAG, "Play call failed again after cycling", expected)
             null
         }
     }
@@ -153,7 +161,7 @@ class PlayRepository(private val context: Context) {
         // Use the same curated Pixel 9a profile Aurora + its dispenser are tuned to,
         // so the dispensed anonymous accounts and gplayapi's DFE headers stay consistent.
         val deviceProps = DeviceInfoProvider.auroraProfile(context)
-        val result = anonAuthRepo.ensureAuthData(context, deviceProps)
+        val result = anonAuthRepo.ensureAuthData(deviceProps)
         val authData = result.getOrElse { err ->
             _authState.value = PlayAuthState.Error(anonAuthRepo.errorMessage(err))
             return@withLock Result.failure(err)
@@ -209,7 +217,7 @@ class PlayRepository(private val context: Context) {
     ): List<PlayFile> {
         val authData = ensureAuth().getOrThrow()
         return PlayStoreApi(authData, httpClient)
-            .purchase(context, packageName, versionCode, offerType, certHash)
+            .purchase(packageName, versionCode, offerType, certHash)
     }
 
     // --- Internals ----------------------------------------------------------------
@@ -217,7 +225,9 @@ class PlayRepository(private val context: Context) {
     private suspend fun isValid(authData: AuthData): Boolean = withContext(Dispatchers.IO) {
         try {
             AuthHelper.using(httpClient).isValid(authData)
-        } catch (_: Exception) {
+        } catch (_: java.io.IOException) {
+            false
+        } catch (_: IllegalStateException) {
             false
         }
     }
@@ -236,7 +246,8 @@ class PlayRepository(private val context: Context) {
                 prefs.remove(PLAY_AUTH_JSON_KEY)
                 prefs.remove(PLAY_AUTH_DISPENSED_AT_KEY)
             }
-        } catch (_: Exception) {
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "invalidate auth failed", expected)
         }
     }
 
@@ -247,7 +258,8 @@ class PlayRepository(private val context: Context) {
                 prefs[PLAY_AUTH_JSON_KEY] = jsonStr
                 prefs[PLAY_AUTH_DISPENSED_AT_KEY] = dispensedAt
             }
-        } catch (_: Exception) {
+        } catch (expected: java.io.IOException) {
+            Log.w(TAG, "persist auth failed", expected)
         }
     }
 

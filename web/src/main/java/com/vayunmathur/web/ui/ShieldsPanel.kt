@@ -39,6 +39,9 @@ import com.vayunmathur.web.domain.EffectiveShields
 import com.vayunmathur.web.domain.ShieldLevel
 import com.vayunmathur.web.domain.ShieldsSettings
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.clearSiteShields
+import com.vayunmathur.web.platform.updateShields
+import com.vayunmathur.web.platform.updateSiteShields
 
 /**
  * Brave's shields panel: the shield in the toolbar opens this for the current site.

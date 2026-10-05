@@ -39,21 +39,41 @@ class CarMetadataPreviews {
                             HostUiSection(
                                 header = "SIM",
                                 rows = listOf(
-                                    HostUiRow("Alex Rivera", listOf("On my way, 5 minutes out"), browse = true, image = monogram("Alex Rivera")) {},
-                                    HostUiRow("Mom", listOf("Call me when you can", "2 unread"), browse = true, image = monogram("Mom")) {},
+                                    HostUiRow(
+                                        "Alex Rivera",
+                                        listOf("On my way, 5 minutes out"),
+                                        browse = true,
+                                        image = monogram("Alex Rivera")) {},
+                                    HostUiRow(
+                                        "Mom",
+                                        listOf("Call me when you can", "2 unread"),
+                                        browse = true,
+                                        image = monogram("Mom")) {},
                                 ),
                             ),
                             HostUiSection(
                                 header = "WhatsApp",
                                 rows = listOf(
-                                    HostUiRow("Weekend Trip", listOf("Sam: booked the cabin!"), browse = true, image = monogram("Weekend Trip")) {},
-                                    HostUiRow("Priya", listOf("Sounds good 👍"), browse = true, image = monogram("Priya")) {},
+                                    HostUiRow(
+                                        "Weekend Trip",
+                                        listOf("Sam: booked the cabin!"),
+                                        browse = true,
+                                        image = monogram("Weekend Trip")) {},
+                                    HostUiRow(
+                                        "Priya",
+                                        listOf("Sounds good 👍"),
+                                        browse = true,
+                                        image = monogram("Priya")) {},
                                 ),
                             ),
                             HostUiSection(
                                 header = "Signal",
                                 rows = listOf(
-                                    HostUiRow("Jordan", listOf("See you at the gate"), browse = true, image = monogram("Jordan")) {},
+                                    HostUiRow(
+                                        "Jordan",
+                                        listOf("See you at the gate"),
+                                        browse = true,
+                                        image = monogram("Jordan")) {},
                                 ),
                             ),
                         ),
@@ -113,7 +133,13 @@ class CarMetadataPreviews {
         val size = 128
         val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
-        val palette = intArrayOf(0xFF5C6BC0.toInt(), 0xFF26A69A.toInt(), 0xFFEF5350.toInt(), 0xFFAB47BC.toInt(), 0xFF66BB6A.toInt(), 0xFFFFA726.toInt())
+        val palette = intArrayOf(
+            0xFF5C6BC0.toInt(),
+            0xFF26A69A.toInt(),
+            0xFFEF5350.toInt(),
+            0xFFAB47BC.toInt(),
+            0xFF66BB6A.toInt(),
+            0xFFFFA726.toInt())
         val bg = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             color = palette[(name.hashCode() and 0x7fffffff) % palette.size]
         }

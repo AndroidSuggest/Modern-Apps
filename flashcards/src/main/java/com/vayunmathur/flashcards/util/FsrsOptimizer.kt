@@ -21,8 +21,13 @@ object FsrsOptimizer {
     // Weights we tune: initial stabilities (0..3), difficulty terms (4..6), and the
     // stability-growth terms (8..10). The rest keep their defaults.
     private val TUNABLE = intArrayOf(0, 1, 2, 3, 4, 5, 6, 8, 9, 10)
-
     private const val R_EPS = 1e-6
+    /** Coordinate-descent step rates, coarse to fine. */
+    private val STEP_RATES = doubleArrayOf(0.25, 0.1, 0.05)
+    /** Max improvement passes per step rate. */
+    private const val MAX_PASSES = 25
+    /** Minimum loss improvement to accept a candidate. */
+    private const val MIN_IMPROVEMENT = 1e-9
 
     /** True when [logsByCard] has enough contributing reviews to optimize. */
     fun hasEnough(logsByCard: List<List<ReviewLog>>): Boolean =
@@ -35,29 +40,51 @@ object FsrsOptimizer {
     fun optimize(logsByCard: List<List<ReviewLog>>): DoubleArray {
         val weights = Scheduler.DEFAULT_W.copyOf()
         if (!hasEnough(logsByCard)) return weights
-
         var best = loss(weights, logsByCard)
-        for (rate in doubleArrayOf(0.25, 0.1, 0.05)) {
-            var improved = true
-            var guard = 0
-            while (improved && guard++ < 25) {
-                improved = false
-                for (idx in TUNABLE) {
-                    for (sign in intArrayOf(1, -1)) {
-                        val candidate = weights.copyOf()
-                        candidate[idx] = clamp(idx, weights[idx] * (1 + sign * rate))
-                        if (candidate[idx] == weights[idx]) continue
-                        val l = loss(candidate, logsByCard)
-                        if (l < best - 1e-9) {
-                            weights[idx] = candidate[idx]
-                            best = l
-                            improved = true
-                        }
-                    }
+        for (rate in STEP_RATES) {
+            best = descendAtRate(weights, logsByCard, rate, best)
+        }
+        return weights
+    }
+
+    private fun descendAtRate(
+        weights: DoubleArray,
+        logsByCard: List<List<ReviewLog>>,
+        rate: Double,
+        initialBest: Double,
+    ): Double {
+        var best = initialBest
+        var improved = true
+        var guard = 0
+        while (improved && guard++ < MAX_PASSES) {
+            improved = false
+            for (idx in TUNABLE) {
+                if (tryWeight(weights, logsByCard, idx, rate, best)) {
+                    best = loss(weights, logsByCard)
+                    improved = true
                 }
             }
         }
-        return weights
+        return best
+    }
+
+    private fun tryWeight(
+        weights: DoubleArray,
+        logsByCard: List<List<ReviewLog>>,
+        idx: Int,
+        rate: Double,
+        best: Double,
+    ): Boolean {
+        for (sign in intArrayOf(1, -1)) {
+            val candidate = weights.copyOf()
+            candidate[idx] = clamp(idx, weights[idx] * (1 + sign * rate))
+            if (candidate[idx] == weights[idx]) continue
+            if (loss(candidate, logsByCard) < best - MIN_IMPROVEMENT) {
+                weights[idx] = candidate[idx]
+                return true
+            }
+        }
+        return false
     }
 
     /** Keeps a tuned weight positive and within 10x of its default magnitude. */

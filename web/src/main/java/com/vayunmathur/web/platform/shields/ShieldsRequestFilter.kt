@@ -16,6 +16,9 @@ import java.util.Base64
 
 private const val TAG = "ShieldsRequestFilter"
 
+/** Served for synthetic responses; WebView may discard non-2xx bodies in favour of its own error page. */
+private const val HTTP_OK = 200
+
 /** Empty body for a blocked image; anything else can be zero bytes. */
 private val EMPTY_GIF: ByteArray = Base64.getDecoder()
     .decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
@@ -51,18 +54,41 @@ object ShieldsRequestFilter {
 
         // Above the main-frame early return below, otherwise a cleartext navigation — the
         // common case — would never be gated at all.
-        if (scheme == "http" && !lanPolicy.allowsCleartext(url)) {
-            val host = LocalNetwork.hostOf(url)
-            Log.d(TAG, "blocked public cleartext request to $host")
-            return if (request.isForMainFrame) {
-                blockedPageResponse(context, host)
-            } else {
-                emptyResponse(ResourceTypes.of(url, isMainFrame = false, headers = request.requestHeaders))
-            }
-        }
+        cleartextBlockResponse(context, request, scheme)?.let { return it }
 
         if (request.isForMainFrame) return null
+        return shieldBlockResponse(request, url, pageUrl, shieldsFor, onBlocked)
+    }
 
+    /** Non-null when a cleartext request targets a host the LAN policy forbids. */
+    private fun cleartextBlockResponse(
+        context: Context,
+        request: WebResourceRequest,
+        scheme: String?,
+    ): WebResourceResponse? {
+        if (scheme != "http" || lanPolicy.allowsCleartext(request.url.toString())) return null
+        val host = LocalNetwork.hostOf(request.url.toString())
+        Log.d(TAG, "blocked public cleartext request to $host")
+        return if (request.isForMainFrame) {
+            blockedPageResponse(context, host)
+        } else {
+            val type = ResourceTypes.of(
+                request.url.toString(),
+                isMainFrame = false,
+                headers = request.requestHeaders,
+            )
+            emptyResponse(type)
+        }
+    }
+
+    /** Non-null when the shields engine blocks this sub-resource request. */
+    private fun shieldBlockResponse(
+        request: WebResourceRequest,
+        url: String,
+        pageUrl: String,
+        shieldsFor: (host: String) -> EffectiveShields,
+        onBlocked: (pageUrl: String, blockedUrl: String) -> Unit,
+    ): WebResourceResponse? {
         val source = pageUrl.ifEmpty { url }
         val shields = shieldsFor(hostOf(source))
         if (!shields.blockTrackers) return null
@@ -91,11 +117,11 @@ object ShieldsRequestFilter {
             "subdocument" -> "text/html" to ByteArray(0)
             else -> "text/plain" to ByteArray(0)
         }
-        return WebResourceResponse(mime, "utf-8", 200, "OK", emptyMap(), ByteArrayInputStream(body))
+        return WebResourceResponse(mime, "utf-8", HTTP_OK, "OK", emptyMap(), ByteArrayInputStream(body))
     }
 
     /** Serves the body of a `$redirect` rule, which the engine hands back as a data URL. */
-    private fun dataUrlResponse(dataUrl: String): WebResourceResponse? = try {
+    private fun dataUrlResponse(dataUrl: String): WebResourceResponse? = runCatching {
         val header = dataUrl.substringBefore(',', "")
         val payload = dataUrl.substringAfter(',', "")
         val mime = header.removePrefix("data:").substringBefore(';').ifEmpty { "text/plain" }
@@ -104,11 +130,10 @@ object ShieldsRequestFilter {
         } else {
             Uri.decode(payload).toByteArray()
         }
-        WebResourceResponse(mime, "utf-8", 200, "OK", emptyMap(), ByteArrayInputStream(bytes))
-    } catch (e: Exception) {
+        WebResourceResponse(mime, "utf-8", HTTP_OK, "OK", emptyMap(), ByteArrayInputStream(bytes))
+    }.onFailure { e ->
         Log.w(TAG, "malformed redirect resource", e)
-        null
-    }
+    }.getOrNull()
 
     /**
      * The interstitial for a blocked navigation. An empty body would render as a mystery
@@ -139,7 +164,7 @@ object ShieldsRequestFilter {
             <body><h1>$title</h1><p>$message</p></body></html>
         """.trimIndent()
         return WebResourceResponse(
-            "text/html", "utf-8", 200, "OK", emptyMap(), ByteArrayInputStream(html.toByteArray()),
+            "text/html", "utf-8", HTTP_OK, "OK", emptyMap(), ByteArrayInputStream(html.toByteArray()),
         )
     }
 

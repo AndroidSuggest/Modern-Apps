@@ -8,8 +8,6 @@ import android.hardware.display.VirtualDisplay
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.KeyEvent
-import android.view.MotionEvent
 import android.view.Surface
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
@@ -53,9 +51,23 @@ class CarDisplay(
     private var carLifecycle: CarDisplayLifecycle? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /** Latest now-playing card bounds, reported by the card; null until first layout. */
+    @Volatile private var mediaCardBounds: TapBounds? = null
+
+    /**
+     * Head-unit input injection: touch, keys and scroll. Reads the live decor
+     * view, so it tracks presentations created later.
+     */
+    internal val input = CarDisplayInput(
+        mainHandler = mainHandler,
+        decorView = { presentation?.window?.decorView },
+        cardBounds = { mediaCardBounds },
+        onCardTap = { onMediaTap?.invoke() },
+    )
+
     /**
      * Fires when the now-playing card is tapped, locally or from the head unit
-     * via [handleCarTap]. Wired to the media monitor's transport toggle.
+     * via the input handler. Wired to the media monitor's transport toggle.
      */
     var onMediaTap: (() -> Unit)? = null
         set(value) {
@@ -158,15 +170,6 @@ class CarDisplay(
     /** The encoder input surface [show] was last called with; kept for [updateConfig]. */
     private var cachedSurface: Surface? = null
 
-    /** Last-known now-playing card bounds in display pixels; null until laid out. */
-    @Volatile private var mediaCardBounds: TapBounds? = null
-
-    /**
-     * `downTime` of the gesture in progress, for the synthesized touch stream.
-     * Main thread only: written and read inside the posted [dispatchTouch].
-     */
-    private var gestureDownTime: Long = 0
-
     private val isMainThread get() = Looper.myLooper() == Looper.getMainLooper()
 
     /**
@@ -211,9 +214,6 @@ class CarDisplay(
             onEndCall = { onEndCall?.invoke() },
             onHoldToggle = { onHoldToggle?.invoke() },
             onMuteToggle = { onMuteToggle?.invoke() },
-            onCardBounds = { left, top, right, bottom ->
-                mediaCardBounds = TapBounds(left, top, right, bottom)
-            },
         ).also { shown ->
             mapSurfaceForwarder?.let { forward ->
                 shown.mapSurfaceListener = { s, w, h -> forward(s, w, h) }
@@ -258,7 +258,6 @@ class CarDisplay(
     fun setNowPlaying(info: NowPlayingInfo) {
         nowPlaying = info
         CarLauncherState.setNowPlaying(info)
-        mainHandler.post { presentation?.updateNowPlaying(info) }
     }
 
     /**
@@ -267,7 +266,6 @@ class CarDisplay(
      */
     fun hideNowPlaying() {
         CarLauncherState.hideNowPlaying()
-        mainHandler.post { presentation?.hideNowPlaying() }
     }
 
     /**
@@ -339,7 +337,6 @@ class CarDisplay(
     fun setActiveCall(info: ActiveCallInfo?) {
         activeCall = info
         CarLauncherState.setActiveCall(info)
-        mainHandler.post { presentation?.updateCallCard(info) }
     }
 
     /**
@@ -399,142 +396,34 @@ class CarDisplay(
      * still paces output to its configured rate.
      */
     fun startFrameInvalidation(fps: Int) {
-        mainHandler.post { presentation?.startFrameInvalidation(fps) }
+        mainHandler.post {
+            stopInvalidationLoop()
+            val root = presentation?.window?.decorView ?: return@post
+            val delayMs = (MILLIS_PER_SECOND / fps.coerceAtLeast(1)).toLong().coerceAtLeast(1L)
+            val loop = object : Runnable {
+                override fun run() {
+                    root.invalidate()
+                    mainHandler.postDelayed(this, delayMs)
+                }
+            }
+            invalidationLoop = loop
+            mainHandler.post(loop)
+        }
     }
 
     /** Stops the continuous invalidation started by [startFrameInvalidation]. */
     fun stopFrameInvalidation() {
-        mainHandler.post { presentation?.stopFrameInvalidation() }
+        mainHandler.post { stopInvalidationLoop() }
     }
 
-    /**
-     * Routes a head-unit tap at the now-playing card.
-     *
-     * [x] and [y] are display pixels (what ch8 scales to), compared against the
-     * card's on-screen bounds on the virtual display. Returns whether the tap
-     * hit the card; a hit posts the toggle to the main thread because views may
-     * only be touched there. Called from [dispatchTouch] for single-pointer
-     * DOWN inside the card bounds -- previously zero callers, now the card-tap
-     * path for ch8 touch.
-     */
-    fun handleCarTap(x: Float, y: Float): Boolean {
-        val bounds = mediaCardBounds ?: return false
-        if (!bounds.contains(x, y)) return false
-        mainHandler.post { onMediaTap?.invoke() }
-        return true
+    /** Removes a running invalidation loop, if any. Main thread only. */
+    private fun stopInvalidationLoop() {
+        invalidationLoop?.let(mainHandler::removeCallbacks)
+        invalidationLoop = null
     }
 
-    /**
-     * Injects one head-unit touch frame into the car UI. Safe from any thread.
-     *
-     * [pointers] are display pixels (what ch8 scales to): (x, y, pointer id).
-     * [action] is the `MotionEvent` action verbatim -- the head unit numbers
-     * touch actions exactly as `MotionEvent` does -- with the pointer index
-     * for POINTER_DOWN/UP shifted in at build time. Posts to the main thread
-     * because views may only be touched there; order is preserved (one FIFO
-     * queue, posted in arrival order), so down/move/up stay a gesture. Returns
-     * false when the presentation is not up yet.
-     */
-    fun injectTouch(action: Int, pointers: List<Triple<Float, Float, Int>>, actionIndex: Int): Boolean {
-        if (presentation == null) return false
-        mainHandler.post { dispatchTouch(action, pointers, actionIndex) }
-        return true
-    }
-
-    /**
-     * Injects one head-unit key press or release. Safe from any thread; the
-     * dispatch hops to main like [injectTouch]. Returns false with no UI up.
-     */
-    fun injectKey(keycode: Int, down: Boolean): Boolean {
-        if (presentation == null) return false
-        mainHandler.post {
-            val event = KeyEvent(
-                if (down) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP,
-                keycode,
-            )
-            presentation?.window?.decorView?.dispatchKeyEvent(event)
-        }
-        return true
-    }
-
-    /**
-     * Injects one head-unit scroll tick. Safe from any thread; the dispatch
-     * hops to main like [injectTouch]. Returns false with no UI up.
-     */
-    fun injectScroll(delta: Int): Boolean {
-        if (presentation == null) return false
-        mainHandler.post {
-            val now = android.os.SystemClock.uptimeMillis()
-            val coords = MotionEvent.PointerCoords().apply {
-                setAxisValue(MotionEvent.AXIS_VSCROLL, delta.toFloat())
-            }
-            val event = MotionEvent.obtain(
-                now, now,
-                MotionEvent.ACTION_SCROLL,
-                1,
-                arrayOf(MotionEvent.PointerProperties().apply { id = 0 }),
-                arrayOf(coords),
-                0, 0, 1f, 1f, 0, 0,
-                android.view.InputDevice.SOURCE_MOUSE, 0,
-            )
-            presentation?.window?.decorView?.dispatchTouchEvent(event)
-            event.recycle()
-        }
-        return true
-    }
-
-    /** Main thread only: builds one multi-pointer event and dispatches it. */
-    private fun dispatchTouch(
-        action: Int,
-        pointers: List<Triple<Float, Float, Int>>,
-        actionIndex: Int,
-    ) {
-        val view = presentation?.window?.decorView ?: return
-        // A tap on the now-playing card toggles playback directly: the tap
-        // coordinates are display pixels and the card bounds are too, so a
-        // DOWN inside them is an unambiguous card hit. Other gestures (and
-        // taps elsewhere) still dispatch normally so app tiles stay tappable.
-        if (action == MotionEvent.ACTION_DOWN && pointers.size == 1) {
-            val (x, y, _) = pointers[0]
-            if (handleCarTap(x, y)) return
-        }
-        val now = android.os.SystemClock.uptimeMillis()
-        val downTime = if (action == MotionEvent.ACTION_DOWN) {
-            gestureDownTime = now
-            now
-        } else {
-            gestureDownTime
-        }
-        val fullAction = when (action) {
-            MotionEvent.ACTION_POINTER_DOWN,
-            MotionEvent.ACTION_POINTER_UP,
-            -> action or (actionIndex.coerceIn(0, pointers.size - 1) shl
-                MotionEvent.ACTION_POINTER_INDEX_SHIFT)
-            else -> action
-        }
-        val props = pointers.map { (_, _, id) ->
-            MotionEvent.PointerProperties().apply { this.id = id }
-        }.toTypedArray()
-        val coords = pointers.map { (x, y, _) ->
-            MotionEvent.PointerCoords().apply {
-                this.x = x
-                this.y = y
-                pressure = 1f
-            }
-        }.toTypedArray()
-        val event = MotionEvent.obtain(
-            downTime, now, fullAction, pointers.size, props, coords,
-            0, 0, 1f, 1f, 0, 0,
-            android.view.InputDevice.SOURCE_TOUCHSCREEN, 0,
-        )
-        view.dispatchTouchEvent(event)
-        event.recycle()
-        if (action == MotionEvent.ACTION_UP ||
-            action == MotionEvent.ACTION_CANCEL
-        ) {
-            gestureDownTime = 0
-        }
-    }
+    /** The running invalidation loop; null when [stopFrameInvalidation] ran. Main thread only. */
+    private var invalidationLoop: Runnable? = null
 
     /**
      * Dismisses the car UI and releases the virtual display. The dismiss hops to the
@@ -599,7 +488,6 @@ class CarDisplay(
         onEndCall: () -> Unit,
         onHoldToggle: () -> Unit,
         onMuteToggle: () -> Unit,
-        onCardBounds: (Int, Int, Int, Int) -> Unit,
     ): CarPresentation {
         if (isMainThread) {
             return buildPresentation(
@@ -617,7 +505,6 @@ class CarDisplay(
                 onEndCall,
                 onHoldToggle,
                 onMuteToggle,
-                onCardBounds,
             )
         }
         val show = FutureTask<CarPresentation> {
@@ -636,7 +523,6 @@ class CarDisplay(
                 onEndCall,
                 onHoldToggle,
                 onMuteToggle,
-                onCardBounds,
             )
         }
         mainHandler.post(show)
@@ -646,7 +532,7 @@ class CarDisplay(
             Thread.currentThread().interrupt()
             virtualDisplay?.release()
             virtualDisplay = null
-            throw RuntimeException("interrupted while showing the car display", e)
+            throw IllegalStateException("interrupted while showing the car display", e)
         } catch (e: ExecutionException) {
             virtualDisplay?.release()
             virtualDisplay = null
@@ -675,7 +561,6 @@ class CarDisplay(
         onEndCall: () -> Unit,
         onHoldToggle: () -> Unit,
         onMuteToggle: () -> Unit,
-        onCardBounds: (Int, Int, Int, Int) -> Unit,
     ): CarPresentation {
         initialNowPlaying?.let { CarLauncherState.setNowPlaying(it) }
         CarLauncherState.setDrivingRestricted(initialDrivingRestricted)
@@ -698,7 +583,6 @@ class CarDisplay(
         return CarPresentation(
             context,
             display,
-            onCardBounds,
         ).also { shown ->
             shown.setInnerPhoneStatusSource(initialPhoneStatusSource ?: { phoneStatusSource?.invoke() })
             shown.show()
@@ -724,6 +608,9 @@ class CarDisplay(
     private companion object {
         const val DISPLAY_NAME = "MA Auto"
         const val TAG = "MaAuto.Display"
+
+        /** Millis per second; converts a per-second rate into a frame delay. */
+        const val MILLIS_PER_SECOND = 1_000.0
 
         /**
          * `VIRTUAL_DISPLAY_FLAG_TRUSTED` by value: hidden before API 36, so read

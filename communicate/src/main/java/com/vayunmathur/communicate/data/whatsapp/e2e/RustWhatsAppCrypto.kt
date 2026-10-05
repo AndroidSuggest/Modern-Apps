@@ -12,13 +12,16 @@ import android.util.Log
 object RustWhatsAppCrypto {
 
     private const val TAG = "RustWhatsAppCrypto"
+    private const val KEYPAIR_SIZE = 64
+    private const val PRIVATE_KEY_SIZE = 32
+    private const val ENCRYPT_PARTS = 3
 
     val isAvailable: Boolean = try {
         System.loadLibrary("communicate_signal")
         Log.i(TAG, "libwhatsapp_signal loaded")
         true
-    } catch (t: Throwable) {
-        Log.e(TAG, "System.loadLibrary(communicate_signal) failed", t)
+    } catch (expected: Throwable) {
+        Log.e(TAG, "System.loadLibrary(communicate_signal) failed", expected)
         false
     }
 
@@ -116,18 +119,20 @@ object RustWhatsAppCrypto {
     data class KeyPair(val privateKey: ByteArray, val publicKey: ByteArray)
 
     fun generateKeyPairSplit(): KeyPair {
-        val blob = generateKeyPair() ?: throw RuntimeException("Rust generateKeyPair returned null")
-        if (blob.size != 64) throw RuntimeException("generateKeyPair expected 64 bytes, got ${blob.size}")
+        val blob = generateKeyPair() ?: throw IllegalStateException("Rust generateKeyPair returned null")
+        if (blob.size != KEYPAIR_SIZE) {
+            throw IllegalStateException("generateKeyPair expected 64 bytes, got ${blob.size}")
+        }
         return KeyPair(
-            privateKey = blob.copyOfRange(0, 32),
-            publicKey = blob.copyOfRange(32, 64),
+            privateKey = blob.copyOfRange(0, PRIVATE_KEY_SIZE),
+            publicKey = blob.copyOfRange(PRIVATE_KEY_SIZE, KEYPAIR_SIZE),
         )
     }
 
     data class EncryptResult(val isPreKey: Boolean, val body: ByteArray, val newSession: ByteArray)
     fun encryptSplit(sessionBytes: ByteArray, plaintext: ByteArray): EncryptResult {
-        val out = encrypt(sessionBytes, plaintext) ?: throw RuntimeException("Rust encrypt returned null")
-        if (out.size != 3) throw RuntimeException("encrypt expected 3 parts, got ${out.size}")
+        val out = encrypt(sessionBytes, plaintext) ?: throw IllegalStateException("Rust encrypt returned null")
+        if (out.size != ENCRYPT_PARTS) throw IllegalStateException("encrypt expected 3 parts, got ${out.size}")
         return EncryptResult(
             isPreKey = out[0].isNotEmpty() && out[0][0].toInt() != 0,
             body = out[1],
@@ -137,8 +142,8 @@ object RustWhatsAppCrypto {
 
     data class DecryptResult(val plaintext: ByteArray, val newSession: ByteArray)
     fun decryptMessageSplit(sessionBytes: ByteArray, ciphertext: ByteArray): DecryptResult {
-        val out = decryptMessage(sessionBytes, ciphertext) ?: throw RuntimeException("Rust decryptMessage null")
-        if (out.size != 2) throw RuntimeException("decryptMessage expected 2 parts")
+        val out = decryptMessage(sessionBytes, ciphertext) ?: throw IllegalStateException("Rust decryptMessage null")
+        if (out.size != 2) throw IllegalStateException("decryptMessage expected 2 parts")
         return DecryptResult(out[0], out[1])
     }
 
@@ -152,28 +157,28 @@ object RustWhatsAppCrypto {
         val out = decryptPreKeyMessage(
             localIdentityPrivate, localIdentityPublic, signedPreKeyPrivate,
             oneTimePrivate, preKeyMessageBytes,
-        ) ?: throw RuntimeException("Rust decryptPreKeyMessage null")
-        if (out.size != 2) throw RuntimeException("decryptPreKey expected 2 parts")
+        ) ?: throw IllegalStateException("Rust decryptPreKeyMessage null")
+        if (out.size != 2) throw IllegalStateException("decryptPreKey expected 2 parts")
         return DecryptResult(out[0], out[1])
     }
 
     data class SenderKeyCreateResult(val state: ByteArray, val skdm: ByteArray)
     fun createSenderKeySplit(): SenderKeyCreateResult {
-        val out = createSenderKey() ?: throw RuntimeException("Rust createSenderKey null")
-        if (out.size != 2) throw RuntimeException("createSenderKey expected 2 parts")
+        val out = createSenderKey() ?: throw IllegalStateException("Rust createSenderKey null")
+        if (out.size != 2) throw IllegalStateException("createSenderKey expected 2 parts")
         return SenderKeyCreateResult(out[0], out[1])
     }
 
     data class GroupCipherResult(val data: ByteArray, val newState: ByteArray)
     fun encryptGroupSplit(stateBytes: ByteArray, plaintext: ByteArray): GroupCipherResult {
-        val out = encryptGroup(stateBytes, plaintext) ?: throw RuntimeException("Rust encryptGroup null")
-        if (out.size != 2) throw RuntimeException("encryptGroup expected 2 parts")
+        val out = encryptGroup(stateBytes, plaintext) ?: throw IllegalStateException("Rust encryptGroup null")
+        if (out.size != 2) throw IllegalStateException("encryptGroup expected 2 parts")
         return GroupCipherResult(out[0], out[1])
     }
 
     fun decryptGroupSplit(stateBytes: ByteArray, ciphertext: ByteArray): GroupCipherResult {
-        val out = decryptGroup(stateBytes, ciphertext) ?: throw RuntimeException("Rust decryptGroup null")
-        if (out.size != 2) throw RuntimeException("decryptGroup expected 2 parts")
+        val out = decryptGroup(stateBytes, ciphertext) ?: throw IllegalStateException("Rust decryptGroup null")
+        if (out.size != 2) throw IllegalStateException("decryptGroup expected 2 parts")
         return GroupCipherResult(out[0], out[1])
     }
 }

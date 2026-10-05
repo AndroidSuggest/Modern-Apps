@@ -14,8 +14,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -54,6 +57,7 @@ import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TextField
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.Dispatchers
@@ -154,44 +158,16 @@ class DocumentPickerActivity : ComponentActivity() {
             scrollBehavior = appBarScrollBehavior(),
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
-                Text(
-                    text = currentDir.absolutePath,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.outline,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                )
+                PickerPathHeader(currentDir.absolutePath)
                 HorizontalDivider()
 
-                LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-                    items(dirs, key = { "d:" + it.key }) { dir ->
-                        PickerRow(
-                            item = dir,
-                            checked = false,
-                            onClick = { dir.realFile?.let { vm.navigateTo(it) } },
-                        )
-                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    }
-                    items(visibleFiles, key = { "f:" + it.key }) { file ->
-                        PickerRow(
-                            item = file,
-                            checked = selected.containsKey(file.key),
-                            onClick = {
-                                val f = file.realFile
-                                if (f != null) {
-                                    if (allowMultiple) {
-                                        if (selected.containsKey(file.key)) selected.remove(file.key)
-                                        else selected[file.key] = f
-                                    } else {
-                                        returnFiles(listOf(f))
-                                    }
-                                }
-                            },
-                        )
-                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    }
-                }
+                PickerEntries(
+                    dirs = dirs,
+                    visibleFiles = visibleFiles,
+                    selected = selected,
+                    onOpenDir = { dir -> dir.realFile?.let { vm.navigateTo(it) } },
+                    onPickFile = { file -> toggleOrReturnFile(file, selected) },
+                )
 
                 BottomBar(
                     mode = mode,
@@ -205,6 +181,64 @@ class DocumentPickerActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    private fun toggleOrReturnFile(file: FileBrowserItem, selected: MutableMap<String, File>) {
+        val target = file.realFile ?: return
+        if (!allowMultiple) {
+            returnFiles(listOf(target))
+            return
+        }
+        if (selected.containsKey(file.key)) selected.remove(file.key)
+        else selected[file.key] = target
+    }
+
+    @Composable
+    private fun PickerPathHeader(path: String) {
+        Text(
+            text = path,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.outline,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+
+    @Composable
+    private fun ColumnScope.PickerEntries(
+        dirs: List<FileBrowserItem>,
+        visibleFiles: List<FileBrowserItem>,
+        selected: Map<String, File>,
+        onOpenDir: (FileBrowserItem) -> Unit,
+        onPickFile: (FileBrowserItem) -> Unit,
+    ) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+            items(dirs, key = { "d:" + it.key }) { dir ->
+                PickerRow(
+                    item = dir,
+                    checked = false,
+                    onClick = { onOpenDir(dir) },
+                )
+                PickerDivider()
+            }
+            items(visibleFiles, key = { "f:" + it.key }) { file ->
+                PickerRow(
+                    item = file,
+                    checked = selected.containsKey(file.key),
+                    onClick = { onPickFile(file) },
+                )
+                PickerDivider()
+            }
+        }
+    }
+
+    @Composable
+    private fun PickerDivider() {
+        HorizontalDivider(
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
     }
 
     @Composable
@@ -240,32 +274,67 @@ class DocumentPickerActivity : ComponentActivity() {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 when (mode) {
-                    Mode.CREATE -> {
-                        TextField(
-                            value = createName,
-                            onValueChange = onCreateNameChange,
-                            label = { Text(stringResource(R.string.file_name_label)) },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Button(onClick = onCreate, enabled = createName.isNotBlank()) {
-                            Text(stringResource(R.string.saf_save))
-                        }
-                    }
-                    Mode.TREE -> {
-                        TextButton(onClick = onCancel) { Text(stringResource(com.vayunmathur.library.ui.R.string.cancel)) }
-                        Box(Modifier.weight(1f))
-                        Button(onClick = onUseFolder) { Text(stringResource(R.string.saf_use_this_folder)) }
-                    }
-                    else -> {
-                        TextButton(onClick = onCancel) { Text(stringResource(com.vayunmathur.library.ui.R.string.cancel)) }
-                        Box(Modifier.weight(1f))
-                        Button(onClick = onConfirmSelection, enabled = selectedCount > 0) {
-                            Text(stringResource(R.string.saf_select_count, selectedCount))
-                        }
-                    }
+                    Mode.CREATE -> CreateBar(
+                        createName = createName,
+                        onCreateNameChange = onCreateNameChange,
+                        onCreate = onCreate,
+                    )
+                    Mode.TREE -> TreeBar(
+                        onUseFolder = onUseFolder,
+                        onCancel = onCancel,
+                    )
+                    else -> SelectBar(
+                        selectedCount = selectedCount,
+                        onConfirmSelection = onConfirmSelection,
+                        onCancel = onCancel,
+                    )
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun RowScope.CreateBar(
+        createName: String,
+        onCreateNameChange: (String) -> Unit,
+        onCreate: () -> Unit,
+    ) {
+        TextField(
+            value = createName,
+            onValueChange = onCreateNameChange,
+            label = { Text(stringResource(R.string.file_name_label)) },
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+        )
+        Button(onClick = onCreate, enabled = createName.isNotBlank()) {
+            Text(stringResource(R.string.saf_save))
+        }
+    }
+
+    @Composable
+    private fun RowScope.TreeBar(onUseFolder: () -> Unit, onCancel: () -> Unit) {
+        CancelButton(onCancel)
+        Box(Modifier.weight(1f))
+        Button(onClick = onUseFolder) { Text(stringResource(R.string.saf_use_this_folder)) }
+    }
+
+    @Composable
+    private fun RowScope.SelectBar(
+        selectedCount: Int,
+        onConfirmSelection: () -> Unit,
+        onCancel: () -> Unit,
+    ) {
+        CancelButton(onCancel)
+        Box(Modifier.weight(1f))
+        Button(onClick = onConfirmSelection, enabled = selectedCount > 0) {
+            Text(stringResource(R.string.saf_select_count, selectedCount))
+        }
+    }
+
+    @Composable
+    private fun RowScope.CancelButton(onCancel: () -> Unit) {
+        TextButton(onClick = onCancel) {
+            Text(stringResource(UiR.string.cancel))
         }
     }
 

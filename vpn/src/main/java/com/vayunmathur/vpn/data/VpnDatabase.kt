@@ -74,7 +74,8 @@ interface VpnConfigDao {
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override suspend fun migrate(connection: SQLiteConnection) {
-        connection.execSQL("""
+        connection.execSQL(
+            """
             CREATE TABLE IF NOT EXISTS `ConnectionLogEntity` (
                 `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                 `timestampStart` INTEGER NOT NULL,
@@ -92,11 +93,26 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
                 `rxBytes` INTEGER NOT NULL,
                 `requestCount` INTEGER NOT NULL
             )
-        """.trimIndent())
-        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_ConnectionLogEntity_packageName_domain_timestampLast_remoteIp_uid_protocol` ON `ConnectionLogEntity` (`packageName`, `domain`, `timestampLast`, `remoteIp`, `uid`, `protocol`)")
-        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_ConnectionLogEntity_remoteIp_remotePort_protocol_uid` ON `ConnectionLogEntity` (`remoteIp`, `remotePort`, `protocol`, `uid`)")
-        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_ConnectionLogEntity_domain` ON `ConnectionLogEntity` (`domain`)")
-        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_ConnectionLogEntity_packageName` ON `ConnectionLogEntity` (`packageName`)")
+            """.trimIndent(),
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS" +
+                " `index_ConnectionLogEntity_packageName_domain_timestampLast_remoteIp_uid_protocol`" +
+                " ON `ConnectionLogEntity`" +
+                " (`packageName`, `domain`, `timestampLast`, `remoteIp`, `uid`, `protocol`)",
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_ConnectionLogEntity_remoteIp_remotePort_protocol_uid`" +
+                " ON `ConnectionLogEntity` (`remoteIp`, `remotePort`, `protocol`, `uid`)",
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_ConnectionLogEntity_domain`" +
+                " ON `ConnectionLogEntity` (`domain`)",
+        )
+        connection.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_ConnectionLogEntity_packageName`" +
+                " ON `ConnectionLogEntity` (`packageName`)",
+        )
     }
 }
 

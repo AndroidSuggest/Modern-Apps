@@ -42,10 +42,12 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.vayunmathur.calculator.MainActivity
 import com.vayunmathur.calculator.R
-import com.vayunmathur.calculator.util.CalculatorViewModel
+import com.vayunmathur.calculator.util.KEY_UNITS_CATEGORY
 import com.vayunmathur.calculator.util.UnitDef
 import com.vayunmathur.calculator.util.UnitRegistry
 import com.vayunmathur.calculator.util.formatResult
+import com.vayunmathur.calculator.util.unitsFromKey
+import com.vayunmathur.calculator.util.unitsToKey
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.widgets.DynamicThemeGlance
 
@@ -63,6 +65,10 @@ internal data class UnitsWidgetState(val categoryName: String, val conversion: S
  */
 class UnitsGlanceWidget : GlanceAppWidget() {
 
+    // Broad catches are deliberate: a widget update runs unattended in a cold process where the
+    // store or Glance state may be unreadable, and every failure mode below degrades to fallback
+    // UI (logged) rather than taking down the widget host.
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val state = try {
             loadState(context)
@@ -88,6 +94,9 @@ class UnitsGlanceWidget : GlanceAppWidget() {
         }
     }
 
+    // Broad catches are deliberate: a throwing providePreview takes down the widget picker on
+    // API 35+, so every failure mode here falls back to simpler UI (logged) instead.
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
         try {
             provideContent {
@@ -264,12 +273,12 @@ class UnitsGlanceWidget : GlanceAppWidget() {
          */
         private suspend fun loadState(context: Context): UnitsWidgetState {
             val store = DataStoreUtils.getInstance(context)
-            val name = store.getStringAwait(CalculatorViewModel.KEY_UNITS_CATEGORY)
+            val name = store.getStringAwait(KEY_UNITS_CATEGORY)
             val category = UnitRegistry.categories.firstOrNull { it.name == name }
                 ?: UnitRegistry.categories[0]
             val units = category.units
-            val fromToken = store.getStringAwait(CalculatorViewModel.unitsFromKey(category.name))
-            val toToken = store.getStringAwait(CalculatorViewModel.unitsToKey(category.name))
+            val fromToken = store.getStringAwait(unitsFromKey(category.name))
+            val toToken = store.getStringAwait(unitsToKey(category.name))
             val from = units.firstOrNull { it.token == fromToken } ?: units[0]
             val to = units.firstOrNull { it.token == toToken } ?: units.getOrElse(1) { units[0] }
             return UnitsWidgetState(category.name, conversionText(from, to))

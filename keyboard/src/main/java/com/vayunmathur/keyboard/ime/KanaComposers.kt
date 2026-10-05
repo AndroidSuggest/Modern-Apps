@@ -13,8 +13,11 @@ package com.vayunmathur.keyboard.ime
 
 /** Hiragana → katakana: the two blocks are laid out in parallel, 0x60 apart. */
 private fun toKatakana(text: String): String = buildString {
-    for (c in text) append(if (c in 'ぁ'..'ゖ') c + 0x60 else c)
+    for (c in text) append(if (c in 'ぁ'..'ん') c + KATAKANA_OFFSET else c)
 }
+
+/** Offset between parallel hiragana and katakana blocks. */
+private const val KATAKANA_OFFSET = 0x60
 
 /**
  * Romaji (ローマ字入力): the standard way Japanese is typed on a Latin keyboard.
@@ -44,40 +47,77 @@ class RomajiComposer : Composer {
 
     private fun convert() {
         while (pending.isNotEmpty()) {
-            val spelling = pending.toString()
-            val direct = ROMAJI[spelling]
-            if (direct != null) {
-                emit(direct)
-                pending.setLength(0)
-                continue
-            }
-            // A doubled consonant is the sokuon: `kko` is っ then `ko`.
-            if (spelling.length >= 2 && spelling[0] == spelling[1] && spelling[0] !in "aiueon") {
-                emit("っ")
-                pending.deleteCharAt(0)
-                continue
-            }
-            if (spelling.length >= 2 && spelling[0] == 'n') {
-                // `nn` cannot be resolved yet: `konnichiwa` is こんにちは, so the second `n`
-                // is ん only if no vowel follows it. Everything that cannot continue な行
-                // proves the first `n` was ん all along.
-                if (spelling[1] == 'n') {
-                    if (spelling.length == 2) return
-                    emit("ん")
-                    pending.deleteCharAt(0)
-                    continue
-                }
-                if (spelling[1] !in "aiueoy'") {
-                    emit("ん")
-                    pending.deleteCharAt(0)
-                    continue
-                }
-            }
-            if (spelling in PREFIXES) return // still growing towards a real spelling
-            // Unspellable: keep the letter as typed rather than swallowing it.
-            kana.append(spelling[0])
-            pending.deleteCharAt(0)
+            val outcome = consumeOne(pending.toString())
+            if (outcome == StepResult.WAIT) return
+            if (outcome == StepResult.UNMATCHED) spillFirst()
         }
+    }
+
+    private enum class StepResult { PROGRESSED, WAIT, UNMATCHED }
+
+    private fun consumeOne(spelling: String): StepResult {
+        return when {
+            tryDirectMatch(spelling) -> StepResult.PROGRESSED
+            trySokuon(spelling) -> StepResult.PROGRESSED
+            else -> resolveNonDirect(spelling)
+        }
+    }
+
+    private fun resolveNonDirect(spelling: String): StepResult {
+        val nOutcome = resolveLeadingN(spelling)
+        if (nOutcome != null) return nOutcome
+        return if (spelling in PREFIXES) StepResult.WAIT else StepResult.UNMATCHED
+    }
+
+    /** Emit a complete spelling, clearing what is waiting. True when it matched. */
+    private fun tryDirectMatch(spelling: String): Boolean {
+        val direct = ROMAJI[spelling] ?: return false
+        emit(direct)
+        pending.setLength(0)
+        return true
+    }
+
+    /** A doubled consonant is the sokuon: `kko` is っ then `ko`. True when it matched. */
+    private fun trySokuon(spelling: String): Boolean {
+        if (spelling.length < 2 || spelling[0] != spelling[1] || spelling[0] in "aiueon") {
+            return false
+        }
+        emit("っ")
+        pending.deleteCharAt(0)
+        return true
+    }
+
+    /**
+     * Settle a leading `n`, or null when this spelling does not start with one. Null means
+     * "not an n-case" — the caller still checks [PREFIXES], since `na` etc. keep growing.
+     */
+    private fun resolveLeadingN(spelling: String): StepResult? {
+        if (spelling.length < 2 || spelling[0] != 'n') return null
+        return resolveNSecond(spelling)
+    }
+
+    private fun resolveNSecond(spelling: String): StepResult? {
+        // `nn` cannot be resolved yet: `konnichiwa` is こんにちは, so the second `n`
+        // is ん only if no vowel follows it. Everything that cannot continue な行
+        // proves the first `n` was ん all along.
+        if (spelling[1] == 'n') {
+            if (spelling.length == 2) return StepResult.WAIT
+            emit("ん")
+            pending.deleteCharAt(0)
+            return StepResult.PROGRESSED
+        }
+        if (spelling[1] !in "aiueoy'") {
+            emit("ん")
+            pending.deleteCharAt(0)
+            return StepResult.PROGRESSED
+        }
+        return null
+    }
+
+    /** Unspellable: keep the letter as typed rather than swallowing it. */
+    private fun spillFirst() {
+        kana.append(pending[0])
+        pending.deleteCharAt(0)
     }
 
     private fun emit(hiragana: String) {

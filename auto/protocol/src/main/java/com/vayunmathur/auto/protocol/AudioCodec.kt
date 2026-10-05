@@ -341,38 +341,55 @@ object AudioCodec {
      * contract is RIFF/WAVE framing.
      */
     fun stripWavToPcm16Mono(wav: ByteArray): WavPcm? {
-        if (wav.size < 44) return null
+        val header = readWavHeader(wav) ?: return null
+        return scanWavChunks(wav, header)
+    }
+
+    private fun readWavHeader(wav: ByteArray): ByteBuffer? {
+        if (wav.size < MIN_WAV_SIZE) return null
         val header = ByteBuffer.wrap(wav).order(ByteOrder.LITTLE_ENDIAN)
-        if (header.getInt(0) != RIFF_MAGIC || header.getInt(8) != WAVE_MAGIC) return null
-        var channels = 0
-        var sampleRate = 0
-        var offset = 12
-        while (offset + 8 <= wav.size) {
-            val chunkId = header.getInt(offset)
-            val chunkSize = header.getInt(offset + 4)
-            if (chunkSize < 0) return null
-            val body = offset + 8
-            if (body + chunkSize > wav.size) return null
-            when (chunkId) {
-                FMT_MAGIC -> {
-                    if (chunkSize < 16) return null
-                    if (header.getShort(body) != 1.toShort()) return null
-                    channels = header.getShort(body + 2).toInt()
-                    if (channels != 1 && channels != 2) return null
-                    sampleRate = header.getInt(body + 4)
-                    if (sampleRate <= 0) return null
-                    if (header.getShort(body + 14) != 16.toShort()) return null
-                }
+        if (header.getInt(RIFF_OFFSET) != RIFF_MAGIC ||
+            header.getInt(WAVE_MAGIC_OFFSET) != WAVE_MAGIC
+        ) {
+            return null
+        }
+        return header
+    }
+
+    private fun scanWavChunks(wav: ByteArray, header: ByteBuffer): WavPcm? {
+        var format: WavFormat? = null
+        var offset = RIFF_HEADER_SIZE
+        while (offset + CHUNK_HEADER_SIZE <= wav.size) {
+            val chunkSize = header.getInt(offset + CHUNK_SIZE_OFFSET)
+            val body = offset + CHUNK_HEADER_SIZE
+            if (chunkSize < 0 || body + chunkSize > wav.size) return null
+            when (header.getInt(offset)) {
+                FMT_MAGIC -> format = parseFmtChunk(header, body, chunkSize) ?: return null
                 DATA_MAGIC -> {
-                    if (channels == 0 || sampleRate == 0) return null
-                    val raw = wav.copyOfRange(body, body + chunkSize - (chunkSize % 2))
-                    val mono = if (channels == 1) raw else downmixStereo16(raw)
-                    return WavPcm(sampleRate, mono)
+                    val found = format ?: return null
+                    return extractMonoPcm(wav, body, chunkSize, found)
                 }
             }
             offset = body + chunkSize + (chunkSize % 2)
         }
         return null
+    }
+
+    private fun parseFmtChunk(header: ByteBuffer, body: Int, chunkSize: Int): WavFormat? {
+        if (chunkSize < FMT_BODY_MIN_SIZE) return null
+        if (header.getShort(body) != PCM_FORMAT_TAG.toShort()) return null
+        val channels = header.getShort(body + CHANNEL_COUNT_OFFSET).toInt()
+        if (channels != MONO_CHANNELS && channels != STEREO_CHANNELS) return null
+        val sampleRate = header.getInt(body + SAMPLE_RATE_OFFSET)
+        if (sampleRate <= 0) return null
+        if (header.getShort(body + BITS_PER_SAMPLE_OFFSET) != BITS_PER_SAMPLE_16.toShort()) return null
+        return WavFormat(channels, sampleRate)
+    }
+
+    private fun extractMonoPcm(wav: ByteArray, body: Int, chunkSize: Int, format: WavFormat): WavPcm {
+        val raw = wav.copyOfRange(body, body + chunkSize - (chunkSize % 2))
+        val mono = if (format.channels == MONO_CHANNELS) raw else downmixStereo16(raw)
+        return WavPcm(format.sampleRate, mono)
     }
 
     /**
@@ -384,23 +401,27 @@ object AudioCodec {
         if (!config.hasSamplingRate() || !config.hasNumberOfBits() || !config.hasNumberOfChannels()) {
             return -1
         }
-        if (config.numberOfBits !in setOf(8, 16, 24, 32)) return -1
-        if (config.numberOfChannels != 1 && config.numberOfChannels != 2) return -1
-        if (config.samplingRate !in 8_000..192_000) return -1
+        if (config.numberOfBits !in SUPPORTED_BIT_DEPTHS) return -1
+        if (config.numberOfChannels != MONO_CHANNEL_COUNT &&
+            config.numberOfChannels != STEREO_CHANNEL_COUNT
+        ) {
+            return -1
+        }
+        if (config.samplingRate !in MIN_SAMPLE_RATE_HZ..MAX_SAMPLE_RATE_HZ) return -1
         var score = 0
-        if (config.numberOfBits == 16) score += 4
-        if (config.numberOfChannels == 2) score += 2
+        if (config.numberOfBits == BITS_PER_SAMPLE_16) score += SCORE_16_BIT
+        if (config.numberOfChannels == STEREO_CHANNEL_COUNT) score += SCORE_STEREO
         score += when (config.samplingRate) {
-            48_000 -> 3
-            44_100 -> 2
-            16_000 -> 1
+            RATE_48K_HZ -> SCORE_RATE_48K
+            RATE_44K1_HZ -> SCORE_RATE_44K1
+            RATE_16K_HZ -> SCORE_RATE_16K
             else -> 0
         }
         return score
     }
 
     private fun downmixStereo16(stereo: ByteArray): ByteArray {
-        val frames = stereo.size / 4
+        val frames = stereo.size / STEREO_FRAME_BYTES
         val out = ByteBuffer.allocate(frames * 2).order(ByteOrder.LITTLE_ENDIAN)
         val input = ByteBuffer.wrap(stereo).order(ByteOrder.LITTLE_ENDIAN)
         repeat(frames) {
@@ -413,7 +434,72 @@ object AudioCodec {
     private const val WAVE_MAGIC = 0x45564157 // "WAVE", little-endian
     private const val FMT_MAGIC = 0x20746D66 // "fmt ", little-endian
     private const val DATA_MAGIC = 0x61746164 // "data", little-endian
+
+    /** Smallest valid WAV: the 44-byte canonical header with an empty data chunk. */
+    private const val MIN_WAV_SIZE = 44
+
+    /** Offsets of the RIFF/WAVE fourcc tags in the file header. */
+    private const val RIFF_OFFSET = 0
+    private const val WAVE_MAGIC_OFFSET = 8
+
+    /** RIFF header size: "RIFF" + size + "WAVE" before the first chunk header. */
+    private const val RIFF_HEADER_SIZE = 12
+
+    /** Every chunk header is an 8-byte [id][size] pair. */
+    private const val CHUNK_HEADER_SIZE = 8
+
+    /** Offset of the size field within a chunk header. */
+    private const val CHUNK_SIZE_OFFSET = 4
+
+    /** "fmt " body must hold at least the 16 PCM descriptor bytes. */
+    private const val FMT_BODY_MIN_SIZE = 16
+
+    /** PCM format tag (1) in the "fmt " descriptor: anything else is declined. */
+    private const val PCM_FORMAT_TAG = 1
+
+    /** Offsets within the "fmt " descriptor body. */
+    private const val CHANNEL_COUNT_OFFSET = 2
+    private const val SAMPLE_RATE_OFFSET = 4
+    private const val BITS_PER_SAMPLE_OFFSET = 14
+
+    /** Only mono TTS output passes through; stereo is downmixed to this. */
+    private const val MONO_CHANNELS = 1
+
+    /** Stereo pairs are averaged into one mono channel. */
+    private const val STEREO_CHANNELS = 2
+
+    /** Bytes of one interleaved stereo 16-bit frame: two samples. */
+    private const val STEREO_FRAME_BYTES = 4
+
+    /** One channel count and one bit depth alias, for the discovery scorer. */
+    private const val MONO_CHANNEL_COUNT = 1
+    private const val STEREO_CHANNEL_COUNT = 2
+
+    /** Bit depths a discovery config may advertise; only 16-bit scores highest. */
+    private val SUPPORTED_BIT_DEPTHS = setOf(8, 16, 24, 32)
+
+    /** Sane discovery sample-rate floor/ceiling: voice floor to hi-res ceiling. */
+    private const val MIN_SAMPLE_RATE_HZ = 8_000
+    private const val MAX_SAMPLE_RATE_HZ = 192_000
+
+    /** Only PCM-16 discovery configs are preferred; see [score]. */
+    private const val BITS_PER_SAMPLE_16 = 16
+
+    /** Preferred discovery rates, highest score first. */
+    private const val RATE_48K_HZ = 48_000
+    private const val RATE_44K1_HZ = 44_100
+    private const val RATE_16K_HZ = 16_000
+
+    /** Discovery score weights: 16-bit, then stereo, then sample rate. */
+    private const val SCORE_16_BIT = 4
+    private const val SCORE_STEREO = 2
+    private const val SCORE_RATE_48K = 3
+    private const val SCORE_RATE_44K1 = 2
+    private const val SCORE_RATE_16K = 1
 }
+
+/** Parsed "fmt " descriptor: channel count and rate needed to unwrap "data". */
+private data class WavFormat(val channels: Int, val sampleRate: Int)
 
 /** One usable discovery configuration and its index in `audio_configs`. */
 data class SelectedConfig(val index: Int, val config: AudioConfiguration)

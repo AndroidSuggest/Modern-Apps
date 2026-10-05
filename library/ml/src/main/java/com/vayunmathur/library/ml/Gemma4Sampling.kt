@@ -56,7 +56,7 @@ data class Sampling(
  * like a failed native step and stops.
  */
 fun sampleGemma4Logits(logits: FloatArray, config: Sampling, step: Int): Int {
-    if (logits.isEmpty()) return -1
+    if (logits.isEmpty()) return EMPTY_LOGITS_TOKEN
     if (config.temperature <= 0f || (config.topK <= 1 && config.topP >= 1f)) {
         return argmaxGemma4(logits)
     }
@@ -64,40 +64,69 @@ fun sampleGemma4Logits(logits: FloatArray, config: Sampling, step: Int): Int {
     // rather than all 262,144 on every step.
     val order = logits.indices.sortedByDescending { logits[it] }
     val pool = if (config.topK in 1 until order.size) order.subList(0, config.topK) else order
-    val invTemp = 1f / config.temperature
+    val weights = softmaxWeights(logits, pool, config.temperature)
+    val kept = topPKept(weights, config.topP)
+    return drawFromPool(pool, weights, kept, config.seed + step)
+}
+
+/** Softmax weights over [pool] in the temperature-scaled space. */
+private fun softmaxWeights(
+    logits: FloatArray,
+    pool: List<Int>,
+    temperature: Float
+): DoubleArray {
+    val invTemp = 1f / temperature
     var peak = Float.NEGATIVE_INFINITY
     for (index in pool) {
         val scaled = logits[index] * invTemp
         if (scaled > peak) peak = scaled
     }
-    // Softmax in the scaled space, cumulative mass for the top_p cut.
+    // `exp(top - peak)`: shifting by the peak keeps the largest term at 1 rather than
+    // overflowing, and monotonicity means the ordering is unchanged.
     val mass = DoubleArray(pool.size)
     var total = 0.0
     for (at in pool.indices) {
-        // `exp(top - peak)`: shifting by the peak keeps the largest term at 1 rather than
-        // overflowing, and monotonicity means the ordering is unchanged.
         val weight = exp((logits[pool[at]] * invTemp - peak).toDouble())
         mass[at] = weight
         total += weight
     }
-    // The smallest head of `pool` whose mass exceeds top_p always keeps its first entry, so a
-    // vanishing top_p degrades to greedy rather than to an empty draw.
+    for (at in mass.indices) mass[at] /= total
+    return mass
+}
+
+/**
+ * The smallest head of the pool whose mass exceeds [topP]; always keeps the first entry, so a
+ * vanishing top_p degrades to greedy rather than to an empty draw.
+ */
+private fun topPKept(weights: DoubleArray, topP: Float): Int {
     var kept = 1
     var accumulated = 0.0
-    while (kept < pool.size) {
-        accumulated += mass[kept - 1] / total
-        if (accumulated >= config.topP) break
+    while (kept < weights.size) {
+        accumulated += weights[kept - 1]
+        if (accumulated >= topP) break
         kept++
     }
+    return kept
+}
+
+/** Random draw over the kept head of [pool], weighted by [weights]. */
+private fun drawFromPool(
+    pool: List<Int>,
+    weights: DoubleArray,
+    kept: Int,
+    seed: Long
+): Int {
     var drawTotal = 0.0
-    for (at in 0 until kept) drawTotal += mass[at]
-    var draw = Random(config.seed + step).nextDouble() * drawTotal
+    for (at in 0 until kept) drawTotal += weights[at]
+    var draw = Random(seed).nextDouble() * drawTotal
     for (at in 0 until kept) {
-        draw -= mass[at]
+        draw -= weights[at]
         if (draw <= 0.0) return pool[at]
     }
     return pool[kept - 1]
 }
+
+private const val EMPTY_LOGITS_TOKEN = -1
 
 /** The most likely token, and nothing else. Shared with the temperature-0 path above. */
 private fun argmaxGemma4(logits: FloatArray): Int {

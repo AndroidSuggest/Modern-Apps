@@ -54,6 +54,16 @@ object RcsDirectSip {
 
     /** Socket/read timeout for the SIP TCP leg. */
     private const val SOCKET_TIMEOUT_MS = 15_000
+    private const val SIP_OK = 200
+    private const val SIP_UNAUTHORIZED = 401
+    private const val SIP_PROXY_AUTH_REQUIRED = 407
+    private val SIP_SUCCESS = 200..299
+    private const val REFRESH_MIN_MS = 30_000L
+    private const val REFRESH_HALF_FACTOR = 500L
+    private const val HEAD_GUARD = 64
+    private const val DEFAULT_SIP_PORT = 5060
+    private const val MAX_FORWARDS = 70
+    private const val TAG_TOKEN_LENGTH = 8
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -81,34 +91,47 @@ object RcsDirectSip {
     suspend fun start(context: Context, subId: Int): Boolean {
         if (!RcsFeature.enabled) return false
         if (running) return true
-        if (!SubscriptionManager.isValidSubscriptionId(subId)) return false
-        val app = context.applicationContext
-        val network = RcsImsNetwork.imsNetwork(app, subId) ?: run {
-            Log.w(TAG, "No IMS network for direct SIP")
-            return false
-        }
-        val pcscfAddr = pcscfAddress(app, network) ?: run {
-            Log.w(TAG, "No P-CSCF address on IMS network")
-            return false
-        }
-        val tm = app.getSystemService(TelephonyManager::class.java)?.let { base ->
-            runCatching { base.createForSubscriptionId(subId) }.getOrNull() ?: base
-        } ?: return false
+        val conn = prepareConnection(context, subId) ?: return false
         // Public identity: derive from the line-1 number when readable, else
         // the IMSI-derived placeholder the P-CSCF will challenge anyway.
         // The 401 + AKA exchange establishes the real identity.
-        publicIdentity = runCatching { tm.line1Number?.takeIf { it.isNotBlank() } }
+        publicIdentity = runCatching { conn.tm.line1Number?.takeIf { it.isNotBlank() } }
             .getOrNull() ?: ""
         callIdBase = "${UUID.randomUUID()}@rcs-direct"
         running = true
         val ok = runCatching {
-            connectAndRegister(app, tm, subId, network, pcscfAddr)
+            connectAndRegister(conn.app, conn.tm, conn.pcscfAddr)
         }.getOrElse {
             Log.w(TAG, "Direct SIP start failed", it)
             false
         }
         if (!ok) stop()
         return ok
+    }
+
+    private data class DirectConnection(
+        val app: Context,
+        val tm: TelephonyManager,
+        val subId: Int,
+        val pcscfAddr: InetSocketAddress,
+    )
+
+    /** Resolve network/P-CSCF/telephone pieces, or null when any is unavailable. */
+    private fun prepareConnection(context: Context, subId: Int): DirectConnection? {
+        if (!SubscriptionManager.isValidSubscriptionId(subId)) return null
+        val app = context.applicationContext
+        val network = RcsImsNetwork.imsNetwork(app, subId) ?: run {
+            Log.w(TAG, "No IMS network for direct SIP")
+            return null
+        }
+        val pcscfAddr = pcscfAddress(app, network) ?: run {
+            Log.w(TAG, "No P-CSCF address on IMS network")
+            return null
+        }
+        val tm = app.getSystemService(TelephonyManager::class.java)?.let { base ->
+            runCatching { base.createForSubscriptionId(subId) }.getOrNull() ?: base
+        } ?: return null
+        return DirectConnection(app, tm, subId, pcscfAddr)
     }
 
     /** Stop: deregister (best-effort), close the socket, drop state. */
@@ -150,7 +173,7 @@ object RcsDirectSip {
                 // From our public identity; fresh branch per transaction.
                 val branch = RcsSipDialog.newBranch()
                 val target = pendingTarget(startLine, headers)
-                val rebuilt = rebuildMessageHeaders(headers, branch, target)
+                val rebuilt = rebuildMessageHeaders(headers, branch)
                 val requestLine = "MESSAGE ${target.first} SIP/2.0"
                 val wire = "$requestLine\r\n$rebuilt\r\n".toByteArray(Charsets.UTF_8) + body
                 pendingSends[branch] = { ok -> if (cont.isActive) cont.resume(ok) }
@@ -173,8 +196,6 @@ object RcsDirectSip {
     private suspend fun connectAndRegister(
         app: Context,
         tm: TelephonyManager,
-        subId: Int,
-        network: Network,
         pcscfAddr: InetSocketAddress,
     ): Boolean {
         val s = RcsImsNetwork.createSocket(app, pcscfAddr.hostString, pcscfAddr.port, SOCKET_TIMEOUT_MS)
@@ -190,20 +211,25 @@ object RcsDirectSip {
             Log.w(TAG, "No response to initial REGISTER")
             return false
         }
-        if (challenge.statusCode == 200) {
+        if (challenge.statusCode == SIP_OK) {
             onRegistered(challenge)
             return true
         }
-        if (challenge.statusCode != 401 && challenge.statusCode != 407) {
+        if (challenge.statusCode != SIP_UNAUTHORIZED && challenge.statusCode != SIP_PROXY_AUTH_REQUIRED) {
             Log.w(TAG, "REGISTER rejected: ${challenge.statusCode} ${challenge.reason}")
             return false
         }
-        val authed = buildAuthedRegister(app, tm, subId, challenge) ?: return false
+        return finishRegistration(tm, challenge)
+    }
+
+    /** AKA handshake + authed REGISTER after a 401/407 challenge. */
+    private suspend fun finishRegistration(tm: TelephonyManager, challenge: SipResponse): Boolean {
+        val authed = buildAuthedRegister(tm, challenge) ?: return false
         val final = transact(authed, "REGISTER") ?: run {
             Log.w(TAG, "No response to authed REGISTER")
             return false
         }
-        if (final.statusCode != 200) {
+        if (final.statusCode != SIP_OK) {
             Log.w(TAG, "Authed REGISTER rejected: ${final.statusCode} ${final.reason}")
             return false
         }
@@ -219,7 +245,7 @@ object RcsDirectSip {
         // Refresh at half-life.
         scope.launch {
             while (running) {
-                kotlinx.coroutines.delay((registeredExpires * 500L).coerceAtLeast(30_000L))
+                kotlinx.coroutines.delay((registeredExpires * REFRESH_HALF_FACTOR).coerceAtLeast(REFRESH_MIN_MS))
                 if (!running) break
                 runCatching { refreshRegister() }
             }
@@ -230,13 +256,13 @@ object RcsDirectSip {
         val s = socket ?: return false
         val req = buildRegister(publicIdentity, localContact, pcscf, REGISTER_EXPIRES)
         val resp = transact(req, "REGISTER") ?: return false
-        if (resp.statusCode == 401 || resp.statusCode == 407) {
+        if (resp.statusCode == SIP_UNAUTHORIZED || resp.statusCode == SIP_PROXY_AUTH_REQUIRED) {
             // Re-auth on refresh challenge (nonce rotation); needs TM — the
             // sync-service path re-runs start() instead. Report failure.
             Log.w(TAG, "Refresh challenged; full re-register required")
             return false
         }
-        if (resp.statusCode == 200) {
+        if (resp.statusCode == SIP_OK) {
             registeredExpires = resp.expires ?: REGISTER_EXPIRES
             return true
         }
@@ -282,8 +308,8 @@ object RcsDirectSip {
         return buildString {
             append("REGISTER sip:${via?.hostString ?: "localhost"} SIP/2.0\r\n")
             append("Via: SIP/2.0/TCP ${via?.hostString ?: "localhost"};branch=$branch\r\n")
-            append("Max-Forwards: 70\r\n")
-            append("From: <$from>;tag=${UUID.randomUUID().toString().take(8)}\r\n")
+            append("Max-Forwards: $MAX_FORWARDS\r\n")
+            append("From: <$from>;tag=${UUID.randomUUID().toString().take(TAG_TOKEN_LENGTH)}\r\n")
             append("To: <$from>\r\n")
             append("Call-ID: $callId\r\n")
             append("CSeq: $seq REGISTER\r\n")
@@ -295,9 +321,7 @@ object RcsDirectSip {
     }
 
     private fun buildAuthedRegister(
-        app: Context,
         tm: TelephonyManager,
-        subId: Int,
         challenge: SipResponse,
     ): ByteArray? {
         val wwwAuth = challenge.headers.lines()
@@ -336,8 +360,8 @@ object RcsDirectSip {
         return buildString {
             append("REGISTER sip:${pcscf?.hostString ?: "localhost"} SIP/2.0\r\n")
             append("Via: SIP/2.0/TCP ${pcscf?.hostString ?: "localhost"};branch=$branch\r\n")
-            append("Max-Forwards: 70\r\n")
-            append("From: <$from>;tag=${UUID.randomUUID().toString().take(8)}\r\n")
+            append("Max-Forwards: $MAX_FORWARDS\r\n")
+            append("From: <$from>;tag=${UUID.randomUUID().toString().take(TAG_TOKEN_LENGTH)}\r\n")
             append("To: <$from>\r\n")
             append("Call-ID: $callIdBase\r\n")
             append("CSeq: $seq REGISTER\r\n")
@@ -399,46 +423,10 @@ object RcsDirectSip {
             ?: return
         try {
             while (running && !s.isClosed) {
-                val headLines = mutableListOf<String>()
-                var line = runCatching { input.readLine() }.getOrNull() ?: break
-                // Skip stray blank lines (keepalive CRLF).
-                if (line.isBlank()) continue
-                var guard = 0
-                while (line.isNotEmpty() && guard++ < 64) {
-                    headLines.add(line)
-                    line = runCatching { input.readLine() }.getOrNull() ?: break
+                val headLines = readHeadLines(input) ?: break
+                if (headLines.isNotEmpty()) {
+                    handleHeadLines(headLines, input)
                 }
-                if (headLines.isEmpty()) continue
-                val first = headLines.first()
-                // Read body per Content-Length.
-                val contentLength = headLines
-                    .firstOrNull { it.trim().startsWith("Content-Length:", ignoreCase = true) }
-                    ?.substringAfter(":")?.trim()?.toIntOrNull() ?: 0
-                val body = if (contentLength in 1..(4 shl 20)) {
-                    readFixed(input, contentLength)
-                } else {
-                    ByteArray(0)
-                }
-                if (first.startsWith("SIP/2.0")) {
-                    val resp = parseResponse(headLines.joinToString("\r\n"))
-                    if (resp != null) {
-                        // Complete any parked transaction + pending MESSAGE acks.
-                        val branch = resp.branch
-                        if (branch.isNotBlank()) {
-                            pendingSends.remove(branch)?.invoke(resp.statusCode in 200..299)
-                        }
-                        // Wake the oldest parked transact (FIFO fallback).
-                        pendingTransactions.entries.firstOrNull()?.let { (k, cb) ->
-                            pendingTransactions.remove(k)
-                            cb(resp)
-                        }
-                    }
-                } else if (first.startsWith("MESSAGE ")) {
-                    val headers = headLines.drop(1).joinToString("\r\n")
-                    onInboundMessage?.invoke(first, headers, body)
-                }
-                // (NOTIFY/OPTIONS/BYE on the direct leg: absorbed for now;
-                // BYE handling can reuse RcsSessionManager when sessions exist.)
             }
         } catch (_: Throwable) {
             // Socket closed — loop exits.
@@ -448,6 +436,54 @@ object RcsDirectSip {
                 running = false
             }
         }
+    }
+
+    /** Read one SIP head block; null on EOF, empty list on blank keepalive. */
+    private fun readHeadLines(input: java.io.BufferedReader): MutableList<String>? {
+        val headLines = mutableListOf<String>()
+        var line = runCatching { input.readLine() }.getOrNull() ?: return null
+        // Skip stray blank lines (keepalive CRLF).
+        if (line.isBlank()) return headLines
+        var guard = 0
+        while (line.isNotEmpty() && guard++ < HEAD_GUARD) {
+            headLines.add(line)
+            line = runCatching { input.readLine() }.getOrNull() ?: break
+        }
+        return headLines
+    }
+
+    /** Route one parsed head block + body. */
+    private fun handleHeadLines(headLines: MutableList<String>, input: java.io.BufferedReader) {
+        val first = headLines.first()
+        // Read body per Content-Length.
+        val contentLength = headLines
+            .firstOrNull { it.trim().startsWith("Content-Length:", ignoreCase = true) }
+            ?.substringAfter(":")?.trim()?.toIntOrNull() ?: 0
+        val body = if (contentLength in 1..(4 shl 20)) {
+            readFixed(input, contentLength)
+        } else {
+            ByteArray(0)
+        }
+        if (first.startsWith("SIP/2.0")) {
+            val resp = parseResponse(headLines.joinToString("\r\n"))
+            if (resp != null) {
+                // Complete any parked transaction + pending MESSAGE acks.
+                val branch = resp.branch
+                if (branch.isNotBlank()) {
+                    pendingSends.remove(branch)?.invoke(resp.statusCode in SIP_SUCCESS)
+                }
+                // Wake the oldest parked transact (FIFO fallback).
+                pendingTransactions.entries.firstOrNull()?.let { (k, cb) ->
+                    pendingTransactions.remove(k)
+                    cb(resp)
+                }
+            }
+        } else if (first.startsWith("MESSAGE ")) {
+            val headers = headLines.drop(1).joinToString("\r\n")
+            onInboundMessage?.invoke(first, headers, body)
+        }
+        // (NOTIFY/OPTIONS/BYE on the direct leg: absorbed for now;
+        // BYE handling can reuse RcsSessionManager when sessions exist.)
     }
 
     private fun readFixed(input: java.io.BufferedReader, n: Int): ByteArray {
@@ -468,7 +504,7 @@ object RcsDirectSip {
         return requestUri to headers
     }
 
-    private fun rebuildMessageHeaders(headers: String, branch: String, target: Pair<String, String>): String {
+    private fun rebuildMessageHeaders(headers: String, branch: String): String {
         val from = publicIdentity.ifBlank { "sip:anonymous@anonymous.invalid" }
         val filtered = headers.lineSequence().filter { line ->
             val t = line.trim()
@@ -483,7 +519,7 @@ object RcsDirectSip {
                 append("\r\n")
             }
             append("Via: SIP/2.0/TCP $pcscfHost;branch=$branch\r\n")
-            append("From: <$from>;tag=${UUID.randomUUID().toString().take(8)}\r\n")
+            append("From: <$from>;tag=${UUID.randomUUID().toString().take(TAG_TOKEN_LENGTH)}\r\n")
             append("Route: <sip:$pcscfHost;lr>\r\n")
         }
     }
@@ -503,7 +539,7 @@ object RcsDirectSip {
                 }.getOrNull() ?: parsePcscfFromString(props.toString())
             val addr = addrs.firstOrNull() ?: return null
             // P-CSCF SIP default 5060.
-            InetSocketAddress(addr, 5060)
+            InetSocketAddress(addr, DEFAULT_SIP_PORT)
         }.getOrNull()
     }
 

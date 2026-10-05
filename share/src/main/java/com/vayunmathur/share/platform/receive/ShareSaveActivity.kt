@@ -121,6 +121,10 @@ class ShareSaveActivity : ComponentActivity() {
         return extras.orEmpty()
     }
 
+    // Broad catch is deliberate: content-resolver copies throw undocumented
+    // RuntimeExceptions (not just IOException) on bad providers, which read as
+    // "save failed" rather than a crash.
+    @Suppress("TooGenericExceptionCaught")
     private fun copy(source: Uri, destination: Uri): Boolean = try {
         contentResolver.openInputStream(source)?.use { input ->
             contentResolver.openOutputStream(destination)?.use { output -> input.copyTo(output) }

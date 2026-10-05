@@ -54,12 +54,20 @@ fun createNotificationChannels(context: Context) {
 
     nm.createNotificationChannels(listOf(
         // 1. Quiet channel for ongoing countdowns
-        NotificationChannel("active_timers_channel", context.getString(R.string.channel_ongoing_timers_name), NotificationManager.IMPORTANCE_LOW).apply {
+        NotificationChannel(
+            "active_timers_channel",
+            context.getString(R.string.channel_ongoing_timers_name),
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
             description = context.getString(R.string.channel_ongoing_timers_description)
             setShowBadge(false)
         },
         // 2. Loud channel for the "Time's Up" alert
-        NotificationChannel("finished_timers_channel", context.getString(R.string.channel_completed_timers_name), NotificationManager.IMPORTANCE_HIGH).apply {
+        NotificationChannel(
+            "finished_timers_channel",
+            context.getString(R.string.channel_completed_timers_name),
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
             description = context.getString(R.string.channel_completed_timers_description)
             enableVibration(true)
             setSound(
@@ -69,7 +77,11 @@ fun createNotificationChannels(context: Context) {
         alarmChannel(context),
         alarmRingChannel(context),
         // 3. Stopwatch channel
-        NotificationChannel("stopwatch_channel", context.getString(R.string.channel_stopwatch_name), NotificationManager.IMPORTANCE_LOW).apply {
+        NotificationChannel(
+            "stopwatch_channel",
+            context.getString(R.string.channel_stopwatch_name),
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
             description = context.getString(R.string.channel_stopwatch_description)
             setShowBadge(false)
             setSound(null, null)

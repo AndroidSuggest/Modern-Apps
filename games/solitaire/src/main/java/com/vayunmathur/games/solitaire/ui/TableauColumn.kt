@@ -50,8 +50,6 @@ fun TableauColumn(
                     sourceId = "tableau_${columnIndex}_$index",
                     actions = actions,
                     modifier = Modifier.offset(y = faceDownOffset + FACE_UP_OVERLAP * index),
-                    cardWidth = cardWidth,
-                    cardHeight = cardHeight
                 ) {
                     CardFace(
                         card = card,
@@ -90,8 +88,6 @@ fun FreeCellTableauColumn(
                     sourceId = "tableau_${columnIndex}_$index",
                     actions = actions,
                     modifier = Modifier.offset(y = FACE_UP_OVERLAP * index),
-                    cardWidth = cardWidth,
-                    cardHeight = cardHeight
                 ) {
                     CardFace(
                         card = card,

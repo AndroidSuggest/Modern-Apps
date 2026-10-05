@@ -12,7 +12,9 @@ import androidx.work.WorkerParameters
 import androidx.work.ListenableWorker.Result as WorkResult
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.photos.data.ClipResult
-import com.vayunmathur.photos.data.PhotosRepository
+import com.vayunmathur.photos.data.PhotoScanRepository
+import com.vayunmathur.photos.data.PhotoScanTarget
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -28,8 +30,8 @@ class ClipWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     override suspend fun doWork(): WorkResult = withContext(Dispatchers.IO) {
         clipMutex.withLock {
             setForeground(createForegroundInfo())
-            val repository = PhotosRepository.get(applicationContext)
-            runClipIndexing(repository, applicationContext)
+            val scanRepository = PhotoScanRepository.get(applicationContext)
+            runClipIndexing(scanRepository, applicationContext)
             WorkResult.success()
         }
     }
@@ -70,7 +72,7 @@ class ClipWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
  * Gated on the ET pair being available ([ClipEmbedder.embeddingSupport]): if it cannot be opened
  * (pair not downloaded), skip indexing and leave `clipScanned=0` so OCR/filename search still works.
  */
-suspend fun runClipIndexing(repository: PhotosRepository, context: Context) = coroutineScope {
+suspend fun runClipIndexing(scanRepository: PhotoScanRepository, context: Context) = coroutineScope {
     val dataStore = DataStoreUtils.getInstance(context)
 
     // The ET pair is a runtime download, so this fails until the download completes.
@@ -86,12 +88,12 @@ suspend fun runClipIndexing(repository: PhotosRepository, context: Context) = co
     val storedVersion = dataStore.getLong("clip_embedder_version") ?: 0L
     val storedModelId = dataStore.getString("clip_model_id")
     if (storedVersion != ClipEmbedder.EMBEDDER_VERSION.toLong() || storedModelId != modelId) {
-        repository.resetClipScanned()
+        scanRepository.resetClipScanned()
         dataStore.setLong("clip_embedder_version", ClipEmbedder.EMBEDDER_VERSION.toLong())
         dataStore.setString("clip_model_id", modelId)
     }
 
-    val photos = repository.getUnscannedForClip()
+    val photos = scanRepository.getUnscannedForClip()
     if (photos.isEmpty()) return@coroutineScope
 
     // See INDEX_FLUSH_EVERY: batched so a scan doesn't invalidate the Photo
@@ -99,7 +101,7 @@ suspend fun runClipIndexing(repository: PhotosRepository, context: Context) = co
     val pending = mutableListOf<ClipResult>()
     suspend fun flush() {
         if (pending.isEmpty()) return
-        repository.setClipResults(pending.toList())
+        scanRepository.setClipResults(pending.toList())
         pending.clear()
     }
 
@@ -109,26 +111,10 @@ suspend fun runClipIndexing(repository: PhotosRepository, context: Context) = co
             ensureActive()
 
             val t0 = System.currentTimeMillis()
-            val embedding = try {
-                ClipEmbedder.imageEmbedding(context, photo.uri.toUri())
-            } catch (e: ClipEmbedder.ImageFailedException) {
-                // The embedder is healthy but this one image couldn't be decoded: mark it scanned
-                // with no vector so we skip it rather than blocking the queue on it forever.
-                Log.w("ClipWorker", "Skipping un-embeddable photo ${photo.id}: ${e.message}")
-                pending += ClipResult(id = photo.id, embedding = null)
-                if (pending.size >= INDEX_FLUSH_EVERY) flush()
-                delay(CLIP_INTER_ITEM_DELAY_MS)
-                continue
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Anything else is systemic (model failed to load): stop the run WITHOUT marking
-                // scanned so these photos retry on the next pass.
-                Log.w("ClipWorker", "Embedding unavailable; pausing indexing", e)
-                return@coroutineScope
-            }
-
-            Log.d("ClipWorker", "Embedded photo ${photo.id} (${embedding.size}d) in ${System.currentTimeMillis() - t0}ms")
+            val embedding = pending.embedOnePhoto(context, photo) { flush() }
+                ?: continue
+            val elapsedMs = System.currentTimeMillis() - t0
+            Log.d("ClipWorker", "Embedded photo ${photo.id} (${embedding.size}d) in ${elapsedMs}ms")
             pending += ClipResult(id = photo.id, embedding = ClipEmbedder.floatsToBytes(embedding))
             if (pending.size >= INDEX_FLUSH_EVERY) flush()
 
@@ -138,11 +124,61 @@ suspend fun runClipIndexing(repository: PhotosRepository, context: Context) = co
             processed++
             coolDownBetweenBatches(processed, "ClipWorker")
         }
+    } catch (_: StopIndexing) {
+        // Systemic failure (model failed to load): photos stay unscanned and
+        // retry on the next pass; the run still completes normally.
+        Unit
     } finally {
         // Covers the systemic-failure return above as well as cancellation, so
         // photos already embedded in this run are never re-embedded.
         withContext(NonCancellable) { runCatching { flush() } }
     }
 }
+
+/**
+ * Embed one photo for the indexing run. Returns the vector, or null when the
+ * photo was skipped (undecodable image: marked scanned with no vector, plus
+ * the inter-item delay, so the caller just continues). Systemic failures
+ * throw [StopIndexing] so the run aborts WITHOUT marking scanned.
+ */
+private suspend fun MutableList<ClipResult>.embedOnePhoto(
+    context: Context,
+    photo: PhotoScanTarget,
+    flush: suspend () -> Unit,
+): FloatArray? = try {
+    ClipEmbedder.imageEmbedding(context, photo.uri.toUri())
+} catch (e: ClipEmbedder.ImageFailedException) {
+    skipUnembeddablePhoto(photo, flush, e.message)
+    null
+} catch (e: CancellationException) {
+    throw e
+} catch (e: IllegalStateException) {
+    pauseIndexing(e)
+} catch (e: IOException) {
+    pauseIndexing(e)
+}
+
+/** Queue a null vector for an undecodable image so it is marked scanned and skipped. */
+private suspend fun MutableList<ClipResult>.skipUnembeddablePhoto(
+    photo: PhotoScanTarget,
+    flush: suspend () -> Unit,
+    message: String?,
+) {
+    // The embedder is healthy but this one image couldn't be decoded: mark it scanned
+    // with no vector so we skip it rather than blocking the queue on it forever.
+    Log.w("ClipWorker", "Skipping un-embeddable photo ${photo.id}: $message")
+    this += ClipResult(id = photo.id, embedding = null)
+    if (size >= INDEX_FLUSH_EVERY) flush()
+    delay(CLIP_INTER_ITEM_DELAY_MS)
+}
+
+/** Stop the run WITHOUT marking scanned so these photos retry on the next pass. */
+private fun pauseIndexing(e: Exception): Nothing {
+    Log.w("ClipWorker", "Embedding unavailable; pausing indexing", e)
+    throw StopIndexing()
+}
+
+/** Signals a systemic embedding failure: abort the run, retry next pass. */
+private class StopIndexing : CancellationException("CLIP indexing paused")
 
 private const val CLIP_INTER_ITEM_DELAY_MS = 250L

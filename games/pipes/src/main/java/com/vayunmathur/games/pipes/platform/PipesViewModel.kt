@@ -212,7 +212,13 @@ class PipesViewModel(application: Application) : AndroidViewModel(application), 
         val path = s.gameState.paths[ownerColor] ?: return
         val idx = path.indexOf(cell)
         if (idx >= 0) {
-            _uiState.update { it.copy(activeColor = ownerColor, activePath = path.take(idx + 1), preDrawState = it.gameState) }
+            _uiState.update {
+                it.copy(
+                    activeColor = ownerColor,
+                    activePath = path.take(idx + 1),
+                    preDrawState = it.gameState,
+                )
+            }
         }
     }
 
@@ -228,45 +234,65 @@ class PipesViewModel(application: Application) : AndroidViewModel(application), 
         val s = _uiState.value
         val activeColor = s.activeColor ?: return
         val levelData = s.levelData ?: return
-        if (s.isLevelWon) return
-        if (cell !in levelData.cells) return
-
+        if (s.isLevelWon || cell !in levelData.cells) return
         val currentPath = s.activePath
-        if (currentPath.isEmpty()) return
+        if (currentPath.isEmpty() || isAtPairedEndpoint(levelData, activeColor, currentPath)) return
+        if (tryBacktrack(currentPath, cell)) return
+        if (isValidStep(s, levelData, activeColor, currentPath, cell)) {
+            _uiState.update { it.copy(activePath = currentPath + cell) }
+        }
+    }
 
-        val pairedEndpoint = levelData.endpoints.find { it.colorIndex == activeColor }
+    private fun isAtPairedEndpoint(
+        levelData: LevelData,
+        activeColor: Int,
+        path: List<CellPos>,
+    ): Boolean {
+        val paired = levelData.endpoints.find { it.colorIndex == activeColor }
             ?.cells?.let { cells ->
-                when (currentPath.first()) {
+                when (path.first()) {
                     cells[0] -> cells[1]
                     cells[1] -> cells[0]
                     else -> null
                 }
-            }
-        if (pairedEndpoint != null && currentPath.last() == pairedEndpoint) return
+            } ?: return false
+        return path.last() == paired
+    }
 
-        if (currentPath.size >= 2 && cell == currentPath[currentPath.size - 2]) {
-            _uiState.update { it.copy(activePath = currentPath.dropLast(1)) }
-            return
+    private fun tryBacktrack(currentPath: List<CellPos>, cell: CellPos): Boolean {
+        if (currentPath.size < BACKTRACK_MIN_LENGTH || cell != currentPath[currentPath.size - 2]) {
+            return false
         }
+        _uiState.update { it.copy(activePath = currentPath.dropLast(1)) }
+        return true
+    }
 
-        if (cell in currentPath) return
+    private fun isValidStep(
+        s: PipesUiState,
+        levelData: LevelData,
+        activeColor: Int,
+        path: List<CellPos>,
+        cell: CellPos,
+    ): Boolean {
+        if (cell in path) return false
+        val neighbors = levelData.adjacency[path.last()] ?: return false
+        if (cell !in neighbors || isForeignEndpoint(levelData, activeColor, cell)) return false
+        return isFreeForColor(s, levelData, activeColor, cell)
+    }
 
-        val lastCell = currentPath.last()
-        val neighbors = levelData.adjacency[lastCell] ?: return
-        if (cell !in neighbors) return
+    private fun isForeignEndpoint(levelData: LevelData, activeColor: Int, cell: CellPos): Boolean =
+        levelData.endpoints.filter { it.colorIndex != activeColor }
+            .flatMap { it.cells }
+            .contains(cell)
 
-        val otherEndpoints = levelData.endpoints.filter { it.colorIndex != activeColor }
-            .flatMap { it.cells }.toSet()
-        if (cell in otherEndpoints) return
-
-        val existingOwner = s.gameState.cellOwner[cell]
-        if (existingOwner != null && existingOwner != activeColor && cell !in levelData.bridges) {
-            // Occupied by another pipe: ignore the movement instead of breaking it.
-            // The path stays put until the finger reaches an actually free neighbor.
-            return
-        }
-
-        _uiState.update { it.copy(activePath = currentPath + cell) }
+    private fun isFreeForColor(
+        s: PipesUiState,
+        levelData: LevelData,
+        activeColor: Int,
+        cell: CellPos,
+    ): Boolean {
+        val owner = s.gameState.cellOwner[cell] ?: return true
+        return owner == activeColor || cell in levelData.bridges
     }
 
     override fun commitDraw() {
@@ -289,7 +315,14 @@ class PipesViewModel(application: Application) : AndroidViewModel(application), 
                     )
                 }
             } else {
-                _uiState.update { it.copy(activeColor = null, activePath = emptyList(), gameState = preDrawState, preDrawState = null) }
+                _uiState.update {
+                    it.copy(
+                        activeColor = null,
+                        activePath = emptyList(),
+                        gameState = preDrawState,
+                        preDrawState = null,
+                    )
+                }
             }
             return
         }
@@ -451,5 +484,8 @@ class PipesViewModel(application: Application) : AndroidViewModel(application), 
 
         /** Sentinel [PipesUiState.packIndex] for "no level loaded". */
         private const val NO_PACK_INDEX = -1
+
+        /** Minimum path length for a backtrack step (needs a cell to step back from). */
+        private const val BACKTRACK_MIN_LENGTH = 2
     }
 }

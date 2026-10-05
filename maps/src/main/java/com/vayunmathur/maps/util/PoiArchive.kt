@@ -29,6 +29,30 @@ object PoiArchive {
     private const val ENTRY_LEN = 32
     private const val DIR_HEADER_LEN = 4
     private const val ALIGN = 8L
+    /** Smallest file that can hold a tile header plus the footer. */
+    private const val MIN_CONTAINER_BYTES = 128 + FOOTER_LEN
+    /** Offsets of the directory extent + build id within the footer. */
+    private const val FOOTER_DIR_OFF = 8
+    private const val FOOTER_LEN_OFF = 16
+    private const val FOOTER_BUILD_OFF = 24
+    /** Most directory entries accepted (a corrupt count refuses the file). */
+    private const val MAX_SECTIONS = 32
+    /** Directory length rounds up to the alignment. */
+    private const val ALIGN_BYTES = 8
+    private const val ALIGN_MASK = 7
+    /** "MAMA8\0\0\0": 4D 41 4D 41 38 00 00 00. */
+    private val FOOTER_MAGIC = byteArrayOf(0x4D, 0x41, 0x4D, 0x41, 0x38, 0x00, 0x00, 0x00)
+    /** Mask for one unsigned byte (entry kind). */
+    private const val BYTE_MASK = 0xFF
+    /** Pad/reserved/offset/len offsets within one directory entry. */
+    private const val ENTRY_PAD_1 = 1
+    private const val ENTRY_PAD_2 = 2
+    private const val ENTRY_PAD_3 = 3
+    private const val ENTRY_RESERVED_OFF = 4
+    private const val ENTRY_OFFSET_OFF = 8
+    private const val ENTRY_LEN_OFF = 16
+    /** Bytes per `poi_index.bin` record (shared with [PoiIndex]). */
+    private const val INDEX_RECORD_BYTES = 14
 
     /** Section kinds, mirroring `tilecodec::mamaps::archive::ARCHIVE_KIND_*`. */
     const val KIND_INDEX = 8
@@ -52,52 +76,77 @@ object PoiArchive {
      */
     internal fun openArchive(file: File): PoiIndex.Mapped? {
         if (!file.isFile) return null
-        return try {
-            val whole = PoiIndex.mapReadOnly(file)
-            whole.order(ByteOrder.LITTLE_ENDIAN)
-            val sections = parseSections(whole) ?: return null
-            val indexBuf = slice(whole, sections, KIND_INDEX) ?: run {
-                Log.w(TAG, "archive carries no POI index section")
+        return runCatching { buildMapped(PoiIndex.mapReadOnly(file)) }
+            .getOrElse { archiveFailure(it) }
+    }
+
+    /** Log a mapping failure and yield null (the archive path degrades to side files). */
+    private fun archiveFailure(cause: Throwable): PoiIndex.Mapped? {
+        // Only the failures a corrupt/truncated file can actually produce reach
+        // here: I/O mapping it, overrunning a buffer, or a bounds check firing.
+        // Anything else is a programming error and must keep propagating.
+        when (cause) {
+            is java.io.IOException,
+            is IndexOutOfBoundsException,
+            is IllegalArgumentException,
+            -> {
+                Log.w(TAG, "Failed to map POI sections from archive", cause)
                 return null
             }
-            val namesBuf = slice(whole, sections, KIND_NAMES) ?: run {
-                Log.w(TAG, "archive carries a POI index but no POI names")
-                return null
-            }
-            if (indexBuf.capacity() == 0 || namesBuf.capacity() == 0) {
-                Log.w(TAG, "archive POI index or names section is empty")
-                return null
-            }
-            val count = indexBuf.capacity() / 14
-            val attrs = sections[KIND_ATTRS]?.let { PoiIndex.attrsFromBuffer(sliceRaw(whole, it), count) }
-            val grid = sections[KIND_SPATIAL]?.let { PoiIndex.spatialFromBuffer(sliceRaw(whole, it), count) }
-            val words = sections[KIND_WORDS]?.let { PoiIndex.nameIndexFromBuffer(sliceRaw(whole, it), count) }
-            PoiIndex.Mapped(
-                index = indexBuf,
-                names = namesBuf,
-                namesLen = namesBuf.capacity(),
-                count = count,
-                attrs = attrs?.first,
-                attrsBlobStart = attrs?.second ?: 0,
-                spatial = grid?.buf,
-                cellCount = grid?.cellCount ?: 0,
-                lat0E7 = grid?.lat0E7 ?: 0,
-                lon0E7 = grid?.lon0E7 ?: 0,
-                cellE7 = grid?.cellE7 ?: 0,
-                cols = grid?.cols ?: 0,
-                nameIdx = words?.first,
-                entryCount = words?.second ?: 0,
-                archive = whole,
-            ).also {
-                Log.d(
-                    TAG,
-                    "Loaded $count POI records from archive, " +
-                        "grid=${grid?.cellCount ?: 0} cells, words=${words?.second ?: 0}",
-                )
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to map POI sections from archive", e)
-            null
+            else -> throw cause
+        }
+    }
+
+    private fun buildMapped(whole: MappedByteBuffer): PoiIndex.Mapped? {
+        whole.order(ByteOrder.LITTLE_ENDIAN)
+        val sections = parseSections(whole) ?: return null
+        val indexBuf = slice(whole, sections, KIND_INDEX) ?: run {
+            Log.w(TAG, "archive carries no POI index section")
+            return null
+        }
+        val namesBuf = slice(whole, sections, KIND_NAMES) ?: run {
+            Log.w(TAG, "archive carries a POI index but no POI names")
+            return null
+        }
+        if (indexBuf.capacity() == 0 || namesBuf.capacity() == 0) {
+            Log.w(TAG, "archive POI index or names section is empty")
+            return null
+        }
+        return mappedFromSections(whole, sections, indexBuf, namesBuf)
+    }
+
+    private fun mappedFromSections(
+        whole: MappedByteBuffer,
+        sections: Map<Int, Section>,
+        indexBuf: MappedByteBuffer,
+        namesBuf: MappedByteBuffer,
+    ): PoiIndex.Mapped {
+        val count = indexBuf.capacity() / INDEX_RECORD_BYTES
+        val attrs = sections[KIND_ATTRS]?.let { PoiIndex.attrsFromBuffer(sliceRaw(whole, it), count) }
+        val grid = sections[KIND_SPATIAL]?.let { PoiIndex.spatialFromBuffer(sliceRaw(whole, it), count) }
+        val words = sections[KIND_WORDS]?.let { PoiIndex.nameIndexFromBuffer(sliceRaw(whole, it), count) }
+        return PoiIndex.Mapped(
+            index = indexBuf,
+            names = namesBuf,
+            namesLen = namesBuf.capacity(),
+            count = count,
+            attrs = attrs?.first,
+            attrsBlobStart = attrs?.second ?: 0,
+            spatial = grid?.buf,
+            cellCount = grid?.cellCount ?: 0,
+            lat0E7 = grid?.lat0E7 ?: 0,
+            lon0E7 = grid?.lon0E7 ?: 0,
+            cellE7 = grid?.cellE7 ?: 0,
+            cols = grid?.cols ?: 0,
+            nameIdx = words?.first,
+            entryCount = words?.second ?: 0,
+            archive = whole,
+        ).also {
+            Log.d(
+                TAG,
+                "Loaded $count POI records from archive, " +
+                    "grid=${grid?.cellCount ?: 0} cells, words=${words?.second ?: 0}",
+            )
         }
     }
 
@@ -133,65 +182,92 @@ object PoiArchive {
      */
     private fun parseSections(whole: MappedByteBuffer): Map<Int, Section>? {
         whole.order(ByteOrder.LITTLE_ENDIAN)
-        if (whole.capacity() < 128 + FOOTER_LEN) return null
+        if (!hasContainer(whole)) return null
+        val footerAt = whole.capacity() - FOOTER_LEN
+        val footer = readFooter(whole, footerAt) ?: return null
+        val dirRange = dirRange(whole, footer) ?: return null
+        val out = readEntries(whole, dirRange) ?: return null
+        if (sectionsOverlap(out.values.toList())) return null
+        return out
+    }
+
+    /** Header + footer magic present, and the declared length agrees. */
+    private fun hasContainer(whole: MappedByteBuffer): Boolean {
+        if (whole.capacity() < MIN_CONTAINER_BYTES) return false
         val buildId = whole.getLong(HEADER_BUILD_ID_OFF)
         val fileLen = whole.getLong(HEADER_FILE_LEN_OFF)
         if (fileLen != whole.capacity().toLong()) {
             Log.w(TAG, "archive declares $fileLen bytes but is ${whole.capacity()}")
-            return null
+            return false
         }
-        val footerAt = (whole.capacity() - FOOTER_LEN)
-        // "MAMA8\0\0\0": 4D 41 4D 41 38 00 00 00.
-        val magic = byteArrayOf(0x4D, 0x41, 0x4D, 0x41, 0x38, 0x00, 0x00, 0x00)
-        for (i in magic.indices) {
-            if (whole.get(footerAt + i) != magic[i]) {
+        val footerAt = whole.capacity() - FOOTER_LEN
+        for (i in FOOTER_MAGIC.indices) {
+            if (whole.get(footerAt + i) != FOOTER_MAGIC[i]) {
                 Log.d(TAG, "not a single archive (bad MAMA8 magic)")
-                return null
+                return false
             }
         }
-        val dirOffset = whole.getLong(footerAt + 8)
-        val dirLen = whole.getLong(footerAt + 16)
-        val footerBuild = whole.getLong(footerAt + 24)
+        val footerBuild = whole.getLong(footerAt + FOOTER_BUILD_OFF)
         if (footerBuild != buildId) {
             Log.w(TAG, "archive footer build disagrees with its header")
-            return null
+            return false
         }
+        return true
+    }
+
+    private data class Footer(val dirOffset: Long, val dirLen: Long)
+
+    private fun readFooter(whole: MappedByteBuffer, footerAt: Int): Footer? {
+        val dirOffset = whole.getLong(footerAt + FOOTER_DIR_OFF)
+        val dirLen = whole.getLong(footerAt + FOOTER_LEN_OFF)
         if (dirOffset < 0 || dirLen < DIR_HEADER_LEN || dirOffset + dirLen > footerAt) return null
         if (dirOffset > Int.MAX_VALUE || dirOffset + dirLen > Int.MAX_VALUE) return null
-        val count = whole.getInt(dirOffset.toInt())
-        if (count < 0 || count > 32) return null
+        return Footer(dirOffset, dirLen)
+    }
+
+    private fun dirRange(whole: MappedByteBuffer, footer: Footer): IntRange? {
+        val count = whole.getInt(footer.dirOffset.toInt())
+        if (count < 0 || count > MAX_SECTIONS) return null
         val want = DIR_HEADER_LEN + count * ENTRY_LEN
-        val aligned = (want + 7) / 8 * 8
-        if (dirLen != aligned.toLong()) return null
+        val aligned = (want + ALIGN_MASK) / ALIGN_BYTES * ALIGN_BYTES
+        if (footer.dirLen != aligned.toLong()) return null
+        val at = footer.dirOffset.toInt() + DIR_HEADER_LEN
+        return at until at + count * ENTRY_LEN
+    }
+
+    private fun readEntries(whole: MappedByteBuffer, range: IntRange): Map<Int, Section>? {
         val out = LinkedHashMap<Int, Section>()
         var prevKind = -1
-        var at = dirOffset.toInt() + DIR_HEADER_LEN
-        repeat(count) {
-            val kind = whole.get(at).toInt() and 0xFF
-            if (whole.get(at + 1) != 0.toByte() || whole.get(at + 2) != 0.toByte() ||
-                whole.get(at + 3) != 0.toByte()
+        var at = range.first
+        while (at < range.last) {
+            val kind = whole.get(at).toInt() and BYTE_MASK
+            if (whole.get(at + ENTRY_PAD_1) != 0.toByte() ||
+                whole.get(at + ENTRY_PAD_2) != 0.toByte() ||
+                whole.get(at + ENTRY_PAD_3) != 0.toByte()
             ) {
                 return null
             }
-            if (whole.getInt(at + 4) != 0) return null
+            if (whole.getInt(at + ENTRY_RESERVED_OFF) != 0) return null
             if (kind <= prevKind) return null
             prevKind = kind
-            val offset = whole.getLong(at + 8)
-            val len = whole.getLong(at + 16)
+            val offset = whole.getLong(at + ENTRY_OFFSET_OFF)
+            val len = whole.getLong(at + ENTRY_LEN_OFF)
             if (len <= 0 || offset % ALIGN != 0L) return null
-            if (offset < 0 || offset + len > dirOffset) return null
             out[kind] = Section(offset, len)
             at += ENTRY_LEN
         }
-        // Pairwise overlap, same refusal as the tile header's.
-        val list = out.values.toList()
+        return out
+    }
+
+    /** Pairwise overlap, same refusal as the tile header's. */
+    private fun sectionsOverlap(list: List<Section>): Boolean {
         for (i in list.indices) {
             for (j in i + 1 until list.size) {
                 val a = list[i]
                 val b = list[j]
-                if (a.offset < b.offset + b.len && b.offset < a.offset + a.len) return null
+                if (a.offset < b.offset + b.len && b.offset < a.offset + a.len) return true
             }
         }
-        return out
+        return false
     }
 }

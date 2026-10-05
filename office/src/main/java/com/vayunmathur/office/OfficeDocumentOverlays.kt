@@ -180,6 +180,19 @@ open class DocumentOverlayState {
 @Composable
 internal fun rememberDocumentOverlayState(): DocumentOverlayState = remember { DocumentOverlayState() }
 
+internal const val MARGIN_NARROW_CM = 1.27f
+internal const val MARGIN_NARROW_MAX = 1.5f
+internal const val MARGIN_NORMAL_CM = 2f
+internal const val MARGIN_WIDE_MIN = 2.3f
+internal const val MARGIN_WIDE_CM = 2.54f
+private val CommentFieldHeight = 120.dp
+private val ChartPickerHeight = 160.dp
+private val DialogSpacing = 8.dp
+private const val DATE_PREFIX_LENGTH = 10
+
+internal const val SHARED_DATE_PREFIX_LENGTH = 10
+private const val ROTATE_QUARTER_TURNS = 90f
+
 /**
  * All trailing `if (showX)` dialogs of [DocumentScreen], hoisted verbatim.
  *
@@ -191,7 +204,6 @@ fun DocumentOverlays(
     state: DocumentOverlayState,
     document: OdfDocument,
     viewModel: OfficeViewModel,
-    isTextDoc: Boolean,
     isPresentation: Boolean,
     isOnline: Boolean,
     focusedPara: Int,
@@ -211,298 +223,273 @@ fun DocumentOverlays(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    if (state.showMetadata) MetadataDialog(metadata = document.metadata, onSave = { m -> viewModel.updateMetadata { m } }, onDismiss = { state.showMetadata = false })
+    if (state.showMetadata) MetadataDialog(
+        metadata = document.metadata,
+        onSave = { m -> viewModel.updateMetadata { m } },
+        onDismiss = { state.showMetadata = false })
     LaunchedEffect(Unit) { viewModel.initSync() }
+    ShareOverlays(
+        state, document, viewModel, isOnline, saveAsName, launchers, onBecameOnline, onBack)
+    SettingsOverlay(state, viewModel, context)
+    RunStyleOverlays(state, viewModel, activeRunStart, activeRunEnd, selStart, selEnd)
+    InsertOverlays(state, viewModel, focusedPara, activeRunStart, activeRunEnd, selStart)
+    CommentOverlaysHost(state, document, viewModel, focusedPara, listState, scope)
+    CellOverlays(state, viewModel, activeCell, activeSlide, activeSlideEl)
+    SlideOverlays(
+        state, document, viewModel, isPresentation, activeCell, activeSlide,
+        pendingReplace, launchers, focusedPara)
+    SlideCropOverlay(state, document, viewModel, pendingReplace, launchers)
+    SheetCropOverlay(state, document, viewModel, pendingReplace, launchers)
+}
+
+/** Slide floating-image crop dialog. */
+@Composable
+private fun SlideCropOverlay(
+    state: DocumentOverlayState,
+    document: OdfDocument,
+    viewModel: OfficeViewModel,
+    pendingReplace: MutableState<((String, ByteArray) -> Unit)?>,
+    launchers: DocumentLaunchers,
+) {
+    val (s, e) = state.cropSlideTarget ?: return
+    val el = (document as? OdfDocument.Presentation)?.slides?.getOrNull(s)?.elements?.getOrNull(e)
+    val img = (el as? OdfSlideElement.Frame)?.frame?.image
+    if (img == null) {
+        state.cropSlideTarget = null
+        return
+    }
+    ImageCropDialog(
+        image = img,
+        onApply = { l, t, r, b -> viewModel.setSlideImageCrop(s, e, l, t, r, b) },
+        onDismiss = { state.cropSlideTarget = null },
+        onRotate = { viewModel.rotateSlideImage(s, e, ROTATE_QUARTER_TURNS) },
+        onReplace = {
+            pendingReplace.value = { n, b -> viewModel.replaceSlideImage(s, e, n, b) }
+            launchers.replaceImage.launch("image/*")
+        },
+    )
+}
+
+/** Sheet floating-image crop dialog. */
+@Composable
+private fun SheetCropOverlay(
+    state: DocumentOverlayState,
+    document: OdfDocument,
+    viewModel: OfficeViewModel,
+    pendingReplace: MutableState<((String, ByteArray) -> Unit)?>,
+    launchers: DocumentLaunchers,
+) {
+    val (s, e) = state.cropSheetTarget ?: return
+    val el = (document as? OdfDocument.Spreadsheet)?.sheets?.getOrNull(s)?.floating?.getOrNull(e)
+    val img = (el as? OdfSlideElement.Frame)?.frame?.image
+    if (img == null) {
+        state.cropSheetTarget = null
+        return
+    }
+    ImageCropDialog(
+        image = img,
+        onApply = { l, t, r, b -> viewModel.setSheetImageCrop(s, e, l, t, r, b) },
+        onDismiss = { state.cropSheetTarget = null },
+        onRotate = { viewModel.rotateSheetImage(s, e, ROTATE_QUARTER_TURNS) },
+        onReplace = {
+            pendingReplace.value = { n, b -> viewModel.replaceSheetImage(s, e, n, b) }
+            launchers.replaceImage.launch("image/*")
+        },
+    )
+}
+
+/** Share / unsaved-changes / export-warning overlays. */
+@Composable
+private fun ShareOverlays(
+    state: DocumentOverlayState,
+    document: OdfDocument,
+    viewModel: OfficeViewModel,
+    isOnline: Boolean,
+    saveAsName: String,
+    launchers: DocumentLaunchers,
+    onBecameOnline: (String) -> Unit,
+    onBack: () -> Unit,
+) {
     if (state.showEnableOnlineDialog) {
         EnableOnlineDialog(
-            onEnable = { viewModel.enableOnlineSharing(); state.showEnableOnlineDialog = false; state.showShareDialog = true },
+            onEnable =
+                { viewModel.enableOnlineSharing(); state.showEnableOnlineDialog = false; state.showShareDialog = true },
             onDismiss = { state.showEnableOnlineDialog = false }
         )
     }
     if (state.showShareDialog) {
-        var members by remember { mutableStateOf<List<com.vayunmathur.office.util.OfficeMember>>(emptyList()) }
-        LaunchedEffect(state.showShareDialog) { viewModel.documentMembers { members = it } }
-        ShareOnlineDialog(
-            deviceId = viewModel.syncDeviceId,
-            isOwner = viewModel.currentDocRole() == com.vayunmathur.office.util.OfficeRoles.OWNER,
-            isOnline = isOnline,
-            initialName = document.title,
-            myRole = viewModel.currentDocRole(),
-            members = members,
-            shareLink = if (isOnline) viewModel.currentOnlineDocId()?.let { viewModel.shareLinkFor(it) } else null,
-            onShare = { recipientId, role, name, cb ->
-                viewModel.shareCurrentDocument(recipientId, role, name) { err ->
-                    if (err == null) {
-                        viewModel.documentMembers { members = it } // refresh roster on success
-                        viewModel.currentOnlineDocId()?.let { onBecameOnline(it) } // now a cloud doc
-                    }
-                    cb(err)
-                }
-            },
-            onSetRole = { memberId, role ->
-                viewModel.setMemberRole(memberId, role) {
-                    viewModel.documentMembers { members = it }
-                }
-            },
-            onRename = { name -> viewModel.renameDocument(name) },
-            onTransferOwner = { memberId ->
-                viewModel.transferOwnership(memberId) { viewModel.documentMembers { members = it } }
-            },
-            onComputeCode = { id, cb -> viewModel.securityCodeWith(id, cb) },
-            onDismiss = { state.showShareDialog = false }
-        )
+        ShareDialogBody(state, document, viewModel, isOnline, onBecameOnline)
     }
-    if (state.showUnsavedDialog) AlertDialog(onDismissRequest = { state.showUnsavedDialog = false }, title = { Text(stringResource(R.string.unsaved_changes)) },
+    if (state.showUnsavedDialog) AlertDialog(
+        onDismissRequest = { state.showUnsavedDialog = false },
+        title = { Text(stringResource(R.string.unsaved_changes)) },
         text = { Text(stringResource(R.string.unsaved_changes_message)) },
-        confirmButton = { TextButton(onClick = { state.showUnsavedDialog = false; onBack() }) { Text(stringResource(R.string.discard), color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { Row { TextButton(onClick = { state.showUnsavedDialog = false }) { Text(stringResource(UiR.string.cancel)) }
-            TextButton(onClick = { state.showUnsavedDialog = false; if (viewModel.needsSaveAs()) launchers.saveAs.launch(saveAsName) else viewModel.save() }) { Text(stringResource(UiR.string.save), fontWeight = FontWeight.Bold) } } })
+        confirmButton = { TextButton(onClick = { state.showUnsavedDialog = false; onBack() }) { Text(
+            stringResource(R.string.discard),
+            color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { Row {
+            TextButton(onClick = { state.showUnsavedDialog = false }) { Text(stringResource(UiR.string.cancel)) }
+            TextButton(onClick = {
+                state.showUnsavedDialog = false
+                if (viewModel.needsSaveAs()) launchers.saveAs.launch(saveAsName) else viewModel.save()
+            }) { Text(stringResource(UiR.string.save), fontWeight = FontWeight.Bold) } } })
     state.exportWarning?.let { action ->
-        AlertDialog(onDismissRequest = { state.exportWarning = null }, title = { Text(stringResource(R.string.export_to_non_odf_format)) },
+        AlertDialog(
+            onDismissRequest = { state.exportWarning = null },
+            title = { Text(stringResource(R.string.export_to_non_odf_format)) },
             text = { Text(stringResource(R.string.some_formatting_and_features_may_be_lost)) },
-            confirmButton = { TextButton(onClick = { state.exportWarning = null; action() }) { Text(stringResource(R.string.export_1), fontWeight = FontWeight.Bold) } },
-            dismissButton = { TextButton(onClick = { state.exportWarning = null }) { Text(stringResource(UiR.string.cancel)) } })
+            confirmButton = { TextButton(onClick = { state.exportWarning = null; action() }) { Text(
+                stringResource(R.string.export_1),
+                fontWeight = FontWeight.Bold) } },
+            dismissButton =
+                { TextButton(onClick = { state.exportWarning = null }) { Text(stringResource(UiR.string.cancel)) } })
     }
-    if (state.showSettings) SettingsDialog(autoSave = viewModel.getAutoSaveEnabled(context), autoSaveInterval = viewModel.getAutoSaveInterval(context),
-        defaultFontSize = viewModel.getDefaultFontSize(context), documentThemeMode = viewModel.getDocumentThemeMode(context),
-        onSave = { a, i, f, m -> viewModel.saveSettings(context, a, i, f, m) }, onDismiss = { state.showSettings = false })
-    if (state.showColorPicker) ColorPickerDialog("Text Color", onColorSelected = { c -> if (activeRunStart.value >= 0) viewModel.applyRunSpanStyle(activeRunStart.value, activeRunEnd.value, selStart.value, selEnd.value) { it.copy(color = c) } }, onDismiss = { state.showColorPicker = false })
-    if (state.showFontSizePicker) FontSizePickerDialog(onSizeSelected = { sz -> if (activeRunStart.value >= 0) viewModel.applyRunSpanStyle(activeRunStart.value, activeRunEnd.value, selStart.value, selEnd.value) { it.copy(fontSize = sz) } }, onDismiss = { state.showFontSizePicker = false })
-    if (state.showInsertTable) InsertTableDialog(onInsert = { r, c -> viewModel.insertTable(maxOf(0, focusedPara), r, c) }, onDismiss = { state.showInsertTable = false })
-    if (state.showInsertLink) InsertHyperlinkDialog(onInsert = { t, u -> viewModel.insertHyperlink(maxOf(0, focusedPara), t, u) }, onDismiss = { state.showInsertLink = false })
-    if (state.showAddBookmark) AddBookmarkDialog(onAdd = { viewModel.addBookmark(it, maxOf(0, focusedPara)) }, onDismiss = { state.showAddBookmark = false })
-    if (state.showSpecialChars) SpecialCharsDialog(onPick = { ch -> if (activeRunStart.value >= 0) viewModel.insertTextInRun(activeRunStart.value, activeRunEnd.value, selStart.value, ch) }, onDismiss = { state.showSpecialChars = false })
-    if (state.showFootnote) FootnoteDialog(onAdd = { body -> if (activeRunStart.value >= 0) viewModel.insertFootnote(activeRunStart.value, activeRunEnd.value, selStart.value, body) }, onDismiss = { state.showFootnote = false })
-    if (state.showComment) CommentDialog(onAdd = { author, text -> if (focusedPara >= 0) viewModel.insertComment(focusedPara, author, text) }, onDismiss = { state.showComment = false })
-    if (state.showComments) {
-        val td = document as? OdfDocument.TextDocument
-        val comments = remember(document) {
-            buildList {
-                td?.content?.forEachIndexed { bi, block ->
-                    if (block is OdfContentBlock.Paragraph) block.paragraph.spans.forEachIndexed { si, span ->
-                        span.annotation?.let { add(Triple(bi, si, it)) }
-                    }
+}
+
+/** Share dialog with live roster. */
+@Composable
+private fun ShareDialogBody(
+    state: DocumentOverlayState,
+    document: OdfDocument,
+    viewModel: OfficeViewModel,
+    isOnline: Boolean,
+    onBecameOnline: (String) -> Unit,
+) {
+    var members by remember { mutableStateOf<List<com.vayunmathur.office.util.OfficeMember>>(emptyList()) }
+    LaunchedEffect(state.showShareDialog) { viewModel.documentMembers { members = it } }
+    ShareOnlineDialog(
+        deviceId = viewModel.syncDeviceId,
+        isOwner = viewModel.currentDocRole() == com.vayunmathur.office.util.OfficeRoles.OWNER,
+        isOnline = isOnline,
+        initialName = document.title,
+        myRole = viewModel.currentDocRole(),
+        members = members,
+        shareLink = if (isOnline) viewModel.currentOnlineDocId()?.let { viewModel.shareLinkFor(it) } else null,
+        onShare = { recipientId, role, name, cb ->
+            viewModel.shareCurrentDocument(recipientId, role, name) { err ->
+                if (err == null) {
+                    viewModel.documentMembers { members = it } // refresh roster on success
+                    viewModel.currentOnlineDocId()?.let { onBecameOnline(it) } // now a cloud doc
                 }
+                cb(err)
             }
-        }
-        AlertDialog(onDismissRequest = { state.showComments = false }, title = { Text(stringResource(R.string.comments_1, comments.size)) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    if (comments.isEmpty()) Text(stringResource(R.string.no_comments_yet_use_insert_comment_to_ad))
-                    comments.forEach { (bi, si, ann) ->
-                        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Text(stringResource(R.string.annotation_author_date, ann.author ?: stringResource(R.string.anonymous), ann.date?.let { " · $it" } ?: ""), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                            Text(ann.paragraphs.joinToString("\n") { p -> p.spans.joinToString("") { it.text } }, style = MaterialTheme.typography.bodySmall)
-                            Row {
-                                TextButton(onClick = { scope.launch { listState.animateScrollToItem(bi.coerceIn(0, (td?.content?.size ?: 1) - 1)) } }) { Text(stringResource(R.string.go_to)) }
-                                TextButton(onClick = { viewModel.resolveComment(bi, si) }) { Text(stringResource(R.string.resolve)) }
-                            }
-                            HorizontalDivider()
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { state.showComments = false }) { Text(stringResource(R.string.close_search)) } })
-    }
-    if (state.showChanges) {
-        val td = document as? OdfDocument.TextDocument
-        val changes = td?.changes ?: emptyList()
-        AlertDialog(onDismissRequest = { state.showChanges = false }, title = { Text(stringResource(R.string.tracked_changes, changes.size)) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    if (changes.isEmpty()) Text(stringResource(R.string.no_tracked_changes_in_this_document))
-                    changes.forEach { ch ->
-                        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Text(stringResource(R.string.tracked_change_author_date, ch.type.replaceFirstChar { it.uppercase() }, ch.author ?: stringResource(R.string.unknown), ch.date?.let { " · ${it.take(10)}" } ?: ""),
-                                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                            Row {
-                                TextButton(onClick = { viewModel.acceptChange(ch.id) }) { Text(stringResource(R.string.accept)) }
-                                TextButton(onClick = { viewModel.rejectChange(ch.id) }) { Text(stringResource(R.string.reject)) }
-                            }
-                            HorizontalDivider()
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Row {
-                    if (changes.isNotEmpty()) {
-                        TextButton(onClick = { viewModel.acceptAllChanges() }) { Text(stringResource(R.string.accept_all)) }
-                        TextButton(onClick = { viewModel.rejectAllChanges() }) { Text(stringResource(R.string.reject_all)) }
-                    }
-                    TextButton(onClick = { state.showChanges = false }) { Text(stringResource(R.string.close_search)) }
-                }
-            })
-    }
-    if (state.showPageSetup) {
-        val cur = (document as? OdfDocument.TextDocument)?.pageSetup ?: OdfPageSetup()
-        data class Paper(val name: String, val wCm: Float, val hCm: Float)
-        val papers = listOf(Paper("A4", 21f, 29.7f), Paper("Letter", 21.59f, 27.94f), Paper("Legal", 21.59f, 35.56f))
-        var landscape by remember(state.showPageSetup) { mutableStateOf(cur.isLandscape) }
-        var paper by remember(state.showPageSetup) {
-            val wcm = minOf(cur.widthPx, cur.heightPx) / 37.795f
-            mutableStateOf(papers.minByOrNull { kotlin.math.abs(it.wCm - wcm) }?.name ?: "A4")
-        }
-        var marginCm by remember(state.showPageSetup) { mutableStateOf(cur.marginLeftPx / 37.795f) }
-        AlertDialog(onDismissRequest = { state.showPageSetup = false }, title = { Text(stringResource(R.string.page_setup_1)) },
-            text = {
-                Column {
-                    Text(stringResource(R.string.paper_size), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                    Row { papers.forEach { p -> TextButton(onClick = { paper = p.name }) { Text(if (paper == p.name) "● ${p.name}" else p.name) } } }
-                    Text(stringResource(R.string.orientation), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                    Row {
-                        TextButton(onClick = { landscape = false }) { Text(if (!landscape) stringResource(R.string.portrait) else stringResource(R.string.portrait_1)) }
-                        TextButton(onClick = { landscape = true }) { Text(if (landscape) stringResource(R.string.landscape) else stringResource(R.string.landscape_1)) }
-                    }
-                    Text(stringResource(R.string.margins), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                    Row {
-                        TextButton(onClick = { marginCm = 1.27f }) { Text(if (marginCm < 1.5f) stringResource(R.string.narrow) else stringResource(R.string.narrow_1)) }
-                        TextButton(onClick = { marginCm = 2f }) { Text(if (marginCm in 1.5f..2.3f) stringResource(R.string.normal_1) else stringResource(R.string.normal)) }
-                        TextButton(onClick = { marginCm = 2.54f }) { Text(if (marginCm > 2.3f) stringResource(R.string.wide) else stringResource(R.string.wide_1)) }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val p = papers.first { it.name == paper }
-                    val wPx = (if (landscape) p.hCm else p.wCm) * 37.795f
-                    val hPx = (if (landscape) p.wCm else p.hCm) * 37.795f
-                    val m = marginCm * 37.795f
-                    viewModel.setPageSetup(OdfPageSetup(wPx, hPx, m, m, m, m))
-                    state.showPageSetup = false
-                }) { Text(stringResource(R.string.apply)) }
-            },
-            dismissButton = { TextButton(onClick = { state.showPageSetup = false }) { Text(stringResource(UiR.string.cancel)) } })
-    }
-    if (state.showHeaderFooter) {
-        val td = document as? OdfDocument.TextDocument
-        HeaderFooterDialog(
-            initialHeader = td?.headerParagraphs?.joinToString("\n") { p -> p.spans.joinToString("") { it.text } } ?: "",
-            initialFooter = td?.footerParagraphs?.joinToString("\n") { p -> p.spans.joinToString("") { it.text } } ?: "",
-            onSave = { h, f -> viewModel.setHeaderText(h); viewModel.setFooterText(f) },
-            onDismiss = { state.showHeaderFooter = false }
-        )
-    }
-    if (state.showCellTextColor && (activeCell.value?.second ?: -1) >= 0) {
-        val (s, r, c) = activeCell.value!!
-        ColorPickerDialog("Text Color", onColorSelected = { viewModel.setCellColor(s, r, c, it) }, onDismiss = { state.showCellTextColor = false })
-    }
-    if (state.showCellBgColor && (activeCell.value?.second ?: -1) >= 0) {
-        val (s, r, c) = activeCell.value!!
-        ColorPickerDialog("Background Color", onColorSelected = { viewModel.setCellBgColor(s, r, c, it) }, onDismiss = { state.showCellBgColor = false })
-    }
-    if (state.showCellBorderColor && (activeCell.value?.second ?: -1) >= 0) {
-        val (s, r, c) = activeCell.value!!
-        ColorPickerDialog("Border Color", onColorSelected = { viewModel.setCellBorder(s, r, c, it) }, onDismiss = { state.showCellBorderColor = false })
-    }
-    if (state.showSlideTextColor && activeSlideEl.value >= 0) {
-        ColorPickerDialog("Text Color", onColorSelected = { viewModel.setSlideElementColor(activeSlide.value, activeSlideEl.value, it) }, onDismiss = { state.showSlideTextColor = false })
-    }
-    if (state.showSlideFillColor && activeSlideEl.value >= 0) {
-        ColorPickerDialog("Fill Color", onColorSelected = { viewModel.setSlideElementFill(activeSlide.value, activeSlideEl.value, it) }, onDismiss = { state.showSlideFillColor = false })
-    }
-    if (state.showSlideStrokeColor && activeSlideEl.value >= 0) {
-        ColorPickerDialog("Border Color", onColorSelected = { viewModel.setSlideElementStroke(activeSlide.value, activeSlideEl.value, it) }, onDismiss = { state.showSlideStrokeColor = false })
-    }
-    if (state.showCellComment && (activeCell.value?.second ?: -1) >= 0) {
-        val (s, r, c) = activeCell.value!!
-        var text by remember(state.showCellComment) { mutableStateOf(viewModel.cellCommentText(s, r, c)) }
-        AlertDialog(
-            onDismissRequest = { state.showCellComment = false },
-            title = { Text(stringResource(R.string.cell_comment)) },
-            text = { TextField(value = text, onValueChange = { text = it }, placeholder = { Text(stringResource(R.string.comment)) }, modifier = Modifier.height(120.dp)) },
-            confirmButton = { TextButton(onClick = { viewModel.setCellComment(s, r, c, "", text); state.showCellComment = false }) { Text(stringResource(UiR.string.save)) } },
-            dismissButton = { TextButton(onClick = { state.showCellComment = false }) { Text(stringResource(UiR.string.cancel)) } }
-        )
-    }
-    if (state.showCellResize && (activeCell.value?.second ?: -1) >= 0) {
-        val (s, r, c) = activeCell.value!!
-        var w by remember(state.showCellResize) { mutableStateOf("") }
-        var h by remember(state.showCellResize) { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { state.showCellResize = false },
-            title = { Text(stringResource(R.string.row_column_size_1)) },
-            text = {
-                Column {
-                    TextField(value = w, onValueChange = { w = it }, label = { Text(stringResource(R.string.column_width_px)) })
-                    Spacer(Modifier.height(8.dp))
-                    TextField(value = h, onValueChange = { h = it }, label = { Text(stringResource(R.string.row_height_px)) })
-                }
-            },
-            confirmButton = { TextButton(onClick = {
-                w.toFloatOrNull()?.let { viewModel.setColumnWidth(s, c, it) }
-                h.toFloatOrNull()?.let { viewModel.setRowHeight(s, r, it) }
-                state.showCellResize = false
-            }) { Text(stringResource(R.string.apply)) } },
-            dismissButton = { TextButton(onClick = { state.showCellResize = false }) { Text(stringResource(UiR.string.cancel)) } }
-        )
-    }
-    if (state.showSlideNotes && isPresentation) {
-        var text by remember(state.showSlideNotes) { mutableStateOf(viewModel.slideNotesText(activeSlide.value)) }
-        AlertDialog(
-            onDismissRequest = { state.showSlideNotes = false },
-            title = { Text(stringResource(R.string.speaker_notes)) },
-            text = { TextField(value = text, onValueChange = { text = it }, placeholder = { Text(stringResource(R.string.notes_for_this_slide)) }, modifier = Modifier.height(160.dp)) },
-            confirmButton = { TextButton(onClick = { viewModel.setSlideNotes(activeSlide.value, text); state.showSlideNotes = false }) { Text(stringResource(UiR.string.save)) } },
-            dismissButton = { TextButton(onClick = { state.showSlideNotes = false }) { Text(stringResource(UiR.string.cancel)) } }
-        )
-    }
-    if (state.showSlideBackground && isPresentation) {
-        ColorPickerDialog("Slide background", onColorSelected = { viewModel.setSlideBackgroundColor(activeSlide.value, it) }, onDismiss = { state.showSlideBackground = false })
-    }
-    if (state.showSlideTransition && isPresentation) {
-        val types = listOf("none", "fade", "wipe", "dissolve", "push", "cover", "split", "blinds", "checkerboard", "circle", "wheel")
-        var type by remember(state.showSlideTransition) { mutableStateOf((document as? OdfDocument.Presentation)?.slides?.getOrNull(activeSlide.value)?.transitionType ?: "none") }
-        var expanded by remember { mutableStateOf(false) }
-        AlertDialog(
-            onDismissRequest = { state.showSlideTransition = false },
-            title = { Text(stringResource(R.string.slide_transition_1)) },
-            text = {
-                androidx.compose.foundation.layout.Box {
-                    TextButton(onClick = { expanded = true }) { Text(type.replaceFirstChar { it.uppercase() }) }
-                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        types.forEach { t -> DropdownMenuItem(text = { Text(t.replaceFirstChar { ch -> ch.uppercase() }) }, onClick = { type = t; expanded = false }) }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { viewModel.setSlideTransition(activeSlide.value, type.takeIf { it != "none" }, "medium"); state.showSlideTransition = false }) { Text(stringResource(R.string.apply)) } },
-            dismissButton = { TextButton(onClick = { state.showSlideTransition = false }) { Text(stringResource(UiR.string.cancel)) } }
-        )
-    }
-    if (state.cropImageBlock >= 0) {
-        val img = ((document as? OdfDocument.TextDocument)?.content?.getOrNull(state.cropImageBlock) as? OdfContentBlock.Image)?.image
-        if (img != null) ImageCropDialog(image = img, onApply = { l, t, r, b -> viewModel.setImageCrop(state.cropImageBlock, l, t, r, b) }, onDismiss = { state.cropImageBlock = -1 },
-            onRotate = { viewModel.rotateTextImage(state.cropImageBlock, 90f) },
-            onReplace = { val bi = state.cropImageBlock; pendingReplace.value = { n, b -> viewModel.replaceTextImage(bi, n, b) }; launchers.replaceImage.launch("image/*") })
-        else state.cropImageBlock = -1
-    }
-    state.cropSlideTarget?.let { (s, e) ->
-        val img = ((document as? OdfDocument.Presentation)?.slides?.getOrNull(s)?.elements?.getOrNull(e) as? OdfSlideElement.Frame)?.frame?.image
-        if (img != null) ImageCropDialog(image = img, onApply = { l, t, r, b -> viewModel.setSlideImageCrop(s, e, l, t, r, b) }, onDismiss = { state.cropSlideTarget = null },
-            onRotate = { viewModel.rotateSlideImage(s, e, 90f) },
-            onReplace = { pendingReplace.value = { n, b -> viewModel.replaceSlideImage(s, e, n, b) }; launchers.replaceImage.launch("image/*") })
-        else state.cropSlideTarget = null
-    }
-    state.cropSheetTarget?.let { (s, e) ->
-        val img = ((document as? OdfDocument.Spreadsheet)?.sheets?.getOrNull(s)?.floating?.getOrNull(e) as? OdfSlideElement.Frame)?.frame?.image
-        if (img != null) ImageCropDialog(image = img, onApply = { l, t, r, b -> viewModel.setSheetImageCrop(s, e, l, t, r, b) }, onDismiss = { state.cropSheetTarget = null },
-            onRotate = { viewModel.rotateSheetImage(s, e, 90f) },
-            onReplace = { pendingReplace.value = { n, b -> viewModel.replaceSheetImage(s, e, n, b) }; launchers.replaceImage.launch("image/*") })
-        else state.cropSheetTarget = null
-    }
-    if (state.showChartEditor) {
-        val existing = if (!state.chartForSlide && state.editingChartBlock >= 0) ((document as? OdfDocument.TextDocument)?.content?.getOrNull(state.editingChartBlock) as? OdfContentBlock.Chart)?.chart else null
-        ChartEditorDialog(
-            initial = existing,
-            onConfirm = { ch ->
-                when {
-                    state.chartForSlide -> viewModel.insertChartIntoSlide(activeSlide.value, ch)
-                    state.chartForSheet -> viewModel.insertChartIntoSheet(activeCell.value?.first ?: 0, ch)
-                    state.editingChartBlock >= 0 -> viewModel.updateChart(state.editingChartBlock, ch)
-                    else -> if (focusedPara >= 0) viewModel.insertChart(focusedPara, ch)
-                }
-            },
-            onDismiss = { state.showChartEditor = false; state.editingChartBlock = -1; state.chartForSlide = false; state.chartForSheet = false }
-        )
-    }
+        },
+        onSetRole = { memberId, role ->
+            viewModel.setMemberRole(memberId, role) {
+                viewModel.documentMembers { members = it }
+            }
+        },
+        onRename = { name -> viewModel.renameDocument(name) },
+        onTransferOwner = { memberId ->
+            viewModel.transferOwnership(memberId) { viewModel.documentMembers { members = it } }
+        },
+        onComputeCode = { id, cb -> viewModel.securityCodeWith(id, cb) },
+        onDismiss = { state.showShareDialog = false }
+    )
+}
+
+/** Settings dialog overlay. */
+@Composable
+private fun SettingsOverlay(
+    state: DocumentOverlayState,
+    viewModel: OfficeViewModel,
+    context: android.content.Context,
+) {
+    if (!state.showSettings) return
+    SettingsDialog(
+        autoSave = viewModel.getAutoSaveEnabled(context),
+        autoSaveInterval = viewModel.getAutoSaveInterval(context),
+        defaultFontSize =
+            viewModel.getDefaultFontSize(context),
+        documentThemeMode = viewModel.getDocumentThemeMode(context),
+        onSave = { a, i, f, m -> viewModel.saveSettings(context, a, i, f, m) },
+        onDismiss = { state.showSettings = false })
+}
+
+/** Run text-color / font-size overlays. */
+@Composable
+private fun RunStyleOverlays(
+    state: DocumentOverlayState,
+    viewModel: OfficeViewModel,
+    activeRunStart: MutableState<Int>,
+    activeRunEnd: MutableState<Int>,
+    selStart: MutableState<Int>,
+    selEnd: MutableState<Int>,
+) {
+    if (state.showColorPicker) ColorPickerDialog(
+        "Text Color",
+        onColorSelected = { c ->
+            if (activeRunStart.value >= 0) {
+                viewModel.applyRunSpanStyle(
+                    activeRunStart.value,
+                    activeRunEnd.value,
+                    selStart.value,
+                    selEnd.value,
+                ) { it.copy(color = c) }
+            }
+        },
+        onDismiss = { state.showColorPicker = false },
+    )
+    if (state.showFontSizePicker) FontSizePickerDialog(
+        onSizeSelected = { sz ->
+            if (activeRunStart.value >= 0) {
+                viewModel.applyRunSpanStyle(
+                    activeRunStart.value,
+                    activeRunEnd.value,
+                    selStart.value,
+                    selEnd.value,
+                ) { it.copy(fontSize = sz) }
+            }
+        },
+        onDismiss = { state.showFontSizePicker = false },
+    )
+}
+
+/** Table / link / bookmark / chars / footnote insert overlays. */
+@Composable
+private fun InsertOverlays(
+    state: DocumentOverlayState,
+    viewModel: OfficeViewModel,
+    focusedPara: Int,
+    activeRunStart: MutableState<Int>,
+    activeRunEnd: MutableState<Int>,
+    selStart: MutableState<Int>,
+) {
+    if (state.showInsertTable) InsertTableDialog(
+        onInsert = { r, c -> viewModel.insertTable(maxOf(0, focusedPara), r, c) },
+        onDismiss = { state.showInsertTable = false })
+    if (state.showInsertLink) InsertHyperlinkDialog(
+        onInsert = { t, u -> viewModel.insertHyperlink(maxOf(0, focusedPara), t, u) },
+        onDismiss = { state.showInsertLink = false })
+    if (state.showAddBookmark) AddBookmarkDialog(
+        onAdd = { viewModel.addBookmark(it, maxOf(0, focusedPara)) },
+        onDismiss = { state.showAddBookmark = false })
+    CharFootnoteOverlays(state, viewModel, activeRunStart, activeRunEnd, selStart)
+}
+
+/** Special-chars + footnote overlays. */
+@Composable
+private fun CharFootnoteOverlays(
+    state: DocumentOverlayState,
+    viewModel: OfficeViewModel,
+    activeRunStart: MutableState<Int>,
+    activeRunEnd: MutableState<Int>,
+    selStart: MutableState<Int>,
+) {
+    if (state.showSpecialChars) SpecialCharsDialog(
+        onPick = { ch ->
+            if (activeRunStart.value >= 0) {
+                viewModel.insertTextInRun(activeRunStart.value, activeRunEnd.value, selStart.value, ch)
+            }
+        },
+        onDismiss = { state.showSpecialChars = false },
+    )
+    if (state.showFootnote) FootnoteDialog(
+        onAdd = { body ->
+            if (activeRunStart.value >= 0) {
+                viewModel.insertFootnote(activeRunStart.value, activeRunEnd.value, selStart.value, body)
+            }
+        },
+        onDismiss = { state.showFootnote = false },
+    )
 }

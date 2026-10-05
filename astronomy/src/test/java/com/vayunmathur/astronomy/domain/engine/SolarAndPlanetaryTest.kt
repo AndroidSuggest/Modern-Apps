@@ -1,6 +1,7 @@
 package com.vayunmathur.astronomy.domain.engine
 
-import kotlin.math.*
+import kotlin.math.abs
+import kotlin.math.sin
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.ExperimentalTime
@@ -38,17 +39,17 @@ class SolarAndPlanetaryTest {
 
     @Test
     fun kepler_solver_circular() {
-        val M = 1.0; val e = 0.0
-        val E = PlanetaryCalculator.solveKepler(M, e)
-        assertTrue(abs(E - M) < 1e-9)
+        val meanAnomaly = 1.0; val e = 0.0
+        val eccentricAnomaly = PlanetaryCalculator.solveKepler(meanAnomaly, e)
+        assertTrue(abs(eccentricAnomaly - meanAnomaly) < 1e-9)
     }
 
     @Test
     fun kepler_solver_elliptical() {
-        val M = 0.5; val e = 0.5
-        val E = PlanetaryCalculator.solveKepler(M, e)
+        val meanAnomaly = 0.5; val e = 0.5
+        val eccentricAnomaly = PlanetaryCalculator.solveKepler(meanAnomaly, e)
         // Verify Kepler equation residual
-        val residual = abs(E - e * sin(E) - M)
+        val residual = abs(eccentricAnomaly - e * sin(eccentricAnomaly) - meanAnomaly)
         assertTrue(residual < 1e-9, "residual $residual")
     }
 

@@ -6,6 +6,7 @@ import com.vayunmathur.launcher.domain.AutoPlacer
 import com.vayunmathur.launcher.domain.CellRect
 import com.vayunmathur.launcher.domain.ContainerRef
 import com.vayunmathur.launcher.domain.FolderRules
+import com.vayunmathur.launcher.domain.GridItem
 import com.vayunmathur.launcher.domain.GridSpec
 import com.vayunmathur.launcher.domain.HotseatArrange
 import com.vayunmathur.launcher.domain.LauncherItemType
@@ -334,19 +335,7 @@ class LauncherRepository private constructor(context: Context) :
             val moved = AutoPlacer.regrid(desktop.map { it.toGridItem() }, to)
             val before = desktop.associateBy { it.id }
             for (item in moved) {
-                val original = before[item.id] ?: continue
-                if (original.screen == item.screen && original.rect == item.rect) continue
-                dao.move(
-                    item.id,
-                    original.containerId,
-                    item.screen,
-                    item.rect.cellX,
-                    item.rect.cellY,
-                    original.rank,
-                )
-                if (original.rect.spanX != item.rect.spanX || original.rect.spanY != item.rect.spanY) {
-                    dao.resizeTo(item.id, item.rect.cellX, item.rect.cellY, item.rect.spanX, item.rect.spanY)
-                }
+                moveIfRelocated(before[item.id], item)
             }
             // The hotseat is a rank list, so a narrower one drops the tail back onto the
             // desktop rather than renumbering into slots that no longer exist.
@@ -361,6 +350,21 @@ class LauncherRepository private constructor(context: Context) :
                 }
             }
         }
+    }
+
+    private suspend fun moveIfRelocated(original: LauncherItemEntity?, item: GridItem) {
+        if (original == null) return
+        if (original.screen == item.screen && original.rect == item.rect) return
+        dao.move(
+            item.id,
+            original.containerId,
+            item.screen,
+            item.rect.cellX,
+            item.rect.cellY,
+            original.rank,
+        )
+        if (original.rect.spanX == item.rect.spanX && original.rect.spanY == item.rect.spanY) return
+        dao.resizeTo(item.id, item.rect.cellX, item.rect.cellY, item.rect.spanX, item.rect.spanY)
     }
 
     private suspend fun collapseEmptyFolders() {

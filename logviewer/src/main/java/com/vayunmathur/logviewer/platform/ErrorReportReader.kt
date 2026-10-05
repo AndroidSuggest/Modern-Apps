@@ -39,6 +39,8 @@ internal object ErrorReportReader {
     private const val TOMBSTONE_MARKER =
         "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***"
 
+    private const val OS_VERSION_PREFIX = "osVersion: "
+
     fun read(context: Context, intent: Intent): LogLoadResult = when (intent.action) {
         LogViewerIntents.ACTION_ERROR_REPORT -> readErrorReport(context, intent)
         Intent.ACTION_APP_ERROR -> readAppError(context, intent)
@@ -63,20 +65,8 @@ internal object ErrorReportReader {
     private fun readErrorReport(context: Context, intent: Intent): LogLoadResult {
         val extras = intent.extras ?: return LogLoadResult.Unavailable()
 
-        val messageBytes = if (extras.getBoolean(LogViewerIntents.EXTRA_PREFER_TEXT_TOMBSTONE)) {
-            textTombstoneBytes(intent)
-                ?: return LogLoadResult.Unavailable(R.string.toast_unable_to_show_more_info)
-        } else {
-            val gzipped = extras.getByteArray(LogViewerIntents.EXTRA_GZIPPED_MESSAGE)
-                ?: return LogLoadResult.Unavailable()
-            try {
-                GZIPInputStream(ByteArrayInputStream(gzipped)).use { it.readBytes() }
-            } catch (e: IOException) {
-                Log.d(TAG, "corrupt gzipped message", e)
-                return LogLoadResult.Unavailable()
-            }
-        }
-
+        val messageBytes = readReportMessageBytes(intent, extras)
+            ?: return LogLoadResult.Unavailable(reportMessageUnavailableRes(extras))
         val sourceAppInfo = BundleCompat.getParcelable(
             extras,
             LogViewerIntents.EXTRA_SOURCE_APP_INFO,
@@ -84,26 +74,8 @@ internal object ErrorReportReader {
         )
         val message = String(messageBytes, Charsets.UTF_8)
 
-        val header = mutableListOf(
-            "type: " + extras.getString(LogViewerIntents.EXTRA_ERROR_TYPE, "crash"),
-        )
-        // A text tombstone already names the build; a second copy of it would just be noise.
-        if (!message.contains(Build.FINGERPRINT)) header += "osVersion: ${Build.FINGERPRINT}"
-        ReportHeaders.addDeviceLines(context, header)
-        if (sourceAppInfo != null) ReportHeaders.addPackageLines(context, sourceAppInfo, header)
-
-        val body = StringBuilder(message.length + 1000)
-        body.append(header.joinToString("\n"))
-        body.append('\n')
-        // A blank line, unless the message already opens with something that reads as its own
-        // separator - indented text, an empty line, or a tombstone's asterisk banner.
-        val first = message.firstOrNull()
-        if (first != null && first != ' ' && first != '\n' && first != '*' &&
-            !message.startsWith("osVersion: ")
-        ) {
-            body.append('\n')
-        }
-        body.append(message)
+        val header = buildReportHeader(context, extras, message, sourceAppInfo)
+        val body = buildReportBody(header, message)
 
         val sourcePackage = sourceAppInfo?.packageName
         val title = extras.getString(Intent.EXTRA_TITLE) ?: errorTitle(context, sourcePackage)
@@ -116,9 +88,65 @@ internal object ErrorReportReader {
                 // Everything is in the body: the header the platform sent is part of the message
                 // it rendered, and splitting it back out would be guesswork.
                 header = "",
-                body = body.toString(),
+                body = body,
             )
         )
+    }
+
+    private fun reportMessageUnavailableRes(extras: Bundle): Int? {
+        if (extras.getBoolean(LogViewerIntents.EXTRA_PREFER_TEXT_TOMBSTONE)) {
+            return R.string.toast_unable_to_show_more_info
+        }
+        return null
+    }
+
+    private fun readReportMessageBytes(intent: Intent, extras: Bundle): ByteArray? {
+        if (extras.getBoolean(LogViewerIntents.EXTRA_PREFER_TEXT_TOMBSTONE)) {
+            return textTombstoneBytes(intent)
+        }
+        val gzipped = extras.getByteArray(LogViewerIntents.EXTRA_GZIPPED_MESSAGE)
+            ?: return null
+        return try {
+            GZIPInputStream(ByteArrayInputStream(gzipped)).use { it.readBytes() }
+        } catch (e: IOException) {
+            Log.d(TAG, "corrupt gzipped message", e)
+            null
+        }
+    }
+
+    private fun buildReportHeader(
+        context: Context,
+        extras: Bundle,
+        message: String,
+        sourceAppInfo: ApplicationInfo?,
+    ): List<String> {
+        val header = mutableListOf(
+            "type: " + extras.getString(LogViewerIntents.EXTRA_ERROR_TYPE, "crash"),
+        )
+        // A text tombstone already names the build; a second copy of it would just be noise.
+        if (!message.contains(Build.FINGERPRINT)) header += "osVersion: ${Build.FINGERPRINT}"
+        ReportHeaders.addDeviceLines(context, header)
+        if (sourceAppInfo != null) ReportHeaders.addPackageLines(context, sourceAppInfo, header)
+        return header
+    }
+
+    private fun buildReportBody(header: List<String>, message: String): String {
+        val body = StringBuilder(message.length + 1000)
+        body.append(header.joinToString("\n"))
+        body.append('\n')
+        // A blank line, unless the message already opens with something that reads as its own
+        // separator - indented text, an empty line, or a tombstone's asterisk banner.
+        if (needsBlankSeparator(message)) {
+            body.append('\n')
+        }
+        body.append(message)
+        return body.toString()
+    }
+
+    private fun needsBlankSeparator(message: String): Boolean {
+        val first = message.firstOrNull() ?: return false
+        if (first == ' ' || first == '\n' || first == '*') return false
+        return !message.startsWith(OS_VERSION_PREFIX)
     }
 
     // -------------------------------------------------------------------- ACTION_APP_ERROR
@@ -219,7 +247,10 @@ internal object ErrorReportReader {
             val stackTrace = report.crashInfo?.stackTrace ?: return null
             return crashBody(stackTrace)
         }
+        return nonCrashBody(report)
+    }
 
+    private fun nonCrashBody(report: ApplicationErrorReport): String? {
         val sb = StringBuilder()
         val printer = StringBuilderPrinter(sb)
 

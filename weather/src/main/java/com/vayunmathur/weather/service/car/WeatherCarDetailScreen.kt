@@ -64,74 +64,106 @@ class WeatherCarDetailScreen(
     }
 
     private fun detailPane(location: SavedLocation, snapshot: CarForecast): Template {
-        val tempUnit = TemperatureUnit.Celsius
-        val forecast = snapshot.forecast
-        val current = forecast.current
-        val daily = forecast.daily
-        val limit = runCatching {
-            carContext.getCarService(ConstraintManager::class.java)
-                .getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_PANE)
-        }.getOrDefault(DEFAULT_PANE_LIMIT)
-
         val pane = Pane.Builder()
-        if (current != null) {
-            val now = Row.Builder()
-                .setTitle(
-                    "Now · ${formatTemperature(current.temperature, tempUnit)} · " +
-                        "${carContext.getString(weatherConditionForCode(current.weatherCode).label)}",
-                )
-            now.addText(
-                "Feels like ${formatTemperature(current.apparentTemperature, tempUnit)} · " +
-                    "Humidity ${current.relativeHumidity}% · " +
-                    "Wind ${formatWind(current.windSpeed, WindUnit.KmH)} " +
-                    compassDirection(current.windDirection),
-            )
-            runCatching {
-                now.setImage(conditionIcon(current.weatherCode, current.isDay == 1), Row.IMAGE_TYPE_ICON)
-            }
-            pane.addRow(now.build())
-        }
-
-        val days = daily?.time?.size ?: 0
-        var rows = if (current != null) 1 else 0
-        for (i in 0 until days) {
-            if (rows >= limit) break
-            val day = daily ?: break
-            val isoDate = day.time.getOrNull(i) ?: break
-            val hi = day.temperatureMax.getOrNull(i)
-            val lo = day.temperatureMin.getOrNull(i)
-            val code = day.weatherCode.getOrNull(i)
-            val precip = day.precipitationProbabilityMax.getOrNull(i)
-            val dayLabel = dayLabelFor(isoDate, current?.time)
-            val parts = mutableListOf<String>()
-            if (hi != null && lo != null) {
-                parts += "${formatTemperatureCompact(hi, tempUnit)} / " +
-                    formatTemperatureCompact(lo, tempUnit)
-            }
-            if (code != null) {
-                parts += carContext.getString(weatherConditionForCode(code).label)
-            }
-            if (precip != null && precip > 0) {
-                parts += "$precip% rain"
-            }
-            pane.addRow(
-                Row.Builder()
-                    .setTitle(dayLabel)
-                    .apply { if (parts.isNotEmpty()) addText(parts.joinToString(" · ")) }
-                    .apply {
-                        if (code != null) {
-                            runCatching { setImage(conditionIcon(code, isDay = true), Row.IMAGE_TYPE_ICON) }
-                        }
-                    }
-                    .build(),
-            )
-            rows++
-        }
+        addNowRow(pane, snapshot)
+        addDayRows(pane, snapshot)
 
         return PaneTemplate.Builder(pane.build())
             .setTitle(location.name.ifBlank { "Current location" })
             .setHeaderAction(Action.BACK)
             .build()
+    }
+
+    private fun paneLimit(): Int = runCatching {
+        carContext.getCarService(ConstraintManager::class.java)
+            .getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_PANE)
+    }.getOrDefault(DEFAULT_PANE_LIMIT)
+
+    private fun addNowRow(pane: Pane.Builder, snapshot: CarForecast) {
+        val current = snapshot.forecast.current ?: return
+        val tempUnit = TemperatureUnit.Celsius
+        val now = Row.Builder()
+            .setTitle(
+                "Now · ${formatTemperature(current.temperature, tempUnit)} · " +
+                    "${carContext.getString(weatherConditionForCode(current.weatherCode).label)}",
+            )
+        now.addText(
+            "Feels like ${formatTemperature(current.apparentTemperature, tempUnit)} · " +
+                "Humidity ${current.relativeHumidity}% · " +
+                "Wind ${formatWind(current.windSpeed, WindUnit.KmH)} " +
+                compassDirection(current.windDirection),
+        )
+        runCatching {
+            now.setImage(conditionIcon(current.weatherCode, current.isDay == 1), Row.IMAGE_TYPE_ICON)
+        }
+        pane.addRow(now.build())
+    }
+
+    private fun addDayRows(pane: Pane.Builder, snapshot: CarForecast) {
+        val daily = snapshot.forecast.daily ?: return
+        val limit = paneLimit()
+        val days = daily.time.size
+        var rows = if (snapshot.forecast.current != null) 1 else 0
+        for (i in 0 until days) {
+            val row = takeDayRow(daily, i, snapshot.forecast.current?.time, rows, limit) ?: break
+            pane.addRow(row)
+            rows++
+        }
+    }
+
+    private fun takeDayRow(
+        daily: com.vayunmathur.weather.network.Daily,
+        i: Int,
+        currentTime: String?,
+        rows: Int,
+        limit: Int,
+    ): Row? {
+        if (rows >= limit) return null
+        return dayRow(daily, i, currentTime)
+    }
+
+    private fun dayRow(
+        daily: com.vayunmathur.weather.network.Daily,
+        i: Int,
+        currentTime: String?,
+    ): Row? {
+        val isoDate = daily.time.getOrNull(i) ?: return null
+        val tempUnit = TemperatureUnit.Celsius
+        val dayLabel = dayLabelFor(isoDate, currentTime)
+        val parts = dayParts(daily, i, tempUnit)
+        val code = daily.weatherCode.getOrNull(i)
+        return Row.Builder()
+            .setTitle(dayLabel)
+            .apply { if (parts.isNotEmpty()) addText(parts.joinToString(" · ")) }
+            .apply {
+                if (code != null) {
+                    runCatching { setImage(conditionIcon(code, isDay = true), Row.IMAGE_TYPE_ICON) }
+                }
+            }
+            .build()
+    }
+
+    private fun dayParts(
+        daily: com.vayunmathur.weather.network.Daily,
+        i: Int,
+        tempUnit: TemperatureUnit,
+    ): List<String> {
+        val parts = mutableListOf<String>()
+        val hi = daily.temperatureMax.getOrNull(i)
+        val lo = daily.temperatureMin.getOrNull(i)
+        val code = daily.weatherCode.getOrNull(i)
+        val precip = daily.precipitationProbabilityMax.getOrNull(i)
+        if (hi != null && lo != null) {
+            parts += "${formatTemperatureCompact(hi, tempUnit)} / " +
+                formatTemperatureCompact(lo, tempUnit)
+        }
+        if (code != null) {
+            parts += carContext.getString(weatherConditionForCode(code).label)
+        }
+        if (precip != null && precip > 0) {
+            parts += "$precip% rain"
+        }
+        return parts
     }
 
     private fun dayLabelFor(isoDate: String, currentTime: String?): String {

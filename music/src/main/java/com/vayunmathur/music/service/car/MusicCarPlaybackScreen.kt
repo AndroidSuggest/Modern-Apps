@@ -24,7 +24,12 @@ class MusicCarPlaybackScreen(
     private val state: MusicCarState,
 ) : Screen(carContext) {
 
-    private val listener = object : Player.Listener {
+    private companion object {
+        const val MIN_API_MEDIA_TEMPLATE = 8
+        const val MIN_API_MEDIA_STYLE = 9
+    }
+
+    private val listener
         override fun onEvents(player: Player, events: Player.Events) {
             invalidate()
         }
@@ -40,7 +45,7 @@ class MusicCarPlaybackScreen(
         // transport from the registered MediaSession token (see
         // MusicCarSession token note); our Pane content below is the API 1–7
         // fallback so old hosts still show now-playing + actions.
-        if (carContext.getCarAppApiLevel() >= 8) {
+        if (carContext.getCarAppApiLevel() >= MIN_API_MEDIA_TEMPLATE) {
             val builder = androidx.car.app.media.model.MediaPlaybackTemplate.Builder()
                 .setHeader(
                     Header.Builder()
@@ -48,7 +53,7 @@ class MusicCarPlaybackScreen(
                         .setTitle(nowPlayingTitle())
                         .build()
                 )
-            if (carContext.getCarAppApiLevel() >= 9) {
+            if (carContext.getCarAppApiLevel() >= MIN_API_MEDIA_STYLE) {
                 runCatching {
                     builder.setStyle(
                         androidx.car.app.media.model.MediaPlaybackStyle.Builder()

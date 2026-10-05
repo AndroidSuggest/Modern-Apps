@@ -408,12 +408,15 @@ fn parse_file_list_json(text: &str) -> Option<Vec<payload::FileMeta>> {
 }
 
 // ---------------------------------------------------------------------------
-// Nearby Connections BleAdvertisement + service-id derivation (ble_adv.rs)
+// Nearby Connections BleAdvertisement + service-id derivation (ble_adv.rs).
+// The remaining discovery codecs live in lib_part1.rs as
+// Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_* to match
+// ShareNativeDiscovery.kt.
 // ---------------------------------------------------------------------------
 
 /// String nativeMdnsServiceType() -> `_FC9F5ED42C8A._tcp`
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeMdnsServiceType<'l>(
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeMdnsServiceType<'l>(
     env: JNIEnv<'l>,
     _cls: JClass<'l>,
 ) -> jni::sys::jobject {
@@ -425,11 +428,46 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeMdn
 
 /// byte[] nativeBleServiceIdHash() -> the 3-byte truncated SHA-256 of "NearbySharing"
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeBleServiceIdHash<'l>(
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeBleServiceIdHash<'l>(
     env: JNIEnv<'l>,
     _cls: JClass<'l>,
 ) -> jbyteArray {
     bytes_out(&env, &ble_adv::ble_service_id_hash())
+}
+
+/// String nativeQueryTrace(long handle) -> recent protocol events, one per line, or null.
+///
+/// Diagnostic: names the frames each side actually exchanged. A peer that goes quiet gives
+/// no other clue about which frame it disliked, and the wire is encrypted, so a packet
+/// capture cannot answer it either.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeQueryTrace<'l>(
+    env: JNIEnv<'l>,
+    _cls: JClass<'l>,
+    handle: jlong,
+) -> jni::sys::jobject {
+    let text = with_session(handle, None, |s| Some(s.trace_text()));
+    match text {
+        Some(t) => match env.new_string(t) {
+            Ok(s) => s.into_raw(),
+            Err(_) => std::ptr::null_mut(),
+        },
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// void nativeDestroy(long handle)
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeDestroy<'l>(
+    _env: JNIEnv<'l>,
+    _cls: JClass<'l>,
+    handle: jlong,
+) {
+    let mut map = match sessions().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let _ = map.remove(&handle);
 }
 
 include!("lib_part1.rs");

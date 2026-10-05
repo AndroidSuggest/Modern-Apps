@@ -149,7 +149,7 @@ openmls_basic_credential = "0.6.0"
 openmls_traits = "0.6.0"
 tls_codec = "0.5.0"
 x25519-dalek = { version = "2.0.1", default-features = false, features = ["static_secrets"] }
-hmac = "0.12.1"
+hmac = "0.13.0"
 subtle = "2.6.1"
 fips203 = "0.4.3"
 fips204 = "0.4.6"
@@ -223,7 +223,7 @@ rand_pcg = "0.3.1"
 base64 = "0.22.1"
 ctr = "0.9.2"
 cbc = { version = "0.1.2", features = ["block-padding"] }
-hkdf = "0.12.3"
+hkdf = "0.13.0"
 aes-gcm = "0.10.3"
 aes-gcm-siv = { version = "0.11.1", features = ["aes"], default-features = false }
 aead = "0.5.1"

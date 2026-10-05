@@ -42,6 +42,14 @@ internal data class TaggedFeature(val layerId: String, val feature: Feature1)
  */
 internal const val TRAFFIC_PREFETCH_DEBOUNCE_MS = 400L
 
+/** Scale of the wire's `u8 = round(speedRatio*100)` ratio byte. */
+private const val TRAFFIC_RATIO_SCALE = 100.0
+/** Mask for one unsigned byte read out of the table. */
+private const val BYTE_MASK = 0xFF
+/** Below this ratio a segment reads as jammed; below [TRAFFIC_SLOW_BELOW] as slow. */
+private const val TRAFFIC_JAM_BELOW = 0.5
+private const val TRAFFIC_SLOW_BELOW = 0.9
+
 /**
  * Below this zoom the per-component traffic overlay is neither drawn (the archive zoom-gates
  * it) nor worth fetching — a zoomed-out viewport spans too many 1° squares to enumerate.
@@ -97,12 +105,12 @@ internal fun buildTrafficColorTable(
     val outArgb = IntArray(n)
     var k = 0
     for (i in 0 until n) {
-        val pct = components.ratioPct[i].toInt() and 0xFF
+        val pct = components.ratioPct[i].toInt() and BYTE_MASK
         if (pct == 0) continue
-        val ratio = pct / 100.0
+        val ratio = pct / TRAFFIC_RATIO_SCALE
         val color = when {
-            ratio < 0.5 -> tokens.traffic.jam
-            ratio < 0.9 -> tokens.traffic.slow
+            ratio < TRAFFIC_JAM_BELOW -> tokens.traffic.jam
+            ratio < TRAFFIC_SLOW_BELOW -> tokens.traffic.slow
             else -> tokens.traffic.free
         }
         outIds[k] = components.ids[i]

@@ -44,7 +44,7 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.util.sharedContainer
 import com.vayunmathur.library.util.sharedText
-import com.vayunmathur.fooddelivery.api.BitesApi
+import com.vayunmathur.fooddelivery.api.BitesMerchants
 import com.vayunmathur.fooddelivery.data.AddressStore
 import com.vayunmathur.fooddelivery.data.Merchant
 import com.vayunmathur.fooddelivery.platform.AppInit
@@ -62,7 +62,10 @@ fun HomeScreen(onMerchantClick: (Int) -> Unit) {
         AppInit.awaitReady()
         val defaultAddr = AddressStore.getDefault(context)
         if (defaultAddr != null) {
-            merchants = BitesApi.getMerchants(lat = defaultAddr.latitude, lng = defaultAddr.longitude)
+            merchants = BitesMerchants.getMerchants(
+                lat = defaultAddr.latitude,
+                lng = defaultAddr.longitude,
+            )
                 .sortedBy { it.distance ?: Double.MAX_VALUE }
             noAddress = false
         } else {

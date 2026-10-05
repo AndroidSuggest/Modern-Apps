@@ -9,18 +9,33 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.glance.*
+import androidx.glance.GlanceId
+import androidx.glance.GlanceModifier
+import androidx.glance.GlanceTheme
+import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
-import androidx.glance.action.*
-import androidx.glance.appwidget.*
+import androidx.glance.action.clickable
+import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.components.CircleIconButton
 import androidx.glance.appwidget.components.Scaffold
 import androidx.glance.appwidget.components.TitleBar
 import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
-import androidx.glance.layout.*
-import androidx.glance.text.*
+import androidx.glance.background
+import androidx.glance.layout.Alignment
+import androidx.glance.layout.Box
+import androidx.glance.layout.Column
+import androidx.glance.layout.Row
+import androidx.glance.layout.fillMaxHeight
+import androidx.glance.layout.fillMaxSize
+import androidx.glance.layout.fillMaxWidth
+import androidx.glance.layout.padding
+import androidx.glance.layout.width
+import androidx.glance.text.FontWeight
+import androidx.glance.text.Text
+import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.vayunmathur.email.MainActivity
 import com.vayunmathur.email.data.EmailPreview
@@ -33,14 +48,20 @@ import kotlinx.coroutines.withContext
 import com.vayunmathur.email.R
 
 class EmailWidget : GlanceAppWidget() {
+
+    companion object {
+        private const val WIDGET_MESSAGE_COUNT = 100
+        private const val WIDGET_PEEK_LEN = 50
+    }
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         // Query the database directly for recent messages.
         // No read status indicators, so widget doesn't need to refresh on read changes.
         val messages = withContext(Dispatchers.IO) {
             try {
-                EmailRepository.get(context).getDatabase().emailDao().getRecentUnifiedPreview()
-            } catch (e: Throwable) {
-                Log.e("EmailWidget", "DB fail", e)
+                EmailRepository.get(context).getDatabase().queryDao().getRecentUnifiedPreview()
+            } catch (ignored: Exception) {
+                Log.e("EmailWidget", "DB fail", ignored)
                 emptyList()
             }
         }
@@ -51,8 +72,8 @@ class EmailWidget : GlanceAppWidget() {
                     EmailWidgetContent(messages)
                 }
             }
-        } catch (e: Throwable) {
-            Log.e("EmailWidget", "provideContent failed", e)
+        } catch (ignored: Exception) {
+            Log.e("EmailWidget", "provideContent failed", ignored)
         }
     }
 
@@ -80,8 +101,8 @@ class EmailWidget : GlanceAppWidget() {
                     EmailWidgetContent(sample)
                 }
             }
-        } catch (t: Throwable) {
-            Log.e("EmailWidget", "providePreview failed", t)
+        } catch (ignored: Exception) {
+            Log.e("EmailWidget", "providePreview failed", ignored)
             try {
                 provideContent {
                     Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -115,18 +136,25 @@ class EmailWidget : GlanceAppWidget() {
                     },
                 )
             },
-            modifier = GlanceModifier.clickable(actionStartActivity(Intent(LocalContext.current, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })),
+            modifier = GlanceModifier.clickable(
+                actionStartActivity(
+                    Intent(LocalContext.current, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    },
+                ),
+            ),
             horizontalPadding = 0.dp
         ) {
             if (messages.isEmpty()) {
                 Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(text = ctx.getString(R.string.no_recent_emails), style = TextStyle(color = GlanceTheme.colors.onBackground))
+                    Text(
+                        text = ctx.getString(R.string.no_recent_emails),
+                        style = TextStyle(color = GlanceTheme.colors.onBackground),
+                    )
                 }
             } else {
                 LazyColumn(modifier = GlanceModifier.fillMaxSize().background(GlanceTheme.colors.surface)) {
-                    items(messages.take(100)) { msg ->
+                    items(messages.take(WIDGET_MESSAGE_COUNT)) { msg ->
                         EmailItem(msg)
                     }
                 }
@@ -138,68 +166,82 @@ class EmailWidget : GlanceAppWidget() {
     @Composable
     private fun EmailItem(msg: EmailPreview) {
         val barColor = accountColor(msg.accountEmail)
-        
+
         Row(
             modifier = GlanceModifier
                 .fillMaxWidth()
                 .padding(bottom = 1.dp)
                 .background(GlanceTheme.colors.surface)
-                .clickable(actionStartActivity(Intent(LocalContext.current, MainActivity::class.java).apply {
-                    putExtra("accountEmail", msg.accountEmail)
-                    putExtra("threadId", msg.threadId ?: msg.id.toString())
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                })),
-            verticalAlignment = Alignment.CenterVertically
+                .clickable(
+                    actionStartActivity(
+                        Intent(LocalContext.current, MainActivity::class.java).apply {
+                            putExtra("accountEmail", msg.accountEmail)
+                            putExtra("threadId", msg.threadId ?: msg.id.toString())
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        },
+                    ),
+                ),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             // Colored Bar (account color)
             Box(
                 modifier = GlanceModifier
                     .width(6.dp)
                     .fillMaxHeight()
-                    .background(ColorProvider(Color(barColor)))
+                    .background(ColorProvider(Color(barColor))),
             ) {}
-            Column(
-                modifier = GlanceModifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Row(modifier = GlanceModifier.fillMaxWidth()) {
-                    Text(
-                        text = msg.subject,
-                        style = TextStyle(
-                            fontWeight = FontWeight.Normal,
-                            fontSize = 14.sp,
-                            color = GlanceTheme.colors.onSurface
-                        ),
-                        maxLines = 1,
-                        modifier = GlanceModifier.defaultWeight()
-                    )
-                    Text(
-                        text = msg.date.substringBefore(" "),
-                        style = TextStyle(
-                            fontSize = 11.sp,
-                            color = GlanceTheme.colors.onSurfaceVariant
-                        )
-                    )
-                }
-                Text(
-                    text = senderDisplayName(msg.from),
-                    style = TextStyle(
-                        fontWeight = FontWeight.Normal,
-                        fontSize = 13.sp,
-                        color = GlanceTheme.colors.onSurface
-                    ),
-                    maxLines = 1
-                )
-                Text(
-                    text = msg.peekContent.take(50),
-                    style = TextStyle(
-                        fontSize = 12.sp,
-                        color = GlanceTheme.colors.onSurfaceVariant
-                    ),
-                    maxLines = 1
-                )
-            }
+            EmailItemBody(msg)
+        }
+    }
+
+    @Composable
+    private fun EmailItemBody(msg: EmailPreview) {
+        Column(
+            modifier = GlanceModifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            EmailItemHeaderRow(msg)
+            Text(
+                text = senderDisplayName(msg.from),
+                style = TextStyle(
+                    fontWeight = FontWeight.Normal,
+                    fontSize = 13.sp,
+                    color = GlanceTheme.colors.onSurface,
+                ),
+                maxLines = 1,
+            )
+            Text(
+                text = msg.peekContent.take(WIDGET_PEEK_LEN),
+                style = TextStyle(
+                    fontSize = 12.sp,
+                    color = GlanceTheme.colors.onSurfaceVariant,
+                ),
+                maxLines = 1,
+            )
+        }
+    }
+
+    @Composable
+    private fun EmailItemHeaderRow(msg: EmailPreview) {
+        Row(modifier = GlanceModifier.fillMaxWidth()) {
+            Text(
+                text = msg.subject,
+                style = TextStyle(
+                    fontWeight = FontWeight.Normal,
+                    fontSize = 14.sp,
+                    color = GlanceTheme.colors.onSurface,
+                ),
+                maxLines = 1,
+                modifier = GlanceModifier.defaultWeight(),
+            )
+            Text(
+                text = msg.date.substringBefore(" "),
+                style = TextStyle(
+                    fontSize = 11.sp,
+                    color = GlanceTheme.colors.onSurfaceVariant,
+                ),
+            )
         }
     }
 }

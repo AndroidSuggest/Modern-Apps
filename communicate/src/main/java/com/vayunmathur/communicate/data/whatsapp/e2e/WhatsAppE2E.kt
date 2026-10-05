@@ -64,7 +64,7 @@ class WhatsAppE2E(
     fun encryptDM(jid: String, paddedPlaintext: ByteArray): EncResult {
         val (name, dev) = parseJid(jid)
         val entity = runBlocking { db.e2eSessionDao().get(name, dev) }
-            ?: throw RuntimeException("No session for $jid")
+            ?: throw IllegalStateException("No session for $jid")
         val result = RustWhatsAppCrypto.encryptSplit(entity.record, paddedPlaintext)
         runBlocking {
             db.e2eSessionDao().insert(WhatsAppE2ESession(name, dev, result.newSession))
@@ -81,7 +81,11 @@ class WhatsAppE2E(
                 val entity = runBlocking { db.e2ePreKeyDao().get(preKeyId) }
                 entity?.let { rec ->
                     // record = private(32) || public(32)
-                    if (rec.record.size >= 32) rec.record.copyOfRange(0, 32) else null
+                    if (rec.record.size >= IDENTITY_KEY_SIZE) {
+                        rec.record.copyOfRange(0, IDENTITY_KEY_SIZE)
+                    } else {
+                        null
+                    }
                 }
             } else null
 
@@ -101,7 +105,7 @@ class WhatsAppE2E(
             decrypted.plaintext
         } else {
             val entity = runBlocking { db.e2eSessionDao().get(name, dev) }
-                ?: throw RuntimeException("No session for $jid (msg)")
+                ?: throw IllegalStateException("No session for $jid (msg)")
             val decrypted = RustWhatsAppCrypto.decryptMessageSplit(entity.record, ciphertext)
             runBlocking {
                 db.e2eSessionDao().insert(WhatsAppE2ESession(name, dev, decrypted.newSession))
@@ -135,7 +139,7 @@ class WhatsAppE2E(
             signedPreKeyPublic = bundle.signedPreKeyPublic,
             signedPreKeySignature = bundle.signedPreKeySignature,
             identityKey = bundle.identityKey,
-        ) ?: throw RuntimeException("Rust processPreKeyBundle returned null")
+        ) ?: throw IllegalStateException("Rust processPreKeyBundle returned null")
         runBlocking {
             db.e2eSessionDao().insert(WhatsAppE2ESession(name, dev, sessionBytes))
         }
@@ -157,7 +161,7 @@ class WhatsAppE2E(
     fun processSenderKeyDistribution(groupJid: String, senderJid: String, skdmBytes: ByteArray) {
         val (sName, sDev) = parseJid(senderJid)
         val stateBytes = RustWhatsAppCrypto.processSenderKey(skdmBytes)
-            ?: throw RuntimeException("processSenderKey returned null")
+            ?: throw IllegalStateException("processSenderKey returned null")
         runBlocking {
             db.e2eSenderKeyDao().insert(
                 WhatsAppE2ESenderKey(sName, sDev, groupJid, stateBytes)
@@ -176,7 +180,7 @@ class WhatsAppE2E(
                 )
             }
             stateEntity = runBlocking { db.e2eSenderKeyDao().get(ownUser, ownDeviceId, groupJid) }
-                ?: throw RuntimeException("Failed to create sender key")
+                ?: throw IllegalStateException("Failed to create sender key")
         }
         val encrypted = RustWhatsAppCrypto.encryptGroupSplit(stateEntity.record, paddedPlaintext)
         runBlocking {
@@ -190,7 +194,7 @@ class WhatsAppE2E(
     fun decryptGroup(groupJid: String, senderJid: String, ciphertext: ByteArray): ByteArray {
         val (sName, sDev) = parseJid(senderJid)
         val entity = runBlocking { db.e2eSenderKeyDao().get(sName, sDev, groupJid) }
-            ?: throw RuntimeException("No sender key for $senderJid in $groupJid")
+            ?: throw IllegalStateException("No sender key for $senderJid in $groupJid")
         val decrypted = RustWhatsAppCrypto.decryptGroupSplit(entity.record, ciphertext)
         runBlocking {
             db.e2eSenderKeyDao().insert(
@@ -230,14 +234,14 @@ class WhatsAppE2E(
     }
 
     fun buildPreKeyUploadContent(initialUpload: Boolean): List<WhatsAppProtocol.Node> {
-        val wanted = if (initialUpload) 812 else 50
+        val wanted = if (initialUpload) INITIAL_PREKEY_UPLOAD else REFILL_PREKEY_COUNT
         val records = generatePreKeys(wanted)
 
-        val regBytes = ByteArray(4)
-        regBytes[0] = (auth.registrationId ushr 24).toByte()
-        regBytes[1] = (auth.registrationId ushr 16).toByte()
-        regBytes[2] = (auth.registrationId ushr 8).toByte()
-        regBytes[3] = auth.registrationId.toByte()
+        val regBytes = ByteArray(REGISTRATION_ID_SIZE)
+        regBytes[0] = (auth.registrationId ushr SHIFT_BYTE3).toByte()
+        regBytes[1] = (auth.registrationId ushr SHIFT_BYTE2).toByte()
+        regBytes[2] = (auth.registrationId ushr SHIFT_BYTE1).toByte()
+        regBytes[REGISTRATION_ID_SIZE - 1] = auth.registrationId.toByte()
 
         val listNode = WhatsAppProtocol.Node(
             tag = "list",
@@ -251,7 +255,7 @@ class WhatsAppE2E(
 
         return listOf(
             WhatsAppProtocol.Node(tag = "registration", data = regBytes),
-            WhatsAppProtocol.Node(tag = "type", data = byteArrayOf(0x05)),
+            WhatsAppProtocol.Node(tag = "type", data = byteArrayOf(PREKEY_VERSION_BYTE)),
             WhatsAppProtocol.Node(tag = "identity", data = ownIdentityPublicKey),
             listNode,
             signedNode,
@@ -266,7 +270,7 @@ class WhatsAppE2E(
     fun buildRetryReceiptKeysNode(accountDeviceIdentity: ByteArray?): WhatsAppProtocol.Node {
         val oneTime = generatePreKeys(1).first()
         val children = mutableListOf(
-            WhatsAppProtocol.Node(tag = "type", data = byteArrayOf(0x05)),
+            WhatsAppProtocol.Node(tag = "type", data = byteArrayOf(PREKEY_VERSION_BYTE)),
             WhatsAppProtocol.Node(tag = "identity", data = ownIdentityPublicKey),
             preKeyToNode(oneTime.id, oneTime.publicKey, null),
             preKeyToNode(auth.signedPreKeyId, b64(auth.signedPreKeyPublic), b64(auth.signedPreKeySignature)),
@@ -279,8 +283,8 @@ class WhatsAppE2E(
 
     private fun preKeyToNode(id: Int, pub32: ByteArray, signature: ByteArray?): WhatsAppProtocol.Node {
         val idBytes = byteArrayOf(
-            (id ushr 16).toByte(),
-            (id ushr 8).toByte(),
+            (id ushr SHIFT_BYTE2).toByte(),
+            (id ushr SHIFT_BYTE1).toByte(),
             id.toByte(),
         )
         val children = mutableListOf(
@@ -301,59 +305,85 @@ class WhatsAppE2E(
                 Log.w(TAG, "prekey response error for device $deviceId")
                 return null
             }
-            val regBytes = userNode.getChildByTag("registration")?.data ?: return null
-            if (regBytes.size != 4) return null
-            val registrationId = ((regBytes[0].toInt() and 0xFF) shl 24) or
-                ((regBytes[1].toInt() and 0xFF) shl 16) or
-                ((regBytes[2].toInt() and 0xFF) shl 8) or
-                (regBytes[3].toInt() and 0xFF)
-
+            val registrationId = readRegistrationId(userNode) ?: return null
             val keysNode = userNode.getChildByTag("keys") ?: userNode
-
             val identityRaw = keysNode.getChildByTag("identity")?.data ?: return null
-            if (identityRaw.size != 32) return null
-
-            var preKeyId: Int? = null
-            var preKeyPublic: ByteArray? = null
-            keysNode.getChildByTag("key")?.let { keyNode ->
-                preKeyId = readKeyId(keyNode) ?: return null
-                val pub = keyNode.getChildByTag("value")?.data ?: return null
-                if (pub.size != 32) return null
-                preKeyPublic = pub
-            }
-
-            val skey = keysNode.getChildByTag("skey") ?: return null
-            val signedPreKeyId = readKeyId(skey) ?: return null
-            val signedPub = skey.getChildByTag("value")?.data ?: return null
-            if (signedPub.size != 32) return null
-            val signedSig = skey.getChildByTag("signature")?.data ?: return null
-            if (signedSig.size != 64) return null
-
+            if (identityRaw.size != IDENTITY_KEY_SIZE) return null
+            val (preKeyId, preKeyPublic) = readPreKey(keysNode) ?: (null to null)
+            val signed = readSignedPreKey(keysNode) ?: return null
             ParsedPreKeyBundle(
                 registrationId = registrationId,
                 preKeyId = preKeyId,
                 preKeyPublic = preKeyPublic,
-                signedPreKeyId = signedPreKeyId,
-                signedPreKeyPublic = signedPub,
-                signedPreKeySignature = signedSig,
+                signedPreKeyId = signed.first,
+                signedPreKeyPublic = signed.second,
+                signedPreKeySignature = signed.third,
                 identityKey = identityRaw,
             )
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to parse prekey bundle", e)
+        } catch (expected: Exception) {
+            Log.w(TAG, "Failed to parse prekey bundle", expected)
             null
         }
     }
 
+    private fun readRegistrationId(userNode: WhatsAppProtocol.Node): Int? {
+        val regBytes = userNode.getChildByTag("registration")?.data ?: return null
+        if (regBytes.size != REGISTRATION_ID_SIZE) return null
+        return ((regBytes[0].toInt() and BYTE_MASK) shl SHIFT_BYTE3) or
+            ((regBytes[1].toInt() and BYTE_MASK) shl SHIFT_BYTE2) or
+            ((regBytes[2].toInt() and BYTE_MASK) shl SHIFT_BYTE1) or
+            (regBytes[REGISTRATION_ID_SIZE - 1].toInt() and BYTE_MASK)
+    }
+
+    /** Optional one-time prekey (id + public key), or null pair when absent. */
+    private fun readPreKey(keysNode: WhatsAppProtocol.Node): Pair<Int?, ByteArray?>? {
+        val keyNode = keysNode.getChildByTag("key") ?: return null to null
+        val preKeyId = readKeyId(keyNode) ?: return null
+        val pub = keyNode.getChildByTag("value")?.data ?: return null
+        if (pub.size != IDENTITY_KEY_SIZE) return null
+        return preKeyId to pub
+    }
+
+    /** Signed prekey triple (id, public, signature), or null when malformed. */
+    private fun readSignedPreKey(
+        keysNode: WhatsAppProtocol.Node,
+    ): Triple<Int, ByteArray, ByteArray>? {
+        val skey = keysNode.getChildByTag("skey") ?: return null
+        val signedPreKeyId = readKeyId(skey) ?: return null
+        val signedPub = skey.getChildByTag("value")?.data
+            ?.takeIf { it.size == IDENTITY_KEY_SIZE } ?: return null
+        val signedSig = skey.getChildByTag("signature")?.data
+            ?.takeIf { it.size == SIGNATURE_SIZE } ?: return null
+        return Triple(signedPreKeyId, signedPub, signedSig)
+    }
+
     private fun readKeyId(node: WhatsAppProtocol.Node): Int? {
         val idBytes = node.getChildByTag("id")?.data ?: return null
-        if (idBytes.size != 3) return null
-        return ((idBytes[0].toInt() and 0xFF) shl 16) or
-            ((idBytes[1].toInt() and 0xFF) shl 8) or
-            (idBytes[2].toInt() and 0xFF)
+        if (idBytes.size != KEY_ID_SIZE) return null
+        return ((idBytes[0].toInt() and BYTE_MASK) shl SHIFT_BYTE2) or
+            ((idBytes[1].toInt() and BYTE_MASK) shl SHIFT_BYTE1) or
+            (idBytes[2].toInt() and BYTE_MASK)
     }
 
     companion object {
         private const val TAG = "WhatsAppE2E"
+        private const val IDENTITY_KEY_SIZE = 32
+        private const val SIGNATURE_SIZE = 64
+        private const val SIGNED_MESSAGE_SIZE = 33
+        private const val INITIAL_PREKEY_UPLOAD = 812
+        private const val REFILL_PREKEY_COUNT = 50
+        private const val REGISTRATION_ID_SIZE = 4
+        private const val KEY_ID_SIZE = 3
+        private const val BYTE_MASK = 0xFF
+        private const val VARINT_MASK = 0x7F
+        private const val VARINT_CONT = 0x80
+        private const val VARINT_BITS = 7
+        private const val FIELD_SHIFT = 3
+        private const val WIRE_TYPE_MASK = 7
+        private const val SHIFT_BYTE1 = 8
+        private const val SHIFT_BYTE2 = 16
+        private const val SHIFT_BYTE3 = 24
+        private const val PREKEY_VERSION_BYTE = 0x05
 
         private fun b64(s: String): ByteArray = Base64.Default.decode(s)
 
@@ -366,55 +396,62 @@ class WhatsAppE2E(
             // Skip version byte (high nibble version)
             var pos = 1
             while (pos < data.size) {
-                val key = data[pos].toInt() and 0xFF
-                // Need varint key? In our wire format, field keys are small varints (<128) so single byte.
-                // But to be safe, read varint.
-                var fieldNum = 0
-                var shift = 0
-                var idx = pos
-                var b: Int
-                var keyVal = 0L
-                do {
-                    if (idx >= data.size) return null
-                    b = data[idx].toInt() and 0xFF
-                    keyVal = keyVal or ((b and 0x7F).toLong() shl shift)
-                    shift += 7
-                    idx++
-                } while (b and 0x80 != 0)
-                fieldNum = (keyVal shr 3).toInt()
-                val wireType = (keyVal and 7).toInt()
-                pos = idx
-                if (wireType == 0) {
+                val field = readFieldKey(data, pos) ?: return null
+                pos = field.nextPos
+                if (field.wireType == 0) {
                     // varint
-                    var v = 0L
-                    shift = 0
-                    while (pos < data.size) {
-                        b = data[pos].toInt() and 0xFF
-                        v = v or ((b and 0x7F).toLong() shl shift)
-                        pos++
-                        if (b and 0x80 == 0) break
-                        shift += 7
-                    }
-                    if (fieldNum == 1) return v.toInt()
-                } else if (wireType == 2) {
-                    // length-delimited
-                    var len = 0L
-                    shift = 0
-                    while (pos < data.size) {
-                        b = data[pos].toInt() and 0xFF
-                        len = len or ((b and 0x7F).toLong() shl shift)
-                        pos++
-                        if (b and 0x80 == 0) break
-                        shift += 7
-                    }
-                    if (pos + len > data.size) return null
-                    pos += len.toInt()
+                    val (value, after) = readVarint(data, pos)
+                    if (after == pos) return null // truncated
+                    pos = after
+                    if (field.number == 1) return value?.toInt()
                 } else {
-                    // Skip other wire types (not expected for preKeyId)
-                    break
+                    pos = skipField(data, pos, field.wireType) ?: return null
                 }
             }
             return null
+        }
+
+        private data class FieldKey(val number: Int, val wireType: Int, val nextPos: Int)
+
+        /** Read a varint field key; null when truncated. */
+        private fun readFieldKey(data: ByteArray, pos: Int): FieldKey? {
+            var keyVal = 0L
+            var shift = 0
+            var idx = pos
+            var b: Int
+            do {
+                if (idx >= data.size) return null
+                b = data[idx].toInt() and BYTE_MASK
+                keyVal = keyVal or ((b and VARINT_MASK).toLong() shl shift)
+                shift += VARINT_BITS
+                idx++
+            } while (b and VARINT_CONT != 0)
+            return FieldKey((keyVal shr FIELD_SHIFT).toInt(), (keyVal and WIRE_TYPE_MASK).toInt(), idx)
+        }
+
+        /** Read a varint value; null value when truncated. Returns (value, nextPos). */
+        private fun readVarint(data: ByteArray, pos: Int): Pair<Long?, Int> {
+            var v = 0L
+            var shift = 0
+            var p = pos
+            while (p < data.size) {
+                val b = data[p].toInt() and BYTE_MASK
+                v = v or ((b and VARINT_MASK).toLong() shl shift)
+                p++
+                if (b and VARINT_CONT == 0) break
+                shift += VARINT_BITS
+            }
+            return (if (p > pos) v else null) to p
+        }
+
+        /** Skip one field payload; null when truncated/unsupported. */
+        private fun skipField(data: ByteArray, pos: Int, wireType: Int): Int? {
+            if (wireType != 2) return null // only length-delimited expected here
+            val (len, after) = readVarint(data, pos)
+            val length = len ?: return null
+            val end = after + length.toInt()
+            if (end > data.size) return null
+            return end
         }
 
         /**
@@ -422,11 +459,11 @@ class WhatsAppE2E(
          * Uses Rust for constant-time signing.
          */
         fun signSignedPreKey(identityPrivate32: ByteArray, signedPreKeyPublic32: ByteArray): ByteArray {
-            val message = ByteArray(33)
-            message[0] = 0x05
-            System.arraycopy(signedPreKeyPublic32, 0, message, 1, 32)
+            val message = ByteArray(SIGNED_MESSAGE_SIZE)
+            message[0] = PREKEY_VERSION_BYTE
+            System.arraycopy(signedPreKeyPublic32, 0, message, 1, IDENTITY_KEY_SIZE)
             return RustWhatsAppCrypto.sign(identityPrivate32, message)
-                ?: throw RuntimeException("Rust sign returned null")
+                ?: throw IllegalStateException("Rust sign returned null")
         }
     }
 }

@@ -29,7 +29,9 @@ import com.stripe.android.paymentsheet.PaymentSheetResult
 import com.stripe.android.paymentsheet.rememberPaymentSheet
 import com.vayunmathur.fooddelivery.BuildConfig
 import com.vayunmathur.fooddelivery.R
-import com.vayunmathur.fooddelivery.api.BitesApi
+import com.vayunmathur.fooddelivery.api.BitesCustomers
+import com.vayunmathur.fooddelivery.api.BitesDeals
+import com.vayunmathur.fooddelivery.api.BitesOrders
 import com.vayunmathur.fooddelivery.data.AddressStore
 import com.vayunmathur.fooddelivery.data.CartItem
 import com.vayunmathur.fooddelivery.data.CheckoutAddress
@@ -100,7 +102,7 @@ fun CheckoutScreen(
     // The reference sends the customer's identity with every checkout.
     LaunchedEffect(Unit) {
         AppInit.awaitReady()
-        customer = BitesApi.getCustomer()
+        customer = BitesCustomers.getCustomer()
     }
 
     val subtotalCents = items.sumOf {
@@ -118,7 +120,7 @@ fun CheckoutScreen(
     // Deals the merchant currently has running; picking one sends its dealId with checkout.
     LaunchedEffect(merchantId) {
         AppInit.awaitReady()
-        deals = if (merchantId != 0) BitesApi.getActiveDealsByMerchant(merchantId) else emptyList()
+        deals = if (merchantId != 0) BitesDeals.getActiveDealsByMerchant(merchantId) else emptyList()
     }
 
     LaunchedEffect(isPickup, tipCents, selectedAddress?.id, promoCode, customer?.uuid, selectedDealId) {
@@ -164,7 +166,7 @@ fun CheckoutScreen(
             email = customer?.email?.ifBlank { null },
             phone = customer?.phone?.ifBlank { null },
         )
-        val response = BitesApi.checkout(merchantId, request)
+        val response = BitesOrders.checkout(merchantId, request)
         if (BuildConfig.DEV_BUILD) {
             Log.d("Checkout", "response.order=${response?.order}")
             Log.d("Checkout", "response.clientSecret=${response?.clientSecret?.take(20)}")
@@ -195,7 +197,7 @@ fun CheckoutScreen(
     LaunchedEffect(confirmedOrder?.uuid, customer?.uuid) {
         val orderUuid = confirmedOrder?.uuid?.takeIf { it.isNotBlank() }
         rewards = if (customer == null || orderUuid == null) null
-        else BitesApi.getOrderRewards(orderUuid)
+        else BitesOrders.getOrderRewards(orderUuid)
         if (BuildConfig.DEV_BUILD) {
             Log.d("Checkout", "rewardsAvailable=${rewards?.rewardsAvailable} rate=${rewards?.rewardsRate}")
         }

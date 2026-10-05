@@ -28,6 +28,7 @@ import com.vayunmathur.flashcards.util.DailyStat
 import com.vayunmathur.flashcards.util.DeckOption
 import com.vayunmathur.flashcards.util.FlashcardsViewModel
 import com.vayunmathur.flashcards.util.StatsActions
+import com.vayunmathur.flashcards.util.reviewLogsForImpl
 import com.vayunmathur.flashcards.util.StatsUiState
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.FilterChip
@@ -46,7 +47,7 @@ fun StatsPage(backStack: NavBackStack<Route>, viewModel: FlashcardsViewModel) {
     val decks by viewModel.decks.collectAsStateWithLifecycle()
     val cards by viewModel.cards.collectAsStateWithLifecycle()
     var selectedDeckId by remember { mutableStateOf<Long?>(null) }
-    val logs by remember(selectedDeckId) { viewModel.reviewLogsFor(selectedDeckId) }
+    val logs by remember(selectedDeckId) { viewModel.reviewLogsForImpl(selectedDeckId) }
         .collectAsStateWithLifecycle(emptyList())
 
     val deckOptions = buildList {

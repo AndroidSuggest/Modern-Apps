@@ -25,7 +25,11 @@ fun Navigation(viewModel: LogicViewModel) {
             entry<Route.Progression> { ProgressionPage(backStack, viewModel) }
             entry<Route.Game>(metadata = FullscreenPage()) { GamePage(backStack, viewModel, it.levelId) }
             entry<Route.GameCenter> {
-                GameCenterScreen(backupAgent = AppBackupAgent(), manager = viewModel.achievementsManager, onBack = { backStack.pop() })
+                GameCenterScreen(
+                    backupAgent = AppBackupAgent(),
+                    manager = viewModel.achievementsManager,
+                    onBack = { backStack.pop() }
+                )
             }
         }
         newAchievement?.let { AchievementNotification(it) { viewModel.dismissAchievement() } }

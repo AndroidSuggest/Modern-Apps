@@ -11,6 +11,7 @@ import com.vayunmathur.email.platform.EmailManager
 import com.vayunmathur.email.data.EmailMessage
 import com.vayunmathur.email.platform.ServerConfig
 import java.io.File
+import java.io.IOException
 import java.io.OutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,6 +22,7 @@ import kotlinx.coroutines.withContext
 object ImapClient {
 
     private const val TAG = "ImapClient"
+    private const val FETCH_PAGE_SIZE = 50
 
     /**
      * Canonical inbox mailbox name. RFC 3501 §5.1 defines INBOX case-insensitively,
@@ -77,14 +79,14 @@ object ImapClient {
                 try {
                     conn.startTls()
                     caps = conn.capability()
-                } catch (e: Exception) {
+                } catch (e: IOException) {
                     Log.w(TAG, "STARTTLS failed ${server.host}: ${e.message}")
                 }
             } else if (!server.useSsl && caps.has("LOGINDISABLED")) {
                 try {
                     conn.startTls()
                     caps = conn.capability()
-                } catch (e: Exception) {
+                } catch (e: IOException) {
                     Log.w(TAG, "STARTTLS required failed: ${e.message}")
                 }
             }
@@ -96,9 +98,14 @@ object ImapClient {
                 is EmailManager.AuthType.Password -> {
                     try {
                         conn.login(user, auth.value)
-                    } catch (e: Exception) {
+                    } catch (e: IOException) {
                         if (caps.has("AUTH=PLAIN")) {
-                            try { conn.authenticatePlain(user, auth.value) } catch (e2: Exception) { Log.w(TAG, "PLAIN fallback failed: ${e2.message}"); throw e }
+                            try {
+                                conn.authenticatePlain(user, auth.value)
+                            } catch (fallbackError: IOException) {
+                                Log.w(TAG, "PLAIN fallback failed: ${fallbackError.message}")
+                                throw e
+                            }
                         } else throw e
                     }
                 }
@@ -119,10 +126,23 @@ object ImapClient {
                 // casing for the drawer label so Outlook still reads "Inbox", not "INBOX".
                 val fullName = canonicalizeMailbox(entry.mailbox, delim)
                 val displayPath = entry.mailbox
-                val name = if (displayPath.contains(delim)) displayPath.substringAfterLast(delim) else displayPath.substringAfterLast('/')
-                val parent = fullName.lastIndexOf(delim).let { if (it > 0) fullName.substring(0, it).takeIf { it.isNotEmpty() } else null }
+                val name = if (displayPath.contains(delim)) {
+                    displayPath.substringAfterLast(delim)
+                } else {
+                    displayPath.substringAfterLast('/')
+                }
+                val parent = fullName.lastIndexOf(delim).let {
+                    if (it > 0) fullName.substring(0, it).takeIf { it.isNotEmpty() } else null
+                }
                 val holds = !entry.flags.any { it.equals("\\Noselect", ignoreCase = true) }
-                EmailFolder(accountEmail = user, fullName = fullName, name = name.ifBlank { fullName }, parentFullName = parent, holdsMessages = holds, delimiter = delim)
+                EmailFolder(
+                    accountEmail = user,
+                    fullName = fullName,
+                    name = name.ifBlank { fullName },
+                    parentFullName = parent,
+                    holdsMessages = holds,
+                    delimiter = delim,
+                )
             }
         }
 
@@ -156,56 +176,53 @@ object ImapClient {
         // Gmail "INBOX" (see [canonicalizeMailbox]).
         val sel = conn.select(folderName)
         val storedFolderName = canonicalizeMailbox(folderName)
-        val total = sel.exists
-        if (total == 0) return Pair(emptyList(), emptyList())
-        val end = (total - offset).coerceAtLeast(1)
-        val start = (end - limit + 1).coerceAtLeast(1)
-        if (end < 1 || start > end) return Pair(emptyList(), emptyList())
-        val seqSet = "$start:$end"
-        val fetchResults = conn.fetchHeadersForSeq(seqSet)
+        val seqSet = sequenceSet(sel.exists, limit, offset) ?: return Pair(emptyList(), emptyList())
+        val fetchResults = conn.fetch.fetchHeadersForSeq(seqSet)
         val filtered = fetchResults.filter { it.uid !in skipUids }.reversed()
         if (filtered.isEmpty()) return Pair(emptyList(), emptyList())
 
+        val assembler = MessageAssembler(user, storedFolderName, fetchBodies, context)
+        filtered.forEach { assembler.absorb(it) }
+        return Pair(assembler.messages, assembler.attachments)
+    }
+
+    private fun sequenceSet(total: Int, limit: Int, offset: Int): String? {
+        if (total == 0) return null
+        val end = (total - offset).coerceAtLeast(1)
+        val start = (end - limit + 1).coerceAtLeast(1)
+        if (end < 1 || start > end) return null
+        return "$start:$end"
+    }
+
+    private class MessageAssembler(
+        private val user: String,
+        private val storedFolderName: String,
+        private val fetchBodies: Boolean,
+        private val context: Context?,
+    ) {
         val messages = mutableListOf<EmailMessage>()
-        val allAttachments = mutableListOf<Attachment>()
-        for (fr in filtered) {
+        val attachments = mutableListOf<Attachment>()
+
+        fun absorb(fr: ImapFetchResult) {
             val headerMap = fr.headerBytes?.let { MimeParser.parseHeaderBlockBytes(it) } ?: emptyMap()
-            val from = headerMap["from"]?.let { MimeParser.decodeHeader(it) } ?: ""
-            val to = headerMap["to"]?.let { MimeParser.decodeHeader(it) }
-            val cc = headerMap["cc"]?.let { MimeParser.decodeHeader(it) }
-            val subject = headerMap["subject"]?.let { MimeParser.decodeHeader(it) } ?: "(no subject)"
             val dateHeader = headerMap["date"] ?: ""
-            val dateMillis = if (dateHeader.isNotBlank()) MimeParser.parseDateToMillis(dateHeader) else MimeParser.parseDateToMillis(fr.internalDate ?: "")
-            val isRead = fr.flags.any { it.equals("\\Seen", ignoreCase = true) }
-            val gmThrid = headerMap["x-gm-thrid"]
-
-            var body: String? = null
-            var isHtmlFlag = false
-            var hasAtt = false
-            if (fetchBodies && fr.bodyBytes != null) {
-                val triple = try { MimeParser.parseMessage(fr.bodyBytes, fr.uid, user, storedFolderName, context) } catch (_: Exception) { Triple<String?, Boolean, List<Attachment>>(null, false, emptyList()) }
-                body = triple.first
-                isHtmlFlag = triple.second
-                allAttachments.addAll(triple.third)
-                hasAtt = triple.third.isNotEmpty()
-            }
-
+            val (body, isHtmlFlag, hasAtt) = resolveBody(fr)
             messages.add(
                 EmailMessage(
                     accountEmail = user,
                     folderName = storedFolderName,
                     id = fr.uid,
                     serverId = headerMap["message-id"],
-                    threadId = gmThrid ?: fr.uid.toString(),
-                    subject = subject,
-                    from = from,
-                    to = to,
-                    cc = cc,
+                    threadId = headerMap["x-gm-thrid"] ?: fr.uid.toString(),
+                    subject = headerMap["subject"]?.let { MimeParser.decodeHeader(it) } ?: "(no subject)",
+                    from = headerMap["from"]?.let { MimeParser.decodeHeader(it) } ?: "",
+                    to = headerMap["to"]?.let { MimeParser.decodeHeader(it) },
+                    cc = headerMap["cc"]?.let { MimeParser.decodeHeader(it) },
                     date = dateHeader.ifBlank { fr.internalDate ?: "" },
-                    dateMillis = dateMillis,
+                    dateMillis = resolveDateMillis(dateHeader, fr),
                     body = body,
                     isHtml = isHtmlFlag,
-                    isRead = isRead,
+                    isRead = fr.flags.any { it.equals("\\Seen", ignoreCase = true) },
                     references = headerMap["references"] ?: headerMap["in-reply-to"],
                     hasAttachments = hasAtt,
                     listUnsubscribe = headerMap["list-unsubscribe"],
@@ -213,7 +230,25 @@ object ImapClient {
                 )
             )
         }
-        return Pair(messages, allAttachments)
+
+        private fun resolveBody(fr: ImapFetchResult): Triple<String?, Boolean, Boolean> {
+            if (!fetchBodies || fr.bodyBytes == null) return Triple(null, false, false)
+            val triple = try {
+                MimeParser.parseMessage(fr.bodyBytes, fr.uid, user, storedFolderName, context)
+            } catch (_: Exception) {
+                Triple<String?, Boolean, List<Attachment>>(null, false, emptyList())
+            }
+            attachments.addAll(triple.third)
+            return Triple(triple.first, triple.second, triple.third.isNotEmpty())
+        }
+
+        private fun resolveDateMillis(dateHeader: String, fr: ImapFetchResult): Long {
+            return if (dateHeader.isNotBlank()) {
+                MimeParser.parseDateToMillis(dateHeader)
+            } else {
+                MimeParser.parseDateToMillis(fr.internalDate ?: "")
+            }
+        }
     }
 
     suspend fun fetchMessageBody(
@@ -225,10 +260,15 @@ object ImapClient {
         context: Context? = null,
     ): Triple<String?, Boolean, List<Attachment>> = withConnection(server, user, auth) { conn ->
         conn.select(folderName)
-        val res = conn.uidFetchFullSet(uid.toString()).firstOrNull()
+        val res = conn.fetch.uidFetchFullSet(uid.toString()).firstOrNull()
             ?: return@withConnection Triple<String?, Boolean, List<Attachment>>(null, false, emptyList())
         val bytes = res.bodyBytes ?: return@withConnection Triple(null, false, emptyList())
-        try { MimeParser.parseMessage(bytes, uid, user, canonicalizeMailbox(folderName), context) } catch (e: Exception) { Log.w(TAG, "parse failed ${e.message}"); Triple(null, false, emptyList()) }
+        try {
+            MimeParser.parseMessage(bytes, uid, user, canonicalizeMailbox(folderName), context)
+        } catch (_: Exception) {
+            Log.w(TAG, "parse failed UID $uid")
+            Triple(null, false, emptyList())
+        }
     }
 
     suspend fun fetchFullForBody(
@@ -240,9 +280,22 @@ object ImapClient {
         uid: Long,
     ): EmailManager.FullFetchResult = withConnection(server, user, auth) { conn ->
         conn.select(folderName)
-        val res = conn.uidFetchFullSet(uid.toString()).firstOrNull() ?: return@withConnection EmailManager.FullFetchResult(Triple(null, false, emptyList()))
-        val bytes = res.bodyBytes ?: return@withConnection EmailManager.FullFetchResult(Triple(null, false, emptyList()))
-        val triple = try { MimeParser.parseMessage(bytes, uid, user, canonicalizeMailbox(folderName), context.applicationContext) } catch (e: Exception) { Log.w(TAG, "full parse fail ${e.message}"); Triple<String?, Boolean, List<Attachment>>(null, false, emptyList()) }
+        val res = conn.fetch.uidFetchFullSet(uid.toString()).firstOrNull()
+            ?: return@withConnection EmailManager.FullFetchResult(Triple(null, false, emptyList()))
+        val bytes = res.bodyBytes
+            ?: return@withConnection EmailManager.FullFetchResult(Triple(null, false, emptyList()))
+        val triple = try {
+            MimeParser.parseMessage(
+                bytes,
+                uid,
+                user,
+                canonicalizeMailbox(folderName),
+                context.applicationContext,
+            )
+        } catch (_: Exception) {
+            Log.w(TAG, "full parse fail UID $uid")
+            Triple<String?, Boolean, List<Attachment>>(null, false, emptyList())
+        }
         EmailManager.FullFetchResult(triple)
     }
 
@@ -255,16 +308,33 @@ object ImapClient {
         uid: Long,
     ): Map<String, File> = withConnection(server, user, auth) { conn ->
         conn.select(folderName)
-        val res = conn.uidFetchFullSet(uid.toString()).firstOrNull() ?: return@withConnection emptyMap()
+        val res = conn.fetch.uidFetchFullSet(uid.toString()).firstOrNull() ?: return@withConnection emptyMap()
         val bytes = res.bodyBytes ?: return@withConnection emptyMap()
         try { MimeParser.extractCidMap(context, bytes, uid) } catch (_: Exception) { emptyMap() }
     }
 
-    suspend fun setSeenFlag(server: ServerConfig, user: String, auth: EmailManager.AuthType, folderName: String, uid: Long, seen: Boolean) =
-        withConnection(server, user, auth) { it.select(folderName); it.uidStoreFlags(uid, "\\Seen", add = seen) }
+    suspend fun setSeenFlag(
+        server: ServerConfig,
+        user: String,
+        auth: EmailManager.AuthType,
+        folderName: String,
+        uid: Long,
+        seen: Boolean,
+    ) = withConnection(server, user, auth) {
+        it.select(folderName)
+        it.fetch.uidStoreFlags(uid, "\\Seen", add = seen)
+    }
 
-    suspend fun deleteMessage(server: ServerConfig, user: String, auth: EmailManager.AuthType, folderName: String, uid: Long) =
-        withConnection(server, user, auth) { it.select(folderName); it.uidExpunge(uid) }
+    suspend fun deleteMessage(
+        server: ServerConfig,
+        user: String,
+        auth: EmailManager.AuthType,
+        folderName: String,
+        uid: Long,
+    ) = withConnection(server, user, auth) {
+        it.select(folderName)
+        it.fetch.uidExpunge(uid)
+    }
 
     suspend fun downloadAttachment(
         context: Context,
@@ -279,7 +349,8 @@ object ImapClient {
     ): String = withConnection(server, user, auth) { conn ->
         conn.select(folderName)
         val section = partIdToSection(partId)
-        val bytes = conn.uidFetchPartBytes(uid, section) ?: throw IllegalStateException("Part $partId ($section) not found UID $uid")
+        val bytes = conn.fetch.uidFetchPartBytes(uid, section)
+            ?: throw IllegalStateException("Part $partId ($section) not found UID $uid")
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
@@ -287,29 +358,51 @@ object ImapClient {
             put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
             put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
         }
-        val itemUri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: throw IllegalStateException("Downloads entry failed")
+        val itemUri = resolver.insert(
+            android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            values,
+        ) ?: throw IllegalStateException("Downloads entry failed")
         try {
             resolver.openOutputStream(itemUri)?.use { it.write(bytes) } ?: throw IllegalStateException("openOutput")
             values.clear()
             values.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
             resolver.update(itemUri, values, null, null)
-        } catch (e: Exception) { resolver.delete(itemUri, null, null); throw e }
+        } catch (e: IOException) {
+            runCatching { resolver.delete(itemUri, null, null) }
+            throw e
+        } catch (ignored: RuntimeException) {
+            runCatching { resolver.delete(itemUri, null, null) }
+            throw ignored
+        }
         itemUri.toString()
     }
 
-    suspend fun fetchRawMessageBytes(server: ServerConfig, user: String, auth: EmailManager.AuthType, folderName: String, uid: Long): ByteArray =
-        withConnection(server, user, auth) { conn ->
-            conn.select(folderName)
-            val r = conn.uidFetchFullSet(uid.toString()).firstOrNull() ?: throw IllegalStateException("UID $uid not found $folderName")
-            r.bodyBytes ?: throw IllegalStateException("Empty $uid")
-        }
+    suspend fun fetchRawMessageBytes(
+        server: ServerConfig,
+        user: String,
+        auth: EmailManager.AuthType,
+        folderName: String,
+        uid: Long,
+    ): ByteArray = withConnection(server, user, auth) { conn ->
+        conn.select(folderName)
+        val r = conn.fetch.uidFetchFullSet(uid.toString()).firstOrNull()
+            ?: throw IllegalStateException("UID $uid not found $folderName")
+        r.bodyBytes ?: throw IllegalStateException("Empty $uid")
+    }
 
-    suspend fun fetchRawMessageTo(server: ServerConfig, user: String, auth: EmailManager.AuthType, folderName: String, uid: Long, output: OutputStream) =
-        withConnection(server, user, auth) { conn ->
-            conn.select(folderName)
-            val r = conn.uidFetchFullSet(uid.toString()).firstOrNull() ?: throw IllegalStateException("UID $uid not found $folderName")
-            output.write(r.bodyBytes ?: throw IllegalStateException("Empty $uid"))
-        }
+    suspend fun fetchRawMessageTo(
+        server: ServerConfig,
+        user: String,
+        auth: EmailManager.AuthType,
+        folderName: String,
+        uid: Long,
+        output: OutputStream,
+    ) = withConnection(server, user, auth) { conn ->
+        conn.select(folderName)
+        val r = conn.fetch.uidFetchFullSet(uid.toString()).firstOrNull()
+            ?: throw IllegalStateException("UID $uid not found $folderName")
+        output.write(r.bodyBytes ?: throw IllegalStateException("Empty $uid"))
+    }
 
     suspend fun quickInboxFetchRaw(
         conn: RawImapConnection,
@@ -317,7 +410,7 @@ object ImapClient {
         known: Set<Long>,
         deleted: Set<Long>,
     ): Pair<List<EmailMessage>, List<Attachment>> =
-        fetchMessagesInConnection(conn, accountEmail, "INBOX", 50, 0, false, known + deleted, null)
+        fetchMessagesInConnection(conn, accountEmail, "INBOX", FETCH_PAGE_SIZE, 0, false, known + deleted, null)
 
     fun partIdToSection(partId: String): String {
         if (partId == "0" || partId.isBlank()) return "1"

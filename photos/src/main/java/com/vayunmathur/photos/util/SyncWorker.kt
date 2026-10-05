@@ -28,10 +28,13 @@ import com.vayunmathur.library.ocr.OcrEngine
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.photos.data.ClipResult
 import com.vayunmathur.photos.data.ExifResult
+import com.vayunmathur.photos.data.FaceRepository
 import com.vayunmathur.photos.data.OcrResult
 import com.vayunmathur.photos.data.Person
 import com.vayunmathur.photos.data.Photo
 import com.vayunmathur.photos.data.PhotoFace
+import com.vayunmathur.photos.data.PhotoScanRepository
+import com.vayunmathur.photos.data.PhotoScanTarget
 import com.vayunmathur.photos.data.PhotosRepository
 import com.vayunmathur.photos.data.VideoData
 import com.vayunmathur.photos.data.toJson
@@ -52,12 +55,15 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import android.database.CursorIndexOutOfBoundsException
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): WorkResult = withContext(Dispatchers.IO) {
         setForeground(createForegroundInfo())
         val repository = PhotosRepository.get(applicationContext)
+        val scanRepository = PhotoScanRepository.get(applicationContext)
         val dataStore = DataStoreUtils.getInstance(applicationContext)
         
         val triggeredUris = triggeredContentUris
@@ -70,11 +76,11 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             // Rows predating the mimeType column are invisible to an incremental
             // scan (their GENERATION_MODIFIED hasn't moved), so scan everything
             // until they're all backfilled.
-            val needsMimeBackfill = repository.countMissingMimeType() > 0
+            val needsMimeBackfill = scanRepository.countMissingMimeType() > 0
             syncPhotos(applicationContext, repository, null, if (needsMimeBackfill) 0L else lastGeneration)
         }
         
-        setExifData(repository, applicationContext)
+        setExifData(scanRepository, applicationContext)
         
         // OCR and face grouping are both always on (no opt-in). Each worker is
         // inert if its data/model assets are missing.
@@ -136,8 +142,8 @@ class OCRWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
     override suspend fun doWork(): WorkResult = withContext(Dispatchers.IO) {
         ocrMutex.withLock {
             setForeground(createForegroundInfo())
-            val repository = PhotosRepository.get(applicationContext)
-            runOCR(repository, applicationContext)
+            val scanRepository = PhotoScanRepository.get(applicationContext)
+            runOCR(scanRepository, applicationContext)
             WorkResult.success()
         }
     }
@@ -166,32 +172,16 @@ class OCRWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
     }
 }
 
-suspend fun syncPhotos(context: Context, repository: PhotosRepository, uris: List<Uri>? = null, lastGeneration: Long = 0L) {
+suspend fun syncPhotos(
+    context: Context,
+    repository: PhotosRepository,
+    uris: List<Uri>? = null,
+    lastGeneration: Long = 0L,
+) {
     // Single read of the local DB reused for both deletion detection and update diffing.
     val existing = repository.getAll()
     // 1. Get all IDs currently in MediaStore to detect deletions
-    val allMediaStoreIds = mutableSetOf<Long>()
-    fun collectIds(baseUri: Uri) {
-        try {
-            val bundle = Bundle().apply {
-                putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
-            }
-            context.contentResolver.query(baseUri, arrayOf(MediaStore.MediaColumns._ID), bundle, null)?.use { cursor ->
-                val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-                while (cursor.moveToNext()) {
-                    try {
-                        allMediaStoreIds.add(cursor.getLong(idCol))
-                    } catch (e: Exception) {
-                        Log.e("SyncWorker", "Error reading ID from MediaStore cursor", e)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("SyncWorker", "Error querying MediaStore for IDs: $baseUri", e)
-        }
-    }
-    collectIds(MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-    collectIds(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+    val allMediaStoreIds = collectMediaStoreIds(context)
 
     // 2. Handle deletions
     val localIds = existing.map { it.id }.toSet()
@@ -203,98 +193,242 @@ suspend fun syncPhotos(context: Context, repository: PhotosRepository, uris: Lis
     }
 
     if (toDelete.isNotEmpty()) {
-        toDelete.chunked(900).forEach { chunk ->
+        toDelete.chunked(DELETE_ID_CHUNK_SIZE).forEach { chunk ->
             repository.deleteByIds(chunk)
         }
     }
 
     // 3. Process additions/updates
-    val selection = when {
-        uris != null -> {
-            val ids = uris.mapNotNull { runCatching { ContentUris.parseId(it) }.getOrNull() }
-            if (ids.isEmpty()) null else "_id IN (${ids.joinToString(",")})"
-        }
-        lastGeneration > 0 -> {
-            "${MediaStore.MediaColumns.GENERATION_MODIFIED} > $lastGeneration"
-        }
-        else -> null
-    }
+    val selection = buildSyncSelection(uris, lastGeneration)
 
     val existingPhotos = existing.associateBy { it.id }
     val newOrUpdatedPhotos = mutableListOf<Photo>()
+    val cursorScope = CursorScope(existingPhotos, newOrUpdatedPhotos)
 
-    fun processCursor(cursor: android.database.Cursor, isVideo: Boolean) {
-        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-        val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
-        val dateTakenColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_TAKEN)
-        val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
-        val dateModifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
-        val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH)
-        val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT)
-        val isTrashedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.IS_TRASHED)
-        val mimeTypeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
-        val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
-        val durationColumn = if (isVideo) cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION) else -1
-
-        val baseUri = if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-
-        while (cursor.moveToNext()) {
-            try {
-                val id = cursor.getLong(idColumn)
-                val name = cursor.getString(nameColumn)
-                val dateTaken = cursor.getLongOrNull(dateTakenColumn)
-                val date = if (dateTaken != null && dateTaken > 0) dateTaken else (cursor.getLong(dateAddedColumn) * 1000)
-                val dateModified = cursor.getLong(dateModifiedColumn)
-                val width = cursor.getInt(widthColumn)
-                val height = cursor.getInt(heightColumn)
-                val isTrashed = cursor.getInt(isTrashedColumn) == 1
-                val mimeType = cursor.getString(mimeTypeColumn)
-                val album = cursor.getString(albumColumn)
-                val contentUri = ContentUris.withAppendedId(baseUri, id).toString()
-                val videoData = if (isVideo) VideoData(cursor.getLong(durationColumn)) else null
-
-                val existing = existingPhotos[id]
-                if (existing == null || existing.date != date || existing.uri != contentUri || existing.videoData != videoData || existing.width != width || existing.height != height || existing.dateModified != dateModified || existing.isTrashed != isTrashed || existing.mimeType != mimeType || existing.album != album) {
-                    newOrUpdatedPhotos += Photo(id, name, contentUri, date, width, height, dateModified, existing?.exifSet ?: false, existing?.lat, existing?.long, videoData, existing?.panoData, isTrashed, faceScanned = existing?.faceScanned ?: false, ocrText = existing?.ocrText, ocrScanned = existing?.ocrScanned ?: false, mimeType = mimeType, album = album)
-                }
-            } catch (e: Exception) {
-                Log.e("SyncWorker", "Error processing photo/video from cursor", e)
-            }
-        }
-    }
-
-    try {
-        val bundle = Bundle().apply {
-            putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
-            putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
-        }
-        context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DATE_ADDED, MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT, MediaStore.Images.Media.DATE_MODIFIED, MediaStore.Images.Media.IS_TRASHED, MediaStore.Images.Media.MIME_TYPE, MediaStore.Images.Media.BUCKET_DISPLAY_NAME),
-            bundle, null
-        )?.use { processCursor(it, false) }
-    } catch (e: Exception) {
-        Log.e("SyncWorker", "Error querying MediaStore for images", e)
-    }
-
-    try {
-        val bundle = Bundle().apply {
-            putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
-            putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
-        }
-        context.contentResolver.query(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.DATE_TAKEN, MediaStore.Video.Media.DATE_ADDED, MediaStore.Video.Media.WIDTH, MediaStore.Video.Media.HEIGHT, MediaStore.Video.Media.DURATION, MediaStore.Video.Media.DATE_MODIFIED, MediaStore.Video.Media.IS_TRASHED, MediaStore.Video.Media.MIME_TYPE, MediaStore.Video.Media.BUCKET_DISPLAY_NAME),
-            bundle, null
-        )?.use { processCursor(it, true) }
-    } catch (e: Exception) {
-        Log.e("SyncWorker", "Error querying MediaStore for videos", e)
-    }
+    queryMediaStore(
+        context,
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+        IMAGE_PROJECTION,
+        selection,
+        false,
+        cursorScope,
+    )
+    queryMediaStore(
+        context,
+        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+        VIDEO_PROJECTION,
+        selection,
+        true,
+        cursorScope,
+    )
 
     if (newOrUpdatedPhotos.isNotEmpty()) {
         repository.upsertAll(newOrUpdatedPhotos)
     }
 }
+
+private const val MILLIS_PER_SECOND = 1000L
+
+/** SQLite bind-variable ceiling; deletions are chunked under it. */
+private const val DELETE_ID_CHUNK_SIZE = 900
+
+/** OCR preview length in the worker log line. */
+private const val OCR_LOG_PREVIEW_CHARS = 50
+
+private fun isPhotoChanged(
+    existing: Photo?,
+    date: Long,
+    contentUri: String,
+    videoData: VideoData?,
+    width: Int,
+    height: Int,
+    dateModified: Long,
+    isTrashed: Boolean,
+    mimeType: String?,
+    album: String?,
+): Boolean {
+    if (existing == null) return true
+    return existing.date != date ||
+        existing.uri != contentUri ||
+        existing.videoData != videoData ||
+        existing.width != width ||
+        existing.height != height ||
+        existing.dateModified != dateModified ||
+        existing.isTrashed != isTrashed ||
+        existing.mimeType != mimeType ||
+        existing.album != album
+}
+
+/** Column indices for one MediaStore cursor, resolved once per query. */
+private class CursorColumns(cursor: android.database.Cursor, isVideo: Boolean) {
+    val id: Int = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+    val name: Int = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+    val dateTaken: Int = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_TAKEN)
+    val dateAdded: Int = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+    val dateModified: Int = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
+    val width: Int = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH)
+    val height: Int = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT)
+    val isTrashed: Int = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.IS_TRASHED)
+    val mimeType: Int = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
+    val album: Int = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
+    val duration: Int = if (isVideo) cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION) else -1
+}
+
+/** Mutable accumulation state shared across the image/video cursor passes. */
+private class CursorScope(
+    val existingPhotos: Map<Long, Photo>,
+    val newOrUpdatedPhotos: MutableList<Photo>,
+)
+
+private fun processCursor(cursor: android.database.Cursor, isVideo: Boolean, scope: CursorScope) {
+    val cols = CursorColumns(cursor, isVideo)
+    val baseUri = if (isVideo) {
+        MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+    } else {
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+    }
+    while (cursor.moveToNext()) {
+        try {
+            readCursorRow(cursor, cols, isVideo, baseUri, scope)
+        } catch (e: CursorIndexOutOfBoundsException) {
+            Log.e("SyncWorker", "Error processing photo/video from cursor", e)
+        } catch (e: IllegalStateException) {
+            Log.e("SyncWorker", "Error processing photo/video from cursor", e)
+        }
+    }
+}
+
+private fun readCursorRow(
+    cursor: android.database.Cursor,
+    cols: CursorColumns,
+    isVideo: Boolean,
+    baseUri: Uri,
+    scope: CursorScope,
+) {
+    val id = cursor.getLong(cols.id)
+    val name = cursor.getString(cols.name)
+    val dateTaken = cursor.getLongOrNull(cols.dateTaken)
+    val date = if (dateTaken != null && dateTaken > 0) {
+        dateTaken
+    } else {
+        cursor.getLong(cols.dateAdded) * MILLIS_PER_SECOND
+    }
+    val dateModified = cursor.getLong(cols.dateModified)
+    val width = cursor.getInt(cols.width)
+    val height = cursor.getInt(cols.height)
+    val isTrashed = cursor.getInt(cols.isTrashed) == 1
+    val mimeType = cursor.getString(cols.mimeType)
+    val album = cursor.getString(cols.album)
+    val contentUri = ContentUris.withAppendedId(baseUri, id).toString()
+    val videoData = if (isVideo) VideoData(cursor.getLong(cols.duration)) else null
+
+    val existing = scope.existingPhotos[id]
+    val changed = isPhotoChanged(
+        existing, date, contentUri, videoData, width, height,
+        dateModified, isTrashed, mimeType, album,
+    )
+    if (changed) {
+        scope.newOrUpdatedPhotos += Photo(
+            id, name, contentUri, date, width, height, dateModified,
+            existing?.exifSet ?: false, existing?.lat, existing?.long, videoData,
+            existing?.panoData, isTrashed,
+            faceScanned = existing?.faceScanned ?: false,
+            ocrText = existing?.ocrText, ocrScanned = existing?.ocrScanned ?: false,
+            mimeType = mimeType, album = album,
+        )
+    }
+}
+
+private fun queryMediaStore(
+    context: Context,
+    uri: Uri,
+    projection: Array<String>,
+    selection: String?,
+    isVideo: Boolean,
+    scope: CursorScope,
+) {
+    val kind = if (isVideo) "videos" else "images"
+    try {
+        val bundle = Bundle().apply {
+            putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
+            putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
+        }
+        context.contentResolver.query(uri, projection, bundle, null)?.use { processCursor(it, isVideo, scope) }
+    } catch (e: SecurityException) {
+        Log.e("SyncWorker", "Error querying MediaStore for $kind", e)
+    } catch (e: IllegalArgumentException) {
+        Log.e("SyncWorker", "Error querying MediaStore for $kind", e)
+    }
+}
+
+private fun collectMediaStoreIds(context: Context): MutableSet<Long> {
+    val ids = mutableSetOf<Long>()
+    collectIdsInto(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, ids)
+    collectIdsInto(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, ids)
+    return ids
+}
+
+private fun collectIdsInto(context: Context, baseUri: Uri, ids: MutableSet<Long>) {
+    try {
+        val bundle = Bundle().apply {
+            putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
+        }
+        context.contentResolver.query(baseUri, arrayOf(MediaStore.MediaColumns._ID), bundle, null)?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+            while (cursor.moveToNext()) {
+                try {
+                    ids.add(cursor.getLong(idCol))
+                } catch (e: CursorIndexOutOfBoundsException) {
+                    Log.e("SyncWorker", "Error reading ID from MediaStore cursor", e)
+                } catch (e: IllegalStateException) {
+                    Log.e("SyncWorker", "Error reading ID from MediaStore cursor", e)
+                }
+            }
+        }
+    } catch (e: SecurityException) {
+        Log.e("SyncWorker", "Error querying MediaStore for IDs: $baseUri", e)
+    } catch (e: IllegalArgumentException) {
+        Log.e("SyncWorker", "Error querying MediaStore for IDs: $baseUri", e)
+    }
+}
+
+private fun buildSyncSelection(uris: List<Uri>?, lastGeneration: Long): String? = when {
+    uris != null -> {
+        val ids = uris.mapNotNull { runCatching { ContentUris.parseId(it) }.getOrNull() }
+        if (ids.isEmpty()) null else "_id IN (${ids.joinToString(",")})"
+    }
+    lastGeneration > 0 -> {
+        "${MediaStore.MediaColumns.GENERATION_MODIFIED} > $lastGeneration"
+    }
+    else -> null
+}
+
+private val IMAGE_PROJECTION = arrayOf(
+    MediaStore.Images.Media._ID,
+    MediaStore.Images.Media.DISPLAY_NAME,
+    MediaStore.Images.Media.DATE_TAKEN,
+    MediaStore.Images.Media.DATE_ADDED,
+    MediaStore.Images.Media.WIDTH,
+    MediaStore.Images.Media.HEIGHT,
+    MediaStore.Images.Media.DATE_MODIFIED,
+    MediaStore.Images.Media.IS_TRASHED,
+    MediaStore.Images.Media.MIME_TYPE,
+    MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+)
+
+private val VIDEO_PROJECTION = arrayOf(
+    MediaStore.Video.Media._ID,
+    MediaStore.Video.Media.DISPLAY_NAME,
+    MediaStore.Video.Media.DATE_TAKEN,
+    MediaStore.Video.Media.DATE_ADDED,
+    MediaStore.Video.Media.WIDTH,
+    MediaStore.Video.Media.HEIGHT,
+    MediaStore.Video.Media.DURATION,
+    MediaStore.Video.Media.DATE_MODIFIED,
+    MediaStore.Video.Media.IS_TRASHED,
+    MediaStore.Video.Media.MIME_TYPE,
+    MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
+)
 
 internal fun Context.syncForegroundInfo(
     notificationId: Int,
@@ -326,8 +460,8 @@ internal fun Context.syncForegroundInfo(
  * is column-targeted for the same reason — reconstructing a [Photo] from the
  * projection and upserting it would write NULL over every clipEmbedding.
  */
-suspend fun setExifData(repository: PhotosRepository, context: Context) = coroutineScope {
-    val targets = repository.getUnscannedForExif()
+suspend fun setExifData(scanRepository: PhotoScanRepository, context: Context) = coroutineScope {
+    val targets = scanRepository.getUnscannedForExif()
     targets.chunked(EXIF_CHUNK).forEach { chunk ->
         val results = chunk.map { target ->
             async(Dispatchers.IO) {
@@ -354,7 +488,7 @@ suspend fun setExifData(repository: PhotosRepository, context: Context) = corout
                 }
             }
         }.awaitAll()
-        repository.setExifResults(results)
+        scanRepository.setExifResults(results)
     }
 }
 
@@ -379,8 +513,8 @@ internal suspend fun coolDownBetweenBatches(processed: Int, tag: String) {
 private const val BATCH_COOLDOWN_EVERY = 20
 private const val BATCH_COOLDOWN_MS = 5_000L
 
-suspend fun runOCR(repository: PhotosRepository, context: Context) = coroutineScope {
-    val photos = repository.getUnscannedForOCR()
+suspend fun runOCR(scanRepository: PhotoScanRepository, context: Context) = coroutineScope {
+    val photos = scanRepository.getUnscannedForOCR()
     if (photos.isEmpty()) return@coroutineScope
 
     val ocrEngine = OcrEngine(context)
@@ -397,11 +531,11 @@ suspend fun runOCR(repository: PhotosRepository, context: Context) = coroutineSc
     val pendingSkipped = mutableListOf<Long>()
     suspend fun flush() {
         if (pendingResults.isNotEmpty()) {
-            repository.setOcrResults(pendingResults.toList())
+            scanRepository.setOcrResults(pendingResults.toList())
             pendingResults.clear()
         }
         if (pendingSkipped.isNotEmpty()) {
-            repository.setOcrScanned(pendingSkipped.toList())
+            scanRepository.setOcrScanned(pendingSkipped.toList())
             pendingSkipped.clear()
         }
     }
@@ -434,7 +568,10 @@ suspend fun runOCR(repository: PhotosRepository, context: Context) = coroutineSc
                 } else {
                     null
                 }
-            } catch (e: Exception) {
+            } catch (e: IOException) {
+                Log.e("OCRWorker", "Error running OCR for photo ${photo.id}", e)
+                null
+            } catch (e: IllegalStateException) {
                 Log.e("OCRWorker", "Error running OCR for photo ${photo.id}", e)
                 null
             }
@@ -447,7 +584,7 @@ suspend fun runOCR(repository: PhotosRepository, context: Context) = coroutineSc
                 boxes = result?.takeIf { it.boxes.isNotEmpty() }?.toJson(),
             )
             if (pendingResults.size >= INDEX_FLUSH_EVERY) flush()
-            Log.i("OCRWorker", "OCR for ${photo.id}: ${text?.take(50)?.replace("\n", " ")}")
+            Log.i("OCRWorker", "OCR for ${photo.id}: ${text?.take(OCR_LOG_PREVIEW_CHARS)?.replace("\n", " ")}")
 
             // Short pause between images keeps sustained CPU/battery use low.
             delay(OCR_INTER_ITEM_DELAY_MS)
@@ -479,8 +616,9 @@ class FaceWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     override suspend fun doWork(): WorkResult = withContext(Dispatchers.IO) {
         faceMutex.withLock {
             setForeground(createForegroundInfo())
-            val repository = PhotosRepository.get(applicationContext)
-            runFaceIndexing(repository, applicationContext)
+            val faceRepository = FaceRepository.get(applicationContext)
+            val scanRepository = PhotoScanRepository.get(applicationContext)
+            runFaceIndexing(faceRepository, scanRepository, applicationContext)
             WorkResult.success()
         }
     }
@@ -518,7 +656,11 @@ class FaceWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
  * starts a new cluster. Each cluster keeps a running-mean [Person.centroid] that
  * is updated as faces are added, so we never have to re-scan old photos.
  */
-suspend fun runFaceIndexing(repository: PhotosRepository, context: Context) {
+suspend fun runFaceIndexing(
+    faceRepository: FaceRepository,
+    scanRepository: PhotoScanRepository,
+    context: Context,
+) {
     val dataStore = DataStoreUtils.getInstance(context)
 
     // Feature is inert without the on-device models (see FaceRecognizer docs).
@@ -534,19 +676,19 @@ suspend fun runFaceIndexing(repository: PhotosRepository, context: Context) {
     // get re-grouped with the new model. Photo rows themselves are untouched.
     val storedVersion = dataStore.getLong("face_embedder_version") ?: 0L
     if (storedVersion != FaceRecognizer.EMBEDDER_VERSION.toLong()) {
-        repository.clearPersons()
-        repository.clearPhotoFaces()
-        repository.resetFaceScanned()
+        faceRepository.clearPersons()
+        faceRepository.clearPhotoFaces()
+        scanRepository.resetFaceScanned()
         dataStore.setLong("face_embedder_version", FaceRecognizer.EMBEDDER_VERSION.toLong())
     }
 
     // Load existing clusters into memory once; centroids are cached as floats and
     // updated in place so we avoid re-reading them for every face.
-    val clusters = repository.getPersons()
+    val clusters = faceRepository.getPersons()
         .map { Cluster(it, FaceRecognizer.bytesToFloats(it.centroid)) }
         .toMutableList()
 
-    val photos = repository.getUnscannedForFaces()
+    val photos = scanRepository.getUnscannedForFaces()
     Log.i("FaceWorker", "Face indexing start: ${photos.size} photos to scan, ${clusters.size} existing clusters")
     var facesTotal = 0
     var photosWithFaces = 0
@@ -559,7 +701,7 @@ suspend fun runFaceIndexing(repository: PhotosRepository, context: Context) {
     val pendingFaces = mutableListOf<PhotoFace>()
     suspend fun flush() {
         if (pendingScanned.isEmpty()) return
-        repository.commitFaceScan(pendingScanned.toList(), pendingFaces.toList())
+        faceRepository.commitFaceScan(pendingScanned.toList(), pendingFaces.toList())
         pendingScanned.clear()
         pendingFaces.clear()
     }
@@ -567,66 +709,97 @@ suspend fun runFaceIndexing(repository: PhotosRepository, context: Context) {
     try {
         for (photo in photos) {
             currentCoroutineContext().ensureActive()
-
-            var didInference = false
-            try {
-                val bitmap = loadBitmapForFaces(context, photo.uri.toUri())
-                if (bitmap != null) {
-                    decoded++
-                    didInference = true
-                    // Read before recycle: the box columns are normalised against
-                    // this bitmap, so its dimensions have to be stored with them.
-                    val srcWidth = bitmap.width
-                    val srcHeight = bitmap.height
-                    val faces = FaceRecognizer.detectAndEmbed(context, bitmap)
-                    bitmap.recycle()
-                    if (faces.isNotEmpty()) {
-                        photosWithFaces++; facesTotal += faces.size
-                        Log.i("FaceWorker", "photo ${photo.id}: ${faces.size} face(s) (running total: $facesTotal)")
-                    }
-                    pendingFaces += faces.map { face ->
-                        val clusterId = assignToCluster(face, clusters, repository)
-                        PhotoFace(
-                            photoId = photo.id,
-                            clusterId = clusterId,
-                            embedding = FaceRecognizer.floatsToBytes(face.embedding),
-                            left = face.left,
-                            top = face.top,
-                            right = face.right,
-                            bottom = face.bottom,
-                            srcWidth = srcWidth,
-                            srcHeight = srcHeight,
-                        )
-                    }
+            // Face indexing runs two models per photo (detector + embedder), so
+            // pace it like OCR/CLIP: a short pause after each photo we actually ran
+            // inference on, plus a longer cooling break every batch.
+            val outcome = scanPhotoFaces(context, faceRepository, photo, clusters)
+            if (outcome.didInference) {
+                decoded++
+                if (outcome.faces.isNotEmpty()) {
+                    photosWithFaces++
+                    facesTotal += outcome.faces.size
+                    Log.i("FaceWorker", "photo ${photo.id}: ${outcome.faces.size} face(s) (running total: $facesTotal)")
                 }
-            } catch (e: Exception) {
-                Log.e("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
+                pendingFaces += outcome.faces
+                delay(FACE_INTER_ITEM_DELAY_MS)
+                coolDownBetweenBatches(decoded, "FaceWorker")
             }
 
             // Mark scanned regardless of outcome so we don't retry forever.
             pendingScanned += photo.id
             if (pendingScanned.size >= INDEX_FLUSH_EVERY) flush()
-
-            // Face indexing runs two ONNX models per photo (detector + embedder), so
-            // pace it like OCR/CLIP: a short pause after each photo we actually ran
-            // inference on, plus a longer cooling break every batch.
-            if (didInference) {
-                delay(FACE_INTER_ITEM_DELAY_MS)
-                coolDownBetweenBatches(decoded, "FaceWorker")
-            }
         }
     } finally {
         withContext(NonCancellable) { runCatching { flush() } }
     }
-    Log.i("FaceWorker", "Face indexing done: decoded=$decoded/${photos.size}, $facesTotal faces in $photosWithFaces photos, ${repository.getPersons().size} clusters")
+    val clusterCount = faceRepository.getPersons().size
+    Log.i(
+        "FaceWorker",
+        "Face indexing done: decoded=$decoded/${photos.size}, " +
+            "$facesTotal faces in $photosWithFaces photos, $clusterCount clusters",
+    )
 
     // Second pass: fold together clusters whose centroids ended up very close,
     // which trims duplicate person-groups created early in the scan.
-    mergeSimilarClusters(repository)
+    mergeSimilarClusters(faceRepository)
 }
 
 /** A cluster held in memory during a scan: its [Person] row plus cached centroid. */
 private class Cluster(var person: Person, var centroid: FloatArray)
+
+/** Outcome of scanning one photo for faces: whether inference ran plus any face rows. */
+private class FaceScanOutcome(val didInference: Boolean, val faces: List<PhotoFace>)
+
+/**
+ * Decode one photo and run face detection + clustering on it. Inference
+ * failures yield no faces (the photo is still marked scanned by the caller).
+ */
+private suspend fun scanPhotoFaces(
+    context: Context,
+    faceRepository: FaceRepository,
+    photo: PhotoScanTarget,
+    clusters: MutableList<Cluster>,
+): FaceScanOutcome {
+    val bitmap = try {
+        loadBitmapForFaces(context, photo.uri.toUri())
+    } catch (e: IOException) {
+        Log.e("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
+        null
+    } catch (e: SecurityException) {
+        Log.e("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
+        null
+    } ?: return FaceScanOutcome(false, emptyList())
+    // Read before recycle: the box columns are normalised against
+    // this bitmap, so its dimensions have to be stored with them.
+    val srcWidth = bitmap.width
+    val srcHeight = bitmap.height
+    val faces = try {
+        FaceRecognizer.detectAndEmbed(context, bitmap)
+    } catch (e: IllegalArgumentException) {
+        Log.e("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
+        emptyList()
+    } catch (e: IllegalStateException) {
+        Log.e("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
+        emptyList()
+    } finally {
+        bitmap.recycle()
+    }
+    val rows = faces.map { face ->
+        val clusterId = assignToCluster(face, clusters, faceRepository)
+        PhotoFace(
+            photoId = photo.id,
+            clusterId = clusterId,
+            embedding = FaceRecognizer.floatsToBytes(face.embedding),
+            left = face.left,
+            top = face.top,
+            right = face.right,
+            bottom = face.bottom,
+            srcWidth = srcWidth,
+            srcHeight = srcHeight,
+        )
+    }
+    return FaceScanOutcome(true, rows)
+}
 
 private const val FACE_INTER_ITEM_DELAY_MS = 250L
 
@@ -638,7 +811,7 @@ private const val FACE_INTER_ITEM_DELAY_MS = 250L
 private suspend fun assignToCluster(
     face: FaceRecognizer.DetectedFace,
     clusters: MutableList<Cluster>,
-    repository: PhotosRepository,
+    faceRepository: FaceRepository,
 ): Long {
     var best: Cluster? = null
     var bestSim = FaceRecognizer.CLUSTER_THRESHOLD
@@ -663,7 +836,7 @@ private suspend fun assignToCluster(
         )
         // Column-targeted, so a name the user enters mid-scan is not overwritten
         // by the null carried in this snapshot (loaded once at scan start).
-        repository.updateClusterCentroid(
+        faceRepository.updateClusterCentroid(
             id = best.person.id,
             centroid = best.person.centroid,
             faceCount = best.person.faceCount,
@@ -676,7 +849,7 @@ private suspend fun assignToCluster(
         faceCount = 1,
         name = null,
     )
-    val id = repository.insertPerson(person)
+    val id = faceRepository.insertPerson(person)
     clusters += Cluster(person.copy(id = id), face.embedding.copyOf())
     return id
 }
@@ -687,8 +860,8 @@ private suspend fun assignToCluster(
  * centroid becomes the face-count-weighted, L2-normalised mean. O(n^2) over the
  * (small) number of person-clusters.
  */
-private suspend fun mergeSimilarClusters(repository: PhotosRepository) {
-    val persons = repository.getPersons().toMutableList()
+private suspend fun mergeSimilarClusters(faceRepository: FaceRepository) {
+    val persons = faceRepository.getPersons().toMutableList()
     var i = 0
     while (i < persons.size) {
         var j = i + 1
@@ -713,16 +886,16 @@ private suspend fun mergeSimilarClusters(repository: PhotosRepository) {
                     // with the discarded row.
                     name = a.name ?: b.name,
                 )
-                repository.reassignCluster(b.id, a.id)
+                faceRepository.reassignCluster(b.id, a.id)
                 // The name is resolved in SQL against the row's current value, so a
                 // name entered since `persons` was read still wins over this snapshot.
-                repository.mergeClusterInto(
+                faceRepository.mergeClusterInto(
                     id = a.id,
                     centroid = merged.centroid,
                     faceCount = merged.faceCount,
                     fallbackName = b.name,
                 )
-                repository.deletePerson(b.id)
+                faceRepository.deletePerson(b.id)
                 persons[i] = merged
                 persons.removeAt(j)
             } else {
@@ -749,7 +922,10 @@ private fun loadBitmapForFaces(context: Context, uri: Uri): Bitmap? {
                 )
             }
         }
-    } catch (e: Exception) {
+    } catch (e: IOException) {
+        Log.e("FaceWorker", "Failed to decode $uri for faces", e)
+        null
+    } catch (e: SecurityException) {
         Log.e("FaceWorker", "Failed to decode $uri for faces", e)
         null
     }

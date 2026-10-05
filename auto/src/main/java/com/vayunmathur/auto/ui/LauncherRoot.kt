@@ -26,7 +26,7 @@ import com.vayunmathur.library.ui.Surface
  * insets to scaffold around.
  */
 @Composable
-fun LauncherRoot(modifier: Modifier = Modifier, onCardBounds: (Int, Int, Int, Int) -> Unit = { _, _, _, _ -> }) {
+fun LauncherRoot(modifier: Modifier = Modifier) {
     val selected by CarLauncherState.selectedApp.collectAsStateWithLifecycle()
     val discovered by CarLauncherState.discovered.collectAsStateWithLifecycle()
     val pinnedIds by CarLauncherState.pinnedOrder.collectAsStateWithLifecycle()

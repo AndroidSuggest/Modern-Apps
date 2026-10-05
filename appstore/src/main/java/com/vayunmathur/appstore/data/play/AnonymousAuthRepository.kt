@@ -1,6 +1,5 @@
 package com.vayunmathur.appstore.data.play
 
-import android.content.Context
 import android.util.Log
 import com.aurora.gplayapi.data.models.AuthData
 import com.aurora.gplayapi.helpers.AuthHelper
@@ -69,6 +68,18 @@ class AnonymousAuthRepository {
         /** First backoff step; doubles each attempt. */
         private const val BASE_BACKOFF_MS = 800L
 
+        private const val CONNECT_TIMEOUT_MS = 15_000
+        private const val READ_TIMEOUT_MS = 15_000
+        private const val HTTP_ERROR_MIN = 400
+        private const val HTTP_OK_MIN = 200
+        private const val HTTP_OK_MAX = 299
+        private const val HTTP_BAD_REQUEST = 400
+        private const val HTTP_FORBIDDEN = 403
+        private const val HTTP_NOT_FOUND = 404
+        private const val HTTP_RATE_LIMITED = 429
+        private const val HTTP_UNAVAILABLE = 503
+        private const val HTTP_SERVER_ERROR_MIN = 500
+
         /**
          * Statuses worth retrying.
          *
@@ -82,7 +93,7 @@ class AnonymousAuthRepository {
         private fun isTransient(error: Throwable): Boolean = when (error) {
             is AuthError.RateLimited, is AuthError.VpnRequired, is AuthError.Maintenance -> true
             is AuthError.Network -> true
-            is AuthError.Unknown -> error.code >= 500
+            is AuthError.Unknown -> error.code >= HTTP_SERVER_ERROR_MIN
             else -> false
         }
     }
@@ -115,8 +126,8 @@ class AnonymousAuthRepository {
             val bodyBytes = propsJson.toByteArray(Charsets.UTF_8)
 
             val conn = (URL(dispenserUrl).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 15_000
-                readTimeout = 15_000
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = READ_TIMEOUT_MS
                 requestMethod = "POST"
                 doOutput = true
                 doInput = true
@@ -129,30 +140,34 @@ class AnonymousAuthRepository {
             }
             conn.outputStream.use { it.write(bodyBytes) }
 
-            val code = try { conn.responseCode } catch (e: Exception) {
+            val code = try {
+                conn.responseCode
+            } catch (expected: java.io.IOException) {
                 conn.disconnect()
-                return@withContext Result.failure(AuthError.Network(e.message))
+                return@withContext Result.failure(AuthError.Network(expected.message))
             }
             val responseBody = try {
-                val stream = if (code >= 400) conn.errorStream ?: conn.inputStream else conn.inputStream
+                val stream = if (code >= HTTP_ERROR_MIN) conn.errorStream ?: conn.inputStream else conn.inputStream
                 stream?.bufferedReader(Charsets.UTF_8)?.readText() ?: ""
-            } catch (_: Exception) { "" } finally {
+            } catch (_: java.io.IOException) {
+                ""
+            } finally {
                 conn.disconnect()
             }
 
-            if (code !in 200..299) {
+            if (code !in HTTP_OK_MIN..HTTP_OK_MAX) {
                 return@withContext Result.failure(mapError(code, responseBody))
             }
 
             try {
                 val auth = json.decodeFromString(AuthResponse.serializer(), responseBody)
                 Result.success(auth)
-            } catch (e: Exception) {
-                Log.w(TAG, "Parse auth failed: ${e.message}")
+            } catch (expected: IllegalArgumentException) {
+                Log.w(TAG, "Parse auth failed: ${expected.message}")
                 Result.failure(AuthError.Unknown(code, responseBody))
             }
-        } catch (e: Exception) {
-            Result.failure(AuthError.Network(e.message))
+        } catch (expected: java.io.IOException) {
+            Result.failure(AuthError.Network(expected.message))
         }
     }
 
@@ -160,7 +175,6 @@ class AnonymousAuthRepository {
      * Build AuthData from dispenser response using gplayapi AuthHelper.
      */
     suspend fun buildAuthData(
-        context: Context,
         email: String,
         token: String,
         deviceProps: Properties
@@ -177,9 +191,12 @@ class AnonymousAuthRepository {
                     locale = locale
                 )
             Result.success(authData)
-        } catch (e: Exception) {
-            Log.w(TAG, "buildAuthData failed: ${e.message}", e)
-            Result.failure(e)
+        } catch (expected: IllegalStateException) {
+            Log.w(TAG, "buildAuthData failed: ${expected.message}", expected)
+            Result.failure(expected)
+        } catch (expected: IllegalArgumentException) {
+            Log.w(TAG, "buildAuthData failed: ${expected.message}", expected)
+            Result.failure(expected)
         }
     }
 
@@ -192,7 +209,6 @@ class AnonymousAuthRepository {
      * and throttle each other again.
      */
     suspend fun ensureAuthData(
-        context: Context,
         deviceProps: Properties,
         dispenserUrls: List<String> = FALLBACK_DISPENSERS
     ): Result<AuthData> = withContext(Dispatchers.IO) {
@@ -205,7 +221,7 @@ class AnonymousAuthRepository {
                 val credResult = fetchAnonCredentials(deviceProps, url)
                 val cred = credResult.getOrNull()
                 if (cred != null) {
-                    val authResult = buildAuthData(context, cred.email, cred.auth, deviceProps)
+                    val authResult = buildAuthData(cred.email, cred.auth, deviceProps)
                     if (authResult.isSuccess) return@withContext authResult
                     // Credentials arrived but were unusable. A different
                     // account may well work, so this is worth another attempt.
@@ -236,7 +252,11 @@ class AnonymousAuthRepository {
         var first = true
         for ((k, v) in props.entries) {
             if (!first) sb.append(",")
-            sb.append("\"").append(escapeJson(k.toString())).append("\":\"").append(escapeJson(v.toString())).append("\"")
+            sb.append("\"")
+                .append(escapeJson(k.toString()))
+                .append("\":\"")
+                .append(escapeJson(v.toString()))
+                .append("\"")
             first = false
         }
         sb.append("}")
@@ -252,11 +272,11 @@ class AnonymousAuthRepository {
 
     private fun mapError(code: Int, body: String?): Throwable {
         return when (code) {
-            400 -> AuthError.BadRequest
-            403 -> AuthError.VpnRequired
-            404 -> AuthError.NotFound
-            429 -> AuthError.RateLimited
-            503 -> AuthError.Maintenance
+            HTTP_BAD_REQUEST -> AuthError.BadRequest
+            HTTP_FORBIDDEN -> AuthError.VpnRequired
+            HTTP_NOT_FOUND -> AuthError.NotFound
+            HTTP_RATE_LIMITED -> AuthError.RateLimited
+            HTTP_UNAVAILABLE -> AuthError.Maintenance
             else -> AuthError.Unknown(code, body)
         }
     }

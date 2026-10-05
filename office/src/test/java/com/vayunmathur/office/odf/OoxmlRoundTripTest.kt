@@ -1,6 +1,26 @@
 package com.vayunmathur.office.odf
 
-import com.vayunmathur.library.ui.odf.*
+import com.vayunmathur.library.ui.odf.ListType
+import com.vayunmathur.library.ui.odf.OdfCell
+import com.vayunmathur.library.ui.odf.OdfContentBlock
+import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.library.ui.odf.OdfFrame
+import com.vayunmathur.library.ui.odf.OdfImage
+import com.vayunmathur.library.ui.odf.OdfNamedRange
+import com.vayunmathur.library.ui.odf.OdfNumberFormat
+import com.vayunmathur.library.ui.odf.OdfPageSetup
+import com.vayunmathur.library.ui.odf.OdfParagraph
+import com.vayunmathur.library.ui.odf.OdfRow
+import com.vayunmathur.library.ui.odf.OdfShape
+import com.vayunmathur.library.ui.odf.OdfSheet
+import com.vayunmathur.library.ui.odf.OdfSlide
+import com.vayunmathur.library.ui.odf.OdfSlideElement
+import com.vayunmathur.library.ui.odf.OdfSpan
+import com.vayunmathur.library.ui.odf.OdfTable
+import com.vayunmathur.library.ui.odf.OdfTableCell
+import com.vayunmathur.library.ui.odf.OdfTableRow
+import com.vayunmathur.library.ui.odf.OoxmlExporter
+import com.vayunmathur.library.ui.odf.ParagraphStyle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -17,10 +37,17 @@ class OoxmlRoundTripTest {
             title = "d",
             content = listOf(
                 OdfContentBlock.Paragraph(OdfParagraph(listOf(OdfSpan("Heading")), style = ParagraphStyle.HEADING1)),
-                OdfContentBlock.Paragraph(OdfParagraph(listOf(OdfSpan("bold", bold = true), OdfSpan(" red", color = 0xFFFF0000)))),
-                OdfContentBlock.Paragraph(OdfParagraph(listOf(OdfSpan("item")), style = ParagraphStyle.LIST_ITEM, listType = ListType.NUMBERED)),
+                OdfContentBlock.Paragraph(OdfParagraph(listOf(
+                    OdfSpan("bold", bold = true),
+                    OdfSpan(" red", color = 0xFFFF0000)))),
+                OdfContentBlock.Paragraph(OdfParagraph(
+                    listOf(OdfSpan("item")),
+                    style = ParagraphStyle.LIST_ITEM,
+                    listType = ListType.NUMBERED)),
                 OdfContentBlock.Table(OdfTable(rows = listOf(
-                    OdfTableRow(listOf(OdfTableCell(listOf(OdfParagraph(listOf(OdfSpan("A"))))), OdfTableCell(listOf(OdfParagraph(listOf(OdfSpan("B")))))))
+                    OdfTableRow(listOf(
+                        OdfTableCell(listOf(OdfParagraph(listOf(OdfSpan("A"))))),
+                        OdfTableCell(listOf(OdfParagraph(listOf(OdfSpan("B")))))))
                 ))),
                 OdfContentBlock.Image(OdfImage("media/x.png", byteArrayOf(1, 2, 3, 4), width = 100f, height = 80f))
             ),
@@ -48,7 +75,11 @@ class OoxmlRoundTripTest {
                 rows = listOf(
                     OdfRow(listOf(
                         OdfCell(text = "Name", bold = true, backgroundColor = 0xFFFFFF00),
-                        OdfCell(text = "", numberValue = 3.14, valueType = "float", numberFormat = OdfNumberFormat(decimals = 2))
+                        OdfCell(
+                            text = "",
+                            numberValue = 3.14,
+                            valueType = "float",
+                            numberFormat = OdfNumberFormat(decimals = 2))
                     )),
                     OdfRow(listOf(
                         OdfCell(text = "", numberValue = 5.0, valueType = "float"),
@@ -81,7 +112,12 @@ class OoxmlRoundTripTest {
             slides = listOf(OdfSlide(
                 name = "First",
                 elements = listOf(
-                    OdfSlideElement.Frame(OdfFrame(50f, 50f, 300f, 100f, listOf(OdfParagraph(listOf(OdfSpan("Title", bold = true, fontSize = 28f)))))),
+                    OdfSlideElement.Frame(OdfFrame(
+                        50f,
+                        50f,
+                        300f,
+                        100f,
+                        listOf(OdfParagraph(listOf(OdfSpan("Title", bold = true, fontSize = 28f)))))),
                     OdfSlideElement.Shape(OdfShape.Ellipse(400f, 50f, 120f, 120f, fillColor = 0xFF4472C4))
                 ),
                 backgroundColor = 0xFFEEEEEE,

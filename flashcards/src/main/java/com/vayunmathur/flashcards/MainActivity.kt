@@ -98,9 +98,13 @@ fun Navigation(viewModel: FlashcardsViewModel) {
         entry<Route.Stats>(metadata = ListDetailPage()) { StatsPage(backStack, viewModel) }
         entry<Route.NoteTypeList>(metadata = ListDetailPage()) { NoteTypeListPage(backStack, viewModel) }
         entry<Route.NoteTypeEdit>(metadata = ListDetailPage()) { NoteTypeEditPage(backStack, viewModel, it.noteTypeId) }
-        entry<Route.CardList>(metadata = ListDetailPage() + MorphPage()) { NoteListPage(backStack, viewModel, it.deckId) }
+        entry<Route.CardList>(metadata = ListDetailPage() + MorphPage()) {
+            NoteListPage(backStack, viewModel, it.deckId)
+        }
         entry<Route.NoteEdit>(metadata = ListDetailPage()) { NoteEditPage(backStack, viewModel, it.deckId, it.noteId) }
-        entry<Route.Review>(metadata = FullscreenPage()) { ReviewPage(backStack, viewModel, it.deckId, it.mode, it.count, it.daysAhead, it.tags) }
+        entry<Route.Review>(metadata = FullscreenPage()) {
+            ReviewPage(backStack, viewModel, it.deckId, it.mode, it.count, it.daysAhead, it.tags)
+        }
     }
 }
 

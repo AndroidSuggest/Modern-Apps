@@ -157,18 +157,32 @@ object GrapheneOSIndex {
     private fun newestInstallableVariant(variants: JSONObject): Pair<Long, JSONObject>? {
         var best: Pair<Long, JSONObject>? = null
         for (key in variants.keys()) {
-            val versionCode = key.toLongOrNull() ?: continue
-            val variant = variants.optJSONObject(key) ?: continue
-            if (variant.optString("channel", STABLE) != STABLE) continue
-            if (Build.VERSION.SDK_INT < variant.optInt("minSdk", 0)) continue
-            if (Build.VERSION.SDK_INT > variant.optInt("maxSdk", Int.MAX_VALUE)) continue
-
-            val abis = variant.optJSONArray("abis")?.toStringList()
-            if (abis != null && DEVICE_ABI !in abis) continue
-
-            if (best == null || versionCode > best.first) best = versionCode to variant
+            val candidate = installableVariant(variants, key) ?: continue
+            if (best == null || candidate.first > best.first) best = candidate
         }
         return best
+    }
+
+    private fun installableVariant(variants: JSONObject, key: String): Pair<Long, JSONObject>? {
+        val versionCode = key.toLongOrNull() ?: return null
+        val variant = variants.optJSONObject(key) ?: return null
+        if (!isStableVariant(variant)) return null
+        if (!sdkSupports(variant)) return null
+        if (!abiSupports(variant)) return null
+        return versionCode to variant
+    }
+
+    private fun isStableVariant(variant: JSONObject): Boolean =
+        variant.optString("channel", STABLE) == STABLE
+
+    private fun sdkSupports(variant: JSONObject): Boolean {
+        if (Build.VERSION.SDK_INT < variant.optInt("minSdk", 0)) return false
+        return Build.VERSION.SDK_INT <= variant.optInt("maxSdk", Int.MAX_VALUE)
+    }
+
+    private fun abiSupports(variant: JSONObject): Boolean {
+        val abis = variant.optJSONArray("abis")?.toStringList() ?: return true
+        return DEVICE_ABI in abis
     }
 
     /**
@@ -187,37 +201,61 @@ object GrapheneOSIndex {
             return null
         }
 
-        val languages = deviceLanguages(context)
-        val kept = mutableListOf<GrapheneOSApk>()
-        val byDensity = mutableMapOf<Int, MutableList<GrapheneOSApk>>()
+        val picker = ApkPicker(context, names, hashes, sizes, gzSizes, count)
+        return picker.select()
+    }
 
-        for (i in 0 until count) {
-            val apk = GrapheneOSApk(
-                name = names.optString(i),
-                sha256 = hashes.optString(i).lowercase(),
-                size = sizes.optLong(i),
-                gzSize = gzSizes.optLong(i),
-            )
-            val qualifier = configQualifier(apk.name)
-            val density = qualifier?.let { DENSITY_QUALIFIERS[it] }
-            when {
-                qualifier == null -> kept += apk
-                density != null -> byDensity.getOrPut(density) { mutableListOf() }.add(apk)
-                qualifier in ABI_QUALIFIERS.values ->
-                    if (qualifier == DEVICE_ABI_QUALIFIER) kept += apk
-                else -> if (qualifier in languages) kept += apk
+    private class ApkPicker(
+        context: Context,
+        private val names: JSONArray,
+        private val hashes: JSONArray,
+        private val sizes: JSONArray,
+        private val gzSizes: JSONArray,
+        private val count: Int,
+    ) {
+        private val languages = deviceLanguages(context)
+        private val targetDensity = context.resources.displayMetrics.densityDpi
+        private val kept = mutableListOf<GrapheneOSApk>()
+        private val byDensity = mutableMapOf<Int, MutableList<GrapheneOSApk>>()
+
+        fun select(): List<GrapheneOSApk> {
+            for (i in 0 until count) {
+                classify(apkAt(i))
             }
+            // One density split, not all of them: the closest at or above this screen, falling
+            // back to the largest published when the screen is denser than anything on offer.
+            if (byDensity.isNotEmpty()) {
+                val densities = byDensity.keys.sorted()
+                val chosen = densities.firstOrNull { it >= targetDensity } ?: densities.last()
+                kept += byDensity.getValue(chosen)
+            }
+            return kept
         }
 
-        // One density split, not all of them: the closest at or above this screen, falling
-        // back to the largest published when the screen is denser than anything on offer.
-        if (byDensity.isNotEmpty()) {
-            val densities = byDensity.keys.sorted()
-            val target = context.resources.displayMetrics.densityDpi
-            val chosen = densities.firstOrNull { it >= target } ?: densities.last()
-            kept += byDensity.getValue(chosen)
+        private fun apkAt(i: Int): GrapheneOSApk = GrapheneOSApk(
+            name = names.optString(i),
+            sha256 = hashes.optString(i).lowercase(),
+            size = sizes.optLong(i),
+            gzSize = gzSizes.optLong(i),
+        )
+
+        private fun classify(apk: GrapheneOSApk) {
+            val qualifier = configQualifier(apk.name)
+            if (qualifier == null) {
+                kept += apk
+                return
+            }
+            val density = qualifier.let { DENSITY_QUALIFIERS[it] }
+            if (density != null) {
+                byDensity.getOrPut(density) { mutableListOf() }.add(apk)
+                return
+            }
+            if (qualifier in ABI_QUALIFIERS.values) {
+                if (qualifier == DEVICE_ABI_QUALIFIER) kept += apk
+                return
+            }
+            if (qualifier in languages) kept += apk
         }
-        return kept
     }
 
     /** The part after the last `config.`, or null for a file that is not a config split. */

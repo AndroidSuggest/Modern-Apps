@@ -55,30 +55,56 @@ object PoiIndex {
     const val NAME_INDEX_FILE = "poi_name_index.bin"
 
     /** Bytes per record: int32 lat_e7 + int32 lon_e7 + uint32 name_off + uint16 type. */
-    private const val RECORD_BYTES = 14
+    internal const val RECORD_BYTES = 14
+    /** Degrees per e7 unit: stored ints are degrees × 10⁷. */
+    internal const val E7_TO_DEGREES = 1e-7
+    /** Field offsets within one 14-byte index record. */
+    private const val LON_FIELD_OFF = 4
+    private const val NAME_OFF_FIELD_OFF = 8
+    private const val TYPE_FIELD_OFF = 12
 
     /** Cap on candidates gathered before ranking, so a planet-sized pool can't
      *  blow up memory on a broad substring match. */
-    private const val CANDIDATE_CAP = 2_000
+    internal const val CANDIDATE_CAP = 2_000
 
     // --- poi_attrs.bin layout (see poi_attrs.rs) ---------------------------
     private val ATTRS_MAGIC =
         byteArrayOf('M'.code.toByte(), 'A'.code.toByte(), 'P'.code.toByte(), 'A'.code.toByte())
     private const val ATTRS_VERSION = 1
     private const val ATTRS_HEADER_BYTES = 12
+    private const val ATTRS_VERSION_OFF = 4
+    private const val ATTRS_COUNT_OFF = 8
+    /** Bytes of one int32 offset in the attribute offset array. */
+    private const val ATTR_OFFSET_BYTES = 4
+    /** Bytes of the u16 body-length header before an attribute blob. */
+    private const val ATTR_BODY_HEADER_LEN = 2
+    /** Bytes of one int32 slot in the CSR grid arrays. */
+    private const val CELL_SLOT_BYTES = 4L
     /** `attr_off` for a POI that carries no attributes. */
     private const val NO_ATTRS = -1
+    private const val U16_MASK = 0xFFFF
 
     // --- poi_spatial.bin / poi_name_index.bin (see osm_ingest/src/poi_side.rs) -----
     private val SPATIAL_MAGIC =
         byteArrayOf('P'.code.toByte(), 'S'.code.toByte(), 'P'.code.toByte(), '1'.code.toByte())
     private const val SPATIAL_VERSION = 1
     internal const val SPATIAL_HEADER_BYTES = 32
+    private const val SPATIAL_VERSION_OFF = 4
+    private const val SPATIAL_COUNT_OFF = 8
+    private const val SPATIAL_CELL_COUNT_OFF = 12
+    private const val SPATIAL_LAT0_OFF = 16
+    private const val SPATIAL_LON0_OFF = 20
+    private const val SPATIAL_CELL_E7_OFF = 24
+    private const val SPATIAL_COLS_OFF = 28
 
     private val NAME_INDEX_MAGIC =
         byteArrayOf('P'.code.toByte(), 'N'.code.toByte(), 'I'.code.toByte(), '1'.code.toByte())
     private const val NAME_INDEX_VERSION = 1
     internal const val NAME_INDEX_HEADER_BYTES = 16
+    private const val NAME_INDEX_VERSION_OFF = 4
+    private const val NAME_INDEX_COUNT_OFF = 8
+    private const val NAME_INDEX_ENTRY_COUNT_OFF = 12
+    private const val NAME_INDEX_ENTRY_BYTES = 5L
 
     /**
      * ASCII-only lowercase, and deliberately not [Char.lowercase].
@@ -88,24 +114,10 @@ object PoiIndex {
      * every input, and here a disagreement is a POI that can never be found. See the
      * cross-language contract in `osm_ingest/src/poi_side.rs`.
      */
-    private fun asciiLower(b: Byte): Int {
-        val v = b.toInt() and 0xFF
-        return if (v >= 'A'.code && v <= 'Z'.code) v + 32 else v
-    }
-
-    private fun isAsciiSpace(b: Byte): Boolean {
-        val v = b.toInt() and 0xFF
-        return v == ' '.code || v == '\t'.code || v == '\n'.code || v == '\r'.code ||
-            v == 0x0B || v == 0x0C
-    }
-
-    /** A query as the index's sort key: UTF-8 bytes, ASCII-lowercased. */
-    private fun queryKey(query: String): ByteArray {
-        val raw = query.toByteArray(Charsets.UTF_8)
-        return ByteArray(raw.size) { asciiLower(raw[it]).toByte() }
-    }
-
     // Attribute key constants and record decoding live in PoiIndexAttrs.kt.
+
+    // asciiLower / isAsciiSpace / queryKey moved to PoiIndexWords.kt as shared
+    // internal helpers (asciiLowerW etc. were duplicates of these).
 
     /** A single POI resolved from the index. */
     data class PoiRecord(
@@ -119,8 +131,8 @@ object PoiIndex {
          */
         val ordinal: Int = -1,
     ) {
-        val lat: Double get() = latE7 / 1e7
-        val lon: Double get() = lonE7 / 1e7
+        val lat: Double get() = latE7 * E7_TO_DEGREES
+        val lon: Double get() = lonE7 * E7_TO_DEGREES
     }
 
     /**
@@ -194,9 +206,10 @@ object PoiIndex {
         val archive: MappedByteBuffer? = null,
     ) {
         internal fun latE7(i: Int): Int = index.getInt(i * RECORD_BYTES)
-        internal fun lonE7(i: Int): Int = index.getInt(i * RECORD_BYTES + 4)
-        internal fun nameOff(i: Int): Int = index.getInt(i * RECORD_BYTES + 8)
-        fun type(i: Int): Int = index.getShort(i * RECORD_BYTES + 12).toInt() and 0xFFFF
+        internal fun lonE7(i: Int): Int = index.getInt(i * RECORD_BYTES + LON_FIELD_OFF)
+        internal fun nameOff(i: Int): Int = index.getInt(i * RECORD_BYTES + NAME_OFF_FIELD_OFF)
+        fun type(i: Int): Int =
+            index.getShort(i * RECORD_BYTES + TYPE_FIELD_OFF).toInt() and U16_MASK
 
         /** The Morton key the file is sorted by, recomputed from the record's coordinate. */
         fun spatialAt(i: Int): Long = spatialFromE7(latE7(i), lonE7(i))
@@ -259,12 +272,15 @@ object PoiIndex {
             onHit: (ordinal: Int, latE7: Int, lonE7: Int) -> Boolean,
         ) {
             if (minLatE7 > maxLatE7 || minLonE7 > maxLonE7) return
-            if (spatial != null && cellCount > 0 && cols > 0 && cellE7 > 0) {
+            if (hasGrid()) {
                 forEachInCells(minLatE7, maxLatE7, minLonE7, maxLonE7, onHit)
             } else {
                 forEachInMortonSpan(minLatE7, maxLatE7, minLonE7, maxLonE7, onHit)
             }
         }
+
+        /** Whether the CSR grid is present and usable for the query. */
+        private fun hasGrid(): Boolean = spatial != null && cellCount > 0 && cols > 0 && cellE7 > 0
 
         private fun forEachInMortonSpan(
             minLatE7: Int,
@@ -277,15 +293,24 @@ object PoiIndex {
             var i = lowerBound(first)
             while (i < count) {
                 if (java.lang.Long.compareUnsigned(spatialAt(i), last) > 0) return
-                val latE7 = latE7(i)
-                val lonE7 = lonE7(i)
-                if (latE7 in minLatE7..maxLatE7 && lonE7 in minLonE7..maxLonE7 &&
-                    !onHit(i, latE7, lonE7)
-                ) {
-                    return
-                }
+                if (!visitIfInBox(i, minLatE7, maxLatE7, minLonE7, maxLonE7, onHit)) return
                 i++
             }
+        }
+
+        /** Visit ordinal [i] when it falls inside the box; false stops the walk. */
+        private fun visitIfInBox(
+            i: Int,
+            minLatE7: Int,
+            maxLatE7: Int,
+            minLonE7: Int,
+            maxLonE7: Int,
+            onHit: (ordinal: Int, latE7: Int, lonE7: Int) -> Boolean,
+        ): Boolean {
+            val latE7 = latE7(i)
+            val lonE7 = lonE7(i)
+            val inside = latE7 in minLatE7..maxLatE7 && lonE7 in minLonE7..maxLonE7
+            return !inside || onHit(i, latE7, lonE7)
         }
 
         // The CSR grid walk (forEachInCells and its cell helpers) lives in PoiIndexSpatial.kt,
@@ -330,19 +355,7 @@ object PoiIndex {
     @Synchronized
     fun reload(context: Context): Boolean {
         val dir = context.getExternalFilesDir(null) ?: return false
-        mapped = null
-        tried = true
-        if (tryArchive(dir)) return true
-        return reload(dir)
-    }
-
-    /** Map the single archive when present, leaving [mapped] null otherwise. */
-    private fun tryArchive(dir: File): Boolean {
-        val archive = File(dir, MapTileCache.BASEMAP_ARCHIVE_FILE)
-        if (!archive.isFile) return false
-        val fromArchive = PoiArchive.openArchive(archive) ?: return false
-        mapped = fromArchive
-        return true
+        return reloadMapped(dir)
     }
 
     /** Re-map from a single-archive `.mamaps` file (see [PoiArchive]). */
@@ -362,9 +375,22 @@ object PoiIndex {
      * `Context` only to find the directory, and a unit test has a temp dir and no Context.
      */
     @Synchronized
-    internal fun reload(dir: File): Boolean {
+    internal fun reload(dir: File): Boolean = reloadMapped(dir)
+
+    /** Map the single archive when present, leaving [mapped] null otherwise. */
+    private fun tryArchive(dir: File): Boolean {
+        val archive = File(dir, MapTileCache.BASEMAP_ARCHIVE_FILE)
+        if (!archive.isFile) return false
+        val fromArchive = PoiArchive.openArchive(archive) ?: return false
+        mapped = fromArchive
+        return true
+    }
+
+    /** Shared re-map body: clear state, then map from [dir]. */
+    private fun reloadMapped(dir: File): Boolean {
         mapped = null
         tried = true
+        if (tryArchive(dir)) return true
         return open(dir)
     }
 
@@ -377,97 +403,73 @@ object PoiIndex {
             return false
         }
         return try {
-            val indexBuf = mapReadOnly(indexFile).also { it.order(ByteOrder.LITTLE_ENDIAN) }
-            val namesBuf = mapReadOnly(namesFile)
-            val count = (indexFile.length() / RECORD_BYTES).toInt()
-            // Separate and optional: a failure here leaves the index perfectly
-            // usable, just without attributes.
-            val attrs = openAttrs(File(dir, ATTRS_FILE), count)
-            val grid = openSpatial(File(dir, SPATIAL_FILE), count)
-            val words = openNameIndex(File(dir, NAME_INDEX_FILE), count)
-            mapped = Mapped(
-                index = indexBuf,
-                names = namesBuf,
-                namesLen = namesBuf.capacity(),
-                count = count,
-                attrs = attrs?.first,
-                attrsBlobStart = attrs?.second ?: 0,
-                spatial = grid?.buf,
-                cellCount = grid?.cellCount ?: 0,
-                lat0E7 = grid?.lat0E7 ?: 0,
-                lon0E7 = grid?.lon0E7 ?: 0,
-                cellE7 = grid?.cellE7 ?: 0,
-                cols = grid?.cols ?: 0,
-                nameIdx = words?.first,
-                entryCount = words?.second ?: 0,
-            )
+            mapped = PoiIndexSideFiles.mapSideFiles(dir, indexFile, namesFile)
             Log.d(
                 TAG,
-                "Loaded $count POI records, names=${namesBuf.capacity()}B, " +
-                    "grid=${grid?.cellCount ?: 0} cells, words=${words?.second ?: 0}",
+                "Loaded ${mapped?.count} POI records, names=${mapped?.namesLen}B, " +
+                    "grid=${mapped?.cellCount ?: 0} cells, words=${mapped?.entryCount ?: 0}",
             )
             true
-        } catch (e: Exception) {
+        } catch (e: java.io.IOException) {
             Log.w(TAG, "Failed to map POI side files", e)
             mapped = null
             false
         }
     }
 
-    /**
-     * Map the attribute sidecar, returning null (rather than throwing) if anything is off.
-     *
-     * The record-count check is the one that matters: the sidecar joins to the
-     * index purely by position, so a sidecar from a different build would hand
-     * every place someone else's phone number. Refusing the file is the only safe
-     * response, and there is no way to detect the mismatch later.
-     *
-     * @return the mapped buffer and the byte offset of the blob, or null.
-     */
-    private fun openAttrs(file: File, count: Int): Pair<MappedByteBuffer, Int>? {
-        if (!file.isFile) {
-            Log.d(TAG, "POI attribute sidecar absent")
-            return null
-        }
-        return attrsFromBuffer(mapReadOnly(file), count)
-    }
-
-    /** Buffer core of [openAttrs], reused by the single-archive path. */
+    /** Buffer core of the attrs sidecar, reused by the single-archive path. */
     internal fun attrsFromBuffer(buf: MappedByteBuffer, count: Int): Pair<MappedByteBuffer, Int>? {
         buf.order(ByteOrder.LITTLE_ENDIAN)
-        try {
-            if (buf.capacity() < ATTRS_HEADER_BYTES) {
-                Log.w(TAG, "$ATTRS_FILE is truncated")
-                return null
-            }
-            for (i in ATTRS_MAGIC.indices) {
-                if (buf.get(i) != ATTRS_MAGIC[i]) {
-                    Log.w(TAG, "$ATTRS_FILE has the wrong magic")
-                    return null
-                }
-            }
-            // Not a gate: the length prefixes let this reader step over a key added
-            // by a later version, so a newer file is readable. A version it has
-            // never heard of is worth a line in the log all the same.
-            val version = buf.get(4).toInt()
-            if (version != ATTRS_VERSION) {
-                Log.d(TAG, "$ATTRS_FILE is version $version, expected $ATTRS_VERSION")
-            }
-            val attrCount = buf.getInt(8)
-            if (attrCount != count) {
-                Log.w(TAG, "$ATTRS_FILE has $attrCount slots but the index has $count; ignoring it")
-                return null
-            }
-            val blobStart = ATTRS_HEADER_BYTES + 4 * attrCount
-            if (blobStart > buf.capacity()) {
-                Log.w(TAG, "$ATTRS_FILE offset array runs past the file")
-                return null
-            }
-            Log.d(TAG, "Loaded POI attributes for $attrCount record(s)")
-            return buf to blobStart
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to map $ATTRS_FILE", e)
+        return runCatching { readAttrs(buf, count) }
+            .getOrElse { bufferFailure(it, ATTRS_FILE) }
+    }
+
+    private fun readAttrs(buf: MappedByteBuffer, count: Int): Pair<MappedByteBuffer, Int>? {
+        if (buf.capacity() < ATTRS_HEADER_BYTES) {
+            Log.w(TAG, "$ATTRS_FILE is truncated")
             return null
+        }
+        for (i in ATTRS_MAGIC.indices) {
+            if (buf.get(i) != ATTRS_MAGIC[i]) {
+                Log.w(TAG, "$ATTRS_FILE has the wrong magic")
+                return null
+            }
+        }
+        // Not a gate: the length prefixes let this reader step over a key added
+        // by a later version, so a newer file is readable. A version it has
+        // never heard of is worth a line in the log all the same.
+        val version = buf.get(ATTRS_VERSION_OFF).toInt()
+        if (version != ATTRS_VERSION) {
+            Log.d(TAG, "$ATTRS_FILE is version $version, expected $ATTRS_VERSION")
+        }
+        val attrCount = buf.getInt(ATTRS_COUNT_OFF)
+        if (attrCount != count) {
+            Log.w(TAG, "$ATTRS_FILE has $attrCount slots but the index has $count; ignoring it")
+            return null
+        }
+        val blobStart = ATTRS_HEADER_BYTES + ATTR_OFFSET_BYTES * attrCount
+        if (blobStart > buf.capacity()) {
+            Log.w(TAG, "$ATTRS_FILE offset array runs past the file")
+            return null
+        }
+        Log.d(TAG, "Loaded POI attributes for $attrCount record(s)")
+        return buf to blobStart
+    }
+
+    /**
+     * Yield null (with a log line) for the failures a corrupt/truncated file
+     * can actually produce — buffer overruns and bounds checks. Anything else
+     * is a programming error and keeps propagating.
+     */
+    private fun <T> bufferFailure(cause: Throwable, file: String): T? {
+        when (cause) {
+            is IndexOutOfBoundsException,
+            is IllegalArgumentException,
+            -> {
+                Log.w(TAG, "Failed to map $file", cause)
+                return null
+            }
+            else -> throw cause
         }
     }
 
@@ -481,94 +483,84 @@ object PoiIndex {
         val cols: Int,
     )
 
-    /**
-     * Map `poi_spatial.bin`, or null when it is absent, stale or malformed.
-     *
-     * The record-count check matters for the same reason it does for the sidecar: the grid
-     * stores *ordinals*, so a grid built against a different `poi_index.bin` would return
-     * the wrong places rather than none. Refusing it costs only the Morton fallback.
-     */
-    private fun openSpatial(file: File, count: Int): Grid? {
-        if (!file.isFile) return null
-        return spatialFromBuffer(mapReadOnly(file), count)
-    }
-
-    /** Buffer core of [openSpatial], reused by the single-archive path. */
+    /** Buffer core of the spatial sidecar, reused by the single-archive path. */
     internal fun spatialFromBuffer(buf: MappedByteBuffer, count: Int): Grid? {
         buf.order(ByteOrder.LITTLE_ENDIAN)
-        return try {
-            if (buf.capacity() < SPATIAL_HEADER_BYTES) return null
-            for (i in SPATIAL_MAGIC.indices) {
-                if (buf.get(i) != SPATIAL_MAGIC[i]) {
-                    Log.w(TAG, "$SPATIAL_FILE has the wrong magic; ignoring it")
-                    return null
-                }
-            }
-            if (buf.getInt(4) != SPATIAL_VERSION) {
-                Log.w(TAG, "$SPATIAL_FILE version ${buf.getInt(4)} unsupported; ignoring it")
+        return runCatching { readSpatial(buf, count) }
+            .getOrElse { bufferFailure(it, SPATIAL_FILE) }
+    }
+
+    private fun readSpatial(buf: MappedByteBuffer, count: Int): Grid? {
+        if (buf.capacity() < SPATIAL_HEADER_BYTES) return null
+        for (i in SPATIAL_MAGIC.indices) {
+            if (buf.get(i) != SPATIAL_MAGIC[i]) {
+                Log.w(TAG, "$SPATIAL_FILE has the wrong magic; ignoring it")
                 return null
             }
-            val records = buf.getInt(8)
-            if (records != count) {
-                Log.w(TAG, "$SPATIAL_FILE covers $records record(s), index has $count; ignoring it")
-                return null
-            }
-            val cellCount = buf.getInt(12)
-            val cols = buf.getInt(28)
-            // cell_ids + cell_off + ordinals must all be present before any of them is read.
-            val need = SPATIAL_HEADER_BYTES + 4L * cellCount + 4L * (cellCount + 1) + 4L * count
-            if (cellCount < 0 || cols < 0 || need > buf.capacity()) {
-                Log.w(TAG, "$SPATIAL_FILE is truncated; ignoring it")
-                return null
-            }
-            Grid(buf, cellCount, buf.getInt(16), buf.getInt(20), buf.getInt(24), cols)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to map $SPATIAL_FILE", e)
-            null
         }
+        if (buf.getInt(SPATIAL_VERSION_OFF) != SPATIAL_VERSION) {
+            Log.w(TAG, "$SPATIAL_FILE version ${buf.getInt(SPATIAL_VERSION_OFF)} unsupported; ignoring it")
+            return null
+        }
+        val records = buf.getInt(SPATIAL_COUNT_OFF)
+        if (records != count) {
+            Log.w(TAG, "$SPATIAL_FILE covers $records record(s), index has $count; ignoring it")
+            return null
+        }
+        val cellCount = buf.getInt(SPATIAL_CELL_COUNT_OFF)
+        val cols = buf.getInt(SPATIAL_COLS_OFF)
+        // cell_ids + cell_off + ordinals must all be present before any of them is read.
+        val need = SPATIAL_HEADER_BYTES + CELL_SLOT_BYTES * cellCount +
+            CELL_SLOT_BYTES * (cellCount + 1) + CELL_SLOT_BYTES * count
+        if (cellCount < 0 || cols < 0 || need > buf.capacity()) {
+            Log.w(TAG, "$SPATIAL_FILE is truncated; ignoring it")
+            return null
+        }
+        return Grid(
+            buf,
+            cellCount,
+            buf.getInt(SPATIAL_LAT0_OFF),
+            buf.getInt(SPATIAL_LON0_OFF),
+            buf.getInt(SPATIAL_CELL_E7_OFF),
+            cols,
+        )
     }
 
-    /** Map `poi_name_index.bin` and its entry count, or null when unusable. */
-    private fun openNameIndex(file: File, count: Int): Pair<MappedByteBuffer, Int>? {
-        if (!file.isFile) return null
-        return nameIndexFromBuffer(mapReadOnly(file), count)
-    }
-
-    /** Buffer core of [openNameIndex], reused by the single-archive path. */
+    /** Buffer core of the word-index sidecar, reused by the single-archive path. */
     internal fun nameIndexFromBuffer(buf: MappedByteBuffer, count: Int): Pair<MappedByteBuffer, Int>? {
         buf.order(ByteOrder.LITTLE_ENDIAN)
-        return try {
-            if (buf.capacity() < NAME_INDEX_HEADER_BYTES) return null
-            for (i in NAME_INDEX_MAGIC.indices) {
-                if (buf.get(i) != NAME_INDEX_MAGIC[i]) {
-                    Log.w(TAG, "$NAME_INDEX_FILE has the wrong magic; ignoring it")
-                    return null
-                }
-            }
-            if (buf.getInt(4) != NAME_INDEX_VERSION) {
-                Log.w(TAG, "$NAME_INDEX_FILE version ${buf.getInt(4)} unsupported; ignoring it")
+        return runCatching { readNameIndex(buf, count) }
+            .getOrElse { bufferFailure(it, NAME_INDEX_FILE) }
+    }
+
+    private fun readNameIndex(buf: MappedByteBuffer, count: Int): Pair<MappedByteBuffer, Int>? {
+        if (buf.capacity() < NAME_INDEX_HEADER_BYTES) return null
+        for (i in NAME_INDEX_MAGIC.indices) {
+            if (buf.get(i) != NAME_INDEX_MAGIC[i]) {
+                Log.w(TAG, "$NAME_INDEX_FILE has the wrong magic; ignoring it")
                 return null
             }
-            val records = buf.getInt(8)
-            if (records != count) {
-                Log.w(
-                    TAG,
-                    "$NAME_INDEX_FILE covers $records record(s), index has $count; ignoring it",
-                )
-                return null
-            }
-            val entries = buf.getInt(12)
-            if (entries < 0 ||
-                NAME_INDEX_HEADER_BYTES + 5L * entries > buf.capacity()
-            ) {
-                Log.w(TAG, "$NAME_INDEX_FILE is truncated; ignoring it")
-                return null
-            }
-            buf to entries
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to map $NAME_INDEX_FILE", e)
-            null
         }
+        if (buf.getInt(NAME_INDEX_VERSION_OFF) != NAME_INDEX_VERSION) {
+            Log.w(TAG, "$NAME_INDEX_FILE version ${buf.getInt(NAME_INDEX_VERSION_OFF)} unsupported; ignoring it")
+            return null
+        }
+        val records = buf.getInt(NAME_INDEX_COUNT_OFF)
+        if (records != count) {
+            Log.w(
+                TAG,
+                "$NAME_INDEX_FILE covers $records record(s), index has $count; ignoring it",
+            )
+            return null
+        }
+        val entries = buf.getInt(NAME_INDEX_ENTRY_COUNT_OFF)
+        if (entries < 0 ||
+            NAME_INDEX_HEADER_BYTES + NAME_INDEX_ENTRY_BYTES * entries > buf.capacity().toLong()
+        ) {
+            Log.w(TAG, "$NAME_INDEX_FILE is truncated; ignoring it")
+            return null
+        }
+        return buf to entries
     }
 
     internal fun mapReadOnly(file: File): MappedByteBuffer =
@@ -617,63 +609,17 @@ object PoiIndex {
         limit: Int,
     ): List<PoiRecord> = searchByWordIndex(m, query, nearLat, nearLon, limit, CANDIDATE_CAP)
 
+    // Scan search lives in PoiIndexWords.kt; this delegates so searchByName is unchanged.
     private fun searchByScan(
         m: Mapped,
         query: String,
         nearLat: Double,
         nearLon: Double,
         limit: Int,
-    ): List<PoiRecord> {
-        val q = query.trim().lowercase()
-        if (q.isEmpty()) return emptyList()
-
-        // Pass 1: walk the name pool once, recording matching offsets and their
-        // rank (0 = prefix match, 1 = substring). Decoding each unique name once
-        // is the dedup win the side-file layout is designed for.
-        val matchRank = HashMap<Int, Int>()
-        var pos = 0
-        while (pos < m.namesLen) {
-            var end = pos
-            while (end < m.namesLen && m.names.get(end).toInt() != 0) end++
-            if (end > pos) {
-                val name = m.nameAt(pos)
-                if (name != null) {
-                    val lower = name.lowercase()
-                    if (lower.startsWith(q)) matchRank[pos] = 0
-                    else if (lower.contains(q)) matchRank[pos] = 1
-                }
-            }
-            pos = end + 1
-        }
-        if (matchRank.isEmpty()) return emptyList()
-
-        // Pass 2: scan records, keeping those whose name offset matched.
-        val out = ArrayList<Ranked>(minOf(CANDIDATE_CAP, m.count))
-        var i = 0
-        while (i < m.count && out.size < CANDIDATE_CAP) {
-            val off = m.nameOff(i)
-            val rank = matchRank[off]
-            if (rank != null) {
-                val latE7 = m.latE7(i)
-                val lonE7 = m.lonE7(i)
-                out.add(
-                    Ranked(
-                        PoiRecord(latE7, lonE7, m.type(i), m.nameAt(off) ?: "", i),
-                        rank,
-                        distanceSq(latE7 / 1e7, lonE7 / 1e7, nearLat, nearLon),
-                    )
-                )
-            }
-            i++
-        }
-        out.sortWith(compareBy({ it.rank }, { it.distSq }))
-        return out.take(limit).map { it.record }
-    }
+    ): List<PoiRecord> = searchByScan(m, query, nearLat, nearLon, limit)
 
     // Spatial queries (nearest/inViewport) live in PoiIndexSpatial.kt as
     // extensions, alongside the grid they walk.
-
-    private class Ranked(val record: PoiRecord, val rank: Int, val distSq: Double)
 
     /**
      * The attributes of the [ordinal]th index record, or null when there are none.
@@ -688,19 +634,29 @@ object PoiIndex {
     fun attributesAt(ordinal: Int): PoiAttributes? {
         val m = mapped ?: return null
         val buf = m.attrs ?: return null
+        val at = attrBodyAt(m, buf, ordinal) ?: return null
+        return decodeAttrRecord(buf, at.first, at.second)
+    }
+
+    /** (bodyStart, bodyEnd) of the [ordinal]th record's attribute blob, or null. */
+    private fun attrBodyAt(
+        m: Mapped,
+        buf: MappedByteBuffer,
+        ordinal: Int,
+    ): Pair<Int, Int>? {
         if (ordinal < 0 || ordinal >= m.count) return null
-        val off = buf.getInt(ATTRS_HEADER_BYTES + 4 * ordinal)
+        val off = buf.getInt(ATTRS_HEADER_BYTES + ATTR_OFFSET_BYTES * ordinal)
         if (off == NO_ATTRS || off < 0) return null
         // Bounded before the add, not after: `attrsBlobStart + off` can wrap negative
         // for a large positive off, and a negative index passes an `at + 2 > capacity`
         // test on its way to an IndexOutOfBoundsException.
         val blobLen = buf.capacity() - m.attrsBlobStart
-        if (off > blobLen - 2) return null
+        if (off > blobLen - ATTR_BODY_HEADER_LEN) return null
         val at = m.attrsBlobStart + off
-        val bodyLen = buf.getShort(at).toInt() and 0xFFFF
-        val body = at + 2
+        val bodyLen = buf.getShort(at).toInt() and U16_MASK
+        val body = at + ATTR_BODY_HEADER_LEN
         if (bodyLen > buf.capacity() - body) return null
-        return decodeAttributes(buf, body, body + bodyLen)
+        return body to body + bodyLen
     }
 
     /**
@@ -730,7 +686,11 @@ object PoiIndex {
     ): PoiAttributes? {
         val m = mapped
         if (m?.attrs == null) {
-            Log.d(TAG, "attributesNear: sidecar absent (index loaded=${m != null}); no attrs for \"$name\" at ($lat, $lon)")
+            Log.d(
+                TAG,
+                "attributesNear: sidecar absent (index loaded=${m != null}); " +
+                    "no attrs for \"$name\" at ($lat, $lon)",
+            )
             return null
         }
         if (name.isBlank()) return null
@@ -740,11 +700,19 @@ object PoiIndex {
         for (rec in candidates) {
             val attrs = attributesAt(rec.ordinal)
             if (attrs != null) {
-                Log.d(TAG, "attributesNear: \"$name\" at ($lat, $lon) matched nothing by name; using nearest-with-attrs \"${rec.name}\"")
+                Log.d(
+                    TAG,
+                    "attributesNear: \"$name\" at ($lat, $lon) matched nothing by name; " +
+                        "using nearest-with-attrs \"${rec.name}\"",
+                )
                 return attrs
             }
         }
-        Log.d(TAG, "attributesNear: \"$name\" at ($lat, $lon) matched none of ${candidates.size} candidate(s) within $maxMeters m")
+        Log.d(
+            TAG,
+            "attributesNear: \"$name\" at ($lat, $lon) matched none of " +
+                "${candidates.size} candidate(s) within $maxMeters m",
+        )
         return null
     }
 
@@ -757,10 +725,6 @@ object PoiIndex {
      * Rust writer's sort order, so [String.lowercase] (not [asciiLower]) is fine.
      */
     private fun normName(s: String): String = s.lowercase().filter { it.isLetterOrDigit() }
-
-    // Record decoding lives in PoiIndexAttrs.kt; this delegates so attributesAt is unchanged.
-    private fun decodeAttributes(buf: MappedByteBuffer, from: Int, to: Int): PoiAttributes? =
-        decodeAttrRecord(buf, from, to)
 
     /** Cheap squared planar distance (deg², lon scaled by cos lat) for ranking. */
     internal fun distanceSq(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {

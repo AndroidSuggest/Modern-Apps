@@ -26,6 +26,20 @@ data class LocalEventChange(
 object CalendarSink {
     private const val TAG = "CalendarSink"
     private val ACCOUNT_TYPE = AccountStore.ACCOUNT_TYPE
+    private const val DEFAULT_CALENDAR_COLOR = 0xFF3F51B5.toInt()
+    private const val MILLIS_PER_SECOND = 1000L
+    private const val CURSOR_INDEX_FIRST = 0
+    private const val CURSOR_INDEX_SYNC_ID = 1
+    private const val CURSOR_INDEX_ETAG = 2
+    private const val CURSOR_INDEX_DELETED = 3
+    private const val CURSOR_INDEX_TITLE = 4
+    private const val CURSOR_INDEX_DESCRIPTION = 5
+    private const val CURSOR_INDEX_LOCATION = 6
+    private const val CURSOR_INDEX_DTSTART = 7
+    private const val CURSOR_INDEX_DTEND = 8
+    private const val CURSOR_INDEX_ALL_DAY = 9
+    private const val CURSOR_INDEX_TIMEZONE = 10
+    private const val CURSOR_INDEX_RRULE = 11
 
     private fun Uri.asSyncAdapter(accountName: String): Uri =
         buildUpon()
@@ -46,12 +60,14 @@ object CalendarSink {
             context.contentResolver.query(
                 CalendarContract.Calendars.CONTENT_URI,
                 arrayOf(CalendarContract.Calendars._ID),
-                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ? AND ${CalendarContract.Calendars.NAME} = ?",
+                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND " +
+                    "${CalendarContract.Calendars.ACCOUNT_TYPE} = ? AND " +
+                    "${CalendarContract.Calendars.NAME} = ?",
                 arrayOf(accountName, ACCOUNT_TYPE, remoteCalendarId),
                 "${CalendarContract.Calendars._ID} ASC",
-            )?.use { while (it.moveToNext()) existing += it.getLong(0) }
-        } catch (e: Exception) {
-            Log.e(TAG, "query calendar failed", e)
+            )?.use { while (it.moveToNext()) existing += it.getLong(CURSOR_INDEX_FIRST) }
+        } catch (expected: Exception) {
+            Log.e(TAG, "query calendar failed", expected)
         }
         if (existing.isNotEmpty()) {
             // Delete any duplicates created by earlier races; keep the first.
@@ -61,8 +77,8 @@ object CalendarSink {
                         CalendarContract.Calendars.CONTENT_URI.asSyncAdapter(accountName),
                         "${CalendarContract.Calendars._ID} = ?", arrayOf(dupId.toString()),
                     )
-                } catch (e: Exception) {
-                    Log.e(TAG, "delete duplicate calendar failed", e)
+                } catch (expected: Exception) {
+                    Log.e(TAG, "delete duplicate calendar failed", expected)
                 }
             }
             return existing.first()
@@ -74,23 +90,32 @@ object CalendarSink {
             put(CalendarContract.Calendars.OWNER_ACCOUNT, accountName)
             put(CalendarContract.Calendars.NAME, remoteCalendarId)
             put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, displayName)
-            put(CalendarContract.Calendars.CALENDAR_COLOR, color ?: 0xFF3F51B5.toInt())
+            put(CalendarContract.Calendars.CALENDAR_COLOR, color ?: DEFAULT_CALENDAR_COLOR)
             put(CalendarContract.Calendars.VISIBLE, 1)
             put(CalendarContract.Calendars.SYNC_EVENTS, 1)
-            put(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.CAL_ACCESS_OWNER)
-            put(CalendarContract.Calendars.CALENDAR_TIME_ZONE, java.util.TimeZone.getDefault().id)
+            put(
+                CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,
+                CalendarContract.Calendars.CAL_ACCESS_OWNER,
+            )
+            put(
+                CalendarContract.Calendars.CALENDAR_TIME_ZONE,
+                java.util.TimeZone.getDefault().id,
+            )
         }
         return try {
             context.contentResolver.insert(
                 CalendarContract.Calendars.CONTENT_URI.asSyncAdapter(accountName), values,
             )?.lastPathSegment?.toLong() ?: -1L
-        } catch (e: Exception) {
-            Log.e(TAG, "create calendar failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "create calendar failed", expected)
             -1L
         }
     }
 
-    fun localUidToEtag(context: Context, accountName: String, localCalendarId: Long): Map<String, String?> {
+    fun localUidToEtag(
+        context: Context,
+        localCalendarId: Long,
+    ): Map<String, String?> {
         val out = mutableMapOf<String, String?>()
         try {
             context.contentResolver.query(
@@ -101,12 +126,12 @@ object CalendarSink {
                 null,
             )?.use { c ->
                 while (c.moveToNext()) {
-                    val uid = c.getStringOrNull(0) ?: continue
-                    out[uid] = c.getStringOrNull(1)
+                    val uid = c.getStringOrNull(CURSOR_INDEX_FIRST) ?: continue
+                    out[uid] = c.getStringOrNull(CURSOR_INDEX_SYNC_ID)
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "localUidToEtag failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "localUidToEtag failed", expected)
         }
         return out
     }
@@ -119,35 +144,44 @@ object CalendarSink {
                 "${CalendarContract.Events.CALENDAR_ID} = ? AND ${CalendarContract.Events._SYNC_ID} = ?",
                 arrayOf(localCalendarId.toString(), uid),
                 null,
-            )?.use { if (it.moveToFirst()) it.getLong(0) else null }
-        } catch (e: Exception) {
-            Log.e(TAG, "eventId failed", e); null
+            )?.use { if (it.moveToFirst()) it.getLong(CURSOR_INDEX_FIRST) else null }
+        } catch (expected: Exception) {
+            Log.e(TAG, "eventId failed", expected)
+            null
         }
 
-    fun upsertEvent(context: Context, accountName: String, localCalendarId: Long, e: RemoteEvent) {
+    fun upsertEvent(
+        context: Context,
+        accountName: String,
+        localCalendarId: Long,
+        event: RemoteEvent,
+    ) {
         val values = ContentValues().apply {
             put(CalendarContract.Events.CALENDAR_ID, localCalendarId)
-            put(CalendarContract.Events._SYNC_ID, e.uid)
-            put(CalendarContract.Events.SYNC_DATA1, e.etag)
-            put(CalendarContract.Events.SYNC_DATA2, e.href)
-            put(CalendarContract.Events.TITLE, e.summary)
-            put(CalendarContract.Events.DESCRIPTION, e.description)
-            put(CalendarContract.Events.EVENT_LOCATION, e.location)
-            put(CalendarContract.Events.DTSTART, e.startMillis)
-            put(CalendarContract.Events.ALL_DAY, if (e.allDay) 1 else 0)
-            put(CalendarContract.Events.EVENT_TIMEZONE, if (e.allDay) "UTC" else e.timezone)
+            put(CalendarContract.Events._SYNC_ID, event.uid)
+            put(CalendarContract.Events.SYNC_DATA1, event.etag)
+            put(CalendarContract.Events.SYNC_DATA2, event.href)
+            put(CalendarContract.Events.TITLE, event.summary)
+            put(CalendarContract.Events.DESCRIPTION, event.description)
+            put(CalendarContract.Events.EVENT_LOCATION, event.location)
+            put(CalendarContract.Events.DTSTART, event.startMillis)
+            put(CalendarContract.Events.ALL_DAY, if (event.allDay) 1 else 0)
+            put(
+                CalendarContract.Events.EVENT_TIMEZONE,
+                if (event.allDay) "UTC" else event.timezone,
+            )
             put(CalendarContract.Events.DIRTY, 0)
-            if (e.rrule.isNullOrBlank()) {
-                put(CalendarContract.Events.DTEND, e.endMillis)
+            if (event.rrule.isNullOrBlank()) {
+                put(CalendarContract.Events.DTEND, event.endMillis)
             } else {
                 // Recurring events must use DURATION instead of DTEND.
-                put(CalendarContract.Events.RRULE, e.rrule.removePrefix("RRULE:"))
-                val durSecs = ((e.endMillis - e.startMillis) / 1000).coerceAtLeast(0)
+                put(CalendarContract.Events.RRULE, event.rrule.removePrefix("RRULE:"))
+                val durSecs = ((event.endMillis - event.startMillis) / MILLIS_PER_SECOND).coerceAtLeast(0)
                 put(CalendarContract.Events.DURATION, "P${durSecs}S")
             }
         }
         try {
-            val existing = eventId(context, localCalendarId, e.uid)
+            val existing = eventId(context, localCalendarId, event.uid)
             if (existing != null) {
                 context.contentResolver.update(
                     CalendarContract.Events.CONTENT_URI.asSyncAdapter(accountName),
@@ -158,8 +192,8 @@ object CalendarSink {
                     CalendarContract.Events.CONTENT_URI.asSyncAdapter(accountName), values,
                 )
             }
-        } catch (e2: Exception) {
-            Log.e(TAG, "upsertEvent failed", e2)
+        } catch (expected: Exception) {
+            Log.e(TAG, "upsertEvent failed", expected)
         }
     }
 
@@ -170,8 +204,8 @@ object CalendarSink {
                 CalendarContract.Events.CONTENT_URI.asSyncAdapter(accountName),
                 "${CalendarContract.Events._ID} = ?", arrayOf(id.toString()),
             )
-        } catch (e: Exception) {
-            Log.e(TAG, "deleteEvent failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "deleteEvent failed", expected)
         }
     }
 
@@ -188,8 +222,8 @@ object CalendarSink {
                 "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ?",
                 arrayOf(accountName, ACCOUNT_TYPE),
             )
-        } catch (e: Exception) {
-            Log.e(TAG, "purge failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "purge failed", expected)
         }
     }
 
@@ -199,16 +233,21 @@ object CalendarSink {
             context.contentResolver.query(
                 CalendarContract.Calendars.CONTENT_URI,
                 arrayOf(CalendarContract.Calendars._ID),
-                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ?",
-                arrayOf(accountName, ACCOUNT_TYPE), null,
-            )?.use { c -> while (c.moveToNext()) ids += c.getLong(0) }
-        } catch (e: Exception) {
-            Log.e(TAG, "localCalendars failed", e)
+                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND " +
+                    "${CalendarContract.Calendars.ACCOUNT_TYPE} = ?",
+                arrayOf(accountName, ACCOUNT_TYPE),
+                null,
+            )?.use { c -> while (c.moveToNext()) ids += c.getLong(CURSOR_INDEX_FIRST) }
+        } catch (expected: Exception) {
+            Log.e(TAG, "localCalendars failed", expected)
         }
         return ids
     }
 
-    fun getLocalChanges(context: Context, accountName: String, localCalendarId: Long): List<LocalEventChange> {
+    fun getLocalChanges(
+        context: Context,
+        localCalendarId: Long,
+    ): List<LocalEventChange> {
         val changes = mutableListOf<LocalEventChange>()
         try {
             context.contentResolver.query(
@@ -227,36 +266,49 @@ object CalendarSink {
                     CalendarContract.Events.EVENT_TIMEZONE,
                     CalendarContract.Events.RRULE,
                 ),
-                "${CalendarContract.Events.CALENDAR_ID} = ? AND (${CalendarContract.Events.DIRTY} = 1 OR ${CalendarContract.Events.DELETED} = 1)",
-                arrayOf(localCalendarId.toString()), null,
+                "${CalendarContract.Events.CALENDAR_ID} = ? AND " +
+                    "(${CalendarContract.Events.DIRTY} = 1 OR ${CalendarContract.Events.DELETED} = 1)",
+                arrayOf(localCalendarId.toString()),
+                null,
             )?.use { c ->
                 while (c.moveToNext()) {
-                    val deleted = c.getInt(3) == 1
-                    val uid = c.getStringOrNull(1)
-                    changes += LocalEventChange(
-                        eventId = c.getLong(0),
-                        syncId = uid,
-                        etag = c.getStringOrNull(2),
-                        deleted = deleted,
-                        event = if (deleted || uid == null) null else RemoteEvent(
-                            uid = uid,
-                            calendarId = localCalendarId.toString(),
-                            summary = c.getStringOrNull(4) ?: "",
-                            description = c.getStringOrNull(5) ?: "",
-                            location = c.getStringOrNull(6) ?: "",
-                            startMillis = c.getLong(7),
-                            endMillis = c.getLong(8),
-                            allDay = c.getInt(9) == 1,
-                            timezone = c.getStringOrNull(10) ?: "UTC",
-                            rrule = c.getStringOrNull(11),
-                        ),
-                    )
+                    changes += readChange(c, localCalendarId)
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "getLocalChanges failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "getLocalChanges failed", expected)
         }
         return changes
+    }
+
+    private fun readChange(
+        c: android.database.Cursor,
+        localCalendarId: Long,
+    ): LocalEventChange {
+        val deleted = c.getInt(CURSOR_INDEX_DELETED) == 1
+        val uid = c.getStringOrNull(CURSOR_INDEX_SYNC_ID)
+        return LocalEventChange(
+            eventId = c.getLong(CURSOR_INDEX_FIRST),
+            syncId = uid,
+            etag = c.getStringOrNull(CURSOR_INDEX_ETAG),
+            deleted = deleted,
+            event = if (deleted || uid == null) {
+                null
+            } else {
+                RemoteEvent(
+                    uid = uid,
+                    calendarId = localCalendarId.toString(),
+                    summary = c.getStringOrNull(CURSOR_INDEX_TITLE) ?: "",
+                    description = c.getStringOrNull(CURSOR_INDEX_DESCRIPTION) ?: "",
+                    location = c.getStringOrNull(CURSOR_INDEX_LOCATION) ?: "",
+                    startMillis = c.getLong(CURSOR_INDEX_DTSTART),
+                    endMillis = c.getLong(CURSOR_INDEX_DTEND),
+                    allDay = c.getInt(CURSOR_INDEX_ALL_DAY) == 1,
+                    timezone = c.getStringOrNull(CURSOR_INDEX_TIMEZONE) ?: "UTC",
+                    rrule = c.getStringOrNull(CURSOR_INDEX_RRULE),
+                )
+            },
+        )
     }
 
     fun clearDirty(context: Context, accountName: String, eventId: Long) {
@@ -266,8 +318,8 @@ object CalendarSink {
                 ContentValues().apply { put(CalendarContract.Events.DIRTY, 0) },
                 "${CalendarContract.Events._ID} = ?", arrayOf(eventId.toString()),
             )
-        } catch (e: Exception) {
-            Log.e(TAG, "clearDirty failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "clearDirty failed", expected)
         }
     }
 }

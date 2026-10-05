@@ -70,11 +70,11 @@ class UsageHistory(private val context: Context) {
         if (!UsageAccess.isGranted(context)) return UsageHistoryData()
         val monday = anchor.minusDays((anchor.dayOfWeek.value - 1).toLong())
         val today = LocalDate.now()
-        val bars = ArrayList<UsageBar>(7)
+        val bars = ArrayList<UsageBar>(DAYS_PER_WEEK)
         val perApp = HashMap<String, Long>()
         var total = 0L
         var elapsedDays = 0
-        for (i in 0 until 7) {
+        for (i in 0 until DAYS_PER_WEEK) {
             val day = monday.plusDays(i.toLong())
             val label = day.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
             if (day.isAfter(today)) {
@@ -104,14 +104,14 @@ class UsageHistory(private val context: Context) {
         val now = System.currentTimeMillis()
         val end = min(dayEnd, now)
 
-        val hours = LongArray(24)
+        val hours = LongArray(HOURS_PER_DAY)
         if (end > dayStart) {
             for ((pkg, from, to) in foregroundIntervals(usage, dayStart, end)) {
                 if (forPackage != null && pkg != forPackage) continue
                 HourBuckets.addInterval(hours, dayStart, dayEnd, from, to)
             }
         }
-        val bars = (0 until 24).map { UsageBar(hourLabel(it), hours[it]) }
+        val bars = (0 until HOURS_PER_DAY).map { UsageBar(hourLabel(it), hours[it]) }
 
         // Per-app totals for the day list come from the aggregate query (matches "used").
         val perApp = if (forPackage == null && end > dayStart) {
@@ -120,7 +120,7 @@ class UsageHistory(private val context: Context) {
             emptyMap()
         }
         val total = if (forPackage != null) hours.sum() else perApp.values.sum()
-        val average = total / 24
+        val average = total / HOURS_PER_DAY
         return UsageHistoryData(bars, total, average, perApp)
     }
 
@@ -155,42 +155,68 @@ class UsageHistory(private val context: Context) {
         val event = UsageEvents.Event()
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
-            val pkg = event.packageName ?: continue
-            val stamp = event.timeStamp
-            // queryEvents may return events outside the requested window on some builds.
-            // A foreground that began before [start] means the app was already in front at
-            // midnight, so open it there (e.g. overnight sessions count from midnight, not
-            // from yesterday); anything else out of window is dropped so another day's
-            // usage can never land in this day's buckets.
-            if (stamp > end) continue
-            val atEdge = stamp < start
-            when (event.eventType) {
-                UsageEvents.Event.MOVE_TO_FOREGROUND, UsageEvents.Event.ACTIVITY_RESUMED -> {
-                    if (atEdge) open.putIfAbsent(pkg, start) else open.putIfAbsent(pkg, stamp)
-                }
-                UsageEvents.Event.MOVE_TO_BACKGROUND,
-                UsageEvents.Event.ACTIVITY_PAUSED,
-                UsageEvents.Event.ACTIVITY_STOPPED,
-                -> {
-                    if (atEdge) {
-                        open.remove(pkg)
-                    } else {
-                        open.remove(pkg)?.let { from ->
-                            if (stamp > from) intervals.add(Triple(pkg, from, stamp))
-                        }
-                    }
-                }
-            }
+            applyEvent(event, open, intervals, start, end)
         }
         // Anything still foreground at the window edge is closed there.
         open.forEach { (pkg, from) -> intervals.add(Triple(pkg, from, end)) }
         return intervals
     }
 
+    @Suppress("DEPRECATION")
+    private fun applyEvent(
+        event: UsageEvents.Event,
+        open: HashMap<String, Long>,
+        intervals: ArrayList<Triple<String, Long, Long>>,
+        start: Long,
+        end: Long,
+    ) {
+        val pkg = event.packageName ?: return
+        val stamp = event.timeStamp
+        // queryEvents may return events outside the requested window on some builds.
+        // A foreground that began before [start] means the app was already in front at
+        // midnight, so open it there (e.g. overnight sessions count from midnight, not
+        // from yesterday); anything else out of window is dropped so another day's
+        // usage can never land in this day's buckets.
+        if (stamp > end) return
+        val atEdge = stamp < start
+        when (event.eventType) {
+            UsageEvents.Event.MOVE_TO_FOREGROUND, UsageEvents.Event.ACTIVITY_RESUMED -> {
+                if (atEdge) open.putIfAbsent(pkg, start) else open.putIfAbsent(pkg, stamp)
+            }
+            UsageEvents.Event.MOVE_TO_BACKGROUND,
+            UsageEvents.Event.ACTIVITY_PAUSED,
+            UsageEvents.Event.ACTIVITY_STOPPED,
+            -> closeInterval(open, intervals, pkg, stamp, atEdge)
+        }
+    }
+
+    private fun closeInterval(
+        open: HashMap<String, Long>,
+        intervals: ArrayList<Triple<String, Long, Long>>,
+        pkg: String,
+        stamp: Long,
+        atEdge: Boolean,
+    ) {
+        if (atEdge) {
+            open.remove(pkg)
+            return
+        }
+        open.remove(pkg)?.let { from ->
+            if (stamp > from) intervals.add(Triple(pkg, from, stamp))
+        }
+    }
+
     private fun hourLabel(hour: Int): String = when {
-        hour == 0 -> "12 AM"
-        hour == 12 -> "12 PM"
-        hour < 12 -> "$hour AM"
-        else -> "${hour - 12} PM"
+        hour == MIDNIGHT_HOUR -> "12 AM"
+        hour == NOON_HOUR -> "12 PM"
+        hour < NOON_HOUR -> "$hour AM"
+        else -> "${hour - NOON_HOUR} PM"
+    }
+
+    private companion object {
+        const val HOURS_PER_DAY = 24
+        const val DAYS_PER_WEEK = 7
+        const val MIDNIGHT_HOUR = 0
+        const val NOON_HOUR = 12
     }
 }

@@ -17,7 +17,7 @@ object PeekContentBackfill {
 
     fun runIfNeeded(scope: CoroutineScope, context: Context) {
         scope.launch(Dispatchers.IO) {
-            val dao = EmailRepository.get(context).getDatabase().emailDao()
+            val dao = EmailRepository.get(context).getDatabase().queryDao()
             var batch = dao.getRowsWithEmptyPeek()
             var fixed = 0
             while (batch.isNotEmpty()) {

@@ -103,61 +103,84 @@ class MusicLibraryTree(context: Context) {
     fun rootItem(): MediaItem =
         browsable(ROOT, "Music", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
 
-    fun children(parentId: String): List<MediaItem> = when (parentId) {
-        ROOT -> listOf(
-            tabNode(TAB_PLAYLISTS, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS),
-            tabNode(TAB_ALBUMS, "Albums", MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS),
-            tabNode(TAB_ARTISTS, "Artists", MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS),
-            tabNode(TAB_SONGS, "Songs", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
-            tabNode(TAB_RECENT, "Recently played", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
-        )
+    fun children(parentId: String): List<MediaItem> {
+        tabChildren(parentId)?.let { return it }
+        return nodeChildren(parentId)
+    }
 
+    private fun tabChildren(parentId: String): List<MediaItem>? = when (parentId) {
+        ROOT -> rootTabs()
         TAB_PLAYLISTS -> playlists.sortedBy { it.name.lowercase() }.map { playlistNode(it) }
         TAB_ALBUMS -> albums.sortedBy { it.name.lowercase() }.map { albumNode(it) }
         TAB_ARTISTS -> artists.sortedBy { it.name.lowercase() }.map { artistNode(it) }
         TAB_SONGS -> songs.sortedBy { it.title.lowercase() }.map { songItem(it) }
         TAB_RECENT -> recentSongs().map { songItem(it) }
-
-        else -> when {
-            parentId.startsWith(PREFIX_PLAYLIST) ->
-                parentId.removePrefix(PREFIX_PLAYLIST).toLongOrNull()
-                    ?.let { songsInPlaylist(it) }.orEmpty().map { songItem(it) }
-
-            parentId.startsWith(PREFIX_ALBUM) ->
-                parentId.removePrefix(PREFIX_ALBUM).toLongOrNull()
-                    ?.let { id -> songsSortedForAlbum(songs.filter { it.albumId == id }) }
-                    .orEmpty().map { songItem(it) }
-
-            parentId.startsWith(PREFIX_ARTIST) ->
-                parentId.removePrefix(PREFIX_ARTIST).toLongOrNull()
-                    ?.let { id -> songs.filter { it.artistId == id }.sortedBy { it.title.lowercase() } }
-                    .orEmpty().map { songItem(it) }
-
-            else -> emptyList()
-        }
+        else -> null
     }
 
+    private fun rootTabs(): List<MediaItem> = listOf(
+        tabNode(TAB_PLAYLISTS, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS),
+        tabNode(TAB_ALBUMS, "Albums", MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS),
+        tabNode(TAB_ARTISTS, "Artists", MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS),
+        tabNode(TAB_SONGS, "Songs", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
+        tabNode(TAB_RECENT, "Recently played", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
+    )
+
+    private fun nodeChildren(parentId: String): List<MediaItem> = when {
+        parentId.startsWith(PREFIX_PLAYLIST) -> playlistSongs(parentId)
+        parentId.startsWith(PREFIX_ALBUM) -> albumSongs(parentId)
+        parentId.startsWith(PREFIX_ARTIST) -> artistSongs(parentId)
+        else -> emptyList()
+    }
+
+    private fun playlistSongs(parentId: String): List<MediaItem> =
+        parentId.removePrefix(PREFIX_PLAYLIST).toLongOrNull()
+            ?.let { songsInPlaylist(it) }.orEmpty().map { songItem(it) }
+
+    private fun albumSongs(parentId: String): List<MediaItem> =
+        parentId.removePrefix(PREFIX_ALBUM).toLongOrNull()
+            ?.let { id -> songsSortedForAlbum(songs.filter { it.albumId == id }) }
+            .orEmpty().map { songItem(it) }
+
+    private fun artistSongs(parentId: String): List<MediaItem> =
+        parentId.removePrefix(PREFIX_ARTIST).toLongOrNull()
+            ?.let { id -> songs.filter { it.artistId == id }.sortedBy { it.title.lowercase() } }
+            .orEmpty().map { songItem(it) }
+
     /** Resolve any browse mediaId (tab, node, or song) to a display [MediaItem]. */
-    fun item(mediaId: String): MediaItem? = when (mediaId) {
+    fun item(mediaId: String): MediaItem? {
+        tabItem(mediaId)?.let { return it }
+        return nodeItem(mediaId)
+    }
+
+    private fun tabItem(mediaId: String): MediaItem? = when (mediaId) {
         ROOT -> rootItem()
         TAB_PLAYLISTS -> tabNode(TAB_PLAYLISTS, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS)
         TAB_ALBUMS -> tabNode(TAB_ALBUMS, "Albums", MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS)
         TAB_ARTISTS -> tabNode(TAB_ARTISTS, "Artists", MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS)
         TAB_SONGS -> tabNode(TAB_SONGS, "Songs", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
         TAB_RECENT -> tabNode(TAB_RECENT, "Recently played", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
-        else -> when {
-            mediaId.startsWith(PREFIX_PLAYLIST) ->
-                mediaId.removePrefix(PREFIX_PLAYLIST).toLongOrNull()
-                    ?.let { id -> playlists.firstOrNull { it.id == id } }?.let { playlistNode(it) }
-            mediaId.startsWith(PREFIX_ALBUM) ->
-                mediaId.removePrefix(PREFIX_ALBUM).toLongOrNull()
-                    ?.let { id -> albums.firstOrNull { it.id == id } }?.let { albumNode(it) }
-            mediaId.startsWith(PREFIX_ARTIST) ->
-                mediaId.removePrefix(PREFIX_ARTIST).toLongOrNull()
-                    ?.let { id -> artists.firstOrNull { it.id == id } }?.let { artistNode(it) }
-            else -> songById(mediaId.toLongOrNull())?.let { songItem(it) }
-        }
+        else -> null
     }
+
+    private fun nodeItem(mediaId: String): MediaItem? = when {
+        mediaId.startsWith(PREFIX_PLAYLIST) -> playlistItem(mediaId)
+        mediaId.startsWith(PREFIX_ALBUM) -> albumItem(mediaId)
+        mediaId.startsWith(PREFIX_ARTIST) -> artistItem(mediaId)
+        else -> songById(mediaId.toLongOrNull())?.let { songItem(it) }
+    }
+
+    private fun playlistItem(mediaId: String): MediaItem? =
+        mediaId.removePrefix(PREFIX_PLAYLIST).toLongOrNull()
+            ?.let { id -> playlists.firstOrNull { it.id == id } }?.let { playlistNode(it) }
+
+    private fun albumItem(mediaId: String): MediaItem? =
+        mediaId.removePrefix(PREFIX_ALBUM).toLongOrNull()
+            ?.let { id -> albums.firstOrNull { it.id == id } }?.let { albumNode(it) }
+
+    private fun artistItem(mediaId: String): MediaItem? =
+        mediaId.removePrefix(PREFIX_ARTIST).toLongOrNull()
+            ?.let { id -> artists.firstOrNull { it.id == id } }?.let { artistNode(it) }
 
     // ── Playback resolution ─────────────────────────────────────────────────
 
@@ -199,9 +222,12 @@ class MusicLibraryTree(context: Context) {
         val songHits = songs.filter {
             it.title.contains(q, true) || it.artist.contains(q, true) || it.album.contains(q, true)
         }.sortedBy { it.title.lowercase() }.map { songItem(it).withGroupTitle("Songs") }
-        val albumHits = albums.filter { it.name.contains(q, true) }.map { albumNode(it).withGroupTitle("Albums") }
-        val artistHits = artists.filter { it.name.contains(q, true) }.map { artistNode(it).withGroupTitle("Artists") }
-        val playlistHits = playlists.filter { it.name.contains(q, true) }.map { playlistNode(it).withGroupTitle("Playlists") }
+        val albumHits = albums.filter { it.name.contains(q, true) }
+            .map { albumNode(it).withGroupTitle("Albums") }
+        val artistHits = artists.filter { it.name.contains(q, true) }
+            .map { artistNode(it).withGroupTitle("Artists") }
+        val playlistHits = playlists.filter { it.name.contains(q, true) }
+            .map { playlistNode(it).withGroupTitle("Playlists") }
         return songHits + albumHits + artistHits + playlistHits
     }
 

@@ -18,6 +18,7 @@ import com.vayunmathur.flashcards.MainActivity
 import com.vayunmathur.flashcards.R
 import com.vayunmathur.flashcards.data.CardState
 import com.vayunmathur.flashcards.data.FlashcardsRepository
+import com.vayunmathur.flashcards.data.getAllCardsImpl
 import com.vayunmathur.library.util.ensureNotificationChannel
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
@@ -49,8 +50,11 @@ object ReviewReminder {
             set(Calendar.MILLISECOND, 0)
             if (before(now)) add(Calendar.DAY_OF_MONTH, 1)
         }
-        return ((next.timeInMillis - now.timeInMillis) / 60_000L).coerceAtLeast(1)
+        return ((next.timeInMillis - now.timeInMillis) / MILLIS_PER_MINUTE).coerceAtLeast(1)
     }
+
+    /** Milliseconds in a minute. */
+    private const val MILLIS_PER_MINUTE = 60_000L
 }
 
 /** Posts a notification when cards are due for review. */
@@ -62,7 +66,7 @@ class ReviewReminderWorker(
     override suspend fun doWork(): Result {
         val now = System.currentTimeMillis()
         val repository = FlashcardsRepository.get(applicationContext)
-        val cards = repository.getAllCards()
+        val cards = repository.getAllCardsImpl()
         val due = cards.count { it.state != CardState.NEW && it.dueDate <= now } +
             cards.count { it.state == CardState.NEW }
         if (due > 0) notify(due)

@@ -42,7 +42,9 @@ class ComposePdfDocument private constructor(private var handle: Long) {
         PdfNative.removePage(handle, index)
     }
 
-    suspend fun save(): ByteArray? = withContext(Dispatchers.IO) { if (closed || handle == 0L) null else PdfNative.saveDocument(handle) }
+    suspend fun save(): ByteArray? = withContext(Dispatchers.IO) {
+        if (closed || handle == 0L) null else PdfNative.saveDocument(handle)
+    }
 
     // P0 critical #5: close() not idempotent double-close crashes native — guard with closed flag + zero handle
     fun close() {

@@ -3,7 +3,6 @@ package com.vayunmathur.euicc.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.activity.compose.BackHandler
-import com.vayunmathur.euicc.Route
 import com.vayunmathur.euicc.platform.DownloadState
 import com.vayunmathur.euicc.ui.download.CompleteContent
 import com.vayunmathur.euicc.ui.download.ConfirmCarrierContent
@@ -11,7 +10,6 @@ import com.vayunmathur.euicc.ui.download.ConfirmationCodeContent
 import com.vayunmathur.euicc.ui.download.FailedContent
 import com.vayunmathur.euicc.ui.download.InstallingContent
 import com.vayunmathur.library.ui.SwappedContent
-import com.vayunmathur.library.util.NavBackStack
 
 /**
  * The download, from authentication to installed profile.
@@ -29,7 +27,6 @@ fun DownloadScreen(
     imei: String?,
     confirmationCode: String?,
     state: DownloadState,
-    backStack: NavBackStack<Route>,
     onStart: (String, String?, String?) -> Unit,
     onConfirm: (String?) -> Unit,
     onSubmitCode: (String) -> Unit,

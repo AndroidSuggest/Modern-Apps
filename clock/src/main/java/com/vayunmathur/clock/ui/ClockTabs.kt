@@ -32,10 +32,10 @@ fun ClockTabs(
             ClockPage(backStack, ds, clockViewModel)
         },
         PagerTab(stringResource(R.string.label_timer), { IconHourglass() }) {
-            TimerPage(backStack, clockViewModel)
+            TimerPage(clockViewModel)
         },
         PagerTab(stringResource(R.string.label_stopwatch), { IconTimer() }) {
-            StopwatchPage(backStack, clockViewModel)
+            StopwatchPage(clockViewModel)
         },
     )
     TabbedPagerScaffold(tabs = tabs, pagerState = pagerState, tabStyle = TabStyle.BottomNav)

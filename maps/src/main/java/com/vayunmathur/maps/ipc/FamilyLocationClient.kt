@@ -115,31 +115,81 @@ class FamilyLocationClient(
     }
 
     private fun parseSnapshot(data: Bundle?): List<FamilyMember> {
-        if (data == null) return emptyList()
-        val ids = data.getLongArray(FamilyLocationProtocol.KEY_IDS) ?: return emptyList()
-        val names = data.getStringArray(FamilyLocationProtocol.KEY_NAMES) ?: return emptyList()
-        val lats = data.getDoubleArray(FamilyLocationProtocol.KEY_LATS) ?: return emptyList()
-        val lngs = data.getDoubleArray(FamilyLocationProtocol.KEY_LNGS) ?: return emptyList()
-        val timestamps = data.getLongArray(FamilyLocationProtocol.KEY_TIMESTAMPS) ?: return emptyList()
-        val batteries = data.getFloatArray(FamilyLocationProtocol.KEY_BATTERIES)
-
+        val arrays = snapshotArrays(data) ?: return emptyList()
         // Guard against a malformed / mismatched payload rather than trusting the
         // arrays line up — take the length they all agree on.
-        val count = minOf(ids.size, names.size, lats.size, lngs.size, timestamps.size)
+        val count = minOf(
+            arrays.ids.size,
+            arrays.names.size,
+            arrays.lats.size,
+            arrays.lngs.size,
+            arrays.timestamps.size,
+        )
         val out = ArrayList<FamilyMember>(count)
         for (i in 0 until count) {
             out.add(
                 FamilyMember(
-                    id = ids[i],
-                    name = names[i],
-                    lat = lats[i],
-                    lng = lngs[i],
-                    timestamp = timestamps[i],
-                    battery = batteries?.getOrNull(i) ?: -1f,
+                    id = arrays.ids[i],
+                    name = arrays.names[i],
+                    lat = arrays.lats[i],
+                    lng = arrays.lngs[i],
+                    timestamp = arrays.timestamps[i],
+                    battery = arrays.batteries?.getOrNull(i) ?: NO_BATTERY,
                 )
             )
         }
         return out
+    }
+
+    private fun snapshotArrays(data: Bundle?): SnapshotArrays? {
+        if (data == null) return null
+        val required = requiredArrays(data) ?: return null
+        return SnapshotArrays(
+            ids = required.ids,
+            names = required.names,
+            lats = required.lats,
+            lngs = required.lngs,
+            timestamps = required.timestamps,
+            batteries = data.getFloatArray(FamilyLocationProtocol.KEY_BATTERIES),
+        )
+    }
+
+    /** The five parallel arrays a snapshot needs; null when any is missing. */
+    private fun requiredArrays(data: Bundle): RequiredArrays? {
+        val ids = data.getLongArray(FamilyLocationProtocol.KEY_IDS) ?: return null
+        val names = data.getStringArray(FamilyLocationProtocol.KEY_NAMES) ?: return null
+        val lats = data.getDoubleArray(FamilyLocationProtocol.KEY_LATS) ?: return null
+        val lngs = data.getDoubleArray(FamilyLocationProtocol.KEY_LNGS) ?: return null
+        val timestamps = data.getLongArray(FamilyLocationProtocol.KEY_TIMESTAMPS) ?: return null
+        return RequiredArrays(ids, names, lats, lngs, timestamps)
+    }
+
+    private data class RequiredArrays(
+        val ids: LongArray,
+        val names: Array<String>,
+        val lats: DoubleArray,
+        val lngs: DoubleArray,
+        val timestamps: LongArray,
+    ) {
+        override fun equals(other: Any?): Boolean = super.equals(other)
+        override fun hashCode(): Int = super.hashCode()
+    }
+
+    private data class SnapshotArrays(
+        val ids: LongArray,
+        val names: Array<String>,
+        val lats: DoubleArray,
+        val lngs: DoubleArray,
+        val timestamps: LongArray,
+        val batteries: FloatArray?,
+    ) {
+        override fun equals(other: Any?): Boolean = super.equals(other)
+        override fun hashCode(): Int = super.hashCode()
+    }
+
+    companion object {
+        /** Battery sentinel when the payload carries no battery array. */
+        private const val NO_BATTERY = -1f
     }
 }
 

@@ -15,6 +15,8 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
+import java.io.IOException
+import java.security.GeneralSecurityException
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.Collections
@@ -128,14 +130,25 @@ class MediaProxyServer(
             tls = credentials.sslContext.socketFactory
             val socket = ServerSocket(0, MAX_CONNECTIONS, InetAddress.getByName("0.0.0.0"))
             server = socket
-            Log.i(TAG, "media proxy listening on ${socket.localPort} for ${addresses.joinToString { it.hostAddress ?: "?" }}")
+            val boundAddresses = addresses.joinToString { it.hostAddress ?: "?" }
+            Log.i(TAG, "media proxy listening on ${socket.localPort} for $boundAddresses")
             accept(socket)
             Endpoint(socket.localPort, credentials.fingerprint)
-        } catch (e: Exception) {
-            Log.w(TAG, "could not start the media proxy", e)
-            stop()
-            null
+        } catch (e: IOException) {
+            failStart(e)
+        } catch (e: IllegalArgumentException) {
+            failStart(e)
+        } catch (e: SecurityException) {
+            failStart(e)
+        } catch (e: GeneralSecurityException) {
+            failStart(e)
         }
+    }
+
+    private fun failStart(e: Exception): Endpoint? {
+        Log.w(TAG, "could not start the media proxy", e)
+        stop()
+        return null
     }
 
     fun stop() {
@@ -155,26 +168,49 @@ class MediaProxyServer(
     private fun accept(socket: ServerSocket) {
         scope.launch {
             while (isActive) {
-                val client = try {
-                    socket.accept()
-                } catch (e: Exception) {
-                    if (isActive) Log.w(TAG, "accept failed", e)
-                    break
-                }
-                // Claimed before the comparison, so admission is atomic: two accepts that each
-                // read the count before either raised it would both have been let in.
-                if (connections.incrementAndGet() > MAX_CONNECTIONS) {
-                    Log.w(TAG, "refusing a connection: already serving $MAX_CONNECTIONS")
-                    connections.decrementAndGet()
-                    runCatching { client.close() }
-                    continue
-                }
-                // Registered here rather than inside `serve`, so a socket accepted moments before a
-                // [stop] is still closed by it even if its coroutine never runs.
-                live += client
-                scope.launch { serve(client) }
+                val client = acceptClient(socket) ?: break
+                admitAndServe(client)
             }
         }
+    }
+
+    /**
+     * Claim a connection slot and serve, or refuse when full.
+     *
+     * The count is claimed before the comparison, so admission is atomic: two accepts that each
+     * read the count before either raised it would both have been let in.
+     */
+    private fun admitAndServe(client: Socket) {
+        if (connections.incrementAndGet() > MAX_CONNECTIONS) {
+            refuseClient(client)
+            return
+        }
+        // Registered here rather than inside `serve`, so a socket accepted moments before a
+        // [stop] is still closed by it even if its coroutine never runs.
+        live += client
+        scope.launch { serve(client) }
+    }
+
+    private fun CoroutineScope.acceptClient(socket: ServerSocket): Socket? = try {
+        socket.accept()
+    } catch (e: IOException) {
+        failAccept(e)
+    } catch (e: SecurityException) {
+        failAccept(e)
+    } catch (e: IllegalArgumentException) {
+        failAccept(e)
+    }
+
+    private fun CoroutineScope.failAccept(e: Exception): Socket? {
+        // A failed accept after [stop] closed the server socket is the teardown itself, not news.
+        if (isActive) Log.w(TAG, "accept failed", e)
+        return null
+    }
+
+    private fun refuseClient(client: Socket) {
+        Log.w(TAG, "refusing a connection: already serving $MAX_CONNECTIONS")
+        connections.decrementAndGet()
+        runCatching { client.close() }
     }
 
     /**
@@ -208,10 +244,12 @@ class MediaProxyServer(
                 report(result.outcome, client)
                 if (!result.reusable) break
             }
-        } catch (e: Exception) {
-            // A player that has finished with a range simply closes, so this is the ordinary end
-            // of a connection as often as it is a fault.
-            Log.d(TAG, "connection from ${client.inetAddress?.hostAddress} ended: ${e.javaClass.simpleName}")
+        } catch (e: IOException) {
+            endConnection(client, e)
+        } catch (e: IllegalStateException) {
+            endConnection(client, e)
+        } catch (e: IllegalArgumentException) {
+            endConnection(client, e)
         } finally {
             live -= client
             // The TLS close first, which writes a `close_notify`: an unknown-length body is delimited
@@ -222,6 +260,12 @@ class MediaProxyServer(
             runCatching { client.close() }
             connections.decrementAndGet()
         }
+    }
+
+    private fun endConnection(client: Socket, e: Exception) {
+        // A player that has finished with a range simply closes, so this is the ordinary end
+        // of a connection as often as it is a fault.
+        Log.d(TAG, "connection from ${client.inetAddress?.hostAddress} ended: ${e.javaClass.simpleName}")
     }
 
     private fun report(outcome: ExchangeOutcome, client: Socket) {

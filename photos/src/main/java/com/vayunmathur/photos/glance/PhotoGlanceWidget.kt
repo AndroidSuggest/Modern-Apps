@@ -33,14 +33,15 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.vayunmathur.library.widgets.DynamicThemeGlance
 import com.vayunmathur.photos.R
-import com.vayunmathur.photos.data.PhotosRepository
+import com.vayunmathur.photos.data.PhotoScanRepository
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class PhotoGlanceWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
 
-        val uris = PhotosRepository.get(context.applicationContext).getStillPhotoUris()
+        val uris = PhotoScanRepository.get(context.applicationContext).getStillPhotoUris()
 
         provideContent {
             var uri by remember(uris) { mutableStateOf(uris.randomOrNull()) }
@@ -74,31 +75,38 @@ class PhotoGlanceWidget : GlanceAppWidget() {
                     }
                 }
             }
-        } catch (e: Throwable) {
+        } catch (e: IllegalStateException) {
             Log.e("PhotoWidget", "providePreview failed", e)
-            // Fallback: avoid system_accent colors that may not resolve in preview host on API 37
-            try {
-                provideContent {
-                    DynamicThemeGlance(context) {
-                        Box(
-                            modifier = GlanceModifier.fillMaxSize()
-                                .background(GlanceTheme.colors.surfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Photos",
-                                style = TextStyle(
-                                    color = GlanceTheme.colors.onSurface,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+            providePreviewFallback(context)
+        } catch (e: IllegalArgumentException) {
+            Log.e("PhotoWidget", "providePreview failed", e)
+            providePreviewFallback(context)
+        }
+    }
+
+    private suspend fun providePreviewFallback(context: Context) {
+        // Fallback: avoid system_accent colors that may not resolve in preview host on API 37
+        try {
+            provideContent {
+                DynamicThemeGlance(context) {
+                    Box(
+                        modifier = GlanceModifier.fillMaxSize()
+                            .background(GlanceTheme.colors.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Photos",
+                            style = TextStyle(
+                                color = GlanceTheme.colors.onSurface,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Medium
                             )
-                        }
+                        )
                     }
                 }
-            } catch (_: Throwable) {
-                // last resort – don't crash setWidgetPreviews
             }
+        } catch (_: Throwable) {
+            // last resort – don't crash setWidgetPreviews
         }
     }
 }
@@ -140,8 +148,11 @@ fun getResizedBitmap(context: Context, uri: Uri, maxSize: Int = 600): Bitmap? {
         contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, options)
         }
-    } catch (e: Exception) {
-        e.printStackTrace()
+    } catch (e: IOException) {
+        Log.e("PhotoWidget", "getResizedBitmap failed for $uri", e)
+        null
+    } catch (e: SecurityException) {
+        Log.e("PhotoWidget", "getResizedBitmap failed for $uri", e)
         null
     }
 }

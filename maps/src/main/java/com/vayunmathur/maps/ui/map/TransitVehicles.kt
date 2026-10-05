@@ -16,7 +16,7 @@ import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.map.MapMarker
 import com.vayunmathur.library.map.MarkerIcon
 import com.vayunmathur.maps.data.transit.TransitStop
-import com.vayunmathur.maps.util.OfflineRouter
+import com.vayunmathur.maps.util.OfflineRouterTransit
 import com.vayunmathur.maps.util.visibleBoundsOrWorld
 import kotlinx.coroutines.delay
 
@@ -153,7 +153,7 @@ fun rememberTransitVehicles(
                 vehicles = if (zoom < VEHICLE_MIN_ZOOM) {
                     emptyList()
                 } else {
-                    OfflineRouter.activeVehicles(
+                    OfflineRouterTransit.activeVehicles(
                         context,
                         minLat = bounds.south,
                         minLon = bounds.west,

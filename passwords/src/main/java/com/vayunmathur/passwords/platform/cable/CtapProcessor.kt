@@ -28,15 +28,15 @@ class CtapProcessor(
         if (command.isEmpty()) return Ctap.response(Ctap.ERR_INVALID_CBOR)
         val payload = command.copyOfRange(1, command.size)
         return try {
-            when (command[0].toInt() and 0xFF) {
+            when (command[0].toInt() and BYTE_MASK) {
                 Ctap.CMD_GET_INFO ->
                     Ctap.response(Ctap.OK, CtapGetInfoResponse().encode())
                 Ctap.CMD_MAKE_CREDENTIAL -> handleMakeCredential(payload)
                 Ctap.CMD_GET_ASSERTION -> handleGetAssertion(payload)
                 else -> Ctap.response(Ctap.ERR_NOT_ALLOWED)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "CTAP processing error", e)
+        } catch (expected: IllegalStateException) {
+            Log.e(TAG, "CTAP processing error", expected)
             Ctap.response(Ctap.ERR_OTHER)
         }
     }
@@ -152,8 +152,9 @@ class CtapProcessor(
 
     companion object {
         private const val TAG = "CtapProcessor"
+        private const val BYTE_MASK = 0xFF
 
         private fun hex(bytes: ByteArray): String =
-            bytes.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+            bytes.joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
     }
 }

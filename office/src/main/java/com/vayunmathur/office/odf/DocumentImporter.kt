@@ -39,8 +39,12 @@ object DocumentImporter {
             )
             "csv" -> OdfParser.parseCsv(readText(context, uri), fileName, ',')
             "tsv", "tab" -> OdfParser.parseCsv(readText(context, uri), fileName, '\t')
-            "md", "markdown" -> MarkdownOdfConverter.markdownToOdf(readText(context, uri), fileName.substringBeforeLast('.'))
-            "html", "htm", "xhtml" -> HtmlOdfConverter.htmlToOdf(readText(context, uri), fileName.substringBeforeLast('.'))
+            "md", "markdown" -> MarkdownOdfConverter.markdownToOdf(
+                readText(context, uri),
+                fileName.substringBeforeLast('.'))
+            "html", "htm", "xhtml" -> HtmlOdfConverter.htmlToOdf(
+                readText(context, uri),
+                fileName.substringBeforeLast('.'))
             "rtf" -> RtfOdfConverter.rtfToOdf(readText(context, uri), fileName.substringBeforeLast('.'))
             "txt", "text", "log" -> plainTextToDoc(readText(context, uri), fileName)
             else -> sniff(context, uri, fileName)

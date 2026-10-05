@@ -43,7 +43,12 @@ class PersistentSignalProtocolStore(
      * libsignal's synchronous crypto path, so it must not block.
      */
     private val onIdentityChanged: (SignalProtocolAddress, IdentityKey) -> Unit = { _, _ -> },
-) : SignalProtocolStore {
+) : SignalProtocolStore, KyberPreKeyStore by RoomKyberPreKeyStore(db) {
+
+    /** Last-resort key storage (not part of the libsignal interface). */
+    fun storeKyberPreKey(kyberPreKeyId: Int, record: KyberPreKeyRecord, lastResort: Boolean) {
+        RoomKyberPreKeyStore(db).storeKyberPreKey(kyberPreKeyId, record, lastResort)
+    }
 
     // -- IdentityKeyStore --
 
@@ -105,8 +110,8 @@ class PersistentSignalProtocolStore(
             if (stored.record.isEmpty()) throw NoSessionException("empty session record for $address")
             try {
                 SessionRecord(stored.record)
-            } catch (e: Exception) {
-                throw NoSessionException("unreadable session record for $address: ${e.message}")
+            } catch (expected: Exception) {
+                throw NoSessionException("unreadable session record for $address: ${expected.message}")
             }
         }
 
@@ -152,8 +157,8 @@ class PersistentSignalProtocolStore(
             ?: throw InvalidKeyIdException("no pre-key $preKeyId")
         return try {
             PreKeyRecord(stored.record)
-        } catch (e: Exception) {
-            throw InvalidKeyIdException("unreadable pre-key $preKeyId: ${e.message}")
+        } catch (expected: Exception) {
+            throw InvalidKeyIdException("unreadable pre-key $preKeyId: ${expected.message}")
         }
     }
 
@@ -175,8 +180,8 @@ class PersistentSignalProtocolStore(
             ?: throw InvalidKeyIdException("no signed pre-key $signedPreKeyId")
         return try {
             SignedPreKeyRecord(stored.record)
-        } catch (e: Exception) {
-            throw InvalidKeyIdException("unreadable signed pre-key $signedPreKeyId: ${e.message}")
+        } catch (expected: Exception) {
+            throw InvalidKeyIdException("unreadable signed pre-key $signedPreKeyId: ${expected.message}")
         }
     }
 
@@ -195,69 +200,6 @@ class PersistentSignalProtocolStore(
 
     override fun removeSignedPreKey(signedPreKeyId: Int) {
         runBlocking { db.e2eSignedPreKeyDao().delete(signedPreKeyId) }
-    }
-
-    // -- KyberPreKeyStore --
-
-    override fun loadKyberPreKey(kyberPreKeyId: Int): KyberPreKeyRecord {
-        val stored = runBlocking { db.e2eKyberPreKeyDao().get(kyberPreKeyId) }
-            ?: throw InvalidKeyIdException("no kyber pre-key $kyberPreKeyId")
-        return try {
-            KyberPreKeyRecord(stored.record)
-        } catch (e: Exception) {
-            throw InvalidKeyIdException("unreadable kyber pre-key $kyberPreKeyId: ${e.message}")
-        }
-    }
-
-    override fun loadKyberPreKeys(): List<KyberPreKeyRecord> =
-        runBlocking { db.e2eKyberPreKeyDao().getAll() }
-            .mapNotNull { runCatching { KyberPreKeyRecord(it.record) }.getOrNull() }
-
-    override fun storeKyberPreKey(kyberPreKeyId: Int, record: KyberPreKeyRecord) {
-        storeKyberPreKey(kyberPreKeyId, record, lastResort = false)
-    }
-
-    fun storeKyberPreKey(kyberPreKeyId: Int, record: KyberPreKeyRecord, lastResort: Boolean) {
-        runBlocking {
-            db.e2eKyberPreKeyDao().insert(
-                SignalE2EKyberPreKey(id = kyberPreKeyId, record = record.serialize(), lastResort = lastResort),
-            )
-        }
-    }
-
-    override fun containsKyberPreKey(kyberPreKeyId: Int): Boolean =
-        runBlocking { db.e2eKyberPreKeyDao().exists(kyberPreKeyId) }
-
-    /**
-     * One-time keys are consumed. Last-resort keys stay, but the
-     * (kyberPreKeyId, signedPreKeyId, baseKey) tuple is recorded so a replayed pre-key message is
-     * rejected instead of establishing a second session off the same key material.
-     */
-    override fun markKyberPreKeyUsed(kyberPreKeyId: Int, signedPreKeyId: Int, baseKey: ECPublicKey) {
-        val stored = runBlocking { db.e2eKyberPreKeyDao().get(kyberPreKeyId) } ?: return
-        if (!stored.lastResort) {
-            runBlocking {
-                db.e2eKyberPreKeyDao().delete(kyberPreKeyId)
-                db.e2eKyberUsedBaseKeyDao().deleteForKyberPreKey(kyberPreKeyId)
-            }
-            return
-        }
-        val baseKeyB64 = Base64.encodeToString(baseKey.serialize(), Base64.NO_WRAP)
-        val seen = runBlocking { db.e2eKyberUsedBaseKeyDao().exists(kyberPreKeyId, signedPreKeyId, baseKeyB64) }
-        if (seen) {
-            throw ReusedBaseKeyException(
-                "kyber pre-key $kyberPreKeyId already used with signed pre-key $signedPreKeyId and this base key",
-            )
-        }
-        runBlocking {
-            db.e2eKyberUsedBaseKeyDao().insert(
-                SignalE2EKyberUsedBaseKey(
-                    kyberPreKeyId = kyberPreKeyId,
-                    signedPreKeyId = signedPreKeyId,
-                    baseKeyB64 = baseKeyB64,
-                ),
-            )
-        }
     }
 
     // -- SenderKeyStore --

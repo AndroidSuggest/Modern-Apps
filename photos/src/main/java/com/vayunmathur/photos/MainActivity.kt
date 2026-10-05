@@ -78,6 +78,8 @@ import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
 
 private const val COLUMN_COUNT_KEY = "photos_column_count"
+private const val MIN_COLUMN_COUNT = 2
+private const val MAX_COLUMN_COUNT = 8
 
 val LocalColumnCount = staticCompositionLocalOf<MutableFloatState> {
     error("No LocalColumnCount provided")
@@ -106,7 +108,7 @@ class MainActivity : FragmentActivity() {
                     mutableFloatStateOf(dataStore.getLong(COLUMN_COUNT_KEY)?.toFloat() ?: 3f)
                 }
                 LaunchedEffect(Unit) {
-                    snapshotFlow { columnCount.floatValue.roundToInt().coerceIn(2, 8) }
+                    snapshotFlow { columnCount.floatValue.roundToInt().coerceIn(MIN_COLUMN_COUNT, MAX_COLUMN_COUNT) }
                         .distinctUntilChanged()
                         .collect { dataStore.setLong(COLUMN_COUNT_KEY, it.toLong()) }
                 }
@@ -191,6 +193,17 @@ internal fun NavBackStack<Route>.pushPhoto(route: Route.PhotoPage) {
     if (last() is Route.PhotoPage) setLast(route) else add(route)
 }
 
+/** Whether leaving [topRoute] should re-lock the vault (opt-in, off by default). */
+private fun shouldRelock(
+    relockOnExit: Boolean,
+    topRoute: Route?,
+    vaultPhotoDao: com.vayunmathur.photos.data.VaultPhotoDao?,
+): Boolean {
+    if (!relockOnExit || topRoute == null || vaultPhotoDao == null) return false
+    // The vault viewer counts as inside the folder.
+    return topRoute !is Route.SecureFolder && topRoute !is Route.VaultViewer
+}
+
 @Composable
 fun Navigation(
     galleryViewModel: GalleryViewModel,
@@ -208,43 +221,15 @@ fun Navigation(
     // The MediaStore _id in a content URI equals Photo.id, so the page can be named up front and
     // render the incoming URI directly while the background index writes the row and the full sync
     // populates the rest of the library for swiping. PhotoPage reconciles to the DB-backed pager.
-    val viewerRoute = remember(viewUri) {
-        viewUri?.let {
-            Route.PhotoPage(
-                runCatching { ContentUris.parseId(it) }.getOrNull() ?: -1L,
-                null,
-                it.toString(),
-            )
-        }
-    }
+    val viewerRoute = remember(viewUri) { viewerRouteFor(viewUri) }
 
     val backStack = rememberNavBackStack<Route>(viewerRoute ?: Route.Gallery)
     val vaultPhotoDao by secureFolderViewModel.vaultPhotoDao.collectAsState()
     val vaultPassword by secureFolderViewModel.vaultPassword.collectAsState()
     val relockOnExit by secureFolderViewModel.relockOnExit.collectAsState()
 
-    // Opt-in re-lock: leaving the Secure Folder (any route other than the
-    // folder itself or the vault viewer, which counts as inside) locks the
-    // vault so the next open requires unlock again. Off by default, which
-    // preserves the current stay-unlocked behaviour.
-    val topRoute = backStack.backStack.lastOrNull()
-    LaunchedEffect(topRoute, relockOnExit) {
-        if (relockOnExit && topRoute != null &&
-            topRoute !is Route.SecureFolder && topRoute !is Route.VaultViewer &&
-            vaultPhotoDao != null
-        ) {
-            secureFolderViewModel.lock()
-        }
-    }
-
-    // Indexed once per incoming URI, and `rememberSaveable` rather than the LaunchedEffect key so
-    // a configuration change does not re-run it.
-    var indexedViewUri by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(viewUri) {
-        if (viewUri == null || indexedViewUri) return@LaunchedEffect
-        indexedViewUri = true
-        galleryViewModel.resolveAndIndex(viewUri) {}
-    }
+    RelockEffect(backStack, relockOnExit, vaultPhotoDao, secureFolderViewModel)
+    IndexViewUriEffect(viewUri, galleryViewModel)
 
     // PhotoPage pops itself when its last remaining photo is deleted. With the viewer as the root
     // there is nothing under it to pop to, and leaving the viewer here means leaving the app: hand
@@ -283,7 +268,7 @@ fun Navigation(
         }
 
         entry<Route.Wallpaper>(metadata = ListDetailPage()) {
-            WallpaperPage(backStack, it.id, it.uri)
+            WallpaperPage(backStack, it.uri)
         }
 
         // Built-in collections, opened from the Albums grid's default tiles
@@ -298,13 +283,65 @@ fun Navigation(
         }
 
         entry<Route.VaultViewer>(metadata = ListDetailPage()) {
-            val password = vaultPassword
-            if (password != null) {
-                VaultViewerPage(backStack, it.vaultId, password, secureFolderViewModel)
-            } else {
-                SecureFolderEntry(backStack, secureFolderViewModel, false, null)
-            }
+            VaultViewerEntry(backStack, it.vaultId, vaultPassword, secureFolderViewModel)
         }
+    }
+}
+
+/** The viewer root for an ACTION_VIEW launch, or null for the normal gallery root. */
+private fun viewerRouteFor(viewUri: Uri?): Route.PhotoPage? {
+    viewUri ?: return null
+    return Route.PhotoPage(
+        runCatching { ContentUris.parseId(viewUri) }.getOrNull() ?: -1L,
+        null,
+        viewUri.toString(),
+    )
+}
+
+/**
+ * Opt-in re-lock: leaving the Secure Folder (any route other than the
+ * folder itself or the vault viewer, which counts as inside) locks the
+ * vault so the next open requires unlock again. Off by default, which
+ * preserves the current stay-unlocked behaviour.
+ */
+@Composable
+private fun RelockEffect(
+    backStack: NavBackStack<Route>,
+    relockOnExit: Boolean,
+    vaultPhotoDao: com.vayunmathur.photos.data.VaultPhotoDao?,
+    secureFolderViewModel: SecureFolderViewModel,
+) {
+    val topRoute = backStack.backStack.lastOrNull()
+    LaunchedEffect(topRoute, relockOnExit) {
+        if (shouldRelock(relockOnExit, topRoute, vaultPhotoDao)) {
+            secureFolderViewModel.lock()
+        }
+    }
+}
+
+/** Index one incoming URI once per launch (survives configuration change). */
+@Composable
+private fun IndexViewUriEffect(viewUri: Uri?, galleryViewModel: GalleryViewModel) {
+    var indexedViewUri by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(viewUri) {
+        if (viewUri == null || indexedViewUri) return@LaunchedEffect
+        indexedViewUri = true
+        galleryViewModel.resolveAndIndex(viewUri) {}
+    }
+}
+
+@Composable
+private fun VaultViewerEntry(
+    backStack: NavBackStack<Route>,
+    vaultId: Long,
+    vaultPassword: String?,
+    secureFolderViewModel: SecureFolderViewModel,
+) {
+    val password = vaultPassword
+    if (password != null) {
+        VaultViewerPage(backStack, vaultId, password, secureFolderViewModel)
+    } else {
+        SecureFolderEntry(backStack, secureFolderViewModel, false, null)
     }
 }
 

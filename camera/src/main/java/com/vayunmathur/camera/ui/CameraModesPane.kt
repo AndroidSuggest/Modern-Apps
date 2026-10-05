@@ -24,7 +24,6 @@ internal fun CameraModesPane(
     )
 
     BottomBar(
-        cameraMode = cameraMode,
         isPhotoType = isPhotoType,
         iconRotation = iconRotation,
         onPickerChanged = onPickerChanged,

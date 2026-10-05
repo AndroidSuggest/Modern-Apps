@@ -22,7 +22,9 @@
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{Cursor, Read};
-use std::os::unix::fs::FileExt;
+// `FromRawFd` (fd → File) only exists on unix; the host fallback in
+// `geocoder_part1.rs` never touches fds.
+#[cfg(unix)]
 use std::os::unix::io::FromRawFd;
 use std::sync::Mutex;
 
@@ -73,9 +75,29 @@ struct Src {
     base: u64,
 }
 impl Src {
+    /// Positional read that never moves the file cursor, so shared readers stay
+    /// thread-safe. `pread` on unix/Android, `seek_read` (same semantics) on
+    /// Windows hosts, a `try_clone` + seek fallback anywhere else. Only the host
+    /// `cargo check` smoke test exercises the non-unix paths.
     fn read(&self, pos: u64, len: usize) -> Option<Vec<u8>> {
         let mut b = vec![0u8; len];
-        self.file.read_exact_at(&mut b, self.base + pos).ok()?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::FileExt;
+            self.file.read_exact_at(&mut b, self.base + pos).ok()?;
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::FileExt;
+            self.file.seek_read(&mut b, self.base + pos).ok()?;
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            use std::io::{Read, Seek, SeekFrom};
+            let mut f = self.file.try_clone().ok()?;
+            f.seek(SeekFrom::Start(self.base + pos)).ok()?;
+            f.read_exact(&mut b).ok()?;
+        }
         Some(b)
     }
     fn rd_u32(&self, pos: u64) -> Option<u32> {

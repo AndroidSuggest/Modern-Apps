@@ -20,6 +20,15 @@ internal const val KEY_POSTCODE = 7
 internal const val KEY_CUISINE = 8
 internal const val KEY_WHEELCHAIR = 9
 
+/** Mask for one unsigned byte read out of the file. */
+private const val ATTR_BYTE_MASK = 0xFF
+/** Mask for one unsigned short read out of the file. */
+private const val ATTR_U16_MASK = 0xFFFF
+/** Offset of the u16 length within one `u8 key, u16 len` field header. */
+private const val ATTR_LEN_OFF = 1
+/** Bytes of one `u8 key, u16 len` field header. */
+private const val ATTR_HEADER_LEN = 3
+
 /**
  * Walk one record's `u8 key, u16 len, value` fields.
  *
@@ -29,6 +38,30 @@ internal const val KEY_WHEELCHAIR = 9
  * understand out of a newer file.
  */
 internal fun decodeAttrRecord(buf: MappedByteBuffer, from: Int, to: Int): PoiIndex.PoiAttributes? {
+    val fields = AttrFields()
+    var i = from
+    while (i + ATTR_HEADER_LEN <= to) {
+        val key = buf.get(i).toInt() and ATTR_BYTE_MASK
+        val len = buf.getShort(i + ATTR_LEN_OFF).toInt() and ATTR_U16_MASK
+        val start = i + ATTR_HEADER_LEN
+        if (start + len > to) break
+        // Only decode the bytes of a key we are going to keep.
+        val value: String? = if (isKnownKey(key)) stringAt(buf, start, len) else null
+        fields.set(key, value)
+        i = start + len
+    }
+    return fields.build()
+}
+
+/** Known record keys (unknown ones are stepped over, not decoded). */
+private fun isKnownKey(key: Int): Boolean = when (key) {
+    KEY_OPENING_HOURS, KEY_PHONE, KEY_WEBSITE, KEY_HOUSENUMBER, KEY_STREET,
+    KEY_CITY, KEY_POSTCODE, KEY_CUISINE, KEY_WHEELCHAIR -> true
+    else -> false
+}
+
+/** Mutable decode accumulator for one attribute record. */
+private class AttrFields {
     var openingHours: String? = null
     var phone: String? = null
     var website: String? = null
@@ -39,19 +72,7 @@ internal fun decodeAttrRecord(buf: MappedByteBuffer, from: Int, to: Int): PoiInd
     var cuisine: String? = null
     var wheelchair: String? = null
 
-    var i = from
-    while (i + 3 <= to) {
-        val key = buf.get(i).toInt() and 0xFF
-        val len = buf.getShort(i + 1).toInt() and 0xFFFF
-        val start = i + 3
-        if (start + len > to) break
-        // Only decode the bytes of a key we are going to keep.
-        val value: String? = when (key) {
-            KEY_OPENING_HOURS, KEY_PHONE, KEY_WEBSITE, KEY_HOUSENUMBER, KEY_STREET,
-            KEY_CITY, KEY_POSTCODE, KEY_CUISINE, KEY_WHEELCHAIR ->
-                stringAt(buf, start, len)
-            else -> null
-        }
+    fun set(key: Int, value: String?) {
         when (key) {
             KEY_OPENING_HOURS -> openingHours = value
             KEY_PHONE -> phone = value
@@ -63,13 +84,14 @@ internal fun decodeAttrRecord(buf: MappedByteBuffer, from: Int, to: Int): PoiInd
             KEY_CUISINE -> cuisine = value
             KEY_WHEELCHAIR -> wheelchair = value
         }
-        i = start + len
     }
 
-    val decoded = PoiIndex.PoiAttributes(
-        openingHours, phone, website, houseNumber, street, city, postcode, cuisine, wheelchair,
-    )
-    return decoded.takeUnless { it.isEmpty }
+    fun build(): PoiIndex.PoiAttributes? {
+        val decoded = PoiIndex.PoiAttributes(
+            openingHours, phone, website, houseNumber, street, city, postcode, cuisine, wheelchair,
+        )
+        return decoded.takeUnless { it.isEmpty }
+    }
 }
 
 private fun stringAt(buf: MappedByteBuffer, off: Int, len: Int): String? {

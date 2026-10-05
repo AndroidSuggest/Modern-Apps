@@ -60,9 +60,12 @@ fun icalLocalDateTime(millis: Long, timeZone: TimeZone): String =
 fun LocalDate.toIcalUtcDateTime(timeOfDay: LocalTime, timeZone: TimeZone): String =
     atTime(timeOfDay).toInstant(timeZone).toLocalDateTime(TimeZone.UTC).format(UtcBasicDateTimeFormat)
 
+/** Length of the YYYYMMDD prefix parsed as a date (a trailing time is ignored). */
+private const val BASIC_DATE_PREFIX_LENGTH = 8
+
 /** Parses a basic iCal date (YYYYMMDD, optionally followed by a time) to a [LocalDate]. */
 fun parseIcalBasicDate(value: String): LocalDate? =
-    runCatching { AllDayFormat.parse(value.take(8)) }.getOrNull()
+    runCatching { AllDayFormat.parse(value.take(BASIC_DATE_PREFIX_LENGTH)) }.getOrNull()
 
 /** Parses an RFC 5545 UNTIL value (date or datetime) to a [LocalDate] in [timeZone]. */
 fun parseIcalUntil(value: String, timeZone: TimeZone): LocalDate? = runCatching {

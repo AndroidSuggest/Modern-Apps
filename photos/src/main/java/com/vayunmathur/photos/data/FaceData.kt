@@ -116,7 +116,10 @@ interface FaceDao {
      * row. `COALESCE` reads the *current* name rather than a snapshot, for the
      * same reason [updateClusterCentroid] exists.
      */
-    @Query("UPDATE Person SET centroid = :centroid, faceCount = :faceCount, name = COALESCE(name, :fallbackName) WHERE id = :id")
+    @Query(
+        "UPDATE Person SET centroid = :centroid, faceCount = :faceCount, " +
+            "name = COALESCE(name, :fallbackName) WHERE id = :id"
+    )
     suspend fun mergeClusterInto(id: Long, centroid: ByteArray, faceCount: Int, fallbackName: String?)
 
     @Insert

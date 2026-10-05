@@ -16,7 +16,10 @@ x25519-dalek = { version = "2.0.1", features = ["reusable_secrets", "static_secr
 aead = "0.5.2"
 chacha20poly1305 = "0.10.1"
 blake2 = "0.11.0"
-hmac = "0.12.1"
+# hmac 0.13 (digest 0.11 stack) to match the blake2 0.11 pin above and the
+# workspace hmac pin: SimpleHmac<Blake2s256> mixes both crates' traits, so they
+# must share one digest major. (Same class as the communicate hmac 0.12->0.13 fix.)
+hmac.workspace = true
 rand.workspace = true
 rand_core.workspace = true
 getrandom.workspace = true

@@ -5,7 +5,7 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.util.Base64
 import android.util.Log
-import com.vayunmathur.share.protocol.ShareNative
+import com.vayunmathur.share.protocol.ShareNativeDiscovery
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +27,7 @@ private const val TAG = "NsdDiscovery"
  * Falls back to the literal only if the native library cannot be reached.
  */
 val SHARE_SERVICE_TYPE: String =
-    runCatching { ShareNative.nativeMdnsServiceType() }.getOrNull() ?: "_FC9F5ED42C8A._tcp"
+    runCatching { ShareNativeDiscovery.nativeMdnsServiceType() }.getOrNull() ?: "_FC9F5ED42C8A._tcp"
 
 /** TXT attribute GMS reads the peer's address from — `p000\dsmo.java:127`, `:550`. */
 private const val TXT_IPV4 = "IPv4"
@@ -102,6 +102,9 @@ class NsdDiscoveryManager(private val context: Context) {
      * Returns the instance name that was registered, or null when the record could not be
      * built: a malformed one is silently invisible, so there is no fallback.
      */
+    // Broad catch is deliberate: NSD registration throws undocumented
+    // RuntimeExceptions (not just SecurityException) on some stacks.
+    @Suppress("TooGenericExceptionCaught")
     fun advertise(
         endpointId: String,
         endpointInfo: ByteArray,
@@ -109,28 +112,14 @@ class NsdDiscoveryManager(private val context: Context) {
         localAddress: String? = null,
     ): String? {
         val mgr = nsdManager ?: run {
-            Log.w(TAG, "NsdManager unavailable — cannot advertise")
+            Log.w(TAG, "NsdManager unavailable - cannot advertise")
             return null
         }
-        val serviceInfoBytes = try {
-            ShareNative.nativeBuildWifiLanServiceInfo(endpointId)
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "libshare_nearby unavailable — refusing to advertise a guessed format", e)
-            return null
-        }
-        if (serviceInfoBytes == null) {
-            Log.w(TAG, "endpointId '$endpointId' is not 4 ASCII characters — cannot advertise")
-            return null
-        }
-        if (endpointInfo.isEmpty()) {
-            Log.w(TAG, "empty endpointInfo — a peer would drop the record")
-            return null
-        }
-        val instance = encodeBase64(serviceInfoBytes)
+        val record = buildAdvertiseRecord(endpointId, endpointInfo, port, localAddress) ?: return null
         // Compare against what was requested, not against `registeredServiceName`: NSD may
         // rename the instance on a conflict, and re-registering every call would churn.
         if (advertisedPort == port &&
-            advertisedInstance == instance &&
+            advertisedInstance == record.instance &&
             advertisedEndpointInfo.contentEquals(endpointInfo)
         ) {
             return registeredServiceName
@@ -138,7 +127,41 @@ class NsdDiscoveryManager(private val context: Context) {
         unadvertise()
         advertisedPort = port
         advertisedEndpointInfo = endpointInfo
-        advertisedInstance = instance
+        advertisedInstance = record.instance
+        val listener = registrationListenerFor(port, endpointId, endpointInfo)
+        registrationListener = listener
+        try {
+            mgr.registerService(record.serviceInfo, NsdManager.PROTOCOL_DNS_SD, listener)
+        } catch (e: SecurityException) {
+            // Android 16+ Local Network Protections: ACCESS_LOCAL_NETWORK is missing or was
+            // denied. Nothing about the record is wrong; the OS blocks mDNS outright.
+            Log.e(TAG, "mDNS blocked — ACCESS_LOCAL_NETWORK not granted, so :share is invisible", e)
+            clearAdvertiseState()
+            registrationListener = null
+            return null
+        } catch (e: Exception) {
+            Log.w(TAG, "registerService threw", e)
+            clearAdvertiseState()
+            registrationListener = null
+            return null
+        }
+        return record.instance
+    }
+
+    private data class AdvertiseRecord(val instance: String, val serviceInfo: NsdServiceInfo)
+
+    private fun buildAdvertiseRecord(
+        endpointId: String,
+        endpointInfo: ByteArray,
+        port: Int,
+        localAddress: String?,
+    ): AdvertiseRecord? {
+        val serviceInfoBytes = serviceInfoBytes(endpointId) ?: return null
+        if (endpointInfo.isEmpty()) {
+            Log.w(TAG, "empty endpointInfo - a peer would drop the record")
+            return null
+        }
+        val instance = encodeBase64(serviceInfoBytes)
         val serviceInfo = NsdServiceInfo().apply {
             serviceName = instance
             serviceType = SHARE_SERVICE_TYPE
@@ -146,55 +169,56 @@ class NsdDiscoveryManager(private val context: Context) {
             setAttribute(TXT_ENDPOINT_INFO, encodeBase64(endpointInfo))
             if (localAddress != null) setAttribute(TXT_IPV4, localAddress)
         }
-        val listener = object : NsdManager.RegistrationListener {
-            override fun onServiceRegistered(info: NsdServiceInfo) {
-                registeredServiceName = info.serviceName
-                Log.i(
-                    TAG,
-                    "advertised $SHARE_SERVICE_TYPE as ${info.serviceName} on port $port " +
-                        "(endpointId=$endpointId, ${endpointInfo.size}B endpointInfo)",
-                )
-            }
+        return AdvertiseRecord(instance, serviceInfo)
+    }
 
-            override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                Log.w(TAG, "registration failed: $errorCode")
-                registeredServiceName = null
-                advertisedPort = 0
-                advertisedEndpointInfo = null
-                advertisedInstance = null
-            }
-
-            override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {
-                Log.d(TAG, "unregistered ${serviceInfo.serviceName}")
-            }
-
-            override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                Log.w(TAG, "unregistration failed: $errorCode")
-            }
+    private fun registrationListenerFor(
+        port: Int,
+        endpointId: String,
+        endpointInfo: ByteArray,
+    ): NsdManager.RegistrationListener = object : NsdManager.RegistrationListener {
+        override fun onServiceRegistered(info: NsdServiceInfo) {
+            registeredServiceName = info.serviceName
+            Log.i(
+                TAG,
+                "advertised $SHARE_SERVICE_TYPE as ${info.serviceName} on port $port " +
+                    "(endpointId=$endpointId, ${endpointInfo.size}B endpointInfo)",
+            )
         }
-        registrationListener = listener
-        try {
-            mgr.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, listener)
-        } catch (e: SecurityException) {
-            // Android 16+ Local Network Protections: ACCESS_LOCAL_NETWORK is missing or was
-            // denied. Nothing about the record is wrong; the OS blocks mDNS outright.
-            Log.e(TAG, "mDNS blocked — ACCESS_LOCAL_NETWORK not granted, so :share is invisible", e)
-            registrationListener = null
-            registeredServiceName = null
-            advertisedPort = 0
-            advertisedEndpointInfo = null
-            advertisedInstance = null
-            return null
-        } catch (e: Exception) {
-            Log.w(TAG, "registerService threw", e)
-            registrationListener = null
-            registeredServiceName = null
-            advertisedPort = 0
-            advertisedEndpointInfo = null
-            advertisedInstance = null
+
+        override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+            Log.w(TAG, "registration failed: $errorCode")
+            clearAdvertiseState()
+        }
+
+        override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {
+            Log.d(TAG, "unregistered ${serviceInfo.serviceName}")
+        }
+
+        override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+            Log.w(TAG, "unregistration failed: $errorCode")
+        }
+    }
+
+    private fun clearAdvertiseState() {
+        registeredServiceName = null
+        advertisedPort = 0
+        advertisedEndpointInfo = null
+        advertisedInstance = null
+    }
+
+    private fun serviceInfoBytes(endpointId: String): ByteArray? {
+        val serviceInfoBytes = try {
+            ShareNativeDiscovery.nativeBuildWifiLanServiceInfo(endpointId)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "libshare_nearby unavailable - refusing to advertise a guessed format", e)
             return null
         }
-        return instance
+        if (serviceInfoBytes == null) {
+            Log.w(TAG, "endpointId '$endpointId' is not 4 ASCII characters - cannot advertise")
+            return null
+        }
+        return serviceInfoBytes
     }
 
     fun unadvertise() {
@@ -228,9 +252,29 @@ class NsdDiscoveryManager(private val context: Context) {
     private fun toNearbyDevice(info: NsdServiceInfo): NearbyDevice? {
         val instance = info.serviceName ?: return null
         if (instance == registeredServiceName || instance == advertisedInstance) {
-            // "Wifi LAN discovered service %s, but that's us. Ignoring." — dsmo.java:303-305.
+            // "Wifi LAN discovered service %s, but that's us. Ignoring." - dsmo.java:303-305.
             return null
         }
+        val parsed = parseDiscoveredRecord(instance, info) ?: return null
+        // GMS prefers the IPv4 TXT attribute over the resolved host
+        // (p000\dsmo.java:127-134), so mirror that order.
+        val host = textAttribute(info, TXT_IPV4) ?: info.host?.hostAddress
+        val port = info.port
+        return NearbyDevice(
+            endpointId = parsed.endpointId,
+            // A contact-only peer publishes no name; it is still connectable.
+            endpointName = parsed.deviceName ?: parsed.endpointId,
+            serviceId = instance,
+            serviceName = instance,
+            host = host,
+            port = if (port > 0) port else null,
+            source = DiscoverySource.Nsd,
+        )
+    }
+
+    private data class DiscoveredPeer(val endpointId: String, val deviceName: String?)
+
+    private fun parseDiscoveredRecord(instance: String, info: NsdServiceInfo): DiscoveredPeer? {
         val serviceInfoBytes = decodeBase64(instance) ?: run {
             Log.d(TAG, "skipping $instance: instance name is not Base64")
             return null
@@ -240,34 +284,24 @@ class NsdDiscoveryManager(private val context: Context) {
             Log.d(TAG, "skipping $instance: no usable '$TXT_ENDPOINT_INFO' attribute")
             return null
         }
-        val wifiLan = ShareNative.parseWifiLanServiceInfo(serviceInfoBytes) ?: run {
+        val wifiLan = ShareNativeDiscovery.parseWifiLanServiceInfo(serviceInfoBytes) ?: run {
             Log.d(TAG, "skipping $instance: not a WifiLanServiceInfo")
             return null
         }
-        val endpointInfo = ShareNative.parseEndpointInfo(endpointInfoBytes) ?: run {
+        val endpointInfo = ShareNativeDiscovery.parseEndpointInfo(endpointInfoBytes) ?: run {
             Log.d(TAG, "skipping $instance: endpoint info would be rejected")
             return null
         }
-        // GMS prefers the IPv4 TXT attribute over the resolved host
-        // (p000\dsmo.java:127-134), so mirror that order.
-        val host = textAttribute(info, TXT_IPV4) ?: info.host?.hostAddress
-        val port = info.port
-        return NearbyDevice(
-            endpointId = wifiLan.endpointId,
-            // A contact-only peer publishes no name; it is still connectable.
-            endpointName = endpointInfo.deviceName ?: wifiLan.endpointId,
-            serviceId = instance,
-            serviceName = instance,
-            host = host,
-            port = if (port > 0) port else null,
-            source = DiscoverySource.Nsd,
-        )
+        return DiscoveredPeer(wifiLan.endpointId, endpointInfo.deviceName)
     }
 
     /**
      * Start DNS-SD discovery for [SHARE_SERVICE_TYPE] and emit [NearbyDevice] values as
      * services are found. Cancellation tears down the discovery listener.
      */
+    // Broad catch is deliberate: NSD discovery throws undocumented
+    // RuntimeExceptions (not just SecurityException) on some stacks.
+    @Suppress("TooGenericExceptionCaught")
     fun discover(): Flow<NearbyDevice> = callbackFlow {
         val mgr = nsdManager ?: run {
             close()

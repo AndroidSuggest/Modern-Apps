@@ -7,6 +7,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.vayunmathur.launcher.Route
 import com.vayunmathur.launcher.platform.LauncherViewModel
+import com.vayunmathur.launcher.platform.LauncherWidgetOpsHolder
+import com.vayunmathur.launcher.platform.openItemMenuImpl
 import com.vayunmathur.library.util.NavBackStack
 
 /**
@@ -33,14 +35,14 @@ fun HomePage(backStack: NavBackStack<Route>, viewModel: LauncherViewModel) {
     val itemMenuState by viewModel.itemMenu.collectAsState()
     val widgetPickerState by viewModel.widgetPicker.collectAsState()
 
-    val onOpenItemMenu = remember(viewModel) { { id: Long -> viewModel.openItemMenu(id) } }
+    val onOpenItemMenu = remember(viewModel) { { id: Long -> viewModel.openItemMenuImpl(id) } }
     val onPickWallpaper = remember(viewModel) { { viewModel.pickWallpaper() } }
     val widgetView = remember(viewModel) {
-        { id: Int -> viewModel.widgetView(id) }
+        { id: Int -> LauncherWidgetOpsHolder.hostedView(id) }
     }
     val updateWidgetSize = remember(viewModel) {
         { view: AppWidgetHostView, width: Int, height: Int ->
-            viewModel.updateWidgetSize(view, width, height)
+            LauncherWidgetOpsHolder.updateSize(view, width, height)
         }
     }
     val onOpenSettings = remember(backStack) { { backStack.add(Route.Settings) } }

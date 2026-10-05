@@ -81,7 +81,9 @@ class CastDiscoveryManager(context: Context) {
                             _devices.update { merge(it, device) }
                         }
                     })
-                } catch (e: Exception) {
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "resolveService threw for ${service.serviceName}", e)
+                } catch (e: IllegalArgumentException) {
                     Log.w(TAG, "resolveService threw for ${service.serviceName}", e)
                 }
             }
@@ -115,7 +117,7 @@ class CastDiscoveryManager(context: Context) {
             discoveryListener = null
             close()
             return@callbackFlow
-        } catch (e: Exception) {
+        } catch (e: IllegalArgumentException) {
             Log.w(TAG, "discoverServices threw", e)
             discoveryListener = null
             close(e)
@@ -124,7 +126,8 @@ class CastDiscoveryManager(context: Context) {
         awaitClose {
             try {
                 discoveryListener?.let { manager.stopServiceDiscovery(it) }
-            } catch (_: Exception) {
+            } catch (_: IllegalArgumentException) {
+            } catch (_: SecurityException) {
             }
             discoveryListener = null
         }

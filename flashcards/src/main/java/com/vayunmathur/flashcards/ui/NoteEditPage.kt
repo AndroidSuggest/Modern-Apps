@@ -33,7 +33,11 @@ import com.vayunmathur.flashcards.R
 import com.vayunmathur.flashcards.Route
 import com.vayunmathur.flashcards.util.DeckOption
 import com.vayunmathur.flashcards.util.FlashcardsViewModel
+import com.vayunmathur.flashcards.util.saveNoteImpl
+import com.vayunmathur.flashcards.util.deleteNoteImpl
+import com.vayunmathur.flashcards.util.setNoteSuspendedImpl
 import com.vayunmathur.flashcards.util.MediaStore
+import com.vayunmathur.flashcards.util.noteByIdImpl
 import com.vayunmathur.flashcards.util.NoteEditActions
 import com.vayunmathur.flashcards.util.NoteEditUiState
 import com.vayunmathur.flashcards.util.NoteTypeConfig
@@ -69,7 +73,7 @@ fun NoteEditPage(
     deckId: Long,
     noteId: Long,
 ) {
-    val dbNote by remember(noteId) { viewModel.noteById(noteId) }
+    val dbNote by remember(noteId) { viewModel.noteByIdImpl(noteId) }
         .collectAsStateWithLifecycle(null)
     val noteTypes by viewModel.noteTypes.collectAsStateWithLifecycle()
     val decks by viewModel.decks.collectAsStateWithLifecycle()
@@ -101,15 +105,15 @@ fun NoteEditPage(
         object : NoteEditActions {
             override fun back() { backStack.pop() }
             override fun save(noteTypeId: Long, deckId: Long, fieldValues: List<String>, tags: String) {
-                viewModel.saveNote(noteId, noteTypeId, deckId, fieldValues, tags)
+                viewModel.saveNoteImpl(noteId, noteTypeId, deckId, fieldValues, tags)
                 backStack.pop()
             }
             override fun deleteNote() {
-                dbNote?.let { viewModel.deleteNote(it) }
+                dbNote?.let { viewModel.deleteNoteImpl(it) }
                 backStack.pop()
             }
             override fun setSuspended(suspended: Boolean) {
-                viewModel.setNoteSuspended(noteId, suspended)
+                viewModel.setNoteSuspendedImpl(noteId, suspended)
             }
         }
     }

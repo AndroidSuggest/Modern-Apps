@@ -5,13 +5,25 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -24,7 +36,20 @@ import com.vayunmathur.email.platform.EmailViewModel
 import com.vayunmathur.email.ui.composer.EmailHtmlEditor
 import com.vayunmathur.email.ui.composer.EmailHtmlEditorController
 import com.vayunmathur.email.ui.composer.InlineAttachment
-import com.vayunmathur.library.ui.*
+import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
+import com.vayunmathur.library.ui.DropdownMenu
+import com.vayunmathur.library.ui.DropdownMenuItem
+import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.IconAttachment
+import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconImage
+import com.vayunmathur.library.ui.IconSend
+import com.vayunmathur.library.ui.LabeledTextField
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
+import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.util.AppMessages
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
@@ -95,7 +120,7 @@ fun ComposerScreen(
     var draftLoaded by remember { mutableStateOf(draftId == null) }
     LaunchedEffect(draftId) {
         if (draftId != null) {
-            viewModel.loadDraft(draftId)?.let { d ->
+            viewModel.draftsActions.load(draftId)?.let { d ->
                 to = d.to; cc = d.cc; bcc = d.bcc
                 if (d.cc.isNotBlank() || d.bcc.isNotBlank()) showCcBcc = true
                 subject = d.subject; bodyController.setHtml(d.body)
@@ -130,7 +155,7 @@ fun ComposerScreen(
                 val hasContent = to.isNotBlank() || cc.isNotBlank() || bcc.isNotBlank() ||
                     subject.isNotBlank() || bodyController.html.isNotBlank()
                 if (hasContent) {
-                    viewModel.saveDraft(currentDraftId, acc.email, to, cc, bcc, subject, bodyController.html) { id ->
+                    viewModel.draftsActions.save(currentDraftId, acc.email, to, cc, bcc, subject, bodyController.html) { id ->
                         currentDraftId = id
                     }
                 }
@@ -208,7 +233,7 @@ fun ComposerScreen(
                     val schedule = { at: Long ->
                         showSchedule = false
                         fromAccount?.let { acc ->
-                            viewModel.scheduleSend(
+                            viewModel.send.schedule(
                                 account = acc, to = to, subject = subject,
                                 body = bodyController.html,
                                 asHtml = true,
@@ -217,7 +242,7 @@ fun ComposerScreen(
                                 inlineImages = bodyController.toInlineAttachments(),
                                 inReplyTo = inReplyTo,
                                 references = references, scheduledAt = at,
-                            ) { currentDraftId?.let { viewModel.deleteDraft(it) } }
+                            ) { currentDraftId?.let { viewModel.draftsActions.delete(it) } }
                             AppMessages.show(resources.getString(R.string.scheduled))
                             onBack()
                         }
@@ -230,7 +255,7 @@ fun ComposerScreen(
             IconButton(onClick = {
                 val acc = fromAccount ?: return@IconButton
                 sending = true
-                viewModel.sendEmailFrom(
+                viewModel.send.sendFrom(
                     account = acc,
                     to = to,
                     subject = subject,
@@ -244,7 +269,7 @@ fun ComposerScreen(
                     references = references,
                     onSuccess = {
                         sending = false
-                        currentDraftId?.let { viewModel.deleteDraft(it) }
+                        currentDraftId?.let { viewModel.draftsActions.delete(it) }
                         AppMessages.show(resources.getString(R.string.message_sent))
                         onBack()
                     },

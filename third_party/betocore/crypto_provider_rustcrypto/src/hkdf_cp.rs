@@ -13,40 +13,16 @@
 // limitations under the License.
 
 use crypto_provider::hkdf::InvalidLength;
-use hmac::digest::block_buffer::Eager;
-use hmac::digest::consts::U256;
-use hmac::digest::core_api::{
-    BlockSizeUser, BufferKindUser, CoreProxy, FixedOutputCore, UpdateCore,
-};
-use hmac::digest::typenum::{IsLess, Le, NonZero};
-use hmac::digest::{HashMarker, OutputSizeUser};
+use hmac::EagerHash;
 
 /// RustCrypto based hkdf implementation
 pub struct Hkdf<D>(hkdf::Hkdf<D>)
 where
-    D: OutputSizeUser,
-    D: CoreProxy,
-    D::Core: HashMarker
-        + UpdateCore
-        + FixedOutputCore
-        + BufferKindUser<BufferKind = Eager>
-        + Default
-        + Clone,
-    <D::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<D::Core as BlockSizeUser>::BlockSize, U256>: NonZero;
+    D: EagerHash;
 
 impl<D> crypto_provider::hkdf::Hkdf for Hkdf<D>
 where
-    D: OutputSizeUser,
-    D: CoreProxy,
-    D::Core: HashMarker
-        + UpdateCore
-        + FixedOutputCore
-        + BufferKindUser<BufferKind = Eager>
-        + Default
-        + Clone,
-    <D::Core as BlockSizeUser>::BlockSize: IsLess<U256>,
-    Le<<D::Core as BlockSizeUser>::BlockSize, U256>: NonZero,
+    D: EagerHash,
 {
     fn new(salt: Option<&[u8]>, ikm: &[u8]) -> Self {
         Hkdf(hkdf::Hkdf::new(salt, ikm))

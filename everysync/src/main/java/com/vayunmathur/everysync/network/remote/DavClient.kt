@@ -41,8 +41,15 @@ class DavClient(private val authHeader: () -> String) {
     private fun authHeaders(extra: Map<String, String> = emptyMap()): Map<String, String> =
         mapOf("Authorization" to authHeader()) + extra
 
-    private suspend fun request(url: String, method: String, headers: Map<String, String>, body: String?): SimpleResponse =
-        NetworkClient.performRequest(url, method, headers, body)
+    private suspend fun request(
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        body: String?,
+    ): SimpleResponse = NetworkClient.performRequest(url, method, headers, body)
+
+    private fun davHeaders(depth: String): Map<String, String> =
+        authHeaders(mapOf("Depth" to depth, "Content-Type" to "application/xml"))
 
     /**
      * Discover addressbook or calendar collections for the account. Follows the
@@ -61,10 +68,14 @@ class DavClient(private val authHeader: () -> String) {
             // 3. List collections under the home-set; fall back to the base URL.
             homeSet?.let { out += listCollectionsUnder(it, isCalendar) }
             if (out.isEmpty()) out += listCollectionsUnder(baseUrl, isCalendar)
-        } catch (e: Exception) {
-            Log.e(TAG, "discoverCollections failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "discoverCollections failed", expected)
         }
-        Log.i(TAG, "discoverCollections(isCalendar=$isCalendar) base=$baseUrl -> ${out.size} collection(s): ${out.map { it.url }}")
+        Log.i(
+            TAG,
+            "discoverCollections(isCalendar=$isCalendar) base=$baseUrl -> " +
+                "${out.size} collection(s): ${out.map { it.url }}",
+        )
         return out
     }
 
@@ -72,7 +83,8 @@ class DavClient(private val authHeader: () -> String) {
     private suspend fun findPrincipal(baseUrl: String, isCalendar: Boolean): String? {
         val body = """<?xml version="1.0"?>
             <d:propfind xmlns:d="DAV:"><d:prop><d:current-user-principal/></d:prop></d:propfind>"""
-        val wellKnown = origin(baseUrl) + if (isCalendar) "/.well-known/caldav" else "/.well-known/carddav"
+        val wellKnownSuffix = if (isCalendar) "/.well-known/caldav" else "/.well-known/carddav"
+        val wellKnown = origin(baseUrl) + wellKnownSuffix
         for (url in listOf(baseUrl, wellKnown)) {
             val href = firstHref(url, "0", body, "current-user-principal")
             if (href != null) return href
@@ -97,21 +109,11 @@ class DavClient(private val authHeader: () -> String) {
 
     /** Depth-1 PROPFIND that returns every calendar/addressbook collection under [url]. */
     private suspend fun listCollectionsUnder(url: String, isCalendar: Boolean): List<DavCollection> {
-        val propBody = if (isCalendar) {
-            """<?xml version="1.0"?>
-               <d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:ic="http://apple.com/ns/ical/">
-                 <d:prop><d:resourcetype/><d:displayname/><cs:getctag/><ic:calendar-color/></d:prop>
-               </d:propfind>"""
-        } else {
-            """<?xml version="1.0"?>
-               <d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/">
-                 <d:prop><d:resourcetype/><d:displayname/><cs:getctag/></d:prop>
-               </d:propfind>"""
-        }
+        val propBody = collectionPropBody(isCalendar)
         val collectionTag = if (isCalendar) "calendar" else "addressbook"
         val out = mutableListOf<DavCollection>()
         try {
-            val resp = request(url, "PROPFIND", authHeaders(mapOf("Depth" to "1", "Content-Type" to "application/xml")), propBody)
+            val resp = request(url, "PROPFIND", davHeaders("1"), propBody)
             for (r in parseResponses(resp.body)) {
                 if (collectionTag in r.resourceTypes) {
                     out += DavCollection(
@@ -122,16 +124,33 @@ class DavClient(private val authHeader: () -> String) {
                     )
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "listCollectionsUnder failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "listCollectionsUnder failed", expected)
         }
         return out
     }
 
+    private fun collectionPropBody(isCalendar: Boolean): String = if (isCalendar) {
+        """<?xml version="1.0"?>
+           <d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:ic="http://apple.com/ns/ical/">
+             <d:prop><d:resourcetype/><d:displayname/><cs:getctag/><ic:calendar-color/></d:prop>
+           </d:propfind>"""
+    } else {
+        """<?xml version="1.0"?>
+           <d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/">
+             <d:prop><d:resourcetype/><d:displayname/><cs:getctag/></d:prop>
+           </d:propfind>"""
+    }
+
     /** PROPFIND [url] and return the first `<href>` nested inside property [propLocalName]. */
-    private suspend fun firstHref(url: String, depth: String, body: String, propLocalName: String): String? {
+    private suspend fun firstHref(
+        url: String,
+        depth: String,
+        body: String,
+        propLocalName: String,
+    ): String? {
         return try {
-            val resp = request(url, "PROPFIND", authHeaders(mapOf("Depth" to depth, "Content-Type" to "application/xml")), body)
+            val resp = request(url, "PROPFIND", davHeaders(depth), body)
             if (resp.body.isBlank()) return null
             val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
             val doc = factory.newDocumentBuilder().parse(ByteArrayInputStream(resp.body.toByteArray()))
@@ -140,8 +159,9 @@ class DavClient(private val authHeader: () -> String) {
             val hrefs = (props.item(0) as Element).getElementsByTagNameNS("*", "href")
             if (hrefs.length == 0) return null
             hrefs.item(0).textContent?.trim()?.ifBlank { null }?.let { resolve(url, it) }
-        } catch (e: Exception) {
-            Log.e(TAG, "firstHref($propLocalName) failed", e); null
+        } catch (expected: Exception) {
+            Log.e(TAG, "firstHref($propLocalName) failed", expected)
+            null
         }
     }
 
@@ -156,17 +176,29 @@ class DavClient(private val authHeader: () -> String) {
         val body = """<?xml version="1.0"?>
             <d:propfind xmlns:d="DAV:"><d:prop><d:getetag/></d:prop></d:propfind>"""
         return try {
-            val resp = request(collectionUrl, "PROPFIND", authHeaders(mapOf("Depth" to "1", "Content-Type" to "application/xml")), body)
+            val resp = request(collectionUrl, "PROPFIND", davHeaders("1"), body)
             parseResponses(resp.body)
-                .filter { !it.href.trimEnd('/').equals(URI(collectionUrl).path.trimEnd('/')) && it.etag != null }
+                .filter { !isSelf(it.href, collectionUrl) && it.etag != null }
                 .map { DavResource(resolve(collectionUrl, it.href), it.etag) }
-        } catch (e: Exception) {
-            Log.e(TAG, "listResources failed", e); emptyList()
+        } catch (expected: Exception) {
+            Log.e(TAG, "listResources failed", expected)
+            emptyList()
         }
     }
 
+    private fun isSelf(href: String, collectionUrl: String): Boolean = try {
+        href.trimEnd('/').equals(URI(collectionUrl).path.trimEnd('/'))
+    } catch (expected: Exception) {
+        Log.e(TAG, "isSelf failed", expected)
+        false
+    }
+
     /** Fetch full object bodies (address-data / calendar-data) for the given hrefs. */
-    suspend fun multiget(collectionUrl: String, hrefs: List<String>, isCalendar: Boolean): List<DavResource> {
+    suspend fun multiget(
+        collectionUrl: String,
+        hrefs: List<String>,
+        isCalendar: Boolean,
+    ): List<DavResource> {
         if (hrefs.isEmpty()) return emptyList()
         val ns = if (isCalendar) "urn:ietf:params:xml:ns:caldav" else "urn:ietf:params:xml:ns:carddav"
         val reportName = if (isCalendar) "c:calendar-multiget" else "c:addressbook-multiget"
@@ -178,15 +210,23 @@ class DavClient(private val authHeader: () -> String) {
               $hrefXml
             </$reportName>"""
         return try {
-            val resp = request(collectionUrl, "REPORT", authHeaders(mapOf("Depth" to "1", "Content-Type" to "application/xml")), body)
-            parseResponses(resp.body).map { DavResource(resolve(collectionUrl, it.href), it.etag, it.data) }
-        } catch (e: Exception) {
-            Log.e(TAG, "multiget failed", e); emptyList()
+            val resp = request(collectionUrl, "REPORT", davHeaders("1"), body)
+            parseResponses(resp.body).map {
+                DavResource(resolve(collectionUrl, it.href), it.etag, it.data)
+            }
+        } catch (expected: Exception) {
+            Log.e(TAG, "multiget failed", expected)
+            emptyList()
         }
     }
 
     /** PUT an object, returning the new ETag if the server supplied one. */
-    suspend fun put(url: String, contentType: String, body: String, ifMatch: String? = null): String? {
+    suspend fun put(
+        url: String,
+        contentType: String,
+        body: String,
+        ifMatch: String? = null,
+    ): String? {
         val headers = authHeaders(buildMap {
             put("Content-Type", contentType)
             if (ifMatch != null) put("If-Match", ifMatch)
@@ -194,17 +234,20 @@ class DavClient(private val authHeader: () -> String) {
         return try {
             val resp = request(url, "PUT", headers, body)
             resp.headers["ETag"]?.firstOrNull() ?: resp.headers["Etag"]?.firstOrNull()
-        } catch (e: Exception) {
-            Log.e(TAG, "put failed", e); null
+        } catch (expected: Exception) {
+            Log.e(TAG, "put failed", expected)
+            null
         }
     }
 
     suspend fun delete(url: String, ifMatch: String? = null) {
-        val headers = authHeaders(if (ifMatch != null) mapOf("If-Match" to ifMatch) else emptyMap())
+        val headers = authHeaders(
+            if (ifMatch != null) mapOf("If-Match" to ifMatch) else emptyMap(),
+        )
         try {
             request(url, "DELETE", headers, null)
-        } catch (e: Exception) {
-            Log.e(TAG, "delete failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "delete failed", expected)
         }
     }
 
@@ -228,27 +271,32 @@ class DavClient(private val authHeader: () -> String) {
             val doc = factory.newDocumentBuilder().parse(ByteArrayInputStream(xml.toByteArray()))
             val responses = doc.getElementsByTagNameNS("*", "response")
             for (i in 0 until responses.length) {
-                val resp = responses.item(i) as? Element ?: continue
-                val href = firstText(resp, "href") ?: continue
-                out += ParsedResponse(
-                    href = href,
-                    etag = firstText(resp, "getetag")?.trim('"'),
-                    data = firstText(resp, "address-data") ?: firstText(resp, "calendar-data"),
-                    displayName = firstText(resp, "displayname"),
-                    ctag = firstText(resp, "getctag"),
-                    color = firstText(resp, "calendar-color")?.let { parseColor(it) },
-                    resourceTypes = resourceTypes(resp),
-                )
+                parseOne(responses.item(i) as? Element)?.let { out += it }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "parseResponses failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "parseResponses failed", expected)
         }
         return out
     }
 
+    private fun parseOne(resp: Element?): ParsedResponse? {
+        resp ?: return null
+        val href = firstText(resp, "href") ?: return null
+        return ParsedResponse(
+            href = href,
+            etag = firstText(resp, "getetag")?.trim('"'),
+            data = firstText(resp, "address-data") ?: firstText(resp, "calendar-data"),
+            displayName = firstText(resp, "displayname"),
+            ctag = firstText(resp, "getctag"),
+            color = firstText(resp, "calendar-color")?.let { parseColor(it) },
+            resourceTypes = resourceTypes(resp),
+        )
+    }
+
     private fun firstText(scope: Element, localName: String): String? {
         val nodes = scope.getElementsByTagNameNS("*", localName)
-        return if (nodes.length > 0) nodes.item(0).textContent?.trim()?.ifBlank { null } else null
+        if (nodes.length == 0) return null
+        return nodes.item(0).textContent?.trim()?.ifBlank { null }
     }
 
     private fun resourceTypes(resp: Element): Set<String> {
@@ -264,9 +312,12 @@ class DavClient(private val authHeader: () -> String) {
     }
 
     private fun parseColor(value: String): Int? = try {
-        val hex = value.trim().removePrefix("#").take(6)
-        (0xFF000000.toInt()) or hex.toInt(16)
-    } catch (_: Exception) { null }
+        val hex = value.trim().removePrefix("#").take(COLOR_HEX_LEN)
+        COLOR_ALPHA or hex.toInt(HEX_RADIX)
+    } catch (expected: Exception) {
+        Log.e(TAG, "parseColor failed", expected)
+        null
+    }
 
     private fun resolve(base: String, href: String): String = try {
         URI(base).resolve(href).toString()
@@ -274,5 +325,8 @@ class DavClient(private val authHeader: () -> String) {
 
     companion object {
         private const val TAG = "DavClient"
+        private const val COLOR_HEX_LEN = 6
+        private const val HEX_RADIX = 16
+        private const val COLOR_ALPHA = 0xFF000000.toInt()
     }
 }

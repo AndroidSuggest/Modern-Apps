@@ -79,7 +79,8 @@ class OdfListNumberingTest {
     @Test
     fun itemStartValueRestartsNumbering() {
         val d = doc(
-            """<text:list text:style-name="L1">${item("a")}${item("b", """ text:start-value="7"""")}${item("c")}</text:list>"""
+            """<text:list" +
+                "text:style-name="L1">${item("a")}${item("b", """ text:start-value="7"""")}${item("c")}</text:list>"""
         )
         assertEquals(listOf(1, 7, 8), numbers(d))
     }

@@ -64,8 +64,8 @@ fun WhatsAppRegistrationScreen(
         scope.launch {
             try {
                 block()
-            } catch (t: Throwable) {
-                status = "Error: ${t.message}"
+            } catch (expected: Throwable) {
+                status = "Error: ${expected.message}"
             } finally {
                 busy = false
             }

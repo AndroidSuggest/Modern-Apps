@@ -35,6 +35,8 @@ class TrackerProvisioner(private val context: Context) {
 
     /** Scans for trackers currently in pairing mode ([TrackerBle.UNPROVISIONED_SERVICE_UUID]). */
     @SuppressLint("MissingPermission")
+    // Broad catch is deliberate: BLE throws varied runtime exceptions; scan failure must close the flow, not crash.
+    @Suppress("TooGenericExceptionCaught")
     fun unprovisioned(): Flow<BluetoothDevice> = callbackFlow {
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val scanner = manager?.adapter?.bluetoothLeScanner
@@ -75,6 +77,8 @@ class TrackerProvisioner(private val context: Context) {
      */
     @SuppressLint("MissingPermission")
     @Suppress("DEPRECATION")
+    // Broad catch is deliberate: GATT connect throws varied exceptions; bind failure must return false, not crash.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun provision(
         device: BluetoothDevice,
         trackerUserId: Long,
@@ -84,10 +88,15 @@ class TrackerProvisioner(private val context: Context) {
         suspendCancellableCoroutine { cont ->
             require(secret.size == TrackerProtocol.SECRET_LEN) { "secret must be ${TrackerProtocol.SECRET_LEN} bytes" }
             val blob = ByteArray(TrackerBle.PROVISION_BLOB_LEN)
-            for (i in 0 until 8) blob[i] = (trackerUserId.toULong() shr (56 - i * 8)).toByte()
-            secret.copyInto(blob, 8)
+            for (i in 0 until U64_LEN) {
+                blob[i] = (trackerUserId.toULong() shr (U64_MSB_SHIFT - i * BITS_PER_BYTE)).toByte()
+            }
+            secret.copyInto(blob, U64_LEN)
             val unixSeconds = (nowMs / 1000L).toULong()
-            for (i in 0 until 8) blob[8 + secret.size + i] = (unixSeconds shr (56 - i * 8)).toByte()
+            for (i in 0 until U64_LEN) {
+                blob[U64_LEN + secret.size + i] =
+                    (unixSeconds shr (U64_MSB_SHIFT - i * BITS_PER_BYTE)).toByte()
+            }
 
             val resumed = AtomicBoolean(false)
             var gatt: BluetoothGatt? = null
@@ -158,6 +167,8 @@ class TrackerProvisioner(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     @Suppress("DEPRECATION")
+    // Broad catch is deliberate: GATT write throws varied exceptions across API levels; failure must return false.
+    @Suppress("TooGenericExceptionCaught")
     private fun writeChar(gatt: BluetoothGatt, ch: BluetoothGattCharacteristic, value: ByteArray): Boolean =
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -180,5 +191,14 @@ class TrackerProvisioner(private val context: Context) {
          * with room to spare. Keeps the blob in a single write instead of a long write.
          */
         private const val PREFERRED_MTU = 64
+
+        /** Length of each big-endian u64 field in the provisioning blob. */
+        private const val U64_LEN = 8
+
+        /** Shift of the most significant byte in a big-endian u64. */
+        private const val U64_MSB_SHIFT = 56
+
+        /** Bits per byte, for big-endian byte-packing shifts. */
+        private const val BITS_PER_BYTE = 8
     }
 }

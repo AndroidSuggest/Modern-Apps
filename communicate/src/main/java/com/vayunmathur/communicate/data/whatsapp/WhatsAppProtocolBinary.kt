@@ -3,11 +3,32 @@ package com.vayunmathur.communicate.data.whatsapp
 import android.util.Log
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.BinaryToken
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.Node
+import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppCertProto
+import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto
 import org.signal.libsignal.protocol.ecc.ECPublicKey
 
 // -- Binary XML codec (whatsmeow binary/encoder.go + binary/decoder.go) --
 // Token tables live in core (WhatsAppProtocol.BinaryToken); the stateful
 // encoder/decoder are file-private here and exposed via encodeNode/decodeNode.
+
+private const val BYTE_MASK = 0xFF
+private const val NIBBLE_MASK = 0x0F
+private const val ASCII_MASK = 0x7F
+private const val HIGH_BIT = 0x80
+private const val LIST_8_LIMIT = 256
+private const val BINARY_20_BITS = 20
+private const val INT24_SIZE = 3
+private const val INT32_SIZE = 4
+private const val NIBBLE_BITS = 4
+private const val BYTE_BITS = 8
+private const val SHIFT_BYTE1 = 8
+private const val SHIFT_BYTE2 = 16
+private const val SHIFT_BYTE3 = 24
+private const val DECIMAL_LIMIT = 10
+private const val HEX_LIMIT = 16
+private const val PACKED_MINUS = 10
+private const val PACKED_DOT = 11
+private const val PACKED_END = 15
 
 internal class BinaryEncoder {
     private val data = mutableListOf<Byte>(0)
@@ -18,27 +39,27 @@ internal class BinaryEncoder {
     private fun pushByte(b: Int) { data.add(b.toByte()) }
     private fun pushBytes(bytes: ByteArray) { bytes.forEach { data.add(it) } }
 
-    private fun pushInt8(value: Int) { pushByte((value and 0xFF).toByte()) }
+    private fun pushInt8(value: Int) { pushByte((value and BYTE_MASK).toByte()) }
     private fun pushInt16(value: Int) {
-        pushByte((value shr 8 and 0xFF).toByte())
-        pushByte((value and 0xFF).toByte())
+        pushByte((value shr SHIFT_BYTE1 and BYTE_MASK).toByte())
+        pushByte((value and BYTE_MASK).toByte())
     }
     private fun pushInt20(value: Int) {
-        pushByte(((value shr 16) and 0x0F).toByte())
-        pushByte(((value shr 8) and 0xFF).toByte())
-        pushByte((value and 0xFF).toByte())
+        pushByte(((value shr SHIFT_BYTE2) and NIBBLE_MASK).toByte())
+        pushByte(((value shr SHIFT_BYTE1) and BYTE_MASK).toByte())
+        pushByte((value and BYTE_MASK).toByte())
     }
     private fun pushInt32(value: Int) {
-        pushByte((value shr 24 and 0xFF).toByte())
-        pushByte((value shr 16 and 0xFF).toByte())
-        pushByte((value shr 8 and 0xFF).toByte())
-        pushByte((value and 0xFF).toByte())
+        pushByte((value shr SHIFT_BYTE3 and BYTE_MASK).toByte())
+        pushByte((value shr SHIFT_BYTE2 and BYTE_MASK).toByte())
+        pushByte((value shr SHIFT_BYTE1 and BYTE_MASK).toByte())
+        pushByte((value and BYTE_MASK).toByte())
     }
 
     private fun writeByteLength(length: Int) {
         when {
-            length < 256 -> { pushByte(BinaryToken.BINARY_8); pushInt8(length) }
-            length < (1 shl 20) -> { pushByte(BinaryToken.BINARY_20); pushInt20(length) }
+            length < LIST_8_LIMIT -> { pushByte(BinaryToken.BINARY_8); pushInt8(length) }
+            length < (1 shl BINARY_20_BITS) -> { pushByte(BinaryToken.BINARY_20); pushInt20(length) }
             else -> { pushByte(BinaryToken.BINARY_32); pushInt32(length) }
         }
     }
@@ -134,7 +155,7 @@ internal class BinaryEncoder {
     private fun writeListStart(size: Int) {
         when {
             size == 0 -> pushByte(BinaryToken.LIST_EMPTY)
-            size < 256 -> { pushByte(BinaryToken.LIST_8); pushInt8(size) }
+            size < LIST_8_LIMIT -> { pushByte(BinaryToken.LIST_8); pushInt8(size) }
             else -> { pushByte(BinaryToken.LIST_16); pushInt16(size) }
         }
     }
@@ -159,27 +180,27 @@ internal class BinaryEncoder {
         val packer = if (dataType == BinaryToken.NIBBLE_8) ::packNibble else ::packHex
         var i = 0
         while (i < value.length / 2) {
-            pushByte(((packer(value[2 * i]) shl 4) or packer(value[2 * i + 1])).toByte())
+            pushByte(((packer(value[2 * i]) shl NIBBLE_BITS) or packer(value[2 * i + 1])).toByte())
             i++
         }
         if (value.length % 2 != 0) {
-            pushByte(((packer(value.last()) shl 4) or packer(0.toChar())).toByte())
+            pushByte(((packer(value.last()) shl NIBBLE_BITS) or packer(0.toChar())).toByte())
         }
     }
 
     private fun packNibble(c: Char): Int = when (c) {
         in '0'..'9' -> c - '0'
-        '-' -> 10
-        '.' -> 11
-        0.toChar() -> 15
+        '-' -> PACKED_MINUS
+        '.' -> PACKED_DOT
+        0.toChar() -> PACKED_END
         else -> throw IllegalArgumentException("Invalid nibble char: $c")
     }
 
     private fun packHex(c: Char): Int = when (c) {
         in '0'..'9' -> c - '0'
-        in 'A'..'F' -> 10 + (c - 'A')
-        in 'a'..'f' -> 10 + (c - 'a')
-        0.toChar() -> 15
+        in 'A'..'F' -> DECIMAL_LIMIT + (c - 'A')
+        in 'a'..'f' -> DECIMAL_LIMIT + (c - 'a')
+        0.toChar() -> PACKED_END
         else -> throw IllegalArgumentException("Invalid hex char: $c")
     }
 }
@@ -193,31 +214,31 @@ internal class BinaryDecoder(private val data: ByteArray) {
 
     private fun readByte(): Int {
         checkEOS(1)
-        return data[index++].toInt() and 0xFF
+        return data[index++].toInt() and BYTE_MASK
     }
 
     private fun readInt8(): Int = readByte()
     private fun readInt16(): Int {
         checkEOS(2)
-        val v = ((data[index].toInt() and 0xFF) shl 8) or (data[index + 1].toInt() and 0xFF)
+        val v = ((data[index].toInt() and BYTE_MASK) shl 8) or (data[index + 1].toInt() and BYTE_MASK)
         index += 2
         return v
     }
     private fun readInt20(): Int {
-        checkEOS(3)
-        val v = ((data[index].toInt() and 0x0F) shl 16) or
-                ((data[index + 1].toInt() and 0xFF) shl 8) or
-                (data[index + 2].toInt() and 0xFF)
-        index += 3
+        checkEOS(INT24_SIZE)
+        val v = ((data[index].toInt() and NIBBLE_MASK) shl 16) or
+                ((data[index + 1].toInt() and BYTE_MASK) shl SHIFT_BYTE1) or
+                (data[index + 2].toInt() and BYTE_MASK)
+        index += INT24_SIZE
         return v
     }
     private fun readInt32(): Int {
-        checkEOS(4)
-        val v = ((data[index].toInt() and 0xFF) shl 24) or
-                ((data[index + 1].toInt() and 0xFF) shl 16) or
-                ((data[index + 2].toInt() and 0xFF) shl 8) or
-                (data[index + 3].toInt() and 0xFF)
-        index += 4
+        checkEOS(INT32_SIZE)
+        val v = ((data[index].toInt() and BYTE_MASK) shl SHIFT_BYTE3) or
+                ((data[index + 1].toInt() and BYTE_MASK) shl SHIFT_BYTE2) or
+                ((data[index + 2].toInt() and BYTE_MASK) shl SHIFT_BYTE1) or
+                (data[index + INT24_SIZE].toInt() and BYTE_MASK)
+        index += INT32_SIZE
         return v
     }
 
@@ -231,13 +252,13 @@ internal class BinaryDecoder(private val data: ByteArray) {
     private fun readPacked8(tag: Int): String {
         val startByte = readByte()
         val sb = StringBuilder()
-        for (i in 0 until (startByte and 127)) {
+        for (i in 0 until (startByte and ASCII_MASK)) {
             val currByte = readByte()
-            sb.append(unpackByte(tag, (currByte shr 4) and 0x0F))
-            sb.append(unpackByte(tag, currByte and 0x0F))
+            sb.append(unpackByte(tag, (currByte shr NIBBLE_BITS) and NIBBLE_MASK))
+            sb.append(unpackByte(tag, currByte and NIBBLE_MASK))
         }
         var result = sb.toString()
-        if ((startByte shr 7) != 0) result = result.dropLast(1)
+        if ((startByte shr (BYTE_BITS - 1)) != 0) result = result.dropLast(1)
         return result
     }
 
@@ -247,80 +268,89 @@ internal class BinaryDecoder(private val data: ByteArray) {
         else -> throw IllegalArgumentException("Unknown packed tag: $tag")
     }
     private fun unpackNibble(value: Int): Char = when {
-        value < 10 -> ('0' + value)
-        value == 10 -> '-'
-        value == 11 -> '.'
-        value == 15 -> 0.toChar()
+        value < DECIMAL_LIMIT -> ('0' + value)
+        value == PACKED_MINUS -> '-'
+        value == PACKED_DOT -> '.'
+        value == PACKED_END -> 0.toChar()
         else -> throw IllegalArgumentException("Invalid nibble: $value")
     }
     private fun unpackHex(value: Int): Char = when {
-        value < 10 -> ('0' + value)
-        value < 16 -> ('A' + value - 10)
+        value < DECIMAL_LIMIT -> ('0' + value)
+        value < HEX_LIMIT -> ('A' + value - DECIMAL_LIMIT)
         else -> throw IllegalArgumentException("Invalid hex: $value")
     }
 
     private fun readListSize(tag: Int): Int = when (tag) {
-        BinaryToken.LIST_EMPTY.toInt() and 0xFF -> 0
-        BinaryToken.LIST_8.toInt() and 0xFF -> readInt8()
-        BinaryToken.LIST_16.toInt() and 0xFF -> readInt16()
+        BinaryToken.LIST_EMPTY.toInt() and BYTE_MASK -> 0
+        BinaryToken.LIST_8.toInt() and BYTE_MASK -> readInt8()
+        BinaryToken.LIST_16.toInt() and BYTE_MASK -> readInt16()
         else -> throw IllegalArgumentException("Unknown list tag: $tag")
     }
 
     private fun read(asString: Boolean): Any? {
         val tag = readByte()
         return when (tag) {
-            BinaryToken.LIST_EMPTY.toInt() and 0xFF -> null
-            BinaryToken.LIST_8.toInt() and 0xFF,
-            BinaryToken.LIST_16.toInt() and 0xFF -> readList(tag)
-            BinaryToken.BINARY_8.toInt() and 0xFF -> {
-                val size = readInt8()
-                if (asString) String(readRaw(size), Charsets.UTF_8) else readRaw(size)
-            }
-            BinaryToken.BINARY_20.toInt() and 0xFF -> {
-                val size = readInt20()
-                if (asString) String(readRaw(size), Charsets.UTF_8) else readRaw(size)
-            }
-            BinaryToken.BINARY_32.toInt() and 0xFF -> {
-                val size = readInt32()
-                if (asString) String(readRaw(size), Charsets.UTF_8) else readRaw(size)
-            }
+            BinaryToken.LIST_EMPTY.toInt() and BYTE_MASK -> null
+            BinaryToken.LIST_8.toInt() and BYTE_MASK,
+            BinaryToken.LIST_16.toInt() and BYTE_MASK -> readList(tag)
+            BinaryToken.BINARY_8.toInt() and BYTE_MASK -> readSized(readInt8(), asString)
+            BinaryToken.BINARY_20.toInt() and BYTE_MASK -> readSized(readInt20(), asString)
+            BinaryToken.BINARY_32.toInt() and BYTE_MASK -> readSized(readInt32(), asString)
             in BinaryToken.DICTIONARY_0..BinaryToken.DICTIONARY_3 -> {
                 val idx = readInt8()
                 BinaryToken.getDoubleToken(tag - BinaryToken.DICTIONARY_0, idx)
             }
-            BinaryToken.AD_JID -> {
-                val agent = readByte()
-                val device = readByte()
-                val user = read(true) as? String ?: ""
-                "$user.${agent}:${device}@s.whatsapp.net"
-            }
-            BinaryToken.FB_JID -> {
-                val user = read(true) as? String ?: ""
-                val device = readInt16()
-                val server = read(true) as? String ?: "msgr"
-                "$user:$device@$server"
-            }
-            BinaryToken.INTEROP_JID -> {
-                val user = read(true) as? String ?: ""
-                val device = readInt16()
-                val integrator = readInt16()
-                val server = read(true) as? String ?: ""
-                "$user:$device:$integrator@$server"
-            }
-            BinaryToken.JID_PAIR.toInt() and 0xFF -> {
-                val user = read(true) as? String
-                val server = read(true) as? String ?: throw IllegalStateException("JID missing server")
-                if (user != null) "$user@$server" else "@$server"
-            }
+            BinaryToken.AD_JID -> readAdJid()
+            BinaryToken.FB_JID -> readFbJid()
+            BinaryToken.INTEROP_JID -> readInteropJid()
+            BinaryToken.JID_PAIR.toInt() and BYTE_MASK -> readJidPair()
             BinaryToken.NIBBLE_8, BinaryToken.HEX_8 -> readPacked8(tag)
-            else -> {
-                if (tag in 1 until BinaryToken.singleByteTokens.size) {
-                    BinaryToken.singleByteTokens[tag]
-                } else {
-                    throw IllegalArgumentException("Invalid token $tag at position $index")
-                }
-            }
+            else -> readSingleToken(tag)
         }
+    }
+
+    /** Read a sized binary blob (or UTF-8 string when [asString]). */
+    private fun readSized(size: Int, asString: Boolean): Any =
+        if (asString) String(readRaw(size), Charsets.UTF_8) else readRaw(size)
+
+    /** AD JID: agent + device + user. */
+    private fun readAdJid(): String {
+        val agent = readByte()
+        val device = readByte()
+        val user = read(true) as? String ?: ""
+        return "$user.${agent}:${device}@s.whatsapp.net"
+    }
+
+    /** FB JID: user + device + server. */
+    private fun readFbJid(): String {
+        val user = read(true) as? String ?: ""
+        val device = readInt16()
+        val server = read(true) as? String ?: "msgr"
+        return "$user:$device@$server"
+    }
+
+    /** Interop JID: user + device + integrator + server. */
+    private fun readInteropJid(): String {
+        val user = read(true) as? String ?: ""
+        val device = readInt16()
+        val integrator = readInt16()
+        val server = read(true) as? String ?: ""
+        return "$user:$device:$integrator@$server"
+    }
+
+    /** JID pair: user + server. */
+    private fun readJidPair(): String {
+        val user = read(true) as? String
+        val server = read(true) as? String ?: throw IllegalStateException("JID missing server")
+        return if (user != null) "$user@$server" else "@$server"
+    }
+
+    /** Single-byte dictionary token. */
+    private fun readSingleToken(tag: Int): String {
+        if (tag in 1 until BinaryToken.singleByteTokens.size) {
+            return BinaryToken.singleByteTokens[tag]
+        }
+        throw IllegalArgumentException("Invalid token $tag at position $index")
     }
 
     private fun readList(tag: Int): List<Node> {
@@ -379,6 +409,19 @@ private val WA_CERT_PUB_KEY = byteArrayOf(
     0xf9.toByte(), 0x54, 0x5d, 0xa8.toByte(), 0xee.toByte(), 0x6b,
 )
 private const val WA_CERT_ISSUER_SERIAL = 0
+private const val CERT_SIGNATURE_SIZE = 64
+private const val IDENTITY_KEY_SIZE = 32
+
+/** True when all cert chain parts are present and well-formed. */
+private fun hasValidCertParts(
+    interRaw: ByteArray,
+    leafRaw: ByteArray,
+    interSig: ByteArray,
+    leafSig: ByteArray,
+): Boolean = interRaw.isNotEmpty() &&
+    leafRaw.isNotEmpty() &&
+    interSig.size == CERT_SIGNATURE_SIZE &&
+    leafSig.size == CERT_SIGNATURE_SIZE
 
 /**
  * Verify the server's Noise certificate chain (intermediate signed by the WA root,
@@ -387,12 +430,12 @@ private const val WA_CERT_ISSUER_SERIAL = 0
  */
 fun WhatsAppProtocol.verifyServerCert(certDecrypted: ByteArray, staticDecrypted: ByteArray): Boolean {
     return try {
-        val chain = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppCertProto.CertChain.parseFrom(certDecrypted)
+        val chain = WhatsAppCertProto.CertChain.parseFrom(certDecrypted)
         val interRaw = chain.intermediate.details.toByteArray()
         val interSig = chain.intermediate.signature.toByteArray()
         val leafRaw = chain.leaf.details.toByteArray()
         val leafSig = chain.leaf.signature.toByteArray()
-        if (interRaw.isEmpty() || leafRaw.isEmpty() || interSig.size != 64 || leafSig.size != 64) {
+        if (!hasValidCertParts(interRaw, leafRaw, interSig, leafSig)) {
             Log.e(TAG, "cert: missing/invalid parts")
             return false
         }
@@ -400,34 +443,44 @@ fun WhatsAppProtocol.verifyServerCert(certDecrypted: ByteArray, staticDecrypted:
             Log.e(TAG, "cert: intermediate signature invalid")
             return false
         }
-        val inter = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppCertProto.CertChain.NoiseCertificate.Details.parseFrom(interRaw)
-        if (inter.issuerSerial != WA_CERT_ISSUER_SERIAL || inter.key.size() != 32) {
+        val inter = WhatsAppCertProto.CertChain.NoiseCertificate.Details.parseFrom(interRaw)
+        if (inter.issuerSerial != WA_CERT_ISSUER_SERIAL || inter.key.size() != IDENTITY_KEY_SIZE) {
             Log.e(TAG, "cert: bad intermediate issuer/key")
             return false
         }
-        if (!ECPublicKey.fromPublicKeyBytes(inter.key.toByteArray()).verifySignature(leafRaw, leafSig)) {
-            Log.e(TAG, "cert: leaf signature invalid")
-            return false
-        }
-        val leaf = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppCertProto.CertChain.NoiseCertificate.Details.parseFrom(leafRaw)
-        if (leaf.issuerSerial != inter.serial) {
-            Log.e(TAG, "cert: leaf issuer serial mismatch")
-            return false
-        }
-        if (!leaf.key.toByteArray().contentEquals(staticDecrypted)) {
-            Log.e(TAG, "cert: leaf key != server static key")
-            return false
-        }
-        val now = System.currentTimeMillis() / 1000
-        for (d in listOf(inter, leaf)) {
-            if (d.notBefore != 0L && now < d.notBefore) { Log.e(TAG, "cert: not yet valid"); return false }
-            if (d.notAfter != 0L && now > d.notAfter) { Log.e(TAG, "cert: expired"); return false }
-        }
-        true
-    } catch (e: Exception) {
-        Log.e(TAG, "cert verification error", e)
+        verifyLeafCert(inter, leafRaw, leafSig, staticDecrypted)
+    } catch (expected: Exception) {
+        Log.e(TAG, "cert verification error", expected)
         false
     }
+}
+
+/** Verify the leaf certificate against the intermediate. */
+private fun verifyLeafCert(
+    inter: WhatsAppCertProto.CertChain.NoiseCertificate.Details,
+    leafRaw: ByteArray,
+    leafSig: ByteArray,
+    staticDecrypted: ByteArray,
+): Boolean {
+    if (!ECPublicKey.fromPublicKeyBytes(inter.key.toByteArray()).verifySignature(leafRaw, leafSig)) {
+        Log.e(TAG, "cert: leaf signature invalid")
+        return false
+    }
+    val leaf = WhatsAppCertProto.CertChain.NoiseCertificate.Details.parseFrom(leafRaw)
+    if (leaf.issuerSerial != inter.serial) {
+        Log.e(TAG, "cert: leaf issuer serial mismatch")
+        return false
+    }
+    if (!leaf.key.toByteArray().contentEquals(staticDecrypted)) {
+        Log.e(TAG, "cert: leaf key != server static key")
+        return false
+    }
+    val now = System.currentTimeMillis() / 1000
+    for (d in listOf(inter, leaf)) {
+        if (d.notBefore != 0L && now < d.notBefore) { Log.e(TAG, "cert: not yet valid"); return false }
+        if (d.notAfter != 0L && now > d.notAfter) { Log.e(TAG, "cert: expired"); return false }
+    }
+    return true
 }
 
 /**
@@ -437,29 +490,34 @@ fun WhatsAppProtocol.verifyServerCert(certDecrypted: ByteArray, staticDecrypted:
  */
 private fun WhatsAppProtocol.unpack(data: ByteArray): ByteArray {
     if (data.isEmpty()) throw IllegalStateException("empty frame, no flag byte")
-    val flag = data[0].toInt() and 0xFF
+    val flag = data[0].toInt() and BYTE_MASK
     val payload = data.copyOfRange(1, data.size)
     return if (flag and 2 > 0) {
-        val inflater = java.util.zip.Inflater()
-        inflater.setInput(payload)
-        val out = java.io.ByteArrayOutputStream(payload.size * 2)
-        val buf = ByteArray(8192)
-        try {
-            while (!inflater.finished()) {
-                val n = inflater.inflate(buf)
-                if (n == 0) {
-                    if (inflater.finished() || inflater.needsDictionary()) break
-                    if (inflater.needsInput()) throw IllegalStateException("zlib needs more input")
-                }
-                out.write(buf, 0, n)
-            }
-        } finally {
-            inflater.end()
-        }
-        out.toByteArray()
+        inflatePayload(payload)
     } else {
         payload
     }
+}
+
+/** Zlib-inflate a flagged frame payload. */
+private fun inflatePayload(payload: ByteArray): ByteArray {
+    val inflater = java.util.zip.Inflater()
+    inflater.setInput(payload)
+    val out = java.io.ByteArrayOutputStream(payload.size * 2)
+    val buf = ByteArray(8192)
+    try {
+        while (!inflater.finished()) {
+            val n = inflater.inflate(buf)
+            if (n == 0) {
+                if (inflater.finished() || inflater.needsDictionary()) break
+                if (inflater.needsInput()) throw IllegalStateException("zlib needs more input")
+            }
+            out.write(buf, 0, n)
+        }
+    } finally {
+        inflater.end()
+    }
+    return out.toByteArray()
 }
 
 // -- Frame helpers --
@@ -481,8 +539,8 @@ fun WhatsAppProtocol.buildFramedMessage(data: ByteArray, header: ByteArray?): By
         System.arraycopy(header, 0, frame, offset, headerLength)
         offset += headerLength
     }
-    frame[offset] = (dataLength shr 16).toByte()
-    frame[offset + 1] = (dataLength shr 8).toByte()
+    frame[offset] = (dataLength shr SHIFT_BYTE2).toByte()
+    frame[offset + 1] = (dataLength shr SHIFT_BYTE1).toByte()
     frame[offset + 2] = dataLength.toByte()
     offset += FRAME_LENGTH_SIZE
     System.arraycopy(data, 0, frame, offset, dataLength)
@@ -495,9 +553,9 @@ fun WhatsAppProtocol.buildFramedMessage(data: ByteArray, header: ByteArray?): By
  */
 fun WhatsAppProtocol.extractFrame(data: ByteArray): ByteArray {
     if (data.size < FRAME_LENGTH_SIZE) return data
-    val length = ((data[0].toInt() and 0xFF) shl 16) or
-            ((data[1].toInt() and 0xFF) shl 8) or
-            (data[2].toInt() and 0xFF)
+    val length = ((data[0].toInt() and BYTE_MASK) shl 16) or
+            ((data[1].toInt() and BYTE_MASK) shl SHIFT_BYTE1) or
+            (data[2].toInt() and BYTE_MASK)
     if (data.size < FRAME_LENGTH_SIZE + length) return data
     return data.copyOfRange(FRAME_LENGTH_SIZE, FRAME_LENGTH_SIZE + length)
 }

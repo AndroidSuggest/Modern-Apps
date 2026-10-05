@@ -1,8 +1,12 @@
 package com.vayunmathur.games.solitaire.platform
 
 import com.vayunmathur.games.solitaire.data.Card
+import com.vayunmathur.games.solitaire.data.FOUNDATION_COUNT
+import com.vayunmathur.games.solitaire.data.FREECELL_COUNT
+import com.vayunmathur.games.solitaire.data.FREECELL_TABLEAU_COUNT
 import com.vayunmathur.games.solitaire.data.FreeCellState
 import com.vayunmathur.games.solitaire.data.GameMode
+import com.vayunmathur.games.solitaire.data.Rank
 import com.vayunmathur.games.solitaire.data.SolitaireUiState
 import com.vayunmathur.games.solitaire.data.alternatesColorWith
 import com.vayunmathur.games.solitaire.data.createShuffledDeck
@@ -12,18 +16,35 @@ import kotlinx.coroutines.flow.update
 // ---- FreeCell ----
 // Moved from SolitaireViewModel.kt (FileLength split); behavior identical.
 
+fun SolitaireViewModel.newFreeCellGame() = newFreeCellGameImpl()
+
+fun SolitaireViewModel.freeCellMoveToFreeCell(fromColumn: Int, cellIndex: Int) =
+    freeCellMoveToFreeCellImpl(fromColumn, cellIndex)
+
+fun SolitaireViewModel.freeCellMoveFromFreeCell(cellIndex: Int, toColumn: Int) =
+    freeCellMoveFromFreeCellImpl(cellIndex, toColumn)
+
+fun SolitaireViewModel.freeCellMoveFreeCellToFoundation(cellIndex: Int, foundationIndex: Int) =
+    freeCellMoveFreeCellToFoundationImpl(cellIndex, foundationIndex)
+
+fun SolitaireViewModel.freeCellMoveTableauToFoundation(fromColumn: Int, foundationIndex: Int) =
+    freeCellMoveTableauToFoundationImpl(fromColumn, foundationIndex)
+
+fun SolitaireViewModel.freeCellMoveTableauToTableau(fromColumn: Int, cardIndex: Int, toColumn: Int) =
+    freeCellMoveTableauToTableauImpl(fromColumn, cardIndex, toColumn)
+
 internal fun SolitaireViewModel.newFreeCellGameImpl() {
     val deck = createShuffledDeck()
-    val piles = List(8) { mutableListOf<Card>() }
+    val piles = List(FREECELL_TABLEAU_COUNT) { mutableListOf<Card>() }
     for (i in deck.indices) {
-        piles[i % 8].add(deck[i])
+        piles[i % FREECELL_TABLEAU_COUNT].add(deck[i])
     }
-    _uiState.value = SolitaireUiState(
+    uiStateInternal.value = SolitaireUiState(
         gameMode = GameMode.FREECELL,
         freeCell = FreeCellState(
             tableauPiles = piles.map { it.toList() },
-            freeCells = List(4) { null },
-            foundations = List(4) { emptyList() },
+            freeCells = List(FREECELL_COUNT) { null },
+            foundations = List(FOUNDATION_COUNT) { emptyList() },
             variant = "STANDARD"
         ),
         history = emptyList()
@@ -32,7 +53,7 @@ internal fun SolitaireViewModel.newFreeCellGameImpl() {
 }
 
 internal fun SolitaireViewModel.freeCellMoveToFreeCellImpl(fromColumn: Int, cellIndex: Int) {
-    val state = _uiState.value.freeCell ?: return
+    val state = uiStateInternal.value.freeCell ?: return
     if (state.isWon) return
     val pile = state.tableauPiles[fromColumn]
     if (pile.isEmpty()) return
@@ -43,7 +64,7 @@ internal fun SolitaireViewModel.freeCellMoveToFreeCellImpl(fromColumn: Int, cell
     newPiles[fromColumn] = pile.dropLast(1)
     val newCells = state.freeCells.toMutableList()
     newCells[cellIndex] = card
-    _uiState.update {
+    uiStateInternal.update {
         it.copy(freeCell = state.copy(
             tableauPiles = newPiles,
             freeCells = newCells,
@@ -53,7 +74,7 @@ internal fun SolitaireViewModel.freeCellMoveToFreeCellImpl(fromColumn: Int, cell
 }
 
 internal fun SolitaireViewModel.freeCellMoveFromFreeCellImpl(cellIndex: Int, toColumn: Int) {
-    val state = _uiState.value.freeCell ?: return
+    val state = uiStateInternal.value.freeCell ?: return
     if (state.isWon) return
     val card = state.freeCells[cellIndex] ?: return
     val pile = state.tableauPiles[toColumn]
@@ -63,7 +84,7 @@ internal fun SolitaireViewModel.freeCellMoveFromFreeCellImpl(cellIndex: Int, toC
     newPiles[toColumn] = pile + card
     val newCells = state.freeCells.toMutableList()
     newCells[cellIndex] = null
-    _uiState.update {
+    uiStateInternal.update {
         it.copy(freeCell = state.copy(
             tableauPiles = newPiles,
             freeCells = newCells,
@@ -73,7 +94,7 @@ internal fun SolitaireViewModel.freeCellMoveFromFreeCellImpl(cellIndex: Int, toC
 }
 
 internal fun SolitaireViewModel.freeCellMoveFreeCellToFoundationImpl(cellIndex: Int, foundationIndex: Int) {
-    val state = _uiState.value.freeCell ?: return
+    val state = uiStateInternal.value.freeCell ?: return
     if (state.isWon) return
     val card = state.freeCells[cellIndex] ?: return
     if (!canPlaceOnFoundation(card, state.foundations[foundationIndex], foundationIndex)) return
@@ -82,7 +103,7 @@ internal fun SolitaireViewModel.freeCellMoveFreeCellToFoundationImpl(cellIndex: 
     newCells[cellIndex] = null
     val newFoundations = state.foundations.toMutableList()
     newFoundations[foundationIndex] = newFoundations[foundationIndex] + card
-    _uiState.update {
+    uiStateInternal.update {
         it.copy(freeCell = state.copy(
             freeCells = newCells,
             foundations = newFoundations,
@@ -93,7 +114,7 @@ internal fun SolitaireViewModel.freeCellMoveFreeCellToFoundationImpl(cellIndex: 
 }
 
 internal fun SolitaireViewModel.freeCellMoveTableauToFoundationImpl(fromColumn: Int, foundationIndex: Int) {
-    val state = _uiState.value.freeCell ?: return
+    val state = uiStateInternal.value.freeCell ?: return
     if (state.isWon) return
     val pile = state.tableauPiles[fromColumn]
     if (pile.isEmpty()) return
@@ -104,7 +125,7 @@ internal fun SolitaireViewModel.freeCellMoveTableauToFoundationImpl(fromColumn: 
     newPiles[fromColumn] = pile.dropLast(1)
     val newFoundations = state.foundations.toMutableList()
     newFoundations[foundationIndex] = newFoundations[foundationIndex] + card
-    _uiState.update {
+    uiStateInternal.update {
         it.copy(freeCell = state.copy(
             tableauPiles = newPiles,
             foundations = newFoundations,
@@ -115,7 +136,7 @@ internal fun SolitaireViewModel.freeCellMoveTableauToFoundationImpl(fromColumn: 
 }
 
 internal fun SolitaireViewModel.freeCellMoveTableauToTableauImpl(fromColumn: Int, cardIndex: Int, toColumn: Int) {
-    val state = _uiState.value.freeCell ?: return
+    val state = uiStateInternal.value.freeCell ?: return
     if (state.isWon) return
     val fromPile = state.tableauPiles[fromColumn]
     if (cardIndex < 0 || cardIndex >= fromPile.size) return
@@ -124,7 +145,9 @@ internal fun SolitaireViewModel.freeCellMoveTableauToTableauImpl(fromColumn: Int
     val toPile = state.tableauPiles[toColumn]
     if (movingCards.size > 1) {
         val emptyFreeCells = state.freeCells.count { it == null }
-        val emptyColumns = state.tableauPiles.indices.count { it != fromColumn && it != toColumn && state.tableauPiles[it].isEmpty() }
+        val emptyColumns = state.tableauPiles.indices.count {
+            it != fromColumn && it != toColumn && state.tableauPiles[it].isEmpty()
+        }
         val maxMove = (1 + emptyFreeCells) * (1 shl emptyColumns)
         if (movingCards.size > maxMove) return
     }
@@ -133,7 +156,7 @@ internal fun SolitaireViewModel.freeCellMoveTableauToTableauImpl(fromColumn: Int
     val newPiles = state.tableauPiles.toMutableList()
     newPiles[fromColumn] = fromPile.subList(0, cardIndex)
     newPiles[toColumn] = toPile + movingCards
-    _uiState.update {
+    uiStateInternal.update {
         it.copy(freeCell = state.copy(
             tableauPiles = newPiles,
             moveCount = state.moveCount + 1
@@ -148,10 +171,10 @@ internal fun SolitaireViewModel.canPlaceOnFreeCellTableau(card: Card, pile: List
     pile.isEmpty() || (card.alternatesColorWith(pile.last()) && pile.last().isOneHigherThan(card))
 
 internal fun SolitaireViewModel.checkFreeCellWin() {
-    val state = _uiState.value.freeCell ?: return
-    if (state.foundations.all { it.size == 13 }) {
-        _uiState.update { it.copy(freeCell = state.copy(isWon = true)) }
-        onGameWon(GameMode.FREECELL, state.elapsedSeconds, state.moveCount, state.usedUndo)
+    val state = uiStateInternal.value.freeCell ?: return
+    if (state.foundations.all { it.size == Rank.KING.value }) {
+        uiStateInternal.update { it.copy(freeCell = state.copy(isWon = true)) }
+        onGameWon(GameMode.FREECELL, state.elapsedSeconds, state.usedUndo)
     }
 }
 
@@ -198,52 +221,101 @@ internal fun SolitaireViewModel.handleFreeCellDropImpl(sourceId: String, targetI
 }
 
 internal fun SolitaireViewModel.freeCellAutoMoveImpl(sourceId: String) {
-    val state = _uiState.value.freeCell ?: return
+    val state = uiStateInternal.value.freeCell ?: return
     if (state.isWon) return
     val cards = draggedCards(sourceId)
     if (cards.isEmpty()) return
-    val topCard = cards.first()
-    val single = cards.size == 1
-
-    val fromCol = if (sourceId.startsWith("tableau_"))
-        sourceId.removePrefix("tableau_").substringBefore("_").toIntOrNull() else null
-    val fromIdx = if (sourceId.startsWith("tableau_"))
-        sourceId.removePrefix("tableau_").split("_").getOrNull(1)?.toIntOrNull() ?: 0 else 0
-    val fromCell = if (sourceId.startsWith("freecell_"))
-        sourceId.removePrefix("freecell_").toIntOrNull() else null
-
-    // 1) Foundation (single card only), the preferred move.
-    if (single) {
-        for (fi in state.foundations.indices) {
-            if (canPlaceOnFoundation(topCard, state.foundations[fi], fi)) {
-                when {
-                    fromCell != null -> freeCellMoveFreeCellToFoundation(fromCell, fi)
-                    fromCol != null -> freeCellMoveTableauToFoundation(fromCol, fi)
-                    else -> return
-                }
-                return
-            }
-        }
-    }
-
-    // 2) Tableau — first column that legally accepts the run.
-    for (toCol in state.tableauPiles.indices) {
-        if (toCol == fromCol) continue
-        val toPile = state.tableauPiles[toCol]
-        if (!canPlaceOnFreeCellTableau(topCard, toPile)) continue
-        // Skip moving a lone card between empty columns — pointless churn.
-        if (toPile.isEmpty() && fromCol != null && single && state.tableauPiles[fromCol].size == 1) continue
-        when {
-            fromCell != null -> freeCellMoveFromFreeCell(fromCell, toCol)
-            fromCol != null -> freeCellMoveTableauToTableau(fromCol, fromIdx, toCol)
-            else -> return
-        }
-        return
-    }
-
-    // 3) Empty free cell — last resort for a single card off a tableau column.
-    if (single && fromCol != null) {
-        val emptyCell = state.freeCells.indexOfFirst { it == null }
-        if (emptyCell >= 0) freeCellMoveToFreeCell(fromCol, emptyCell)
-    }
+    val origin = freeCellMoveOrigin(sourceId) ?: return
+    if (tryFoundationMove(state, cards, origin)) return
+    if (tryTableauMove(state, cards, origin)) return
+    moveToEmptyCell(state, cards, origin)
 }
+
+private data class FreeCellMoveOrigin(val fromCol: Int?, val fromIdx: Int, val fromCell: Int?)
+
+private fun freeCellMoveOrigin(sourceId: String): FreeCellMoveOrigin? {
+    if (sourceId.startsWith("tableau_")) {
+        val parts = sourceId.removePrefix("tableau_").split("_")
+        return FreeCellMoveOrigin(
+            fromCol = parts.getOrNull(0)?.toIntOrNull() ?: return null,
+            fromIdx = parts.getOrNull(1)?.toIntOrNull() ?: 0,
+            fromCell = null,
+        )
+    }
+    if (sourceId.startsWith("freecell_")) {
+        return FreeCellMoveOrigin(
+            fromCol = null,
+            fromIdx = 0,
+            fromCell = sourceId.removePrefix("freecell_").toIntOrNull() ?: return null,
+        )
+    }
+    return null
+}
+
+private fun SolitaireViewModel.tryFoundationMove(
+    state: FreeCellState,
+    cards: List<Card>,
+    origin: FreeCellMoveOrigin,
+): Boolean {
+    if (cards.size != SINGLE_CARD) return false
+    val topCard = cards.first()
+    for (fi in state.foundations.indices) {
+        if (!canPlaceOnFoundation(topCard, state.foundations[fi], fi)) continue
+        if (origin.fromCell != null) freeCellMoveFreeCellToFoundation(origin.fromCell, fi)
+        else if (origin.fromCol != null) freeCellMoveTableauToFoundation(origin.fromCol, fi)
+        else return false
+        return true
+    }
+    return false
+}
+
+private fun SolitaireViewModel.tryTableauMove(
+    state: FreeCellState,
+    cards: List<Card>,
+    origin: FreeCellMoveOrigin,
+): Boolean {
+    val target = state.tableauPiles.indices.firstOrNull { toCol ->
+        toCol != origin.fromCol && isViableTableauTarget(state, cards, origin, toCol)
+    } ?: return false
+    if (origin.fromCell != null) freeCellMoveFromFreeCell(origin.fromCell, target)
+    else if (origin.fromCol != null) {
+        freeCellMoveTableauToTableau(origin.fromCol, origin.fromIdx, target)
+    } else return false
+    return true
+}
+
+private fun isLoneCardChurn(
+    state: FreeCellState,
+    cards: List<Card>,
+    origin: FreeCellMoveOrigin,
+    toPile: List<Card>,
+): Boolean {
+    if (toPile.isNotEmpty() || origin.fromCol == null) return false
+    if (cards.size != SINGLE_CARD) return false
+    return state.tableauPiles[origin.fromCol].size == SINGLE_CARD
+}
+
+private fun SolitaireViewModel.isViableTableauTarget(
+    state: FreeCellState,
+    cards: List<Card>,
+    origin: FreeCellMoveOrigin,
+    toCol: Int,
+): Boolean {
+    val toPile = state.tableauPiles[toCol]
+    if (!canPlaceOnFreeCellTableau(cards.first(), toPile)) return false
+    // Skip moving a lone card between empty columns — pointless churn.
+    return !isLoneCardChurn(state, cards, origin, toPile)
+}
+
+private fun SolitaireViewModel.moveToEmptyCell(
+    state: FreeCellState,
+    cards: List<Card>,
+    origin: FreeCellMoveOrigin,
+) {
+    // Empty free cell — last resort for a single card off a tableau column.
+    if (cards.size != SINGLE_CARD || origin.fromCol == null) return
+    val emptyCell = state.freeCells.indexOfFirst { it == null }
+    if (emptyCell >= 0) freeCellMoveToFreeCell(origin.fromCol, emptyCell)
+}
+
+internal const val SINGLE_CARD = 1

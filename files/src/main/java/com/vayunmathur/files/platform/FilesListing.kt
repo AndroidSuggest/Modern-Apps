@@ -12,6 +12,9 @@ import java.util.zip.ZipFile
  * possible; the MediaStore queries take a [Context] instead of reaching for one.
  */
 
+private const val MEDIA_QUERY_LIMIT = 2000
+private const val RECENT_ITEMS_LIMIT = 40
+
 internal fun File.toBrowserItem() = FileBrowserItem(
     name = name,
     isDirectory = isDirectory,
@@ -26,15 +29,15 @@ internal fun queryCategoryItems(context: Context, category: FileCategory): List<
     when (category) {
         FileCategory.IMAGES -> queryMediaItems(
             context,
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, null, null, 2000,
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, null, null, MEDIA_QUERY_LIMIT,
         )
         FileCategory.VIDEOS -> queryMediaItems(
             context,
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI, null, null, 2000,
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI, null, null, MEDIA_QUERY_LIMIT,
         )
         FileCategory.AUDIO -> queryMediaItems(
             context,
-            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, null, null, 2000,
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, null, null, MEDIA_QUERY_LIMIT,
         )
         FileCategory.DOCUMENTS -> {
             val mimes = arrayOf(
@@ -46,14 +49,28 @@ internal fun queryCategoryItems(context: Context, category: FileCategory): List<
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation",
                 "text/plain", "text/markdown", "text/csv", "application/rtf",
             )
-            val selection = mimes.joinToString(" OR ") { "${MediaStore.Files.FileColumns.MIME_TYPE}=?" }
-            queryMediaItems(context, MediaStore.Files.getContentUri("external"), selection, mimes, 2000)
+            val selection = mimes.joinToString(" OR ") {
+                "${MediaStore.Files.FileColumns.MIME_TYPE}=?"
+            }
+            queryMediaItems(
+                context,
+                MediaStore.Files.getContentUri("external"),
+                selection,
+                mimes,
+                MEDIA_QUERY_LIMIT
+            )
         }
         FileCategory.DOWNLOADS -> emptyList()
     }
 
 internal fun queryRecentItems(context: Context): List<FileBrowserItem> =
-    queryMediaItems(context, MediaStore.Files.getContentUri("external"), null, null, 40)
+    queryMediaItems(
+        context,
+        MediaStore.Files.getContentUri("external"),
+        null,
+        null,
+        RECENT_ITEMS_LIMIT
+    )
 
 internal fun queryMediaItems(
     context: Context,
@@ -74,7 +91,7 @@ internal fun queryMediaItems(
                 if (f.isFile) out.add(f.toBrowserItem())
             }
         }
-    } catch (_: Exception) {
+    } catch (_: IllegalArgumentException) {
     }
     return out
 }
@@ -112,6 +129,83 @@ internal fun listRealDirItems(
     return items.partition { it.isDirectory }
 }
 
+/** One zip entry reduced to what the listing needs: where it is and what kind it is. */
+private data class ZipListingEntry(
+    val fullInner: String,
+    val remainder: String,
+    val isDirectory: Boolean,
+    val size: Long,
+)
+
+/** Folders found so far (keyed so duplicate entries share one row) plus file rows. */
+private class ZipListingAccumulator(private val internalDir: String) {
+    val dirs = mutableMapOf<String, FileBrowserItem>()
+    val files = mutableMapOf<String, FileBrowserItem>()
+
+    fun addDir(first: String) {
+        if (dirs.containsKey(first)) return
+        val fullInner = joinInner(first)
+        dirs[first] = FileBrowserItem(
+            name = first,
+            isDirectory = true,
+            size = null,
+            realFile = null,
+            zipInnerPath = fullInner,
+            key = "zip:$fullInner",
+        )
+    }
+
+    fun addEntry(entry: ZipListingEntry) {
+        val slashIdx = entry.remainder.indexOf('/')
+        if (slashIdx != -1) {
+            val first = entry.remainder.substring(0, slashIdx)
+            if (first.isNotEmpty()) addDir(first)
+            return
+        }
+        if (entry.isDirectory) {
+            addDir(entry.remainder)
+        } else {
+            files[entry.remainder] = FileBrowserItem(
+                name = entry.remainder,
+                isDirectory = false,
+                size = entry.size.takeIf { it >= 0 },
+                realFile = null,
+                zipInnerPath = entry.fullInner,
+                key = "zip:${entry.fullInner}",
+            )
+        }
+    }
+
+    private fun joinInner(first: String): String =
+        if (internalDir.isEmpty()) first else "$internalDir/$first"
+}
+
+/** Reduces one raw zip entry name to a listing row, or null when it is not shown here. */
+private fun classifyZipEntry(
+    rawName: String,
+    isDirectory: Boolean,
+    size: Long,
+    internalDir: String,
+    prefix: String
+): ZipListingEntry? {
+    val normalized = rawName.trimEnd('/')
+    if (normalized.isEmpty()) return null
+    if (normalized == internalDir) return null
+    if (internalDir.isNotEmpty() &&
+        !rawName.startsWith(prefix) &&
+        !normalized.startsWith(prefix)
+    ) return null
+    val remainder = if (prefix.isEmpty()) {
+        normalized
+    } else {
+        if (normalized.length <= prefix.length) return null
+        normalized.substring(prefix.length)
+    }
+    if (remainder.isEmpty()) return null
+    val fullInner = if (internalDir.isEmpty()) remainder else "$internalDir/$remainder"
+    return ZipListingEntry(fullInner, remainder, isDirectory, size)
+}
+
 internal fun listZipDirItems(
     zipFile: File,
     internalDir: String,
@@ -119,65 +213,16 @@ internal fun listZipDirItems(
     return try {
         ZipFile(zipFile).use { zf ->
             val prefix = if (internalDir.isEmpty()) "" else "$internalDir/"
-            val dirMap = mutableMapOf<String, FileBrowserItem>()
-            // Keyed, not a list: ZIP allows two entries with the same name, and the key ends up as
-            // a Compose item key, where a duplicate crashes the browser.
-            val fileMap = mutableMapOf<String, FileBrowserItem>()
+            val acc = ZipListingAccumulator(internalDir)
             for (entry in zf.entries()) {
-                val rawName = entry.name
-                val normalized = rawName.trimEnd('/')
-                if (normalized.isEmpty()) continue
-                if (normalized == internalDir) continue
-                if (internalDir.isNotEmpty() && !rawName.startsWith(prefix) && !normalized.startsWith(prefix)) continue
-                val remainder = if (prefix.isEmpty()) normalized else {
-                    if (normalized.length <= prefix.length) continue
-                    normalized.substring(prefix.length)
-                }
-                if (remainder.isEmpty()) continue
-                val slashIdx = remainder.indexOf('/')
-                if (slashIdx != -1) {
-                    val first = remainder.substring(0, slashIdx)
-                    if (first.isEmpty()) continue
-                    if (!dirMap.containsKey(first)) {
-                        val fullInner = if (internalDir.isEmpty()) first else "$internalDir/$first"
-                        dirMap[first] = FileBrowserItem(
-                            name = first,
-                            isDirectory = true,
-                            size = null,
-                            realFile = null,
-                            zipInnerPath = fullInner,
-                            key = "zip:$fullInner",
-                        )
-                    }
-                } else {
-                    if (entry.isDirectory) {
-                        if (!dirMap.containsKey(remainder)) {
-                            val fullInner = if (internalDir.isEmpty()) remainder else "$internalDir/$remainder"
-                            dirMap[remainder] = FileBrowserItem(
-                                name = remainder,
-                                isDirectory = true,
-                                size = null,
-                                realFile = null,
-                                zipInnerPath = fullInner,
-                                key = "zip:$fullInner",
-                            )
-                        }
-                    } else {
-                        val fullInner = if (internalDir.isEmpty()) remainder else "$internalDir/$remainder"
-                        fileMap[remainder] = FileBrowserItem(
-                            name = remainder,
-                            isDirectory = false,
-                            size = entry.size.takeIf { it >= 0 },
-                            realFile = null,
-                            zipInnerPath = fullInner,
-                            key = "zip:$fullInner",
-                        )
-                    }
-                }
+                classifyZipEntry(entry.name, entry.isDirectory, entry.size, internalDir, prefix)
+                    ?.let { acc.addEntry(it) }
             }
-            dirMap.values.toList() to fileMap.values.toList()
+            acc.dirs.values.toList() to acc.files.values.toList()
         }
-    } catch (_: Exception) {
+    } catch (_: java.io.IOException) {
+        emptyList<FileBrowserItem>() to emptyList()
+    } catch (_: IllegalArgumentException) {
         emptyList<FileBrowserItem>() to emptyList()
     }
 }

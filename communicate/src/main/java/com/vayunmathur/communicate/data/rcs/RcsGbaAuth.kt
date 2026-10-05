@@ -54,13 +54,14 @@ object RcsGbaAuth {
      * ([RcsFileTransferHttp]). Empty when the challenge isn't digest or
      * lacks realm/nonce.
      */
+    private const val CNONCE_LENGTH = 16
     internal fun digestAuthorizationHeader(
         challenge: String,
         method: String,
         uri: String,
         username: String,
         password: String = "",
-        cnonce: String = java.util.UUID.randomUUID().toString().replace("-", "").take(16),
+        cnonce: String = java.util.UUID.randomUUID().toString().replace("-", "").take(CNONCE_LENGTH),
     ): String {
         if (!challenge.contains("Digest", ignoreCase = true)) return ""
         fun param(name: String): String =

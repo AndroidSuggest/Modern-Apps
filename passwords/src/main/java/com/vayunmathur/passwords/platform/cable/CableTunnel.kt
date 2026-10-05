@@ -27,7 +27,8 @@ class CableTunnel private constructor(
             val frame = frameChannel.receive()
             when (frame) {
                 is WebSocketClient.WsFrame.Binary -> return frame.bytes
-                is WebSocketClient.WsFrame.Close -> throw IOException("Tunnel closed by server (${frame.code} ${frame.reason})")
+                is WebSocketClient.WsFrame.Close ->
+                    throw IOException("Tunnel closed by server (${frame.code} ${frame.reason})")
                 else -> Unit // ping/pong/text ignored
             }
         }
@@ -35,7 +36,11 @@ class CableTunnel private constructor(
 
     suspend fun close() {
         collectorJob?.cancel()
-        try { wsClient.close() } catch (_: Exception) {}
+        try {
+            wsClient.close()
+        } catch (expected: IOException) {
+            Log.w(TAG, "tunnel close threw", expected)
+        }
     }
 
     companion object {
@@ -53,9 +58,12 @@ class CableTunnel private constructor(
                 captureResponseHeaders = listOf(ROUTING_ID_HEADER)
             )
 
-            Log.d(TAG, "Tunnel response headers: ${client.responseHeaders.entries.joinToString { "${it.key}=${it.value}" }}")
+            val headerSummary = client.responseHeaders.entries.joinToString { "${it.key}=${it.value}" }
+            Log.d(TAG, "Tunnel response headers: $headerSummary")
             val routingHex = client.capturedHeaders[ROUTING_ID_HEADER]
-                ?: client.responseHeaders.entries.firstOrNull { it.key.equals(ROUTING_ID_HEADER, ignoreCase = true) }?.value?.firstOrNull()
+                ?: client.responseHeaders.entries
+                    .firstOrNull { it.key.equals(ROUTING_ID_HEADER, ignoreCase = true) }
+                    ?.value?.firstOrNull()
             val routingId = routingHex?.let { runCatching { unhex(it) }.getOrNull() }
             Log.d(TAG, "routingId header=$routingHex parsed=${routingId?.let { hex(it) }}")
 
@@ -75,11 +83,14 @@ class CableTunnel private constructor(
         }
 
         private const val TAG = "CableTunnel"
+        private const val BYTE_MASK = 0xFF
+        private const val HEX_RADIX = 16
+        private const val HEX_PAIR = 2
 
         fun hex(bytes: ByteArray): String =
-            bytes.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+            bytes.joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
 
         private fun unhex(s: String): ByteArray =
-            s.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            s.chunked(HEX_PAIR).map { it.toInt(HEX_RADIX).toByte() }.toByteArray()
     }
 }

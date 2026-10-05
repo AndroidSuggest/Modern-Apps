@@ -75,6 +75,20 @@ object MirrorGeometry {
     private const val DEFAULT_CONTENT_WIDTH = 1280
     private const val DEFAULT_CONTENT_HEIGHT = 720
 
+    /** What to assume when the platform reports no usable screen size. Portrait 1080p. */
+    private const val FALLBACK_SCREEN_WIDTH = 1080
+    private const val FALLBACK_SCREEN_HEIGHT = 1920
+
+    /** Bits per megabit, for turning a bitrate into a log line. */
+    private const val BITS_PER_MEGABIT = 1_000_000.0
+
+    /** H.265 and AV1 efficiency against the H.264 reference, for screen content. */
+    private const val HEVC_EFFICIENCY = 0.6
+    private const val AV1_EFFICIENCY = 0.5
+
+    /** Millimetres per inch, for the touch-target arithmetic below. */
+    private const val MM_PER_INCH = 25.4
+
     /**
      * The diagonal AOSP assumes for an external panel whose physical size it does not know, in
      * inches - `DisplayDensityConfiguration.DEFAULT_DISPLAY_SIZE`. A cast receiver reports modes,
@@ -87,7 +101,7 @@ object MirrorGeometry {
      * inches), what that target is worth in dp, and the floor it will not go below. Together they
      * are what turns an estimated pixel density into a logical one.
      */
-    private const val TOUCH_TARGET_INCHES = 10.4 / 25.4
+    private const val TOUCH_TARGET_INCHES = 10.4 / MM_PER_INCH
     private const val TOUCH_TARGET_DP = 48.0
     private const val MIN_EXTERNAL_DENSITY = 100
 
@@ -99,8 +113,8 @@ object MirrorGeometry {
      */
     fun screenSize(context: Context): Pair<Int, Int> {
         val metrics = displayMetrics(context)
-        return (metrics.widthPixels.takeIf { it > 0 } ?: 1080) to
-            (metrics.heightPixels.takeIf { it > 0 } ?: 1920)
+        return (metrics.widthPixels.takeIf { it > 0 } ?: FALLBACK_SCREEN_WIDTH) to
+            (metrics.heightPixels.takeIf { it > 0 } ?: FALLBACK_SCREEN_HEIGHT)
     }
 
     /**
@@ -129,7 +143,7 @@ object MirrorGeometry {
 
         Log.i(
             TAG,
-            "sending ${width}x$height @ ${frameRate}fps at ${bitRate / 1_000_000.0} Mbit/s; " +
+            "sending ${width}x$height @ ${frameRate}fps at ${bitRate / BITS_PER_MEGABIT} Mbit/s; " +
                 "the screen is ${screenWidth}x$screenHeight and the TV will letterbox it" +
                 chosen.rateReasoning(),
         )
@@ -172,7 +186,7 @@ object MirrorGeometry {
         Log.i(
             TAG,
             "app content: asked for ${safeWidth}x$safeHeight, sending ${width}x$height " +
-                "@ ${frameRate}fps at ${bitRate / 1_000_000.0} Mbit/s" + chosen.rateReasoning(),
+                "@ ${frameRate}fps at ${bitRate / BITS_PER_MEGABIT} Mbit/s" + chosen.rateReasoning(),
         )
         return CaptureGeometry(
             width = width,
@@ -232,27 +246,12 @@ object MirrorGeometry {
     ): List<CaptureGeometry> {
         val geometries = LinkedHashMap<Triple<Int, Int, Float>, CaptureGeometry>()
         for (mode in modes) {
-            val (fittedWidth, fittedHeight) = chosen.receiverLimits.fit(mode.width, mode.height)
-            // Asked before the clamp, so the *rate* yields to the panel's resolution rather than
-            // the other way round - a desktop exists to fill the screen it is on, and
-            // clampToEncoder would give up pixels to hold a rate we are free to lower instead.
-            val encoderRate =
-                EncoderSupport.sustainableFrameRate(chosen.codec, fittedWidth, fittedHeight)
-            val frameRate = frameRateFor(chosen.receiverLimits, mode.refreshRate, encoderRate)
-                ?: continue
-            val (width, height) =
-                EncoderSupport.clampToEncoder(chosen.codec, fittedWidth, fittedHeight, frameRate)
-            if (width <= 0 || height <= 0) continue
-            geometries.putIfAbsent(
-                Triple(width, height, frameRate),
-                CaptureGeometry(
-                    width = width,
-                    height = height,
-                    densityDpi = desktopDensityFor(width, height),
-                    bitRate = bitRateFor(width, height, frameRate, chosen),
-                    frameRate = frameRate,
-                ),
-            )
+            geometryForMode(chosen, mode)?.let { geometry ->
+                geometries.putIfAbsent(
+                    Triple(geometry.width, geometry.height, geometry.frameRate),
+                    geometry,
+                )
+            }
         }
         // Largest first, then fastest: the sender composes at the head and the picker lists from
         // the top.
@@ -272,6 +271,36 @@ object MirrorGeometry {
                 } + chosen.rateReasoning(),
         )
         return ordered
+    }
+
+    /**
+     * One panel mode as a geometry, or null when this phone cannot hold it.
+     *
+     * Null rather than a slower rate: the receiver switches the screen to exactly the rate
+     * named here, so a mode this phone cannot encode must not be offered. See [frameRateFor].
+     */
+    private fun geometryForMode(
+        chosen: CodecSelection.Chosen,
+        mode: DisplayMode,
+    ): CaptureGeometry? {
+        val (fittedWidth, fittedHeight) = chosen.receiverLimits.fit(mode.width, mode.height)
+        // Asked before the clamp, so the *rate* yields to the panel's resolution rather than
+        // the other way round - a desktop exists to fill the screen it is on, and
+        // clampToEncoder would give up pixels to hold a rate we are free to lower instead.
+        val encoderRate =
+            EncoderSupport.sustainableFrameRate(chosen.codec, fittedWidth, fittedHeight)
+        val frameRate = frameRateFor(chosen.receiverLimits, mode.refreshRate, encoderRate)
+            ?: return null
+        val (width, height) =
+            EncoderSupport.clampToEncoder(chosen.codec, fittedWidth, fittedHeight, frameRate)
+        if (width <= 0 || height <= 0) return null
+        return CaptureGeometry(
+            width = width,
+            height = height,
+            densityDpi = desktopDensityFor(width, height),
+            bitRate = bitRateFor(width, height, frameRate, chosen),
+            frameRate = frameRate,
+        )
     }
 
     /**
@@ -354,8 +383,8 @@ object MirrorGeometry {
      * camera content, and screen content with sharp text is where they hold up least well.
      */
     private fun efficiencyFactor(codec: VideoCodec): Double = when (codec) {
-        VideoCodec.Hevc -> 0.6
-        VideoCodec.Av1 -> 0.5
+        VideoCodec.Hevc -> HEVC_EFFICIENCY
+        VideoCodec.Av1 -> AV1_EFFICIENCY
     }
 
     private fun bitRateFor(
@@ -387,7 +416,7 @@ object MirrorGeometry {
             if (bitRateCeiling <= 0) {
                 ""
             } else {
-                ", under a ${bitRateCeiling / 1_000_000.0} Mbit/s ceiling"
+                ", under a ${bitRateCeiling / BITS_PER_MEGABIT} Mbit/s ceiling"
             }
 
     private fun displayMetrics(context: Context): DisplayMetrics {

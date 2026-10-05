@@ -18,6 +18,13 @@ import androidx.car.app.validation.HostValidator
  */
 class MapsCarAppService : CarAppService() {
 
+    companion object {
+        /** Car API level for per-display sessions (MAIN + CLUSTER). */
+        private const val CAR_API_SESSIONS = 6
+        /** Car API level for the brand-styling theme source. */
+        private const val CAR_API_THEME_SOURCE = 9
+    }
+
     // Dev posture: accept any host. Before shipping this must be tightened to a
     // real allow-list (Android Auto / Automotive OS signatures) via
     // HostValidator.Builder + the car-app allowlist — that is part of the
@@ -30,12 +37,12 @@ class MapsCarAppService : CarAppService() {
     // API 6+: per-display sessions (MAIN + CLUSTER). Cluster sessions still get
     // a MapsSession — NavMapScreen renders NavigationTemplate, the only
     // template the cluster allows.
-    @RequiresCarApi(6)
+    @RequiresCarApi(CAR_API_SESSIONS)
     override fun onCreateSession(sessionInfo: SessionInfo): Session = MapsSession()
 
     // API 9 (experimental): keep MA brand styling instead of adopting OEM
     // system styling. Only honored by hosts negotiating API 9+.
-    @RequiresCarApi(9)
+    @RequiresCarApi(CAR_API_THEME_SOURCE)
     @ExperimentalCarApi
     override fun getCarAppThemeSource(): Int =
         CarAppService.THEME_SOURCE_APP

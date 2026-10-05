@@ -9,13 +9,18 @@ package com.vayunmathur.flashcards.util
  * inline/block constructs (bold, italic, code, links, lists, headings, breaks).
  */
 object HtmlConvert {
-
     private val placeholderRegex = Regex("""\{\{[^}]+\}\}""")
     private val bold = Regex("""\*\*(.+?)\*\*""")
     private val italic = Regex("""(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)""")
     private val code = Regex("`(.+?)`")
     private val image = Regex("""!\[(.*?)]\((.*?)\)""")
     private val link = Regex("""\[(.*?)]\((.*?)\)""")
+
+    /** Shallowest HTML heading level converted to a single `#`. */
+    private const val MIN_HEADING_LEVEL = 1
+
+    /** Deepest HTML heading level converted (###### ). */
+    private const val MAX_HEADING_LEVEL = 6
 
     // -- HTML -> Markdown --------------------------------------------------
 
@@ -37,7 +42,7 @@ object HtmlConvert {
         }
         s = Regex("""(?i)<br\s*/?>""").replace(s, "\n")
         s = Regex("""(?i)<hr[^>]*/?>""").replace(s, "\n---\n")
-        for (level in 1..6) {
+        for (level in MIN_HEADING_LEVEL..MAX_HEADING_LEVEL) {
             s = Regex("""(?i)<h$level[^>]*>""").replace(s, "#".repeat(level) + " ")
         }
         s = Regex("""(?i)<li[^>]*>""").replace(s, "- ")

@@ -114,7 +114,6 @@ internal fun SafePdfPageItem(
             NonEditOverlay(
                 page = decoded,
                 links = links,
-                cw = cw,
                 ch = ch,
                 scale = scale,
                 ocr = ocr,
@@ -124,7 +123,6 @@ internal fun SafePdfPageItem(
 
         if (editMode) {
             EditOverlay(
-                page = decoded,
                 annotations = annotations,
                 selected = selected,
                 tool = tool,
@@ -132,7 +130,6 @@ internal fun SafePdfPageItem(
                 markup = markup,
                 color = color,
                 strokeWidth = strokeWidth,
-                cw = cw,
                 ch = ch,
                 scale = scale,
                 toPage = ::toPage,

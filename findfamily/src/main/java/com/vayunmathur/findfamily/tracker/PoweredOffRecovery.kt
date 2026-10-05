@@ -199,6 +199,9 @@ fun mintRecoveryKeypair(): RecoveryKeypair {
     return RecoveryKeypair(publicBundle = Pqc.bundle(kemPub, ByteArray(0)), kemPrivate = kemPriv)
 }
 
+/** Length of one big-endian u64 field in [poweredOffGrantSigningBytes]. */
+private const val U64_LEN = 8
+
 /**
  * The exact bytes a grant is signed over, so the recipient can tell who really sent it.
  *
@@ -228,10 +231,10 @@ fun poweredOffGrantSigningBytes(
     val out = ByteArray(domain.size + 32 + secret.size + recoveryPrivate.size)
     var off = 0
     domain.copyInto(out, off); off += domain.size
-    TrackerProtocol.u64be(owner).copyInto(out, off); off += 8
-    TrackerProtocol.u64be(recipient).copyInto(out, off); off += 8
-    TrackerProtocol.u64be(epoch).copyInto(out, off); off += 8
-    TrackerProtocol.u64be(secret.size.toLong()).copyInto(out, off); off += 8
+    TrackerProtocol.u64be(owner).copyInto(out, off); off += U64_LEN
+    TrackerProtocol.u64be(recipient).copyInto(out, off); off += U64_LEN
+    TrackerProtocol.u64be(epoch).copyInto(out, off); off += U64_LEN
+    TrackerProtocol.u64be(secret.size.toLong()).copyInto(out, off); off += U64_LEN
     secret.copyInto(out, off); off += secret.size
     recoveryPrivate.copyInto(out, off)
     return out

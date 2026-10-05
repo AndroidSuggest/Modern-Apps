@@ -301,8 +301,8 @@ private fun ComposePageThumb(
                     val base = drawContext.canvas.nativeCanvas.saveCount
                     try {
                         drawSafePage(current)
-                    } catch (t: Throwable) {
-                        android.util.Log.w("CutGlueScreen", "drawSafePage failed", t)
+                    } catch (expected: RuntimeException) {
+                        android.util.Log.w("CutGlueScreen", "drawSafePage failed", expected)
                     } finally {
                         drawContext.canvas.nativeCanvas.restoreToCount(base)
                     }

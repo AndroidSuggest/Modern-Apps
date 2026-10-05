@@ -137,8 +137,17 @@ private fun Writer.fold(line: String) {
 }
 
 private fun utf8Octets(codePoint: Int): Int = when {
-    codePoint < 0x80 -> 1
-    codePoint < 0x800 -> 2
-    codePoint < 0x10000 -> 3
-    else -> 4
+    codePoint < UTF8_1BYTE_LIMIT -> UTF8_1BYTE_OCTETS
+    codePoint < UTF8_2BYTE_LIMIT -> UTF8_2BYTE_OCTETS
+    codePoint < UTF8_3BYTE_LIMIT -> UTF8_3BYTE_OCTETS
+    else -> UTF8_4BYTE_OCTETS
 }
+
+/** UTF-8 lead-byte thresholds: below each limit the code point takes that many octets. */
+private const val UTF8_1BYTE_LIMIT = 0x80
+private const val UTF8_2BYTE_LIMIT = 0x800
+private const val UTF8_3BYTE_LIMIT = 0x10000
+private const val UTF8_1BYTE_OCTETS = 1
+private const val UTF8_2BYTE_OCTETS = 2
+private const val UTF8_3BYTE_OCTETS = 3
+private const val UTF8_4BYTE_OCTETS = 4

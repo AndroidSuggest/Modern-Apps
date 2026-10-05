@@ -55,7 +55,7 @@ import androidx.compose.ui.res.stringResource
 fun PaymentPage(
     backStack: NavBackStack<Route>,
     viewModel: TravelViewModel,
-    route: Route.Payment,
+    @Suppress("UNUSED_PARAMETER") route: Route.Payment,
 ) {
     val review by viewModel.review.collectAsStateWithLifecycle()
     val booking by viewModel.booking.collectAsStateWithLifecycle()

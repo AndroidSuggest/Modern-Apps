@@ -57,7 +57,9 @@ class CommunicateInCallService : InCallService() {
     private fun showOrClearNotification(call: Call) {
         when (call.state) {
             Call.STATE_RINGING -> showNotification(call, incoming = true)
-            Call.STATE_DIALING, Call.STATE_CONNECTING, Call.STATE_ACTIVE, Call.STATE_HOLDING -> showNotification(call, incoming = false)
+            Call.STATE_DIALING, Call.STATE_CONNECTING, Call.STATE_ACTIVE, Call.STATE_HOLDING -> showNotification(
+                call,
+                incoming = false)
             else -> clearNotification()
         }
     }
@@ -72,7 +74,8 @@ class CommunicateInCallService : InCallService() {
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
 
-        val title = if (incoming) getString(R.string.regular_call_incoming) else getString(R.string.regular_call_ongoing)
+        val title =
+            if (incoming) getString(R.string.regular_call_incoming) else getString(R.string.regular_call_ongoing)
         val number = call.details.handle?.schemeSpecificPart.orEmpty()
         val builder = Notification.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
@@ -86,13 +89,19 @@ class CommunicateInCallService : InCallService() {
 
         if (incoming) {
             builder
-                .addAction(android.R.drawable.sym_call_incoming, getString(R.string.call_answer), actionIntent(ACTION_ANSWER, 1))
-                .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.call_decline), actionIntent(ACTION_DECLINE, 2))
+                .addAction(
+                    android.R.drawable.sym_call_incoming,
+                    getString(R.string.call_answer),
+                    actionIntent(ACTION_ANSWER, 1))
+                .addAction(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    getString(R.string.call_decline),
+                    actionIntent(ACTION_DECLINE, 2))
         } else {
             builder.addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
                 getString(R.string.call_end),
-                actionIntent(ACTION_DISCONNECT, 3),
+                actionIntent(ACTION_DISCONNECT, DISCONNECT_REQUEST_CODE),
             )
         }
 
@@ -138,6 +147,7 @@ class CommunicateInCallService : InCallService() {
         private const val ACTION_ANSWER = "com.vayunmathur.communicate.regularcall.ANSWER"
         private const val ACTION_DECLINE = "com.vayunmathur.communicate.regularcall.DECLINE"
         private const val ACTION_DISCONNECT = "com.vayunmathur.communicate.regularcall.DISCONNECT"
+        private const val DISCONNECT_REQUEST_CODE = 3
 
         private var currentCall: Call? = null
         private var lookedUpNumber: String? = null

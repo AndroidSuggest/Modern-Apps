@@ -21,8 +21,9 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 object WhatsAppDiag {
     private const val MAX_ENTRIES = 300
+    private const val MILLIS_DIGITS = 3
     private val timeFmt = LocalTime.Format {
-        hour(); char(':'); minute(); char(':'); second(); char('.'); secondFraction(3)
+        hour(); char(':'); minute(); char(':'); second(); char('.'); secondFraction(MILLIS_DIGITS)
     }
 
     private val _log = MutableStateFlow<List<String>>(emptyList())
@@ -30,7 +31,8 @@ object WhatsAppDiag {
 
     @Synchronized
     fun log(tag: String, msg: String) {
-        val line = "${Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).time.format(timeFmt)} $tag  $msg"
+        val line =
+            "${Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).time.format(timeFmt)} $tag  $msg"
         _log.value = (_log.value + line).takeLast(MAX_ENTRIES)
         Log.i(tag, msg)
     }
@@ -69,15 +71,21 @@ object WhatsAppDiag {
         return try {
             val plaintext = WhatsAppProtocol.padMessage("skmsg loopback probe".toByteArray(Charsets.UTF_8))
             val created = com.vayunmathur.communicate.data.whatsapp.e2e.RustWhatsAppCrypto.createSenderKeySplit()
-            val receiverState = com.vayunmathur.communicate.data.whatsapp.e2e.RustWhatsAppCrypto.processSenderKey(created.skdm)
-                ?: throw RuntimeException("processSenderKey returned null")
-            val enc = com.vayunmathur.communicate.data.whatsapp.e2e.RustWhatsAppCrypto.encryptGroupSplit(created.state, plaintext)
-            val dec = com.vayunmathur.communicate.data.whatsapp.e2e.RustWhatsAppCrypto.decryptGroupSplit(receiverState, enc.data)
+            val receiverState =
+                com.vayunmathur.communicate.data.whatsapp.e2e.RustWhatsAppCrypto.processSenderKey(created.skdm)
+                ?: throw IllegalStateException("processSenderKey returned null")
+            val enc = com.vayunmathur.communicate.data.whatsapp.e2e.RustWhatsAppCrypto.encryptGroupSplit(
+                created.state,
+                plaintext)
+            val dec = com.vayunmathur.communicate.data.whatsapp.e2e.RustWhatsAppCrypto.decryptGroupSplit(
+                receiverState,
+                enc.data)
             val ok = dec.data.contentEquals(plaintext)
-            log("WA-SKMSG", "sender-key loopback ${if (ok) "PASS" else "FAIL"} skdm=${preview(created.skdm)} ct=${preview(enc.data)}")
+            val verdict = if (ok) "PASS" else "FAIL"
+            log("WA-SKMSG", "sender-key loopback $verdict skdm=${preview(created.skdm)} ct=${preview(enc.data)}")
             ok
-        } catch (e: Exception) {
-            log("WA-SKMSG", "sender-key loopback ERROR ${e.message}")
+        } catch (expected: Exception) {
+            log("WA-SKMSG", "sender-key loopback ERROR ${expected.message}")
             false
         }
     }

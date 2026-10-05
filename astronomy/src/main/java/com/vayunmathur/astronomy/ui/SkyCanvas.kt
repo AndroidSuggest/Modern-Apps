@@ -4,7 +4,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -21,7 +24,7 @@ import com.vayunmathur.astronomy.domain.projection.ViewState
 import com.vayunmathur.astronomy.domain.projection.projectAll
 import com.vayunmathur.astronomy.platform.TrajectoryPoint
 import com.vayunmathur.astronomy.platform.VisibleSky
-import kotlin.math.*
+import kotlin.math.sqrt
 
 @Composable
 fun SkyCanvas(
@@ -149,8 +152,8 @@ fun SkyCanvas(
     ) {
         if (!transparentBackground) drawRect(Color(0xFF020617))
 
-        if (showGrid) drawGrid(projection, viewState)
-        drawHorizon(projection, viewState)
+        if (showGrid) drawGrid(projection)
+        drawHorizon(projection)
 
         // Constellation figure art, draped over the sphere: each image is warped
         // through a subdivided mesh so its interior follows the same projection as
@@ -248,6 +251,6 @@ fun SkyCanvas(
             selOff?.let { drawCircle(Color.Yellow, 16f, it, style = Stroke(1.8f)) }
         }
 
-        if (viewState.centerAltRad < Math.toRadians(60.0)) drawCardinalLabels(projection, viewState, textMeasurer)
+        if (viewState.centerAltRad < Math.toRadians(60.0)) drawCardinalLabels(projection, textMeasurer)
     }
 }

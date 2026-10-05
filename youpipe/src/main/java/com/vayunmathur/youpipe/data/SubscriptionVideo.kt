@@ -9,9 +9,16 @@ import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 
 @Serializable
-@Entity(foreignKeys = [
-    ForeignKey(entity = Subscription::class, parentColumns = ["id"], childColumns = ["channelID"], onDelete = ForeignKey.CASCADE)
-])
+@Entity(
+    foreignKeys = [
+        ForeignKey(
+            entity = Subscription::class,
+            parentColumns = ["id"],
+            childColumns = ["channelID"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
 data class SubscriptionVideo(
     @PrimaryKey(autoGenerate = true) override val id: Long = 0, // video id
     val name: String,

@@ -23,6 +23,10 @@ abstract class ProgressNotificationWorker(
     @StringRes private val contentTitleRes: Int,
 ) : CoroutineWorker(context, params) {
 
+    private companion object {
+        const val FULL_PROGRESS = 100
+    }
+
     private val notificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -42,7 +46,7 @@ abstract class ProgressNotificationWorker(
         NotificationCompat.Builder(applicationContext, channelId)
             .setContentTitle(applicationContext.getString(contentTitleRes))
             .setSmallIcon(R.drawable.folder_24px)
-            .setProgress(100, progress, false)
+            .setProgress(FULL_PROGRESS, progress, false)
             .setOngoing(true)
             .build()
 
@@ -55,12 +59,13 @@ abstract class ProgressNotificationWorker(
 
     protected fun updateProgress(current: Long, total: Long) {
         if (total <= 0) return
-        val progress = (current * 100 / total).toInt()
+        val progress = (current * FULL_PROGRESS / total).toInt()
         if (progress != lastProgress) {
             lastProgress = progress
             try {
                 notificationManager.notify(notificationId, buildNotification(progress))
-            } catch (_: Exception) {
+            } catch (_: IllegalArgumentException) {
+            } catch (_: SecurityException) {
             }
         }
     }
@@ -68,7 +73,8 @@ abstract class ProgressNotificationWorker(
     protected fun cancelNotification() {
         try {
             notificationManager.cancel(notificationId)
-        } catch (_: Exception) {
+        } catch (_: IllegalArgumentException) {
+        } catch (_: SecurityException) {
         }
     }
 }

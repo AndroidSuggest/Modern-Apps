@@ -36,21 +36,28 @@ data class Instance(
         get() = Instant.fromEpochMilliseconds(end).toLocalDateTime(TimeZone.of(timezone))
 
     val startDateTime: LocalDateTime
-        get() = Instant.fromEpochMilliseconds(begin).toLocalDateTime(if(allDay) TimeZone.UTC else TimeZone.currentSystemDefault())
+        get() = Instant.fromEpochMilliseconds(begin).toLocalDateTime(displayZone(allDay))
 
     val endDateTime: LocalDateTime
-        get() = Instant.fromEpochMilliseconds(end).toLocalDateTime(if(allDay) TimeZone.UTC else TimeZone.currentSystemDefault())
+        get() = Instant.fromEpochMilliseconds(end).toLocalDateTime(displayZone(allDay))
 
 
     val spanDays: List<LocalDate>
         get() {
             val startDate = startDateTime.date
-            val endDate = if (endDateTime.time == LocalTime(0, 0)) (endDateTime.date - DatePeriod(days = 1)) else endDateTime.date
+            val endDate = if (endDateTime.time == LocalTime(0, 0)) {
+                endDateTime.date - DatePeriod(days = 1)
+            } else {
+                endDateTime.date
+            }
             return (startDate..endDate).toList()
         }
 
 
     companion object {
+        /** Zone an instance's wall time displays in: UTC for all-day, system default otherwise. */
+        private fun displayZone(allDay: Boolean): TimeZone =
+            if (allDay) TimeZone.UTC else TimeZone.currentSystemDefault()
         /**
          * Instances between [startTime] and [endTime] whose event still exists and
          * whose calendar is visible. [getInstances] reads the provider directly,
@@ -118,13 +125,13 @@ data class Instance(
                             val rrule = RRule.parse(it.getStringOrNull(rruleIdx) ?: "", tz)
 
                             instances.add(Instance(id, eventID, start, end, timezone, allDay, eventTitle, color, rrule))
-                        } catch (e: Exception) {
-                            Log.e("Instance", "Error constructing instance from cursor", e)
+                        } catch (expected: Exception) {
+                            Log.e("Instance", "Error constructing instance from cursor", expected)
                         }
                     }
                 }
-            } catch (e: Exception) {
-                Log.e("Instance", "Error querying instances", e)
+            } catch (expected: Exception) {
+                Log.e("Instance", "Error querying instances", expected)
             }
 
             return instances

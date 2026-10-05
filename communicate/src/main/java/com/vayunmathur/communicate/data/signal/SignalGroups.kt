@@ -19,9 +19,11 @@ import javax.net.ssl.SSLSocketFactory
  * Real Signal GroupsV2 (grounded in C:\Users\Vayun\signal-ref):
  * - Signal-Android lib/libsignal-service/src/main/protowire/Groups.proto (Group, GroupChange, GroupAttributeBlob)
  * - DecryptedGroups.proto, SignalService.proto GroupContextV2{masterKey 32B, revision, groupChange}
- * - PushServiceSocket.java GROUPSV2_GROUP="/v2/groups/" — PUT /v2/groups/ (create), PATCH /v2/groups/, GET /v2/groups/token etc.
+ * - PushServiceSocket.java GROUPSV2_GROUP="/v2/groups/" — PUT /v2/groups/ (create), PATCH /v2/groups/, GET
+ * /v2/groups/token etc.
  * - rust/zkgroup/src/api/groups/group_params.rs:20 GroupMasterKey 32B -> GroupSecretParams via
- *   Sho("Signal_ZKGroup_20200424_GroupMasterKey...") derive (group_id 32B, blob_key AesKey, UidEncKeyPair, ProfileKeyEncKeyPair)
+ * Sho("Signal_ZKGroup_20200424_GroupMasterKey...") derive (group_id 32B, blob_key AesKey, UidEncKeyPair,
+ * ProfileKeyEncKeyPair)
  * - GroupSendDerivedKeyPair, GroupSendEndorsementsResponse, GroupSendEndorsement -> GroupSendFullToken.verify()
  *
  * Still missing (live-only): the GroupsV2 *operations* wrappers (GroupsV2Operations, GroupsV2Api,
@@ -32,6 +34,8 @@ import javax.net.ssl.SSLSocketFactory
 object SignalGroups {
 
     private const val TAG = "SignalGroups"
+    private const val HEX_PAIR = 2
+    private const val HEX_RADIX = 16
     const val GROUPSV2_PATH = "/v2/groups/"
     const val GROUPSV2_TOKEN_PATH = "/v1/certificate/auth/group"
     const val HIGHEST_KNOWN_EPOCH = 7
@@ -73,13 +77,18 @@ object SignalGroups {
     fun hexToBytes(hex: String): ByteArray? {
         if (hex.isEmpty() || hex.length % 2 != 0) return null
         return try {
-            ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+            ByteArray(hex.length / HEX_PAIR) {
+                hex.substring(it * HEX_PAIR, it * HEX_PAIR + HEX_PAIR).toInt(HEX_RADIX).toByte()
+            }
         } catch (_: Exception) {
             null
         }
     }
 
-    fun buildGroupContextV2(masterKey: ByteArray, revision: Int = 0, groupChange: ByteArray? = null): SignalServiceProtos.GroupContextV2 {
+    fun buildGroupContextV2(
+        masterKey: ByteArray,
+        revision: Int = 0,
+        groupChange: ByteArray? = null): SignalServiceProtos.GroupContextV2 {
         val b = SignalServiceProtos.GroupContextV2.newBuilder()
             .setMasterKey(ByteString.copyFrom(masterKey))
             .setRevision(revision)
@@ -98,8 +107,8 @@ object SignalGroups {
     fun encryptServiceId(secretParamsBytes: ByteArray, serviceId: String): ByteArray? = try {
         val aci = ServiceId.Aci.parseFromString(serviceId)
         ClientZkGroupCipher(GroupSecretParams(secretParamsBytes)).encrypt(aci).serialize()
-    } catch (e: Exception) {
-        Log.w(TAG, "could not encrypt member id: ${e.message}")
+    } catch (expected: Exception) {
+        Log.w(TAG, "could not encrypt member id: ${expected.message}")
         null
     }
 
@@ -147,10 +156,15 @@ object SignalGroups {
         val basic = basicAuth(authData)
         val hdrs = mutableMapOf<String, Any>("Authorization" to "Basic $basic", "Content-Type" to "application/json")
         hdrs.putAll(headers)
-        val resp = NetworkClient.execute("$baseUrl$GROUPSV2_PATH", method = "PUT", headers = hdrs, body = requestBody, sslSocketFactory = sslSocketFactory)
+        val resp = NetworkClient.execute(
+            "$baseUrl$GROUPSV2_PATH",
+            method = "PUT",
+            headers = hdrs,
+            body = requestBody,
+            sslSocketFactory = sslSocketFactory)
         resp.isSuccess
-    } catch (e: Exception) {
-        Log.w(TAG, "putNewGroup failed", e)
+    } catch (expected: Exception) {
+        Log.w(TAG, "putNewGroup failed", expected)
         false
     }
 
@@ -161,15 +175,12 @@ object SignalGroups {
      * Returns null when offline; caller should cache per-revision and include as `group-send-token`
      * header on the unauth WS when present.
      */
-    suspend fun fetchGroupSendEndorsements(
-        baseUrl: String,
-        authData: SignalAuthData,
-        masterKey: ByteArray,
-    ): ByteArray? {
+    suspend fun fetchGroupSendEndorsements(): ByteArray? {
         // Live-only: fetch endorsements from GET /v2/groups/token or via PushServiceSocket.getGroupHistory.
         // Without live server/SGX, return null and document the gap; the send path will omit the
         // group-send-token header and the server will reject with 403 until endorsement is supplied.
-        Log.i(TAG, "fetchGroupSendEndorsements live-only (needs GET $GROUPSV2_TOKEN_PATH with zkgroup GroupSendEndorsementsResponse)")
+        Log.i(TAG, "fetchGroupSendEndorsements live-only (needs GET" +
+            "$GROUPSV2_TOKEN_PATH with zkgroup GroupSendEndorsementsResponse)")
         return null
     }
 

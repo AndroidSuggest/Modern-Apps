@@ -281,7 +281,10 @@ interface CachedAppDao {
     )
     suspend fun searchAll(q: String, limit: Int): List<CachedAppEntity>
 
-    @Query("SELECT * FROM CachedAppEntity WHERE packageName LIKE '%' || :q || '%' OR name LIKE '%' || :q || '%' ORDER BY name ASC")
+    @Query(
+        "SELECT * FROM CachedAppEntity WHERE packageName LIKE '%' || :q || '%' " +
+            "OR name LIKE '%' || :q || '%' ORDER BY name ASC"
+    )
     fun searchFlow(q: String): Flow<List<CachedAppEntity>>
 
     @Query("SELECT * FROM CachedAppEntity")
@@ -369,10 +372,14 @@ abstract class AppDatabase : RoomDatabase() {
                     connection.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN installs INTEGER NOT NULL DEFAULT 0")
                     connection.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN updatedOn TEXT")
                     connection.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN contentRating TEXT")
-                    connection.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN containsAds INTEGER NOT NULL DEFAULT 0")
+                    connection.execSQL(
+                        "ALTER TABLE CachedAppEntity ADD COLUMN containsAds INTEGER NOT NULL DEFAULT 0"
+                    )
                     connection.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN antiFeatures TEXT")
                     connection.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN whatsNew TEXT")
-                    connection.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN addedTimestamp INTEGER NOT NULL DEFAULT 0")
+                    connection.execSQL(
+                        "ALTER TABLE CachedAppEntity ADD COLUMN addedTimestamp INTEGER NOT NULL DEFAULT 0"
+                    )
                 }
             },
             object : Migration(5, 6) {

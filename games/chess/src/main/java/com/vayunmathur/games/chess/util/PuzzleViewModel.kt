@@ -22,9 +22,15 @@ import kotlinx.coroutines.withContext
 
 /** Difficulty bands, mapped to Lichess rating ranges within the bundled set. */
 enum class PuzzleDifficulty(val range: IntRange) {
-    EASY(400..1199),
-    MEDIUM(1200..1799),
-    HARD(1800..2799)
+    EASY(EASY_RANGE),
+    MEDIUM(MEDIUM_RANGE),
+    HARD(HARD_RANGE);
+
+    companion object {
+        private val EASY_RANGE = 400..1199
+        private val MEDIUM_RANGE = 1200..1799
+        private val HARD_RANGE = 1800..2799
+    }
 }
 
 enum class PuzzleStatus {
@@ -68,6 +74,10 @@ class PuzzleViewModel(application: Application) : AndroidViewModel(application),
     // Delay before the opponent's auto-played moves, so they read as a response.
     private val setupDelayMs = 500L
     private val replyDelayMs = 400L
+
+    companion object {
+        private const val REPLAY_STEP_DELAY_MS = 600L
+    }
 
     /** Loads a fresh random puzzle from the given [difficulty] band. */
     override fun loadRandom(difficulty: PuzzleDifficulty) {
@@ -253,7 +263,7 @@ class PuzzleViewModel(application: Application) : AndroidViewModel(application),
             }
             var board = puzzle.board
             for ((i, move) in puzzle.solution.withIndex()) {
-                delay(replyDelayMs + 200L)
+                delay(REPLAY_STEP_DELAY_MS)
                 if (_uiState.value.puzzle !== puzzle) return@launch
                 board = board.movePiece(move.from, move.to, move.promotion)
                 _uiState.update { it.copy(board = board, solutionIndex = i + 1) }

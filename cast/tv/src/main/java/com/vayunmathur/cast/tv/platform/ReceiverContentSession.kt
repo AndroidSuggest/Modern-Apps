@@ -65,20 +65,11 @@ internal suspend fun ReceiverController.serveContent(
         // back on has to say so, and the phone has to be told rather than left streaming into it.
         Log.w(TAG, "refusing an audio-only session: this TV has no Opus decoder")
         channel.send(ContentReady(accepted = false, detail = "this TV has no Opus decoder"))
-        _state.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.NoAudioDecoder)) }
+        mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.NoAudioDecoder)) }
         return false
     }
 
-    val player = withContext(Dispatchers.Main) { ContentPlayer(context, session) }
-    val started = withContext(Dispatchers.Main) {
-        player.start { detail -> Log.w(TAG, "the served stream failed: $detail") }
-    }
-    if (!started) {
-        channel.send(ContentReady(accepted = false, detail = "the player could not be built"))
-        _state.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
-        withContext(NonCancellable + Dispatchers.Main) { player.release() }
-        return false
-    }
+    val player = prepareContentPlayer(context, channel, session) ?: return false
 
     contentPlayer = player
     // A surface may already exist from a previous session's Activity; an audio-only session wants
@@ -88,7 +79,7 @@ internal suspend fun ReceiverController.serveContent(
     // Built outside the update, because `update` may retry its lambda under contention and
     // allocating a fetcher per attempt would be one object per lost race.
     val artworkFetcher = ArtworkFetcher(session)
-    _state.update {
+    mutableState.update {
         it.copy(
             phase = ReceiverPhase.Mirroring(
                 senderName = senderName,
@@ -114,43 +105,7 @@ internal suspend fun ReceiverController.serveContent(
     // there are none here - every send is a single message.
     val reporting = scope.launch { report(player, channel) }
     try {
-        while (true) {
-            val next = channel.receive() ?: return false
-            when (val message = next.message) {
-                is Bye -> {
-                    Log.i(TAG, "'$senderName' said goodbye")
-                    return false
-                }
-                // The phone is done casting but not done with us. Distinct from a `Bye`, and the
-                // difference is the pairing: this leaves the TV connected and ready for the next
-                // cast rather than back at its idle screen waiting to be picked again.
-                is ContentEnded -> {
-                    Log.i(TAG, "'$senderName' ended the content session")
-                    return true
-                }
-                is PlayMedia -> {
-                    withContext(Dispatchers.Main) { player.play(message) }
-                    // Published rather than only held on the player, because it is half of the
-                    // comparison `nowPlayingForCurrentItem` makes and the UI has to recompose on it.
-                    _state.update { it.copy(playingResourceId = message.resourceId) }
-                }
-                // What the item *is*, as opposed to which bytes it is. Stored whatever it names:
-                // the gate is at read time, so a snapshot arriving before or after the play it
-                // describes both work, and one for a track already skipped past is simply never
-                // shown. See `ReceiverUiState.nowPlayingForCurrentItem`.
-                is NowPlaying -> _state.update { it.copy(nowPlaying = message) }
-                // The phone's transport, wherever it was pressed - its own screen, a notification,
-                // a headset button, a car. Applied to the player that is actually making the
-                // sound. `Next` and `Previous` are refused by the player and arrive as a fresh
-                // `PLAY_MEDIA` instead, because only the phone can see the queue.
-                is PlaybackCommand -> withContext(Dispatchers.Main) { player.apply(message) }
-                // Echoed straight back, which is the whole of the keep-alive. Reading it has
-                // already pushed this end's deadline out; replying is what pushes the phone's,
-                // since a read timeout is not reset by anything that end sends.
-                is Ping -> runCatching { channel.send(Ping) }
-                else -> Unit
-            }
-        }
+        return serveLoop(channel, player, senderName)
     } finally {
         // Cancelled **and joined**, under NonCancellable because this runs on the teardown path a
         // cancelled session takes. A publish already past its last suspension point would
@@ -161,6 +116,78 @@ internal suspend fun ReceiverController.serveContent(
         // NonCancellable because this is the teardown path a cancelled session takes, and an
         // ExoPlayer left unreleased holds a codec the next session will ask for.
         withContext(NonCancellable + Dispatchers.Main) { player.release() }
+    }
+}
+
+/**
+ * Build the player for a served session, or refuse it when it cannot be built.
+ *
+ * Null carries the refusal with it: the phone has been told with a reason and the failure is on
+ * screen, so the caller just ends the session.
+ */
+private suspend fun ReceiverController.prepareContentPlayer(
+    context: Context,
+    channel: ControlChannel,
+    session: ContentSession,
+): ContentPlayer? {
+    val player = withContext(Dispatchers.Main) { ContentPlayer(context, session) }
+    val started = withContext(Dispatchers.Main) {
+        player.start { detail -> Log.w(TAG, "the served stream failed: $detail") }
+    }
+    if (started) return player
+    channel.send(ContentReady(accepted = false, detail = "the player could not be built"))
+    mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
+    withContext(NonCancellable + Dispatchers.Main) { player.release() }
+    return null
+}
+
+/**
+ * The served session's control loop: one message at a time until the phone leaves.
+ *
+ * Returns true when the phone ended the *session* and wants to keep the connection, so the caller
+ * can go back to waiting for the next configuration.
+ */
+private suspend fun ReceiverController.serveLoop(
+    channel: ControlChannel,
+    player: ContentPlayer,
+    senderName: String,
+): Boolean {
+    while (true) {
+        val next = channel.receive() ?: return false
+        when (val message = next.message) {
+            is Bye -> {
+                Log.i(TAG, "'$senderName' said goodbye")
+                return false
+            }
+            // The phone is done casting but not done with us. Distinct from a `Bye`, and the
+            // difference is the pairing: this leaves the TV connected and ready for the next
+            // cast rather than back at its idle screen waiting to be picked again.
+            is ContentEnded -> {
+                Log.i(TAG, "'$senderName' ended the content session")
+                return true
+            }
+            is PlayMedia -> {
+                withContext(Dispatchers.Main) { player.play(message) }
+                // Published rather than only held on the player, because it is half of the
+                // comparison `nowPlayingForCurrentItem` makes and the UI has to recompose on it.
+                mutableState.update { it.copy(playingResourceId = message.resourceId) }
+            }
+            // What the item *is*, as opposed to which bytes it is. Stored whatever it names:
+            // the gate is at read time, so a snapshot arriving before or after the play it
+            // describes both work, and one for a track already skipped past is simply never
+            // shown. See `ReceiverUiState.nowPlayingForCurrentItem`.
+            is NowPlaying -> mutableState.update { it.copy(nowPlaying = message) }
+            // The phone's transport, wherever it was pressed - its own screen, a notification,
+            // a headset button, a car. Applied to the player that is actually making the
+            // sound. `Next` and `Previous` are refused by the player and arrive as a fresh
+            // `PLAY_MEDIA` instead, because only the phone can see the queue.
+            is PlaybackCommand -> withContext(Dispatchers.Main) { player.apply(message) }
+            // Echoed straight back, which is the whole of the keep-alive. Reading it has
+            // already pushed this end's deadline out; replying is what pushes the phone's,
+            // since a read timeout is not reset by anything that end sends.
+            is Ping -> runCatching { channel.send(Ping) }
+            else -> Unit
+        }
     }
 }
 

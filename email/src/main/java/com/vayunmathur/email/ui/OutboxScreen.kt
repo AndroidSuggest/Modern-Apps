@@ -1,9 +1,15 @@
 package com.vayunmathur.email.ui
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,7 +25,16 @@ import com.vayunmathur.email.R
 import com.vayunmathur.email.data.EmailAccount
 import com.vayunmathur.email.data.OutboxEntry
 import com.vayunmathur.email.platform.EmailViewModel
-import com.vayunmathur.library.ui.*
+import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.EmptyState
+import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.HorizontalDivider
+import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconDelete
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
+import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.util.AppMessages
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,7 +53,7 @@ fun OutboxScreen(
         actions = {
             if (outbox.isNotEmpty()) {
                 TextButton(onClick = {
-                    viewModel.sendOutboxNow(context)
+                    viewModel.send.sendOutboxNow(context)
                     AppMessages.show(resources.getQuantityString(R.plurals.retrying_pending_messages, outbox.size, outbox.size))
                 }) { Text(stringResource(R.string.send_now)) }
             }
@@ -58,7 +73,7 @@ fun OutboxScreen(
                     OutboxRow(
                         entry = entry,
                         onDelete = {
-                            viewModel.deleteOutboxEntry(entry)
+                            viewModel.send.deleteOutboxEntry(entry)
                             AppMessages.show(resources.getString(R.string.deleted_from_outbox))
                         },
                     )

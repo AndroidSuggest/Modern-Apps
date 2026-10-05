@@ -366,7 +366,8 @@ val MIGRATION_2_3 = Migration(2, 3) { db ->
     //    Card.id so ReviewLog.cardId references stay valid.
     db.execSQL(
         "INSERT INTO `Note` (`id`, `noteTypeId`, `deckId`, `guid`, `flds`, `sortField`, `tags`, `mod`, `position`) " +
-            "SELECT id, 1, deckId, lower(hex(randomblob(8))), front || char(31) || back, front, tags, 0, position FROM Card",
+            "SELECT id, 1, deckId, lower(hex(randomblob(8))), front || char(31) || back, " +
+            "front, tags, 0, position FROM Card",
     )
 
     // 4. Rebuild Card with the new shape, one card per old card (templateOrd 0).

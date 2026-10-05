@@ -255,7 +255,10 @@ internal fun CameraScreenEffects(
                         if (useNightPreview) viewModel.setupNightPreviewSession()
                         else viewModel.setupPhotoSession()
                 }
-            } catch (e: Exception) {
+            } catch (e: IllegalStateException) {
+                Log.e("NightPreview", "CameraScreen session binding THREW (was not logged before) kind=$sessionKind useNightPreview=$useNightPreview nightExtAvailable=${state.nightExtAvailable}", e)
+                false
+            } catch (e: IllegalArgumentException) {
                 Log.e("NightPreview", "CameraScreen session binding THREW (was not logged before) kind=$sessionKind useNightPreview=$useNightPreview nightExtAvailable=${state.nightExtAvailable}", e)
                 false
             }

@@ -130,7 +130,7 @@ class CalendarViewModel(application: Application) :
                 val app = getApplication<Application>()
                 val affected = _events.value.filter { it.calendarID == calendarId && it.id != null }
                 affected.forEach { ev ->
-                    writeReminders(ev.id!!, normalized)
+                    app.contentResolver.writeReminders(ev.id!!, normalized)
                     try {
                         app.contentResolver.update(
                             CalendarContract.Events.CONTENT_URI,
@@ -140,8 +140,8 @@ class CalendarViewModel(application: Application) :
                             "${CalendarContract.Events._ID} = ?",
                             arrayOf(ev.id.toString()),
                         )
-                    } catch (e: Exception) {
-                        Log.e("CalendarViewModel", "Error applying default reminders", e)
+                    } catch (expected: Exception) {
+                        Log.e("CalendarViewModel", "Error applying default reminders", expected)
                     }
                 }
                 _events.value = Event.getAllEvents(app)
@@ -187,8 +187,8 @@ class CalendarViewModel(application: Application) :
                     app.contentResolver.openInputStream(uri)?.use { iS ->
                         allEvents.addAll(parseICSFile(iS))
                     }
-                } catch (e: Exception) {
-                    Log.e("CalendarViewModel", "Error parsing ICS file: $uri", e)
+                } catch (expected: Exception) {
+                    Log.e("CalendarViewModel", "Error parsing ICS file: $uri", expected)
                 }
             }
             _parsedIcsEvents.value = allEvents
@@ -231,13 +231,13 @@ class CalendarViewModel(application: Application) :
                         )
                         val newId = newUri?.lastPathSegment?.toLongOrNull()
                         if (newId != null && event.reminders.isNotEmpty()) {
-                            writeReminders(newId, event.reminders)
+                            app.contentResolver.writeReminders(newId, event.reminders)
                         }
                     }
                     _events.value = Event.getAllEvents(app)
                     ReminderScheduler.reconcileAll(app, _events.value)
-                } catch (e: Exception) {
-                    Log.e("CalendarViewModel", "Error importing events", e)
+                } catch (expected: Exception) {
+                    Log.e("CalendarViewModel", "Error importing events", expected)
                 }
             }
             updateWidgets()
@@ -262,9 +262,9 @@ class CalendarViewModel(application: Application) :
                     out.bufferedWriter().use { writer -> writeIcs(events, writer) }
                 } ?: error("Could not open $uri for writing")
                 app.getString(R.string.export_ics_success)
-            } catch (e: Exception) {
-                Log.e("CalendarViewModel", "Error exporting ICS to $uri", e)
-                app.getString(R.string.export_ics_failed_format, e.message ?: e.javaClass.simpleName)
+            } catch (expected: Exception) {
+                Log.e("CalendarViewModel", "Error exporting ICS to $uri", expected)
+                app.getString(R.string.export_ics_failed_format, expected.message ?: expected.javaClass.simpleName)
             }
             withContext(Dispatchers.Main) { AppMessages.show(message) }
         }
@@ -347,9 +347,14 @@ class CalendarViewModel(application: Application) :
         val uri = CalendarContract.Calendars.CONTENT_URI
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                app.contentResolver.update(uri, values, "${CalendarContract.Calendars._ID} = ?", arrayOf(calendarId.toString()))
-            } catch (e: Exception) {
-                Log.e("CalendarViewModel", "Error setting calendar visibility", e)
+                app.contentResolver.update(
+                    uri,
+                    values,
+                    "${CalendarContract.Calendars._ID} = ?",
+                    arrayOf(calendarId.toString()),
+                )
+            } catch (expected: Exception) {
+                Log.e("CalendarViewModel", "Error setting calendar visibility", expected)
             }
             refreshCalendarsAndWidgets()
         }
@@ -391,40 +396,25 @@ class CalendarViewModel(application: Application) :
                 if (eventId == null) {
                     val newUri = app.contentResolver.insert(uri, values)
                     val newId = newUri?.lastPathSegment?.toLongOrNull()
-                    if (newId != null && reminders != null) writeReminders(newId, reminders)
+                    if (newId != null && reminders != null) app.contentResolver.writeReminders(newId, reminders)
                 } else {
-                    app.contentResolver.update(uri, values, "${CalendarContract.Events._ID} = ?", arrayOf(eventId.toString()))
-                    if (reminders != null) writeReminders(eventId, reminders)
+                    app.contentResolver.update(
+                        uri,
+                        values,
+                        "${CalendarContract.Events._ID} = ?",
+                        arrayOf(eventId.toString()),
+                    )
+                    if (reminders != null) app.contentResolver.writeReminders(eventId, reminders)
                 }
                 _events.value = Event.getAllEvents(app)
                 ReminderScheduler.reconcileAll(app, _events.value)
                 updateWidgets()
-            } catch (e: Exception) {
-                Log.e("CalendarViewModel", "Error upserting event", e)
+            } catch (expected: Exception) {
+                Log.e("CalendarViewModel", "Error upserting event", expected)
             }
         }
     }
 
-    /** Replace all reminders for [eventId] with [reminders] (minutes before start). */
-    private fun writeReminders(eventId: Long, reminders: List<Int>) {
-        val cr = getApplication<Application>().contentResolver
-        try {
-            cr.delete(
-                CalendarContract.Reminders.CONTENT_URI,
-                "${CalendarContract.Reminders.EVENT_ID} = ?",
-                arrayOf(eventId.toString()),
-            )
-            reminders.distinct().forEach { minutes ->
-                cr.insert(CalendarContract.Reminders.CONTENT_URI, ContentValues().apply {
-                    put(CalendarContract.Reminders.EVENT_ID, eventId)
-                    put(CalendarContract.Reminders.MINUTES, minutes)
-                    put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
-                })
-            }
-        } catch (e: Exception) {
-            Log.e("CalendarViewModel", "Error writing reminders", e)
-        }
-    }
 
     // set the calendar color in the provider and refresh cached calendars
     fun setCalendarColor(calendarId: Long, colorInt: Int) {
@@ -433,9 +423,14 @@ class CalendarViewModel(application: Application) :
         val uri = CalendarContract.Calendars.CONTENT_URI
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                app.contentResolver.update(uri, values, "${CalendarContract.Calendars._ID} = ?", arrayOf(calendarId.toString()))
-            } catch (e: Exception) {
-                Log.e("CalendarViewModel", "Error setting calendar color", e)
+                app.contentResolver.update(
+                    uri,
+                    values,
+                    "${CalendarContract.Calendars._ID} = ?",
+                    arrayOf(calendarId.toString()),
+                )
+            } catch (expected: Exception) {
+                Log.e("CalendarViewModel", "Error setting calendar color", expected)
             }
             refreshCalendarsAndWidgets()
         }
@@ -458,9 +453,14 @@ class CalendarViewModel(application: Application) :
         val uri = CalendarContract.Calendars.CONTENT_URI
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                app.contentResolver.update(uri, values, "${CalendarContract.Calendars._ID} = ?", arrayOf(calendarId.toString()))
-            } catch (e: Exception) {
-                Log.e("CalendarViewModel", "Error renaming calendar", e)
+                app.contentResolver.update(
+                    uri,
+                    values,
+                    "${CalendarContract.Calendars._ID} = ?",
+                    arrayOf(calendarId.toString()),
+                )
+            } catch (expected: Exception) {
+                Log.e("CalendarViewModel", "Error renaming calendar", expected)
             }
             refreshCalendarsAndWidgets()
         }
@@ -478,8 +478,8 @@ class CalendarViewModel(application: Application) :
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 app.contentResolver.delete(uri, "${CalendarContract.Calendars._ID} = ?", arrayOf(calendarId.toString()))
-            } catch (e: Exception) {
-                Log.e("CalendarViewModel", "Error deleting calendar", e)
+            } catch (expected: Exception) {
+                Log.e("CalendarViewModel", "Error deleting calendar", expected)
             }
             refreshCalendarsAndWidgets()
         }
@@ -522,8 +522,8 @@ class CalendarViewModel(application: Application) :
             try {
                 val resultUri = app.contentResolver.insert(uri, values)
                 newId = resultUri?.lastPathSegment?.toLongOrNull()
-            } catch (e: Exception) {
-                Log.e("CalendarViewModel", "Error creating local calendar", e)
+            } catch (expected: Exception) {
+                Log.e("CalendarViewModel", "Error creating local calendar", expected)
             }
             refreshCalendarsAndWidgets()
             withContext(Dispatchers.Main) {
@@ -532,4 +532,24 @@ class CalendarViewModel(application: Application) :
         }
     }
 
+}
+
+/** Replace all reminders for [eventId] with [reminders] (minutes before start). */
+internal fun android.content.ContentResolver.writeReminders(eventId: Long, reminders: List<Int>) {
+    try {
+        delete(
+            CalendarContract.Reminders.CONTENT_URI,
+            "${CalendarContract.Reminders.EVENT_ID} = ?",
+            arrayOf(eventId.toString()),
+        )
+        reminders.distinct().forEach { minutes ->
+            insert(CalendarContract.Reminders.CONTENT_URI, ContentValues().apply {
+                put(CalendarContract.Reminders.EVENT_ID, eventId)
+                put(CalendarContract.Reminders.MINUTES, minutes)
+                put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
+            })
+        }
+    } catch (expected: Exception) {
+        Log.e("CalendarViewModel", "Error writing reminders", expected)
+    }
 }

@@ -48,7 +48,11 @@ private fun RRule.EndCondition.toRRuleSuffix(timeZone: TimeZone): String = when 
 
 private fun RRule.EndCondition.describeSuffix(context: Context): String = when (this) {
     is RRule.EndCondition.Never -> ""
-    is RRule.EndCondition.Count -> context.resources.getQuantityString(R.plurals.rrule_count_suffix, count.toInt(), count)
+    is RRule.EndCondition.Count -> context.resources.getQuantityString(
+        R.plurals.rrule_count_suffix,
+        count.toInt(),
+        count,
+    )
     is RRule.EndCondition.Until -> context.getString(R.string.rrule_until_suffix, DateString.dateWeekday(date))
 }
 
@@ -83,73 +87,117 @@ sealed class RRule {
         fun parse(content: String, timeZone: TimeZone): RRule? {
             if (content.isBlank()) return null
 
-            // 1. Clean the string and split into parts
             // Handles both "RRULE:FREQ=..." and just "FREQ=..."
-            val cleanContent = content.removePrefix("RRULE:").trim()
-            val parts = cleanContent.split(";").associate {
-                val split = it.split("=")
-                if (split.size != 2) return null // Malformed part
-                split[0].uppercase() to split[1].uppercase()
-            }
-
-            // 2. Extract common fields
+            val parts = splitParts(content.removePrefix("RRULE:").trim()) ?: return null
             val freq = parts["FREQ"] ?: return null
             val interval = (parts["INTERVAL"]?.toIntOrNull() ?: 1).coerceAtLeast(1)
+            val endCondition = parseEndCondition(parts, timeZone) ?: return null
+            val common = parseCommonFields(parts)
 
-            val endCondition = when {
-                parts.containsKey("COUNT") ->
-                    EndCondition.Count((parts["COUNT"]?.toLongOrNull() ?: 1L).coerceIn(1L, MAX_RRULE_COUNT))
-                parts.containsKey("UNTIL") ->
-                    parseIcalUntil(parts["UNTIL"]!!, timeZone)?.let { EndCondition.Until(it) } ?: return null
-                else -> EndCondition.Never
-            }
-
-            // Extract RFC 5545 properties
-            val byMonthDay = parts["BYMONTHDAY"]?.split(",")?.mapNotNull { it.toIntOrNull() }
-            val byMonth = parts["BYMONTH"]?.split(",")?.mapNotNull { it.toIntOrNull() }
-            val bySetPos = parts["BYSETPOS"]?.split(",")?.mapNotNull { it.toIntOrNull() }
-            val byYearDay = parts["BYYEARDAY"]?.split(",")?.mapNotNull { it.toIntOrNull() }
-            val byWeekNo = parts["BYWEEKNO"]?.split(",")?.mapNotNull { it.toIntOrNull() }
-            val wkst = parts["WKST"]?.let { dayOfWeekByIcal[it.take(2)] }
-
-            // 3. Dispatch to specific classes based on FREQ
             return when (freq) {
-                "DAILY" -> EveryXDays(interval, endCondition, byMonthDay, byMonth, bySetPos, byYearDay, byWeekNo, wkst)
-
-                "WEEKLY" -> {
-                    val byDay = parts["BYDAY"]
-                    val days = byDay?.split(",")?.mapNotNull { dayOfWeekByIcal[it.take(2)] } ?: emptyList()
-                    EveryXWeeks(interval, days, endCondition, byMonthDay, byMonth, bySetPos, byYearDay, byWeekNo, wkst)
-                }
-
-                "MONTHLY" -> {
-                    val byDayRaw = parts["BYDAY"]
-                    // type 2 = last weekday (negative prefix, e.g. -1MO), type 1 = nth weekday
-                    // (positive prefix, e.g. 2TU), type 0 = by month day.
-                    val type = when {
-                        byDayRaw == null -> 0
-                        byDayRaw.contains("-") -> 2
-                        byDayRaw.any { it.isDigit() } -> 1
-                        else -> 0
-                    }
-                    // Preserve BYDAY days so type-0 round-trips; type 1/2 keep
-                    // type-derived emission in asString (generic byDay suppressed there).
-                    val parsedDays = byDayRaw?.split(",")?.mapNotNull { dayOfWeekByIcal[it.takeLast(2)] }
-                    EveryXMonths(interval, type, endCondition, byMonthDay, byMonth, bySetPos, byYearDay, byWeekNo, wkst, parsedDays)
-                }
-
-                "YEARLY" -> {
-                    val byDayTokens = parts["BYDAY"]?.split(",")
-                    val byDayDows = byDayTokens?.mapNotNull { dayOfWeekByIcal[it.takeLast(2)] }
-                    // Preserve numeric prefixes (e.g. 20MO, -1FR) for round-trip;
-                    // plain day codes round-trip via byDay as before.
-                    val byDayRaw = byDayTokens?.takeIf { tokens -> tokens.any { it.any(Char::isDigit) || it.startsWith("-") } }
-                    EveryXYears(interval, endCondition, byMonthDay, byMonth, bySetPos, byYearDay, byWeekNo, wkst, byDayDows, byDayRaw)
-                }
-
+                "DAILY" -> EveryXDays(interval, endCondition, common.byMonthDay, common.byMonth,
+                    common.bySetPos, common.byYearDay, common.byWeekNo, common.wkst)
+                "WEEKLY" -> parseWeekly(parts, interval, endCondition, common)
+                "MONTHLY" -> parseMonthly(parts, interval, endCondition, common)
+                "YEARLY" -> parseYearly(parts, interval, endCondition, common)
                 else -> null // Unsupported frequency (e.g., HOURLY)
             }
         }
+
+        /** Splits "K=V;K=V..." into a map, or null when a part is malformed. */
+        private fun splitParts(cleanContent: String): Map<String, String>? {
+            val parts = mutableMapOf<String, String>()
+            for (part in cleanContent.split(";")) {
+                val split = part.split("=")
+                if (split.size != 2) return null // Malformed part
+                parts[split[0].uppercase()] = split[1].uppercase()
+            }
+            return parts
+        }
+
+        /** COUNT/UNTIL end condition; null only when UNTIL is unparseable. */
+        private fun parseEndCondition(parts: Map<String, String>, timeZone: TimeZone): EndCondition? {
+            if (parts.containsKey("COUNT")) {
+                val count = (parts["COUNT"]?.toLongOrNull() ?: 1L).coerceIn(1L, MAX_RRULE_COUNT)
+                return EndCondition.Count(count)
+            }
+            if (parts.containsKey("UNTIL")) {
+                return parseIcalUntil(parts["UNTIL"]!!, timeZone)?.let { EndCondition.Until(it) }
+            }
+            return EndCondition.Never
+        }
+
+        /** RFC 5545 properties shared by every frequency. */
+        private fun parseCommonFields(parts: Map<String, String>): CommonFields {
+            return CommonFields(
+                byMonthDay = parts["BYMONTHDAY"]?.split(",")?.mapNotNull { it.toIntOrNull() },
+                byMonth = parts["BYMONTH"]?.split(",")?.mapNotNull { it.toIntOrNull() },
+                bySetPos = parts["BYSETPOS"]?.split(",")?.mapNotNull { it.toIntOrNull() },
+                byYearDay = parts["BYYEARDAY"]?.split(",")?.mapNotNull { it.toIntOrNull() },
+                byWeekNo = parts["BYWEEKNO"]?.split(",")?.mapNotNull { it.toIntOrNull() },
+                wkst = parts["WKST"]?.let { dayOfWeekByIcal[it.take(2)] },
+            )
+        }
+
+        private fun parseWeekly(
+            parts: Map<String, String>,
+            interval: Int,
+            endCondition: EndCondition,
+            common: CommonFields,
+        ): EveryXWeeks {
+            val byDay = parts["BYDAY"]
+            val days = byDay?.split(",")?.mapNotNull { dayOfWeekByIcal[it.take(2)] } ?: emptyList()
+            return EveryXWeeks(interval, days, endCondition, common.byMonthDay, common.byMonth,
+                common.bySetPos, common.byYearDay, common.byWeekNo, common.wkst)
+        }
+
+        private fun parseMonthly(
+            parts: Map<String, String>,
+            interval: Int,
+            endCondition: EndCondition,
+            common: CommonFields,
+        ): EveryXMonths {
+            val byDayRaw = parts["BYDAY"]
+            // type 2 = last weekday (negative prefix, e.g. -1MO), type 1 = nth weekday
+            // (positive prefix, e.g. 2TU), type 0 = by month day.
+            val type = when {
+                byDayRaw == null -> 0
+                byDayRaw.contains("-") -> 2
+                byDayRaw.any { it.isDigit() } -> 1
+                else -> 0
+            }
+            // Preserve BYDAY days so type-0 round-trips; type 1/2 keep
+            // type-derived emission in asString (generic byDay suppressed there).
+            val parsedDays = byDayRaw?.split(",")?.mapNotNull { dayOfWeekByIcal[it.takeLast(2)] }
+            return EveryXMonths(interval, type, endCondition, common.byMonthDay, common.byMonth,
+                common.bySetPos, common.byYearDay, common.byWeekNo, common.wkst, parsedDays)
+        }
+
+        private fun parseYearly(
+            parts: Map<String, String>,
+            interval: Int,
+            endCondition: EndCondition,
+            common: CommonFields,
+        ): EveryXYears {
+            val byDayTokens = parts["BYDAY"]?.split(",")
+            val byDayDows = byDayTokens?.mapNotNull { dayOfWeekByIcal[it.takeLast(2)] }
+            // Preserve numeric prefixes (e.g. 20MO, -1FR) for round-trip;
+            // plain day codes round-trip via byDay as before.
+            val byDayRaw = byDayTokens?.takeIf { tokens ->
+                tokens.any { it.any(Char::isDigit) || it.startsWith("-") }
+            }
+            return EveryXYears(interval, endCondition, common.byMonthDay, common.byMonth,
+                common.bySetPos, common.byYearDay, common.byWeekNo, common.wkst, byDayDows, byDayRaw)
+        }
+
+        private data class CommonFields(
+            val byMonthDay: List<Int>?,
+            val byMonth: List<Int>?,
+            val bySetPos: List<Int>?,
+            val byYearDay: List<Int>?,
+            val byWeekNo: List<Int>?,
+            val wkst: DayOfWeek?,
+        )
     }
 
     @Serializable

@@ -84,13 +84,18 @@ class OfflineBeaconStore(context: Context) {
             if (wifiHandle == 0L) return emptyMap()
             val out = HashMap<BeaconId.Wifi, BeaconFix>()
             for (id in bssids) {
-                val key = BeaconKeys.parseMac(id.bssid) ?: continue
-                if (BeaconKeys.isRandomizedMac(key)) continue
-                val r = WpsStoreNative.lookup(wifiHandle, 0L, key) ?: continue
-                if (r.size >= 3) out[id] = BeaconFix(id, r[0], r[1], accuracyOf(r[2]))
+                lookupWifi(id)?.let { out[id] = it }
             }
             return out
         }
+    }
+
+    private fun lookupWifi(id: BeaconId.Wifi): BeaconFix? {
+        val key = BeaconKeys.parseMac(id.bssid) ?: return null
+        if (BeaconKeys.isRandomizedMac(key)) return null
+        val r = WpsStoreNative.lookup(wifiHandle, 0L, key) ?: return null
+        if (r.size < MIN_LOOKUP_FIELDS) return null
+        return BeaconFix(id, r[0], r[1], accuracyOf(r[2]))
     }
 
     /** Resolve cell towers present in the offline store. Absent towers are omitted. */
@@ -106,7 +111,9 @@ class OfflineBeaconStore(context: Context) {
                     BeaconKeys.cellKeyHi(id),
                     BeaconKeys.cellKeyLo(id),
                 ) ?: continue
-                if (r.size >= 3) out[id] = BeaconFix(id, r[0], r[1], accuracyOf(r[2]))
+                if (r.size >= MIN_LOOKUP_FIELDS) {
+                    out[id] = BeaconFix(id, r[0], r[1], accuracyOf(r[2]))
+                }
             }
             return out
         }
@@ -147,6 +154,9 @@ class OfflineBeaconStore(context: Context) {
          * low would let an unmeasured beacon outvote measured ones.
          */
         const val UNKNOWN_ACCURACY_METERS = 100.0
+
+        /** Native lookup fields: latitude, longitude, accuracy. */
+        const val MIN_LOOKUP_FIELDS = 3
 
         fun accuracyOf(stored: Double): Double =
             if (stored < 0.0) UNKNOWN_ACCURACY_METERS else stored

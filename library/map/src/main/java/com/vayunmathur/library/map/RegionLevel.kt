@@ -15,6 +15,11 @@ package com.vayunmathur.library.map
  * values, matching the names the tiler's boundary schema gives them (`kind_for`): 1-2
  * country, 3-4 region, 5-6 county, 7+ locality.
  */
+// OSM admin_level bands (see the KDoc above): 1-2 country, 3-4 region, 7-12 locality.
+// Enum entries cannot reference companion constants in their own constructor calls
+// (companion initializes after entries), so the bands stay as literals with the
+// documented ranges as the single source of truth.
+@Suppress("MagicNumber")
 @Deprecated("Baked-id path: pass the label's regionId (Long?) straight through instead.")
 enum class RegionLevel(val min: Int, val max: Int) {
     /** A country. */

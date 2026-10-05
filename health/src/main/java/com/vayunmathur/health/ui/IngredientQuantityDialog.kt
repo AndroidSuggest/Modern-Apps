@@ -4,17 +4,33 @@ package com.vayunmathur.health.ui
 
 import kotlin.uuid.Uuid
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import com.vayunmathur.health.data.Ingredient
+import com.vayunmathur.health.data.ServingUnit
+import com.vayunmathur.library.ui.AlertDialog
+import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.DropdownMenu
+import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.IconArrowDropDown
+import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconCheck
+import com.vayunmathur.library.ui.OutlinedTextField
+import com.vayunmathur.library.ui.SelectableDropdownMenuItem
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
 import androidx.compose.foundation.text.KeyboardOptions
 import com.vayunmathur.library.ui.R as UiR
-import com.vayunmathur.library.ui.*
-import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.health.R
-import com.vayunmathur.health.data.*
 import com.vayunmathur.health.util.HealthViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)

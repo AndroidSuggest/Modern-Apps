@@ -65,6 +65,9 @@ object LocationProvider {
 
     private const val LIVE_FIX_TIMEOUT_MS = 15_000L
 
+    /** How many address candidates a forward-geocode lookup asks for. */
+    private const val MAX_GEOCODE_RESULTS = 5
+
     @SuppressLint("MissingPermission")
     private fun LocationManager.requestSingleUpdateCompat(
         provider: String,
@@ -91,7 +94,7 @@ object LocationProvider {
                     // geocoder failure would otherwise leave this coroutine suspended forever.
                     geocoder.getFromLocationName(
                         query,
-                        5,
+                        MAX_GEOCODE_RESULTS,
                         object : Geocoder.GeocodeListener {
                             override fun onGeocode(addresses: MutableList<android.location.Address>) {
                                 if (cont.isActive) cont.resume(addresses.map { it.toPlace() })
@@ -105,7 +108,7 @@ object LocationProvider {
                 }
             } else {
                 @Suppress("DEPRECATION")
-                runCatching { geocoder.getFromLocationName(query, 5) }
+                runCatching { geocoder.getFromLocationName(query, MAX_GEOCODE_RESULTS) }
                     .getOrNull()
                     ?.map { it.toPlace() }
                     ?: emptyList()

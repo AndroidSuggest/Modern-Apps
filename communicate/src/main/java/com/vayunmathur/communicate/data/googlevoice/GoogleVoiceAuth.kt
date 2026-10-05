@@ -19,6 +19,7 @@ import java.security.MessageDigest
  * The functions here are pure so they can be unit-tested without a device/session.
  */
 object GoogleVoiceAuth {
+    private const val MS_PER_SECOND = 1000L
 
     const val ORIGIN = "https://voice.google.com"
     const val REFERER = "https://voice.google.com/"
@@ -42,7 +43,7 @@ object GoogleVoiceAuth {
         cookieHeader: String,
         sapisid: String,
         authUser: String,
-        nowSeconds: Long = System.currentTimeMillis() / 1000,
+        nowSeconds: Long = System.currentTimeMillis() / MS_PER_SECOND,
     ): Map<String, String> = buildMap {
         put("Authorization", authorization(nowSeconds, sapisid))
         put("Cookie", cookieHeader)

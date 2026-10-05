@@ -5,7 +5,6 @@ import android.content.Intent
 import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.vayunmathur.musicbrainz.data.library.LibraryIndex
 import com.vayunmathur.musicbrainz.data.library.LibraryScanner
 import com.vayunmathur.musicbrainz.data.library.LibrarySnapshot
 import com.vayunmathur.musicbrainz.data.tidal.TidalAuth
@@ -31,6 +30,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
+import java.io.IOException
 
 /**
  * Drives the browse, search and download screens.
@@ -145,43 +145,37 @@ class MusicBrainzViewModel(application: Application) : AndroidViewModel(applicat
                 hasSearched = true,
             )
             try {
-                when (_search.value.tab) {
-                    SearchTab.Artists -> {
-                        val results = MusicBrainzApi.searchArtists(query)
-                        _search.value = _search.value.copy(
-                            loading = false,
-                            artists = results.map { artist ->
-                                ArtistRow(
-                                    id = artist.id,
-                                    name = artist.name,
-                                    subtitle = listOfNotNull(
-                                        artist.disambiguation?.takeIf { it.isNotBlank() },
-                                        artist.type,
-                                        artist.country,
-                                    ).joinToString(" \u00B7 ").ifEmpty { null },
-                                )
-                            },
-                        )
-                    }
-                    SearchTab.Releases -> {
-                        val results = MusicBrainzApi.searchReleaseGroups(query)
-                        _search.value = _search.value.copy(
-                            loading = false,
-                            releaseGroups = results.map { it.toRow() },
-                        )
-                    }
-                    SearchTab.Recordings -> {
-                        val results = MusicBrainzApi.searchRecordings(query)
-                        _search.value = _search.value.copy(
-                            loading = false,
-                            recordings = results.map { it.toRow() },
-                        )
-                    }
-                }
-            } catch (e: Exception) {
+                runSearch(query)
+            } catch (e: IOException) {
                 _search.value = _search.value.copy(
                     loading = false,
                     error = e.readableMessage(),
+                )
+            }
+        }
+    }
+
+    private suspend fun runSearch(query: String) {
+        when (_search.value.tab) {
+            SearchTab.Artists -> {
+                val results = MusicBrainzApi.searchArtists(query)
+                _search.value = _search.value.copy(
+                    loading = false,
+                    artists = results.map { it.toRow() },
+                )
+            }
+            SearchTab.Releases -> {
+                val results = MusicBrainzApi.searchReleaseGroups(query)
+                _search.value = _search.value.copy(
+                    loading = false,
+                    releaseGroups = results.map { it.toRow() },
+                )
+            }
+            SearchTab.Recordings -> {
+                val results = MusicBrainzApi.searchRecordings(query)
+                _search.value = _search.value.copy(
+                    loading = false,
+                    recordings = results.map { it.toRow() },
                 )
             }
         }
@@ -229,7 +223,7 @@ class MusicBrainzViewModel(application: Application) : AndroidViewModel(applicat
                 }
                 artistCache[id] = state
                 _artist.value = state
-            } catch (e: Exception) {
+            } catch (e: IOException) {
                 _artist.value = _artist.value.copy(
                     loading = false,
                     error = e.readableMessage(),
@@ -285,7 +279,7 @@ class MusicBrainzViewModel(application: Application) : AndroidViewModel(applicat
                 }
                 releaseGroupCache[id] = state
                 _releaseGroup.value = state
-            } catch (e: Exception) {
+            } catch (e: IOException) {
                 _releaseGroup.value = ReleaseGroupUiState(
                     loading = false,
                     error = e.readableMessage(),
@@ -306,7 +300,7 @@ class MusicBrainzViewModel(application: Application) : AndroidViewModel(applicat
                 val release = MusicBrainzApi.release(id)
                 releaseCache[id] = release
                 _release.value = release.toUiState()
-            } catch (e: Exception) {
+            } catch (e: IOException) {
                 _release.value = ReleaseUiState(
                     loading = false,
                     error = e.readableMessage(),
@@ -429,60 +423,21 @@ class MusicBrainzViewModel(application: Application) : AndroidViewModel(applicat
         tidalLoginJob?.cancel()
         _tidalLogin.value = TidalLoginUiState()
         tidalLoginJob = viewModelScope.launch {
-            val code = try {
-                TidalAuth.requestDeviceCode()
-            } catch (e: Exception) {
-                _tidalLogin.value = TidalLoginUiState(
-                    status = TidalLoginStatus.Failed,
-                    error = e.readableMessage(),
-                )
-                return@launch
-            }
-            _tidalLogin.value = TidalLoginUiState(
-                status = TidalLoginStatus.AwaitingUser,
-                userCode = code.userCode,
-                verificationUri = code.verificationUri,
-            )
-
-            val deadline = System.currentTimeMillis() + code.expiresInSeconds * 1000L
-            var intervalMs = code.intervalSeconds.coerceAtLeast(1) * 1000L
-            while (System.currentTimeMillis() < deadline) {
-                delay(intervalMs)
-                when (val result = TidalAuth.poll(code.deviceCode)) {
-                    TidalPollResult.Pending -> Unit
-                    TidalPollResult.SlowDown -> intervalMs += SLOW_DOWN_STEP_MS
-                    TidalPollResult.Expired -> {
-                        failTidalLogin(null)
-                        return@launch
-                    }
-                    is TidalPollResult.Error -> {
-                        failTidalLogin(result.message)
-                        return@launch
-                    }
-                    is TidalPollResult.Success -> {
-                        val tokens = result.tokens
-                        // A blank token would store an account that reports as signed in but
-                        // silently resolves nothing, so treat it as a failed sign-in.
-                        if (tokens.accessToken.isBlank()) {
-                            failTidalLogin(null)
-                            return@launch
-                        }
-                        prefs.setTidalAccount(
-                            TidalAccount(
-                                accessToken = tokens.accessToken,
-                                refreshToken = tokens.refreshToken,
-                                expiresAtMs = tokens.expiresAtMs,
-                                countryCode = tokens.countryCode,
-                                userId = tokens.userId,
-                                username = tokens.username,
-                            ),
-                        )
-                        _tidalLogin.value = TidalLoginUiState(status = TidalLoginStatus.Success)
-                        return@launch
-                    }
-                }
-            }
-            failTidalLogin(null)
+            TidalLoginFlow(
+                onState = { _tidalLogin.value = it },
+                onTokens = { tokens ->
+                    prefs.setTidalAccount(
+                        TidalAccount(
+                            accessToken = tokens.accessToken,
+                            refreshToken = tokens.refreshToken,
+                            expiresAtMs = tokens.expiresAtMs,
+                            countryCode = tokens.countryCode,
+                            userId = tokens.userId,
+                            username = tokens.username,
+                        ),
+                    )
+                },
+            ).run()
         }
     }
 
@@ -492,104 +447,11 @@ class MusicBrainzViewModel(application: Application) : AndroidViewModel(applicat
         _tidalLogin.value = TidalLoginUiState()
     }
 
-    private fun failTidalLogin(message: String?) {
-        _tidalLogin.value = TidalLoginUiState(
-            status = TidalLoginStatus.Failed,
-            error = message?.takeIf { it.isNotBlank() },
-        )
-    }
-
     // ------------------------------------------------------------------
-
-    /**
-     * The release's own date, or the release-group's first-release date when the pressing
-     * carries none. Many individual releases have a blank date even though the group has a
-     * year on file, and `release(id)` already includes the group, so this fills the gap.
-     */
-    private fun MbRelease.effectiveDate(): String? =
-        date?.takeIf { it.isNotBlank() } ?: releaseGroup?.firstReleaseDate?.takeIf { it.isNotBlank() }
-
-    private fun MbRelease.toUiState() = ReleaseUiState(
-        loading = false,
-        id = id,
-        title = title,
-        artist = artistCredit.display().orEmpty(),
-        subtitle = listOfNotNull(
-            effectiveDate()?.takeIf { it.isNotBlank() },
-            status,
-            media.firstOrNull()?.format,
-            media.sumOf { it.trackCount }.takeIf { it > 0 }?.let { "$it tracks" },
-        ).joinToString(" \u00B7 ").ifEmpty { null },
-        coverUrl = CoverArt.release(id),
-        fallbackCoverUrl = releaseGroup?.id?.let { CoverArt.releaseGroup(it) },
-        tracks = media.flatMapIndexed { mediumIndex, medium ->
-            medium.tracks.mapIndexed { trackIndex, track ->
-                TrackRow(
-                    // Positional, so it is unique whatever the catalogue sends: an id it
-                    // repeated - or omitted for every track - would crash the list.
-                    rowKey = "$mediumIndex/$trackIndex",
-                    mediumIndex = mediumIndex,
-                    releaseTrackId = track.id.ifBlank { null },
-                    recordingId = track.recording?.id?.ifBlank { null },
-                    position = track.position,
-                    title = track.title.ifBlank { track.recording?.title.orEmpty() },
-                    // Track credits beat release credits: on a compilation the release is
-                    // credited to "Various Artists", which is nobody's actual track artist.
-                    artist = track.artistCredit.display()
-                        ?: track.recording?.artistCredit.display()
-                        ?: artistCredit.display().orEmpty(),
-                    durationMs = track.length ?: track.recording?.length,
-                    discNumber = medium.position,
-                    isrcs = track.recording?.isrcs.orEmpty(),
-                )
-            }
-        },
-    )
-
-    private fun MbReleaseGroup.toRow(includeArtist: Boolean = true) = ReleaseGroupRow(
-        id = id,
-        title = title,
-        artist = if (includeArtist) artistCredit.display().orEmpty() else "",
-        subtitle = listOfNotNull(
-            firstReleaseDate?.take(4)?.takeIf { it.isNotBlank() },
-            primaryType,
-            secondaryTypes.firstOrNull(),
-        ).joinToString(" \u00B7 ").ifEmpty { null },
-        coverUrl = CoverArt.releaseGroup(id),
-    )
-
-    private fun MbRecording.toRow(): RecordingRow {
-        val firstRelease = releases.firstOrNull()
-        return RecordingRow(
-            id = id,
-            title = title,
-            artist = artistCredit.display().orEmpty(),
-            album = firstRelease?.title,
-            releaseId = firstRelease?.id,
-            releaseGroupId = firstRelease?.releaseGroup?.id,
-            durationMs = length,
-        )
-    }
-
-    private fun LibrarySnapshot.matches(row: RecordingRow) = hasTrack(
-        recordingId = row.id,
-        releaseTrackId = null,
-        artist = row.artist,
-        album = row.album,
-        title = row.title,
-    )
-
-    private fun Exception.readableMessage(): String =
-        message?.takeIf { it.isNotBlank() }?.take(200) ?: "Something went wrong"
 
     /** Turns a tree URI into something recognisable, e.g. `primary:Music` into `Music`. */
     private fun readableFolderName(uri: String): String = runCatching {
         SafTree.rootDocumentId(uri.toUri()).substringAfterLast(':').ifEmpty { uri }
     }.getOrDefault(uri)
-
-    private companion object {
-        // Tidal answers `slow_down` when polled too eagerly; back off by a second each time.
-        const val SLOW_DOWN_STEP_MS = 1_000L
-    }
 }
 

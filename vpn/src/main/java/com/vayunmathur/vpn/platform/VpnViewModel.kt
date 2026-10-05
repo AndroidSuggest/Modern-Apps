@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import java.io.IOException
 
 class VpnViewModel(
     application: Application,
@@ -47,7 +48,7 @@ class VpnViewModel(
 
     val configs: StateFlow<List<VpnConfig>> =
         dao.flowAll().map { list -> list.map { it.toModel() } }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
 
     private val _connectingId = MutableStateFlow<Long?>(null)
     val connectingId: StateFlow<Long?> = _connectingId.asStateFlow()
@@ -56,19 +57,19 @@ class VpnViewModel(
     val status: StateFlow<String?> = _status.asStateFlow()
 
     // --- Logging leaderboards ---
-    val topAppsFlow: StateFlow<List<AppUsageSummary>> =
-        logDao.flowTopApps().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val topAppsFlow: StateFlow<List<AppUsageSummary>> = logDao.flowTopApps()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
 
-    val domainsByCountFlow: StateFlow<List<DomainCountSummary>> =
-        logDao.flowDomainsByCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val domainsByCountFlow: StateFlow<List<DomainCountSummary>> = logDao.flowDomainsByCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
 
-    val domainsByBytesFlow: StateFlow<List<DomainBytesSummary>> =
-        logDao.flowDomainsByBytes().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val domainsByBytesFlow: StateFlow<List<DomainBytesSummary>> = logDao.flowDomainsByBytes()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
 
     init {
         viewModelScope.launch {
             while (true) {
-                delay(500)
+                delay(POLL_RUNNING_MS)
                 if (!VpnTunnelService.isRunning) _connectingId.value = null
             }
         }
@@ -96,7 +97,7 @@ class VpnViewModel(
         val ctx = getApplication<Application>()
         val intent = VpnService.prepare(ctx)
         if (intent != null) {
-            activity.startActivityForResult(intent, 1001)
+            activity.startActivityForResult(intent, VPN_PERMISSION_REQUEST)
             _status.value = "Granting VPN permission…"
             return
         }
@@ -116,7 +117,10 @@ class VpnViewModel(
 
     fun stopVpn() {
         val ctx = getApplication<Application>()
-        ctx.startService(Intent(ctx, VpnTunnelService::class.java).apply { action = VpnTunnelService.ACTION_DISCONNECT })
+        val svcIntent = Intent(ctx, VpnTunnelService::class.java).apply {
+            action = VpnTunnelService.ACTION_DISCONNECT
+        }
+        ctx.startService(svcIntent)
         _connectingId.value = null
         _status.value = "Disconnected"
     }
@@ -141,16 +145,27 @@ class VpnViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 try {
-                    context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                } catch (_: Exception) { }
-                val text = context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
-                    ?: run { _status.value = "Failed to read file"; return@launch }
+                    val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    context.contentResolver.takePersistableUriPermission(uri, flags)
+                } catch (expected: SecurityException) {
+                    Log.w("VpnVM", "persist permission denied for $uri", expected)
+                }
+                val text = context.contentResolver.openInputStream(uri)?.use {
+                    it.bufferedReader().readText()
+                } ?: run {
+                    _status.value = "Failed to read file"
+                    return@launch
+                }
                 val imp = WgConfigParser.parse(text).getOrElse {
                     _status.value = "Import failed: ${it.message}"
                     return@launch
                 }
-                val derivedPub = runCatching { VpnNative.derivePublicKey(imp.privateKey) }.getOrNull() ?: ""
-                val nameFromFile = uri.lastPathSegment?.substringBeforeLast('.')?.takeIf { it.isNotBlank() }
+                val derivedPub = runCatching {
+                    VpnNative.derivePublicKey(imp.privateKey)
+                }.getOrNull() ?: ""
+                val nameFromFile = uri.lastPathSegment
+                    ?.substringBeforeLast('.')
+                    ?.takeIf { it.isNotBlank() }
                     ?: imp.peerEndpoint.substringBefore(':').ifBlank { "Imported Tunnel" }
                 val model = VpnConfig(
                     name = nameFromFile,
@@ -167,9 +182,15 @@ class VpnViewModel(
                 )
                 dao.upsert(model.toEntity())
                 _status.value = "Imported ${model.name} from .conf"
-            } catch (e: Exception) {
-                Log.e("VpnVM", "importFromUri", e)
-                _status.value = "Import failed: ${e.message}"
+            } catch (expected: IOException) {
+                Log.e("VpnVM", "importFromUri", expected)
+                _status.value = "Import failed: ${expected.message}"
+            } catch (expected: SecurityException) {
+                Log.e("VpnVM", "importFromUri", expected)
+                _status.value = "Import failed: ${expected.message}"
+            } catch (expected: IllegalStateException) {
+                Log.e("VpnVM", "importFromUri", expected)
+                _status.value = "Import failed: ${expected.message}"
             }
         }
     }
@@ -188,6 +209,12 @@ class VpnViewModel(
     fun configState(id: Long, default: () -> VpnConfig = { VpnConfig() }): VpnConfig {
         val list by configs.collectAsStateWithLifecycle()
         return list.firstOrNull { it.id == id } ?: default()
+    }
+
+    companion object {
+        private const val STOP_TIMEOUT_MS = 5_000L
+        private const val POLL_RUNNING_MS = 500L
+        private const val VPN_PERMISSION_REQUEST = 1001
     }
 }
 

@@ -42,71 +42,71 @@ class TravelViewModel(
     internal val repository: TravelRepository,
 ) : AndroidViewModel(application) {
 
-    internal val _flights = MutableStateFlow(FlightResultsState())
-    val flights: StateFlow<FlightResultsState> = _flights.asStateFlow()
+    internal val flightsMutable = MutableStateFlow(FlightResultsState())
+    val flights: StateFlow<FlightResultsState> = flightsMutable.asStateFlow()
 
     /** The query backing the current results, kept so re-sort can re-fetch. */
     internal var currentQuery: FlightQuery? = null
 
-    internal val _review = MutableStateFlow(OfferReviewState())
-    val review: StateFlow<OfferReviewState> = _review.asStateFlow()
+    internal val reviewMutable = MutableStateFlow(OfferReviewState())
+    val review: StateFlow<OfferReviewState> = reviewMutable.asStateFlow()
 
-    internal val _partialFlow = MutableStateFlow(PartialFlowState())
-    val partialFlow: StateFlow<PartialFlowState> = _partialFlow.asStateFlow()
+    internal val partialFlowMutable = MutableStateFlow(PartialFlowState())
+    val partialFlow: StateFlow<PartialFlowState> = partialFlowMutable.asStateFlow()
 
-    internal val _passengers = MutableStateFlow<List<PassengerInputDto>>(emptyList())
-    val passengers: StateFlow<List<PassengerInputDto>> = _passengers.asStateFlow()
+    internal val passengersMutable = MutableStateFlow<List<PassengerInputDto>>(emptyList())
+    val passengers: StateFlow<List<PassengerInputDto>> = passengersMutable.asStateFlow()
 
-    internal val _seatMap = MutableStateFlow(SeatMapState())
-    val seatMap: StateFlow<SeatMapState> = _seatMap.asStateFlow()
+    internal val seatMapMutable = MutableStateFlow(SeatMapState())
+    val seatMap: StateFlow<SeatMapState> = seatMapMutable.asStateFlow()
 
     /** Selected extra-baggage services: service id → quantity. */
-    internal val _selectedBaggage = MutableStateFlow<Map<String, Long>>(emptyMap())
-    val selectedBaggage: StateFlow<Map<String, Long>> = _selectedBaggage.asStateFlow()
+    internal val selectedBaggageMutable = MutableStateFlow<Map<String, Long>>(emptyMap())
+    val selectedBaggage: StateFlow<Map<String, Long>> = selectedBaggageMutable.asStateFlow()
 
     /** Selected non-baggage extra services (CFAR, priority boarding, …): id → quantity. */
-    internal val _selectedExtras = MutableStateFlow<Map<String, Long>>(emptyMap())
-    val selectedExtras: StateFlow<Map<String, Long>> = _selectedExtras.asStateFlow()
+    internal val selectedExtrasMutable = MutableStateFlow<Map<String, Long>>(emptyMap())
+    val selectedExtras: StateFlow<Map<String, Long>> = selectedExtrasMutable.asStateFlow()
 
     /** Selected seats keyed by `"segmentId|designator"`. */
-    internal val _selectedSeats = MutableStateFlow<Map<String, SeatElementDto>>(emptyMap())
-    val selectedSeats: StateFlow<Map<String, SeatElementDto>> = _selectedSeats.asStateFlow()
+    internal val selectedSeatsMutable = MutableStateFlow<Map<String, SeatElementDto>>(emptyMap())
+    val selectedSeats: StateFlow<Map<String, SeatElementDto>> = selectedSeatsMutable.asStateFlow()
 
-    internal val _airlines = MutableStateFlow<List<AirlineDto>>(emptyList())
-    val airlines: StateFlow<List<AirlineDto>> = _airlines.asStateFlow()
+    internal val airlinesMutable = MutableStateFlow<List<AirlineDto>>(emptyList())
+    val airlines: StateFlow<List<AirlineDto>> = airlinesMutable.asStateFlow()
 
-    internal val _aircraft = MutableStateFlow<List<AircraftDto>>(emptyList())
-    val aircraft: StateFlow<List<AircraftDto>> = _aircraft.asStateFlow()
+    internal val aircraftMutable = MutableStateFlow<List<AircraftDto>>(emptyList())
+    val aircraft: StateFlow<List<AircraftDto>> = aircraftMutable.asStateFlow()
 
-    internal val _cities = MutableStateFlow<List<CityDto>>(emptyList())
-    val cities: StateFlow<List<CityDto>> = _cities.asStateFlow()
+    internal val citiesMutable = MutableStateFlow<List<CityDto>>(emptyList())
+    val cities: StateFlow<List<CityDto>> = citiesMutable.asStateFlow()
 
-    internal val _booking = MutableStateFlow<BookingState>(BookingState.Idle)
-    val booking: StateFlow<BookingState> = _booking.asStateFlow()
+    internal val bookingMutable = MutableStateFlow<BookingState>(BookingState.Idle)
+    val booking: StateFlow<BookingState> = bookingMutable.asStateFlow()
 
-    internal val _payment = MutableStateFlow<PaymentActionState>(PaymentActionState.Idle)
-    val payment: StateFlow<PaymentActionState> = _payment.asStateFlow()
+    internal val paymentMutable = MutableStateFlow<PaymentActionState>(PaymentActionState.Idle)
+    val payment: StateFlow<PaymentActionState> = paymentMutable.asStateFlow()
 
-    internal val _remoteOrders = MutableStateFlow(RemoteOrdersState())
-    val remoteOrders: StateFlow<RemoteOrdersState> = _remoteOrders.asStateFlow()
+    internal val remoteOrdersMutable = MutableStateFlow(RemoteOrdersState())
+    val remoteOrders: StateFlow<RemoteOrdersState> = remoteOrdersMutable.asStateFlow()
 
-    internal val _orderDetail = MutableStateFlow(OrderDetailState())
-    val orderDetail: StateFlow<OrderDetailState> = _orderDetail.asStateFlow()
+    internal val orderDetailMutable = MutableStateFlow(OrderDetailState())
+    val orderDetail: StateFlow<OrderDetailState> = orderDetailMutable.asStateFlow()
 
-    internal val _cancellation = MutableStateFlow(CancellationState())
-    val cancellation: StateFlow<CancellationState> = _cancellation.asStateFlow()
+    internal val cancellationMutable = MutableStateFlow(CancellationState())
+    val cancellation: StateFlow<CancellationState> = cancellationMutable.asStateFlow()
 
-    internal val _change = MutableStateFlow(ChangeState())
-    val change: StateFlow<ChangeState> = _change.asStateFlow()
+    internal val changeMutable = MutableStateFlow(ChangeState())
+    val change: StateFlow<ChangeState> = changeMutable.asStateFlow()
 
-    internal val _stayResults = MutableStateFlow(StaySearchState())
-    val stayResults: StateFlow<StaySearchState> = _stayResults.asStateFlow()
+    internal val stayResultsMutable = MutableStateFlow(StaySearchState())
+    val stayResults: StateFlow<StaySearchState> = stayResultsMutable.asStateFlow()
 
-    internal val _stayRates = MutableStateFlow(StayRatesState())
-    val stayRates: StateFlow<StayRatesState> = _stayRates.asStateFlow()
+    internal val stayRatesMutable = MutableStateFlow(StayRatesState())
+    val stayRates: StateFlow<StayRatesState> = stayRatesMutable.asStateFlow()
 
-    internal val _stayBooking = MutableStateFlow<StayBookingState>(StayBookingState.Idle)
-    val stayBooking: StateFlow<StayBookingState> = _stayBooking.asStateFlow()
+    internal val stayBookingMutable = MutableStateFlow<StayBookingState>(StayBookingState.Idle)
+    val stayBooking: StateFlow<StayBookingState> = stayBookingMutable.asStateFlow()
 
     /** The rate the user chose to book, plus context for persistence. */
     internal var selectedRate: StayRateDto? = null
@@ -138,12 +138,12 @@ class TravelViewModel(
     val activeCustomerId: StateFlow<String> = dataStore.stringFlow(activeCustomerKey)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
-    internal val _customerError = MutableStateFlow<String?>(null)
-    val customerError: StateFlow<String?> = _customerError.asStateFlow()
+    internal val customerErrorMutable = MutableStateFlow<String?>(null)
+    val customerError: StateFlow<String?> = customerErrorMutable.asStateFlow()
 
     /** Recorded webhook events per order id (schedule changes / cancellations). */
-    internal val _orderEvents = MutableStateFlow<Map<String, List<OrderEventDto>>>(emptyMap())
-    val orderEvents: StateFlow<Map<String, List<OrderEventDto>>> = _orderEvents.asStateFlow()
+    internal val orderEventsMutable = MutableStateFlow<Map<String, List<OrderEventDto>>>(emptyMap())
+    val orderEvents: StateFlow<Map<String, List<OrderEventDto>>> = orderEventsMutable.asStateFlow()
 
     companion object {
         /** "2026-09-01" -> "Sep 1"; falls back to the raw string on any parse error. */

@@ -20,57 +20,61 @@ object StreakCalculator {
         now: Long = System.currentTimeMillis()
     ): StreakResult {
         if (sessions.isEmpty()) return StreakResult(0, 0)
+        val sortedDays = qualifyingDays(sessions, minSessionMs)
+        if (sortedDays.isEmpty()) return StreakResult(0, 0)
+        return StreakResult(
+            currentStreak = currentStreak(sortedDays, now),
+            longestStreak = longestStreak(sortedDays),
+        )
+    }
 
+    private fun qualifyingDays(sessions: List<PlaySessionEntity>, minSessionMs: Long): List<Long> {
         val qualifyingDays = mutableSetOf<Long>()
         for (s in sessions) {
-            val qualifies = when {
-                s.durationMs != null -> s.durationMs >= minSessionMs
-                s.endTime != null -> true
-                else -> false
-            }
-            if (!qualifies) continue
-            qualifyingDays.add(dayStart(s.startTime))
+            if (isQualifyingSession(s, minSessionMs)) qualifyingDays.add(dayStart(s.startTime))
         }
+        return qualifyingDays.sorted()
+    }
 
-        if (qualifyingDays.isEmpty()) return StreakResult(0, 0)
+    private fun isQualifyingSession(s: PlaySessionEntity, minSessionMs: Long): Boolean = when {
+        s.durationMs != null -> s.durationMs >= minSessionMs
+        s.endTime != null -> true
+        else -> false
+    }
 
-        val sortedDays = qualifyingDays.sorted()
-
+    private fun longestStreak(sortedDays: List<Long>): Int {
         var maxStreak = 1
         var curRun = 1
         for (i in 1 until sortedDays.size) {
-            if (sortedDays[i] - sortedDays[i - 1] == 1.days.inWholeMilliseconds) {
+            if (sortedDays[i] - sortedDays[i - 1] == DAY_MILLIS) {
                 curRun++
                 if (curRun > maxStreak) maxStreak = curRun
             } else {
                 curRun = 1
             }
         }
-
-        val todayStart = dayStart(now)
-        val yesterdayStart = todayStart - 1.days.inWholeMilliseconds
-
-        var currentStreak = 0
-        val lastDay = sortedDays.last()
-        if (lastDay == todayStart || lastDay == yesterdayStart) {
-            currentStreak = 1
-            var idx = sortedDays.lastIndex - 1
-            var expectedDay = lastDay - 1.days.inWholeMilliseconds
-            while (idx >= 0) {
-                if (sortedDays[idx] == expectedDay) {
-                    currentStreak++
-                    expectedDay -= 1.days.inWholeMilliseconds
-                    idx--
-                } else if (sortedDays[idx] < expectedDay) {
-                    break
-                } else {
-                    idx--
-                }
-            }
-        }
-
-        return StreakResult(currentStreak, maxStreak)
+        return maxStreak
     }
+
+    private fun currentStreak(sortedDays: List<Long>, now: Long): Int {
+        val todayStart = dayStart(now)
+        val yesterdayStart = todayStart - DAY_MILLIS
+        val lastDay = sortedDays.last()
+        if (lastDay != todayStart && lastDay != yesterdayStart) return 0
+        var streak = 1
+        var idx = sortedDays.lastIndex - 1
+        var expectedDay = lastDay - DAY_MILLIS
+        while (idx >= 0 && sortedDays[idx] >= expectedDay) {
+            if (sortedDays[idx] == expectedDay) {
+                streak++
+                expectedDay -= DAY_MILLIS
+            }
+            idx--
+        }
+        return streak
+    }
+
+    private val DAY_MILLIS = 1.days.inWholeMilliseconds
 
     private fun dayStart(millis: Long): Long {
         val tz = TimeZone.currentSystemDefault()

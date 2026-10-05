@@ -17,7 +17,7 @@ fun Navigation(viewModel: WeatherViewModel) {
         entry<Route.Home>(metadata = ListPage()) { HomePage(backStack, viewModel) }
         entry<Route.SearchLocation>(metadata = DialogPage()) { SearchLocationPage(backStack, viewModel) }
         entry<Route.WeatherMap>(metadata = ListPage()) {
-            WeatherMapPage(backStack, it.latitude, it.longitude, it.name, it.isoTime, it.metric)
+            WeatherMapPage(backStack, it.latitude, it.longitude, it.isoTime, it.metric)
         }
     }
 }

@@ -83,6 +83,15 @@ sealed class VerificationResult {
  */
 object InstallVerifier {
 
+    private class CheckContext(
+        val context: Context,
+        val files: List<File>,
+        val requirement: InstallRequirement,
+        val parsed: List<Pair<File, android.content.pm.PackageInfo?>>,
+        val checks: MutableList<String> = mutableListOf(),
+        var stampCheck: StampCheck? = null,
+    )
+
     fun verify(
         context: Context,
         files: List<File>,
@@ -97,13 +106,62 @@ object InstallVerifier {
             return VerificationResult.Rejected("the download is not a valid signed app file")
         }
 
-        val declared = parsed.mapNotNull { (_, info) -> info?.packageName }.toSet()
-        if (declared.isNotEmpty() && requirement.expectedPackage !in declared) {
-            return VerificationResult.Rejected(
-                "the download is ${declared.joinToString()}, not ${requirement.expectedPackage}"
+        val ctx = CheckContext(context, files, requirement, parsed)
+        firstRejection(ctx)?.let { return it }
+        val stampToPin = stampCheck(ctx).stampToPin
+
+        if (ctx.checks.isEmpty()) {
+            return VerificationResult.Unverified(
+                "the source published no key or hash to check this download against",
+                stampToPin,
             )
         }
+        return VerificationResult.Verified(ctx.checks.joinToString("; "), stampToPin)
+    }
 
+    private fun firstRejection(ctx: CheckContext): VerificationResult.Rejected? {
+        val signerCheck = checkSignerAgreement(ctx)
+        val checks: List<() -> VerificationResult.Rejected?> = listOf(
+            { checkPackageName(ctx) },
+            { checkTargetSdk(ctx) },
+            { signerCheck.rejection },
+            { checkRollbackFloor(ctx) },
+            { checkInstalledContinuity(ctx, signerCheck.signers) },
+            { checkHashes(ctx) },
+            { checkRequiredSigners(ctx, signerCheck.signers) },
+            { stampCheck(ctx).rejection },
+        )
+        return checks.firstNotNullOfOrNull { it() }
+    }
+
+    private fun stampCheck(ctx: CheckContext): StampCheck {
+        // checkStamp both records check-notes and computes the pin; run once and share.
+        // firstRejection only needs the rejection half, verify only the pin half — but
+        // running it twice would double-append notes. Cache per verify() call instead.
+        return ctx.stampCheck ?: checkStamp(ctx).also { ctx.stampCheck = it }
+    }
+
+    private data class SignerCheck(
+        val signers: Set<String> = emptySet(),
+        val rejection: VerificationResult.Rejected? = null,
+    )
+
+    private data class StampCheck(
+        val stampToPin: String? = null,
+        val rejection: VerificationResult.Rejected? = null,
+    )
+
+    private fun checkPackageName(ctx: CheckContext): VerificationResult.Rejected? {
+        val declared = ctx.parsed.mapNotNull { (_, info) -> info?.packageName }.toSet()
+        if (declared.isNotEmpty() && ctx.requirement.expectedPackage !in declared) {
+            return VerificationResult.Rejected(
+                "the download is ${declared.joinToString()}, not ${ctx.requirement.expectedPackage}"
+            )
+        }
+        return null
+    }
+
+    private fun checkTargetSdk(ctx: CheckContext): VerificationResult.Rejected? {
         // The catalogue filters on the target SDK each source *claims*, which a source
         // may not state at all. Re-check it against the manifest we now hold, so the floor
         // holds for every install regardless of what the listing said.
@@ -113,8 +171,8 @@ object InstallVerifier {
         // by chance would either miss a low-target base or wrongly reject a valid one. Block
         // only when the base APK's target is actually readable and below the floor —
         // targetSdkVersion == 0 means "couldn't determine", which stays allowed by policy.
-        val baseTargetSdk = parsed.firstOrNull { (_, info) ->
-            info?.packageName == requirement.expectedPackage && info.splitNames.isNullOrEmpty()
+        val baseTargetSdk = ctx.parsed.firstOrNull { (_, info) ->
+            info?.packageName == ctx.requirement.expectedPackage && info.splitNames.isNullOrEmpty()
         }?.second?.applicationInfo?.targetSdkVersion ?: 0
         if (baseTargetSdk in 1 until AppProvider.MIN_TARGET_SDK) {
             return VerificationResult.Rejected(
@@ -122,125 +180,141 @@ object InstallVerifier {
                     "${AppProvider.MIN_TARGET_SDK} or newer"
             )
         }
+        return null
+    }
 
-        // Signers of the bytes we actually hold. Every readable file must agree, or the
-        // set is mixed and something has been substituted.
-        val perFileSigners = parsed
+    // Signers of the bytes we actually hold. Every readable file must agree, or the
+    // set is mixed and something has been substituted.
+    private fun checkSignerAgreement(ctx: CheckContext): SignerCheck {
+        val perFileSigners = ctx.parsed
             .filter { (_, info) -> info != null }
-            .map { (file, _) -> file to ApkCertificates.apkSigners(context, file) }
+            .map { (file, _) -> file to ApkCertificates.apkSigners(ctx.context, file) }
         val emptySigner = perFileSigners.firstOrNull { (_, signers) -> signers.isEmpty() }
         if (emptySigner != null) {
-            return VerificationResult.Rejected("${emptySigner.first.name} is not signed")
+            val rejection = VerificationResult.Rejected("${emptySigner.first.name} is not signed")
+            return SignerCheck(rejection = rejection)
         }
         val signerSets = perFileSigners.map { (_, signers) -> signers }.toSet()
         if (signerSets.size > 1) {
-            return VerificationResult.Rejected("the app's files are not all signed by the same key")
+            val rejection = VerificationResult.Rejected(
+                "the app's files are not all signed by the same key"
+            )
+            return SignerCheck(rejection = rejection)
         }
-        val actualSigners = signerSets.first()
+        return SignerCheck(signers = signerSets.first())
+    }
 
-        // The stamp check and the required-signer check below both read the base APK, since a
-        // config split carries neither a stamp nor a rotation lineage of its own.
-        val base = baseApk(parsed, requirement.expectedPackage) ?: parsed.first()
-
-        val checks = mutableListOf<String>()
-
-        // Rollback guard (Accrescent): the base APK's version code must be at least the
-        // minimum the source's signed allowlist records. Read from the base APK's manifest,
-        // like the target-SDK check above. Fail closed — a version we cannot read (0) is below
-        // any positive floor and is rejected, since the whole point is to refuse an old build.
-        requirement.minVersionCode?.let { minVc ->
-            val baseInfo = parsed.firstOrNull { (_, info) ->
-                info?.packageName == requirement.expectedPackage && info.splitNames.isNullOrEmpty()
-            }?.second
-            val versionCode = baseInfo?.longVersionCode ?: 0L
-            if (versionCode < minVc) {
-                return VerificationResult.Rejected(
-                    "it is version $versionCode, older than the minimum $minVc the source allows"
-                )
-            }
-            checks += "version $versionCode is at or above the minimum $minVc"
-        }
-
-        val installed = ApkCertificates.installedSigners(context, requirement.expectedPackage)
-        if (installed.isNotEmpty()) {
-            if (actualSigners.none { it in installed }) {
-                return VerificationResult.Rejected(
-                    "it is signed with a different key than the copy you have installed"
-                )
-            }
-            checks += "same key as the installed copy"
-        }
-
-        if (requirement.expectedSha256.isNotEmpty()) {
-            var hashed = 0
-            for (file in files) {
-                val expected = requirement.expectedSha256[file.name] ?: continue
-                val actual = ApkCertificates.sha256(file)
-                if (!actual.equals(expected, ignoreCase = true)) {
-                    return VerificationResult.Rejected(
-                        "${file.name} does not match the hash the source published"
-                    )
-                }
-                hashed++
-            }
-            // A published hash set that matches nothing we downloaded means the file
-            // names moved under us; treat that as a failure rather than a silent skip.
-            if (hashed == 0) {
-                return VerificationResult.Rejected(
-                    "the published hashes do not cover any of the files that downloaded"
-                )
-            }
-            checks += "hash matches for $hashed of ${files.size} file(s)"
-        }
-
-        if (requirement.requiredSigners.isNotEmpty()) {
-            val required = requirement.requiredSigners.map { it.lowercase() }.toSet()
-            // Match the app's identity, not just the bytes: a source publishes the original
-            // certificate, so an app that has rotated its signing key presents a current
-            // certificate the source never listed. Accepting the proven rotation lineage keeps
-            // a substituted APK out while letting a rotated one through, which is the same
-            // call Android makes when it applies the update.
-            val lineage = actualSigners + ApkCertificates.signerLineage(base.second)
-            if (lineage.none { it in required }) {
-                val origin = requirement.signerOrigin.ifBlank { "the source" }
-                return VerificationResult.Rejected("it is not signed by the key $origin expects")
-            }
-            checks += "signed by the key ${requirement.signerOrigin.ifBlank { "the source" }} expects"
-        }
-
-        // Source stamp: a second identity that survives Play App Signing re-signing.
-        // Checked on the base APK — splits do not carry their own stamp.
-        var stampToPin: String? = null
-        if (requirement.requireStamp || requirement.pinnedStamp != null) {
-            val stamp = SourceStamp.of(base.first)
-            if (stamp == null) {
-                if (requirement.requireStamp) {
-                    return VerificationResult.Rejected("it carries no publisher stamp to check")
-                }
-                if (requirement.pinnedStamp != null) {
-                    return VerificationResult.Rejected(
-                        "the publisher stamp is gone, and this app had one last time"
-                    )
-                }
-            } else {
-                val pinned = requirement.pinnedStamp
-                if (pinned != null && stamp.lineage.none { it.equals(pinned, true) }) {
-                    return VerificationResult.Rejected(
-                        "the publisher stamp changed since you installed this app"
-                    )
-                }
-                stampToPin = stamp.current
-                checks += if (pinned != null) "same publisher stamp as before" else "publisher stamp saved"
-            }
-        }
-
-        if (checks.isEmpty()) {
-            return VerificationResult.Unverified(
-                "the source published no key or hash to check this download against",
-                stampToPin,
+    // Rollback guard (Accrescent): the base APK's version code must be at least the
+    // minimum the source's signed allowlist records. Read from the base APK's manifest,
+    // like the target-SDK check above. Fail closed — a version we cannot read (0) is below
+    // any positive floor and is rejected, since the whole point is to refuse an old build.
+    private fun checkRollbackFloor(ctx: CheckContext): VerificationResult.Rejected? {
+        val minVc = ctx.requirement.minVersionCode ?: return null
+        val baseInfo = ctx.parsed.firstOrNull { (_, info) ->
+            info?.packageName == ctx.requirement.expectedPackage && info.splitNames.isNullOrEmpty()
+        }?.second
+        val versionCode = baseInfo?.longVersionCode ?: 0L
+        if (versionCode < minVc) {
+            return VerificationResult.Rejected(
+                "it is version $versionCode, older than the minimum $minVc the source allows"
             )
         }
-        return VerificationResult.Verified(checks.joinToString("; "), stampToPin)
+        ctx.checks += "version $versionCode is at or above the minimum $minVc"
+        return null
+    }
+
+    private fun checkInstalledContinuity(
+        ctx: CheckContext,
+        actualSigners: Set<String>,
+    ): VerificationResult.Rejected? {
+        val installed = ApkCertificates.installedSigners(ctx.context, ctx.requirement.expectedPackage)
+        if (installed.isEmpty()) return null
+        if (actualSigners.none { it in installed }) {
+            return VerificationResult.Rejected(
+                "it is signed with a different key than the copy you have installed"
+            )
+        }
+        ctx.checks += "same key as the installed copy"
+        return null
+    }
+
+    private fun checkHashes(ctx: CheckContext): VerificationResult.Rejected? {
+        if (ctx.requirement.expectedSha256.isEmpty()) return null
+        var hashed = 0
+        for (file in ctx.files) {
+            val expected = ctx.requirement.expectedSha256[file.name] ?: continue
+            val actual = ApkCertificates.sha256(file)
+            if (!actual.equals(expected, ignoreCase = true)) {
+                return VerificationResult.Rejected(
+                    "${file.name} does not match the hash the source published"
+                )
+            }
+            hashed++
+        }
+        // A published hash set that matches nothing we downloaded means the file
+        // names moved under us; treat that as a failure rather than a silent skip.
+        if (hashed == 0) {
+            return VerificationResult.Rejected(
+                "the published hashes do not cover any of the files that downloaded"
+            )
+        }
+        ctx.checks += "hash matches for $hashed of ${ctx.files.size} file(s)"
+        return null
+    }
+
+    private fun checkRequiredSigners(
+        ctx: CheckContext,
+        actualSigners: Set<String>,
+    ): VerificationResult.Rejected? {
+        if (ctx.requirement.requiredSigners.isEmpty()) return null
+        val required = ctx.requirement.requiredSigners.map { it.lowercase() }.toSet()
+        // Match the app's identity, not just the bytes: a source publishes the original
+        // certificate, so an app that has rotated its signing key presents a current
+        // certificate the source never listed. Accepting the proven rotation lineage keeps
+        // a substituted APK out while letting a rotated one through, which is the same
+        // call Android makes when it applies the update.
+        val base = baseApk(ctx.parsed, ctx.requirement.expectedPackage) ?: ctx.parsed.first()
+        val lineage = actualSigners + ApkCertificates.signerLineage(base.second)
+        if (lineage.none { it in required }) {
+            val origin = ctx.requirement.signerOrigin.ifBlank { "the source" }
+            return VerificationResult.Rejected("it is not signed by the key $origin expects")
+        }
+        ctx.checks += "signed by the key ${ctx.requirement.signerOrigin.ifBlank { "the source" }} expects"
+        return null
+    }
+
+    // Source stamp: a second identity that survives Play App Signing re-signing.
+    // Checked on the base APK — splits do not carry their own stamp.
+    private fun checkStamp(ctx: CheckContext): StampCheck {
+        if (!ctx.requirement.requireStamp && ctx.requirement.pinnedStamp == null) {
+            return StampCheck()
+        }
+        // The stamp check and the required-signer check below both read the base APK, since a
+        // config split carries neither a stamp nor a rotation lineage of its own.
+        val base = baseApk(ctx.parsed, ctx.requirement.expectedPackage) ?: ctx.parsed.first()
+        val stamp = SourceStamp.of(base.first)
+        if (stamp == null) {
+            if (ctx.requirement.requireStamp) {
+                val rejection = VerificationResult.Rejected("it carries no publisher stamp to check")
+                return StampCheck(rejection = rejection)
+            }
+            if (ctx.requirement.pinnedStamp != null) {
+                val rejection = VerificationResult.Rejected(
+                    "the publisher stamp is gone, and this app had one last time"
+                )
+                return StampCheck(rejection = rejection)
+            }
+            return StampCheck()
+        }
+        val pinned = ctx.requirement.pinnedStamp
+        if (pinned != null && stamp.lineage.none { it.equals(pinned, true) }) {
+            val rejection = VerificationResult.Rejected(
+                "the publisher stamp changed since you installed this app"
+            )
+            return StampCheck(rejection = rejection)
+        }
+        ctx.checks += if (pinned != null) "same publisher stamp as before" else "publisher stamp saved"
+        return StampCheck(stampToPin = stamp.current)
     }
 
     /** The file, and its parsed manifest, declaring [packageName] without a split name. */

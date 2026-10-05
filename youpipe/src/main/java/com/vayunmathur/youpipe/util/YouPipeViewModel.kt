@@ -107,7 +107,10 @@ class YouPipeViewModel(
 
     private val _hasLoadedSubscriptionVideos = MutableStateFlow(false)
 
-    /** Flips true once the subscription-video DAO emits at least once, so the UI can distinguish "still loading" from "loaded and empty". */
+    /**
+     * Flips true once the subscription-video DAO emits at least once, so the UI can
+     * distinguish "still loading" from "loaded and empty".
+     */
     val hasLoadedSubscriptionVideos: StateFlow<Boolean> = _hasLoadedSubscriptionVideos.asStateFlow()
 
     val subscriptionVideos: StateFlow<List<SubscriptionVideo>> = repository.subscriptionVideos
@@ -215,64 +218,11 @@ class YouPipeViewModel(
     }
 
     // ===================== Playlists =====================
+    // Playlist mutations live on [YouPipePlaylistOps] (TooManyFunctions cap);
+    // behavior identical, same module. Call sites use `playlistOps.*` directly.
 
-    fun createPlaylist(name: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val maxPosition = repository.getAllPlaylists().maxOfOrNull { it.position } ?: 0.0
-            repository.upsertPlaylist(Playlist(name = name, position = maxPosition + 1))
-        }
-    }
-
-    /** Deletes a user playlist. Mandatory playlists (Watch later) can never be removed. */
-    fun deletePlaylist(playlist: Playlist) {
-        if (playlist.mandatory) return
-        viewModelScope.launch(Dispatchers.IO) { repository.deletePlaylist(playlist) }
-    }
-
-    fun reorderPlaylists(list: List<Playlist>) {
-        viewModelScope.launch(Dispatchers.IO) { repository.upsertPlaylists(list) }
-    }
-
-    /** Adds [video] to [playlistId], deduped by videoID; a no-op if already present. */
-    fun addVideoToPlaylist(playlistId: Long, video: VideoInfo) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val existing = repository.getPlaylistItemsForPlaylist(playlistId)
-            if (existing.any { it.videoItem.videoID == video.videoID }) return@launch
-            val maxPosition = existing.maxOfOrNull { it.position } ?: 0.0
-            repository.upsertPlaylistItem(
-                PlaylistItem(
-                    playlistId = playlistId,
-                    videoItem = video,
-                    position = maxPosition + 1,
-                    timestamp = Clock.System.now(),
-                )
-            )
-        }
-    }
-
-    fun removeFromPlaylist(item: PlaylistItem) {
-        viewModelScope.launch(Dispatchers.IO) { repository.deletePlaylistItem(item) }
-    }
-
-    /** Creates a playlist and immediately adds [video] to it (the dialog's "New playlist" option). */
-    fun createPlaylistAndAddVideo(name: String, video: VideoInfo) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val maxPosition = repository.getAllPlaylists().maxOfOrNull { it.position } ?: 0.0
-            val id = repository.upsertPlaylist(Playlist(name = name, position = maxPosition + 1))
-            repository.upsertPlaylistItem(
-                PlaylistItem(
-                    playlistId = id,
-                    videoItem = video,
-                    position = 1.0,
-                    timestamp = Clock.System.now(),
-                )
-            )
-        }
-    }
-
-    fun reorderPlaylistItems(list: List<PlaylistItem>) {
-        viewModelScope.launch(Dispatchers.IO) { repository.upsertPlaylistItems(list) }
-    }
+    /** Playlist mutations (split out: TooManyFunctions cap). Same module; behavior identical. */
+    val playlistOps by lazy { YouPipePlaylistOps(this) }
 
     suspend fun replaceCategory(originalCategoryName: String?, categoryName: String, ids: List<Long>) {
         withContext(Dispatchers.IO) {
@@ -280,11 +230,11 @@ class YouPipeViewModel(
         }
     }
 
-    internal val _recommendations = MutableStateFlow<List<RankedVideo>>(emptyList())
-    val recommendations: StateFlow<List<RankedVideo>> = _recommendations.asStateFlow()
+    internal val recommendationsMutable = MutableStateFlow<List<RankedVideo>>(emptyList())
+    val recommendations: StateFlow<List<RankedVideo>> = recommendationsMutable.asStateFlow()
 
-    internal val _recommendationsLoading = MutableStateFlow(false)
-    val recommendationsLoading: StateFlow<Boolean> = _recommendationsLoading.asStateFlow()
+    internal val recommendationsLoadingMutable = MutableStateFlow(false)
+    val recommendationsLoading: StateFlow<Boolean> = recommendationsLoadingMutable.asStateFlow()
 
     /** User-facing recommendation controls, defaulting to today's balanced behavior. */
     val recommendationPreferences: StateFlow<RecommendationPreferences> =
@@ -335,7 +285,9 @@ class YouPipeViewModel(
                 } else {
                     emptyList()
                 }
-            } catch (e: Exception) {
+            } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+                Log.e(TAG, "Suggestion error", e)
+            } catch (e: java.io.IOException) {
                 Log.e(TAG, "Suggestion error", e)
             }
         }
@@ -370,7 +322,9 @@ class YouPipeViewModel(
                 _searchResults.value = results
                 fetchDeArrowForVideos(results.filterIsInstance<VideoInfo>().map { it.videoID })
                 _suggestions.value = emptyList()
-            } catch (e: Exception) {
+            } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+                Log.e(TAG, "Search error", e)
+            } catch (e: java.io.IOException) {
                 Log.e(TAG, "Search error", e)
             }
         }
@@ -402,7 +356,9 @@ class YouPipeViewModel(
                     _channelState.update { it.copy(videos = it.videos + video) }
                 }
                 fetchDeArrowForVideos(channelVideos.map { it.videoID })
-            } catch (e: Exception) {
+            } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+                Log.e(TAG, "Channel load error", e)
+            } catch (e: java.io.IOException) {
                 Log.e(TAG, "Channel load error", e)
             }
         }
@@ -422,8 +378,8 @@ class YouPipeViewModel(
         val error: Boolean = false,
     )
 
-    internal val _videoState = MutableStateFlow(VideoState())
-    val videoState: StateFlow<VideoState> = _videoState.asStateFlow()
+    internal val videoStateMutable = MutableStateFlow(VideoState())
+    val videoState: StateFlow<VideoState> = videoStateMutable.asStateFlow()
     internal var videoJob: Job? = null
     internal var sponsorJob: Job? = null
 
@@ -472,11 +428,11 @@ class YouPipeViewModel(
 
     // ===================== Settings: imports/exports =====================
 
-    internal val _isImporting = MutableStateFlow(false)
-    val isImporting: StateFlow<Boolean> = _isImporting.asStateFlow()
+    internal val isImportingMutable = MutableStateFlow(false)
+    val isImporting: StateFlow<Boolean> = isImportingMutable.asStateFlow()
 
-    internal val _importProgress = MutableStateFlow(0f)
-    val importProgress: StateFlow<Float> = _importProgress.asStateFlow()
+    internal val importProgressMutable = MutableStateFlow(0f)
+    val importProgress: StateFlow<Float> = importProgressMutable.asStateFlow()
 
     val sponsorBlockEnabled: StateFlow<Boolean> = DataStoreUtils
         .getInstance(application)

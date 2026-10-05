@@ -84,7 +84,7 @@ fun readSharedContact(context: Context, uri: Uri): SharedContactCard? = try {
         phoneNumbers = numbers,
         emails = emails,
     )
-} catch (t: Throwable) {
-    Log.w("SharedContact", "could not read the picked contact", t)
+} catch (expected: Throwable) {
+    Log.w("SharedContact", "could not read the picked contact", expected)
     null
 }

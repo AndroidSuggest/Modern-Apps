@@ -9,15 +9,31 @@ package com.vayunmathur.maps.util
  * delegates to.
  */
 
-private fun asciiLowerW(b: Byte): Int {
-    val v = b.toInt() and 0xFF
-    return if (v >= 'A'.code && v <= 'Z'.code) v + 32 else v
+private const val WORD_BYTE_MASK = 0xFF
+private const val WORD_CASE_OFFSET = 32
+private const val WORD_VT = 0x0B
+private const val WORD_FF = 0x0C
+private const val WORD_ENTRY_BYTES = 5L
+/** Bytes of one int32 slot in the word-index arrays. */
+private const val INT_SLOT_BYTES = 4
+
+/**
+ * ASCII-only lowercase, and deliberately not [Char.lowercase].
+ *
+ * `poi_name_index.bin` is sorted by the writer, so the reader has to reproduce that
+ * order byte for byte. Rust's `to_lowercase` and Kotlin's `lowercase` do not agree on
+ * every input, and here a disagreement is a POI that can never be found. See the
+ * cross-language contract in `osm_ingest/src/poi_side.rs`.
+ */
+internal fun asciiLowerW(b: Byte): Int {
+    val v = b.toInt() and WORD_BYTE_MASK
+    return if (v >= 'A'.code && v <= 'Z'.code) v + WORD_CASE_OFFSET else v
 }
 
-private fun isAsciiSpaceW(b: Byte): Boolean {
-    val v = b.toInt() and 0xFF
+internal fun isAsciiSpaceW(b: Byte): Boolean {
+    val v = b.toInt() and WORD_BYTE_MASK
     return v == ' '.code || v == '\t'.code || v == '\n'.code || v == '\r'.code ||
-        v == 0x0B || v == 0x0C
+        v == WORD_VT || v == WORD_FF
 }
 
 /** A query as the index's sort key: UTF-8 bytes, ASCII-lowercased. */
@@ -27,10 +43,12 @@ internal fun poiQueryKey(query: String): ByteArray {
 }
 
 private fun PoiIndex.Mapped.entryOrdinal(i: Int): Int =
-    nameIdx!!.getInt(PoiIndex.NAME_INDEX_HEADER_BYTES + 4 * i)
+    nameIdx!!.getInt(PoiIndex.NAME_INDEX_HEADER_BYTES + INT_SLOT_BYTES * i)
 
-private fun PoiIndex.Mapped.entryWordIdx(i: Int): Int =
-    nameIdx!!.get(PoiIndex.NAME_INDEX_HEADER_BYTES + 4 * entryCount + i).toInt() and 0xFF
+private fun PoiIndex.Mapped.entryWordIdx(i: Int): Int {
+    val off = PoiIndex.NAME_INDEX_HEADER_BYTES + INT_SLOT_BYTES * entryCount + i
+    return nameIdx!!.get(off).toInt() and WORD_BYTE_MASK
+}
 
 /**
  * Byte range of the [wordIdx]th whitespace-separated word of the name at [off], or
@@ -40,15 +58,33 @@ private fun PoiIndex.Mapped.wordRange(off: Int, wordIdx: Int): IntRange? {
     if (off < 0 || off >= namesLen) return null
     var i = off
     var idx = 0
-    while (i < namesLen && names.get(i).toInt() != 0) {
-        while (i < namesLen && names.get(i).toInt() != 0 && isAsciiSpaceW(names.get(i))) i++
-        if (i >= namesLen || names.get(i).toInt() == 0) break
+    while (hasNameByte(i)) {
+        i = skipSpaces(i)
+        if (!hasNameByte(i)) break
         val start = i
-        while (i < namesLen && names.get(i).toInt() != 0 && !isAsciiSpaceW(names.get(i))) i++
+        i = skipWord(i)
         if (idx == wordIdx) return start until i
         idx++
     }
     return null
+}
+
+/** Whether [i] is still inside the NUL-terminated name. */
+private fun PoiIndex.Mapped.hasNameByte(i: Int): Boolean =
+    i < namesLen && names.get(i).toInt() != 0
+
+/** Advance past whitespace within the name. */
+private fun PoiIndex.Mapped.skipSpaces(i: Int): Int {
+    var j = i
+    while (hasNameByte(j) && isAsciiSpaceW(names.get(j))) j++
+    return j
+}
+
+/** Advance past one word within the name. */
+private fun PoiIndex.Mapped.skipWord(i: Int): Int {
+    var j = i
+    while (hasNameByte(j) && !isAsciiSpaceW(names.get(j))) j++
+    return j
 }
 
 private fun PoiIndex.Mapped.entryWord(i: Int): IntRange? =
@@ -58,7 +94,7 @@ private fun PoiIndex.Mapped.entryWord(i: Int): IntRange? =
 private fun PoiIndex.Mapped.compareWord(range: IntRange, key: ByteArray): Int {
     val len = range.last - range.first + 1
     for (k in 0 until minOf(len, key.size)) {
-        val d = asciiLowerW(names.get(range.first + k)) - (key[k].toInt() and 0xFF)
+        val d = asciiLowerW(names.get(range.first + k)) - (key[k].toInt() and WORD_BYTE_MASK)
         if (d != 0) return d
     }
     return len - key.size
@@ -67,7 +103,7 @@ private fun PoiIndex.Mapped.compareWord(range: IntRange, key: ByteArray): Int {
 private fun PoiIndex.Mapped.wordStartsWith(range: IntRange, key: ByteArray): Boolean {
     if (range.last - range.first + 1 < key.size) return false
     for (k in key.indices) {
-        if (asciiLowerW(names.get(range.first + k)) != (key[k].toInt() and 0xFF)) return false
+        if (asciiLowerW(names.get(range.first + k)) != (key[k].toInt() and WORD_BYTE_MASK)) return false
     }
     return true
 }
@@ -98,9 +134,7 @@ internal fun PoiIndex.Mapped.wordPrefixMatches(key: ByteArray, cap: Int): List<I
     val out = ArrayList<IntArray>()
     val seen = HashSet<Int>()
     var i = lowerBoundWord(key)
-    while (i < entryCount && out.size < cap) {
-        val w = entryWord(i) ?: break
-        if (!wordStartsWith(w, key)) break
+    while (i < entryCount && out.size < cap && matchesAt(i, key)) {
         val ordinal = entryOrdinal(i)
         // A name can match on more than one word ("Pizza Pizza"); the better rank
         // wins, and the index lists word 0 first within one name.
@@ -110,7 +144,98 @@ internal fun PoiIndex.Mapped.wordPrefixMatches(key: ByteArray, cap: Int): List<I
     return out
 }
 
+/** Whether entry [i]'s word still has [key] as a prefix (null word sorts out). */
+private fun PoiIndex.Mapped.matchesAt(i: Int, key: ByteArray): Boolean {
+    val w = entryWord(i) ?: return false
+    return wordStartsWith(w, key)
+}
+
 private class WordRanked(val record: PoiIndex.PoiRecord, val rank: Int, val distSq: Double)
+
+private class Ranked(val record: PoiIndex.PoiRecord, val rank: Int, val distSq: Double)
+
+internal fun searchByScan(
+    m: PoiIndex.Mapped,
+    query: String,
+    nearLat: Double,
+    nearLon: Double,
+    limit: Int,
+): List<PoiIndex.PoiRecord> {
+    val q = query.trim().lowercase()
+    if (q.isEmpty()) return emptyList()
+
+    // Pass 1: walk the name pool once, recording matching offsets and their
+    // rank (0 = prefix match, 1 = substring). Decoding each unique name once
+    // is the dedup win the side-file layout is designed for.
+    val matchRank = matchNamePool(m, q)
+    if (matchRank.isEmpty()) return emptyList()
+
+    // Pass 2: scan records, keeping those whose name offset matched.
+    val out = collectScanMatches(m, matchRank, nearLat, nearLon)
+    out.sortWith(compareBy({ it.rank }, { it.distSq }))
+    return out.take(limit).map { it.record }
+}
+
+private fun matchNamePool(m: PoiIndex.Mapped, q: String): Map<Int, Int> {
+    val matchRank = HashMap<Int, Int>()
+    var pos = 0
+    while (pos < m.namesLen) {
+        var end = pos
+        while (end < m.namesLen && m.names.get(end).toInt() != 0) end++
+        if (end > pos) {
+            rankName(m.nameAt(pos), q)?.let { matchRank[pos] = it }
+        }
+        pos = end + 1
+    }
+    return matchRank
+}
+
+/** Rank of [name] against the query (0 = prefix, 1 = substring), or null. */
+private fun rankName(name: String?, q: String): Int? {
+    if (name == null) return null
+    val lower = name.lowercase()
+    if (lower.startsWith(q)) return 0
+    if (lower.contains(q)) return 1
+    return null
+}
+
+private fun collectScanMatches(
+    m: PoiIndex.Mapped,
+    matchRank: Map<Int, Int>,
+    nearLat: Double,
+    nearLon: Double,
+): ArrayList<Ranked> {
+    val out = ArrayList<Ranked>(minOf(PoiIndex.CANDIDATE_CAP, m.count))
+    var i = 0
+    while (i < m.count && out.size < PoiIndex.CANDIDATE_CAP) {
+        scanMatchAt(m, i, matchRank, nearLat, nearLon)?.let { out.add(it) }
+        i++
+    }
+    return out
+}
+
+private fun scanMatchAt(
+    m: PoiIndex.Mapped,
+    i: Int,
+    matchRank: Map<Int, Int>,
+    nearLat: Double,
+    nearLon: Double,
+): Ranked? {
+    val off = m.nameOff(i)
+    val rank = matchRank[off] ?: return null
+    val latE7 = m.latE7(i)
+    val lonE7 = m.lonE7(i)
+    return Ranked(
+        PoiIndex.PoiRecord(latE7, lonE7, m.type(i), m.nameAt(off) ?: "", i),
+        rank,
+        PoiIndex.distanceSq(
+            latE7 * PoiIndex.E7_TO_DEGREES,
+            lonE7 * PoiIndex.E7_TO_DEGREES,
+            nearLat,
+            nearLon,
+        ),
+    )
+}
 
 internal fun searchByWordIndex(
     m: PoiIndex.Mapped,
@@ -132,7 +257,12 @@ internal fun searchByWordIndex(
             WordRanked(
                 m.record(ordinal),
                 rank,
-                PoiIndex.distanceSq(nearLat, nearLon, m.latE7(ordinal) / 1e7, m.lonE7(ordinal) / 1e7),
+                PoiIndex.distanceSq(
+                    nearLat,
+                    nearLon,
+                    m.latE7(ordinal) * PoiIndex.E7_TO_DEGREES,
+                    m.lonE7(ordinal) * PoiIndex.E7_TO_DEGREES,
+                ),
             )
         )
     }

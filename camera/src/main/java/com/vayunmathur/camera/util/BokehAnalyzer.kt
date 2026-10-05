@@ -50,26 +50,7 @@ class BokehAnalyzer(
             }
             lastSegmentMs = now
 
-            // Raw sensor-oriented buffer; capped to 1024x768 in portrait session,
-            // so this is ~0.8MP not 12MP. Full-res final image kept in ImageCapture.
-            var frame = imageProxy.toBitmap()
-            if (closed) {
-                frame.recycle()
-                return
-            }
-            // Immediate downscale to <=512 max side, filter=false to avoid bilinear cost.
-            var downscaled = downscaleIfNeeded(frame, MAX_PREVIEW_SIDE)
-            if (downscaled !== frame) {
-                frame.recycle()
-            }
-            frame = downscaled
-
-            // Orient to display + mirror for front camera, filter=false (was true = bilinear).
-            var oriented = orientToDisplay(frame, imageProxy.imageInfo.rotationDegrees)
-            if (oriented !== frame) {
-                frame.recycle()
-            }
-            frame = oriented
+            val frame = prepareFrame(imageProxy) ?: return
             if (closed) {
                 frame.recycle()
                 return
@@ -79,69 +60,110 @@ class BokehAnalyzer(
             // Hold lock across the native call so close() blocks until the submitted command
             // buffer has been waited on, preventing the SEGV_MTESERR use-after-free seen in
             // tombstones.
-            val result = synchronized(lock) {
-                if (closed) {
-                    frame.recycle()
-                    return
-                }
-                val seg = segmenter
-                if (seg == null) {
-                    frame.recycle()
-                    return
-                }
-                // Null on an unavailable GPU or a failed submit; either way there is no
-                // mask this frame and the preview keeps the last one.
-                seg.segment(frame) ?: run {
-                    frame.recycle()
-                    return
-                }
-            }
+            val result = segmentLocked(frame) ?: return
             frame.recycle()
             if (closed) return
 
-            synchronized(lock) {
-                if (closed) return
-                val w = result.width
-                val h = result.height
-                val current = result.mask // foreground prob [0,1], row-major
-
-                // Temporal smoothing: in-place blend into current array when possible to avoid alloc.
-                val prev = prevMask
-                val smoothed = if (prev != null && prev.size == current.size) {
-                    for (i in current.indices) {
-                        current[i] = current[i] * (1f - TEMPORAL_WEIGHT) + prev[i] * TEMPORAL_WEIGHT
-                    }
-                    current
-                } else {
-                    current
-                }
-                prevMask = smoothed
-
-                // Blur for soft edges – reuses temp/dst buffers across frames to avoid GC pressure.
-                var temp = blurTemp
-                if (temp == null || temp.size != w * h) {
-                    temp = FloatArray(w * h)
-                    blurTemp = temp
-                }
-                var dst = blurDst
-                if (dst == null || dst.size != w * h) {
-                    dst = FloatArray(w * h)
-                    blurDst = dst
-                }
-                val blurred = blurMask(smoothed, w, h, temp, dst)
-
-                // Reuse pixel buffer.
-                var pixels = pixelBuffer
-                if (pixels == null || pixels.size != w * h) {
-                    pixels = IntArray(w * h)
-                    pixelBuffer = pixels
-                }
-                onMaskGenerated(maskToBitmap(blurred, w, h, pixels))
-            }
-        } catch (e: Throwable) {
+            smoothAndEmit(result)
+        } catch (e: IllegalStateException) {
+            Log.e("BokehAnalyzer", "segmentation failed", e)
+        } catch (e: IllegalArgumentException) {
             Log.e("BokehAnalyzer", "segmentation failed", e)
         } finally {
             imageProxy.close()
+        }
+    }
+
+    /**
+     * Copies, downscales and orients the frame for the segmenter. Returns null when there is
+     * no mask this frame (throttled, closed, or GPU unavailable); recycles intermediates.
+     */
+    private fun prepareFrame(imageProxy: ImageProxy): Bitmap? {
+        // Raw sensor-oriented buffer; capped to 1024x768 in portrait session,
+        // so this is ~0.8MP not 12MP. Full-res final image kept in ImageCapture.
+        var frame = imageProxy.toBitmap()
+        if (closed) {
+            frame.recycle()
+            return null
+        }
+        // Immediate downscale to <=512 max side, filter=false to avoid bilinear cost.
+        val downscaled = downscaleIfNeeded(frame, MAX_PREVIEW_SIDE)
+        if (downscaled !== frame) {
+            frame.recycle()
+        }
+        frame = downscaled
+
+        // Orient to display + mirror for front camera, filter=false (was true = bilinear).
+        val oriented = orientToDisplay(frame, imageProxy.imageInfo.rotationDegrees)
+        if (oriented !== frame) {
+            frame.recycle()
+        }
+        return oriented
+    }
+
+    /** Runs the segmenter under lock; null when closed or the GPU yields no mask. */
+    private fun segmentLocked(frame: Bitmap): com.vayunmathur.library.ml.SegmentationMask? {
+        return synchronized(lock) {
+            if (closed) {
+                frame.recycle()
+                null
+            } else {
+                val seg = segmenter
+                if (seg == null) {
+                    frame.recycle()
+                    null
+                } else {
+                    // Null on an unavailable GPU or a failed submit; either way there is no
+                    // mask this frame and the preview keeps the last one.
+                    seg.segment(frame) ?: run {
+                        frame.recycle()
+                        null
+                    }
+                }
+            }
+        }
+    }
+
+    /** Temporally smooths, blurs and emits the mask bitmap. */
+    private fun smoothAndEmit(result: com.vayunmathur.library.ml.SegmentationMask) {
+        synchronized(lock) {
+            if (closed) return
+            val w = result.width
+            val h = result.height
+            val current = result.mask // foreground prob [0,1], row-major
+
+            // Temporal smoothing: in-place blend into current array when possible to avoid alloc.
+            val prev = prevMask
+            val smoothed = if (prev != null && prev.size == current.size) {
+                for (i in current.indices) {
+                    current[i] = current[i] * (1f - TEMPORAL_WEIGHT) + prev[i] * TEMPORAL_WEIGHT
+                }
+                current
+            } else {
+                current
+            }
+            prevMask = smoothed
+
+            // Blur for soft edges – reuses temp/dst buffers across frames to avoid GC pressure.
+            var temp = blurTemp
+            if (temp == null || temp.size != w * h) {
+                temp = FloatArray(w * h)
+                blurTemp = temp
+            }
+            var dst = blurDst
+            if (dst == null || dst.size != w * h) {
+                dst = FloatArray(w * h)
+                blurDst = dst
+            }
+            val blurred = blurMask(smoothed, w, h, temp, dst)
+
+            // Reuse pixel buffer.
+            var pixels = pixelBuffer
+            if (pixels == null || pixels.size != w * h) {
+                pixels = IntArray(w * h)
+                pixelBuffer = pixels
+            }
+            onMaskGenerated(maskToBitmap(blurred, w, h, pixels))
         }
     }
 

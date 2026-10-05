@@ -22,6 +22,7 @@ object AttachmentStore {
 
     private const val TAG = "AttachmentStore"
     private const val DIR = "medical_attachments"
+    private const val MAX_EXTENSION_LENGTH = 5
 
     /** What [import] recovered about a file the user picked. */
     data class Imported(
@@ -44,6 +45,9 @@ object AttachmentStore {
     )
 
     /** Copies [uri] into the attachments dir, or returns null if it could not be read. */
+    // Broad catch is deliberate: any content-provider failure mode means "no file"
+    // per this function's contract, and the failure is logged below.
+    @Suppress("TooGenericExceptionCaught")
     fun import(context: Context, uri: Uri, fallbackDisplayName: String): Imported? {
         val mimeType = context.contentResolver.getType(uri) ?: GENERIC_MIME_TYPE
         val displayName = IntentHelper.getFileName(context, uri) ?: fallbackDisplayName
@@ -77,7 +81,7 @@ object AttachmentStore {
      */
     private fun extensionFor(displayName: String, mimeType: String): String {
         val fromName = displayName.substringAfterLast('.', "")
-        if (fromName.isNotEmpty() && fromName.length <= 5) return ".${fromName.lowercase()}"
+        if (fromName.isNotEmpty() && fromName.length <= MAX_EXTENSION_LENGTH) return ".${fromName.lowercase()}"
         return when {
             mimeType == "application/pdf" -> ".pdf"
             mimeType == "image/png" -> ".png"

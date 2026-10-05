@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import androidx.core.content.edit
 import java.security.KeyStore
 import java.security.KeyStoreException
@@ -34,8 +35,8 @@ open class DatabaseHelper(val context: Context) {
             // Key exists but IV doesn't - clean up the orphaned key
             try {
                 keyStore.deleteEntry(keyStoreAlias)
-            } catch (e: KeyStoreException) {
-                // Best-effort cleanup; a failure here just leaves the orphaned key.
+            } catch (expected: KeyStoreException) {
+                Log.w(TAG, "Failed to delete orphaned key", expected)
             }
             return false
         }
@@ -47,8 +48,8 @@ open class DatabaseHelper(val context: Context) {
             val keyStore = KeyStore.getInstance("AndroidKeyStore")
             keyStore.load(null)
             keyStore.deleteEntry(keyStoreAlias)
-        } catch (e: KeyStoreException) {
-            // Best-effort deletion; SharedPreferences are still cleared below.
+        } catch (expected: KeyStoreException) {
+            Log.w(TAG, "Failed to delete key", expected)
         }
         // Also clear the SharedPreferences
         val prefs = context.getSharedPreferences(sharedPrefsName, Context.MODE_PRIVATE)
@@ -99,24 +100,32 @@ open class DatabaseHelper(val context: Context) {
 
     fun decryptPassphrase(cipher: Cipher): String {
         val prefs = context.getSharedPreferences(sharedPrefsName, Context.MODE_PRIVATE)
-        val encryptedPassphrase = prefs.getString(passphraseKey, null) ?: throw Exception("Passphrase not found")
+        val encryptedPassphrase =
+            prefs.getString(passphraseKey, null) ?: throw IllegalStateException("Passphrase not found")
         val encryptedBytes = Base64.decode(encryptedPassphrase, Base64.NO_WRAP)
         val decryptedBytes = cipher.doFinal(encryptedBytes)
         return String(decryptedBytes, Charsets.UTF_8)
     }
 
     fun getCipherForEncryption(): Cipher {
-        val cipher = Cipher.getInstance("${KeyProperties.KEY_ALGORITHM_AES}/${KeyProperties.BLOCK_MODE_GCM}/${KeyProperties.ENCRYPTION_PADDING_NONE}")
+        val cipher =
+            Cipher.getInstance("$AES_ALGORITHM/$AES_BLOCK_MODE/$AES_PADDING")
         cipher.init(Cipher.ENCRYPT_MODE, getSecretKey())
         return cipher
     }
 
     fun getCipherForDecryption(): Cipher {
         val prefs = context.getSharedPreferences(sharedPrefsName, Context.MODE_PRIVATE)
-        val ivBase64 = prefs.getString(ivKey, null) ?: throw Exception("IV not found")
+        val ivBase64 =
+            prefs.getString(ivKey, null) ?: throw IllegalStateException("IV not found")
         val iv = Base64.decode(ivBase64, Base64.NO_WRAP)
-        val cipher = Cipher.getInstance("${KeyProperties.KEY_ALGORITHM_AES}/${KeyProperties.BLOCK_MODE_GCM}/${KeyProperties.ENCRYPTION_PADDING_NONE}")
-        cipher.init(Cipher.DECRYPT_MODE, getSecretKey(), GCMParameterSpec(128, iv))
+        val cipher =
+            Cipher.getInstance("$AES_ALGORITHM/$AES_BLOCK_MODE/$AES_PADDING")
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            getSecretKey(),
+            GCMParameterSpec(GCM_TAG_BITS, iv)
+        )
         return cipher
     }
 
@@ -127,5 +136,13 @@ open class DatabaseHelper(val context: Context) {
 
     fun getPassphrase(): String {
         return decryptPassphrase(getCipherForDecryption())
+    }
+
+    companion object {
+        private const val TAG = "DatabaseHelper"
+        private const val AES_ALGORITHM = KeyProperties.KEY_ALGORITHM_AES
+        private const val AES_BLOCK_MODE = KeyProperties.BLOCK_MODE_GCM
+        private const val AES_PADDING = KeyProperties.ENCRYPTION_PADDING_NONE
+        private const val GCM_TAG_BITS = 128
     }
 }

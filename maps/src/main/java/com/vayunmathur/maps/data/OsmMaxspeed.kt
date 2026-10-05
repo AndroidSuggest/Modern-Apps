@@ -28,18 +28,24 @@ fun parseMaxspeed(raw: String?): PostedLimit? {
     val s = raw.trim().lowercase()
 
     countryImplicitKmh[s]?.let { return fromKmh(it) }
+    if (s in NO_LIMIT_VALUES) return null
 
-    when (s) {
-        "none", "signals", "variable", "walk", "unposted" -> return null
-    }
+    mphValue(s)?.let { return it }
+    return kmhValue(s)
+}
 
-    Regex("""(\d+(?:\.\d+)?)\s*mph""").find(s)?.let { m ->
-        val v = m.groupValues[1].toDouble().roundToInt()
-        if (v <= 0) return null
-        return PostedLimit(kmh = (v * MPH_TO_KMH).roundToInt(), mph = v, displayIsMph = true)
-    }
+/** Posted limits that carry no concrete numeric limit. */
+private val NO_LIMIT_VALUES = setOf("none", "signals", "variable", "walk", "unposted")
 
-    // Bare number or explicit km/h ("50", "50 km/h", "50kmh").
+private fun mphValue(s: String): PostedLimit? {
+    val m = Regex("""(\d+(?:\.\d+)?)\s*mph""").find(s) ?: return null
+    val v = m.groupValues[1].toDouble().roundToInt()
+    if (v <= 0) return null
+    return PostedLimit(kmh = (v * MPH_TO_KMH).roundToInt(), mph = v, displayIsMph = true)
+}
+
+/** Bare number or explicit km/h ("50", "50 km/h", "50kmh"). */
+private fun kmhValue(s: String): PostedLimit? {
     val num = Regex("""(\d+(?:\.\d+)?)""").find(s) ?: return null
     val v = num.groupValues[1].toDouble().roundToInt()
     if (v <= 0) return null

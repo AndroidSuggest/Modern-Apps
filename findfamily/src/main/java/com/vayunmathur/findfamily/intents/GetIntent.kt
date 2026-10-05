@@ -7,7 +7,8 @@ import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.serializer
 
 @OptIn(InternalSerializationApi::class)
-class GetIntent: AssistantIntent<Unit, List<FamilyMemberData>>(serializer<Unit>(), serializer<List<FamilyMemberData>>()) {
+class GetIntent :
+    AssistantIntent<Unit, List<FamilyMemberData>>(serializer<Unit>(), serializer<List<FamilyMemberData>>()) {
 
     override suspend fun performCalculation(input: Unit): List<FamilyMemberData> {
         val repository = FindFamilyRepository.get(this)

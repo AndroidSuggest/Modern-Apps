@@ -1,7 +1,16 @@
 package com.vayunmathur.office.odf
 
 import androidx.compose.ui.unit.LayoutDirection
-import com.vayunmathur.library.ui.odf.*
+import com.vayunmathur.library.ui.odf.OdfContentBlock
+import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.library.ui.odf.OdfFrame
+import com.vayunmathur.library.ui.odf.OdfImage
+import com.vayunmathur.library.ui.odf.OdfParagraph
+import com.vayunmathur.library.ui.odf.OdfSerializer
+import com.vayunmathur.library.ui.odf.OdfShape
+import com.vayunmathur.library.ui.odf.OdfSlide
+import com.vayunmathur.library.ui.odf.OdfSlideElement
+import com.vayunmathur.library.ui.odf.OdfSpan
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -31,7 +40,13 @@ class OdfSerializerFeatureTest {
     @Test fun frameImageOpacityAndColorModeSerialized() {
         val doc = OdfDocument.Presentation("p", listOf(OdfSlide("s", elements = listOf(
             OdfSlideElement.Frame(OdfFrame(0f, 0f, 100f, 100f, emptyList(),
-                image = OdfImage("Pictures/x.png", byteArrayOf(1, 2, 3), 100f, 100f, opacityPercent = 50f, colorMode = "greyscale")))
+                image = OdfImage(
+                    "Pictures/x.png",
+                    byteArrayOf(1, 2, 3),
+                    100f,
+                    100f,
+                    opacityPercent = 50f,
+                    colorMode = "greyscale")))
         ))))
         val xml = OdfSerializer.serialize(doc)
         assertTrue(xml.contains("draw:image-opacity=\"50.0%\"") || xml.contains("draw:image-opacity=\"50%\""))

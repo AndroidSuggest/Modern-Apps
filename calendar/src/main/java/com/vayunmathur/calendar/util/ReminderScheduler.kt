@@ -47,6 +47,12 @@ object ReminderScheduler {
     private const val PREFS = "calendar_reminders"
     private const val KEY_SCHEDULED = "scheduled_request_codes"
 
+    /** Milliseconds in a minute, for reminder-offset arithmetic. */
+    private const val MILLIS_PER_MINUTE = 60_000L
+
+    /** Hash factor for deriving stable alarm request codes. */
+    private const val HASH_FACTOR = 31
+
     // How far ahead to look for the next occurrence of a recurring event.
     private val RECURRENCE_WINDOW = 400.days
 
@@ -71,52 +77,101 @@ object ReminderScheduler {
         val mirrored = mutableListOf<ReminderMirror.Entry>()
 
         for (event in events) {
-            val eventId = event.id ?: continue
-            val offsets = event.reminders.distinct()
-            if (offsets.isEmpty()) continue
-
-            if (!event.isRecurring) {
-                for (minutes in offsets) {
-                    val triggerAt = event.start - minutes.toLong() * 60_000L
-                    if (triggerAt <= nowMillis) continue
-                    val code = requestCode(eventId, minutes, event.start)
-                    scheduleExact(
-                        context, alarmManager, code, triggerAt,
-                        eventId, minutes, event.start, event.end, event.title,
-                    )
-                    scheduled += code
-                    if (triggerAt <= mirrorHorizon) {
-                        mirrored += ReminderMirror.Entry(
-                            eventId, minutes, event.start, event.end,
-                        )
-                    }
-                }
-            } else {
-                val now = Clock.System.now()
-                val instances = Instance.getInstances(context, now, now + RECURRENCE_WINDOW)
-                    .filter { it.eventID == eventId }
-                    .sortedBy { it.begin }
-                for (minutes in offsets) {
-                    val next = instances.firstOrNull {
-                        it.begin - minutes.toLong() * 60_000L > nowMillis
-                    } ?: continue
-                    val triggerAt = next.begin - minutes.toLong() * 60_000L
-                    val code = requestCode(eventId, minutes, next.begin)
-                    scheduleExact(
-                        context, alarmManager, code, triggerAt,
-                        eventId, minutes, next.begin, next.end, event.title,
-                    )
-                    scheduled += code
-                    if (triggerAt <= mirrorHorizon) {
-                        mirrored += ReminderMirror.Entry(
-                            eventId, minutes, next.begin, next.end,
-                        )
-                    }
-                }
-            }
+            scheduleEventReminders(context, alarmManager, event, nowMillis, mirrorHorizon, scheduled, mirrored)
         }
         saveTracked(context, scheduled)
         ReminderMirror.write(context, mirrored)
+    }
+
+    /** Schedules every future reminder offset of one event; no-ops without an id or offsets. */
+    private fun scheduleEventReminders(
+        context: Context,
+        alarmManager: AlarmManager,
+        event: Event,
+        nowMillis: Long,
+        mirrorHorizon: Long,
+        scheduled: MutableSet<Int>,
+        mirrored: MutableList<ReminderMirror.Entry>,
+    ) {
+        val eventId = event.id ?: return
+        val offsets = event.reminders.distinct()
+        if (offsets.isEmpty()) return
+        if (!event.isRecurring) {
+            scheduleOneOffReminders(context, alarmManager, event, eventId, offsets, nowMillis,
+                mirrorHorizon, scheduled, mirrored)
+        } else {
+            scheduleRecurringReminders(context, alarmManager, event, eventId, offsets, nowMillis,
+                mirrorHorizon, scheduled, mirrored)
+        }
+    }
+
+    private fun scheduleOneOffReminders(
+        context: Context,
+        alarmManager: AlarmManager,
+        event: Event,
+        eventId: Long,
+        offsets: List<Int>,
+        nowMillis: Long,
+        mirrorHorizon: Long,
+        scheduled: MutableSet<Int>,
+        mirrored: MutableList<ReminderMirror.Entry>,
+    ) {
+        for (minutes in offsets) {
+            val triggerAt = event.start - minutes.toLong() * MILLIS_PER_MINUTE
+            if (triggerAt <= nowMillis) continue
+            armReminder(context, alarmManager, eventId, minutes, event.start, event.end, event.title,
+                triggerAt, mirrorHorizon, scheduled, mirrored)
+        }
+    }
+
+    private fun scheduleRecurringReminders(
+        context: Context,
+        alarmManager: AlarmManager,
+        event: Event,
+        eventId: Long,
+        offsets: List<Int>,
+        nowMillis: Long,
+        mirrorHorizon: Long,
+        scheduled: MutableSet<Int>,
+        mirrored: MutableList<ReminderMirror.Entry>,
+    ) {
+        val now = Clock.System.now()
+        val instances = Instance.getInstances(context, now, now + RECURRENCE_WINDOW)
+            .filter { it.eventID == eventId }
+            .sortedBy { it.begin }
+        for (minutes in offsets) {
+            val next = instances.firstOrNull {
+                it.begin - minutes.toLong() * MILLIS_PER_MINUTE > nowMillis
+            } ?: continue
+            val triggerAt = next.begin - minutes.toLong() * MILLIS_PER_MINUTE
+            armReminder(context, alarmManager, eventId, minutes, next.begin, next.end, event.title,
+                triggerAt, mirrorHorizon, scheduled, mirrored)
+        }
+    }
+
+    /** Arms one exact alarm and records it in the tracked set (+ mirror when in range). */
+    private fun armReminder(
+        context: Context,
+        alarmManager: AlarmManager,
+        eventId: Long,
+        minutes: Int,
+        instanceStart: Long,
+        instanceEnd: Long,
+        title: String,
+        triggerAt: Long,
+        mirrorHorizon: Long,
+        scheduled: MutableSet<Int>,
+        mirrored: MutableList<ReminderMirror.Entry>,
+    ) {
+        val code = requestCode(eventId, minutes, instanceStart)
+        scheduleExact(
+            context, alarmManager, code, triggerAt,
+            eventId, minutes, instanceStart, instanceEnd, title,
+        )
+        scheduled += code
+        if (triggerAt <= mirrorHorizon) {
+            mirrored += ReminderMirror.Entry(eventId, minutes, instanceStart, instanceEnd)
+        }
     }
 
     /**
@@ -217,8 +272,8 @@ object ReminderScheduler {
 
     private fun requestCode(eventId: Long, minutes: Int, instanceStart: Long): Int {
         var result = eventId.hashCode()
-        result = 31 * result + minutes
-        result = 31 * result + instanceStart.hashCode()
+        result = HASH_FACTOR * result + minutes
+        result = HASH_FACTOR * result + instanceStart.hashCode()
         return result
     }
 

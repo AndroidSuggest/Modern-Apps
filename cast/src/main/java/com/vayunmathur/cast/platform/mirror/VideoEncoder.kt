@@ -6,6 +6,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import com.vayunmathur.cast.protocol.VideoCodec
+import java.io.IOException
 import java.nio.ByteBuffer
 
 private const val TAG = "VideoEncoder"
@@ -152,11 +153,19 @@ class VideoEncoder(
             mediaCodec = created
             Log.i(TAG, "encoding ${codec.label} at ${width}x$height @ ${frameRate}fps on $name")
             true
-        } catch (e: Exception) {
-            Log.w(TAG, "could not start the ${codec.label} encoder", e)
-            release()
-            false
+        } catch (e: IllegalStateException) {
+            failStart(e)
+        } catch (e: IllegalArgumentException) {
+            failStart(e)
+        } catch (e: IOException) {
+            failStart(e)
         }
+    }
+
+    private fun failStart(e: Exception): Boolean {
+        Log.w(TAG, "could not start the ${codec.label} encoder", e)
+        release()
+        return false
     }
 
     /**

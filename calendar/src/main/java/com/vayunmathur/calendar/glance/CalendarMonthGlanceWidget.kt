@@ -114,8 +114,8 @@ class CalendarMonthGlanceWidget : GlanceAppWidget() {
                     MonthContent(monthLabel, weeks, previewEvents, today, today.month, weekdayNames)
                 }
             }
-        } catch (e: Throwable) {
-            Log.e("CalendarMonthWidget", "providePreview failed", e)
+        } catch (expected: Throwable) {
+            Log.e("CalendarMonthWidget", "providePreview failed", expected)
             try {
                 provideContent {
                     DynamicThemeGlance(context) {
@@ -151,7 +151,7 @@ private fun previewEventsByDay(
         context.getString(R.string.widget_preview_event_2_title),
         context.getString(R.string.widget_preview_event_3_title),
     )
-    val colors = listOf(0xFF4285F4.toInt(), 0xFF34A853.toInt(), 0xFFEA4335.toInt())
+    val colors = listOf(PREVIEW_BLUE, PREVIEW_GREEN, PREVIEW_RED)
     var nextId = 1L
     fun sample(day: LocalDate, index: Int, hour: Int): Instance {
         val begin = LocalDateTime(day, LocalTime(hour, 0)).toInstant(zone).toEpochMilliseconds()
@@ -160,7 +160,7 @@ private fun previewEventsByDay(
             id = id,
             eventID = id,
             begin = begin,
-            end = begin + 30 * 60 * 1000,
+            end = begin + PREVIEW_EVENT_DURATION_MS,
             timezone = zone.id,
             allDay = false,
             eventTitle = titles[index % titles.size],
@@ -170,26 +170,50 @@ private fun previewEventsByDay(
     }
     val days = weeks.flatten()
     fun dayOffset(n: Int): LocalDate = days[n % days.size]
-    val busy = dayOffset(9)
+    val busy = dayOffset(PREVIEW_BUSY_DAY)
     val busyEvents = listOf(
-        sample(busy, 0, 9),
-        sample(busy, 1, 11),
-        sample(busy, 2, 15),
-        sample(busy, 0, 17),
-        sample(busy, 1, 19),
+        sample(busy, 0, MORNING_HOUR),
+        sample(busy, 1, LATE_MORNING_HOUR),
+        sample(busy, 2, AFTERNOON_HOUR),
+        sample(busy, 0, EARLY_EVENING_HOUR),
+        sample(busy, 1, EVENING_HOUR),
     )
-    val first = dayOffset(8)
-    val mid = dayOffset(15)
-    val later = dayOffset(16)
-    val last = dayOffset(22)
+    val first = dayOffset(PREVIEW_FIRST_DAY)
+    val mid = dayOffset(PREVIEW_MID_DAY)
+    val later = dayOffset(PREVIEW_LATER_DAY)
+    val last = dayOffset(PREVIEW_LAST_DAY)
     return mapOf(
-        first to listOf(sample(first, 0, 9), sample(first, 1, 12)),
+        first to listOf(sample(first, 0, MORNING_HOUR), sample(first, 1, MIDDAY_HOUR)),
         busy to busyEvents,
-        mid to listOf(sample(mid, 2, 10)),
-        later to listOf(sample(later, 1, 9), sample(later, 2, 14), sample(later, 0, 16)),
-        last to listOf(sample(last, 1, 12)),
+        mid to listOf(sample(mid, 2, MID_MORNING_HOUR)),
+        later to listOf(
+            sample(later, 1, MORNING_HOUR),
+            sample(later, 2, EARLY_AFTERNOON_HOUR),
+            sample(later, 0, LATE_AFTERNOON_HOUR),
+        ),
+        last to listOf(sample(last, 1, MIDDAY_HOUR)),
     )
 }
+
+/** Preview-only sample hours, day offsets, colors and duration for the widget picker preview. */
+private const val MORNING_HOUR = 9
+private const val MID_MORNING_HOUR = 10
+private const val LATE_MORNING_HOUR = 11
+private const val MIDDAY_HOUR = 12
+private const val EARLY_AFTERNOON_HOUR = 14
+private const val AFTERNOON_HOUR = 15
+private const val LATE_AFTERNOON_HOUR = 16
+private const val EARLY_EVENING_HOUR = 17
+private const val EVENING_HOUR = 19
+private const val PREVIEW_FIRST_DAY = 8
+private const val PREVIEW_BUSY_DAY = 9
+private const val PREVIEW_MID_DAY = 15
+private const val PREVIEW_LATER_DAY = 16
+private const val PREVIEW_LAST_DAY = 22
+private const val PREVIEW_EVENT_DURATION_MS = 30 * 60 * 1000L
+private const val PREVIEW_BLUE = 0xFF4285F4.toInt()
+private const val PREVIEW_GREEN = 0xFF34A853.toInt()
+private const val PREVIEW_RED = 0xFFEA4335.toInt()
 
 /**
  * Pure-logic month grid: the full weeks covering [year]/[month], each week starting on
@@ -211,8 +235,11 @@ internal fun computeMonthGrid(year: Int, month: Month, firstDayOfWeek: Int): Lis
     val days = generateSequence(startDay) { it.plus(DatePeriod(days = 1)) }
         .takeWhile { it <= endDay }
         .toList()
-    return days.chunked(7)
+    return days.chunked(DAYS_PER_WEEK)
 }
+
+/** Days in a week; the month grid is a list of full weeks. */
+private const val DAYS_PER_WEEK = 7
 
 /**
  * Day-cell event order, mirroring the in-app month view (`MonthWeekRow` sorts by
@@ -231,7 +258,10 @@ internal fun <T> List<T>.cappedForCell(maxChips: Int): Pair<List<T>, Int> =
  * content cannot depend on Compose Material helpers.
  */
 internal fun contrastingTextOn(background: Color): Color =
-    if (background.luminance() > 0.45f) Color.Black else Color.White
+    if (background.luminance() > CHIP_LUMINANCE_THRESHOLD) Color.Black else Color.White
+
+/** Luminance above which black text reads better on an event chip than white. */
+private const val CHIP_LUMINANCE_THRESHOLD = 0.45f
 
 internal const val MONTH_CHIP_MIN = 1
 internal const val MONTH_CHIP_MAX = 4

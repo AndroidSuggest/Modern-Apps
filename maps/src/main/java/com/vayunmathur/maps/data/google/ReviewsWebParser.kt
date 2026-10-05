@@ -19,6 +19,10 @@ import kotlinx.serialization.json.jsonPrimitive
  * (a card whose name never resolved isn't renderable). Best-effort: a malformed blob → empty list.
  */
 object ReviewsWebParser {
+    /** Google star ratings run 0..5. */
+    private const val MIN_RATING = 0
+    private const val MAX_RATING = 5
+
     fun parse(json: String): List<GoogleReview> = runCatching {
         Json.parseToJsonElement(json).jsonArray.mapNotNull { el ->
             val o = el.jsonObject
@@ -32,7 +36,7 @@ object ReviewsWebParser {
             GoogleReview(
                 author = author,
                 authorPhoto = o["av"]?.jsonPrimitive?.contentOrNull?.takeIf { it.startsWith("http") },
-                rating = (o["r"]?.jsonPrimitive?.intOrNull ?: 0).coerceIn(0, 5),
+                rating = (o["r"]?.jsonPrimitive?.intOrNull ?: 0).coerceIn(MIN_RATING, MAX_RATING),
                 relativeTime = o["d"]?.jsonPrimitive?.contentOrNull?.ifBlank { null },
                 text = o["t"]?.jsonPrimitive?.contentOrNull?.ifBlank { null },
                 photos = photos,

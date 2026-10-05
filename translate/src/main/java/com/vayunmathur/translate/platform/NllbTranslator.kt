@@ -44,6 +44,9 @@ class NllbTranslator(private val context: Context) : TranslationEngine {
 
     override suspend fun detectLanguage(text: String): String? = null
 
+    // Broad catch is deliberate: the native translator throws undocumented
+    // RuntimeExceptions on bad input, which read as "untranslatable".
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun translate(text: String, from: String?, to: String): String? =
         withContext(Dispatchers.Default) {
             if (text.isBlank()) return@withContext ""
@@ -55,8 +58,8 @@ class NllbTranslator(private val context: Context) : TranslationEngine {
                 val handle = ensure() ?: return@withContext null
                 try {
                     handle.translate(text, source, target)?.ifBlank { null }
-                } catch (t: Throwable) {
-                    Log.e(TAG, "translate failed", t)
+                } catch (e: Exception) {
+                    Log.e(TAG, "translate failed", e)
                     null
                 }
             }
@@ -121,3 +124,4 @@ class NllbTranslator(private val context: Context) : TranslationEngine {
         private const val MAX_ATTEMPTS = 2
     }
 }
+

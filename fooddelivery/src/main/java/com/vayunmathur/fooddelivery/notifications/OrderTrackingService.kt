@@ -9,7 +9,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
-import com.vayunmathur.fooddelivery.api.BitesApi
+import com.vayunmathur.fooddelivery.api.BitesOrders
 import com.vayunmathur.fooddelivery.data.Order
 import com.vayunmathur.fooddelivery.platform.AppInit
 import kotlinx.coroutines.CoroutineScope
@@ -48,7 +48,11 @@ class OrderTrackingService : Service() {
         // poll replaces it with real data a moment later.
         try {
             startForegroundCompat(OrderLiveUpdate.build(this, Order(id = orderId)))
-        } catch (e: Exception) {
+        } catch (e: SecurityException) {
+            Log.e(TAG, "startForeground failed", e)
+            stopSelf()
+            return START_NOT_STICKY
+        } catch (e: IllegalArgumentException) {
             Log.e(TAG, "startForeground failed", e)
             stopSelf()
             return START_NOT_STICKY
@@ -69,7 +73,7 @@ class OrderTrackingService : Service() {
         AppInit.awaitReady()
         while (true) {
             val order = runCatching {
-                BitesApi.getOrders().firstOrNull { it.id == orderId }
+                BitesOrders.getOrders().firstOrNull { it.id == orderId }
             }.getOrNull()
 
             if (order == null) {

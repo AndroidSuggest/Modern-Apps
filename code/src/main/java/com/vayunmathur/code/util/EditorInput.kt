@@ -44,68 +44,89 @@ fun applyEditorInput(
     autoCloseBrackets: Boolean,
 ): TextFieldValue {
     if (!new.selection.collapsed) return new
+    val input = SingleCharInput.parse(old, new) ?: return handlePaste(old, new, autoIndent)
+    if (input.char == '\n' && autoIndent) {
+        return handleNewline(old, input, indentUnit)
+    }
+    if (autoCloseBrackets) {
+        handleBracket(input, old, new)?.let { return it }
+    }
+    return new
+}
+
+private class SingleCharInput(val caret: Int, val char: Char, val pos: Int, val afterChar: Char?) {
+    companion object {
+        fun parse(old: TextFieldValue, new: TextFieldValue): SingleCharInput? {
+            val caret = new.selection.start
+            val diff = new.text.length - old.text.length
+            // Must be exactly one character longer, inserted so removing it reproduces old text.
+            if (diff != 1 || caret < 1) return null
+            if (!isPlainInsertion(old.text, new.text, caret, 1)) return null
+            val pos = caret - 1 // index in old.text where the character was inserted
+            // The character that was to the right of the caret.
+            return SingleCharInput(caret, new.text[caret - 1], pos, old.text.getOrNull(pos))
+        }
+    }
+}
+
+private fun handlePaste(old: TextFieldValue, new: TextFieldValue, autoIndent: Boolean): TextFieldValue {
     val caret = new.selection.start
     val diff = new.text.length - old.text.length
-
     // Paste: a multi-character insertion containing a newline. Re-base its indentation onto the
     // caret line so pasted blocks line up with their new surroundings.
-    if (diff > 1 && caret >= diff) {
-        if (isPlainInsertion(old.text, new.text, caret, diff)) {
-            val pasted = new.text.substring(caret - diff, caret)
-            if (autoIndent && pasted.contains('\n')) {
-                return reindentPaste(old.text, caret - diff, pasted, indentUnit)
-            }
-        }
-        return new
+    if (diff <= 1 || caret < diff) return new
+    if (!isPlainInsertion(old.text, new.text, caret, diff)) return new
+    val pasted = new.text.substring(caret - diff, caret)
+    if (autoIndent && pasted.contains('\n')) {
+        return reindentPaste(old.text, caret - diff, pasted)
     }
-
-    // Must be exactly one character longer, inserted so that removing it reproduces the old text.
-    if (diff != 1 || caret < 1) return new
-    if (!isPlainInsertion(old.text, new.text, caret, 1)) return new
-
-    val c = new.text[caret - 1]
-    val pos = caret - 1 // index in old.text where the character was inserted
-    val afterChar = old.text.getOrNull(pos) // the character that was to the right of the caret
-
-    // Newline: carry the current line's leading whitespace; open a block between a bracket pair.
-    if (c == '\n' && autoIndent) {
-        val lineStart = old.text.lastIndexOf('\n', pos - 1) + 1
-        var i = lineStart
-        while (i < pos && (old.text[i] == ' ' || old.text[i] == '\t')) i++
-        val indent = old.text.substring(lineStart, i)
-
-        val beforeChar = old.text.getOrNull(pos - 1)
-        if (beforeChar != null && afterChar != null &&
-            beforeChar in OPENERS && matchingCloser(beforeChar) == afterChar
-        ) {
-            val head = old.text.substring(0, pos) + "\n" + indent + indentUnit
-            val text = head + "\n" + indent + old.text.substring(pos)
-            return TextFieldValue(text, TextRange(head.length))
-        }
-
-        if (indent.isEmpty()) return new
-        val text = old.text.substring(0, pos) + "\n" + indent + old.text.substring(pos)
-        return TextFieldValue(text, TextRange(caret + indent.length))
-    }
-
-    if (autoCloseBrackets) {
-        // Type-over: typing a closer/quote that already sits immediately after the caret.
-        if ((c in CLOSERS || c in QUOTES) && afterChar == c) {
-            return TextFieldValue(old.text, TextRange(caret))
-        }
-        // Auto-close: an opener gets its matching closer; a quote gets a second quote.
-        val closer = when {
-            c in OPENERS -> matchingCloser(c)
-            c in QUOTES -> c
-            else -> null
-        }
-        if (closer != null) {
-            val text = new.text.substring(0, caret) + closer + new.text.substring(caret)
-            return TextFieldValue(text, TextRange(caret))
-        }
-    }
-
     return new
+}
+
+// Newline: carry the current line's leading whitespace; open a block between a bracket pair.
+private fun handleNewline(old: TextFieldValue, input: SingleCharInput, indentUnit: String): TextFieldValue {
+    val indent = lineIndent(old.text, input.pos)
+    val beforeChar = old.text.getOrNull(input.pos - 1)
+    if (isBracketPair(beforeChar, input.afterChar)) {
+        val head = old.text.substring(0, input.pos) + "\n" + indent + indentUnit
+        val text = head + "\n" + indent + old.text.substring(input.pos)
+        return TextFieldValue(text, TextRange(head.length))
+    }
+    if (indent.isEmpty()) return TextFieldValue(old.text, TextRange(input.caret))
+    val text = old.text.substring(0, input.pos) + "\n" + indent + old.text.substring(input.pos)
+    return TextFieldValue(text, TextRange(input.caret + indent.length))
+}
+
+private fun lineIndent(text: String, pos: Int): String {
+    val lineStart = text.lastIndexOf('\n', pos - 1) + 1
+    var i = lineStart
+    while (i < pos && (text[i] == ' ' || text[i] == '\t')) i++
+    return text.substring(lineStart, i)
+}
+
+private fun isBracketPair(beforeChar: Char?, afterChar: Char?): Boolean {
+    if (beforeChar == null || afterChar == null) return false
+    return beforeChar in OPENERS && matchingCloser(beforeChar) == afterChar
+}
+
+private fun handleBracket(
+    input: SingleCharInput,
+    old: TextFieldValue,
+    new: TextFieldValue,
+): TextFieldValue? {
+    // Type-over: typing a closer/quote that already sits immediately after the caret.
+    if ((input.char in CLOSERS || input.char in QUOTES) && input.afterChar == input.char) {
+        return TextFieldValue(old.text, TextRange(input.caret))
+    }
+    // Auto-close: an opener gets its matching closer; a quote gets a second quote.
+    val closer = when {
+        input.char in OPENERS -> matchingCloser(input.char)
+        input.char in QUOTES -> input.char
+        else -> null
+    }
+    if (closer == null) return null
+    val text = new.text.substring(0, input.caret) + closer + new.text.substring(input.caret)
+    return TextFieldValue(text, TextRange(input.caret))
 }
 
 // ---- Line operations (pure; each is a single undo step at the call site) ----
@@ -323,7 +344,7 @@ private fun leadingWhitespaceLen(line: String): Int {
  * first (the first pasted line continues at the caret, which already sits after that indent).
  * Relative indentation within the block is preserved.
  */
-fun reindentPaste(text: String, caret: Int, pasted: String, indentUnit: String): TextFieldValue {
+fun reindentPaste(text: String, caret: Int, pasted: String): TextFieldValue {
     val lineStart = text.lastIndexOf('\n', caret - 1) + 1
     val baseIndent = text.substring(lineStart, lineStart + leadingWhitespaceLen(text.substring(lineStart, caret)))
 

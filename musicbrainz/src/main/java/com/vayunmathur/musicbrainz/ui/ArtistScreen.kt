@@ -45,7 +45,7 @@ fun ArtistPage(backStack: NavBackStack<Route>, viewModel: MusicBrainzViewModel, 
 @Composable
 fun ArtistScreen(
     state: ArtistUiState,
-    actions: MusicBrainzActions,
+    @Suppress("UNUSED_PARAMETER") actions: MusicBrainzActions,
     backStack: NavBackStack<Route>,
     /** Pairs the heading with the search row this artist was opened from. */
     sharedTextKey: Any? = null,

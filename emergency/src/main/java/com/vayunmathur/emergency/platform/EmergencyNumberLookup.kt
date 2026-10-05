@@ -27,26 +27,30 @@ class EmergencyNumberLookup(private val context: Context) {
     }
 
     fun defaultPoliceNumber(): String {
-        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)) {
-            return FALLBACK_NUMBER
-        }
-        if (!hasPhoneStateGrant()) return FALLBACK_NUMBER
-        val telecom = context.getSystemService<TelephonyManager>() ?: return FALLBACK_NUMBER
-        val lists = runCatching {
-            telecom.getEmergencyNumberList(EmergencyNumber.EMERGENCY_SERVICE_CATEGORY_POLICE)
-        }.getOrElse {
-            Log.w(TAG, "could not read the emergency-number list", it)
-            return FALLBACK_NUMBER
-        }
-        if (lists.isNullOrEmpty()) return FALLBACK_NUMBER
-        val subId = SubscriptionManager.getDefaultSubscriptionId()
-        val numbers = lists[subId] ?: lists.values.firstOrNull().orEmpty()
+        val numbers = readPoliceNumbers() ?: return FALLBACK_NUMBER
         if (numbers.isEmpty()) return FALLBACK_NUMBER
         // Database-sourced entries are well-categorised; prefer them like SettingsLib does.
         val preferred = numbers.firstOrNull {
             EmergencyNumber.EMERGENCY_NUMBER_SOURCE_DATABASE in it.emergencyNumberSources
         } ?: numbers.first()
         return preferred.number.ifBlank { FALLBACK_NUMBER }
+    }
+
+    private fun readPoliceNumbers(): List<EmergencyNumber>? {
+        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)) {
+            return null
+        }
+        if (!hasPhoneStateGrant()) return null
+        val telecom = context.getSystemService<TelephonyManager>() ?: return null
+        val lists = runCatching {
+            telecom.getEmergencyNumberList(EmergencyNumber.EMERGENCY_SERVICE_CATEGORY_POLICE)
+        }.getOrElse {
+            Log.w(TAG, "could not read the emergency-number list", it)
+            return null
+        }
+        if (lists.isNullOrEmpty()) return null
+        val subId = SubscriptionManager.getDefaultSubscriptionId()
+        return lists[subId] ?: lists.values.firstOrNull().orEmpty()
     }
 
     private fun hasPhoneStateGrant(): Boolean {

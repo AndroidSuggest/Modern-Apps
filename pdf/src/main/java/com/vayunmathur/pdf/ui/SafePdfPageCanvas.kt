@@ -91,8 +91,8 @@ fun SafePdfPageCanvas(
             val base = drawContext.canvas.nativeCanvas.saveCount
             try {
                 drawSafePage(decoded)
-            } catch (t: Throwable) {
-                android.util.Log.w("SafePdfViewer", "drawSafePage failed", t)
+            } catch (expected: RuntimeException) {
+                android.util.Log.w("SafePdfViewer", "drawSafePage failed", expected)
             } finally {
                 drawContext.canvas.nativeCanvas.restoreToCount(base)
             }

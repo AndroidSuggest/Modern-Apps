@@ -13,29 +13,29 @@ import kotlinx.coroutines.launch
 @android.annotation.SuppressLint("MissingPermission")
 fun CameraViewModel.toggleHighSpeedRecording() {
     // Cancel countdown if active
-    if (_timerCountdown.value > 0) {
+    if (timerCountdownMutable.value > 0) {
         timerCountdownJob?.cancel()
         timerCountdownJob = null
-        _timerCountdown.value = 0
+        timerCountdownMutable.value = 0
         return
     }
 
-    if (_isRecording.value) {
+    if (isRecordingMutable.value) {
         highSpeedRecording?.stop()
         highSpeedRecording = null
         stopRecordingTimer()
         return
     }
 
-    val timer = _timerDuration.value
+    val timer = timerDurationMutable.value
     if (timer.seconds > 0) {
         // Start countdown before recording
         timerCountdownJob = viewModelScope.launch {
             for (i in timer.seconds downTo 1) {
-                _timerCountdown.value = i
-                delay(1000)
+                timerCountdownMutable.value = i
+                delay(COUNTDOWN_TICK_MS)
             }
-            _timerCountdown.value = 0
+            timerCountdownMutable.value = 0
             timerCountdownJob = null
             startHighSpeedRecording()
         }
@@ -45,9 +45,13 @@ fun CameraViewModel.toggleHighSpeedRecording() {
     startHighSpeedRecording()
 }
 
+/** Shutter/video countdown tick and timelapse speed-up factor. */
+private const val COUNTDOWN_TICK_MS = 1000L
+private const val TIMELAPSE_SPEED_FACTOR = 8f
+
 @android.annotation.SuppressLint("MissingPermission")
 internal fun CameraViewModel.startHighSpeedRecording() {
-    if (_isRecording.value) return
+    if (isRecordingMutable.value) return
     val videoCapture = highSpeedVideoCapture ?: return
 
     val timestamp = MediaStoreSaver.timestamp()
@@ -87,29 +91,29 @@ internal fun CameraViewModel.startHighSpeedRecording() {
 @android.annotation.SuppressLint("MissingPermission")
 fun CameraViewModel.toggleRecording() {
     // Cancel countdown if active
-    if (_timerCountdown.value > 0) {
+    if (timerCountdownMutable.value > 0) {
         timerCountdownJob?.cancel()
         timerCountdownJob = null
-        _timerCountdown.value = 0
+        timerCountdownMutable.value = 0
         return
     }
 
-    if (_isRecording.value) {
+    if (isRecordingMutable.value) {
         currentRecording?.stop()
         currentRecording = null
         stopRecordingTimer()
         return
     }
 
-    val timer = _timerDuration.value
+    val timer = timerDurationMutable.value
     if (timer.seconds > 0) {
         // Start countdown before recording
         timerCountdownJob = viewModelScope.launch {
             for (i in timer.seconds downTo 1) {
-                _timerCountdown.value = i
-                delay(1000)
+                timerCountdownMutable.value = i
+                delay(COUNTDOWN_TICK_MS)
             }
-            _timerCountdown.value = 0
+            timerCountdownMutable.value = 0
             timerCountdownJob = null
             startRecording()
         }
@@ -121,64 +125,93 @@ fun CameraViewModel.toggleRecording() {
 
 @android.annotation.SuppressLint("MissingPermission")
 internal fun CameraViewModel.startRecording() {
-    if (_isRecording.value) return
+    if (isRecordingMutable.value) return
     val capture = videoCapture ?: return
 
     val timestamp = MediaStoreSaver.timestamp()
-    val prefix = when (_cameraMode.value) {
-        CameraMode.TIMELAPSE -> "TL"
-        CameraMode.CINEMATIC -> "CINE"
-        else -> "VID"
-    }
-    val displayName = "${prefix}_$timestamp"
+    val recordingMode = cameraModeMutable.value
+    val displayName = "${recordingPrefix(recordingMode)}_$timestamp"
 
     val cacheFile = java.io.File(app.cacheDir, "VID_$timestamp.mp4")
     val outputOptions = FileOutputOptions.Builder(cacheFile).build()
-    val recordingMode = _cameraMode.value
 
     startRecordingTimer()
 
-    var pending = capture.output.prepareRecording(app, outputOptions)
     val audioEnabled = recordingMode == CameraMode.VIDEO || recordingMode == CameraMode.CINEMATIC
+    var pending = capture.output.prepareRecording(app, outputOptions)
     if (audioEnabled) {
         pending = pending.withAudioEnabled()
     }
     currentRecording = pending.start(ContextCompat.getMainExecutor(app)) { event ->
         if (event is VideoRecordEvent.Finalize) {
-            stopRecordingTimer()
-            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                if (!cacheFile.exists()) return@launch
-                val fileToSave = when (recordingMode) {
-                    CameraMode.TIMELAPSE -> {
-                        val processed = java.io.File(app.cacheDir, "TL_$timestamp.mp4")
-                        try {
-                            VideoProcessor.adjustSpeed(cacheFile, processed, 8f)
-                            cacheFile.delete()
-                            processed
-                        } catch (e: Exception) {
-                            // MediaMuxer can reject an av01 track (or an oversized keyframe)
-                            // on some devices; keep the raw recording rather than crash.
-                            Log.e("CameraViewModel", "Timelapse remux failed; saving unprocessed", e)
-                            processed.delete()
-                            cacheFile
-                        }
-                    }
-                    else -> cacheFile
-                }
-                saveVideoStaged(displayName, fileToSave)?.let {
-                    setLastCaptureUri(it)
-                }
-                fileToSave.delete()
-            }
+            onRecordingFinalized(cacheFile, timestamp, recordingMode, displayName)
         }
     }
     // Apply the current mic-mute state to the freshly-started recording.
     if (audioEnabled) {
-        try {
-            currentRecording?.mute(_micMuted.value)
-        } catch (e: Exception) {
-            Log.w("CameraViewModel", "Failed to apply initial mic mute", e)
+        applyInitialMicMute()
+    }
+}
+
+/** Filename prefix per recording mode. */
+private fun recordingPrefix(recordingMode: CameraMode): String {
+    return when (recordingMode) {
+        CameraMode.TIMELAPSE -> "TL"
+        CameraMode.CINEMATIC -> "CINE"
+        else -> "VID"
+    }
+}
+
+/** Handles the finalize event: stops the timer and stages the file for save. */
+private fun CameraViewModel.onRecordingFinalized(
+    cacheFile: java.io.File,
+    timestamp: String,
+    recordingMode: CameraMode,
+    displayName: String
+) {
+    stopRecordingTimer()
+    viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        if (!cacheFile.exists()) return@launch
+        val fileToSave = if (recordingMode == CameraMode.TIMELAPSE) {
+            remuxTimelapse(cacheFile, timestamp)
+        } else {
+            cacheFile
         }
+        saveVideoStaged(displayName, fileToSave)?.let {
+            setLastCaptureUri(it)
+        }
+        fileToSave.delete()
+    }
+}
+
+/** Speeds the timelapse cache file up; falls back to the raw file on remux failure. */
+private fun remuxTimelapse(cacheFile: java.io.File, timestamp: String): java.io.File {
+    val processed = java.io.File(cacheFile.parent, "TL_$timestamp.mp4")
+    return try {
+        VideoProcessor.adjustSpeed(cacheFile, processed, TIMELAPSE_SPEED_FACTOR)
+        cacheFile.delete()
+        processed
+    } catch (e: java.io.IOException) {
+        // MediaMuxer can reject an av01 track (or an oversized keyframe)
+        // on some devices; keep the raw recording rather than crash.
+        Log.e("CameraViewModel", "Timelapse remux failed; saving unprocessed", e)
+        processed.delete()
+        cacheFile
+    } catch (e: IllegalStateException) {
+        // MediaMuxer can reject an av01 track (or an oversized keyframe)
+        // on some devices; keep the raw recording rather than crash.
+        Log.e("CameraViewModel", "Timelapse remux failed; saving unprocessed", e)
+        processed.delete()
+        cacheFile
+    }
+}
+
+/** Applies the persisted mic-mute state to the freshly-started recording. */
+private fun CameraViewModel.applyInitialMicMute() {
+    try {
+        currentRecording?.mute(micMutedMutable.value)
+    } catch (e: IllegalStateException) {
+        Log.w("CameraViewModel", "Failed to apply initial mic mute", e)
     }
 }
 
@@ -186,27 +219,27 @@ internal fun CameraViewModel.startRecording() {
 fun CameraViewModel.togglePauseRecording() {
     val recording = currentRecording ?: return
     try {
-        if (_recordingPaused.value) {
+        if (recordingPausedMutable.value) {
             recording.resume()
-            _recordingPaused.value = false
+            recordingPausedMutable.value = false
         } else {
             recording.pause()
-            _recordingPaused.value = true
+            recordingPausedMutable.value = true
         }
-    } catch (e: Exception) {
+    } catch (e: IllegalStateException) {
         Log.w("CameraViewModel", "Failed to pause/resume recording", e)
     }
 }
 
 /** Toggles mic mute; applies live to the active recording. Persisted for the next session. */
 fun CameraViewModel.toggleMicMuted() {
-    _micMuted.value = !_micMuted.value
+    micMutedMutable.value = !micMutedMutable.value
     try {
-        currentRecording?.mute(_micMuted.value)
-    } catch (e: Exception) {
+        currentRecording?.mute(micMutedMutable.value)
+    } catch (e: IllegalStateException) {
         Log.w("CameraViewModel", "Failed to toggle mic mute", e)
     }
-    viewModelScope.launch { ds.setString("camera_mic_muted", _micMuted.value.toString()) }
+    viewModelScope.launch { ds.setString("camera_mic_muted", micMutedMutable.value.toString()) }
 }
 
 /**
@@ -214,7 +247,7 @@ fun CameraViewModel.toggleMicMuted() {
  * video session. No-op if the device couldn't bind the extra ImageCapture use case.
  */
 fun CameraViewModel.captureVideoSnapshot() {
-    if (_isCapturing.value) return
+    if (isCapturingMutable.value) return
     val capture = imageCapture ?: return
     val pending = prepareStillSave("IMG_${MediaStoreSaver.timestamp()}.jpg") ?: return
     val outputOptions = pending.outputOptions
@@ -235,14 +268,14 @@ fun CameraViewModel.captureVideoSnapshot() {
 }
 
 fun CameraViewModel.startPanorama() {
-    if (panoramaEngine.isSweeping.value || panoramaEngine.isStitching.value || _isCapturing.value) return
+    if (panoramaEngine.isSweeping.value || panoramaEngine.isStitching.value || isCapturingMutable.value) return
     panoramaEngine.startSweep()
 }
 
 fun CameraViewModel.stopPanorama() = finishPanoramaSweep()
 
 fun CameraViewModel.startPhotosphere() {
-    if (panoramaEngine.isSweeping.value || panoramaEngine.isStitching.value || _isCapturing.value) return
+    if (panoramaEngine.isSweeping.value || panoramaEngine.isStitching.value || isCapturingMutable.value) return
     panoramaEngine.startSweep(fullSphere = true)
 }
 
@@ -259,7 +292,7 @@ internal fun CameraViewModel.finishPanoramaSweep() {
         } else {
             val (jpeg, info) = result
             android.util.Log.i("CameraViewModel", "Panorama stitched ${jpeg.size} bytes, saving")
-            val uri = panoramaEngine.saveToMediaStore(jpeg, info, _saveTarget.value)
+            val uri = panoramaEngine.saveToMediaStore(jpeg, info, saveTargetMutable.value)
             if (uri != null) {
                 android.util.Log.i("CameraViewModel", "Panorama saved uri=$uri")
                 scanSafDoc(uri)

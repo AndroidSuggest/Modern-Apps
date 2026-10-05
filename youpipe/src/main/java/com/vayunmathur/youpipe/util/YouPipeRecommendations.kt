@@ -25,14 +25,15 @@ private const val MAX_TOP_CHANNELS = 5
 private const val TOP_CHANNEL_VIDEOS = 5
 private const val MAX_SEARCH_KEYWORDS = 2
 
-private const val CUSTOM_PRESET = "CUSTOM"
-private const val DEMOTE_MULTIPLIER = 0.3
-private const val BOOST_MULTIPLIER = 3.0
+internal const val CUSTOM_PRESET = "CUSTOM"
+internal const val DEMOTE_MULTIPLIER = 0.3
+internal const val BOOST_MULTIPLIER = 3.0
 private const val REFRESH_NOISE = 0.15
+private const val QUERY_TRIGRAM_KEYWORDS = 3
 
 fun YouPipeViewModel.loadRecommendations() {
     viewModelScope.launch(Dispatchers.IO) {
-        _recommendationsLoading.value = true
+        recommendationsLoadingMutable.value = true
         try {
             // Read directly from the DAOs so a cold Search screen (with no active
             // collector on the history/sub flows) still sees the persisted data.
@@ -41,7 +42,8 @@ fun YouPipeViewModel.loadRecommendations() {
             val subNames = subs.map { it.name.lowercase() }.toSet()
             val now = Clock.System.now()
 
-            val prefs = repository.getRecommendationPreferences() ?: RecommendationPreferences()
+            val prefs = repository.recommendationStore.getRecommendationPreferences()
+                ?: RecommendationPreferences()
             val weights = RecommendationWeights.fromPreferences(prefs)
             val filters = ContentFilters(
                 hideShorts = prefs.hideShorts,
@@ -51,12 +53,12 @@ fun YouPipeViewModel.loadRecommendations() {
                 maxDurationSec = prefs.maxDurationSec,
             )
 
-            val channelPrefs = repository.getAllChannelPreferences().associate {
+            val channelPrefs = repository.recommendationStore.getAllChannelPreferences().associate {
                 it.channelKey to ChannelPref(it.multiplier, it.blocked, it.pinned)
             }
             val mutedKeywords = repository.getAllKeywordPreferences().filter { it.muted }.map { it.keyword }.toSet()
 
-            val impressions = repository.getAllRecommendationImpressions()
+            val impressions = repository.recommendationStore.getAllRecommendationImpressions()
             val watchedIds = history.map { it.id }.toSet()
             val channelStats = impressions.groupBy { it.channelKey }.mapValues { (_, imps) ->
                 ChannelImpressionStat(
@@ -82,24 +84,30 @@ fun YouPipeViewModel.loadRecommendations() {
                 noise = { Random.nextDouble(0.0, REFRESH_NOISE) },
             )
 
-            _recommendations.value = ranked
+            recommendationsMutable.value = ranked
             recordImpressions(ranked, now)
             fetchDeArrowForVideos(ranked.map { it.video.videoID })
-        } catch (e: Exception) {
+        } catch (e: java.io.IOException) {
+            Log.e(TAG, "Recommendation error", e)
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "Recommendation error", e)
+        } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
             Log.e(TAG, "Recommendation error", e)
         }
-        _recommendationsLoading.value = false
+        recommendationsLoadingMutable.value = false
     }
 }
 
 internal suspend fun YouPipeViewModel.recordImpressions(ranked: List<RankedVideo>, now: Instant) {
     try {
         ranked.forEach { rv ->
-            repository.recordRecommendationImpression(
+            repository.recommendationStore.recordRecommendationImpression(
                 rv.video.videoID, rv.video.author.lowercase(), rv.source.name, now,
             )
         }
-    } catch (e: Exception) {
+    } catch (e: IllegalStateException) {
+        Log.e(TAG, "Impression record error", e)
+    } catch (e: android.database.sqlite.SQLiteException) {
         Log.e(TAG, "Impression record error", e)
     }
 }
@@ -120,27 +128,12 @@ internal suspend fun YouPipeViewModel.gatherCandidates(
 
     val relatedDeferred = async(Dispatchers.IO) {
         if (!prefs.sourceRelated) return@async emptyList()
-        try {
-            repository.getAllCachedRelatedVideos().map { item ->
-                Candidate(
-                    item.videoItem,
-                    RecSource.RELATED,
-                    sourceTimestamps[item.sourceVideoID],
-                    sourceTitles[item.sourceVideoID],
-                )
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Related candidates error", e); emptyList()
-        }
+        loadRelatedCandidates(repository, sourceTimestamps, sourceTitles)
     }
 
     val trendingDeferred = async(Dispatchers.IO) {
         if (!prefs.sourceTrending) return@async emptyList()
-        try {
-            cachedTrending().map { Candidate(it, RecSource.TRENDING) }
-        } catch (e: Exception) {
-            Log.e(TAG, "Trending candidates error", e); emptyList()
-        }
+        loadTrendingCandidates()
     }
 
     val subscriptionCandidates = if (prefs.sourceSubscription) {
@@ -156,42 +149,89 @@ internal suspend fun YouPipeViewModel.gatherCandidates(
 
     val topChannelDeferred = async(Dispatchers.IO) {
         if (!prefs.sourceTopChannel) return@async emptyList()
-        try {
-            val authors = profile.authorWeights.entries
-                .sortedByDescending { it.value }
-                .take(MAX_TOP_CHANNELS)
-                .map { it.key }
-            authors.map { author ->
-                async(Dispatchers.IO) {
-                    val channelId = resolveChannelId(author, subs) ?: return@async emptyList()
-                    getChannelVideos(channelId)
-                        .take(TOP_CHANNEL_VIDEOS)
-                        .map { Candidate(it, RecSource.TOP_CHANNEL, sourceLabel = it.author) }
-                        .toList()
-                }
-            }.awaitAll().flatten()
-        } catch (e: Exception) {
-            Log.e(TAG, "Top-channel candidates error", e); emptyList()
-        }
+        loadTopChannelCandidates(profile, subs)
     }
 
     val searchDeferred = async(Dispatchers.IO) {
         if (!prefs.sourceSearch) return@async emptyList()
-        try {
-            searchQueries(profile).map { query ->
-                async(Dispatchers.IO) {
-                    searchVideos(query).map { Candidate(it, RecSource.SEARCH) }
-                }
-            }.awaitAll().flatten()
-        } catch (e: Exception) {
-            Log.e(TAG, "Search candidates error", e); emptyList()
-        }
+        loadSearchCandidates(profile)
     }
 
     relatedDeferred.await() + trendingDeferred.await() + subscriptionCandidates +
         topChannelDeferred.await() + searchDeferred.await()
 }
 
+/** Cached related-video candidates; a DB failure here must not blank the feed. */
+internal suspend fun YouPipeViewModel.loadRelatedCandidates(
+    repository: com.vayunmathur.youpipe.data.SubscriptionRepository,
+    sourceTimestamps: Map<Long, Instant>,
+    sourceTitles: Map<Long, String>,
+): List<Candidate> = try {
+    repository.recommendationStore.getAllCachedRelatedVideos().map { item ->
+        Candidate(
+            item.videoItem,
+            RecSource.RELATED,
+            sourceTimestamps[item.sourceVideoID],
+            sourceTitles[item.sourceVideoID],
+        )
+    }
+} catch (e: IllegalStateException) {
+    Log.e(TAG, "Related candidates error", e); emptyList()
+} catch (e: android.database.sqlite.SQLiteException) {
+    Log.e(TAG, "Related candidates error", e); emptyList()
+}
+
+/** Trending candidates; a network failure here must not blank the feed. */
+internal suspend fun YouPipeViewModel.loadTrendingCandidates(): List<Candidate> = try {
+    cachedTrending().map { Candidate(it, RecSource.TRENDING) }
+} catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+    Log.e(TAG, "Trending candidates error", e); emptyList()
+} catch (e: java.io.IOException) {
+    Log.e(TAG, "Trending candidates error", e); emptyList()
+}
+
+/** Top-channel candidates; one failing channel must not blank the feed. */
+internal suspend fun YouPipeViewModel.loadTopChannelCandidates(
+    profile: InterestProfile,
+    subs: List<Subscription>,
+): List<Candidate> = coroutineScope {
+    try {
+        val authors = profile.authorWeights.entries
+            .sortedByDescending { it.value }
+            .take(MAX_TOP_CHANNELS)
+            .map { it.key }
+        authors.map { author ->
+            async(Dispatchers.IO) {
+                val channelId = resolveChannelId(author, subs) ?: return@async emptyList()
+                getChannelVideos(channelId)
+                    .take(TOP_CHANNEL_VIDEOS)
+                    .map { Candidate(it, RecSource.TOP_CHANNEL, sourceLabel = it.author) }
+                    .toList()
+            }
+        }.awaitAll().flatten()
+    } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+        Log.e(TAG, "Top-channel candidates error", e); emptyList()
+    } catch (e: java.io.IOException) {
+        Log.e(TAG, "Top-channel candidates error", e); emptyList()
+    }
+}
+
+/** Search candidates; a network failure here must not blank the feed. */
+internal suspend fun YouPipeViewModel.loadSearchCandidates(
+    profile: InterestProfile,
+): List<Candidate> = coroutineScope {
+    try {
+        searchQueries(profile).map { query ->
+            async(Dispatchers.IO) {
+                searchVideos(query).map { Candidate(it, RecSource.SEARCH) }
+            }
+        }.awaitAll().flatten()
+    } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+        Log.e(TAG, "Search candidates error", e); emptyList()
+    } catch (e: java.io.IOException) {
+        Log.e(TAG, "Search candidates error", e); emptyList()
+    }
+}
 /** Trending results from the TTL cache, refetching only when stale. */
 internal suspend fun YouPipeViewModel.cachedTrending(): List<VideoInfo> {
     val now = Clock.System.now()
@@ -212,7 +252,7 @@ internal fun searchQueries(profile: InterestProfile): List<String> {
     if (top.isEmpty()) return emptyList()
     if (top.size == 1) return listOf(top[0])
     val queries = mutableListOf("${top[0]} ${top[1]}")
-    if (top.size >= 3) queries.add("${top[0]} ${top[2]}")
+    if (top.size >= QUERY_TRIGRAM_KEYWORDS) queries.add("${top[0]} ${top[2]}")
     return queries.take(MAX_SEARCH_KEYWORDS)
 }
 
@@ -230,90 +270,13 @@ internal suspend fun resolveChannelId(authorName: String, subs: List<Subscriptio
         ex.getInitialPage().getItems().filterIsInstance<ChannelInfoItem>()
             .firstOrNull { channelNameMatches(it.name, authorName) }
             ?.let { channelURLtoID(it.url) }
-    } catch (e: Exception) {
+    } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+        // Best-effort fallback: no channel id simply means no top-channel candidates.
+        Log.w(TAG, "Channel search failed for $authorName", e)
+        null
+    } catch (e: java.io.IOException) {
+        Log.w(TAG, "Channel search failed for $authorName", e)
         null
     }
 }
 
-private fun YouPipeViewModel.updatePrefs(transform: (RecommendationPreferences) -> RecommendationPreferences) {
-    viewModelScope.launch(Dispatchers.IO) {
-        val current = repository.getRecommendationPreferences() ?: RecommendationPreferences()
-        repository.upsertRecommendationPreferences(transform(current))
-    }
-}
-
-fun YouPipeViewModel.setPreset(preset: RecommendationPreset) = updatePrefs {
-    it.copy(
-        preset = preset.name,
-        discoveryFamiliar = preset.discoveryFamiliar,
-        freshEvergreen = preset.freshEvergreen,
-        focusedDiverse = preset.focusedDiverse,
-    )
-}
-
-fun YouPipeViewModel.setDiscoveryFamiliar(value: Float) = updatePrefs { it.copy(discoveryFamiliar = value, preset = CUSTOM_PRESET) }
-fun YouPipeViewModel.setFreshEvergreen(value: Float) = updatePrefs { it.copy(freshEvergreen = value, preset = CUSTOM_PRESET) }
-fun YouPipeViewModel.setFocusedDiverse(value: Float) = updatePrefs { it.copy(focusedDiverse = value, preset = CUSTOM_PRESET) }
-
-fun YouPipeViewModel.toggleSource(source: RecSource) = updatePrefs {
-    when (source) {
-        RecSource.RELATED -> it.copy(sourceRelated = !it.sourceRelated)
-        RecSource.TRENDING -> it.copy(sourceTrending = !it.sourceTrending)
-        RecSource.SUBSCRIPTION -> it.copy(sourceSubscription = !it.sourceSubscription)
-        RecSource.TOP_CHANNEL -> it.copy(sourceTopChannel = !it.sourceTopChannel)
-        RecSource.SEARCH -> it.copy(sourceSearch = !it.sourceSearch)
-    }
-}
-
-fun YouPipeViewModel.setHideShorts(value: Boolean) = updatePrefs { it.copy(hideShorts = value) }
-fun YouPipeViewModel.setHideLive(value: Boolean) = updatePrefs { it.copy(hideLive = value) }
-fun YouPipeViewModel.setHidePaid(value: Boolean) = updatePrefs { it.copy(hidePaid = value) }
-fun YouPipeViewModel.setMinDuration(seconds: Long) = updatePrefs { it.copy(minDurationSec = seconds.coerceAtLeast(0)) }
-fun YouPipeViewModel.setMaxDuration(seconds: Long) = updatePrefs { it.copy(maxDurationSec = seconds.coerceAtLeast(0)) }
-
-private fun YouPipeViewModel.updateChannelPref(channelKey: String, transform: (ChannelPreference) -> ChannelPreference) {
-    val key = channelKey.lowercase()
-    viewModelScope.launch(Dispatchers.IO) {
-        val current = repository.getChannelPreference(key) ?: ChannelPreference(key)
-        repository.upsertChannelPreference(transform(current))
-    }
-}
-
-fun YouPipeViewModel.blockChannel(channelKey: String) = updateChannelPref(channelKey) { it.copy(blocked = true) }
-fun YouPipeViewModel.demoteChannel(channelKey: String) = updateChannelPref(channelKey) { it.copy(multiplier = DEMOTE_MULTIPLIER) }
-fun YouPipeViewModel.boostChannel(channelKey: String) = updateChannelPref(channelKey) { it.copy(multiplier = BOOST_MULTIPLIER) }
-fun YouPipeViewModel.pinChannel(channelKey: String) = updateChannelPref(channelKey) { it.copy(pinned = true) }
-
-fun YouPipeViewModel.clearChannelPreference(channelKey: String) {
-    viewModelScope.launch(Dispatchers.IO) { repository.deleteChannelPreference(channelKey.lowercase()) }
-}
-
-fun YouPipeViewModel.muteKeyword(keyword: String) {
-    viewModelScope.launch(Dispatchers.IO) {
-        repository.upsertKeywordPreference(KeywordPreference(keyword.lowercase(), muted = true))
-    }
-}
-
-fun YouPipeViewModel.unmuteKeyword(keyword: String) {
-    viewModelScope.launch(Dispatchers.IO) { repository.deleteKeywordPreference(keyword.lowercase()) }
-}
-
-/**
- * Removes an inferred interest by zeroing its signal: a channel gets a 0.0
- * score multiplier, a keyword gets muted.
- */
-fun YouPipeViewModel.removeInterest(channelKey: String? = null, keyword: String? = null) {
-    channelKey?.let { updateChannelPref(it) { pref -> pref.copy(multiplier = 0.0) } }
-    keyword?.let { muteKeyword(it) }
-}
-
-/** Clears all learned/overridden recommendation state and resets the dials. */
-fun YouPipeViewModel.resetAlgorithm() {
-    viewModelScope.launch(Dispatchers.IO) {
-        repository.clearAllRecommendationImpressions()
-        repository.clearAllChannelPreferences()
-        repository.clearAllKeywordPreferences()
-        repository.clearAllRecommendationPreferences()
-        trendingCache = null
-    }
-}

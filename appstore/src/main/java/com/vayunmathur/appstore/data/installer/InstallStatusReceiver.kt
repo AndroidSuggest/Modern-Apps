@@ -27,60 +27,75 @@ class InstallStatusReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_INSTALL_STATUS = "com.vayunmathur.appstore.INSTALL_STATUS"
         private const val TAG = "InstallStatusReceiver"
+        private const val UNKNOWN_STATUS = -1
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1)
+        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, UNKNOWN_STATUS)
         val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
         val pkg = intent.getStringExtra(PackageInstaller.EXTRA_PACKAGE_NAME)
 
         when (status) {
-            PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                // Forward user action intent
-                val userAction = if (android.os.Build.VERSION.SDK_INT >= 33) {
-                    intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
-                } else {
-                    @Suppress("DEPRECATION")
-                    intent.getParcelableExtra(Intent.EXTRA_INTENT)
-                }
-                try {
-                    userAction?.let {
-                        it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(it)
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to start user action: ${e.message}")
-                }
-            }
-            PackageInstaller.STATUS_SUCCESS -> {
-                Log.i(TAG, "Install success for $pkg")
-                pkg?.let { InstallEvents.publish(InstallResult(it, success = true)) }
-            }
+            PackageInstaller.STATUS_PENDING_USER_ACTION -> forwardUserAction(context, intent)
+            PackageInstaller.STATUS_SUCCESS -> reportSuccess(pkg)
             // The user backing out of the system prompt is not a failure worth reporting back.
-            PackageInstaller.STATUS_FAILURE_ABORTED -> {
-                Log.i(TAG, "Install aborted for $pkg")
-                pkg?.let { InstallEvents.publish(InstallResult(it, success = false)) }
+            PackageInstaller.STATUS_FAILURE_ABORTED -> reportAborted(pkg)
+            else -> reportFailure(context, status, message, pkg)
+        }
+    }
+
+    private fun forwardUserAction(context: Context, intent: Intent) {
+        // Forward user action intent
+        val userAction = if (android.os.Build.VERSION.SDK_INT >= 33) {
+            intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(Intent.EXTRA_INTENT)
+        }
+        try {
+            userAction?.let {
+                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(it)
             }
-            else -> {
-                Log.w(TAG, "Install failed for $pkg status=$status message=$message")
-                pkg?.let { InstallEvents.publish(InstallResult(it, success = false)) }
-                // A source-restricted refusal is the OS's final answer, so stop offering it.
-                RestrictedPackages.recordIfRestricted(context, pkg, message)
-                val reason = when (status) {
-                    PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
-                        context.getString(R.string.install_failure_incompatible)
-                    PackageInstaller.STATUS_FAILURE_STORAGE ->
-                        context.getString(R.string.install_failure_storage)
-                    PackageInstaller.STATUS_FAILURE_CONFLICT ->
-                        context.getString(R.string.install_failure_conflict)
-                    else -> message?.takeIf { it.isNotBlank() }
-                        ?: context.getString(R.string.install_failure_unknown)
-                }
-                val text = context.getString(R.string.install_failed_reason, pkg.orEmpty(), reason)
-                if (!InstallFailureBatch.collect(text)) {
-                    AppMessages.show(text, duration = AppMessages.Duration.Long)
-                }
-            }
+        } catch (expected: android.content.ActivityNotFoundException) {
+            Log.w(TAG, "Failed to start user action: ${expected.message}")
+        } catch (expected: SecurityException) {
+            Log.w(TAG, "Failed to start user action: ${expected.message}")
+        }
+    }
+
+    private fun reportSuccess(pkg: String?) {
+        Log.i(TAG, "Install success for $pkg")
+        pkg?.let { InstallEvents.publish(InstallResult(it, success = true)) }
+    }
+
+    private fun reportAborted(pkg: String?) {
+        Log.i(TAG, "Install aborted for $pkg")
+        pkg?.let { InstallEvents.publish(InstallResult(it, success = false)) }
+    }
+
+    private fun reportFailure(context: Context, status: Int, message: String?, pkg: String?) {
+        Log.w(TAG, "Install failed for $pkg status=$status message=$message")
+        pkg?.let { InstallEvents.publish(InstallResult(it, success = false)) }
+        // A source-restricted refusal is the OS's final answer, so stop offering it.
+        RestrictedPackages.recordIfRestricted(context, pkg, message)
+        val reason = failureReason(context, status, message)
+        val text = context.getString(R.string.install_failed_reason, pkg.orEmpty(), reason)
+        if (!InstallFailureBatch.collect(text)) {
+            AppMessages.show(text, duration = AppMessages.Duration.Long)
+        }
+    }
+
+    private fun failureReason(context: Context, status: Int, message: String?): String {
+        return when (status) {
+            PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
+                context.getString(R.string.install_failure_incompatible)
+            PackageInstaller.STATUS_FAILURE_STORAGE ->
+                context.getString(R.string.install_failure_storage)
+            PackageInstaller.STATUS_FAILURE_CONFLICT ->
+                context.getString(R.string.install_failure_conflict)
+            else -> message?.takeIf { it.isNotBlank() }
+                ?: context.getString(R.string.install_failure_unknown)
         }
     }
 }

@@ -67,7 +67,7 @@ class RideEstimateIntent : AssistantIntent<RideEstimateRequest, RideEstimateResu
     }
 
     private fun formatFare(quote: RideQuote): String {
-        fun money(minor: Long) = "$%.2f".format(minor / 100.0)
+        fun money(minor: Long) = "$%.2f".format(minor / CENTS_PER_DOLLAR)
         return if (quote.fareLowMinor != quote.fareHighMinor) {
             "${money(quote.fareLowMinor)} – ${money(quote.fareHighMinor)}"
         } else {
@@ -78,5 +78,6 @@ class RideEstimateIntent : AssistantIntent<RideEstimateRequest, RideEstimateResu
     companion object {
         /** Upper bound on the upstream quote so the call can't hang. */
         private const val ESTIMATE_TIMEOUT_MS = 5_000L
+        private const val CENTS_PER_DOLLAR = 100.0
     }
 }

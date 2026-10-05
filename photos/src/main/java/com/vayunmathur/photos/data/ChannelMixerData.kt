@@ -2,6 +2,11 @@ package com.vayunmathur.photos.data
 
 import android.graphics.Bitmap
 
+private const val ALPHA_SHIFT = 24
+private const val RED_SHIFT = 16
+private const val GREEN_SHIFT = 8
+private const val CHANNEL_MAX = 255
+
 data class ChannelMixerAdjustment(
     val rFromR: Float = 1f,
     val rFromG: Float = 0f,
@@ -38,11 +43,11 @@ fun ChannelMixerAdjustment.applyToBitmap(bitmap: Bitmap): Bitmap =
                 ng = gray
                 nb = gray
             } else {
-                nr = (rFromR * r + rFromG * g + rFromB * b).toInt().coerceIn(0, 255)
-                ng = (gFromR * r + gFromG * g + gFromB * b).toInt().coerceIn(0, 255)
-                nb = (bFromR * r + bFromG * g + bFromB * b).toInt().coerceIn(0, 255)
+                nr = (rFromR * r + rFromG * g + rFromB * b).toInt().coerceIn(0, CHANNEL_MAX)
+                ng = (gFromR * r + gFromG * g + gFromB * b).toInt().coerceIn(0, CHANNEL_MAX)
+                nb = (bFromR * r + bFromG * g + bFromB * b).toInt().coerceIn(0, CHANNEL_MAX)
             }
 
-            (a shl 24) or (nr shl 16) or (ng shl 8) or nb
+            (a shl ALPHA_SHIFT) or (nr shl RED_SHIFT) or (ng shl GREEN_SHIFT) or nb
         }
     }

@@ -52,9 +52,9 @@ class DownloadService : Service() {
             .setContentText(getString(R.string.installing_text))
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
-            .setProgress(0, 0, true)
+            .setProgress(PROGRESS_MAX, PROGRESS_CURRENT, true)
             .build()
-        if (Build.VERSION.SDK_INT >= 34) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
                 FOREGROUND_ID,
                 notification,
@@ -92,6 +92,12 @@ class DownloadService : Service() {
         private const val WAKE_LOCK_TAG = "euicc:install"
         private const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 1000L
         private const val ACTION_GUARD = "com.vayunmathur.euicc.action.GUARD_INSTALL"
+
+        /** Indeterminate install progress: max and current are both zero. */
+        private const val PROGRESS_MAX = 0
+
+        /** Indeterminate install progress: max and current are both zero. */
+        private const val PROGRESS_CURRENT = 0
 
         /** Starts the install guard (no-op when already running). */
         fun start(context: Context) {

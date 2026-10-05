@@ -2,6 +2,7 @@ package com.vayunmathur.communicate.data.googlevoice
 
 import android.content.Context
 import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.SimpleResponse
 import java.io.IOException
 
 /** Raised when the Google Voice session is missing or rejected (401/403) so callers re-auth. */
@@ -27,7 +28,7 @@ class GoogleVoiceClient(private val session: GoogleVoiceSession) {
 
     suspend fun listThreads(folder: GvFolder = GvFolder.Inbox): List<GvThread> {
         val body = post("api2thread/list", GoogleVoiceParser.buildListBody(folder))
-        return GoogleVoiceParser.parseThreads(body, session.phoneNumber())
+        return GoogleVoiceParser.parseThreads(body)
     }
 
     /**
@@ -36,24 +37,23 @@ class GoogleVoiceClient(private val session: GoogleVoiceSession) {
      * (checking the Inbox then the All folder).
      */
     suspend fun getThread(remoteId: String): List<GvMessage> {
-        val self = session.phoneNumber()
         for (folder in listOf(GvFolder.Inbox, GvFolder.All)) {
             val body = post("api2thread/list", GoogleVoiceParser.buildListBody(folder, pageSize = 100, window = 50))
-            val messages = GoogleVoiceParser.parseThreadMessages(body, remoteId, self)
+            val messages = GoogleVoiceParser.parseThreadMessages(body, remoteId)
             if (messages.isNotEmpty()) return messages
-            if (GoogleVoiceParser.parseThreads(body, self).any { it.id == remoteId }) return messages
+            if (GoogleVoiceParser.parseThreads(body).any { it.id == remoteId }) return messages
         }
         return emptyList()
     }
 
     suspend fun search(query: String): List<GvThread> {
         val body = post("api2thread/search", GoogleVoiceParser.buildSearchBody(query))
-        return GoogleVoiceParser.parseThreads(body, session.phoneNumber())
+        return GoogleVoiceParser.parseThreads(body)
     }
 
     suspend fun listCalls(): List<GvCall> {
         val body = post("api2thread/list", GoogleVoiceParser.buildListBody(GvFolder.Calls))
-        return GoogleVoiceParser.parseCalls(body, session.phoneNumber())
+        return GoogleVoiceParser.parseCalls(body)
     }
 
     suspend fun sendSms(recipient: String, text: String, threadRemoteId: String? = null) {
@@ -86,8 +86,8 @@ class GoogleVoiceClient(private val session: GoogleVoiceSession) {
     private suspend fun post(path: String, jsonBody: String): String {
         val cookie = session.cookieHeader()
         val sapisid = session.sapisid()
-        val apiKey = session.apiKey()
         val authUser = session.authUser()
+        val apiKey = session.apiKey()
         if (cookie.isNullOrBlank() || sapisid.isNullOrBlank() || apiKey.isNullOrBlank()) {
             throw GoogleVoiceAuthException("Missing Google Voice session")
         }
@@ -100,23 +100,32 @@ class GoogleVoiceClient(private val session: GoogleVoiceSession) {
             headers = headers,
             body = jsonBody,
         )
-        if (response.status == 401 || response.status == 403) {
-            throw GoogleVoiceAuthException("Google Voice auth rejected (${response.status})")
-        }
-        if (!response.isSuccess) {
-            android.util.Log.e(TAG, "$path failed HTTP ${response.status}: ${response.body.take(500)}")
-            throw IOException("Google Voice ${path} failed: HTTP ${response.status}")
-        }
+        checkVoiceResponse(path, response)
         // TEMP diagnostic logging of raw protojson so the positional parser can be pinned to the
         // real wire shapes. Chunked because logcat truncates long lines.
         val body = response.body
         android.util.Log.d(TAG, "$path <= ${body.length} bytes")
-        body.chunked(3500).forEachIndexed { i, chunk -> android.util.Log.d(TAG, "$path[$i] $chunk") }
+        body.chunked(LOG_CHUNK).forEachIndexed { i, chunk -> android.util.Log.d(TAG, "$path[$i] $chunk") }
         return body
+    }
+
+    /** Auth + status checks for a Voice API response (split for ThrowsCount). */
+    private fun checkVoiceResponse(path: String, response: SimpleResponse) {
+        if (response.status == HTTP_UNAUTHORIZED || response.status == HTTP_FORBIDDEN) {
+            throw GoogleVoiceAuthException("Google Voice auth rejected (${response.status})")
+        }
+        if (!response.isSuccess) {
+            android.util.Log.e(TAG, "$path failed HTTP ${response.status}: ${response.body.take(LOG_SNIPPET)}")
+            throw IOException("Google Voice ${path} failed: HTTP ${response.status}")
+        }
     }
 
     companion object {
         private const val TAG = "GoogleVoiceRaw"
+        private const val HTTP_UNAUTHORIZED = 401
+        private const val HTTP_FORBIDDEN = 403
+        private const val LOG_CHUNK = 3500
+        private const val LOG_SNIPPET = 500
         private const val TOKEN_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
         private const val BASE = "https://clients6.google.com/voice/v1/voiceclient/"
 

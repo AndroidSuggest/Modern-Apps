@@ -32,9 +32,17 @@ import kotlin.math.roundToInt
  * call [invalidateCache] when needed (the cache also self-invalidates on content change).
  */
 class LayerCompositor {
-
     private var belowKey: String? = null
     private var belowCache: IntArray? = null
+
+    companion object {
+        private const val CHANNEL_MAX_F = 255f
+        private const val MAX_PARALLEL_CORES = 8
+        private const val MIN_PARALLEL_PIXELS = 120_000
+        private const val NEGLIGIBLE_ALPHA = 0.001f
+        private const val ALPHA_SHIFT = 24
+        private const val CHANNEL_MASK = 0xFF
+    }
 
     fun invalidateCache() {
         belowKey = null
@@ -122,8 +130,8 @@ class LayerCompositor {
      * do: each pixel index is touched by exactly one range), so this is safe.
      */
     private inline fun parallelFor(total: Int, crossinline body: (start: Int, end: Int) -> Unit) {
-        val cores = Runtime.getRuntime().availableProcessors().coerceIn(1, 8)
-        if (cores <= 1 || total < 120_000) { body(0, total); return }
+        val cores = Runtime.getRuntime().availableProcessors().coerceIn(1, MAX_PARALLEL_CORES)
+        if (cores <= 1 || total < MIN_PARALLEL_PIXELS) { body(0, total); return }
         val chunk = (total + cores - 1) / cores
         val threads = ArrayList<Thread>(cores)
         var start = 0
@@ -229,7 +237,9 @@ class LayerCompositor {
             is AdjustmentLayer -> return null
         }
         val baseMask = base.mask?.let { scaleMask(it, w, h) }
-        return FloatArray(w * h) { i -> ((px[i] ushr 24) and 0xFF) / 255f * (baseMask?.get(i) ?: 1f) }
+        return FloatArray(w * h) { i ->
+            ((px[i] ushr ALPHA_SHIFT) and CHANNEL_MASK) / CHANNEL_MAX_F * (baseMask?.get(i) ?: 1f)
+        }
     }
 
     /** Renders drop-shadow / outer-glow / stroke from [src]'s alpha into [backdrop], beneath the layer. */
@@ -243,14 +253,16 @@ class LayerCompositor {
         h: Int,
     ) {
         val n = w * h
-        val alpha = FloatArray(n) { ((src[it] ushr 24) and 0xFF) / 255f }
+        val alpha = FloatArray(n) { ((src[it] ushr 24) and 0xFF) / CHANNEL_MAX_F }
         val maxDim = maxOf(w, h)
         fun composite(coverage: FloatArray, color: Int) {
             val cr = color and 0x00FFFFFF or (0xFF shl 24)
             for (i in 0 until n) {
                 val a = coverage[i] * opacity * (mask?.get(i) ?: 1f)
-                if (a <= 0.001f) continue
-                backdrop[i] = LayerBlendMode.Normal.blendPixel(backdrop[i], cr, a * ((color ushr 24) and 0xFF) / 255f)
+                if (a <= NEGLIGIBLE_ALPHA) continue
+                val alphaScale = ((color ushr ALPHA_SHIFT) and CHANNEL_MASK) / CHANNEL_MAX_F
+                backdrop[i] =
+                    LayerBlendMode.Normal.blendPixel(backdrop[i], cr, a * alphaScale)
             }
         }
         if (style.dropShadow) {
@@ -432,7 +444,7 @@ class LayerCompositor {
     private fun Bitmap.recycleSafely() {
         try {
             if (!isRecycled) recycle()
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
             Log.w("LayerCompositor", "Failed to recycle bitmap", e)
         }
     }

@@ -195,9 +195,12 @@ class OoxmlImporterTest {
             "<c:chartSpace xmlns:c=\"c\"><c:chart><c:plotArea><c:barChart>" +
                 "<c:barDir val=\"col\"/><c:grouping val=\"clustered\"/>" +
                 "<c:ser><c:tx><c:v>S1</c:v></c:tx>" +
-                "<c:cat><c:strRef><c:strCache><c:pt idx=\"0\"><c:v>A</c:v></c:pt><c:pt idx=\"1\"><c:v>B</c:v></c:pt></c:strCache></c:strRef></c:cat>" +
-                "<c:val><c:numRef><c:numCache><c:pt idx=\"0\"><c:v>10</c:v></c:pt><c:pt idx=\"1\"><c:v>20</c:v></c:pt></c:numCache></c:numRef></c:val>" +
-                "</c:ser></c:barChart></c:plotArea><c:legend><c:legendPos val=\"r\"/></c:legend></c:chart></c:chartSpace>"
+                "<c:cat><c:strRef><c:strCache><c:pt idx=\"0\"><c:v>A</c:v></c:pt><c:pt" +
+                    "idx=\"1\"><c:v>B</c:v></c:pt></c:strCache></c:strRef></c:cat>" +
+                "<c:val><c:numRef><c:numCache><c:pt idx=\"0\"><c:v>10</c:v></c:pt><c:pt" +
+                    "idx=\"1\"><c:v>20</c:v></c:pt></c:numCache></c:numRef></c:val>" +
+                "</c:ser></c:barChart></c:plotArea><c:legend><c:legendPos" +
+                    "val=\"r\"/></c:legend></c:chart></c:chartSpace>"
 
         private const val OMML_FRAC =
             "<m:oMath xmlns:m=\"m\"><m:f><m:num><m:r><m:t>x</m:t></m:r></m:num>" +
@@ -210,7 +213,8 @@ class OoxmlImporterTest {
                     "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Bold</w:t></w:r></w:p>" +
                     "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc>" +
                     "<w:tc><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc></w:tr></w:tbl>" +
-                    "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t>Item</w:t></w:r></w:p>" +
+                    "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId" +
+                        "w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t>Item</w:t></w:r></w:p>" +
                     "</w:body></w:document>"),
             "word/numbering.xml" to (
                 "<w:numbering xmlns:w=\"w\"><w:abstractNum w:abstractNumId=\"0\"><w:lvl w:ilvl=\"0\">" +
@@ -230,7 +234,8 @@ class OoxmlImporterTest {
         private val PPTX_ENTRIES = mapOf(
             "ppt/slides/slide1.xml" to (
                 "<p:sld xmlns:p=\"p\" xmlns:a=\"a\"><p:cSld><p:spTree>" +
-                    "<p:sp><p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"457200\"/></a:xfrm>" +
+                    "<p:sp><p:spPr><a:xfrm><a:off x=\"914400\"" +
+                        "y=\"914400\"/><a:ext cx=\"1828800\" cy=\"457200\"/></a:xfrm>" +
                     "<a:prstGeom prst=\"rect\"/></p:spPr>" +
                     "<p:txBody><a:p><a:r><a:rPr b=\"1\" sz=\"2400\"/><a:t>Hi</a:t></a:r></a:p></p:txBody></p:sp>" +
                     "</p:spTree></p:cSld></p:sld>")

@@ -94,24 +94,28 @@ class SharedWebViewRuntime private constructor(context: Context) {
 
     @Throws(Exception::class)
     fun ensureReady(timeoutMs: Long, operation: String) {
-        val latch: CountDownLatch?
-        val error: AtomicReference<Throwable>?
-        synchronized(initLock) {
-            if (ready) {
-                return
-            }
-            if (initLatch == null) {
-                startInitializationLocked()
-            }
-            latch = initLatch
-            error = initError
+        if (isReady()) {
+            return
+        }
+        val (latch, error) = awaitableInitState()
+        if (latch == null || error == null) {
+            throw IllegalStateException("$operation did not start WebView initialization")
         }
         check(Looper.myLooper() != Looper.getMainLooper()) {
             "$operation cannot wait on the main thread"
         }
-        if (latch == null || error == null) {
-            throw IllegalStateException("$operation did not start WebView initialization")
-        }
+        awaitInitCompletion(latch, error, timeoutMs, operation)
+    }
+
+    private fun isReady(): Boolean = synchronized(initLock) { ready }
+
+    @Throws(IllegalStateException::class)
+    private fun awaitInitCompletion(
+        latch: CountDownLatch,
+        error: AtomicReference<Throwable>,
+        timeoutMs: Long,
+        operation: String,
+    ) {
         if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) {
             throw IllegalStateException("$operation timed out waiting for WebView runtime")
         }
@@ -120,6 +124,19 @@ class SharedWebViewRuntime private constructor(context: Context) {
             throw IllegalStateException(
                 "$operation failed to initialize WebView runtime", failure
             )
+        }
+    }
+
+    /**
+     * Latch + error for the in-flight initialization. Starts initialization when needed.
+     * Callers treat nulls as "did not start" and throw.
+     */
+    private fun awaitableInitState(): Pair<CountDownLatch?, AtomicReference<Throwable>?> {
+        synchronized(initLock) {
+            if (initLatch == null && !ready) {
+                startInitializationLocked()
+            }
+            return initLatch to initError
         }
     }
 
@@ -145,7 +162,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
                     result.set(value)
                     latch.countDown()
                 }
-            } catch (throwable: Throwable) {
+            } catch (throwable: IllegalStateException) {
                 error.set(throwable)
                 latch.countDown()
             }
@@ -153,6 +170,17 @@ class SharedWebViewRuntime private constructor(context: Context) {
         if (!posted) {
             throw IllegalStateException("$operation could not post JavaScript evaluation")
         }
+        return awaitJsResult(latch, result, error, timeoutMs, operation)
+    }
+
+    @Throws(IllegalStateException::class)
+    private fun awaitJsResult(
+        latch: CountDownLatch,
+        result: AtomicReference<String>,
+        error: AtomicReference<Throwable>,
+        timeoutMs: Long,
+        operation: String,
+    ): String {
         if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) {
             throw IllegalStateException("$operation timed out")
         }
@@ -170,7 +198,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
     ): Boolean {
         try {
             ensureReady(DEFAULT_TIMEOUT_MS, "async JavaScript evaluation")
-        } catch (throwable: Throwable) {
+        } catch (throwable: IllegalStateException) {
             errorCallback?.onReceiveValue(throwable)
             return false
         }
@@ -180,7 +208,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
                     "WebView runtime is not initialized"
                 )
                 view.evaluateJavascript(script, callback)
-            } catch (throwable: Throwable) {
+            } catch (throwable: IllegalStateException) {
                 errorCallback?.onReceiveValue(throwable)
             }
         }
@@ -189,18 +217,22 @@ class SharedWebViewRuntime private constructor(context: Context) {
     fun loadAsset(path: String): String {
         try {
             appContext.assets.open(path).use { input ->
-                ByteArrayOutputStream().use { out ->
-                    val buffer = ByteArray(8192)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        out.write(buffer, 0, read)
-                    }
-                    return out.toString(Charsets.UTF_8.name())
-                }
+                return readAssetFully(input)
             }
-        } catch (e: Exception) {
+        } catch (e: java.io.IOException) {
             throw IllegalStateException("Could not load asset $path", e)
+        }
+    }
+
+    private fun readAssetFully(input: java.io.InputStream): String {
+        ByteArrayOutputStream().use { out ->
+            val buffer = ByteArray(ASSET_READ_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                out.write(buffer, 0, read)
+            }
+            return out.toString(Charsets.UTF_8.name())
         }
     }
 
@@ -341,7 +373,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
                     )
                 )
             }, READY_CALLBACK_ATTEMPT_TIMEOUT_MS)
-        } catch (throwable: Throwable) {
+        } catch (throwable: IllegalStateException) {
             retryOrFail(attempt, throwable)
         }
     }
@@ -505,6 +537,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
         private const val DEFAULT_TIMEOUT_MS = 30_000L
         private const val READY_CALLBACK_ATTEMPT_TIMEOUT_MS = 5_000L
         private const val MAX_READY_CALLBACK_ATTEMPTS = 2
+        private const val ASSET_READ_BUFFER_SIZE = 8192
         internal const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.3"
 
@@ -542,7 +575,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
             try {
                 view.stopLoading()
                 view.destroy()
-            } catch (throwable: Throwable) {
+            } catch (throwable: IllegalStateException) {
                 Log.w(TAG, "Could not destroy failed WebView initialization attempt", throwable)
             }
         }

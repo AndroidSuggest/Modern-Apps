@@ -17,12 +17,14 @@ import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppPayloadProto
  */
 object PrimaryClientPayload {
 
+    private const val VERSION_QUATERNARY_INDEX = 3
+
     fun build(auth: WhatsAppAuthData): ByteArray {
         val appVersion = WhatsAppPayloadProto.ClientPayload.UserAgent.AppVersion.newBuilder()
             .setPrimary(WhatsAppProtocol.WA_VERSION[0])
             .setSecondary(WhatsAppProtocol.WA_VERSION[1])
             .setTertiary(WhatsAppProtocol.WA_VERSION[2])
-            .setQuaternary(WhatsAppProtocol.WA_VERSION.getOrElse(3) { 0 })
+            .setQuaternary(WhatsAppProtocol.WA_VERSION.getOrElse(VERSION_QUATERNARY_INDEX) { 0 })
             .build()
 
         val userAgent = WhatsAppPayloadProto.ClientPayload.UserAgent.newBuilder()

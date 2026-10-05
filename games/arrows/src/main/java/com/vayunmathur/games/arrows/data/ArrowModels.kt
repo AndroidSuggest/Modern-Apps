@@ -144,17 +144,23 @@ const val STARTING_HEARTS = 3
  *
  * Stops at [MAX_BOARD], where a phone-width board is already down to roughly 46dp cells.
  */
-fun boardSizeForLevel(level: Int): Pair<Int, Int> = when {
-    level <= 3 -> 5 to 6
-    level <= 8 -> 5 to 7
-    level <= 14 -> 6 to 8
-    level <= 21 -> 6 to 9
-    level <= 29 -> 7 to 9
-    level <= 38 -> 7 to 10
-    level <= 48 -> 8 to 10
-    level <= 60 -> 8 to 11
-    else -> MAX_BOARD
+fun boardSizeForLevel(level: Int): Pair<Int, Int> {
+    val tier = BOARD_TIERS.firstOrNull { level <= it.maxLevel }
+    return if (tier != null) tier.cols to tier.rows else MAX_BOARD
 }
+
+private data class BoardTier(val maxLevel: Int, val cols: Int, val rows: Int)
+
+private val BOARD_TIERS = listOf(
+    BoardTier(maxLevel = 3, cols = 5, rows = 6),
+    BoardTier(maxLevel = 8, cols = 5, rows = 7),
+    BoardTier(maxLevel = 14, cols = 6, rows = 8),
+    BoardTier(maxLevel = 21, cols = 6, rows = 9),
+    BoardTier(maxLevel = 29, cols = 7, rows = 9),
+    BoardTier(maxLevel = 38, cols = 7, rows = 10),
+    BoardTier(maxLevel = 48, cols = 8, rows = 10),
+    BoardTier(maxLevel = 60, cols = 8, rows = 11),
+)
 
 /** The largest board the ladder reaches, from [BIGGEST_BOARD_LEVEL] on. */
 val MAX_BOARD: Pair<Int, Int> = 9 to 12
@@ -186,8 +192,13 @@ fun arrowCountForLevel(level: Int): Int {
     val (cols, rows) = boardSizeForLevel(level)
     val capacity = cols * rows
     // Roughly a fifth of the cells, since the average arrow is three or four cells long.
-    return (capacity / 5 + level / 4).coerceAtMost(capacity / 4)
+    return (capacity / ARROW_DENSITY_DIVISOR + level / ARROW_LEVEL_DIVISOR)
+        .coerceAtMost(capacity / ARROW_MAX_FRACTION)
 }
+
+private const val ARROW_DENSITY_DIVISOR = 5
+private const val ARROW_LEVEL_DIVISOR = 4
+private const val ARROW_MAX_FRACTION = 4
 
 /**
  * Mirrors on [level].
@@ -196,7 +207,11 @@ fun arrowCountForLevel(level: Int): Int {
  * enough to learn on its own, and redirection only makes sense once that is second nature.
  */
 fun mirrorCountForLevel(level: Int): Int =
-    if (level < MIRROR_FIRST_LEVEL) 0 else ((level - MIRROR_FIRST_LEVEL) / 6 + 1).coerceAtMost(4)
+    if (level < MIRROR_FIRST_LEVEL) 0
+    else ((level - MIRROR_FIRST_LEVEL) / MIRROR_STEP_LEVELS + 1).coerceAtMost(MAX_MIRRORS)
+
+private const val MIRROR_STEP_LEVELS = 6
+private const val MAX_MIRRORS = 4
 
 /** First level that introduces redirectors. */
 const val MIRROR_FIRST_LEVEL = 11

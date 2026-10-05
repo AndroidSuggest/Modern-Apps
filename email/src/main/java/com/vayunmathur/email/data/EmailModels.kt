@@ -34,7 +34,7 @@ data class EmailMessage(
     /** Date in epoch-millis. Used for chronological ordering, especially in the
      *  cross-account unified inbox where IMAP UIDs aren't comparable. Defaults
      *  to 0 for rows persisted before this column existed; backfilled on app
-     *  start via [EmailDao.getRowsWithZeroDateMillis]. */
+     *  start via [EmailQueryDao.getRowsWithZeroDateMillis]. */
     val dateMillis: Long = 0,
     val body: String? = null,
     val isHtml: Boolean = false,
@@ -46,14 +46,14 @@ data class EmailMessage(
     val listUnsubscribePost: String? = null, // raw List-Unsubscribe-Post header (RFC 8058), if present
     /**
      * Stored plain-text snippet of [body] (first [PEEK_LEN] chars), computed via
-     * [previewText] on every insert (see [EmailDao.insertMessages]). Lets list and
+     * [previewText] on every insert (see [EmailMessageDao.insertMessages]). Lets list and
      * widget screens render a preview without loading the full [body] column.
      *
      * `@ColumnInfo(defaultValue = "")` is required so the schema generated from this
      * entity matches `MIGRATION_19_20`, which `ALTER TABLE`s this column in with a
      * SQL `DEFAULT ''`; without it Room throws "Migration didn't properly handle:
      * EmailMessage" on open. Rows persisted before this column existed default to
-     * `""` and are backfilled on app start via [EmailDao.getRowsWithEmptyPeek].
+     * `""` and are backfilled on app start via [EmailQueryDao.getRowsWithEmptyPeek].
      */
     @ColumnInfo(defaultValue = "")
     val peekContent: String = "",
@@ -66,7 +66,7 @@ const val PEEK_LEN = 200
 /**
  * Lightweight projection of [EmailMessage] for list and widget screens: every
  * column those screens draw, but **not** the heavy [EmailMessage.body]. Populated
- * by the `…Preview` `@Query` variants in [EmailDao], which read the stored
+ * by the `…Preview` `@Query` variants in [EmailQueryDao], which read the stored
  * [EmailMessage.peekContent] instead of recomputing a preview from the body.
  */
 data class EmailPreview(
@@ -215,11 +215,17 @@ fun accountColor(email: String): Long {
  * them, so a message whose body is a full HTML document renders its stylesheet
  * as the first hundred characters of the preview.
  */
-private val HTML_NON_CONTENT = Regex("""<(script|style|head|title)\b[^>]*>.*?</\1\s*>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+private val HTML_NON_CONTENT = Regex(
+    """<(script|style|head|title)\b[^>]*>.*?</\1\s*>""",
+    setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+)
 private val HTML_COMMENT = Regex("""<!--.*?-->""", RegexOption.DOT_MATCHES_ALL)
 private val HTML_DECLARATION = Regex("""<[!?][^>]*>""")
 /** Tags common enough that their presence means the body is HTML whatever the flag says. */
-private val LOOKS_LIKE_HTML = Regex("""<(html|body|head|div|table|p|br|span|a|img|font)\b[^>]*>""", RegexOption.IGNORE_CASE)
+private val LOOKS_LIKE_HTML = Regex(
+    """<(html|body|head|div|table|p|br|span|a|img|font)\b[^>]*>""",
+    RegexOption.IGNORE_CASE,
+)
 /**
  * Includes the non-breaking space `fromHtml` produces from `&nbsp;` and the
  * Unicode line/paragraph separators, none of which `\s` matches.

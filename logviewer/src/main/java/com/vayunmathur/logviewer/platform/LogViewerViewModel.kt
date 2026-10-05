@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.io.PrintStream
 
 /**
@@ -122,7 +123,9 @@ internal class LogViewerViewModel(application: Application) : AndroidViewModel(a
                         ?: return@withContext OpenFailed
                     stream.use { it.write(bytes) }
                     null
-                } catch (e: Exception) {
+                } catch (e: IOException) {
+                    e
+                } catch (e: SecurityException) {
                     e
                 }
             }
@@ -139,7 +142,7 @@ internal class LogViewerViewModel(application: Application) : AndroidViewModel(a
         const val MAX_SP = 24f
 
         /** A `null` ParcelFileDescriptor is not an exception, but it is still a failure. */
-        val OpenFailed = Exception()
+        val OpenFailed = IOException("openOutputStream returned null")
 
         fun stackTraceOf(t: Throwable): String {
             val out = java.io.ByteArrayOutputStream(1000)

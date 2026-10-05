@@ -32,7 +32,11 @@ object UwbAccessoryProtocol {
     /**
      * Parse the "shareableConfigurationData" blob received from iOS into the
      * concrete FiRa parameters this device should use as controlee.
+     *
+     * The parameter is unused until the byte parsing is implemented (see class KDoc);
+     * it is kept so the call sites already pass the blob and the signature won't churn.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun parseShareableConfigurationData(shareableConfigData: ByteArray): Parsed {
         throw NotImplementedError(
             "Apple accessory-protocol byte parsing not yet implemented. " +

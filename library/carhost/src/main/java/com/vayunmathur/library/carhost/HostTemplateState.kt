@@ -213,6 +213,9 @@ data class HostUiSection(
 )
 
 /** Parses template wrappers into [HostTemplate]. Pure functions, any thread. */
+// Parser dispatch plus per-template row/item helpers; splitting by template kind would
+// scatter the shared carText/carIcon/click helpers. FileLength (fatal lint) still caps size.
+@Suppress("TooManyFunctions")
 object HostTemplateParsers {
     /** Parses one fetched wrapper; null wrapper means "connected, empty". */
     fun parse(wrapper: TemplateWrapper?): HostTemplate {
@@ -227,6 +230,13 @@ object HostTemplateParsers {
             is SearchTemplate -> parseSearch(template)
             is MessageTemplate -> parseMessage(template)
             is LongMessageTemplate -> parseLongMessage(template)
+            else -> parseExtended(template)
+        }
+    }
+
+    /** Rarer template kinds, split so [parse] stays under the complexity cap. */
+    private fun parseExtended(template: androidx.car.app.model.Template): HostTemplate {
+        return when (template) {
             is androidx.car.app.model.SectionedItemTemplate -> parseSectionedItem(template)
             is androidx.car.app.model.TabTemplate -> parseTab(template)
             is androidx.car.app.media.model.MediaPlaybackTemplate -> parseMediaPlayback(template)
@@ -235,24 +245,17 @@ object HostTemplateParsers {
             is androidx.car.app.dialer.TelephoneKeypadTemplate -> parseKeypad(template)
             is androidx.car.app.navigation.model.MapWithContentTemplate -> parseMapWithContent(template)
             // Deprecated map templates: route through the same content parsers.
-            is androidx.car.app.navigation.model.MapTemplate ->
-                runCatching { template.pane } .getOrNull()?.let { parsePane(PaneTemplate.Builder(it).build()) }
-                    ?: runCatching { template.itemList }.getOrNull()?.let {
-                        parseList(ListTemplate.Builder().setSingleList(it).build())
-                    }
-                    ?: HostTemplate.Pane(title = "Map")
-            is androidx.car.app.navigation.model.PlaceListNavigationTemplate ->
-                HostTemplate.PlaceList(
-                    rows = itemListRows(runCatching { template.itemList }.getOrNull()),
-                    loading = runCatching { template.isLoading }.getOrDefault(false),
-                    actions = actionStripActions(runCatching { template.actionStrip }.getOrNull()),
-                )
-            is androidx.car.app.navigation.model.RoutePreviewNavigationTemplate ->
-                HostTemplate.PlaceList(
-                    rows = itemListRows(runCatching { template.itemList }.getOrNull()),
-                    loading = runCatching { template.isLoading }.getOrDefault(false),
-                    actions = actionStripActions(runCatching { template.actionStrip }.getOrNull()),
-                )
+            is androidx.car.app.navigation.model.MapTemplate -> parseLegacyMap(template)
+            is androidx.car.app.navigation.model.PlaceListNavigationTemplate -> parseLegacyPlaceList(
+                runCatching { template.itemList }.getOrNull(),
+                runCatching { template.isLoading }.getOrDefault(false),
+                actionStripActions(runCatching { template.actionStrip }.getOrNull())
+            )
+            is androidx.car.app.navigation.model.RoutePreviewNavigationTemplate -> parseLegacyPlaceList(
+                runCatching { template.itemList }.getOrNull(),
+                runCatching { template.isLoading }.getOrDefault(false),
+                actionStripActions(runCatching { template.actionStrip }.getOrNull())
+            )
             else -> {
                 Log.w(TAG, "unhandled template ${template.javaClass.simpleName}; pane fallback")
                 HostTemplate.Pane(title = template.javaClass.simpleName)
@@ -260,66 +263,36 @@ object HostTemplateParsers {
         }
     }
 
-    private fun parseSectionedItem(template: androidx.car.app.model.SectionedItemTemplate): HostTemplate.TemplateList {
+    private fun parseLegacyMap(
+        template: androidx.car.app.navigation.model.MapTemplate
+    ): HostTemplate.Pane {
+        val pane = runCatching { template.pane }.getOrNull()
+            ?.let { parsePane(PaneTemplate.Builder(it).build()) }
+        if (pane != null) return HostTemplate.Pane(title = pane.title)
+        val list = runCatching { template.itemList }.getOrNull()
+            ?.let { parseList(ListTemplate.Builder().setSingleList(it).build()) }
+        if (list != null) return HostTemplate.Pane(title = list.title)
+        return HostTemplate.Pane(title = "Map")
+    }
+
+    private fun parseLegacyPlaceList(
+        itemList: ItemList?,
+        loading: Boolean,
+        actions: List<HostUiAction>
+    ): HostTemplate.PlaceList {
+        return HostTemplate.PlaceList(
+            rows = itemListRows(itemList),
+            loading = loading,
+            actions = actions
+        )
+    }
+
+    private fun parseSectionedItem(
+        template: androidx.car.app.model.SectionedItemTemplate
+    ): HostTemplate.TemplateList {
         val sections = mutableListOf<HostUiSection>()
         runCatching { template.sections }.getOrNull().orEmpty().forEach { section ->
-            val items = fetchSectionItems(section)
-            val rows = items.mapNotNull { item ->
-                when (item) {
-                    is Row -> parseRow(item)
-                    is androidx.car.app.messaging.model.ConversationItem -> parseConversation(item)
-                    is androidx.car.app.model.GridItem ->
-                        HostUiRow(
-                            title = carText(runCatching { item.title }.getOrNull()) ?: return@mapNotNull null,
-                            texts = listOfNotNull(carText(runCatching { item.text }.getOrNull())),
-                            browse = false,
-                            image = carIcon(runCatching { item.image }.getOrNull()),
-                            onClick = runCatching { item.onClickDelegate }.getOrNull()?.let { d ->
-                                {
-                                    thread(name = "ma-auto-carhost-click", isDaemon = true) {
-                                        runCatching { d.sendClick(HostClickCallback) }
-                                    }
-                                }
-                            },
-                        )
-                    is androidx.car.app.model.CondensedItem ->
-                        HostUiRow(
-                            title = carText(runCatching { item.title }.getOrNull()) ?: return@mapNotNull null,
-                            texts = emptyList(),
-                            browse = false,
-                            onClick = runCatching { item.onClickDelegate }.getOrNull()?.let { d ->
-                                {
-                                    thread(name = "ma-auto-carhost-click", isDaemon = true) {
-                                        runCatching { d.sendClick(HostClickCallback) }
-                                    }
-                                }
-                            },
-                        )
-                    is androidx.car.app.model.Chip ->
-                        HostUiRow(
-                            title = carText(runCatching { item.title }.getOrNull()) ?: return@mapNotNull null,
-                            texts = emptyList(),
-                            browse = false,
-                            onClick = runCatching { item.onClickDelegate }.getOrNull()?.let { d ->
-                                {
-                                    thread(name = "ma-auto-carhost-click", isDaemon = true) {
-                                        runCatching { d.sendClick(HostClickCallback) }
-                                    }
-                                }
-                            },
-                        )
-                    else -> null // Banner/BannerElement: visual only, no host row
-                }
-            }
-            val header = carText(runCatching { section.title }.getOrNull())
-                ?: carText(runCatching { section.sectionHeader }.getOrNull()?.title)
-                ?: section.javaClass.simpleName.removeSuffix("Section")
-            sections += HostUiSection(
-                header = header,
-                rows = rows,
-                chips = section is androidx.car.app.model.ChipSection,
-                grid = section is androidx.car.app.model.GridSection,
-            )
+            sections += parseSection(section)
         }
         return HostTemplate.TemplateList(
             title = carText(runCatching { template.header }.getOrNull()?.title),
@@ -329,25 +302,108 @@ object HostTemplateParsers {
         )
     }
 
+    private fun parseSection(
+        section: androidx.car.app.model.Section<*>
+    ): HostUiSection {
+        val items = fetchSectionItems(section)
+        val rows = items.mapNotNull { item -> parseSectionItem(item) }
+        val header = carText(runCatching { section.title }.getOrNull())
+            ?: carText(runCatching { section.sectionHeader }.getOrNull()?.title)
+            ?: section.javaClass.simpleName.removeSuffix("Section")
+        return HostUiSection(
+            header = header,
+            rows = rows,
+            chips = section is androidx.car.app.model.ChipSection,
+            grid = section is androidx.car.app.model.GridSection,
+        )
+    }
+
+    private fun parseSectionItem(
+        item: androidx.car.app.model.Item
+    ): HostUiRow? {
+        return when (item) {
+            is Row -> parseRow(item)
+            is androidx.car.app.messaging.model.ConversationItem -> parseConversation(item)
+            is androidx.car.app.model.GridItem -> parseGridSectionItem(item)
+            is androidx.car.app.model.CondensedItem -> parseCondensedItem(item)
+            is androidx.car.app.model.Chip -> parseChipItem(item)
+            else -> null // Banner/BannerElement: visual only, no host row
+        }
+    }
+
+    private fun parseGridSectionItem(item: androidx.car.app.model.GridItem): HostUiRow? {
+        return HostUiRow(
+            title = carText(runCatching { item.title }.getOrNull()) ?: return null,
+            texts = listOfNotNull(carText(runCatching { item.text }.getOrNull())),
+            browse = false,
+            image = carIcon(runCatching { item.image }.getOrNull()),
+            onClick = gridClickAction(runCatching { item.onClickDelegate }.getOrNull()),
+        )
+    }
+
+    private fun parseCondensedItem(item: androidx.car.app.model.CondensedItem): HostUiRow? {
+        return HostUiRow(
+            title = carText(runCatching { item.title }.getOrNull()) ?: return null,
+            texts = emptyList(),
+            browse = false,
+            onClick = gridClickAction(runCatching { item.onClickDelegate }.getOrNull()),
+        )
+    }
+
+    private fun parseChipItem(item: androidx.car.app.model.Chip): HostUiRow? {
+        return HostUiRow(
+            title = carText(runCatching { item.title }.getOrNull()) ?: return null,
+            texts = emptyList(),
+            browse = false,
+            onClick = gridClickAction(runCatching { item.onClickDelegate }.getOrNull()),
+        )
+    }
+
+    private fun gridClickAction(
+        delegate: androidx.car.app.model.OnClickDelegate?
+    ): (() -> Unit)? {
+        return delegate?.let { d ->
+            {
+                thread(name = "ma-auto-carhost-click", isDaemon = true) {
+                    runCatching { d.sendClick(HostClickCallback) }
+                }
+            }
+        }
+    }
+
     /** Synchronously fetches a section's items via its range delegate (5s cap). */
     @android.annotation.SuppressLint("RestrictedApi")
-    private fun fetchSectionItems(section: androidx.car.app.model.Section<*>): List<androidx.car.app.model.Item> {
+    private fun fetchSectionItems(
+        section: androidx.car.app.model.Section<*>
+    ): List<androidx.car.app.model.Item> {
         val delegate = runCatching { section.itemsDelegate }.getOrNull() ?: return emptyList()
         val size = runCatching { delegate.size }.getOrDefault(0)
         if (size <= 0) return emptyList()
         val ref = AtomicReference<List<androidx.car.app.model.Item>?>(null)
         val latch = CountDownLatch(1)
-        val cb = object : OnDoneCallback {
+        val cb = sectionCallback(ref, latch)
+        runCatching { delegate.requestItemRange(0, size - 1, cb) }
+            .onFailure { Log.w(TAG, "section range fetch failed", it); return emptyList() }
+        latch.await(FETCH_TIMEOUT_SEC, TimeUnit.SECONDS)
+        return ref.get().orEmpty()
+    }
+
+    private fun sectionCallback(
+        ref: AtomicReference<List<androidx.car.app.model.Item>?>,
+        latch: CountDownLatch
+    ): OnDoneCallback {
+        return object : OnDoneCallback {
             override fun onSuccess(response: androidx.car.app.serialization.Bundleable?) {
-                ref.set(runCatching { response?.get() as? List<*> }.getOrNull()?.filterIsInstance<androidx.car.app.model.Item>())
+                ref.set(
+                    runCatching { response?.get() as? List<*> }.getOrNull()
+                        ?.filterIsInstance<androidx.car.app.model.Item>()
+                )
                 latch.countDown()
             }
         }
-        runCatching { delegate.requestItemRange(0, size - 1, cb) }
-            .onFailure { Log.w(TAG, "section range fetch failed", it); return emptyList() }
-        latch.await(5, TimeUnit.SECONDS)
-        return ref.get().orEmpty()
     }
+
+    private const val FETCH_TIMEOUT_SEC = 5L
 
     private fun parseConversation(item: androidx.car.app.messaging.model.ConversationItem): HostUiRow? {
         val title = carText(runCatching { item.title }.getOrNull()) ?: return null
@@ -411,7 +467,9 @@ object HostTemplateParsers {
             else -> HostTemplate.Pane(title = template.javaClass.simpleName)
         }
 
-    private fun parseMediaPlayback(template: androidx.car.app.media.model.MediaPlaybackTemplate): HostTemplate.MediaPlayback =
+    private fun parseMediaPlayback(
+        template: androidx.car.app.media.model.MediaPlaybackTemplate
+    ): HostTemplate.MediaPlayback =
         HostTemplate.MediaPlayback(
             title = carText(runCatching { template.header }.getOrNull()?.title),
         )
@@ -452,7 +510,9 @@ object HostTemplateParsers {
         )
     }
 
-    private fun parseMapWithContent(template: androidx.car.app.navigation.model.MapWithContentTemplate): HostTemplate.MapWithContent =
+    private fun parseMapWithContent(
+        template: androidx.car.app.navigation.model.MapWithContentTemplate
+    ): HostTemplate.MapWithContent =
         HostTemplate.MapWithContent(
             content = runCatching { template.contentTemplate }.getOrNull()
                 ?.let { runCatching { parseInner(it) }.getOrNull() },
@@ -689,20 +749,30 @@ object HostTemplateParsers {
         Distance.UNIT_METERS -> "${display.toInt()} m"
         Distance.UNIT_KILOMETERS,
         Distance.UNIT_KILOMETERS_P1,
-        -> "${((display * 10).toInt() / 10.0)} km"
+        -> "${((display * DISTANCE_TENTHS).toInt() / DISTANCE_TENTHS_DOUBLE)} km"
         Distance.UNIT_MILES,
         Distance.UNIT_MILES_P1,
-        -> "${((display * 10).toInt() / 10.0)} mi"
+        -> "${((display * DISTANCE_TENTHS).toInt() / DISTANCE_TENTHS_DOUBLE)} mi"
         Distance.UNIT_FEET -> "${display.toInt()} ft"
         else -> "${display.toInt()} m"
     }
 
+    private const val DISTANCE_TENTHS = 10
+    private const val DISTANCE_TENTHS_DOUBLE = 10.0
+
     private fun formatEstimate(estimate: TravelEstimate): String? {
         val remaining = runCatching { estimate.remainingTimeSeconds }.getOrNull() ?: return null
         if (remaining <= 0 || remaining == Long.MAX_VALUE) return null
-        val minutes = (remaining / 60).toInt()
-        return if (minutes < 60) "$minutes min" else "${minutes / 60} h ${minutes % 60} min"
+        val minutes = (remaining / SECONDS_PER_MINUTE).toInt()
+        return if (minutes < MINUTES_PER_HOUR) {
+            "$minutes min"
+        } else {
+            "${minutes / MINUTES_PER_HOUR} h ${minutes % MINUTES_PER_HOUR} min"
+        }
     }
+
+    private const val SECONDS_PER_MINUTE = 60
+    private const val MINUTES_PER_HOUR = 60
 
     private const val TAG = "MaAuto.HostTemplates"
 

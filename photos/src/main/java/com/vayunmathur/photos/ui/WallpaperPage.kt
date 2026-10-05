@@ -53,7 +53,6 @@ private val OffsetSaver = Saver<Offset, List<Float>>(
 @Composable
 fun WallpaperPage(
     backStack: NavBackStack<Route>,
-    id: Long,
     uri: String?,
 ) {
     val context = LocalContext.current

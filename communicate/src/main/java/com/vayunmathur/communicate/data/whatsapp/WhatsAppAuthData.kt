@@ -71,7 +71,7 @@ data class WhatsAppAuthData(
             val json = prefs.getString(KEY_AUTH_DATA, null) ?: return null
             return try {
                 KotlinJson.decodeFromString<WhatsAppAuthData>(json)
-            } catch (e: Exception) {
+            } catch (ignored: Exception) {
                 null
             }
         }

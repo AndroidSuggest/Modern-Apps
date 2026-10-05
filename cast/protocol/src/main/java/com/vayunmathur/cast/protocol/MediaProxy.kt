@@ -159,62 +159,135 @@ class MediaProxyExchange(
      * stream.
      */
     fun serve(input: InputStream, output: OutputStream): Result {
-        val requestLine = readLine(input) ?: return Result(ExchangeOutcome.Closed, reusable = false)
-
-        val parts = requestLine.split(' ')
-        if (parts.size != 3 || !parts[2].startsWith("HTTP/1.")) {
-            respondError(output, 400)
-            return Result(ExchangeOutcome.Rejected(400, "malformed request line"), reusable = false)
-        }
-        val method = parts[0]
-        val target = parts[1]
-
-        val headers = readHeaders(input)
-            ?: run {
-                respondError(output, 431)
-                return Result(ExchangeOutcome.Rejected(431, "too many or too long headers"), reusable = false)
+        when (val request = readRequest(input)) {
+            is IncomingRequest.Closed -> return closedResult()
+            is IncomingRequest.Malformed -> return malformedRequest(output)
+            is IncomingRequest.Parsed -> {
+                val headers = readHeaders(input) ?: return headersTooLarge(output)
+                return dispatch(request.request, headers, output)
             }
-
-        if (method != "GET" && method != "HEAD") {
-            respondError(output, 405)
-            return Result(ExchangeOutcome.Rejected(405, "method $method"), reusable = true)
         }
+    }
 
-        val path = parsePath(target)
+    private sealed interface IncomingRequest {
+        data object Closed : IncomingRequest
+        data object Malformed : IncomingRequest
+        data class Parsed(val request: ParsedRequest) : IncomingRequest
+    }
+
+    private data class ParsedRequest(val method: String, val target: String)
+
+    private fun closedResult(): Result = Result(ExchangeOutcome.Closed, reusable = false)
+
+    private fun headersTooLarge(output: OutputStream): Result {
+        respondError(output, HTTP_HEADERS_TOO_LARGE)
+        return Result(
+            ExchangeOutcome.Rejected(HTTP_HEADERS_TOO_LARGE, "too many or too long headers"),
+            reusable = false,
+        )
+    }
+
+    private fun readRequest(input: InputStream): IncomingRequest {
+        val requestLine = readLine(input) ?: return IncomingRequest.Closed
+        val parts = requestLine.split(' ')
+        if (parts.size != REQUEST_PART_COUNT || !parts[2].startsWith("HTTP/1.")) {
+            return IncomingRequest.Malformed
+        }
+        return IncomingRequest.Parsed(ParsedRequest(method = parts[0], target = parts[1]))
+    }
+
+    private fun dispatch(request: ParsedRequest, headers: Map<String, String>, output: OutputStream): Result {
+        if (request.method != "GET" && request.method != "HEAD") {
+            return methodNotAllowed(output, request.method)
+        }
+        val path = parsePath(request.target)
         if (path == null || !MediaProxy.tokenMatches(token, path.token)) {
-            // Deliberately the same answer for a bad token and an unparseable path: telling a
-            // peer which of the two it got wrong tells it the shape of a valid URL.
-            respondError(output, 403)
-            return Result(ExchangeOutcome.Rejected(403, "bad token or path '$target'"), reusable = true)
+            return forbidden(output, request.target)
         }
-
-        val resource = resolver.resolve(path.resourceId)
-        if (resource == null) {
-            respondError(output, 404)
-            return Result(ExchangeOutcome.Rejected(404, "no resource '${path.resourceId}'"), reusable = true)
-        }
-
+        val resource = resolver.resolve(path.resourceId) ?: return notFound(output, path.resourceId)
         // Before the `Range` is even parsed: with no total there is nothing to interpret one
         // against, and `parseRange` would call every range unsatisfiable and answer `416`.
         if (!resource.hasKnownLength) {
-            return serveUnknownLength(path.resourceId, resource, method, output)
+            return serveUnknownLength(path.resourceId, resource, request.method, output)
         }
+        return serveKnownLength(path.resourceId, resource, request.method, headers["range"], output)
+    }
 
-        val range = parseRange(headers["range"], resource.length)
+    private fun malformedRequest(output: OutputStream): Result {
+        respondError(output, HTTP_BAD_REQUEST)
+        return Result(ExchangeOutcome.Rejected(HTTP_BAD_REQUEST, "malformed request line"), reusable = false)
+    }
+
+    private fun methodNotAllowed(output: OutputStream, method: String): Result {
+        respondError(output, HTTP_METHOD_NOT_ALLOWED)
+        return Result(ExchangeOutcome.Rejected(HTTP_METHOD_NOT_ALLOWED, "method $method"), reusable = true)
+    }
+
+    private fun forbidden(output: OutputStream, target: String): Result {
+        // Deliberately the same answer for a bad token and an unparseable path: telling a
+        // peer which of the two it got wrong tells it the shape of a valid URL.
+        respondError(output, HTTP_FORBIDDEN)
+        return Result(ExchangeOutcome.Rejected(HTTP_FORBIDDEN, "bad token or path '$target'"), reusable = true)
+    }
+
+    private fun notFound(output: OutputStream, resourceId: String): Result {
+        respondError(output, HTTP_NOT_FOUND)
+        return Result(ExchangeOutcome.Rejected(HTTP_NOT_FOUND, "no resource '$resourceId'"), reusable = true)
+    }
+
+    private fun rangeNotSatisfiable(output: OutputStream, length: Long): Result {
+        respondError(
+            output,
+            HTTP_RANGE_NOT_SATISFIABLE,
+            extraHeaders = listOf("Content-Range: bytes */$length"),
+        )
+        return Result(
+            ExchangeOutcome.Rejected(HTTP_RANGE_NOT_SATISFIABLE, "range outside $length"),
+            reusable = true,
+        )
+    }
+
+    private fun serveKnownLength(
+        resourceId: String,
+        resource: MediaResource,
+        method: String,
+        rangeHeader: String?,
+        output: OutputStream,
+    ): Result {
+        val range = parseRange(rangeHeader, resource.length)
         if (range is RangeSpec.Unsatisfiable) {
-            respondError(
-                output,
-                416,
-                extraHeaders = listOf("Content-Range: bytes */${resource.length}"),
-            )
-            return Result(ExchangeOutcome.Rejected(416, "range outside ${resource.length}"), reusable = true)
+            return rangeNotSatisfiable(output, resource.length)
         }
-
+        writeHead(resource, range, output)
+        if (method == "HEAD") {
+            output.flush()
+            return Result(ExchangeOutcome.Served(resourceId, range, 0), reusable = true)
+        }
         val first = if (range is RangeSpec.Satisfiable) range.first else 0L
         val bodyLength = if (range is RangeSpec.Satisfiable) range.length else resource.length
+        val written = resource.open(first).use { body -> copy(body, output, bodyLength) }
+        output.flush()
 
+        return if (written < bodyLength) {
+            Result(
+                ExchangeOutcome.Truncated(resourceId, bodyLength, written),
+                reusable = false,
+            )
+        } else {
+            Result(ExchangeOutcome.Served(resourceId, range, written), reusable = true)
+        }
+    }
+
+    private fun writeHead(resource: MediaResource, range: RangeSpec, output: OutputStream) {
+        val bodyLength = if (range is RangeSpec.Satisfiable) range.length else resource.length
         val head = StringBuilder()
-        head.append(if (range is RangeSpec.Satisfiable) "HTTP/1.1 206 Partial Content\r\n" else "HTTP/1.1 200 OK\r\n")
+        head.append(
+            if (range is RangeSpec.Satisfiable) {
+                "HTTP/1.1 206 Partial Content\r\n"
+            } else {
+                "HTTP/1.1 200 OK\r\n"
+            },
+        )
         head.append("Content-Type: ").append(resource.contentType).append("\r\n")
         head.append("Content-Length: ").append(bodyLength).append("\r\n")
         // Without this ExoPlayer assumes the server cannot seek and refuses to scrub at all.
@@ -226,23 +299,6 @@ class MediaProxyExchange(
         }
         head.append("\r\n")
         output.write(head.toString().toByteArray(Charsets.ISO_8859_1))
-
-        if (method == "HEAD") {
-            output.flush()
-            return Result(ExchangeOutcome.Served(path.resourceId, range, 0), reusable = true)
-        }
-
-        val written = resource.open(first).use { body -> copy(body, output, bodyLength) }
-        output.flush()
-
-        return if (written < bodyLength) {
-            Result(
-                ExchangeOutcome.Truncated(path.resourceId, bodyLength, written),
-                reusable = false,
-            )
-        } else {
-            Result(ExchangeOutcome.Served(path.resourceId, range, written), reusable = true)
-        }
     }
 
     data class Result(val outcome: ExchangeOutcome, val reusable: Boolean)
@@ -381,16 +437,25 @@ class MediaProxyExchange(
     }
 
     private fun reasonPhrase(status: Int): String = when (status) {
-        400 -> "Bad Request"
-        403 -> "Forbidden"
-        404 -> "Not Found"
-        405 -> "Method Not Allowed"
-        416 -> "Range Not Satisfiable"
-        431 -> "Request Header Fields Too Large"
+        HTTP_BAD_REQUEST -> "Bad Request"
+        HTTP_FORBIDDEN -> "Forbidden"
+        HTTP_NOT_FOUND -> "Not Found"
+        HTTP_METHOD_NOT_ALLOWED -> "Method Not Allowed"
+        HTTP_RANGE_NOT_SATISFIABLE -> "Range Not Satisfiable"
+        HTTP_HEADERS_TOO_LARGE -> "Request Header Fields Too Large"
         else -> "Error"
     }
 
     companion object {
+        private const val HTTP_BAD_REQUEST = 400
+        private const val HTTP_FORBIDDEN = 403
+        private const val HTTP_NOT_FOUND = 404
+        private const val HTTP_METHOD_NOT_ALLOWED = 405
+        private const val HTTP_RANGE_NOT_SATISFIABLE = 416
+        private const val HTTP_HEADERS_TOO_LARGE = 431
+        private const val REQUEST_PART_COUNT = 3
+        private const val PERCENT_HEX_DIGITS = 3
+        private const val HEX_RADIX = 16
 
         data class ProxyPath(val token: String, val resourceId: String)
 
@@ -420,38 +485,65 @@ class MediaProxyExchange(
          * for more than one range, and a multipart encoder would be code with no caller.
          */
         fun parseRange(header: String?, length: Long): RangeSpec {
+            val spec = extractSingleRangeSpec(header) ?: return rangeFallback(header, length)
+            return resolveRange(spec, length)
+        }
+
+        private fun rangeFallback(header: String?, length: Long): RangeSpec {
             if (header == null) return RangeSpec.Whole
             val value = header.trim()
             if (!value.startsWith("bytes=", ignoreCase = true)) return RangeSpec.Whole
             val spec = value.substring("bytes=".length).trim()
             if (spec.contains(',')) return RangeSpec.Whole
-
-            val dash = spec.indexOf('-')
-            if (dash < 0) return RangeSpec.Unsatisfiable
-            val fromText = spec.substring(0, dash).trim()
-            val toText = spec.substring(dash + 1).trim()
-
+            if (!spec.contains('-')) return RangeSpec.Unsatisfiable
             // A zero-length resource can satisfy no range at all, not even `bytes=0-`.
             if (length <= 0L) return RangeSpec.Unsatisfiable
+            return RangeSpec.Unsatisfiable
+        }
 
-            if (fromText.isEmpty()) {
-                // A suffix range: the last N bytes.
-                val suffix = toText.toLongOrNull() ?: return RangeSpec.Unsatisfiable
-                if (suffix <= 0L) return RangeSpec.Unsatisfiable
-                val first = maxOf(0L, length - suffix)
-                return RangeSpec.Satisfiable(first, length - 1)
-            }
+        private fun extractSingleRangeSpec(header: String?): RangeParts? {
+            if (header == null) return null
+            val value = header.trim()
+            if (!value.startsWith("bytes=", ignoreCase = true)) return null
+            val spec = value.substring("bytes=".length).trim()
+            if (spec.contains(',')) return null
+            val dash = spec.indexOf('-')
+            if (dash < 0) return null
+            return RangeParts(
+                fromText = spec.substring(0, dash).trim(),
+                toText = spec.substring(dash + 1).trim(),
+            )
+        }
 
-            val first = fromText.toLongOrNull() ?: return RangeSpec.Unsatisfiable
+        private data class RangeParts(val fromText: String, val toText: String)
+
+        private fun resolveRange(parts: RangeParts, length: Long): RangeSpec {
+            // A zero-length resource can satisfy no range at all, not even `bytes=0-`.
+            if (length <= 0L) return RangeSpec.Unsatisfiable
+            if (parts.fromText.isEmpty()) return resolveSuffixRange(parts.toText, length)
+            return resolveBoundedRange(parts, length)
+        }
+
+        private fun resolveSuffixRange(toText: String, length: Long): RangeSpec {
+            // A suffix range: the last N bytes.
+            val suffix = toText.toLongOrNull() ?: return RangeSpec.Unsatisfiable
+            if (suffix <= 0L) return RangeSpec.Unsatisfiable
+            val first = maxOf(0L, length - suffix)
+            return RangeSpec.Satisfiable(first, length - 1)
+        }
+
+        private fun resolveBoundedRange(parts: RangeParts, length: Long): RangeSpec {
+            val first = parts.fromText.toLongOrNull() ?: return RangeSpec.Unsatisfiable
             if (first < 0L || first >= length) return RangeSpec.Unsatisfiable
-            val last = if (toText.isEmpty()) {
-                length - 1
-            } else {
-                val stated = toText.toLongOrNull() ?: return RangeSpec.Unsatisfiable
-                if (stated < first) return RangeSpec.Unsatisfiable
-                minOf(stated, length - 1)
-            }
+            val last = resolveLast(parts.toText, first, length) ?: return RangeSpec.Unsatisfiable
             return RangeSpec.Satisfiable(first, last)
+        }
+
+        private fun resolveLast(toText: String, first: Long, length: Long): Long? {
+            if (toText.isEmpty()) return length - 1
+            val stated = toText.toLongOrNull() ?: return null
+            if (stated < first) return null
+            return minOf(stated, length - 1)
         }
 
         private fun percentDecode(text: String): String {
@@ -461,10 +553,10 @@ class MediaProxyExchange(
             while (i < text.length) {
                 val c = text[i]
                 if (c == '%' && i + 2 < text.length) {
-                    val hex = text.substring(i + 1, i + 3).toIntOrNull(16)
+                    val hex = text.substring(i + 1, i + PERCENT_HEX_DIGITS - 1).toIntOrNull(HEX_RADIX)
                     if (hex != null) {
                         out.write(hex)
-                        i += 3
+                        i += PERCENT_HEX_DIGITS
                         continue
                     }
                 }

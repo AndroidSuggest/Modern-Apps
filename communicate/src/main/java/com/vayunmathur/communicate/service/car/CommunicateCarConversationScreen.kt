@@ -56,7 +56,7 @@ class CommunicateCarConversationScreen(
         // API 7+: ConversationItem is the car-native conversation row with
         // host-driven reply/read callbacks. Older hosts keep the ListTemplate
         // + voice-keyboard reply flow below.
-        if (carContext.getCarAppApiLevel() >= 7) {
+        if (carContext.getCarAppApiLevel() >= CAR_API_REPLY_DIRECT) {
             runCatching { return conversationTemplate() }
         }
         return legacyListTemplate()
@@ -192,5 +192,6 @@ class CommunicateCarConversationScreen(
 
     private companion object {
         const val MAX_SHOWN = 25
+        private const val CAR_API_REPLY_DIRECT = 7
     }
 }

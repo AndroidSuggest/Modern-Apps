@@ -105,8 +105,17 @@ object NetworkClient {
      */
     private const val ERROR_PREFIX_BYTES = 64 * 1024
 
+    /** HTTP 206 Partial Content — streamable like a success. */
+    private const val STATUS_PARTIAL_CONTENT = 206
+
     /** The JSON path only quotes 500 characters, so it needs far less than [ERROR_PREFIX_BYTES]. */
     private const val JSON_ERROR_PREFIX_BYTES = 4 * 1024
+
+    /** HTTP 204 No Content — never has a body to parse. */
+    private const val STATUS_NO_CONTENT = 204
+
+    /** Characters of an error body quoted into an IOException message. */
+    private const val JSON_ERROR_MESSAGE_CHARS = 500
 
     // Published API – accessible from public inline functions.
     @PublishedApi
@@ -131,31 +140,34 @@ object NetworkClient {
     fun init(context: Context, bundle: TrustBundle) {
         val appCtx = context.applicationContext
         // Allow re-init with different bundle (useful for tests) but avoid redundant work.
-        if (initialized && bundle == currentBundle && (bundle == TrustBundle.SYSTEM || defaultSslSocketFactory != null)) {
+        if (isAlreadyInitialized(bundle)) {
             return
         }
-        try {
-            currentBundle = bundle
-            if (bundle == TrustBundle.SYSTEM) {
-                defaultSslSocketFactory = null
-                Log.i(TAG, "Initialized with SYSTEM bundle (platform default trust)")
-            } else {
-                val result = BundledTrust.createFactory(appCtx, bundle)
-                defaultSslSocketFactory = result?.first
-                if (defaultSslSocketFactory == null) {
-                    Log.w(TAG, "Bundle $bundle produced no factory (missing DERs?), falling back to system trust")
-                } else {
-                    Log.i(TAG, "Initialized with bundle $bundle")
-                }
-            }
-            initialized = true
-        } catch (e: Exception) {
-            Log.e(TAG, "init failed for bundle $bundle, falling back to system", e)
-            if (bundle == TrustBundle.SYSTEM) {
-                defaultSslSocketFactory = null
-            }
-            // Even on failure we mark initialized to avoid repeat crashes, but keep bundle.
-            initialized = true
+        // Total: BundledTrust.createFactory catches its own failures and returns null,
+        // so there is nothing left here that needs a catch-all.
+        applyBundle(appCtx, bundle)
+        initialized = true
+    }
+
+    private fun isAlreadyInitialized(bundle: TrustBundle): Boolean {
+        if (!initialized || bundle != currentBundle) return false
+        if (bundle == TrustBundle.SYSTEM) return true
+        return defaultSslSocketFactory != null
+    }
+
+    private fun applyBundle(appCtx: Context, bundle: TrustBundle) {
+        currentBundle = bundle
+        if (bundle == TrustBundle.SYSTEM) {
+            defaultSslSocketFactory = null
+            Log.i(TAG, "Initialized with SYSTEM bundle (platform default trust)")
+            return
+        }
+        val result = BundledTrust.createFactory(appCtx, bundle)
+        defaultSslSocketFactory = result?.first
+        if (defaultSslSocketFactory == null) {
+            Log.w(TAG, "Bundle $bundle produced no factory (missing DERs?), falling back to system trust")
+        } else {
+            Log.i(TAG, "Initialized with bundle $bundle")
         }
     }
 
@@ -184,7 +196,7 @@ object NetworkClient {
                 if (n < 0) break
                 used += n
             }
-        } catch (_: Exception) {
+        } catch (_: java.io.IOException) {
         }
         return String(buffer, 0, used, Charsets.UTF_8)
     }
@@ -245,7 +257,7 @@ object NetworkClient {
             response.use {
                 val text = try {
                     it.stream.reader(Charsets.UTF_8).buffered().readText()
-                } catch (e: Exception) {
+                } catch (e: java.io.IOException) {
                     throw java.io.IOException("Failed to read response body from ${it.finalUrl}", e)
                 }
                 SimpleResponse(it.status, it.statusMessage, text, it.headers, it.finalUrl)
@@ -313,7 +325,7 @@ object NetworkClient {
 
         var simple = SimpleResponse(response.status, response.statusMessage, "", response.headers, response.finalUrl)
 
-        if (simple.isSuccess || simple.status == 206) {
+        if (simple.isSuccess || simple.status == STATUS_PARTIAL_CONTENT) {
             if (!response.hasStream) {
                 withContext(Dispatchers.IO) { response.close() }
                 block(null, simple)
@@ -329,7 +341,7 @@ object NetworkClient {
                             val n = raw.read(buffer, offset, length)
                             if (n == -1) closed = true
                             n
-                        } catch (_: Exception) {
+                        } catch (_: java.io.IOException) {
                             closed = true
                             -1
                         }
@@ -380,45 +392,70 @@ object NetworkClient {
         useSystemTrust: Boolean = false,
     ): Long? {
         return withContext(Dispatchers.IO) {
-            var currentUrl = url
-            var redirects = 0
-            var lenResult: Long? = null
-            var done = false
-            val effectiveFactory = resolveFactory(sslSocketFactory, useSystemTrust)
+            probeContentLength(url, headers, resolveFactory(sslSocketFactory, useSystemTrust))
+        }
+    }
 
-            while (!done) {
-                val conn = HttpUrlEngine.openConnection(
-                    currentUrl, "HEAD", headers, null, null,
-                    sslSocketFactory = effectiveFactory,
-                )
-                try {
-                    val status = conn.responseCode
-                    val len = conn.getHeaderField("Content-Length")?.toLongOrNull()
-                        ?: conn.getHeaderField("Content-Range")?.substringAfterLast("/")?.toLongOrNull()
-                    val respHeaders = HttpUrlEngine.extractHeaders(conn)
+    private fun probeContentLength(
+        url: String,
+        headers: Map<String, *>,
+        effectiveFactory: SSLSocketFactory?,
+    ): Long? {
+        var currentUrl = url
+        var redirects = 0
+        while (true) {
+            val conn = HttpUrlEngine.openConnection(
+                currentUrl, "HEAD", headers, null, null,
+                sslSocketFactory = effectiveFactory,
+            )
+            val next = followLengthRedirect(conn, currentUrl, redirects) ?: return readLength(conn)
+            currentUrl = next.url
+            redirects = next.count
+        }
+    }
 
-                    if (status in 301..308 && status != 304 && redirects < HttpUrlEngine.MAX_REDIRECTS) {
-                        val loc = conn.getHeaderField("Location") ?: conn.getHeaderField("location")
-                        if (loc != null) {
-                            currentUrl = URL(URL(currentUrl), loc).toString()
-                            redirects++
-                            conn.disconnect()
-                            continue
-                        }
-                    }
-                    conn.disconnect()
-                    lenResult = len ?: respHeaders.entries.firstOrNull {
-                        it.key.equals("Content-Length", ignoreCase = true)
-                    }?.value?.firstOrNull()?.toLongOrNull()
-                    done = true
-                } catch (_: Exception) {
-                    conn.disconnect()
-                    lenResult = null
-                    done = true
-                }
+    private data class LengthRedirect(val url: String, val count: Int)
+
+    private fun followLengthRedirect(
+        conn: java.net.HttpURLConnection,
+        currentUrl: String,
+        redirects: Int,
+    ): LengthRedirect? {
+        return try {
+            val status = conn.responseCode
+            val redirectable = status in HttpUrlEngine.REDIRECT_STATUS_MIN..HttpUrlEngine.REDIRECT_STATUS_MAX &&
+                status != HttpUrlEngine.STATUS_NOT_MODIFIED &&
+                redirects < HttpUrlEngine.MAX_REDIRECTS
+            val loc = if (redirectable) {
+                conn.getHeaderField("Location") ?: conn.getHeaderField("location")
+            } else {
+                null
             }
+            if (loc != null) {
+                val next = URL(URL(currentUrl), loc).toString()
+                conn.disconnect()
+                LengthRedirect(next, redirects + 1)
+            } else {
+                null
+            }
+        } catch (_: java.io.IOException) {
+            conn.disconnect()
+            null
+        }
+    }
 
-            lenResult
+    private fun readLength(conn: java.net.HttpURLConnection): Long? {
+        return try {
+            val len = conn.getHeaderField("Content-Length")?.toLongOrNull()
+                ?: conn.getHeaderField("Content-Range")?.substringAfterLast("/")?.toLongOrNull()
+            val respHeaders = HttpUrlEngine.extractHeaders(conn)
+            conn.disconnect()
+            len ?: respHeaders.entries.firstOrNull {
+                it.key.equals("Content-Length", ignoreCase = true)
+            }?.value?.firstOrNull()?.toLongOrNull()
+        } catch (_: java.io.IOException) {
+            conn.disconnect()
+            null
         }
     }
 
@@ -457,25 +494,18 @@ object NetworkClient {
             // a body of just a newline counted as empty before this was a stream, and endpoints
             // that answer `callJson<Unit>` that way must keep working.
             val peekable = PushbackInputStream(resp.stream, 1)
-            var first = -1
-            try {
-                do {
-                    first = peekable.read()
-                } while (first == ' '.code || first == '\t'.code || first == '\r'.code || first == '\n'.code)
-            } catch (e: Exception) {
-                throw java.io.IOException("Failed to read response body from ${resp.finalUrl}", e)
-            }
+            val first = skipJsonWhitespace(peekable, resp.finalUrl)
             if (first >= 0) peekable.unread(first)
             val empty = first < 0
 
-            if (resp.status == 204 || empty) {
+            if (resp.status == STATUS_NO_CONTENT || empty) {
                 if (isBoolean) return@use resp.isSuccess as T
                 if (isUnit) return@use Unit as T
             }
 
             if (!resp.isSuccess) {
                 val prefix = readErrorPrefix(peekable, JSON_ERROR_PREFIX_BYTES)
-                throw java.io.IOException("HTTP ${resp.status}: ${prefix.take(500)}")
+                throw java.io.IOException("HTTP ${resp.status}: ${prefix.take(JSON_ERROR_MESSAGE_CHARS)}")
             }
 
             if (empty) {
@@ -486,6 +516,25 @@ object NetworkClient {
         }
     }
 
+    /** JSON whitespace bytes skipped when probing for an empty body. */
+    private val JSON_WHITESPACE = setOf(' '.code, '\t'.code, '\r'.code, '\n'.code)
+
+    /**
+     * Skips leading JSON whitespace, returning the first significant byte or -1 at EOF.
+     * A body of just a newline counted as empty before this was a stream, and endpoints
+     * that answer `callJson<Unit>` that way must keep working.
+     */
+    private fun skipJsonWhitespace(peekable: PushbackInputStream, finalUrl: String): Int {
+        return try {
+            var byte = peekable.read()
+            while (byte in JSON_WHITESPACE) {
+                byte = peekable.read()
+            }
+            byte
+        } catch (e: java.io.IOException) {
+            throw java.io.IOException("Failed to read response body from $finalUrl", e)
+        }
+    }
     suspend inline fun <reified T> callJson(
         url: String,
         method: String = "GET",

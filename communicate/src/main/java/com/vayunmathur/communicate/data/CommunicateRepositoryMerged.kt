@@ -59,12 +59,16 @@ internal suspend fun CommunicateRepository.loadGoogleVoiceCalls(context: Context
 // ── Delete ( #542 ) ────────────────────────────────────────────────
 
 /** Delete an entire conversation/thread, routing by [CommunicateLine]. */
-suspend fun CommunicateRepository.deleteConversation(context: Context, thread: SmsThread): Boolean = withContext(Dispatchers.IO) {
+suspend fun CommunicateRepository.deleteConversation(
+    context: Context,
+    thread: SmsThread): Boolean = withContext(Dispatchers.IO) {
     when (thread.line) {
         CommunicateLine.Sim -> deleteSimThread(context, thread.threadId)
         CommunicateLine.GoogleVoice -> thread.remoteId?.let {
             runCatching {
-                GoogleVoiceClient.get(context).updateThreadAttributes(it, com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser.ThreadAction.Archive)
+                GoogleVoiceClient.get(context).updateThreadAttributes(
+                    it,
+                    com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser.ThreadAction.Archive)
                 true
             }.getOrDefault(false)
         } ?: false
@@ -97,13 +101,21 @@ private fun CommunicateRepository.deleteSimThread(context: Context, threadId: Lo
     )
     if (deleted > 0) return true
     // Fallback: delete SMS and MMS rows directly.
-    context.contentResolver.delete(Telephony.Sms.CONTENT_URI, "${Telephony.Sms.THREAD_ID} = ?", arrayOf(threadId.toString()))
-    context.contentResolver.delete(Telephony.Mms.CONTENT_URI, "${Telephony.Mms.THREAD_ID} = ?", arrayOf(threadId.toString()))
+    context.contentResolver.delete(
+        Telephony.Sms.CONTENT_URI,
+        "${Telephony.Sms.THREAD_ID} = ?",
+        arrayOf(threadId.toString()))
+    context.contentResolver.delete(
+        Telephony.Mms.CONTENT_URI,
+        "${Telephony.Mms.THREAD_ID} = ?",
+        arrayOf(threadId.toString()))
     true
 }.getOrDefault(false)
 
 /** Delete a call-log entry, routing by [CommunicateLine]. */
-suspend fun CommunicateRepository.deleteCallLog(context: Context, entry: CommunicateCallLogEntry): Boolean = withContext(Dispatchers.IO) {
+suspend fun CommunicateRepository.deleteCallLog(
+    context: Context,
+    entry: CommunicateCallLogEntry): Boolean = withContext(Dispatchers.IO) {
     when (entry.line) {
         CommunicateLine.Sim -> runCatching {
             context.contentResolver.delete(
@@ -231,7 +243,8 @@ internal fun GvThread.toSmsThread(context: Context): SmsThread = SmsThread(
     threadId = CommunicateRepository.stableThreadId(id),
     address = phoneNumber,
     displayName = displayName ?: CommunicateRepository.findContactName(context, phoneNumber),
-    snippet = snippet.ifBlank { if (messages.any { it.hasMedia }) context.getString(R.string.gv_media_message) else "" },
+    snippet =
+        snippet.ifBlank { if (messages.any { it.hasMedia }) context.getString(R.string.gv_media_message) else "" },
     timestampMillis = timestampMillis,
     unreadCount = unreadCount,
     line = CommunicateLine.GoogleVoice,

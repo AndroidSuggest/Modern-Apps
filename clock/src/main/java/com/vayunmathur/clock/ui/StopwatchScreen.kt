@@ -53,7 +53,6 @@ import kotlin.time.Duration.Companion.seconds
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StopwatchScreen(
-    backStack: com.vayunmathur.library.util.NavBackStack<com.vayunmathur.clock.Route>,
     state: StopwatchUiState,
     actions: StopwatchActions,
 ) {

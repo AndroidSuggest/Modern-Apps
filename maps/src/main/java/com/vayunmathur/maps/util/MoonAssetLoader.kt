@@ -22,6 +22,8 @@ object MoonAssetLoader {
     private const val COLOR_ASSET = "moon/moon_color_4096.rgba"
     private const val COLOR_W = 4096
     private const val COLOR_H = 2048
+    private const val COLOR_BYTES_PER_PX = 4
+    private const val DEM_BYTES_PER_PX = 2
     private const val DEM_ASSET = "moon/moon_dem_2048.rg"
     private const val DEM_W = 2048
     private const val DEM_H = 1024
@@ -36,7 +38,9 @@ object MoonAssetLoader {
             try {
                 val color = context.assets.open(COLOR_ASSET).use { it.readBytes() }
                 val dem = context.assets.open(DEM_ASSET).use { it.readBytes() }
-                if (color.size != COLOR_W * COLOR_H * 4 || dem.size != DEM_W * DEM_H * 2) {
+                if (color.size != COLOR_W * COLOR_H * COLOR_BYTES_PER_PX ||
+                    dem.size != DEM_W * DEM_H * DEM_BYTES_PER_PX
+                ) {
                     return@withContext null
                 }
                 MoonTextures(color, COLOR_W, COLOR_H, dem, DEM_W, DEM_H).also { cached = it }

@@ -100,7 +100,7 @@ fun VectorMap(
     modifier: Modifier = Modifier,
     style: MapStyle = MapStyle.Standard,
     darkBasemap: Boolean = isSystemInDarkTheme(),
-    zoomRange: ClosedFloatingPointRange<Float> = 0f..20f,
+    zoomRange: ClosedFloatingPointRange<Float> = MIN_ZOOM..MAX_ZOOM,
     /**
      * See the KDoc above: true while `maps`' globe toggle is on. Default-off so
      * every other host keeps the flat Mercator map it always had.
@@ -185,21 +185,7 @@ fun VectorMap(
         { click: MapClick ->
             val handler = latestScreenClick
             if (handler != null) {
-                // Queried only when POI is drawn: with the layer off there is nothing placed
-                // to hit, and the query would be a pick over the place labels for nothing.
-                val poi = if (latestPoiEnabled) {
-                    val point = click.screen
-                    val box = DpRect(
-                        left = point.x - POI_TOUCH_SLOP,
-                        top = point.y - POI_TOUCH_SLOP,
-                        right = point.x + POI_TOUCH_SLOP,
-                        bottom = point.y + POI_TOUCH_SLOP,
-                    )
-                    cameraState.projection?.queryRenderedLabels(box, POI_LAYER_IDS)?.firstOrNull()
-                } else {
-                    null
-                }
-                handler(click.copy(poi = poi))
+                handler(click.copy(poi = poiAtTap(cameraState, click, latestPoiEnabled)))
             }
         }
     }
@@ -341,6 +327,24 @@ private fun GeoreferencedOverlay(overlay: ImageOverlay, cameraState: CameraState
  */
 private val POI_TOUCH_SLOP = 12.dp
 
+// Queried only when POI is drawn: with the layer off there is nothing placed
+// to hit, and the query would be a pick over the place labels for nothing.
+private fun poiAtTap(
+    cameraState: CameraState,
+    click: MapClick,
+    poiEnabled: Boolean
+): PlacedLabel? {
+    if (!poiEnabled) return null
+    val point = click.screen
+    val box = DpRect(
+        left = point.x - POI_TOUCH_SLOP,
+        top = point.y - POI_TOUCH_SLOP,
+        right = point.x + POI_TOUCH_SLOP,
+        bottom = point.y + POI_TOUCH_SLOP,
+    )
+    return cameraState.projection?.queryRenderedLabels(box, POI_LAYER_IDS)?.firstOrNull()
+}
+
 /**
  * The style's six POI symbol layers, which is what [MapClick.poi] reports hits from. Place
  * labels (`places-*`) are deliberately excluded: a country or city label is not a point of
@@ -378,3 +382,6 @@ private const val DARK_BACKGROUND = 0xFF0D1B2A
  * must place it. CARTO is deliberately not credited: we no longer use their CDN.
  */
 internal const val ATTRIBUTION = "© OpenStreetMap contributors · Protomaps"
+
+private const val MIN_ZOOM = 0f
+private const val MAX_ZOOM = 20f

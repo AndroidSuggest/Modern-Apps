@@ -1,6 +1,7 @@
 package com.vayunmathur.photos.domain
 
 import android.content.Context
+import android.database.sqlite.SQLiteException
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
@@ -10,9 +11,10 @@ import com.vayunmathur.library.ocr.OcrEngine
 import com.vayunmathur.photos.data.OcrBox
 import com.vayunmathur.photos.data.OcrLayout
 import com.vayunmathur.photos.data.Photo
-import com.vayunmathur.photos.data.PhotosRepository
+import com.vayunmathur.photos.data.PhotoScanRepository
 import com.vayunmathur.photos.data.parseOcrLayout
 import com.vayunmathur.photos.data.toJson
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -41,7 +43,10 @@ internal fun decodeForOcr(context: Context, uri: Uri): Bitmap? {
                 )
             }
         }
-    } catch (e: Exception) {
+    } catch (e: IOException) {
+        Log.e(TAG, "Failed to decode $uri for OCR", e)
+        null
+    } catch (e: SecurityException) {
         Log.e(TAG, "Failed to decode $uri for OCR", e)
         null
     }
@@ -71,8 +76,8 @@ object OcrBoxStore {
         // Only the application context is retained: the engine outlives the
         // composable that asked for it (see the write-back note below).
         val appContext = context.applicationContext
-        val repository = PhotosRepository.get(appContext)
-        parseOcrLayout(repository.getOcrBoxes(photo.id))?.let { return it }
+        val scanRepository = PhotoScanRepository.get(appContext)
+        parseOcrLayout(scanRepository.getOcrBoxes(photo.id))?.let { return it }
 
         // Tiny images (icons/thumbnails) are skipped by the indexer too.
         val largestDim = maxOf(photo.width, photo.height)
@@ -84,10 +89,13 @@ object OcrBoxStore {
             inFlight.getOrPut(photo.id) {
                 scope.async {
                     try {
-                        recognizeAndStore(appContext, photo, repository)
+                        recognizeAndStore(appContext, photo, scanRepository)
                     } catch (e: CancellationException) {
                         throw e
-                    } catch (e: Exception) {
+                    } catch (e: IOException) {
+                        Log.e(TAG, "On-demand OCR failed for photo ${photo.id}", e)
+                        null
+                    } catch (e: SQLiteException) {
                         Log.e(TAG, "On-demand OCR failed for photo ${photo.id}", e)
                         null
                     } finally {
@@ -111,7 +119,7 @@ object OcrBoxStore {
     private suspend fun recognizeAndStore(
         context: Context,
         photo: Photo,
-        repository: PhotosRepository,
+        scanRepository: PhotoScanRepository,
     ): OcrLayout? {
         val ocr = lock.withLock { engine ?: OcrEngine(context).also { engine = it } }
         if (!ocr.isAvailable()) return null
@@ -129,7 +137,7 @@ object OcrBoxStore {
         // An empty result is stored too, so a photo with no text in it isn't
         // re-OCR'd every time it's opened.
         val layout = result.toLayout(width, height)
-        repository.setOcrBoxes(photo.id, layout.toJson())
+        scanRepository.setOcrBoxes(photo.id, layout.toJson())
         return layout
     }
 }

@@ -28,13 +28,15 @@ fun extractHeadings(doc: OdfDocument.TextDocument): List<HeadingItem> {
 
 fun countWords(doc: OdfDocument.TextDocument): Int {
     var count = 0
-    for (block in doc.content) if (block is OdfContentBlock.Paragraph) for (span in block.paragraph.spans) count += span.text.split(Regex("\\s+")).count { it.isNotEmpty() }
+    for (block in doc.content) if (block is OdfContentBlock.Paragraph) for (span in block.paragraph.spans) count + =
+        span.text.split(Regex("\\s+")).count { it.isNotEmpty() }
     return count
 }
 
 fun countChars(doc: OdfDocument.TextDocument): Int {
     var count = 0
-    for (block in doc.content) if (block is OdfContentBlock.Paragraph) for (span in block.paragraph.spans) count += span.text.length
+    for (block in doc.content) if (block is OdfContentBlock.Paragraph) for (span in block.paragraph.spans) count + =
+        span.text.length
     return count
 }
 

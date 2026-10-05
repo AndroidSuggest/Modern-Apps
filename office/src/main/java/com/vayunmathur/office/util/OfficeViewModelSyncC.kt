@@ -8,26 +8,25 @@ import android.net.Uri
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.office.R
+import com.vayunmathur.office.util.OfficeViewModel.ViewState
 import kotlin.io.encoding.Base64
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import com.vayunmathur.office.odf.*
-import com.vayunmathur.library.ui.odf.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import com.vayunmathur.office.R
-import com.vayunmathur.office.util.OfficeViewModel.ViewState
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 // --- Sync C: members / key epochs / ownership / titles (split from OfficeViewModel.kt for file length) ---
 
@@ -39,7 +38,7 @@ fun OfficeViewModel.currentOnlineDocId(): String? = currentDocId
 
 /** The stored online title of the open document, if any. */
 internal fun OfficeViewModel.currentOnlineTitle(): String? =
-    currentDocId?.let { id -> _onlineDocs.value.firstOrNull { it.docId == id }?.title }
+    currentDocId?.let { id -> onlineDocsMutable.value.firstOrNull { it.docId == id }?.title }
 
 /** Returns a copy of [doc] with a new [title] (works across all document types). */
 internal fun OfficeViewModel.withTitle(doc: OdfDocument, title: String): OdfDocument = when (doc) {
@@ -47,6 +46,17 @@ internal fun OfficeViewModel.withTitle(doc: OdfDocument, title: String): OdfDocu
     is OdfDocument.Spreadsheet -> doc.copy(title = title)
     is OdfDocument.Presentation -> doc.copy(title = title)
     is OdfDocument.Drawing -> doc.copy(title = title)
+}
+
+/** Decode a base64 JSON blob, or null when corrupt. */
+private inline fun <reified T> OfficeViewModel.decodeBlob(blob: String): T? = runCatching {
+    syncJson.decodeFromString<T>(Base64.decode(blob).decodeToString())
+}.getOrNull()
+
+/** Retitle the open document when it is loaded. */
+internal fun OfficeViewModel.setLoadedTitle(title: String) {
+    val loaded = state.value as? OfficeViewModel.ViewState.Loaded ?: return
+    if (loaded.document.title != title) stateMutable.value = ViewState.Loaded(withTitle(loaded.document, title))
 }
 
 /** True if the local user may edit the open document. */
@@ -75,15 +85,18 @@ internal suspend fun OfficeViewModel.writeMembers(docId: String, key: ByteArray,
 }
 
 /** Reads + verifies the roster: only records with a valid OWNER signature are honored. */
-internal suspend fun OfficeViewModel.fetchMembers(docId: String, key: ByteArray, ownerKey: ByteArray?): List<OfficeMember> {
+internal suspend fun OfficeViewModel.fetchMembers(
+    docId: String,
+    key: ByteArray,
+    ownerKey: ByteArray?): List<OfficeMember> {
     if (ownerKey == null) return emptyList()
     val res = OfficeSync.pullDocActions("members:$docId", key, 0)
     val byId = LinkedHashMap<String, OfficeMember>()
     for (item in res.items) {
-        val sm = runCatching { syncJson.decodeFromString<SignedMember>(item) }.getOrNull() ?: continue
-        val ok = OfficeSync.verify(ownerKey, memberSigningBytes(docId, sm.member), Base64.decode(sm.sig))
-        if (!ok) continue // not signed by the owner -> ignore (client-enforced authority)
-        byId[sm.member.id] = sm.member
+        val sm = runCatching { syncJson.decodeFromString<SignedMember>(item) }.getOrNull()
+        // Not signed by the owner -> ignore (client-enforced authority).
+        val ok = sm != null && OfficeSync.verify(ownerKey, memberSigningBytes(docId, sm.member), Base64.decode(sm.sig))
+        if (ok && sm != null) byId[sm.member.id] = sm.member
     }
     currentMembers.clear()
     byId.values.forEach { currentMembers[it.id] = it.role }
@@ -96,7 +109,10 @@ fun OfficeViewModel.documentMembers(onResult: (List<OfficeMember>) -> Unit) {
     val key = currentDocKey
     if (docId == null || key == null) { onResult(emptyList()); return }
     viewModelScope.launch(Dispatchers.IO) {
-        val members = runCatching { OfficeSync.init(getApplication()); fetchMembers(docId, key, currentOwnerKey) }.getOrDefault(emptyList())
+        val members = runCatching { OfficeSync.init(getApplication()); fetchMembers(
+            docId,
+            key,
+            currentOwnerKey) }.getOrDefault(emptyList())
         withContext(Dispatchers.Main) { onResult(members) }
     }
 }
@@ -118,21 +134,34 @@ fun OfficeViewModel.setMemberRole(memberId: String, role: String, onResult: (Boo
 }
 
 internal fun OfficeViewModel.epochSigningBytes(docId: String, epoch: Int, wraps: Map<String, String>): ByteArray =
-    (listOf(docId, epoch.toString()) + wraps.entries.sortedBy { it.key }.map { "${it.key}=${it.value}" }).joinToString("|").encodeToByteArray()
+    (listOf(
+        docId,
+        epoch.toString())
+    + wraps.entries.sortedBy { it.key }.map { "${it.key}=${it.value}" }).joinToString("|").encodeToByteArray()
 
 /**
  * Resolves the current content key: the highest owner-signed [KeyEpoch] this device can unseal,
  * falling back to the epoch-0 (invite) key. Returns (epoch, key).
  */
-internal suspend fun OfficeViewModel.fetchCurrentKey(docId: String, inviteKey: ByteArray, ownerKey: ByteArray?): Pair<Int, ByteArray> {
+internal suspend fun OfficeViewModel.fetchCurrentKey(
+    docId: String,
+    inviteKey: ByteArray,
+    ownerKey: ByteArray?): Pair<Int, ByteArray> {
     if (ownerKey == null) return 0 to inviteKey
     var bestEpoch = 0; var bestKey = inviteKey
     for (blob in runCatching { OfficeSync.pullRaw("keys:$docId", 0) }.getOrDefault(emptyList())) {
-        val ke = runCatching { syncJson.decodeFromString<KeyEpoch>(Base64.decode(blob).decodeToString()) }.getOrNull() ?: continue
-        if (!OfficeSync.verify(ownerKey, epochSigningBytes(docId, ke.epoch, ke.wraps), Base64.decode(ke.sig))) continue
-        val myWrap = ke.wraps[OfficeSync.deviceId] ?: continue
-        val k = runCatching { OfficeSync.unseal(Base64.decode(myWrap)) }.getOrNull() ?: continue
-        if (ke.epoch >= bestEpoch) { bestEpoch = ke.epoch; bestKey = k }
+        val ke = decodeBlob<KeyEpoch>(blob)
+        val verified = ke != null && OfficeSync.verify(
+            ownerKey,
+            epochSigningBytes(docId, ke.epoch, ke.wraps),
+            Base64.decode(ke.sig),
+        )
+        val myWrap = if (verified) ke?.wraps?.get(OfficeSync.deviceId) else null
+        val k = myWrap?.let { runCatching { OfficeSync.unseal(Base64.decode(it)) }.getOrNull() }
+        if (k != null && ke != null && ke.epoch >= bestEpoch) {
+            bestEpoch = ke.epoch
+            bestKey = k
+        }
     }
     return bestEpoch to bestKey
 }
@@ -147,8 +176,7 @@ internal suspend fun OfficeViewModel.rotateKey(docId: String) {
     val newKey = OfficeSync.newDocumentKey()
     val wraps = HashMap<String, String>()
     for (m in members) {
-        val bundle = memberKey(m.id) ?: continue
-        wraps[m.id] = Base64.encode(OfficeSync.seal(bundle, newKey))
+        memberKey(m.id)?.let { wraps[m.id] = Base64.encode(OfficeSync.seal(it, newKey)) }
     }
     // Always include ourselves so the owner keeps access even if not yet in the roster fetch.
     wraps[OfficeSync.deviceId] = Base64.encode(OfficeSync.seal(OfficeSync.publicBundle, newKey))
@@ -163,31 +191,43 @@ internal suspend fun OfficeViewModel.rotateKey(docId: String) {
     if (crdt != null) {
         val opsJson = crdt.toStateNodesJson()
         val opSig = Base64.encode(OfficeSync.sign(opsJson.encodeToByteArray()))
-        OfficeSync.appendDocActions(docId, newKey, listOf(syncJson.encodeToString(SignedOp(OfficeSync.deviceId, opSig, opsJson))))
+        OfficeSync.appendDocActions(
+            docId,
+            newKey,
+            listOf(syncJson.encodeToString(SignedOp(OfficeSync.deviceId, opSig, opsJson))))
     }
     // Restart the live loop on the new key.
     startLive(docId, newKey)
 }
 
-internal fun OfficeViewModel.titleSigningBytes(docId: String, title: String): ByteArray = "$docId|title|$title".encodeToByteArray()
+internal fun OfficeViewModel.titleSigningBytes(
+    docId: String,
+    title: String): ByteArray = "$docId|title|$title".encodeToByteArray()
 
 internal fun OfficeViewModel.ownerSigningBytes(docId: String, newOwnerId: String, newOwnerKeyB64: String): ByteArray =
     "$docId|owner|$newOwnerId|$newOwnerKeyB64".encodeToByteArray()
 
 /** Follows the signed ownership-transfer chain from [baseOwnerKeyB64] to the current owner key. */
 internal suspend fun OfficeViewModel.fetchOwnerKey(docId: String, baseOwnerKeyB64: String): ByteArray? {
-    var ownerKey = baseOwnerKeyB64.takeIf { it.isNotBlank() }?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
+    var ownerKey =
+        baseOwnerKeyB64.takeIf { it.isNotBlank() }?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
     val transfers = runCatching { OfficeSync.pullRaw("owner:$docId", 0) }.getOrDefault(emptyList())
-        .mapNotNull { runCatching { syncJson.decodeFromString<OwnerTransfer>(Base64.decode(it).decodeToString()) }.getOrNull() }
+        .mapNotNull { decodeBlob<OwnerTransfer>(it) }
     val used = HashSet<Int>()
     var advanced = true
     while (advanced) {
         advanced = false
         for ((idx, t) in transfers.withIndex()) {
-            if (idx in used) continue
-            if (OfficeSync.verify(ownerKey, ownerSigningBytes(docId, t.newOwnerId, t.newOwnerKey), Base64.decode(t.sig))) {
-                ownerKey = runCatching { Base64.decode(t.newOwnerKey) }.getOrNull() ?: continue
-                used.add(idx); advanced = true
+            if (idx !in used && OfficeSync.verify(
+                ownerKey,
+                ownerSigningBytes(docId, t.newOwnerId, t.newOwnerKey),
+                Base64.decode(t.sig))) {
+                val decoded = runCatching { Base64.decode(t.newOwnerKey) }.getOrNull()
+                if (decoded != null) {
+                    ownerKey = decoded
+                    used.add(idx)
+                    advanced = true
+                }
             }
         }
     }
@@ -209,7 +249,8 @@ fun OfficeViewModel.transferOwnership(memberId: String, onResult: (Boolean) -> U
                 OfficeMember(OfficeSync.deviceId, myName(), OfficeRoles.EDITOR),
             ))
             val sig = Base64.encode(OfficeSync.sign(ownerSigningBytes(docId, memberId, newKeyB64)))
-            OfficeSync.appendRaw("owner:$docId", listOf(Base64.encode(syncJson.encodeToString(OwnerTransfer(memberId, newKeyB64, sig)).encodeToByteArray())))
+            val transfer = syncJson.encodeToString(OwnerTransfer(memberId, newKeyB64, sig))
+            OfficeSync.appendRaw("owner:$docId", listOf(Base64.encode(transfer.encodeToByteArray())))
             // We are no longer the owner.
             currentOwnerKey = newBundle
             currentRole = OfficeRoles.EDITOR
@@ -238,12 +279,14 @@ internal suspend fun OfficeViewModel.pollTitle(docId: String, key: ByteArray) {
     val cur = (state.value as? OfficeViewModel.ViewState.Loaded)?.document ?: return
     if (cur.title == t) return
     withContext(Dispatchers.Main) {
-        (state.value as? OfficeViewModel.ViewState.Loaded)?.document?.let { if (it.title != t) _state.value = ViewState.Loaded(withTitle(it, t)) }
+        setLoadedTitle(t)
     }
     val ds = DataStoreUtils.getInstance(getApplication())
     indexMutex.withLock {
         val index = loadIndex(ds).associateBy { it.docId }.toMutableMap()
-        index[docId]?.let { if (it.title != t) { index[docId] = it.copy(title = t); saveIndex(ds, index.values.toList()) } }
+        index[docId]?.let { if (it.title != t) { index[docId] = it.copy(title = t); saveIndex(
+            ds,
+            index.values.toList()) } }
     }
 }
 
@@ -251,7 +294,8 @@ internal suspend fun OfficeViewModel.pollTitle(docId: String, key: ByteArray) {
 fun OfficeViewModel.renameDocument(newName: String, onResult: (Boolean) -> Unit = {}) {
     val docId = currentDocId; val key = currentDocKey
     val name = newName.trim()
-    if (docId == null || key == null || currentRole != OfficeRoles.OWNER || name.isBlank()) { onResult(false); return }
+    if (docId == null || key == null) { onResult(false); return }
+    if (currentRole != OfficeRoles.OWNER || name.isBlank()) { onResult(false); return }
     viewModelScope.launch(Dispatchers.IO) {
         val ok = runCatching {
             OfficeSync.init(getApplication())
@@ -263,7 +307,7 @@ fun OfficeViewModel.renameDocument(newName: String, onResult: (Boolean) -> Unit 
                 index[docId]?.let { index[docId] = it.copy(title = name); saveIndex(ds, index.values.toList()) }
             }
             withContext(Dispatchers.Main) {
-                (state.value as? OfficeViewModel.ViewState.Loaded)?.document?.let { _state.value = ViewState.Loaded(withTitle(it, name)) }
+                setLoadedTitle(name)
             }
             true
         }.getOrDefault(false)

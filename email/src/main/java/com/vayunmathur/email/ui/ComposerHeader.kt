@@ -12,7 +12,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.email.R
 import com.vayunmathur.email.data.EmailAccount
-import com.vayunmathur.library.ui.*
+import com.vayunmathur.library.ui.AlertDialog
+import com.vayunmathur.library.ui.IconAdd
+import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconChevronRight
+import com.vayunmathur.library.ui.ListItem
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.OutlinedTextField
+import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
 
 /**
  * Sender picker row plus the To/Cc/Bcc recipient fields, extracted from

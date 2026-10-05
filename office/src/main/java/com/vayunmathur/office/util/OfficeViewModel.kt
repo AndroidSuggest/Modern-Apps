@@ -8,16 +8,17 @@ import android.net.Uri
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.library.ui.odf.OdfContentBlock
+import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.library.ui.odf.OdfParagraph
+import com.vayunmathur.library.ui.odf.remapCaret
+import com.vayunmathur.library.ui.odf.renumberLists
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.office.R
 import kotlin.io.encoding.Base64
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import com.vayunmathur.office.odf.*
-import com.vayunmathur.library.ui.odf.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,13 +26,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import com.vayunmathur.office.R
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 /** Local metadata for a document in the online folder (title/key stay client-side; never sent in the clear). */
+internal const val MAX_UNDO = 30
+internal const val MAX_RECENT = 20
+
 @Serializable
 data class OfficeDocMeta(
     val docId: String,
@@ -121,47 +127,57 @@ data class OwnerTransfer(val newOwnerId: String, val newOwnerKey: String, val si
 data class SignedOp(val author: String, val sig: String, val ops: String)
 
 class OfficeViewModel(application: Application) : AndroidViewModel(application) {
-    internal val _state = MutableStateFlow<ViewState>(ViewState.Empty)
-    val state: StateFlow<ViewState> = _state
+    internal val stateMutable = MutableStateFlow<ViewState>(ViewState.Empty)
+    val state: StateFlow<ViewState> = stateMutable
 
-    internal val _isEditMode = MutableStateFlow(false)
-    val isEditMode: StateFlow<Boolean> = _isEditMode
+    internal val isEditModeMutable = MutableStateFlow(false)
+    val isEditMode: StateFlow<Boolean> = isEditModeMutable
 
-    internal val _hasUnsavedChanges = MutableStateFlow(false)
-    val hasUnsavedChanges: StateFlow<Boolean> = _hasUnsavedChanges
+    internal val hasUnsavedChangesMutable = MutableStateFlow(false)
+    val hasUnsavedChanges: StateFlow<Boolean> = hasUnsavedChangesMutable
 
-    internal val _isSaving = MutableStateFlow(false)
-    val isSaving: StateFlow<Boolean> = _isSaving
+    internal val isSavingMutable = MutableStateFlow(false)
+    val isSaving: StateFlow<Boolean> = isSavingMutable
 
-    internal val _canUndo = MutableStateFlow(false)
-    val canUndo: StateFlow<Boolean> = _canUndo
+    internal val canUndoMutable = MutableStateFlow(false)
+    val canUndo: StateFlow<Boolean> = canUndoMutable
 
-    internal val _canRedo = MutableStateFlow(false)
-    val canRedo: StateFlow<Boolean> = _canRedo
+    internal val canRedoMutable = MutableStateFlow(false)
+    val canRedo: StateFlow<Boolean> = canRedoMutable
 
-    internal val _nightMode = MutableStateFlow(false)
-    val nightMode: StateFlow<Boolean> = _nightMode
+    internal val nightModeMutable = MutableStateFlow(false)
+    val nightMode: StateFlow<Boolean> = nightModeMutable
 
     enum class DocumentThemeMode {
         UNCHANGED,
-        FOLLOW_SYSTEM
+        FOLLOW_SYSTEM;
+
+        fun toggled(): DocumentThemeMode = if (this == UNCHANGED) FOLLOW_SYSTEM else UNCHANGED
+
+        companion object {
+            fun parse(name: String?): DocumentThemeMode = try {
+                valueOf(name ?: UNCHANGED.name)
+            } catch (_: Exception) {
+                UNCHANGED
+            }
+        }
     }
 
     // Persisted document theme preference: view-only, does not mutate file (#479).
     // UNCHANGED = always show as authored; FOLLOW_SYSTEM = follow system dark theme via view inversion.
-    internal val _documentThemeMode = MutableStateFlow(DocumentThemeMode.UNCHANGED)
-    val documentThemeMode: StateFlow<DocumentThemeMode> = _documentThemeMode
+    internal val documentThemeModeMutable = MutableStateFlow(DocumentThemeMode.UNCHANGED)
+    val documentThemeMode: StateFlow<DocumentThemeMode> = documentThemeModeMutable
 
     // Legacy in-memory toggle (kept for View menu compat). Derived from persisted theme when needed.
     // Google-Docs-style dark mode: inverts the displayed colors of the document so the
     // paper appears dark, without modifying the document itself. View-only inversion.
-    internal val _documentDarkMode = MutableStateFlow(false)
-    val documentDarkMode: StateFlow<Boolean> = _documentDarkMode
+    internal val documentDarkModeMutable = MutableStateFlow(false)
+    val documentDarkMode: StateFlow<Boolean> = documentDarkModeMutable
 
     // Incremented whenever the document changes shape via undo/redo so the UI can
     // reset/clamp hoisted selection state (active cell/slide/element). (A4)
-    internal val _selectionInvalidation = MutableStateFlow(0)
-    val selectionInvalidation: StateFlow<Int> = _selectionInvalidation
+    internal val selectionInvalidationMutable = MutableStateFlow(0)
+    val selectionInvalidation: StateFlow<Int> = selectionInvalidationMutable
 
     /** App-private read cache of the open document; used as the source package when re-writing. */
     internal var documentUri: Uri? = null
@@ -170,25 +186,31 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     internal var originalUri: Uri? = null
 
     /** Current open document (null unless [state] holds [ViewState.Loaded]). */
-    val document: StateFlow<OdfDocument?> = _state
+    val document: StateFlow<OdfDocument?> = stateMutable
         .map { (it as? ViewState.Loaded)?.document }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, (_state.value as? ViewState.Loaded)?.document)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, (stateMutable.value as? ViewState.Loaded)?.document)
 
     // --- Auto-save ---
     internal var autoSaveJob: Job? = null
-    internal var _autoSaveEnabled = MutableStateFlow(false)
-    val autoSaveEnabled: StateFlow<Boolean> = _autoSaveEnabled
+    internal var autoSaveEnabledMutable = MutableStateFlow(false)
+    val autoSaveEnabled: StateFlow<Boolean> = autoSaveEnabledMutable
     internal var autoSaveIntervalMs: Long = 60_000L // default 1 minute
 
-    fun setAutoSave(enabled: Boolean, intervalSeconds: Int = 60) {
-        autoSaveIntervalMs = intervalSeconds * 1000L
-        _autoSaveEnabled.value = enabled
+    private companion object {
+        private const val MS_PER_SECOND = 1000L
+        private const val DEFAULT_AUTO_SAVE_SECONDS = 60
+        private const val DEFAULT_FONT_SIZE = 16f
+    }
+
+    fun setAutoSave(enabled: Boolean, intervalSeconds: Int = DEFAULT_AUTO_SAVE_SECONDS) {
+        autoSaveIntervalMs = intervalSeconds * MS_PER_SECOND
+        autoSaveEnabledMutable.value = enabled
         autoSaveJob?.cancel()
         if (enabled) {
             autoSaveJob = viewModelScope.launch {
                 while (true) {
                     delay(autoSaveIntervalMs)
-                    if (_hasUnsavedChanges.value && !needsSaveAs()) save()
+                    if (hasUnsavedChangesMutable.value && !needsSaveAs()) save()
                 }
             }
         }
@@ -198,23 +220,30 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     fun loadSettings(context: Context) {
         val prefs = context.getSharedPreferences("office_settings", Context.MODE_PRIVATE)
         val autoSave = prefs.getBoolean("auto_save", false)
-        val interval = prefs.getInt("auto_save_interval", 60)
+        val interval = prefs.getInt("auto_save_interval", DEFAULT_AUTO_SAVE_SECONDS)
         setAutoSave(autoSave, interval)
         val themeName = prefs.getString("document_theme_mode", DocumentThemeMode.UNCHANGED.name)
-        val mode = try { DocumentThemeMode.valueOf(themeName ?: DocumentThemeMode.UNCHANGED.name) } catch (_: Exception) { DocumentThemeMode.UNCHANGED }
-        val legacyDark = if (prefs.contains("document_dark_mode")) prefs.getBoolean("document_dark_mode", false) else null
+        val mode = DocumentThemeMode.parse(themeName)
+        val legacyDark = if (prefs.contains("document_dark_mode")) prefs.getBoolean(
+            "document_dark_mode",
+            false) else null
         val resolved = if (legacyDark != null && !prefs.contains("document_theme_mode")) {
             if (legacyDark) DocumentThemeMode.FOLLOW_SYSTEM else DocumentThemeMode.UNCHANGED
         } else mode
-        _documentThemeMode.value = resolved
-        _documentDarkMode.value = resolved == DocumentThemeMode.FOLLOW_SYSTEM
+        documentThemeModeMutable.value = resolved
+        documentDarkModeMutable.value = resolved == DocumentThemeMode.FOLLOW_SYSTEM
     }
 
     fun saveSettings(context: Context, autoSave: Boolean, autoSaveInterval: Int, defaultFontSize: Float) {
-        saveSettings(context, autoSave, autoSaveInterval, defaultFontSize, _documentThemeMode.value)
+        saveSettings(context, autoSave, autoSaveInterval, defaultFontSize, documentThemeModeMutable.value)
     }
 
-    fun saveSettings(context: Context, autoSave: Boolean, autoSaveInterval: Int, defaultFontSize: Float, documentThemeMode: DocumentThemeMode) {
+    fun saveSettings(
+        context: Context,
+        autoSave: Boolean,
+        autoSaveInterval: Int,
+        defaultFontSize: Float,
+        documentThemeMode: DocumentThemeMode) {
         context.getSharedPreferences("office_settings", Context.MODE_PRIVATE).edit {
             putBoolean("auto_save", autoSave)
             putInt("auto_save_interval", autoSaveInterval)
@@ -222,30 +251,32 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
             putString("document_theme_mode", documentThemeMode.name)
         }
         setAutoSave(autoSave, autoSaveInterval)
-        _documentThemeMode.value = documentThemeMode
-        _documentDarkMode.value = documentThemeMode == DocumentThemeMode.FOLLOW_SYSTEM
+        documentThemeModeMutable.value = documentThemeMode
+        documentDarkModeMutable.value = documentThemeMode == DocumentThemeMode.FOLLOW_SYSTEM
     }
 
     fun getDocumentThemeMode(context: Context): DocumentThemeMode {
         val prefs = context.getSharedPreferences("office_settings", Context.MODE_PRIVATE)
         val name = prefs.getString("document_theme_mode", DocumentThemeMode.UNCHANGED.name)
-        return try { DocumentThemeMode.valueOf(name ?: DocumentThemeMode.UNCHANGED.name) } catch (_: Exception) { DocumentThemeMode.UNCHANGED }
+        return DocumentThemeMode.parse(name)
     }
 
     fun setDocumentThemeMode(context: Context, mode: DocumentThemeMode) {
-        _documentThemeMode.value = mode
-        _documentDarkMode.value = mode == DocumentThemeMode.FOLLOW_SYSTEM
-        context.getSharedPreferences("office_settings", Context.MODE_PRIVATE).edit { putString("document_theme_mode", mode.name) }
+        documentThemeModeMutable.value = mode
+        documentDarkModeMutable.value = mode == DocumentThemeMode.FOLLOW_SYSTEM
+        context.getSharedPreferences(
+            "office_settings",
+            Context.MODE_PRIVATE).edit { putString("document_theme_mode", mode.name) }
     }
 
     fun getDefaultFontSize(context: Context): Float {
         return context.getSharedPreferences("office_settings", Context.MODE_PRIVATE)
-            .getFloat("default_font_size", 16f)
+            .getFloat("default_font_size", DEFAULT_FONT_SIZE)
     }
 
     fun getAutoSaveInterval(context: Context): Int {
         return context.getSharedPreferences("office_settings", Context.MODE_PRIVATE)
-            .getInt("auto_save_interval", 60)
+            .getInt("auto_save_interval", DEFAULT_AUTO_SAVE_SECONDS)
     }
 
     fun getAutoSaveEnabled(context: Context): Boolean {
@@ -261,49 +292,42 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         undoStack.addLast(doc)
         if (undoStack.size > MAX_UNDO) undoStack.removeFirst()
         redoStack.clear()
-        _canUndo.value = undoStack.isNotEmpty()
-        _canRedo.value = false
+        canUndoMutable.value = undoStack.isNotEmpty()
+        canRedoMutable.value = false
     }
 
     fun undo() {
-        val current = (_state.value as? ViewState.Loaded)?.document ?: return
+        val current = (stateMutable.value as? ViewState.Loaded)?.document ?: return
         val previous = undoStack.removeLastOrNull() ?: return
         redoStack.addLast(current)
-        _state.value = ViewState.Loaded(previous)
-        _canUndo.value = undoStack.isNotEmpty()
-        _canRedo.value = redoStack.isNotEmpty()
-        _hasUnsavedChanges.value = true
-        _selectionInvalidation.value++
+        stateMutable.value = ViewState.Loaded(previous)
+        canUndoMutable.value = undoStack.isNotEmpty()
+        canRedoMutable.value = redoStack.isNotEmpty()
+        hasUnsavedChangesMutable.value = true
+        selectionInvalidationMutable.value++
     }
 
     fun redo() {
-        val current = (_state.value as? ViewState.Loaded)?.document ?: return
+        val current = (stateMutable.value as? ViewState.Loaded)?.document ?: return
         val next = redoStack.removeLastOrNull() ?: return
         undoStack.addLast(current)
-        _state.value = ViewState.Loaded(next)
-        _canUndo.value = undoStack.isNotEmpty()
-        _canRedo.value = redoStack.isNotEmpty()
-        _hasUnsavedChanges.value = true
-        _selectionInvalidation.value++
-    }
-
-    /** Applies a paragraph-level mutation to every paragraph touched by the run selection. */
-
-    fun mutateRunParagraphs(start: Int, endInclusive: Int, gStart: Int, gEnd: Int, transform: (OdfParagraph) -> OdfParagraph) {
-        val doc = curText() ?: return
-        updateDocument(doc.mutateRunParagraphs(start, endInclusive, gStart, gEnd, transform) ?: return)
+        stateMutable.value = ViewState.Loaded(next)
+        canUndoMutable.value = undoStack.isNotEmpty()
+        canRedoMutable.value = redoStack.isNotEmpty()
+        hasUnsavedChangesMutable.value = true
+        selectionInvalidationMutable.value++
     }
 
     internal fun updateDocument(newDoc: OdfDocument) {
-        val current = (_state.value as? ViewState.Loaded)?.document ?: return
+        val current = (stateMutable.value as? ViewState.Loaded)?.document ?: return
         pushUndo(current)
         // Keep ordered-list numbering live after every text edit (matches the markdown editor).
         val stored = if (newDoc is OdfDocument.TextDocument) renumberLists(newDoc) else newDoc
         // Shift remote collaborators' carets by this text change so they stay at the right spot until
         // the peer sends fresh presence (otherwise inserting/deleting before their caret misplaces it).
         remapRemoteCarets(current, stored)
-        _state.value = ViewState.Loaded(stored)
-        _hasUnsavedChanges.value = true
+        stateMutable.value = ViewState.Loaded(stored)
+        hasUnsavedChangesMutable.value = true
         // Bump the local-edit version for genuine user edits (not remote merges) so a background
         // sync/merge won't overwrite a keystroke that landed while it was running.
         if (!applyingRemote) editVersion++
@@ -317,12 +341,12 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
             ?.joinToString("\n")
 
     internal fun remapRemoteCarets(old: OdfDocument, new: OdfDocument) {
-        val presence = _remotePresence.value
+        val presence = remotePresenceMutable.value
         if (presence.none { it.caret != null }) return
         val oldText = docPlainText(old) ?: return
         val newText = docPlainText(new) ?: return
         if (oldText == newText) return
-        _remotePresence.value = presence.map { p ->
+        remotePresenceMutable.value = presence.map { p ->
             if (p.caret != null) p.copy(caret = remapCaret(oldText, newText, p.caret)) else p
         }
     }
@@ -331,35 +355,36 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
 
 
     // --- Night mode ---
-    fun toggleNightMode() { _nightMode.value = !_nightMode.value }
+    fun toggleNightMode() { nightModeMutable.value = !nightModeMutable.value }
 
     fun toggleDocumentDarkMode() {
-        val next = if (_documentThemeMode.value == DocumentThemeMode.UNCHANGED) DocumentThemeMode.FOLLOW_SYSTEM else DocumentThemeMode.UNCHANGED
-        _documentThemeMode.value = next
-        _documentDarkMode.value = next == DocumentThemeMode.FOLLOW_SYSTEM
+        val next = documentThemeModeMutable.value.toggled()
+        documentThemeModeMutable.value = next
+        documentDarkModeMutable.value = next == DocumentThemeMode.FOLLOW_SYSTEM
         try {
             val app = getApplication<Application>()
-            app.getSharedPreferences("office_settings", Context.MODE_PRIVATE).edit { putString("document_theme_mode", next.name) }
+            app.getSharedPreferences(
+                "office_settings",
+                Context.MODE_PRIVATE).edit { putString("document_theme_mode", next.name) }
         } catch (_: Exception) {}
     }
     fun toggleDocumentDarkModePersisted(context: Context) {
-        val next = if (_documentThemeMode.value == DocumentThemeMode.UNCHANGED) DocumentThemeMode.FOLLOW_SYSTEM else DocumentThemeMode.UNCHANGED
-        setDocumentThemeMode(context, next)
+        setDocumentThemeMode(context, documentThemeModeMutable.value.toggled())
     }
 
     // --- Load / Clear live in OfficeViewModelDocuments.kt ---
 
-    fun toggleEditMode() { _isEditMode.value = !_isEditMode.value }
+    fun toggleEditMode() { isEditModeMutable.value = !isEditModeMutable.value }
 
     // --- End-to-end-encrypted cloud sync & sharing (via OfficeSync + :library:e2ee-p2p) ---
 
-    internal val _onlineDocs = MutableStateFlow<List<OfficeDocMeta>>(emptyList())
+    internal val onlineDocsMutable = MutableStateFlow<List<OfficeDocMeta>>(emptyList())
     /** Documents in the "online" folder: created/shared by you or shared with you. */
-    val onlineDocs: StateFlow<List<OfficeDocMeta>> = _onlineDocs.asStateFlow()
+    val onlineDocs: StateFlow<List<OfficeDocMeta>> = onlineDocsMutable.asStateFlow()
 
-    internal val _pendingRequests = MutableStateFlow<List<OfficeSync.JoinRequest>>(emptyList())
+    internal val pendingRequestsMutable = MutableStateFlow<List<OfficeSync.JoinRequest>>(emptyList())
     /** Inbound join requests (from tapped share links) for documents this device owns. */
-    val pendingRequests: StateFlow<List<OfficeSync.JoinRequest>> = _pendingRequests.asStateFlow()
+    val pendingRequests: StateFlow<List<OfficeSync.JoinRequest>> = pendingRequestsMutable.asStateFlow()
     internal val requestsMutex = Mutex()
 
     /** The online doc id/key of the currently open document, if it lives online. */
@@ -377,30 +402,30 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     internal val indexMutex = Mutex()
     internal val syncMutex = Mutex()
 
-    internal val _remotePresence = MutableStateFlow<List<OfficePresence>>(emptyList())
+    internal val remotePresenceMutable = MutableStateFlow<List<OfficePresence>>(emptyList())
     /** Other people currently in the open document (name + typing), for the presence indicator. */
-    val remotePresence: StateFlow<List<OfficePresence>> = _remotePresence.asStateFlow()
+    val remotePresence: StateFlow<List<OfficePresence>> = remotePresenceMutable.asStateFlow()
 
-    internal val _onlineEnabled = MutableStateFlow(false)
+    internal val onlineEnabledMutable = MutableStateFlow(false)
     /**
      * Whether online sharing has been turned on. This is derived purely from whether this device's
      * encryption keys + device id already exist: they are created only when the user opts in (or, for
      * users from before the opt-in button existed, they already exist — so those users stay enabled).
      * Until enabled, no key generation, device id, or server registration happens; the app is offline.
      */
-    val onlineEnabled: StateFlow<Boolean> = _onlineEnabled.asStateFlow()
+    val onlineEnabled: StateFlow<Boolean> = onlineEnabledMutable.asStateFlow()
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            _onlineEnabled.value = hasOnlineIdentity()
+            onlineEnabledMutable.value = hasOnlineIdentity()
         }
     }
 
     // Identity + presence + live channel live in OfficeViewModelSyncA.kt.
 
-    internal val _isOnline = MutableStateFlow(false)
+    internal val isOnlineMutable = MutableStateFlow(false)
     /** True when the open document is an online (cloud-synced) document — hides Save, changes back nav. */
-    val isOnline: StateFlow<Boolean> = _isOnline.asStateFlow()
+    val isOnline: StateFlow<Boolean> = isOnlineMutable.asStateFlow()
     internal var applyingRemote = false
     @Volatile internal var editVersion = 0
     internal var livePushJob: Job? = null
@@ -425,9 +450,4 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // Split members live as extensions in OfficeViewModel* files (same package).
-
-    companion object {
-        const val MAX_UNDO = 30
-        const val MAX_RECENT = 20
-    }
 }

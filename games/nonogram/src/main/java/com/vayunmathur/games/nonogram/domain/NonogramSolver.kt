@@ -61,15 +61,31 @@ object NonogramSolver {
     ): Boolean? {
         val n = indices.size
         val known = Array(n) { grid[indices[it]] }
+        val minLengths = suffixMinLengths(clues)
 
-        // Space each clue suffix needs, including one gap between neighbours, so a placement loop
-        // can stop early instead of recursing into arrangements that cannot fit.
+        val (andMask, orMask) = collectArrangements(known, clues, minLengths) ?: return null
+        return applyDeduced(grid, indices, andMask, orMask)
+    }
+
+    /**
+     * Space each clue suffix needs, including one gap between neighbours, so a placement loop
+     * can stop early instead of recursing into arrangements that cannot fit.
+     */
+    private fun suffixMinLengths(clues: List<Int>): IntArray {
         val minLengths = IntArray(clues.size + 1)
         for (i in clues.indices.reversed()) {
             minLengths[i] = clues[i] + if (i + 1 < clues.size) 1 + minLengths[i + 1] else 0
         }
+        return minLengths
+    }
 
-        // Bits set in every arrangement must be filled; bits set in none must be empty.
+    /** All legal arrangements of [clues] over [known], as (andMask, orMask) over placements. */
+    private fun collectArrangements(
+        known: Array<CellState>,
+        clues: List<Int>,
+        minLengths: IntArray,
+    ): Pair<Int, Int>? {
+        val n = known.size
         var andMask = -1
         var orMask = 0
         var found = false
@@ -83,30 +99,52 @@ object NonogramSolver {
                 orMask = orMask or mask
                 return
             }
-
-            val len = clues[clueIndex]
-            val lastStart = n - minLengths[clueIndex]
-            var start = from
-            while (start <= lastStart) {
-                val fits = (start until start + len).none { known[it] == CellState.EMPTY }
-                if (fits) {
-                    val after = start + len
-                    // The cell just past a block must be blank, or the block would be longer.
-                    if (after >= n || known[after] != CellState.FILLED) {
-                        place(clueIndex + 1, after + 1, mask or (((1 shl len) - 1) shl start))
-                    }
+            eachStart(known, clues, minLengths, clueIndex, from) { start ->
+                val len = clues[clueIndex]
+                val after = start + len
+                // The cell just past a block must be blank, or the block would be longer.
+                if (after >= n || known[after] != CellState.FILLED) {
+                    place(clueIndex + 1, after + 1, mask or (((1 shl len) - 1) shl start))
                 }
-                // Sliding further would leave this cell in a gap, which a filled cell cannot be.
-                if (known[start] == CellState.FILLED) break
-                start++
             }
         }
         place(0, 0, 0)
 
-        if (!found) return null
+        return if (found) andMask to orMask else null
+    }
 
+    /** Each start position for clue [clueIndex] that fits blanks and respects known fills. */
+    private inline fun eachStart(
+        known: Array<CellState>,
+        clues: List<Int>,
+        minLengths: IntArray,
+        clueIndex: Int,
+        from: Int,
+        place: (Int) -> Unit,
+    ) {
+        val n = known.size
+        val len = clues[clueIndex]
+        val lastStart = n - minLengths[clueIndex]
+        var start = from
+        while (start <= lastStart) {
+            val fits = (start until start + len).none { known[it] == CellState.EMPTY }
+            if (fits) place(start)
+            // Sliding further would leave this cell in a gap, which a filled cell cannot be.
+            if (known[start] == CellState.FILLED) break
+            start++
+        }
+    }
+
+    /** Writes cells every arrangement agrees on into [grid]; true when anything new was learned. */
+    private fun applyDeduced(
+        grid: MutableList<CellState>,
+        indices: IntArray,
+        andMask: Int,
+        orMask: Int,
+    ): Boolean {
+        // Bits set in every arrangement must be filled; bits set in none must be empty.
         var changed = false
-        for (i in 0 until n) {
+        for (i in indices.indices) {
             val bit = 1 shl i
             val deduced = when {
                 andMask and bit != 0 -> CellState.FILLED

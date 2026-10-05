@@ -14,6 +14,8 @@ import java.time.ZoneId
 
 private const val TAG = "ParentalControlsBedtime"
 
+private const val MINUTES_PER_HOUR = 60
+
 /**
  * Arms the next bedtime boundary.
  *
@@ -111,12 +113,12 @@ class BedtimeScheduler(private val context: Context) {
 
 /** Whether the window is open at [at], in the device's current timezone. */
 fun BedtimeSchedule.activeAt(at: LocalDateTime): Boolean =
-    contains(at.dayOfWeek.value - 1, at.hour * 60 + at.minute)
+    contains(at.dayOfWeek.value - 1, at.hour * MINUTES_PER_HOUR + at.minute)
 
 /** Whether the window is open at [at], in the device's current timezone. */
 fun DowntimeSchedule.activeAt(at: LocalDateTime): Boolean =
-    contains(at.dayOfWeek.value - 1, at.hour * 60 + at.minute)
+    contains(at.dayOfWeek.value - 1, at.hour * MINUTES_PER_HOUR + at.minute)
 
 /** Whether the window is open at [at], in the device's current timezone. */
 fun SchoolTimeSchedule.activeAt(at: LocalDateTime): Boolean =
-    contains(at.dayOfWeek.value - 1, at.hour * 60 + at.minute)
+    contains(at.dayOfWeek.value - 1, at.hour * MINUTES_PER_HOUR + at.minute)

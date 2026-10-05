@@ -21,6 +21,9 @@ const val OEM_UNLOCK_ACK_SECONDS = 10
  */
 private const val APPLY_SIM_LANGUAGE_ON_ENTRY = true
 
+/** Interval between acknowledgement-countdown ticks. */
+private const val ACK_TICK_MS = 1_000L
+
 /** Everything the wizard's screens render from. */
 data class SetupUiState(
     /** The device owner, as opposed to a secondary user setting up a profile. */
@@ -140,7 +143,7 @@ class SetupViewModel(app: Application) : AndroidViewModel(app) {
         ackTimerStarted = true
         viewModelScope.launch {
             while (state.bootloaderAckSeconds > 0) {
-                delay(1_000)
+                delay(ACK_TICK_MS)
                 state = state.copy(bootloaderAckSeconds = state.bootloaderAckSeconds - 1)
             }
         }

@@ -35,9 +35,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.vayunmathur.games.unblockjam.data.Block
 import com.vayunmathur.games.unblockjam.data.DailyLevelGenerator
 import com.vayunmathur.games.unblockjam.data.LevelData
 import com.vayunmathur.games.unblockjam.data.LevelPack
@@ -413,9 +415,6 @@ fun GamePage(backStack: NavBackStack<Route>, viewModel: UnblockJamViewModel, pac
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameScreen(state: GameUiState, actions: GameActions, onBack: () -> Unit) {
-    val currentLevelData = state.levelData
-    val isLevelWon = state.isLevelWon
-
     AppScaffold(
         title = {},
         onNavigateBack = onBack,
@@ -425,53 +424,6 @@ fun GameScreen(state: GameUiState, actions: GameActions, onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
         ) {
-            val infoBoxes = @Composable {
-                LevelPickerBox(
-                    levelIndex = state.levelIndex,
-                    maxLevelIndex = state.maxLevelIndex,
-                    isCompleted = state.isCompleted,
-                    onLevelChange = actions::onLevelChange,
-                    // unblockjam calls its levels puzzles.
-                    title = stringResource(R.string.level),
-                )
-                MovesBox(
-                    moves = state.moves,
-                    bestScore = state.bestScore,
-                    optimalMoves = currentLevelData.optimalMoves
-                )
-            }
-            val actionButtons = @Composable {
-                // While playing show Undo/Restart; once solved they're replaced by the
-                // "next level" button in the same row.
-                if (!isLevelWon) {
-                    Button(
-                        onClick = { actions.onUndo() },
-                        enabled = state.canUndo
-                    ) {
-                        Text(stringResource(UiR.string.undo))
-                    }
-                    Button(
-                        onClick = { actions.onRestart() },
-                        enabled = state.canUndo
-                    ) {
-                        Text(stringResource(R.string.restart))
-                    }
-                } else if (state.levelIndex < state.maxLevelIndex) {
-                    Button(onClick = { actions.onLevelChange(state.levelIndex + 1) }) {
-                        Text(stringResource(R.string.next_level))
-                    }
-                }
-            }
-            val board = @Composable { boardModifier: Modifier ->
-                GameBoard(
-                    levelData = currentLevelData,
-                    onLevelChanged = actions::onBlockMoved,
-                    onLevelWon = actions::onLevelWon,
-                    isLevelWon = isLevelWon,
-                    modifier = boardModifier
-                )
-            }
-
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
@@ -479,55 +431,118 @@ fun GameScreen(state: GameUiState, actions: GameActions, onBack: () -> Unit) {
                     .padding(16.dp)
             ) {
                 if (maxWidth > maxHeight) {
-                    Row(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            board(Modifier.fillMaxSize())
-                        }
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            infoBoxes()
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                actionButtons()
-                            }
-                        }
-                    }
+                    LandscapeGameLayout(state, actions)
                 } else {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceAround,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            infoBoxes()
-                        }
-                        Box(
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            board(Modifier.fillMaxSize())
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            actionButtons()
-                        }
-                    }
+                    PortraitGameLayout(state, actions)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun GameInfoBoxes(state: GameUiState, actions: GameActions) {
+    LevelPickerBox(
+        levelIndex = state.levelIndex,
+        maxLevelIndex = state.maxLevelIndex,
+        isCompleted = state.isCompleted,
+        onLevelChange = actions::onLevelChange,
+        // unblockjam calls its levels puzzles.
+        title = stringResource(R.string.level),
+    )
+    MovesBox(
+        moves = state.moves,
+        bestScore = state.bestScore,
+        optimalMoves = state.levelData.optimalMoves
+    )
+}
+
+@Composable
+private fun GameActionButtons(state: GameUiState, actions: GameActions) {
+    // While playing show Undo/Restart; once solved they're replaced by the
+    // "next level" button in the same row.
+    if (!state.isLevelWon) {
+        Button(
+            onClick = { actions.onUndo() },
+            enabled = state.canUndo
+        ) {
+            Text(stringResource(UiR.string.undo))
+        }
+        Button(
+            onClick = { actions.onRestart() },
+            enabled = state.canUndo
+        ) {
+            Text(stringResource(R.string.restart))
+        }
+    } else if (state.levelIndex < state.maxLevelIndex) {
+        Button(onClick = { actions.onLevelChange(state.levelIndex + 1) }) {
+            Text(stringResource(R.string.next_level))
+        }
+    }
+}
+
+@Composable
+private fun LandscapeGameLayout(state: GameUiState, actions: GameActions) {
+    Row(
+        modifier = Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            contentAlignment = Alignment.Center
+        ) {
+            GameBoard(
+                levelData = state.levelData,
+                onLevelChanged = actions::onBlockMoved,
+                onLevelWon = actions::onLevelWon,
+                isLevelWon = state.isLevelWon,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            GameInfoBoxes(state, actions)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GameActionButtons(state, actions)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PortraitGameLayout(state: GameUiState, actions: GameActions) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            GameInfoBoxes(state, actions)
+        }
+        Box(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            GameBoard(
+                levelData = state.levelData,
+                onLevelChanged = actions::onBlockMoved,
+                onLevelWon = actions::onLevelWon,
+                isLevelWon = state.isLevelWon,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            GameActionButtons(state, actions)
         }
     }
 }
@@ -552,79 +567,128 @@ fun GameBoard(
     val exitWidthMult = 1 + levelData.blocks[0].dimension.width
 
     Box {
-        Box(
-            Modifier
-                .size(cellWidth * exitWidthMult + 1.dp, cellHeight)
-                .offset(boardSize - 1.dp, cellHeight * levelData.exit.y)
-                .background(MaterialTheme.colorScheme.primary)
-        )
-        Box(
-            Modifier
-                .size(cellWidth * exitWidthMult, cellHeight)
-                .offset(boardSize, cellHeight * levelData.exit.y)
-                .zIndex(1f)
-                .background(
-                    brush = Brush.horizontalGradient(
-                        colorStops = arrayOf(
-                            0f to Color.Transparent,
-                            1f / exitWidthMult to MaterialTheme.colorScheme.background
-                        )
-                    )
-                )
+        ExitOverlay(
+            boardSize = boardSize,
+            cellWidth = cellWidth,
+            cellHeight = cellHeight,
+            exitRow = levelData.exit.y,
+            exitWidthMult = exitWidthMult,
         )
 
         Box(
             Modifier
                 .size(boardSize)
-                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(scaling * 12))
+                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(scaling * BOARD_CORNER_SCALE))
         ) {
 
             levelData.blocks.forEachIndexed { index, block ->
-                val isMainBlock = index == 0
-                val color = when {
-                    isMainBlock -> MaterialTheme.colorScheme.tertiary
-                    block.fixed -> MaterialTheme.colorScheme.secondaryContainer
-                    else -> MaterialTheme.colorScheme.primaryContainer
-                }
-                val blockWidth = cellWidth * block.dimension.width
-                val blockHeight = cellHeight * block.dimension.height
-
-                var offsetX by remember(block, levelData) { mutableStateOf(cellWidth * block.position.x) }
-                var offsetY by remember(block, levelData) { mutableStateOf(cellHeight * block.position.y) }
-
-                val targetOffsetX = if (isMainBlock && isLevelWon) boardSize + cellWidth else offsetX
-                val currentOffsetX = animatedDp(
-                    targetOffsetX,
-                    Motion.over(if (isMainBlock && isLevelWon) 600 else 0),
+                GameBlock(
+                    block = block,
+                    index = index,
+                    levelData = levelData,
+                    isLevelWon = isLevelWon,
+                    boardSize = boardSize,
+                    cellWidth = cellWidth,
+                    cellHeight = cellHeight,
+                    scaling = scaling,
+                    onLevelChanged = onLevelChanged,
+                    onLevelWon = onLevelWon,
                 )
-
-                var modifier = Modifier
-                    .size(blockWidth, blockHeight)
-                    .offset { IntOffset(currentOffsetX.roundToPx(), offsetY.roundToPx()) }
-                    .padding(scaling * 4)
-                    .background(color, shape = RoundedCornerShape(percent = 10))
-                
-                if (!block.fixed) {
-                    modifier = modifier.blockDragGestures(
-                        block = block,
-                        levelData = levelData,
-                        isLevelWon = isLevelWon,
-                        cellWidth = cellWidth,
-                        cellHeight = cellHeight,
-                        isMainBlock = isMainBlock,
-                        onLevelWon = onLevelWon,
-                        onLevelChanged = onLevelChanged,
-                        index = index,
-                        offsetXProvider = { offsetX },
-                        offsetYProvider = { offsetY },
-                        offsetXUpdater = { offsetX = it },
-                        offsetYUpdater = { offsetY = it }
-                    )
-                }
-
-                Box(modifier = modifier)
             }
         }
     }
     }
 }
+
+@Composable
+private fun ExitOverlay(
+    boardSize: Dp,
+    cellWidth: Dp,
+    cellHeight: Dp,
+    exitRow: Int,
+    exitWidthMult: Int,
+) {
+    Box(
+        Modifier
+            .size(cellWidth * exitWidthMult + 1.dp, cellHeight)
+            .offset(boardSize - 1.dp, cellHeight * exitRow)
+            .background(MaterialTheme.colorScheme.primary)
+    )
+    Box(
+        Modifier
+            .size(cellWidth * exitWidthMult, cellHeight)
+            .offset(boardSize, cellHeight * exitRow)
+            .zIndex(1f)
+            .background(
+                brush = Brush.horizontalGradient(
+                    colorStops = arrayOf(
+                        0f to Color.Transparent,
+                        1f / exitWidthMult to MaterialTheme.colorScheme.background
+                    )
+                )
+            )
+    )
+}
+
+@Composable
+private fun GameBlock(
+    block: Block,
+    index: Int,
+    levelData: LevelData,
+    isLevelWon: Boolean,
+    boardSize: Dp,
+    cellWidth: Dp,
+    cellHeight: Dp,
+    scaling: Dp,
+    onLevelChanged: (LevelData) -> Unit,
+    onLevelWon: () -> Unit,
+) {
+    val isMainBlock = index == 0
+    val color = when {
+        isMainBlock -> MaterialTheme.colorScheme.tertiary
+        block.fixed -> MaterialTheme.colorScheme.secondaryContainer
+        else -> MaterialTheme.colorScheme.primaryContainer
+    }
+    val blockWidth = cellWidth * block.dimension.width
+    val blockHeight = cellHeight * block.dimension.height
+
+    var offsetX by remember(block, levelData) { mutableStateOf(cellWidth * block.position.x) }
+    var offsetY by remember(block, levelData) { mutableStateOf(cellHeight * block.position.y) }
+
+    val targetOffsetX = if (isMainBlock && isLevelWon) boardSize + cellWidth else offsetX
+    val currentOffsetX = animatedDp(
+        targetOffsetX,
+        Motion.over(if (isMainBlock && isLevelWon) WIN_ANIM_MILLIS else 0),
+    )
+
+    var modifier = Modifier
+        .size(blockWidth, blockHeight)
+        .offset { IntOffset(currentOffsetX.roundToPx(), offsetY.roundToPx()) }
+        .padding(scaling * BLOCK_INSET_SCALE)
+        .background(color, shape = RoundedCornerShape(percent = BLOCK_CORNER_PERCENT))
+
+    if (!block.fixed) {
+        modifier = modifier.blockDragGestures(
+            block = block,
+            levelData = levelData,
+            isLevelWon = isLevelWon,
+            cellWidth = cellWidth,
+            cellHeight = cellHeight,
+            isMainBlock = isMainBlock,
+            onLevelWon = onLevelWon,
+            onLevelChanged = onLevelChanged,
+            index = index,
+            offsetXProvider = { offsetX },
+            offsetYProvider = { offsetY },
+            offsetXUpdater = { offsetX = it },
+            offsetYUpdater = { offsetY = it }
+        )
+    }
+
+    Box(modifier = modifier)
+}
+
+private const val WIN_ANIM_MILLIS = 600
+private const val BLOCK_INSET_SCALE = 4
+private const val BLOCK_CORNER_PERCENT = 10
+private const val BOARD_CORNER_SCALE = 12

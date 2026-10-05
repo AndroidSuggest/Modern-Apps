@@ -1,6 +1,7 @@
 package com.vayunmathur.translate.ui
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -186,8 +187,8 @@ private fun installVoiceData(context: Context) {
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     try {
         context.startActivity(intent)
-    } catch (t: Throwable) {
-        Log.w("TextTranslate", "no activity for ACTION_INSTALL_TTS_DATA", t)
+    } catch (e: ActivityNotFoundException) {
+        Log.w("TextTranslate", "no activity for ACTION_INSTALL_TTS_DATA", e)
     }
 }
 

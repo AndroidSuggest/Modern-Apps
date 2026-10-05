@@ -31,7 +31,7 @@ import com.vayunmathur.maps.ui.theme.mapTokens
 import com.vayunmathur.maps.util.DeparturesState
 import com.vayunmathur.maps.util.MapsSearchViewModel
 import com.vayunmathur.maps.util.NavigationProgress
-import com.vayunmathur.maps.util.OfflineRouter
+import com.vayunmathur.maps.util.OfflineRouterTraffic
 import com.vayunmathur.maps.util.PoiCategories
 import com.vayunmathur.maps.util.RouteService
 import com.vayunmathur.maps.util.SearchResult
@@ -111,7 +111,7 @@ fun MapSurface(
     // toggle is off or there is nothing to draw, which clears the overlay on the next frame —
     // the accumulated data stays cached in OfflineRouter so re-enabling is instant.
     val tokens = remember(darkBasemap) { mapTokens(darkBasemap) }
-    val components by OfflineRouter.trafficComponents.collectAsState()
+    val components by OfflineRouterTraffic.trafficComponents.collectAsState()
     val trafficColors = remember(components, tokens, trafficEnabled) {
         if (trafficEnabled) buildTrafficColorTable(components, tokens) else null
     }
@@ -340,7 +340,6 @@ fun MapSurface(
         },
     ) {
         MapLayers(
-            cameraState = camera,
             satelliteEnabled = satelliteEnabled,
             safetyEnabled = safetyEnabled,
             transitEnabled = transitEnabled,

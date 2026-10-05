@@ -18,8 +18,8 @@ fun VpnTabs(backStack: NavBackStack<Route>, vm: VpnViewModel, initialTab: Int) {
     val pagerState = rememberPagerState(initialPage = initialTab, pageCount = { 3 })
     val tabs = listOf(
         PagerTab("Tunnels", { IconDashboard() }) { ConfigListPage(backStack, vm) },
-        PagerTab("Logging", { IconHistory() }) { LoggingPage(backStack, vm) },
-        PagerTab("Settings", { IconSettings() }) { SettingsPage(backStack, vm) },
+        PagerTab("Logging", { IconHistory() }) { LoggingPage(vm) },
+        PagerTab("Settings", { IconSettings() }) { SettingsPage(backStack) },
     )
     TabbedPagerScaffold(tabs = tabs, pagerState = pagerState, tabStyle = TabStyle.BottomNav)
 }

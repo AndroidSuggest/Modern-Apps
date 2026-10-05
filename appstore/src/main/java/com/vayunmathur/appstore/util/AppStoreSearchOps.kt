@@ -15,32 +15,32 @@ import kotlinx.coroutines.launch
 // Moved from AppStoreViewModel.kt (FileLength split); behavior identical.
 
 internal fun AppStoreViewModel.setSearchImpl(query: String) {
-    _query.value = query
+    queryFlow.value = query
     searchJob?.cancel()
     if (query.isBlank()) {
-        _searchResults.value = emptyList()
-        _hasSearched.value = false
-        _isSearching.value = false
+        searchResultsFlow.value = emptyList()
+        hasSearchedFlow.value = false
+        isSearchingFlow.value = false
         return
     }
     searchJob = viewModelScope.launch {
         delay(SEARCH_DEBOUNCE_MS)
-        _isSearching.value = true
+        isSearchingFlow.value = true
         val enabled = enabledSources.value
 
         // Local first and published immediately: the F-Droid catalogue is on disk, so
         // there is no reason to make the user wait on Play before seeing anything.
         val local = catalog.searchLocal(query)
-        _searchResults.value = rank(local, query)
+        searchResultsFlow.value = rank(local, query)
 
         // Accrescent search is client-side over the listings already cached from the home
         // carousel (its API has no search RPC), so it adds no network round-trip here.
         val accrescentResults =
             if (AppSource.ACCRESCENT in enabled) accrescent.search(query) else emptyList()
         val remote = if (AppSource.PLAYSTORE in enabled) play.search(query) else emptyList()
-        _searchResults.value = rank(merge(local, remote, accrescentResults), query)
-        _isSearching.value = false
-        _hasSearched.value = true
+        searchResultsFlow.value = rank(merge(local, remote, accrescentResults), query)
+        isSearchingFlow.value = false
+        hasSearchedFlow.value = true
     }
 }
 

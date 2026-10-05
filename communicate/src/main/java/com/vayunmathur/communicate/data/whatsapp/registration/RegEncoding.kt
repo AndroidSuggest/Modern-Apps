@@ -18,6 +18,18 @@ import java.util.UUID
  */
 object RegEncoding {
 
+    private const val UUID_BYTES = 16
+    private const val BYTE_MASK = 0xFF
+    private const val NIBBLE_BITS = 4
+    private const val NIBBLE_MASK = 0xF
+    private val DIGIT_RANGE = 0x30..0x39
+    private val UPPER_RANGE = 0x41..0x5A
+    private val LOWER_RANGE = 0x61..0x7A
+    private const val HYPHEN = 0x2D
+    private const val DOT = 0x2E
+    private const val UNDERSCORE = 0x5F
+    private const val TILDE = 0x7E
+
     /** URL-safe Base64, no padding, no wrap (Android Base64 flag 11). */
     fun b64Url(bytes: ByteArray): String =
         Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
@@ -25,7 +37,7 @@ object RegEncoding {
     /** 16 big-endian bytes of a UUID (matches C34244EyE.A03). */
     fun uuidToBytes(uuid: String): ByteArray {
         val u = UUID.fromString(uuid)
-        return ByteBuffer.allocate(16)
+        return ByteBuffer.allocate(UUID_BYTES)
             .putLong(u.mostSignificantBits)
             .putLong(u.leastSignificantBits)
             .array()
@@ -35,18 +47,18 @@ object RegEncoding {
     fun percentEncode(bytes: ByteArray): String {
         val sb = StringBuilder(bytes.size * 3)
         for (b in bytes) {
-            val i = b.toInt() and 0xFF
+            val i = b.toInt() and BYTE_MASK
             val c = i.toChar()
-            val unreserved = (i in 0x30..0x39) || // 0-9
-                (i in 0x41..0x5A) || // A-Z
-                (i in 0x61..0x7A) || // a-z
-                i == 0x2D || i == 0x2E || i == 0x5F || i == 0x7E // - . _ ~
+            val unreserved = (i in DIGIT_RANGE) || // 0-9
+                (i in UPPER_RANGE) || // A-Z
+                (i in LOWER_RANGE) || // a-z
+                i == HYPHEN || i == DOT || i == UNDERSCORE || i == TILDE // - . _ ~
             if (unreserved) {
                 sb.append(c)
             } else {
                 sb.append('%')
-                sb.append(HEX[i shr 4])
-                sb.append(HEX[i and 0xF])
+                sb.append(HEX[i shr NIBBLE_BITS])
+                sb.append(HEX[i and NIBBLE_MASK])
             }
         }
         return sb.toString()

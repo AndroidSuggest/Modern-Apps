@@ -10,8 +10,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.util.rememberNavBackStack
-import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.util.SearchActions
 import com.vayunmathur.youpipe.util.SearchUiState
 import com.vayunmathur.youpipe.util.SubscriptionFeedActions
@@ -54,7 +52,6 @@ class MetadataPreviews {
     fun Preview1Home() {
         DynamicTheme(darkTheme = true) {
             SearchScreen(
-                backStack = rememberNavBackStack<Route>(Route.Main(0)),
                 state = SearchUiState(
                     recommendations = listOf(
                         VideoRowState(
@@ -135,7 +132,6 @@ class MetadataPreviews {
     fun Preview4Subscriptions() {
         DynamicTheme(darkTheme = true) {
             SubscriptionVideosScreen(
-                backStack = rememberNavBackStack<Route>(Route.Main(1)),
                 state = SubscriptionFeedUiState(
                     videos = listOf(
                         VideoRowState(
@@ -183,7 +179,6 @@ class MetadataPreviews {
     fun Preview5ExpandedHome() {
         DynamicTheme(darkTheme = true) {
             SearchScreen(
-                backStack = rememberNavBackStack<Route>(Route.Main(0)),
                 state = SearchUiState(
                     recommendations = listOf(
                         VideoRowState(
@@ -242,7 +237,6 @@ class MetadataPreviews {
     fun Preview7ExpandedSubscriptions() {
         DynamicTheme(darkTheme = true) {
             SubscriptionVideosScreen(
-                backStack = rememberNavBackStack<Route>(Route.Main(1)),
                 state = SubscriptionFeedUiState(
                     videos = listOf(
                         VideoRowState(

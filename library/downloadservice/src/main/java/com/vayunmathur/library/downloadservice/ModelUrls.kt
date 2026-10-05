@@ -40,9 +40,25 @@ object ModelUrls {
     const val SIGLIP_TOKENIZER_SHA256 = "61a7b147390c64585d6c3543dd6fc636906c9af3865a5548f27f31aee1d4c8e2"
 
     val GEMMA = ModelDownloadItem(GEMMA_URL, GEMMA_FILE, "Model", GEMMA_SHA256)
-    val SIGLIP_VISION = ModelDownloadItem(SIGLIP_VISION_URL, SIGLIP_VISION_FILE, "Vision Model", SIGLIP_VISION_SHA256)
-    val SIGLIP_TEXT = ModelDownloadItem(SIGLIP_TEXT_URL, SIGLIP_TEXT_FILE, "Text Model", SIGLIP_TEXT_SHA256)
-    val SIGLIP_TOKENIZER = ModelDownloadItem(SIGLIP_TOKENIZER_URL, SIGLIP_TOKENIZER_FILE, "Tokenizer", SIGLIP_TOKENIZER_SHA256)
+    val SIGLIP_VISION = ModelDownloadItem(
+        SIGLIP_VISION_URL,
+        SIGLIP_VISION_FILE,
+        "Vision Model",
+        SIGLIP_VISION_SHA256
+    )
+    val SIGLIP_TEXT = ModelDownloadItem(
+        SIGLIP_TEXT_URL,
+        SIGLIP_TEXT_FILE,
+        "Text Model",
+        SIGLIP_TEXT_SHA256
+    )
+    val SIGLIP_TOKENIZER =
+        ModelDownloadItem(
+            SIGLIP_TOKENIZER_URL,
+            SIGLIP_TOKENIZER_FILE,
+            "Tokenizer",
+            SIGLIP_TOKENIZER_SHA256
+        )
 
     /** SigLIP2 semantic-search models fetched on demand by the photos app. */
     val SIGLIP = listOf(SIGLIP_VISION, SIGLIP_TEXT, SIGLIP_TOKENIZER)

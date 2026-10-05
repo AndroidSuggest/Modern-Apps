@@ -3,26 +3,37 @@ package com.vayunmathur.maps.util
 import android.content.Context
 import android.util.Log
 import androidx.annotation.Keep
-import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.data.transit.Departure
 import com.vayunmathur.maps.data.transit.TransitStop
-import java.net.InetAddress
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.util.concurrent.Executors
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.vayunmathur.library.map.GeoPoint
 
+/**
+ * Road-graph routing over the on-device graph: init, single/multi-leg
+ * planning, and the JNI + data types the transit helpers share.
+ *
+ * The JNI surface stays here — native code resolves those members by class
+ * and name. Everything else moved to focused holders in the same package:
+ * [OfflineRouterTraffic] (live-traffic display state + tile server),
+ * [OfflineRouterTransit] (RAPTOR planning, boards, vehicles, lines), and
+ * [OfflineRouterRouteBuilder] (native steps → [RouteService.Route]).
+ */
 object OfflineRouter {
     init {
         System.loadLibrary("offlinerouter")
         OfflineRouterTraffic.startLocalTileServer()
     }
 
+    /** At least an origin and a destination for a multi-waypoint route. */
+    private const val MIN_ROUTE_POSITIONS = 2
+
     private external fun init(basePath: String): Boolean
+
+    /** Invoker so [OfflineRouterLifecycle] can init without touching JNI visibility. */
+    internal fun initGraph(basePath: String): Boolean = init(basePath)
     private external fun findRouteNative(
             sLat: Double,
             sLon: Double,
@@ -239,115 +250,35 @@ object OfflineRouter {
     private external fun notifyTrafficFetchFinishedNative(packedSquare: Int)
     external fun getTrafficTileNative(z: Int, x: Int, y: Int): ByteArray?
 
-    /** Display-traffic version counter — see [OfflineRouterTraffic]. */
-    val trafficVersion get() = OfflineRouterTraffic.trafficVersion
-
-    /** Merged per-component display table — see [OfflineRouterTraffic]. */
-    internal val trafficComponents get() = OfflineRouterTraffic.trafficComponents
-
-    /** Bump the display-traffic version — see [OfflineRouterTraffic]. */
-    fun notifyTrafficUpdated() = OfflineRouterTraffic.notifyTrafficUpdated()
-
-    private var cacheDirPath: String? = null
+    // Display-traffic version/table/notify live in OfflineRouterTraffic (same
+    // package) — callers use it directly. Lifecycle (initialize/reload/
+    // transitBase) lives in OfflineRouterLifecycle. Kept out of this object
+    // so it stays under the function cap.
 
     external fun ensureTrafficLoadedNative(lat: Double, lon: Double, forceAsync: Boolean)
+
+    // Traffic fetching + payload decoding live in OfflineRouterTrafficFetch (same
+    // package) so this object stays under the function cap; the JNI callback
+    // below is the only entry point and keeps its exact name/signature.
     private fun fetchTrafficData(
-            minLat: Double,
-            minLon: Double,
-            maxLat: Double,
-            maxLon: Double,
-            packedSquare: Int,
-            forceAsync: Boolean
+        minLat: Double,
+        minLon: Double,
+        maxLat: Double,
+        maxLon: Double,
+        packedSquare: Int,
+        forceAsync: Boolean,
     ) {
-        Log.d(
-                "TRAFFIC_DATA",
-                "fetchTrafficData START: bbox ($minLat,$minLon)-($maxLat,$maxLon) packed=$packedSquare forceAsync=$forceAsync"
+        OfflineRouterTrafficFetch.fetchTrafficData(
+            minLat, minLon, maxLat, maxLon, packedSquare, forceAsync,
         )
-        
-        val block: suspend () -> Unit = block@{
-            try {
-                val (status, bytes) =
-                        NetworkClient.performRequestBytes(
-                                url =
-                                        "https://api.vayunmathur.com/maps/traffic?min_lat=$minLat&min_lon=$minLon&max_lat=$maxLat&max_lon=$maxLon"
-                        )
-                Log.d(
-                        "TRAFFIC_DATA",
-                        "fetchTrafficData NETWORK DONE: status=$status, size=${bytes.size}"
-                )
-                // Two-level response (little-endian):
-                //   u32 n_big, u32 n_component
-                //   n_big       x (u64 big_edge_id,  u8 kph)         -- routing, unchanged
-                //   n_component x (u64 component_id,  u8 ratio_pct)  -- display
-                // ratio_pct = round(speedRatio*100); 0 = no data. Records are interleaved
-                // (id then speed), not struct-of-arrays. The big level still feeds
-                // updateTrafficNative exactly as before; the component level is kept in
-                // Kotlin and pushed to the renderer as an id->colour table.
-                if (status == 200 && bytes.size >= 8) {
-                    val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-                    val nBig = buffer.int.toLong() and 0xFFFF_FFFFL
-                    val nComponent = buffer.int.toLong() and 0xFFFF_FFFFL
-                    val expected = 8L + 9L * (nBig + nComponent)
-                    if (bytes.size.toLong() != expected) {
-                        Log.w(
-                                "TRAFFIC_DATA",
-                                "fetchTrafficData SIZE MISMATCH: got ${bytes.size}, expected $expected (n_big=$nBig n_component=$nComponent)"
-                        )
-                        notifyTrafficFetchFinishedNative(packedSquare)
-                        return@block
-                    }
-                    val nBigI = nBig.toInt()
-                    val nComponentI = nComponent.toInt()
+    }
 
-                    // Big level: split the interleaved (id, kph) records into the parallel
-                    // arrays updateTrafficNative expects.
-                    val edgeIds = LongArray(nBigI)
-                    val speeds = ByteArray(nBigI)
-                    for (i in 0 until nBigI) {
-                        edgeIds[i] = buffer.long
-                        speeds[i] = buffer.get()
-                    }
+    internal fun updateTraffic(edgeIds: LongArray, speeds: ByteArray, packedSquare: Int) {
+        updateTrafficNative(edgeIds, speeds, packedSquare)
+    }
 
-                    // Component level: kept for display.
-                    val compIds = LongArray(nComponentI)
-                    val compRatios = ByteArray(nComponentI)
-                    for (i in 0 until nComponentI) {
-                        compIds[i] = buffer.long
-                        compRatios[i] = buffer.get()
-                    }
-
-                    Log.d(
-                            "TRAFFIC_DATA",
-                            "fetchTrafficData PROCESSING: $nBigI big edges, $nComponentI components"
-                    )
-                    updateTrafficNative(edgeIds, speeds, packedSquare)
-                    OfflineRouterTraffic.storeSquare(
-                            packedSquare,
-                            OfflineRouterTraffic.TrafficComponents(compIds, compRatios),
-                    )
-                    notifyTrafficUpdated()
-                } else {
-                    Log.w("TRAFFIC_DATA", "fetchTrafficData NO DATA: status=$status")
-                    notifyTrafficFetchFinishedNative(packedSquare)
-                }
-            } catch (e: Exception) {
-                Log.e("TRAFFIC_DATA", "fetchTrafficData ERROR", e)
-                notifyTrafficFetchFinishedNative(packedSquare)
-            }
-            Log.d("TRAFFIC_DATA", "fetchTrafficData END: packed=$packedSquare")
-        }
-
-        if (forceAsync) {
-            OfflineRouterTraffic.launch(block)
-        } else {
-            // Previously called runBlocking(Dispatchers.IO) which blocked the
-            // native caller's thread (often a Dispatchers.Default worker via
-            // getRoute) for an entire 60s HTTP round-trip. That starved the
-            // Default pool. Always async; the native side reacts to
-            // notifyTrafficUpdated / notifyTrafficFetchFinishedNative when the
-            // HTTP response is processed.
-            OfflineRouterTraffic.launch(block)
-        }
+    internal fun finishTrafficFetch(packedSquare: Int) {
+        notifyTrafficFetchFinishedNative(packedSquare)
     }
 
     class RawStep
@@ -515,237 +446,42 @@ object OfflineRouter {
             val stops: Array<RawTripStop>,
     )
 
-    private var isInitialized = false
     /** Base dir (external files) holding the downloaded `basemap.mamaps` archive and legacy `*.transit` packs. */
-    private var basePath: String? = null
+    internal var basePath: String? = null
 
-    /**
-     * Initialized base path for the transit helpers in [OfflineRouterTransit].
-     * Null when [initialize] has not run yet or found no external files dir.
-     */
-    internal fun transitBase(context: Context): String? {
-        if (!isInitialized) initialize(context)
-        return basePath
-    }
+    // (Init state lives in OfflineRouterLifecycle alongside initialize/reload.)
 
-    @Synchronized
-    fun initialize(context: Context) {
-        if (isInitialized) return
-        val path = context.getExternalFilesDir(null)?.absolutePath ?: return
-        basePath = path
-        Log.d("OfflineRouter", "Initializing with path: $path")
-
-        isInitialized = init(path)
-        Log.d("OfflineRouter", "Initialization result: $isInitialized")
-        cacheDirPath = context.cacheDir.absolutePath
-    }
-
-    /**
-     * Force a re-load of the routing graph from disk. Call after the single
-     * global routing graph (P16) finishes downloading so the freshly downloaded
-     * nodes.bin/edges.bin/… replace whatever was (or wasn't) loaded at startup.
-     * Re-init is safe: the Rust side atomically swaps the graph behind its lock.
-     */
-    @Synchronized
-    fun reload(context: Context) {
-        isInitialized = false
-        OfflineRouterTransit.onReload()
-        OfflineRouterTraffic.onReload()
-        initialize(context)
-    }
-
-    /**
-     * Plan a route for any [mode]. TRANSIT goes to the on-device RAPTOR planner
-     * and nowhere else — there is no online routing fallback, so a journey the
-     * pack cannot plan yields no transit route. Every other mode goes to the
-     * road graph via [getRouteMulti].
-     *
-     * This is the **only** correct entry point for a caller whose mode is not a
-     * literal: the road graph carries no timetable, so TRANSIT must never reach
-     * [getRouteMulti]. Routing every mode-agnostic caller through here is what
-     * guarantees that.
-     */
-    suspend fun getRouteForMode(
-            context: Context,
-            route: SpecificFeature.Route,
-            userPosition: GeoPoint,
-            mode: RouteService.TravelMode,
-    ): RouteService.Route? = withContext(Dispatchers.Default) {
-        if (mode != RouteService.TravelMode.TRANSIT) {
-            return@withContext getRouteMulti(context, route, userPosition, mode)
-        }
-        val positions = route.waypoints.map { it?.position ?: userPosition }
-        if (positions.size < 2) return@withContext null
-        val start = positions.first()
-        val end = positions.last()
-        getTransitRouteOffline(context, start, end)
-    }
-
-    /**
-     * Offline-only multi-waypoint chaining. Replaces the old server-side
-     * routing that handled intermediates remotely.
-     * Positions = route.waypoints.map { it?.position ?: userPosition }.
-     * Chains A->B, B->C ... using [getRoute] and concatenates polylines
-     * (dedup join), steps, and sums distance/duration. Returns null if
-     * any leg fails or if <2 positions.
-     */
-    suspend fun getRouteMulti(context: Context, route: SpecificFeature.Route, userPosition: GeoPoint, type: RouteService.TravelMode): RouteService.Route? = withContext(Dispatchers.Default) {
-        val positions = route.waypoints.map { it?.position ?: userPosition }
-        if (positions.size < 2) return@withContext null
-        val legs = mutableListOf<RouteService.Route>()
-        for (i in 0 until positions.size - 1) {
-            val leg = try { getRoute(context, positions[i], positions[i+1], type) } catch (_: Exception) { return@withContext null }
-            legs.add(leg)
-        }
-        if (legs.isEmpty()) return@withContext null
-        if (legs.size == 1) return@withContext legs.first()
-        val combinedPolyline = mutableListOf<GeoPoint>()
-        val combinedSteps = mutableListOf<RouteService.Step>()
-        val combinedElevation = mutableListOf<RouteService.ElevationPoint>()
-        var totalDist = 0.0
-        var totalSec = 0L
-        var totalAscent = 0.0
-        var totalDescent = 0.0
-        for (leg in legs) {
-            if (combinedPolyline.isEmpty()) combinedPolyline.addAll(leg.polyline)
-            else {
-                val first = leg.polyline.firstOrNull()
-                if (first != null && combinedPolyline.lastOrNull() == first) combinedPolyline.addAll(leg.polyline.drop(1))
-                else combinedPolyline.addAll(leg.polyline)
-            }
-            combinedSteps.addAll(leg.step)
-            // Offset each leg's profile by the route distance before it so the chart is continuous.
-            val distOffset = totalDist
-            for (p in leg.elevationProfile) {
-                combinedElevation.add(p.copy(distanceMeters = p.distanceMeters + distOffset))
-            }
-            totalDist += leg.distanceMeters
-            totalSec += leg.duration.inWholeSeconds
-            totalAscent += leg.ascentMeters
-            totalDescent += leg.descentMeters
-        }
-        RouteService.Route(
-            duration = totalSec.seconds,
-            distanceMeters = totalDist,
-            polyline = combinedPolyline,
-            step = combinedSteps,
-            elevationProfile = combinedElevation,
-            ascentMeters = totalAscent,
-            descentMeters = totalDescent,
-        )
-    }
-
-    /**
-     * Offline transit routing (P11d): plan a journey with the on-device RAPTOR
-     * planner over the transit pack covering the endpoints (the world pack in
-     * the archive when present, else a downloaded per-region `*.transit`
-     * index). Returns null when no index is present/covering or no journey is
-     * found — the caller then falls back to the P10 online Transitous planner.
-     *
-     * Runs at most **two** RAPTOR passes: a schedule-only plan, then, when the
-     * device is online, a replan against MOTIS realtime for the stops that plan
-     * actually touches, so a cancelled or badly delayed trip is avoided. If the
-     * replan finds nothing we keep the schedule-only journey rather than
-     * iterating.
-     */
-    suspend fun getTransitRouteOffline(
-            context: Context,
-            start: GeoPoint,
-            end: GeoPoint
-    ): RouteService.Route? = OfflineRouterTransit.getTransitRouteOffline(context, start, end)
-
-    /**
-     * Board and alight stops of every ride in a planned journey — see
-     * [OfflineRouterTransit] for the shared implementation. Kept here as a
-     * thin delegate so existing callers don't move.
-     */
-    suspend fun nearestStop(
-            context: Context,
-            lat: Double,
-            lon: Double,
-    ): TransitStop? = OfflineRouterTransit.nearestStop(context, lat, lon)
-
-    /**
-     * Simulated moving transit vehicles within the visible bbox (WS-F) — see
-     * [OfflineRouterTransit] for the shared implementation.
-     */
-    suspend fun activeVehicles(
-            context: Context,
-            minLat: Double,
-            minLon: Double,
-            maxLat: Double,
-            maxLon: Double,
-    ): List<Vehicle> = OfflineRouterTransit.activeVehicles(context, minLat, minLon, maxLat, maxLon)
-
-    /** Drawable rail lines — see [OfflineRouterTransit.railLines]. */
-    suspend fun railLines(
-            context: Context,
-            minLat: Double, minLon: Double,
-            maxLat: Double, maxLon: Double,
-    ): List<com.vayunmathur.maps.data.transit.RailLine> =
-            OfflineRouterTransit.railLines(context, minLat, minLon, maxLat, maxLon)
-
-    /** Drawable lines for the selected stop — see [OfflineRouterTransit.stopLines]. */
-    suspend fun stopLines(
-            context: Context,
-            lat: Double,
-            lon: Double,
-    ): List<com.vayunmathur.maps.data.transit.RailLine> =
-            OfflineRouterTransit.stopLines(context, lat, lon)
-
-    /** Trip itinerary for the vehicle sheet — see [OfflineRouterTransit.tripItinerary]. */
-    suspend fun tripItinerary(
-            context: Context,
-            vehicleId: Long,
-            lat: Double,
-            lon: Double,
-    ): com.vayunmathur.maps.data.transit.TripItinerary? =
-            OfflineRouterTransit.tripItinerary(context, vehicleId, lat, lon)
-
-    /**
-     * Departure board from the on-device transit index for the stop nearest
-     * `(lat,lon)` — see [OfflineRouterTransit.getStopDeparturesOffline] for the
-     * shared implementation. Kept here as a thin delegate so existing callers
-     * don't move.
-     *
-     * [anchor] is the instant the board starts from, defaulting to now.
-     * [until] walks the board forward until it reaches that instant.
-     */
-    suspend fun getStopDeparturesOffline(
-            context: Context,
-            lat: Double,
-            lon: Double,
-            max: Int = 30,
-            anchor: java.time.Instant? = null,
-            until: java.time.Instant? = null,
-    ): List<Departure> =
-            OfflineRouterTransit.getStopDeparturesOffline(context, lat, lon, max, anchor, until)
+    // Lifecycle (transitBase/initialize/reload) lives in OfflineRouterLifecycle
+    // (same package) — callers use it directly. Transit planning, boards,
+    // vehicles, lines, itineraries and departures live in OfflineRouterTransit.
+    // Road routing lives in OfflineRouterRoadRoutes; the getRouteMulti delegate
+    // below stays for the call sites not yet moved.
 
     suspend fun getRoute(
-            context: Context,
-            start: GeoPoint,
-            end: GeoPoint,
-            mode: RouteService.TravelMode
+        context: Context,
+        start: GeoPoint,
+        end: GeoPoint,
+        mode: RouteService.TravelMode,
     ): RouteService.Route =
-            withContext(Dispatchers.Default) {
-                Log.d("OfflineRouter", "getRoute: mode=$mode, start=$start, end=$end")
-                if (!isInitialized) {
-                    initialize(context)
-                }
-                Log.d("OfflineRouter", "isInitialized=$isInitialized")
-
-                val rawSteps =
-                        findRouteNative(
-                                start.latitude,
-                                start.longitude,
-                                end.latitude,
-                                end.longitude,
-                                mode.ordinal
-                        )
-                                ?: throw IllegalStateException("No route found")
-
-                buildRoute(context, rawSteps, mode)
+        withContext(Dispatchers.Default) {
+            Log.d("OfflineRouter", "getRoute: mode=$mode, start=$start, end=$end")
+            if (!OfflineRouterLifecycle.isInitialized) {
+                OfflineRouterLifecycle.initialize(context)
             }
+            Log.d("OfflineRouter", "isInitialized=${OfflineRouterLifecycle.isInitialized}")
+
+            val rawSteps =
+                findRouteNative(
+                    start.latitude,
+                    start.longitude,
+                    end.latitude,
+                    end.longitude,
+                    mode.ordinal
+                )
+                    ?: throw IllegalStateException("No route found")
+
+            buildRoute(context, rawSteps, mode)
+        }
 
     /**
      * Convert native [RawStep]s into a [RouteService.Route] — see

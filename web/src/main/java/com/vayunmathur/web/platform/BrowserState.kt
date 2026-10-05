@@ -83,6 +83,7 @@ enum class SitePermissionType(val key: String, val displayName: String) {
 }
 
 object BrowserUtils {
+    private const val MAX_PRETTY_URL_LENGTH = 48
     // Deliberately requires a dot (or localhost, or a dotted quad): loosening this to accept
     // dotless hosts so `router` navigates would turn every one-word search - `weather`,
     // `kotlin` - into a failed navigation. `nas.local` and `192.168.1.1:8080` already match,
@@ -134,28 +135,27 @@ object BrowserUtils {
 
     fun toNavigationUrl(input: String): String = toNavigationUrl(input, SearchEngine.DEFAULT)
 
-    fun hostFromUrl(url: String): String {
-        return try { Uri.parse(url).host ?: url } catch (_: Exception) { url }
-    }
+    fun hostFromUrl(url: String): String =
+        runCatching { Uri.parse(url).host ?: url }.getOrDefault(url)
 
     fun originFromUrl(url: String): String {
-        return try {
+        return runCatching {
             val u = Uri.parse(url)
             val scheme = u.scheme ?: "https"
-            val host = u.host ?: return url
+            val host = u.host ?: return@runCatching url
             val port = if (u.port != -1) ":${u.port}" else ""
             "$scheme://$host$port"
-        } catch (_: Exception) { url }
+        }.getOrDefault(url)
     }
 
     fun prettyUrl(url: String): String {
         if (url.isBlank()) return ""
-        return try {
+        return runCatching {
             val parsed = Uri.parse(url)
-            val host = parsed.host ?: return url
+            val host = parsed.host ?: return@runCatching url
             val path = parsed.path ?: ""
             val display = if (path.isEmpty() || path == "/") host else host + path
-            if (display.length > 48) host else display
-        } catch (_: Exception) { url }
+            if (display.length > MAX_PRETTY_URL_LENGTH) host else display
+        }.getOrDefault(url)
     }
 }

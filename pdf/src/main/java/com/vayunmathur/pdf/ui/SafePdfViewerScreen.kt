@@ -145,7 +145,6 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                 showPageIndicator = showPageIndicator,
             )
         },
-        launchers = launchers,
         searchFocus = searchFocus,
         onBack = onBack,
         onShare = { shareAction() },

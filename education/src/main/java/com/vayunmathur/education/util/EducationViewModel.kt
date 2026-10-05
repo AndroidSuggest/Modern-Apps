@@ -172,7 +172,7 @@ class EducationViewModel(
     /** Evaluates and unlocks badges after a committed result. */
     private fun awardBadges(result: QuizResult, all: List<SkillProgress>, totalStars: Int, streak: Int) {
         if (totalStars >= 1) achievements.onAchievementUnlocked(EducationAchievements.Ids.FIRST_STAR)
-        if (result.stars >= 3) achievements.onAchievementUnlocked(EducationAchievements.Ids.PERFECT)
+        if (result.stars >= MAX_STARS) achievements.onAchievementUnlocked(EducationAchievements.Ids.PERFECT)
         achievements.onProgressUpdated(EducationAchievements.Ids.STREAK_3, streak)
         achievements.onProgressUpdated(EducationAchievements.Ids.STREAK_7, streak)
         achievements.onProgressUpdated(EducationAchievements.Ids.STARS_10, totalStars)
@@ -190,6 +190,18 @@ class EducationViewModel(
     }
 
     companion object {
+        /** Max stars per exercise (perfect score). */
+        const val MAX_STARS = 3
+
+        /** Ratio for a perfect (3-star) rating. */
+        const val PERFECT_RATIO = 1.0
+
+        /** Ratio threshold for a 2-star rating. */
+        const val TWO_STAR_RATIO = 0.7
+
+        /** Ratio threshold for a 1-star rating. */
+        const val ONE_STAR_RATIO = 0.4
+
         /** Consecutive-day streak update given last activity day and today. */
         fun nextStreak(current: Int, lastEpochDay: Long, today: Long): Int = when {
             lastEpochDay == today -> maxOf(current, 1)
@@ -202,9 +214,9 @@ class EducationViewModel(
             if (total == 0) return 0
             val ratio = correct.toDouble() / total
             return when {
-                ratio >= 1.0 -> 3
-                ratio >= 0.7 -> 2
-                ratio >= 0.4 -> 1
+                ratio >= PERFECT_RATIO -> MAX_STARS
+                ratio >= TWO_STAR_RATIO -> 2
+                ratio >= ONE_STAR_RATIO -> 1
                 else -> 0
             }
         }

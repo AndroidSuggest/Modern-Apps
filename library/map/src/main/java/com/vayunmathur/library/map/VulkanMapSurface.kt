@@ -48,6 +48,7 @@ import com.vayunmathur.library.util.ConnectivityMonitor
  * exactly when the window goes away.
  */
 @Composable
+@Suppress("LongMethod")
 internal fun VulkanMapSurface(
     cameraState: CameraState,
     darkBasemap: Boolean,
@@ -237,7 +238,16 @@ internal fun VulkanMapSurface(
     // Keyed on value equality so an identical push on recomposition does not
     // re-upload 36MB. `null` keeps whatever is there (upload-once asset).
     LaunchedEffect(moonTextures, host) {
-        moonTextures?.let { renderer.setMoonTextures(it.colorRgba, it.width, it.height, it.demRg, it.demWidth, it.demHeight) }
+        moonTextures?.let {
+            renderer.setMoonTextures(
+                it.colorRgba,
+                it.width,
+                it.height,
+                it.demRg,
+                it.demWidth,
+                it.demHeight
+            )
+        }
     }
 
     // Live connectivity, replacing a single sample taken in onSurfaceTextureAvailable.

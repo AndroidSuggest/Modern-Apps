@@ -26,37 +26,45 @@ object GTFSProvider {
         val cacheKey = "$feedName:$routeName"
         if (routeColors.containsKey(cacheKey)) return routeColors[cacheKey]
 
-        try {
-            val assetPath = "$feedName/routes.txt"
-            context.assets.open(assetPath).use { inputStream ->
-                val reader = inputStream.bufferedReader()
-                val header = parseCsvLine(reader.readLine() ?: return null).map { it.trim() }
-                val shortNameIdx = header.indexOf("route_short_name")
-                val longNameIdx = header.indexOf("route_long_name")
-                val colorIdx = header.indexOf("route_color")
-
-                if (colorIdx == -1) return null
-
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    val parts = parseCsvLine(line ?: continue)
-                    val shortName = if (shortNameIdx != -1) parts.getOrNull(shortNameIdx) else null
-                    val longName = if (longNameIdx != -1) parts.getOrNull(longNameIdx) else null
-
-                    if (shortName == routeName || longName == routeName) {
-                        val color = parts.getOrNull(colorIdx)
-                        if (!color.isNullOrEmpty()) {
-                            val fullColor = "#$color"
-                            routeColors[cacheKey] = fullColor
-                            return fullColor
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
+        return try {
+            findRouteColor(context, feedName, routeName)?.also { routeColors[cacheKey] = it }
+        } catch (e: java.io.IOException) {
             Log.w("GTFSProvider", "Failed to read routes.txt for $feedName", e)
+            null
+        }
+    }
+
+    private fun findRouteColor(context: Context, feedName: String, routeName: String): String? {
+        val assetPath = "$feedName/routes.txt"
+        context.assets.open(assetPath).use { inputStream ->
+            val reader = inputStream.bufferedReader()
+            val header = parseCsvLine(reader.readLine() ?: return null).map { it.trim() }
+            val columns = routeColumns(header) ?: return null
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                rowColor(parseCsvLine(line ?: continue), columns, routeName)?.let { return it }
+            }
         }
         return null
+    }
+
+    private data class RouteColumns(val shortNameIdx: Int, val longNameIdx: Int, val colorIdx: Int)
+
+    private fun routeColumns(header: List<String>): RouteColumns? {
+        val colorIdx = header.indexOf("route_color")
+        if (colorIdx == -1) return null
+        return RouteColumns(
+            shortNameIdx = header.indexOf("route_short_name"),
+            longNameIdx = header.indexOf("route_long_name"),
+            colorIdx = colorIdx,
+        )
+    }
+
+    private fun rowColor(parts: List<String>, columns: RouteColumns, routeName: String): String? {
+        val shortName = parts.getOrNull(columns.shortNameIdx)
+        val longName = parts.getOrNull(columns.longNameIdx)
+        if (shortName != routeName && longName != routeName) return null
+        return parts.getOrNull(columns.colorIdx)?.takeIf { it.isNotEmpty() }?.let { "#$it" }
     }
 
     /**

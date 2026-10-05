@@ -78,7 +78,9 @@ class WhatsAppRegistrationBadParamRegressionTest {
             ?: tryReadSource("src/main/java/com/vayunmathur/communicate/data/whatsapp/registration/RegistrationHttpClient.kt")
         if (src != null) {
             // No a01/a02/a05("platform", ...) and no raw map put for "platform"
-            assertFalse(src.contains("\"platform\""), "RegistrationHttpClient.kt must not send a 'platform' form param; User-Agent carries it")
+            assertFalse(
+                src.contains("\"platform\""),
+                "RegistrationHttpClient.kt must not send a 'platform' form param; User-Agent carries it")
             // Defensive: ensure User-Agent header IS set
             assertTrue(src.contains("\"User-Agent\""), "User-Agent header must be set")
             assertTrue(src.contains("fun userAgent()"), "userAgent() helper must exist")
@@ -88,13 +90,15 @@ class WhatsAppRegistrationBadParamRegressionTest {
         }
     }
 
-    // ------------------------------------------------------------------ 2. User-Agent format (only device token underscored)
+    // ------------------------------------------------------------------ 2. User-Agent format (only device token
+    // underscored)
 
     @Test
     fun userAgent_format_isWhatsAppSlashVer_AndroidSlashOs_DeviceSlashManDashModel() {
         val ua = userAgent("Google", "Pixel 8 Pro", "14")
         assertEquals("WhatsApp/${WhatsAppProtocol.WA_VERSION_NAME} Android/14 Device/Google-Pixel_8_Pro", ua)
-        // Only the device token had space->underscore; the "WhatsApp/" and "Android/" literals keep spaces? Actually header has no other spaces.
+        // Only the device token had space->underscore; the "WhatsApp/" and "Android/" literals keep spaces? Actually
+        // header has no other spaces.
         // Verify the header has exactly 3 tokens and only the last token was underscored.
         val parts = ua.split(" ")
         assertEquals(3, parts.size, "UA must be exactly 'WhatsApp/<ver> Android/<os> Device/<token>' (2 spaces)")
@@ -110,20 +114,25 @@ class WhatsAppRegistrationBadParamRegressionTest {
     fun userAgent_onlyDeviceTokenUnderscored_notWholeHeader() {
         // Bug to guard: `ua.replace(' ', '_')` on the whole header would corrupt the "WhatsApp/.. Android/.." tokens.
         val bad = "WhatsApp/${WhatsAppProtocol.WA_VERSION_NAME} Android/14 Device/Google Pixel 8 Pro".replace(' ', '_')
-        assertTrue(bad.contains("WhatsApp/${WhatsAppProtocol.WA_VERSION_NAME}_Android/"), "naive whole-header underscore would join tokens with '_'")
+        assertTrue(
+            bad.contains("WhatsApp/${WhatsAppProtocol.WA_VERSION_NAME}_Android/"),
+            "naive whole-header underscore would join tokens with '_'")
         val good = userAgent("Google", "Pixel 8 Pro", "14")
         assertFalse(good.contains("_Android/"), "correct impl must NOT underscore between WhatsApp and Android tokens")
         assertEquals("WhatsApp/${WhatsAppProtocol.WA_VERSION_NAME} Android/14 Device/Google-Pixel_8_Pro", good)
     }
 
-    // ------------------------------------------------------------------ 3. id / backup_token not double-encoded (A05 raw)
+    // ------------------------------------------------------------------ 3. id / backup_token not double-encoded (A05
+    // raw)
 
     @Test
     fun percentEncode_keepsUnreserved_encodesOthers_upperHex() {
         // Unreserved A-Za-z0-9-._~ must stay literal; everything else %HH upper-hex.
         val unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~".toByteArray()
         assertEquals(String(unreserved), RegEncoding.percentEncode(unreserved))
-        assertEquals("%00%0A%0D%20%2F%3D%3F%25", RegEncoding.percentEncode(byteArrayOf(0x00, 0x0A, 0x0D, 0x20, 0x2F, 0x3D, 0x3F, 0x25)))
+        assertEquals(
+            "%00%0A%0D%20%2F%3D%3F%25",
+            RegEncoding.percentEncode(byteArrayOf(0x00, 0x0A, 0x0D, 0x20, 0x2F, 0x3D, 0x3F, 0x25)))
         // % must be encoded as %25 and hex digits upper-case
         assertEquals("%2B", RegEncoding.percentEncode(byteArrayOf(0x2B))) // '+'
     }
@@ -203,7 +212,8 @@ class WhatsAppRegistrationBadParamRegressionTest {
         // (flag 2): standard alphabet (+/), with padding, no line breaks. NOT url-safe/no-padding (flag 11).
         // Token bytes are HMAC-SHA1 = 20 bytes -> standard b64 is 28 chars (27 + one '=')
         val dummyTokenBytes = ByteArray(20) { (it * 7).toByte() }
-        val stdNoWrap = Base64.getEncoder().encodeToString(dummyTokenBytes) // java std = flag 2 equiv (no wrap, with pad)
+        val stdNoWrap =
+            Base64.getEncoder().encodeToString(dummyTokenBytes) // java std = flag 2 equiv (no wrap, with pad)
         val urlNoPad = Base64.getUrlEncoder().withoutPadding().encodeToString(dummyTokenBytes)
         assertEquals(28, stdNoWrap.length, "20 bytes -> 28 chars standard b64 (one '=' pad)")
         assertTrue(stdNoWrap.endsWith("="), "standard token b64 must have padding")
@@ -232,7 +242,9 @@ class WhatsAppRegistrationBadParamRegressionTest {
             ?: tryReadSource("src/main/java/com/vayunmathur/communicate/data/whatsapp/registration/RegistrationHttpClient.kt")
         if (src != null) {
             // requestCode: `computeToken(context, number)` where `number` is the `in` arg (national)
-            assertTrue(src.contains("computeToken(context, number)"), "token must be computed from national `number` (param `in`), not \"\$cc\$number\"")
+            assertTrue(
+                src.contains("computeToken(context, number)"),
+                "token must be computed from national `number` (param `in`), not \"\$cc\$number\"")
             // Must NOT contain the full-number token variant in production code path (only debug log may show it)
             val nonDebugTokenCalls = src.lines().filter { it.contains("computeToken") && !it.contains("debug token") }
             for (l in nonDebugTokenCalls) {
@@ -242,7 +254,8 @@ class WhatsAppRegistrationBadParamRegressionTest {
         }
     }
 
-    // ------------------------------------------------------------------ 5. e_regid range 1..16383, 4B BE url-b64; bundle keys
+    // ------------------------------------------------------------------ 5. e_regid range 1..16383, 4B BE url-b64;
+    // bundle keys
 
     @Test
     fun eRegid_isIn1To16383_andEncodedAs4ByteBeUrlB64() {
@@ -300,7 +313,9 @@ class WhatsAppRegistrationBadParamRegressionTest {
             ?: tryReadSource("src/main/java/com/vayunmathur/communicate/data/whatsapp/registration/RegistrationKeys.kt")
         if (src != null) {
             assertTrue(src.contains("RegEncoding.b64Url"), "bundleFields must use RegEncoding.b64Url (A04 / flag 11)")
-            assertTrue(src.contains("\"e_regid\"") && src.contains("\"e_keytype\"") && src.contains("\"e_ident\""), "bundle must contain e_regid/e_keytype/e_ident")
+            assertTrue(
+                src.contains("\"e_regid\"") && src.contains("\"e_keytype\"") && src.contains("\"e_ident\""),
+                "bundle must contain e_regid/e_keytype/e_ident")
             assertTrue(src.contains("\"e_skey_id\"") && src.contains("\"e_skey_val\"") && src.contains("\"e_skey_sig\"") && src.contains("\"authkey\""), "bundle must contain e_skey_* and authkey")
         }
         // PQ guard: source must have all-or-none check (id != 0 && public.isNotEmpty && sig.isNotEmpty)
@@ -348,16 +363,22 @@ class WhatsAppRegistrationBadParamRegressionTest {
             assertEquals(3, Base64.getUrlDecoder().decode(bundleFull["e_pq_last_resort_id"]!!).size)
         }
         // Case 3: partial triple must NOT emit (all-or-none guard)
-        val partial = baseAuth.copy(pqLastResortKeyId = 1, pqLastResortPublic = b64(ByteArray(1568) { 9 }), pqLastResortSignature = "")
+        val partial = baseAuth.copy(
+            pqLastResortKeyId = 1,
+            pqLastResortPublic = b64(ByteArray(1568) { 9 }),
+            pqLastResortSignature = "")
         val bundlePartial = runCatching { com.vayunmathur.communicate.data.whatsapp.registration.RegistrationKeys.bundleFields(partial) }.getOrNull()
         if (bundlePartial != null) {
-            assertFalse(bundlePartial.containsKey("e_pq_last_resort_id"), "partial PQ triple must not emit e_pq_last_resort_id")
+            assertFalse(
+                bundlePartial.containsKey("e_pq_last_resort_id"),
+                "partial PQ triple must not emit e_pq_last_resort_id")
             assertFalse(bundlePartial.containsKey("e_pq_last_resort_val"))
             assertFalse(bundlePartial.containsKey("e_pq_last_resort_sig"))
         }
     }
 
-    // ------------------------------------------------------------------ 7. checkExist includes token, addIntegrity per-endpoint correct fields
+    // ------------------------------------------------------------------ 7. checkExist includes token, addIntegrity
+    // per-endpoint correct fields
 
     @Test
     fun checkExist_includesToken() {
@@ -390,7 +411,9 @@ class WhatsAppRegistrationBadParamRegressionTest {
             val snippet = src.substring(integIdx, minOf(src.length, integIdx + 3000))
             // Common fields always: aid, _gi, _gp, _ge, _ga, _gs
             for (k in listOf("aid", "_gi", "_gp", "_ge", "_ga", "_gs")) {
-                assertTrue(snippet.contains("\"$k\"") || snippet.contains("s.$k") || snippet.contains(k), "addIntegrity must handle $k")
+                assertTrue(
+                    snippet.contains("\"$k\"") || snippet.contains("s.$k") || snippet.contains(k),
+                    "addIntegrity must handle $k")
             }
             // Per-endpoint:
             // EXIST: db + profile_name; no t

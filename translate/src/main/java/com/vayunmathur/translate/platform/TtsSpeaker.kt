@@ -88,10 +88,10 @@ class TtsSpeaker(context: Context) {
         synchronized(this) { pending = null }
         try {
             tts?.stop()
-        } catch (_: Throwable) {
+        } catch (ignored: Exception) {
+            // Already torn down; nothing to stop.
         }
     }
-
     fun shutdown() {
         val engine = synchronized(this) {
             pending = null
@@ -102,10 +102,14 @@ class TtsSpeaker(context: Context) {
         try {
             engine?.stop()
             engine?.shutdown()
-        } catch (_: Throwable) {
+        } catch (ignored: Exception) {
+            // Already torn down; nothing to shut down.
         }
     }
 
+    // Broad catches are deliberate: the TTS engine throws undocumented
+    // RuntimeExceptions (not just IllegalArgumentException) on bad state.
+    @Suppress("TooGenericExceptionCaught")
     private fun utter(req: Request) {
         val engine = synchronized(this) { tts.takeIf { ready } } ?: return
         val locale = localeFor(req.languageCode)
@@ -124,8 +128,8 @@ class TtsSpeaker(context: Context) {
                 return
             }
             engine.speak(req.text, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_ID)
-        } catch (t: Throwable) {
-            Log.e(TAG, "speak failed", t)
+        } catch (e: Exception) {
+            Log.e(TAG, "speak failed", e)
         }
     }
 
@@ -151,11 +155,14 @@ class TtsSpeaker(context: Context) {
      * device's own country when the engine offers it, so a Brazilian user hears pt-BR
      * rather than whichever variant happens to sort first.
      */
+    // Broad catch is deliberate: availableLanguages throws undocumented
+    // RuntimeExceptions on some engines.
+    @Suppress("TooGenericExceptionCaught")
     private fun bestRegional(engine: TextToSpeech, wanted: Locale): Locale? {
         val installed = try {
             engine.availableLanguages.orEmpty()
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not list available languages", t)
+        } catch (e: Exception) {
+            Log.w(TAG, "could not list available languages", e)
             return null
         }
         val sameLanguage = installed
@@ -167,11 +174,12 @@ class TtsSpeaker(context: Context) {
     }
 
     /** True for a language the engine both knows and has voice data for. */
+    @Suppress("TooGenericExceptionCaught")
     private fun isInstalled(engine: TextToSpeech, locale: Locale): Boolean = try {
         // LANG_MISSING_DATA and LANG_NOT_SUPPORTED are the negative codes.
         engine.isLanguageAvailable(locale) >= TextToSpeech.LANG_AVAILABLE
-    } catch (t: Throwable) {
-        Log.w(TAG, "availability check failed for $locale", t)
+    } catch (e: Exception) {
+        Log.w(TAG, "availability check failed for $locale", e)
         false
     }
 
@@ -190,3 +198,4 @@ class TtsSpeaker(context: Context) {
         private const val UTTERANCE_ID = "translate_output"
     }
 }
+

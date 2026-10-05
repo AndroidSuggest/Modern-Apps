@@ -52,6 +52,10 @@ import com.vayunmathur.web.data.Bookmark
 import com.vayunmathur.web.data.BookmarkFolder
 import com.vayunmathur.web.platform.BrowserUtils
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.createFolder
+import com.vayunmathur.web.platform.deleteFolder
+import com.vayunmathur.web.platform.externalIntentUrl
+import com.vayunmathur.web.platform.removeBookmark
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable

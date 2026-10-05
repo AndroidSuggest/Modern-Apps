@@ -37,6 +37,24 @@ object TrackerUwbGatt {
 
     private const val TAG = "TrackerUwbGatt"
 
+    /** Offset of the 4-byte big-endian session id in the session-params frame. */
+    private const val SESSION_ID_OFFSET = 2
+
+    /** Length of the big-endian session id. */
+    private const val SESSION_ID_LEN = 4
+
+    /** Offset of the channel byte in the session-params frame. */
+    private const val CHANNEL_OFFSET = 6
+
+    /** Offset of the preamble byte in the session-params frame. */
+    private const val PREAMBLE_OFFSET = 7
+
+    /** Shift of the most significant byte in the big-endian session id. */
+    private const val SESSION_ID_SHIFT_MSB = 24
+
+    /** Bits per byte, for big-endian byte-packing shifts. */
+    private const val BITS_PER_BYTE = 8
+
     /** FiRa session params handed to the tracker for one ranging session. */
     data class SessionParams(
         val localAddress: ByteArray,   // phone (controller) 2-byte MAC
@@ -55,12 +73,12 @@ object TrackerUwbGatt {
         require(p.localAddress.size == 2) { "localAddress must be 2 bytes" }
         val out = ByteArray(2 + 4 + 1 + 1)
         p.localAddress.copyInto(out, 0)
-        out[2] = (p.sessionId ushr 24).toByte()
-        out[3] = (p.sessionId ushr 16).toByte()
-        out[4] = (p.sessionId ushr 8).toByte()
-        out[5] = p.sessionId.toByte()
-        out[6] = p.channelNumber.toByte()
-        out[7] = p.preambleIndex.toByte()
+        for (i in 0 until SESSION_ID_LEN) {
+            out[SESSION_ID_OFFSET + i] =
+                (p.sessionId ushr (SESSION_ID_SHIFT_MSB - i * BITS_PER_BYTE)).toByte()
+        }
+        out[CHANNEL_OFFSET] = p.channelNumber.toByte()
+        out[PREAMBLE_OFFSET] = p.preambleIndex.toByte()
         return out
     }
 
@@ -114,6 +132,8 @@ object TrackerUwbGatt {
      */
     @SuppressLint("MissingPermission")
     @Suppress("DEPRECATION")
+    // Broad catch is deliberate: GATT calls throw varied runtime exceptions; failure must return false, not crash.
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun writeSessionParams(
         context: Context,
         bleAddress: String,

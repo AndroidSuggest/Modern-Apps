@@ -33,34 +33,47 @@ object SourceStamp {
     data class Stamp(val current: String, val lineage: Set<String>)
 
     /** Verified source stamp of [apk], or null if it carries none. */
-    fun of(apk: File): Stamp? = try {
+    fun of(apk: File): Stamp? {
+        return try {
+            readVerified(apk)
+        } catch (expected: SecurityException) {
+            // An absent stamp is normal and not an error; a malformed one is treated the
+            // same as absent, and the caller decides whether absence is acceptable.
+            Log.d(TAG, "No verifiable source stamp on ${apk.name}: ${expected.message}")
+            null
+        } catch (expected: IllegalStateException) {
+            Log.d(TAG, "No verifiable source stamp on ${apk.name}: ${expected.message}")
+            null
+        } catch (expected: java.io.IOException) {
+            Log.d(TAG, "No verifiable source stamp on ${apk.name}: ${expected.message}")
+            null
+        }
+    }
+
+    private fun readVerified(apk: File): Stamp? {
         val result = SourceStampVerifier.Builder(apk)
             // Match the platform's own verification range. Below 24 the stamp uses the
             // v1 scheme, which apksig handles through the same entry point.
-            .setMinCheckedPlatformVersion(24)
+            .setMinCheckedPlatformVersion(MIN_PLATFORM_VERSION)
             .build()
             .verifySourceStamp()
 
         val info = result.sourceStampInfo
         if (!result.isVerified || info == null) {
-            null
-        } else {
-            val current = fingerprint(info.certificate)
-            val lineage = info.certificatesInLineage.orEmpty()
-                .mapNotNull(::fingerprint)
-                .toMutableSet()
-            if (current != null) lineage += current
-            if (current == null) null else Stamp(current, lineage)
+            return null
         }
-    } catch (t: Throwable) {
-        // An absent stamp is normal and not an error; a malformed one is treated the
-        // same as absent, and the caller decides whether absence is acceptable.
-        Log.d(TAG, "No verifiable source stamp on ${apk.name}: ${t.message}")
-        null
+        val current = fingerprint(info.certificate)
+        val lineage = info.certificatesInLineage.orEmpty()
+            .mapNotNull(::fingerprint)
+            .toMutableSet()
+        if (current != null) lineage += current
+        if (current == null) return null
+        return Stamp(current, lineage)
     }
 
     private fun fingerprint(cert: X509Certificate?): String? =
         cert?.let { runCatching { ApkCertificates.sha256(it.encoded) }.getOrNull() }
 
     private const val TAG = "SourceStamp"
+    private const val MIN_PLATFORM_VERSION = 24
 }

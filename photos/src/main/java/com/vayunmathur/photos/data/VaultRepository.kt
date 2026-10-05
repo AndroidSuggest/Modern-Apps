@@ -14,7 +14,13 @@ import kotlinx.coroutines.flow.Flow
 class VaultRepository private constructor(
     context: Context,
     encryptionPassword: String,
-) : RoomRepository<VaultDatabase>(context, VaultDatabase::class, dbName = "vault-db", encryptionPassword = encryptionPassword, migrations = emptyList<Migration>()) {
+) : RoomRepository<VaultDatabase>(
+    context,
+    VaultDatabase::class,
+    dbName = "vault-db",
+    encryptionPassword = encryptionPassword,
+    migrations = emptyList<Migration>(),
+) {
 
     private val vaultPhotoDao: VaultPhotoDao get() = db.vaultPhotoDao()
 
@@ -32,7 +38,8 @@ class VaultRepository private constructor(
 
         fun get(context: Context, password: String): VaultRepository =
             synchronized(this) {
-                instances[password] ?: VaultRepository(context.applicationContext, password).also { instances[password] = it }
+                instances[password] ?: VaultRepository(context.applicationContext, password)
+                    .also { instances[password] = it }
             }
 
         /** For contexts where password is not yet known — use only to check cached instance. */

@@ -77,9 +77,10 @@ class CableAdvertiser(context: Context) {
 
     companion object {
         private const val TAG = "CableAdvertiser"
+        private const val UUID_MASK_16 = 0xFFFF
 
         /** Expands a 16-bit Bluetooth UUID into its full 128-bit form. */
         fun uuid16(value: Int): UUID =
-            UUID.fromString("%08x-0000-1000-8000-00805f9b34fb".format(value and 0xFFFF))
+            UUID.fromString("%08x-0000-1000-8000-00805f9b34fb".format(value and UUID_MASK_16))
     }
 }

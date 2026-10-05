@@ -37,6 +37,11 @@ import com.vayunmathur.photos.data.Photo
 import com.vayunmathur.photos.R
 
 object ImageLoader {
+    private const val MEMORY_CACHE_FRACTION = 0.25
+    private const val DISK_CACHE_FRACTION = 0.05
+    private const val VIDEO_FRAME_MILLIS = 1000L
+    private const val THUMBNAIL_SIZE = 256
+
     @Volatile
     private var instance: LibImageLoader? = null
 
@@ -59,10 +64,13 @@ object ImageLoader {
 
     private fun build(context: Context): LibImageLoader = LibImageLoader.Builder(context)
         .memoryCache {
-            MemoryCache.Builder(context).maxSizePercent(0.25).build()
+            MemoryCache.Builder(context).maxSizePercent(MEMORY_CACHE_FRACTION).build()
         }
         .diskCache {
-            DiskCache.Builder().directory(context.cacheDir.resolve("image_cache")).maxSizePercent(0.05).build()
+            DiskCache.Builder()
+                .directory(context.cacheDir.resolve("image_cache"))
+                .maxSizePercent(DISK_CACHE_FRACTION)
+                .build()
         }
         .respectCacheHeaders(false)
         .build()
@@ -83,11 +91,11 @@ object ImageLoader {
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(photo.uri.toUri())
-                    .videoFrameMillis(1000)
+                    .videoFrameMillis(VIDEO_FRAME_MILLIS)
                     .diskCacheKey("thumb_${photo.id}_${photo.dateModified}")
                     .memoryCacheKey("thumb_${photo.id}_${photo.dateModified}")
                     .crossfade(true)
-                    .size(256)
+                    .size(THUMBNAIL_SIZE)
                     .build(),
                 imageLoader = loader(context),
                 contentDescription = null,

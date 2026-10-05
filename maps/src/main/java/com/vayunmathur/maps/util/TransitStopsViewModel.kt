@@ -56,7 +56,7 @@ class TransitStopsViewModel(application: Application) : AndroidViewModel(applica
      * a busy station is not silently truncated an hour into the day, low enough that the board is
      * a list and not a database dump.
      */
-    private val WINDOW_MAX = 400
+    private val windowMax = 400
 
     private val _selected = MutableStateFlow<TransitStop?>(null)
     val selected: StateFlow<TransitStop?> = _selected.asStateFlow()
@@ -90,11 +90,11 @@ class TransitStopsViewModel(application: Application) : AndroidViewModel(applica
                         // forward half and is dropped on merge.
                         val now = System.currentTimeMillis()
                         val offline = runCatching {
-                            val ahead = OfflineRouter.getStopDeparturesOffline(
-                                getApplication(), stop.lat, stop.lon, max = WINDOW_MAX,
+                            val ahead = OfflineRouterTransit.getStopDeparturesOffline(
+                                getApplication(), stop.lat, stop.lon, max = windowMax,
                             )
-                            val behind = OfflineRouter.getStopDeparturesOffline(
-                                getApplication(), stop.lat, stop.lon, max = WINDOW_MAX,
+                            val behind = OfflineRouterTransit.getStopDeparturesOffline(
+                                getApplication(), stop.lat, stop.lon, max = windowMax,
                                 anchor = Instant.ofEpochMilli(now).minus(Duration.ofHours(24)),
                                 until = Instant.ofEpochMilli(now),
                             ).filter { it.realtimeMillis < now }
@@ -131,11 +131,11 @@ class TransitStopsViewModel(application: Application) : AndroidViewModel(applica
      *
      * # The id is an enrichment, not a precondition
      *
-     * [OfflineRouter.nearestStop] returns null whenever the feed's Transitous
+     * [OfflineRouterTransit.nearestStop] returns null whenever the feed's Transitous
      * source name was unknown at build time, because it resolves a *MOTIS* id —
      * and that id is only ever used to fold in live delays. Treating null as
      * "no board" made every station in such a feed inert: no sheet, no message,
-     * nothing. The schedule needs no id at all ([OfflineRouter.getStopDeparturesOffline]
+     * nothing. The schedule needs no id at all ([OfflineRouterTransit.getStopDeparturesOffline]
      * takes a coordinate), so a stop with no id still opens, just without
      * realtime. That is exactly what `build_transit_stops_layer.sh` promises:
      * "they still open an offline departure board, just no live delays".
@@ -146,7 +146,7 @@ class TransitStopsViewModel(application: Application) : AndroidViewModel(applica
     fun openNearestStop(lat: Double, lon: Double, name: String? = null) {
         viewModelScope.launch {
             val resolved = withContext(Dispatchers.IO) {
-                OfflineRouter.nearestStop(getApplication(), lat, lon)
+                OfflineRouterTransit.nearestStop(getApplication(), lat, lon)
             }
             val stop = resolved?.let { if (name != null) it.copy(name = name) else it }
                 ?: TransitStop(id = "", name = name.orEmpty(), lat = lat, lon = lon)
@@ -184,7 +184,7 @@ class TransitStopsViewModel(application: Application) : AndroidViewModel(applica
             _tripItinerary.value = TripItineraryState.Loading
             val itin = withContext(Dispatchers.IO) {
                 runCatching {
-                    OfflineRouter.tripItinerary(getApplication(), vehicleId, lat, lon)
+                    OfflineRouterTransit.tripItinerary(getApplication(), vehicleId, lat, lon)
                 }.getOrNull()
             }
             // The selection may have moved on while the fetch ran.

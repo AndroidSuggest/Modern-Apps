@@ -189,20 +189,32 @@ class SabrNgSession(
         }
     }
 
+    /**
+     * Returns true when the pump should wait rather than issue a request this round:
+     * the prefetch window is full, or buffered far ahead of the playhead.
+     *
+     * Pace prefetch against consumption: burst-fetching the whole video trips YouTube's
+     * SABR throttling (backoff-only responses until the 30s budget dies, #565). Only
+     * fetch while the buffered window ahead of the playhead is thin, and pause briefly
+     * after every request round so steady-state demand tracks consumption.
+     */
+    private fun awaitPrefetchWindow(): Boolean {
+        if (isFullyBuffered()) {
+            sleepQuietly(FULL_BUFFER_POLL_MS)
+            return true
+        }
+        if (isBufferedFarAheadOfPlayhead()) {
+            sleepQuietly(PREFETCH_PAUSE_MS)
+            return true
+        }
+        return false
+    }
+
     private fun pumpLoop() {
         val consumer = SabrStreamingResponseReader.SegmentConsumer { segment -> onSegment(segment) }
         while (running) {
             logPumpState()
-            if (isFullyBuffered()) {
-                sleepQuietly(200L)
-                continue
-            }
-            // Pace prefetch against consumption: burst-fetching the whole video trips YouTube's
-            // SABR throttling (backoff-only responses until the 30s budget dies, #565). Only
-            // fetch while the buffered window ahead of the playhead is thin, and pause briefly
-            // after every request round so steady-state demand tracks consumption.
-            if (isBufferedFarAheadOfPlayhead()) {
-                sleepQuietly(500L)
+            if (awaitPrefetchWindow()) {
                 continue
             }
             val request = YoutubeSabrRequest.playback(
@@ -235,9 +247,6 @@ class SabrNgSession(
                 fail(e)
                 return
             } catch (e: ExtractionException) {
-                fail(IOException("SABR request failed", e))
-                return
-            } catch (e: Exception) {
                 fail(IOException("SABR request failed", e))
                 return
             }
@@ -373,6 +382,18 @@ class SabrNgSession(
 
         /** Logcat truncates single messages past ~4KB; chunk the trace so none is lost. */
         private const val TRACE_CHUNK_CHARS = 3_000
+
+        /** Poll interval while the prefetch window is full. */
+        private const val FULL_BUFFER_POLL_MS = 200L
+
+        /** Breather while buffered far ahead of the playhead. */
+        private const val PREFETCH_PAUSE_MS = 500L
+
+        /** Bit width of the itag half of the segment-cache key. */
+        private const val ITAG_SHIFT_BITS = 32
+
+        /** Mask for the sequence-number half of the segment-cache key. */
+        private const val SEQUENCE_MASK = 0xffffffffL
     }
 
     private fun sleepQuietly(millis: Long) {
@@ -385,5 +406,5 @@ class SabrNgSession(
     }
 
     private fun key(itag: Int, sequenceNumber: Int): Long =
-        (itag.toLong() shl 32) or (sequenceNumber.toLong() and 0xffffffffL)
+        (itag.toLong() shl ITAG_SHIFT_BITS) or (sequenceNumber.toLong() and SEQUENCE_MASK)
 }

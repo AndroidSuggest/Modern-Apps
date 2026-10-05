@@ -172,15 +172,7 @@ class FamilyLocationService : Service() {
         // pre-init snapshot dropping an innocent row.
         val self = Networking.userid
         for ((id, location) in locations) {
-            if (self != 0L && id == self) continue
-            // Skip anyone we can't label — a nameless pin isn't actionable.
-            val name = namesById[id] ?: continue
-            ids.add(id)
-            names.add(name)
-            lats.add(location.coord.lat)
-            lngs.add(location.coord.lon)
-            timestamps.add(location.timestamp.toEpochMilliseconds())
-            batteries.add(location.battery)
+            appendLocationRow(ids, names, lats, lngs, timestamps, batteries, self, id, location, namesById)
         }
 
         return Bundle().apply {
@@ -191,5 +183,28 @@ class FamilyLocationService : Service() {
             putLongArray(FamilyLocationProtocol.KEY_TIMESTAMPS, timestamps.toLongArray())
             putFloatArray(FamilyLocationProtocol.KEY_BATTERIES, batteries.toFloatArray())
         }
+    }
+
+    private fun appendLocationRow(
+        ids: ArrayList<Long>,
+        names: ArrayList<String>,
+        lats: ArrayList<Double>,
+        lngs: ArrayList<Double>,
+        timestamps: ArrayList<Long>,
+        batteries: ArrayList<Float>,
+        self: Long,
+        id: Long,
+        location: com.vayunmathur.findfamily.data.LocationValue,
+        namesById: Map<Long, String>,
+    ) {
+        if (self != 0L && id == self) return
+        // Skip anyone we can't label — a nameless pin isn't actionable.
+        val name = namesById[id] ?: return
+        ids.add(id)
+        names.add(name)
+        lats.add(location.coord.lat)
+        lngs.add(location.coord.lon)
+        timestamps.add(location.timestamp.toEpochMilliseconds())
+        batteries.add(location.battery)
     }
 }

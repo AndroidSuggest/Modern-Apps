@@ -25,8 +25,8 @@ internal const val CELL_HEIGHT_DP = 88
  * the picker opens rather than being kept live in the workspace state.
  */
 internal fun LauncherViewModel.loadWidgetPicker() {
-    _widgetPicker.value = _widgetPicker.value.copy(loading = true)
-    val spec = _home.value.grid
+    widgetPickerState.value = widgetPickerState.value.copy(loading = true)
+    val spec = homeState.value.grid
     val groups = appsMonitor.apps.value
         .map { it.profileSerial }
         .distinct()
@@ -55,8 +55,8 @@ internal fun LauncherViewModel.loadWidgetPicker() {
         .map { (appLabel, entries) -> WidgetGroup(appLabel, entries.sortedBy { it.label }) }
         .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.appLabel })
 
-    _widgetPicker.value = _widgetPicker.value.copy(loading = false)
-    applyWidgetQuery(_widgetPicker.value.query, groups)
+    widgetPickerState.value = widgetPickerState.value.copy(loading = false)
+    applyWidgetQuery(widgetPickerState.value.query, groups)
 }
 
 internal fun LauncherViewModel.applyWidgetQuery(query: String, source: List<WidgetGroup>? = null) {
@@ -71,7 +71,7 @@ internal fun LauncherViewModel.applyWidgetQuery(query: String, source: List<Widg
             if (matches.isEmpty()) null else group.copy(widgets = matches)
         }
     }
-    _widgetPicker.value = _widgetPicker.value.copy(query = query, groups = filtered)
+    widgetPickerState.value = widgetPickerState.value.copy(query = query, groups = filtered)
 }
 
 internal fun LauncherViewModel.addWidgetEntry(entry: WidgetEntry) {
@@ -93,7 +93,7 @@ internal fun LauncherViewModel.addWidgetEntry(entry: WidgetEntry) {
         onBound = { appWidgetId ->
             viewModelScope.launch {
                 repository.addToFirstVacantCell(
-                    _home.value.grid,
+                    homeState.value.grid,
                     LauncherItemEntity(
                         itemType = LauncherItemType.APPWIDGET,
                         containerId = ContainerRef.Desktop.toRaw(),
@@ -118,3 +118,4 @@ internal fun LauncherViewModel.hostedWidgetView(appWidgetId: Int): AppWidgetHost
     val info = widgets.providerInfo(appWidgetId) ?: return null
     return runCatching { widgets.createView(appWidgetId, info) }.getOrNull()
 }
+

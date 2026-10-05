@@ -1,31 +1,17 @@
 package com.vayunmathur.keyboard.ime
 
-import android.content.ClipDescription
 import android.content.ClipboardManager
-import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.media.AudioManager
-import android.net.Uri
-import android.os.Build
-import android.os.SystemClock
-import android.provider.Settings
-import android.text.InputType
-import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
-import android.view.inputmethod.InputMethodSubtype.InputMethodSubtypeBuilder
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.core.content.FileProvider
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.core.view.inputmethod.EditorInfoCompat
-import androidx.core.view.inputmethod.InputConnectionCompat
-import androidx.core.view.inputmethod.InputContentInfoCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -37,23 +23,16 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import com.vayunmathur.keyboard.platform.VoiceFailure
 import com.vayunmathur.keyboard.platform.VoiceInput
 import com.vayunmathur.keyboard.platform.VoicePermission
-import com.vayunmathur.keyboard.platform.VoicePermissionResult
 import com.vayunmathur.keyboard.ui.KeyboardScreen
-import com.vayunmathur.keyboard.R
-import com.vayunmathur.keyboard.util.ClipItem
 import com.vayunmathur.keyboard.util.ClipboardStore
 import com.vayunmathur.keyboard.util.ComposerKind
 import com.vayunmathur.keyboard.util.Dictionary
 import com.vayunmathur.keyboard.util.EmojiData
-import com.vayunmathur.keyboard.util.KeyboardLayouts
-import com.vayunmathur.keyboard.util.KeyboardPage
 import com.vayunmathur.keyboard.util.KeyboardSettings
 import com.vayunmathur.keyboard.util.PinyinDictionary
 import com.vayunmathur.keyboard.util.RecentEmoji
-import com.vayunmathur.keyboard.util.ShiftState
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.CoroutineScope
@@ -61,46 +40,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
  * The input method (IME). Renders the keyboard with Compose and turns key actions into edits
- * on the target field's [InputConnection].
+ * on the target field's [android.view.inputmethod.InputConnection].
  *
  * Compose views need a [LifecycleOwner], [ViewModelStoreOwner] and [SavedStateRegistryOwner]
  * in their view tree; an [InputMethodService] provides none, so this service implements all
  * three and drives the lifecycle from the IME window callbacks.
+ *
+ * Key handling lives in `KeyboardService*Ops.kt` (same package, internal extensions) and the
+ * [ImeActions] implementation in [KeyboardActionHandler]; this class keeps only the
+ * framework lifecycle callbacks. Behaviour is unchanged.
  */
-/** Max gap between two shift taps to latch caps-lock. */
-private const val DOUBLE_TAP_MS = 300L
-
-/** How long a freshly copied clip is offered in the strip before the chip gives up the slot. */
-private const val CLIP_CHIP_MS = 60_000L
-
-/** How long a dictation failure stays in the strip before it clears itself. */
-private const val VOICE_MESSAGE_MS = 6_000L
-
-/** How long a granted microphone still counts as "the user just asked for dictation". */
-private const val VOICE_GRANT_MS = 30_000L
-
-/** How long a strip notice (e.g. image paste refused) stays up before clearing itself. */
-private const val NOTICE_MS = 4_000L
-
-/**
- * Layouts that stay registered as framework subtypes on platforms below API 34 even when
- * they share a language prefix with another layout. Same-language *arrangements* (QWERTY
- * vs Dvorak) collapse to one entry there because the platform cannot label them apart, but
- * these are different inputs, not different arrangements: hiding one would remove a script
- * the user cannot reach any other way.
- */
-private val PRE34_DISTINCT_LAYOUTS = setOf("zh_pinyin", "zh_pinyin_tc", "ja_romaji", "ja_kana", "tr_q", "tr_f")
-
 class KeyboardService : InputMethodService(),
-    LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner, ImeActions {
+    LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
 
     private val lifecycleRegistry = LifecycleRegistry(this)
     private val store = ViewModelStore()
@@ -110,75 +67,79 @@ class KeyboardService : InputMethodService(),
     override val viewModelStore: ViewModelStore get() = store
     override val savedStateRegistry: SavedStateRegistry get() = savedStateRegistryController.savedStateRegistry
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    private lateinit var ds: DataStoreUtils
-    private val kbState = KeyboardState()
-    private var dictionary: Dictionary = Dictionary.EMPTY
+    internal lateinit var ds: DataStoreUtils
+    internal val kbState = KeyboardState()
+    internal var dictionary: Dictionary = Dictionary.EMPTY
 
     // Credential-encrypted cache, like before: pre-unlock the files are unreadable rather
     // than readable-without-a-passcode, so clipboard I/O below tolerates failure and the
     // history is simply unavailable until first unlock (see onCreate/restoreState).
-    private val clipboard by lazy { ClipboardStore(File(cacheDir, "clips")) }
-    private var clipListener: ClipboardManager.OnPrimaryClipChangedListener? = null
+    internal val clipboard by lazy { ClipboardStore(File(cacheDir, "clips")) }
+    internal var clipListener: ClipboardManager.OnPrimaryClipChangedListener? = null
 
     /** Clears a strip notice after a while; cancelled by the next notice. */
-    private var noticeJob: Job? = null
+    internal var noticeJob: Job? = null
 
     /** Id of the clip the chip is currently offering, so a stale timeout can't clear a newer one. */
-    private var chipClipId = 0L
+    internal var chipClipId = 0L
 
     /** The word currently being composed (underlined) on the letters page. */
-    private val composing = StringBuilder()
+    internal val composing = StringBuilder()
 
     /**
      * What is in front of the cursor, mirrored locally rather than read back from the field
      * on every keystroke. Every edit below goes through [commit], [setComposing],
      * [finishComposing] or [deleteBackward] so it stays in step.
      */
-    private val before = TextBeforeCursor()
+    internal val before = TextBeforeCursor()
 
     /** The composition currently shown, so finalizing it can be mirrored into [before]. */
-    private var pendingComposition: CharSequence = ""
+    internal var pendingComposition: CharSequence = ""
 
     /**
      * The composition engine for the active layout, or null for layouts whose keys are
      * already characters. Owns everything about Hangul/pinyin/kana input; the service only
-     * applies what it returns to the [InputConnection].
+     * applies what it returns to the [android.view.inputmethod.InputConnection].
      */
-    private var composer: Composer? = null
-    private var composerKind: ComposerKind? = null
-    private var pinyinSimplified = PinyinDictionary.EMPTY
-    private var pinyinTraditional = PinyinDictionary.EMPTY
-    private var bopomofoSpellings: Map<String, String> = emptyMap()
-    private var loadingChinese = false
+    internal var composer: Composer? = null
+    internal var composerKind: ComposerKind? = null
+    internal var pinyinSimplified = PinyinDictionary.EMPTY
+    internal var pinyinTraditional = PinyinDictionary.EMPTY
+    internal var bopomofoSpellings: Map<String, String> = emptyMap()
+    internal var loadingChinese = false
 
-    private var lastSpaceTime = 0L
-    private var lastShiftTime = 0L
+    internal var lastSpaceTime = 0L
+    internal var lastShiftTime = 0L
 
     /** Enter behaviour derived from the current field. */
-    private var editorActionId = EditorInfo.IME_ACTION_UNSPECIFIED
-    private var enterSendsAction = false
+    internal var editorActionId = EditorInfo.IME_ACTION_UNSPECIFIED
+    internal var enterSendsAction = false
 
-    private val voiceInput by lazy { VoiceInput(this) }
+    internal val voiceInput by lazy { VoiceInput(this) }
 
     /** Clears a dictation failure from the strip after a while; cancelled by the next change. */
-    private var voiceMessageJob: Job? = null
+    internal var voiceMessageJob: Job? = null
 
     /** True between [onWindowShown] and [onWindowHidden] — i.e. while there is a live field. */
-    private var windowShown = false
+    internal var windowShown = false
 
     /**
      * When the microphone was granted while the keyboard was away for the prompt, so
      * dictation can pick up where it left off. Zero when nothing is waiting.
      */
-    private var voiceGrantedAt = 0L
+    internal var voiceGrantedAt = 0L
 
     /** This IME's id in the framework, resolved once from [InputMethodManager.getInputMethodList]. */
-    private var imeId: String? = null
+    internal var imeId: String? = null
 
     /** Layout id -> the framework subtype registered for it, for subtype lookup. */
-    private var subtypeByLayoutId: Map<String, InputMethodSubtype> = emptyMap()
+    internal var subtypeByLayoutId: Map<String, InputMethodSubtype> = emptyMap()
+
+    internal val audio by lazy { getSystemService(AudioManager::class.java) }
+
+    private val actionsHandler by lazy { KeyboardActionHandler(this) }
 
     override fun onCreate() {
         super.onCreate()
@@ -206,170 +167,6 @@ class KeyboardService : InputMethodService(),
         registerLayoutSubtypes()
         observeSettings()
         scope.launch { VoicePermission.results.collect { onVoicePermissionResult(it) } }
-    }
-
-    /** Keep [KeyboardState.settings] in sync with DataStore so changes apply live. */
-    private fun observeSettings() {
-        val keys = KeyboardSettings.Keys
-        scope.launch { ds.booleanFlow(keys.HAPTIC).collectLatest { update { copy(haptic = it) } } }
-        scope.launch { ds.booleanFlow(keys.SOUND).collectLatest { update { copy(sound = it) } } }
-        scope.launch { ds.booleanFlow(keys.AUTO_CAP).collectLatest { update { copy(autoCapitalize = it) } } }
-        scope.launch { ds.booleanFlow(keys.DOUBLE_SPACE_PERIOD).collectLatest { update { copy(doubleSpacePeriod = it) } } }
-        scope.launch { ds.booleanFlow(keys.SHOW_SUGGESTIONS).collectLatest { update { copy(showSuggestions = it) } } }
-        scope.launch { ds.booleanFlow(keys.AUTO_CORRECT).collectLatest { update { copy(autoCorrect = it) } } }
-        scope.launch { ds.booleanFlow(keys.NUMBER_ROW).collectLatest { update { copy(numberRow = it) } } }
-        scope.launch {
-            ds.booleanFlow(keys.CLIPBOARD).collectLatest {
-                update { copy(clipboardEnabled = it) }
-                if (!it) forgetClips()
-            }
-        }
-        // Settings wipes the history by bumping the wipe counter; a counter (not a blank
-        // string) means the one-time legacy migration below can clear the old key without
-        // looking like a wipe request. The first emission is the stored value, not a request.
-        scope.launch {
-            var first = true
-            var seen = 0L
-            ds.longFlow(keys.CLIPS_WIPE, 0L).collectLatest {
-                if (first) {
-                    seen = it
-                    first = false
-                    return@collectLatest
-                }
-                if (it > seen) {
-                    seen = it
-                    forgetClips()
-                }
-            }
-        }
-        scope.launch { ds.doubleFlow(keys.KEY_HEIGHT).collectLatest { update { copy(keyHeightScale = it.toFloat()) } } }
-        scope.launch {
-            ds.stringFlow(keys.ACTIVE_LAYOUT).collectLatest {
-                update { copy(activeLayoutId = it) }
-                syncComposer()
-            }
-        }
-    }
-
-    // --- Composition engines ---
-
-    /** Point [composer] at whatever the active layout needs, keeping it across no-op changes. */
-    private fun syncComposer() {
-        val kind = kbState.settings.activeLayout.composer
-        if (kind == composerKind && (kind == null || composer != null)) return
-        composerKind = kind
-        composer = when (kind) {
-            null -> null
-            ComposerKind.HANGUL -> HangulComposer()
-            ComposerKind.ROMAJI -> RomajiComposer()
-            ComposerKind.KANA -> KanaKeyComposer()
-            ComposerKind.ETHIOPIC -> EthiopicComposer()
-            ComposerKind.PINYIN_SIMPLIFIED -> HanComposer(pinyinSimplified, SpellingScheme.Pinyin)
-            ComposerKind.PINYIN_TRADITIONAL -> HanComposer(pinyinTraditional, SpellingScheme.Pinyin)
-            ComposerKind.BOPOMOFO ->
-                HanComposer(pinyinTraditional, SpellingScheme.Bopomofo(bopomofoSpellings))
-        }
-        if (kind?.needsChineseData == true) loadChineseData()
-    }
-
-    /**
-     * Read the pinyin tables the first time a Chinese layout is chosen — they are ~130 KiB of
-     * asset that a keyboard used for English should never touch. Until they arrive the engine
-     * simply has no candidates, and the composer is rebuilt around them once it does.
-     */
-    private fun loadChineseData() {
-        if (loadingChinese || pinyinSimplified !== PinyinDictionary.EMPTY) return
-        loadingChinese = true
-        scope.launch {
-            pinyinSimplified = PinyinDictionary.load(this@KeyboardService, "pinyin_sc")
-            pinyinTraditional = PinyinDictionary.load(this@KeyboardService, "pinyin_tc")
-            bopomofoSpellings = PinyinDictionary.loadBopomofo(this@KeyboardService)
-            loadingChinese = false
-            composerKind = null // force a rebuild now that there is something to look up in
-            syncComposer()
-        }
-    }
-
-    private val ComposerKind.needsChineseData: Boolean
-        get() = this == ComposerKind.PINYIN_SIMPLIFIED ||
-            this == ComposerKind.PINYIN_TRADITIONAL ||
-            this == ComposerKind.BOPOMOFO
-
-    /**
-     * Apply one composition step: settled text (if any) replaces the composing region and
-     * becomes final, then whatever is still being composed goes back under it.
-     */
-    private fun applyComposition(ic: InputConnection, engine: Composer, result: ComposeResult) {
-        if (result.commit.isNotEmpty()) commit(ic, result.commit)
-        if (result.composing.isNotEmpty()) {
-            setComposing(ic, result.composing)
-        } else if (result.commit.isEmpty()) {
-            // Nothing settled and nothing left: the last backspace emptied the composition.
-            setComposing(ic, "")
-            finishComposing(ic)
-        }
-        kbState.suggestions = engine.candidates
-    }
-
-    /** Make the composition final, giving the engine its last chance to rewrite it. */
-    private fun finishComposition(ic: InputConnection) {
-        val engine = composer ?: return
-        if (engine.isComposing) {
-            val result = engine.finish()
-            if (result != null && result.commit.isNotEmpty()) {
-                commit(ic, result.commit)
-            } else {
-                finishComposing(ic)
-            }
-        }
-        engine.reset()
-        kbState.suggestions = emptyList()
-    }
-
-    // --- Edits ---
-
-    /**
-     * The four ways this service changes the field, each mirrored into [before]. Going
-     * through these rather than touching the [InputConnection] directly is what lets
-     * auto-capitalisation and the double-space period answer from memory instead of asking
-     * the target app — see [TextBeforeCursor].
-     */
-    private fun commit(ic: InputConnection, text: CharSequence) {
-        ic.commitText(text, 1)
-        pendingComposition = ""
-        before.committed(text)
-    }
-
-    private fun setComposing(ic: InputConnection, text: CharSequence) {
-        ic.setComposingText(text, 1)
-        pendingComposition = text.toString()
-        before.composing(text)
-    }
-
-    private fun finishComposing(ic: InputConnection) {
-        ic.finishComposingText()
-        before.composingFinished(pendingComposition)
-        pendingComposition = ""
-    }
-
-    private fun deleteBackward(ic: InputConnection) {
-        // Code points, not Java chars: a single emoji is two UTF-16 units, and
-        // deleting one unit leaves a lone surrogate (�) in the field.
-        ic.deleteSurroundingTextInCodePoints(1, 0)
-        before.deleted()
-    }
-
-    /** The text in front of the cursor, asking the field only when the mirror cannot say. */
-    private fun textBeforeCursor(): CharSequence {
-        before.peek()?.let { return it }
-        val ic = currentInputConnection ?: return ""
-        val text = ic.getTextBeforeCursor(TextBeforeCursor.WINDOW, 0) ?: return ""
-        before.fill(text)
-        return text
-    }
-
-    private inline fun update(transform: KeyboardSettings.() -> KeyboardSettings) {
-        kbState.settings = kbState.settings.transform()
     }
 
     override fun onCreateInputView(): View {
@@ -408,7 +205,7 @@ class KeyboardService : InputMethodService(),
                     }
                 }
                 DynamicTheme {
-                    KeyboardScreen(kbState, this@KeyboardService)
+                    KeyboardScreen(kbState, actionsHandler)
                 }
             }
         }
@@ -448,26 +245,10 @@ class KeyboardService : InputMethodService(),
         // came straight back. Granting and then wandering off must not open the microphone
         // the next time some unrelated field is tapped.
         if (voiceGrantedAt != 0L) {
-            val resumed = SystemClock.uptimeMillis() - voiceGrantedAt < VOICE_GRANT_MS
+            val resumed = android.os.SystemClock.uptimeMillis() - voiceGrantedAt < VOICE_GRANT_MS
             voiceGrantedAt = 0L
             if (resumed) beginListening()
         }
-    }
-
-    /**
-     * Read the navigation-bar height from the window so the keyboard can pad clear of
-     * it. Reads immediately and again after the next layout pass (rootWindowInsets is
-     * often not populated yet when onWindowShown/onStartInputView first run).
-     */
-    private fun updateBottomInset() {
-        val decor = window?.window?.decorView ?: return
-        val read = {
-            decor.rootWindowInsets?.let {
-                kbState.bottomInsetPx = it.getInsets(android.view.WindowInsets.Type.navigationBars()).bottom
-            }
-        }
-        read()
-        decor.post { read() }
     }
 
     override fun onWindowHidden() {
@@ -514,745 +295,10 @@ class KeyboardService : InputMethodService(),
         super.onDestroy()
     }
 
-    // --- Editor configuration ---
-
-    private fun configureForEditor(info: EditorInfo) {
-        val cls = info.inputType and InputType.TYPE_MASK_CLASS
-        val variation = info.inputType and InputType.TYPE_MASK_VARIATION
-        val isPassword = (cls == InputType.TYPE_CLASS_TEXT &&
-            (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
-                variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
-                variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD)) ||
-            (cls == InputType.TYPE_CLASS_NUMBER && variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD)
-        // Phone gets its own dial-pad layout (FUTO phone.yaml); number/datetime share the
-        // numeric layout (FUTO number.yaml). Everything else uses letters.
-        val isPhone = cls == InputType.TYPE_CLASS_PHONE
-        val isNumeric = cls == InputType.TYPE_CLASS_NUMBER ||
-            cls == InputType.TYPE_CLASS_DATETIME
-
-        kbState.passwordField = isPassword
-        kbState.textVariation = when {
-            cls == InputType.TYPE_CLASS_TEXT &&
-                (variation == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
-                    variation == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS) -> TextVariation.EMAIL
-            cls == InputType.TYPE_CLASS_TEXT &&
-                variation == InputType.TYPE_TEXT_VARIATION_URI -> TextVariation.URL
-            else -> TextVariation.NORMAL
-        }
-        kbState.basePage = when {
-            isPhone -> KeyboardPage.PHONE
-            isNumeric -> KeyboardPage.NUMERIC
-            else -> KeyboardPage.LETTERS
-        }
-        kbState.page = kbState.basePage
-        kbState.shift = ShiftState.OFF
-
-        // Which action Enter performs, using AOSP LatinIME's precedence:
-        //  1. IME_FLAG_NO_ENTER_ACTION  -> Enter is a plain newline, whatever imeOptions says.
-        //  2. a custom actionLabel      -> perform info.actionId. This is NOT the imeOptions
-        //     action: apps calling setImeActionLabel("Search", id) usually leave imeOptions
-        //     at UNSPECIFIED, so reading only imeOptions loses the action entirely and Enter
-        //     falls back to a newline.
-        //  3. otherwise                 -> perform imeOptions & IME_MASK_ACTION.
-        val optionsAction = info.imeOptions and EditorInfo.IME_MASK_ACTION
-        val noAction = (info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0
-        val customLabel = info.actionLabel?.toString()?.takeIf { it.isNotBlank() }
-
-        editorActionId = if (customLabel != null) info.actionId else optionsAction
-        enterSendsAction = !noAction && when {
-            customLabel != null -> true
-            // UNSPECIFIED means "the app didn't say"; treat it as a newline rather than
-            // firing action 0, which most multi-line fields do not expect.
-            else -> optionsAction != EditorInfo.IME_ACTION_NONE &&
-                optionsAction != EditorInfo.IME_ACTION_UNSPECIFIED
-        }
-
-        kbState.enterActionLabel = if (enterSendsAction) customLabel else null
-        kbState.enterAction = if (!enterSendsAction) EnterAction.RETURN else when (optionsAction) {
-            EditorInfo.IME_ACTION_GO -> EnterAction.GO
-            EditorInfo.IME_ACTION_SEARCH -> EnterAction.SEARCH
-            EditorInfo.IME_ACTION_SEND -> EnterAction.SEND
-            EditorInfo.IME_ACTION_NEXT -> EnterAction.NEXT
-            EditorInfo.IME_ACTION_DONE -> EnterAction.DONE
-            EditorInfo.IME_ACTION_PREVIOUS -> EnterAction.PREVIOUS
-            // A custom action with no recognisable imeOptions action still sends; the key
-            // shows the app's own label (enterActionLabel) rather than the return glyph.
-            else -> EnterAction.RETURN
-        }
-    }
-
-    /**
-     * Composing (word tracking) is needed for either suggestions or autocorrect, and only
-     * makes sense for plain text fields (never passwords or the numeric layout). The only
-     * dictionary we ship is English, so it also stays off for every other layout rather than
-     * offering English words to someone writing Greek.
-     */
-    private fun useComposing(): Boolean =
-        (kbState.settings.showSuggestions || kbState.settings.autoCorrect) &&
-            !kbState.passwordField && kbState.basePage == KeyboardPage.LETTERS &&
-            kbState.settings.activeLayout.englishDictionary
-
-    // --- ImeActions ---
-
-    override fun onChar(text: String) {
-        feedback()
-        // The chip is an offer made before typing starts; the first keystroke declines it.
-        dismissClipSuggestion()
-        if (typeIntoSearch(text)) return
-        val ic = currentInputConnection ?: return
-        val engine = composer
-        if (engine != null) {
-            val result = engine.accept(text)
-            if (result != null) {
-                applyComposition(ic, engine, result)
-                consumeShift()
-                return
-            }
-            // Punctuation, a symbol-page key: settle the composition and type it plainly.
-            finishComposition(ic)
-            commit(ic, text)
-            consumeShift()
-            return
-        }
-        if (useComposing() && text.length == 1 && text[0].isLetter()) {
-            composing.append(text)
-            setComposing(ic, composing)
-            updateSuggestions()
-        } else {
-            commitCurrentWord(ic, autoCorrect = false)
-            commit(ic, text)
-            kbState.suggestions = emptyList()
-        }
-        consumeShift()
-        updateAutoCapShift()
-    }
-
-    override fun onBackspace() {
-        feedback()
-        val query = kbState.emojiQuery
-        if (query != null) {
-            // Backspacing an empty query leaves search rather than deleting from the field
-            // the user cannot see.
-            if (query.isEmpty()) endEmojiSearch() else setQuery(query.dropLast(1))
-            return
-        }
-        val ic = currentInputConnection ?: return
-        val engine = composer
-        if (engine != null) {
-            // Backspace takes a composition apart one jamo/letter at a time, and only deletes
-            // from the field once there is no composition left.
-            val result = engine.backspace()
-            if (result != null) {
-                applyComposition(ic, engine, result)
-                return
-            }
-        }
-        if (composing.isNotEmpty()) {
-            composing.deleteCharAt(composing.length - 1)
-            if (composing.isEmpty()) {
-                setComposing(ic, "")
-                finishComposing(ic)
-                kbState.suggestions = emptyList()
-            } else {
-                setComposing(ic, composing)
-                updateSuggestions()
-            }
-        } else if (before.hasSelection) {
-            // Deleting a selection leaves whatever preceded it in front of the cursor, which
-            // is text we never saw, so the mirror has to start again.
-            commit(ic, "")
-            before.invalidate()
-        } else {
-            deleteBackward(ic)
-        }
-        updateAutoCapShift()
-    }
-
-    override fun onEnter() {
-        feedback()
-        if (kbState.emojiQuery != null) {
-            endEmojiSearch()
-            return
-        }
-        val ic = currentInputConnection ?: return
-        // Finish the composing word first: performEditorAction hands control to the app,
-        // which would otherwise read the field without the last (still-composing) word.
-        finishComposition(ic)
-        commitCurrentWord(ic, autoCorrect = false)
-        // performEditorAction returns false when the target can't handle the action (a
-        // dead connection, or an actionId the app declines). Fall back to a real Enter so
-        // the key never silently does nothing.
-        val handled = enterSendsAction && ic.performEditorAction(editorActionId)
-        if (!handled) {
-            sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
-        }
-        // Either way the field is now the app's business — it may have inserted a newline,
-        // moved focus or submitted and cleared itself.
-        before.invalidate()
-        kbState.suggestions = emptyList()
-        updateAutoCapShift()
-    }
-
-    override fun onSpace() {
-        feedback()
-        // Multi-word emoji names are common ("cat face"), so space is part of the query.
-        if (typeIntoSearch(" ")) return
-        val ic = currentInputConnection ?: return
-        val engine = composer
-        if (engine != null) {
-            // In a CJK engine space means "take the best candidate", not "type a space".
-            val result = engine.space()
-            if (result != null) {
-                applyComposition(ic, engine, result)
-                return
-            }
-            finishComposition(ic)
-            commit(ic, " ")
-            lastSpaceTime = SystemClock.uptimeMillis()
-            return
-        }
-        commitCurrentWord(ic, autoCorrect = kbState.settings.autoCorrect)
-        val text = textBeforeCursor()
-        val now = SystemClock.uptimeMillis()
-        val doubleSpace = kbState.settings.doubleSpacePeriod && text.length >= 2 &&
-            text[text.length - 1] == ' ' && text[text.length - 2].isLetterOrDigit() &&
-            now - lastSpaceTime < 1000
-        if (doubleSpace) {
-            deleteBackward(ic)
-            commit(ic, ". ")
-        } else {
-            commit(ic, " ")
-        }
-        lastSpaceTime = now
-        kbState.suggestions = emptyList()
-        updateAutoCapShift()
-    }
-
-    override fun onShift() {
-        feedback()
-        // Apply shift immediately on every tap; a quick second tap (while already shifted)
-        // latches caps-lock. No waiting for a double-tap, so shift feels instant.
-        // A rapid tap while latched unlatches: without it the third tap of a
-        // triple-tap re-latched and caps-lock had no quick exit.
-        val now = SystemClock.uptimeMillis()
-        val rapid = now - lastShiftTime < DOUBLE_TAP_MS
-        kbState.shift = when {
-            kbState.shift == ShiftState.CAPS_LOCK && rapid -> ShiftState.OFF
-            rapid && kbState.shift != ShiftState.OFF -> ShiftState.CAPS_LOCK
-            kbState.shift == ShiftState.OFF -> ShiftState.SHIFTED
-            else -> ShiftState.OFF
-        }
-        lastShiftTime = now
-    }
-
-    override fun setPage(page: KeyboardPage) {
-        feedback()
-        if (kbState.emojiQuery != null) {
-            kbState.emojiQuery = null
-            kbState.emojiResults = emptyList()
-        }
-        kbState.page = page
-    }
-
-    override fun commitSuggestion(word: String) {
-        feedback()
-        val ic = currentInputConnection ?: return
-        val engine = composer
-        if (engine != null) {
-            // A picked candidate is the character itself; no trailing space, unlike a word.
-            applyComposition(ic, engine, engine.pick(word))
-            return
-        }
-        setComposing(ic, word)
-        finishComposing(ic)
-        commit(ic, " ")
-        composing.setLength(0)
-        lastSpaceTime = SystemClock.uptimeMillis()
-        kbState.suggestions = emptyList()
-        updateAutoCapShift()
-    }
-
-    /**
-     * Register the whole layout catalog with the framework as additional input-method
-     * subtypes, so the user enables the ones they want in Android's own "Languages" screen
-     * and switches between them with the system globe. The layout id rides along in the
-     * subtype's extra value so [onCurrentInputMethodSubtypeChanged] can map a framework
-     * switch back to a layout.
-     *
-     * Several layouts can share a language (English alone has QWERTY, Dvorak, Colemak…), so
-     * each subtype needs a distinct name to be tellable apart in the enabler. Naming a
-     * subtype requires [InputMethodSubtypeBuilder.setSubtypeNameOverride], added in API 34;
-     * below that the extra same-language *arrangements* are not registered (rather than
-     * showing several indistinguishable "English" entries), but layouts that are different
-     * inputs rather than different arrangements — simplified vs traditional, romaji vs kana,
-     * Q vs F — are kept, via [PRE34_DISTINCT_LAYOUTS]. The fallback name resource keeps
-     * the entry labelled on old platforms instead of rendering blank.
-     */
-    private fun registerLayoutSubtypes() {
-        val imm = getSystemService(InputMethodManager::class.java) ?: return
-        val id = imeId ?: imm.inputMethodList
-            .firstOrNull { it.packageName == packageName }?.id
-        if (id == null) return
-        imeId = id
-        val nameable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
-        val layouts = if (nameable) {
-            KeyboardLayouts.ALL
-        } else {
-            val seen = HashSet<String>()
-            KeyboardLayouts.ALL.filter { layout ->
-                layout.id in PRE34_DISTINCT_LAYOUTS || seen.add(layout.id.substringBefore('_'))
-            }
-        }
-        val map = LinkedHashMap<String, InputMethodSubtype>()
-        for (layout in layouts) {
-            val builder = InputMethodSubtypeBuilder()
-                .setSubtypeMode("keyboard")
-                .setLanguageTag(layout.id.substringBefore('_'))
-                .setSubtypeExtraValue("layoutId=${layout.id}")
-                .setSubtypeId(layout.id.hashCode())
-                .setSubtypeNameResId(R.string.subtype_keyboard)
-            if (nameable) {
-                builder.setSubtypeNameOverride(layout.description)
-            }
-            map[layout.id] = builder.build()
-        }
-        subtypeByLayoutId = map
-        imm.setAdditionalInputMethodSubtypes(id, map.values.toTypedArray())
-    }
-
-    /** Pull the layout id out of a framework subtype, by extra value then language tag. */
-    private fun layoutIdOf(subtype: InputMethodSubtype?): String? {
-        if (subtype == null) return null
-        val fromExtra = subtype.extraValue
-            ?.split(',')
-            ?.firstOrNull { it.startsWith("layoutId=") }
-            ?.substringAfter('=')
-        if (fromExtra != null && subtypeByLayoutId.containsKey(fromExtra)) return fromExtra
-        val tag = subtype.languageTag
-        return KeyboardLayouts.ALL.firstOrNull {
-            it.id.substringBefore('_') == tag
-        }?.id
-    }
-
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype?) {
         super.onCurrentInputMethodSubtypeChanged(newSubtype)
         val id = layoutIdOf(newSubtype) ?: return
         if (id == kbState.settings.activeLayout.id) return
         applyLayout(id)
-    }
-
-    /**
-     * Switch the active layout to [id], committing anything still composing first (the
-     * layouts may not share a script). Shared by the framework subtype change and start-up.
-     */
-    private fun applyLayout(id: String) {
-        currentInputConnection?.let {
-            finishComposition(it)
-            commitCurrentWord(it, autoCorrect = false)
-        }
-
-        kbState.settings = kbState.settings.copy(activeLayoutId = id)
-        kbState.shift = ShiftState.OFF
-        kbState.suggestions = emptyList()
-        syncComposer()
-        scope.launch { ds.setString(KeyboardSettings.Keys.ACTIVE_LAYOUT, id) }
-        updateAutoCapShift()
-    }
-
-    // --- Clipboard ---
-
-    /**
-     * One-time move off the old DataStore-backed history (see [KeyboardSettings.Keys.CLIPS]):
-     * decode the legacy string into the file store, persist it, then blank the key. The
-     * wipe watcher keys off CLIPS_WIPE, so blanking here is not mistaken for a request.
-     * Runs on IO from onCreate.
-     */
-    private suspend fun migrateLegacyClips() {
-        // Await, not snapshot-read: the DataStore mirror may not be hydrated yet this
-        // early in onCreate, and a null here would skip the one-time migration forever.
-        val stored = ds.getStringAwait(KeyboardSettings.Keys.CLIPS) ?: return
-        if (stored.isBlank()) return
-        clipboard.seed(ClipboardStore.decode(stored))
-        clipboard.persistState()
-        ds.setString(KeyboardSettings.Keys.CLIPS, "")
-    }
-
-    /** A short-lived strip notice; the IME has no snackbar host, so the strip is the channel. */
-    private fun showNotice(text: String) {
-        noticeJob?.cancel()
-        kbState.notice = text
-        noticeJob = scope.launch {
-            delay(NOTICE_MS)
-            if (kbState.notice == text) kbState.notice = null
-        }
-    }
-
-    /**
-     * Watch the system clipboard. An IME may read it while it is the active input method,
-     * which is what makes this possible on Android 10+ — but the callback only fires while
-     * we are bound, so [onStartInputView] also sweeps the current clip to catch copies made
-     * while the keyboard was hidden.
-     */
-    private fun observeClipboard() {
-        val manager = getSystemService(ClipboardManager::class.java) ?: return
-        val listener = ClipboardManager.OnPrimaryClipChangedListener {
-            captureCurrentClip(inPasswordField = kbState.passwordField)
-        }
-        manager.addPrimaryClipChangedListener(listener)
-        clipListener = listener
-    }
-
-    private fun captureCurrentClip(inPasswordField: Boolean) {
-        if (!kbState.settings.clipboardEnabled) return
-        val clip = getSystemService(ClipboardManager::class.java)?.primaryClip ?: return
-        scope.launch {
-            val item = clipboard.capture(this@KeyboardService, clip, inPasswordField)
-                ?: return@launch
-            val fresh = clipboard.add(item)
-            kbState.clips = clipboard.items
-            persistClips()
-            if (fresh != null) offerClip(fresh)
-        }
-    }
-
-    /** Show the chip for a newly copied clip, and take it back down after a while. */
-    private fun offerClip(item: ClipItem) {
-        chipClipId = item.id
-        kbState.clipSuggestion = item
-        scope.launch {
-            delay(CLIP_CHIP_MS)
-            if (chipClipId == item.id) dismissClipSuggestion()
-        }
-    }
-
-    private fun persistClips() {
-        // File I/O, never on the main thread; encode() already excludes sensitive clips.
-        scope.launch(Dispatchers.IO) { runCatching { clipboard.persistState() } }
-    }
-
-    /** Drop everything, in memory and on disk — what turning the setting off has to mean. */
-    private fun forgetClips() {
-        clipboard.clear()
-        kbState.clips = emptyList()
-        dismissClipSuggestion()
-        persistClips()
-    }
-
-    override fun pasteClip(item: ClipItem) {
-        feedback()
-        val ic = currentInputConnection ?: return
-        dismissClipSuggestion()
-        if (item.isImage) {
-            commitImage(ic, item)
-        } else {
-            finishComposition(ic)
-            commitCurrentWord(ic, autoCorrect = false)
-            commit(ic, item.text)
-            kbState.suggestions = emptyList()
-        }
-        updateAutoCapShift()
-    }
-
-    /**
-     * Hand an image clip to the field via `commitContent`. Most fields cannot take one, so
-     * the editor's accepted MIME types are checked first; every refusal explains itself in
-     * the strip rather than leaving the tap visibly dead.
-     */
-    private fun commitImage(ic: InputConnection, item: ClipItem) {
-        val file = item.imageFile
-        val mime = item.mimeType
-        val editor = currentInputEditorInfo
-        if (file == null || mime == null || editor == null || !file.exists()) {
-            showNotice(getString(R.string.clipboard_image_unavailable))
-            return
-        }
-        val accepted = EditorInfoCompat.getContentMimeTypes(editor)
-        if (accepted.none { ClipDescription.compareMimeTypes(mime, it) }) {
-            showNotice(getString(R.string.clipboard_image_not_supported))
-            return
-        }
-        val uri = runCatching {
-            FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
-        }.getOrNull()
-        if (uri == null) {
-            showNotice(getString(R.string.clipboard_image_unavailable))
-            return
-        }
-        val content = InputContentInfoCompat(uri, ClipDescription(item.preview, arrayOf(mime)), null)
-        InputConnectionCompat.commitContent(
-            ic,
-            editor,
-            content,
-            InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
-            null,
-        )
-        // How the field represents an image — if it takes it at all — is up to the app.
-        before.invalidate()
-    }
-
-    /**
-     * Delete a clip. Deleting the newest one also empties the system clipboard: "delete what
-     * I just copied" has to mean the password is gone, not merely hidden from our own list.
-     */
-    override fun deleteClip(item: ClipItem) {
-        feedback()
-        val newest = clipboard.items.firstOrNull()?.id == item.id
-        clipboard.delete(item)
-        kbState.clips = clipboard.items
-        if (kbState.clipSuggestion?.id == item.id) dismissClipSuggestion()
-        if (newest) {
-            runCatching { getSystemService(ClipboardManager::class.java)?.clearPrimaryClip() }
-        }
-        persistClips()
-    }
-
-    override fun clearClips() {
-        feedback()
-        forgetClips()
-        runCatching { getSystemService(ClipboardManager::class.java)?.clearPrimaryClip() }
-    }
-
-    override fun dismissClipSuggestion() {
-        chipClipId = 0L
-        kbState.clipSuggestion = null
-    }
-
-    // --- Voice input ---
-
-    /**
-     * Long-press on enter. Pressing again while the microphone is live stops it, so the one
-     * gesture both starts and ends a dictation.
-     */
-    override fun onVoiceInput() {
-        feedback()
-        if (kbState.voice is VoiceState.Listening) {
-            stopVoiceInput()
-            return
-        }
-        // Checked up front rather than left to the recognizer: on a device with no
-        // recognition service there is nothing to bind to, and saying so is more use than
-        // a generic failure.
-        if (!voiceInput.isAvailable()) {
-            showVoiceFailure(VoiceFailure.UNAVAILABLE)
-            return
-        }
-        if (!VoicePermission.isGranted(this)) {
-            setVoiceState(null)
-            VoicePermission.request(this)
-            return
-        }
-        beginListening()
-    }
-
-    override fun stopVoiceInput() {
-        // stopListening, not cancel: the recognizer still reports the words it already has.
-        voiceInput.stop()
-        if (kbState.voice is VoiceState.Listening) setVoiceState(VoiceState.Transcribing)
-    }
-
-    override fun dismissVoice() {
-        voiceInput.cancel()
-        setVoiceState(null)
-    }
-
-    override fun openVoiceSettings() {
-        dismissVoice()
-        val intent = Intent(
-            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            Uri.fromParts("package", packageName, null),
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { startActivity(intent) }
-    }
-
-    private fun onVoicePermissionResult(result: VoicePermissionResult) {
-        when (result) {
-            // The prompt took the focus, which hid the keyboard along with the field. Wait
-            // for both back before listening, or the transcript would have nowhere to go.
-            VoicePermissionResult.GRANTED -> {
-                if (windowShown) beginListening() else voiceGrantedAt = SystemClock.uptimeMillis()
-            }
-            VoicePermissionResult.DENIED -> showVoiceFailure(VoiceFailure.PERMISSION_DENIED)
-            VoicePermissionResult.BLOCKED -> showVoiceFailure(VoiceFailure.PERMISSION_BLOCKED)
-        }
-    }
-
-    private fun beginListening() {
-        setVoiceState(VoiceState.Listening(""))
-        voiceInput.start(
-            // Dictate in the language the user chose to type in, which is a better guess
-            // than the device locale on a keyboard whose whole point is switching scripts.
-            languageTag = kbState.settings.activeLayout.id.substringBefore('_'),
-            onPartial = { partial ->
-                if (kbState.voice is VoiceState.Listening) {
-                    setVoiceState(VoiceState.Listening(partial))
-                }
-            },
-            onTranscribing = {
-                if (kbState.voice is VoiceState.Listening) setVoiceState(VoiceState.Transcribing)
-            },
-            onFinal = { text ->
-                setVoiceState(null)
-                commitVoiceText(text)
-            },
-            onFailure = ::showVoiceFailure,
-        )
-    }
-
-    /**
-     * Put a transcript into the field. Anything still composing is settled first — dictated
-     * text is finished text, not a continuation of the half-typed word — and `commitText`
-     * then replaces the selection, which is what dictating over selected text should do.
-     */
-    private fun commitVoiceText(text: String) {
-        val ic = currentInputConnection ?: return
-        finishComposition(ic)
-        commitCurrentWord(ic, autoCorrect = false)
-        // Read before committing: the mirror drops the selection as soon as it is told.
-        val replacedSelection = before.hasSelection
-        val needsSpace = !replacedSelection &&
-            textBeforeCursor().lastOrNull()?.isWhitespace() == false
-        commit(ic, if (needsSpace) " $text" else text)
-        // What surrounded the replaced selection is text we never saw.
-        if (replacedSelection) before.invalidate()
-        kbState.suggestions = emptyList()
-        updateAutoCapShift()
-    }
-
-    private fun showVoiceFailure(failure: VoiceFailure) {
-        setVoiceState(VoiceState.Failed(failure))
-    }
-
-    private fun setVoiceState(state: VoiceState?) {
-        voiceMessageJob?.cancel()
-        voiceMessageJob = null
-        kbState.voice = state
-        // A blocked microphone is the one failure that carries an action, so it waits to be
-        // read and dismissed instead of timing out from under the user's finger.
-        if (state !is VoiceState.Failed || state.failure == VoiceFailure.PERMISSION_BLOCKED) return
-        voiceMessageJob = scope.launch {
-            delay(VOICE_MESSAGE_MS)
-            if (kbState.voice == state) kbState.voice = null
-        }
-    }
-
-    // --- Emoji search ---
-
-    override fun startEmojiSearch() {
-        feedback()
-        kbState.emojiQuery = ""
-        kbState.emojiResults = emptyList()
-        kbState.page = KeyboardPage.LETTERS
-        kbState.shift = ShiftState.OFF
-    }
-
-    override fun endEmojiSearch() {
-        feedback()
-        kbState.emojiQuery = null
-        kbState.emojiResults = emptyList()
-        kbState.page = KeyboardPage.EMOJI
-    }
-
-    override fun commitEmoji(emoji: String) {
-        if (kbState.emojiQuery != null) {
-            // Picking a result is the end of the search; leave the emoji page behind too,
-            // since the user came here to type one thing into their message.
-            kbState.emojiQuery = null
-            kbState.emojiResults = emptyList()
-            kbState.page = kbState.basePage
-        }
-        rememberEmoji(emoji)
-        onChar(emoji)
-    }
-
-    /** Keep the recents tab up to date so common emoji stop needing a search at all. */
-    private fun rememberEmoji(emoji: String) {
-        val recents = RecentEmoji.add(kbState.recentEmoji, emoji)
-        if (recents == kbState.recentEmoji) return
-        kbState.recentEmoji = recents
-        scope.launch {
-            ds.setString(KeyboardSettings.Keys.EMOJI_RECENTS, RecentEmoji.encode(recents))
-        }
-    }
-
-    /** Route a keystroke into the emoji query instead of the field. True if it was consumed. */
-    private fun typeIntoSearch(text: String): Boolean {
-        val query = kbState.emojiQuery ?: return false
-        setQuery(query + text)
-        return true
-    }
-
-    private fun setQuery(query: String) {
-        kbState.emojiQuery = query
-        kbState.emojiResults = kbState.emojiData.search(query)
-        consumeShift()
-    }
-
-    // --- Editing helpers ---
-
-    /** Finish the composing word, optionally replacing it with an autocorrect suggestion. */
-    private fun commitCurrentWord(ic: InputConnection, autoCorrect: Boolean) {
-        if (composing.isEmpty()) return
-        if (autoCorrect) {
-            // autocorrect already declines to rewrite a word it knows, so there is no need
-            // to look the typed word up separately first.
-            val typed = composing.toString()
-            val fix = dictionary.autocorrect(typed)
-            if (fix != null && !fix.equals(typed, ignoreCase = true)) {
-                setComposing(ic, fix)
-            }
-        }
-        finishComposing(ic)
-        composing.setLength(0)
-    }
-
-    private fun updateSuggestions() {
-        if (!kbState.settings.showSuggestions || !useComposing()) {
-            kbState.suggestions = emptyList()
-            return
-        }
-        val prefix = composing.toString()
-        kbState.suggestions = if (prefix.isBlank()) emptyList() else dictionary.suggestions(prefix, 3)
-    }
-
-    private fun consumeShift() {
-        if (kbState.shift == ShiftState.SHIFTED) kbState.shift = ShiftState.OFF
-    }
-
-    /** Auto-capitalize the shift key when the cursor sits at the start of a sentence. */
-    private fun updateAutoCapShift() {
-        if (kbState.basePage != KeyboardPage.LETTERS) return
-        // Shift is a second character layer, not upper case, in scripts like Devanagari or
-        // Thai — auto-capitalizing there would silently swap the whole layout.
-        if (!kbState.settings.activeLayout.cased) return
-        if (kbState.passwordField || kbState.textVariation != TextVariation.NORMAL) return
-        if (kbState.shift == ShiftState.CAPS_LOCK) return
-        if (!kbState.settings.autoCapitalize) return
-        if (composing.isNotEmpty()) return
-        kbState.shift = if (isAtSentenceStart()) ShiftState.SHIFTED else ShiftState.OFF
-    }
-
-    private fun isAtSentenceStart(): Boolean {
-        val text = textBeforeCursor()
-        if (text.isEmpty()) return true
-        val last = text[text.length - 1]
-        if (last == '\n') return true
-        if (text.length < 2) return false
-        val prev = text[text.length - 2]
-        return last == ' ' && (prev == '.' || prev == '?' || prev == '!')
-    }
-
-    // --- Feedback ---
-
-    /**
-     * Keypress sound only. Haptics moved to the press site in the key composables
-     * ([rememberKeyHapticTick]): a service has no CompositionLocal, and ticking where the
-     * press commits keeps keys, strips and pages from ever double-ticking one tap.
-     */
-    private val audio by lazy { getSystemService(AudioManager::class.java) }
-
-    private fun feedback() {
-        if (kbState.settings.sound) {
-            audio?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD)
-        }
     }
 }

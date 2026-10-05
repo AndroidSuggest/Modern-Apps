@@ -53,6 +53,30 @@ object RcsMsrpTls {
     private const val IDENTITY_DIR = "rcs-msrp-tls"
     private const val CERT_FILE = "identity.der"
     private const val KEY_FILE = "identity.pk8"
+    private const val CERT_VALIDITY_DAYS = 10L
+    private const val DAY_MS = 24 * 3600 * 1000L
+    private const val YEAR_DAYS = 365
+    private const val ASN1_SEQUENCE = 0x30
+    private const val ASN1_SET = 0x31
+    private const val ASN1_CONTEXT_BASE = 0xA0
+    private const val ASN1_HIGH_BIT = 0x80
+    private const val ASN1_INTEGER = 0x02
+    private const val ASN1_OID = 0x06
+    private const val ASN1_NULL = 0x05
+    private const val ASN1_UTF8STRING = 0x0C
+    private const val ASN1_UTCTIME = 0x17
+    private const val ASN1_OCTETSTRING = 0x03
+    private const val ASN1_BITSTRING = 0x03
+    private const val ASN1_ZERO = 0x00
+    private const val ASN1_SHORT_LEN_LIMIT = 128
+    private const val BYTE_MASK = 0xFF
+    private const val VARINT_MASK = 0x7F
+    private const val VARINT_CONT = 0x80
+    private const val VARINT_BITS = 7
+    private const val BYTE_BITS = 8
+    private const val YEAR_CENTURY = 100
+    private const val SERIAL_BYTES = 9
+    private const val OID_FIRST_FACTOR = 40
 
     /** Our TLS identity: DER cert bytes + fingerprint + key. */
     data class Identity(
@@ -248,8 +272,8 @@ object RcsMsrpTls {
             val certDer = selfSignedCert(
                 publicKey = kp.public.encoded,
                 privateKey = kp.private,
-                notBeforeMs = now - 24 * 3600 * 1000L,
-                notAfterMs = now + 10L * 365 * 24 * 3600 * 1000,
+                notBeforeMs = now - DAY_MS,
+                notAfterMs = now + CERT_VALIDITY_DAYS * YEAR_DAYS * DAY_MS,
                 // IMS-PDN IPs change across attaches; a stable pseudonymous CN
                 // is honest (RFC 4572 identity comes from the fingerprint,
                 // not the subject).
@@ -288,7 +312,10 @@ object RcsMsrpTls {
                 ),
             ),
         )
-        val serial = ByteArray(9).also { SecureRandom().nextBytes(it); it[0] = (it[0].toInt() and 0x7F).toByte() }
+        val serial = ByteArray(SERIAL_BYTES).also {
+            SecureRandom().nextBytes(it)
+            it[0] = (it[0].toInt() and VARINT_MASK).toByte()
+        }
         val tbs = Der.sequence(
             Der.explicit(0, Der.integer(serial)),
             Der.integer(byteArrayOf(2)), // v3
@@ -305,53 +332,53 @@ object RcsMsrpTls {
     /** Minimal DER primitives for the cert writer above. */
     internal object Der {
         fun sequence(vararg parts: ByteArray): ByteArray =
-            byteArrayOf(0x30) + lengthPrefix(parts.sumOf { it.size }) + parts.reduce { a, b -> a + b }
+            byteArrayOf(ASN1_SEQUENCE) + lengthPrefix(parts.sumOf { it.size }) + parts.reduce { a, b -> a + b }
 
         fun set(vararg parts: ByteArray): ByteArray =
-            byteArrayOf(0x31) + lengthPrefix(parts.sumOf { it.size }) + parts.reduce { a, b -> a + b }
+            byteArrayOf(ASN1_SET) + lengthPrefix(parts.sumOf { it.size }) + parts.reduce { a, b -> a + b }
 
         fun explicit(tag: Int, content: ByteArray): ByteArray =
-            byteArrayOf((0xA0 + tag).toByte()) + lengthPrefix(content.size) + content
+            byteArrayOf((ASN1_CONTEXT_BASE + tag).toByte()) + lengthPrefix(content.size) + content
 
         fun integer(bytes: ByteArray): ByteArray {
             var start = 0
             while (start < bytes.size - 1 && bytes[start] == 0.toByte()) start++
             var v = bytes.copyOfRange(start, bytes.size)
-            if (v[0].toInt() and 0x80 != 0) v = byteArrayOf(0) + v
-            return byteArrayOf(0x02) + lengthPrefix(v.size) + v
+            if (v[0].toInt() and ASN1_HIGH_BIT != 0) v = byteArrayOf(0) + v
+            return byteArrayOf(ASN1_INTEGER) + lengthPrefix(v.size) + v
         }
 
         fun oid(dotted: String): ByteArray {
             val arcs = dotted.split(".").map { it.toInt() }
-            val first = byteArrayOf(((arcs[0] * 40 + arcs[1]).toByte()))
+            val first = byteArrayOf(((arcs[0] * OID_FIRST_FACTOR + arcs[1]).toByte()))
             val rest = arcs.drop(2).fold(byteArrayOf()) { acc, a -> acc + base128(a) }
             val body = first + rest
-            return byteArrayOf(0x06) + lengthPrefix(body.size) + body
+            return byteArrayOf(ASN1_OID) + lengthPrefix(body.size) + body
         }
 
-        fun nullValue(): ByteArray = byteArrayOf(0x05, 0x00)
+        fun nullValue(): ByteArray = byteArrayOf(ASN1_NULL, ASN1_ZERO)
 
         fun utf8String(s: String): ByteArray {
             val b = s.toByteArray(Charsets.UTF_8)
-            return byteArrayOf(0x0C) + lengthPrefix(b.size) + b
+            return byteArrayOf(ASN1_UTF8STRING) + lengthPrefix(b.size) + b
         }
 
         fun utcTime(ms: Long): ByteArray {
             val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
             cal.timeInMillis = ms
             val str = "%02d%02d%02d%02d%02d%02dZ".format(
-                cal.get(java.util.Calendar.YEAR) % 100,
+                cal.get(java.util.Calendar.YEAR) % YEAR_CENTURY,
                 cal.get(java.util.Calendar.MONTH) + 1,
                 cal.get(java.util.Calendar.DAY_OF_MONTH),
                 cal.get(java.util.Calendar.HOUR_OF_DAY),
                 cal.get(java.util.Calendar.MINUTE),
                 cal.get(java.util.Calendar.SECOND),
             ).toByteArray(Charsets.US_ASCII)
-            return byteArrayOf(0x17) + lengthPrefix(str.size) + str
+            return byteArrayOf(ASN1_UTCTIME) + lengthPrefix(str.size) + str
         }
 
         fun bitString(signatureDer: ByteArray): ByteArray =
-            byteArrayOf(0x03) + lengthPrefix(signatureDer.size + 1) + byteArrayOf(0x00) + signatureDer
+            byteArrayOf(ASN1_BITSTRING) + lengthPrefix(signatureDer.size + 1) + byteArrayOf(ASN1_ZERO) + signatureDer
 
         /** Embed already-encoded DER without re-wrapping. */
         fun raw(der: ByteArray): ByteArray = der
@@ -364,15 +391,15 @@ object RcsMsrpTls {
         }
 
         private fun lengthPrefix(n: Int): ByteArray = when {
-            n < 128 -> byteArrayOf(n.toByte())
+            n < ASN1_SHORT_LEN_LIMIT -> byteArrayOf(n.toByte())
             else -> {
                 var v = n
                 val bytes = mutableListOf<Byte>()
                 while (v > 0) {
-                    bytes.add(0, (v and 0xFF).toByte())
-                    v = v ushr 8
+                    bytes.add(0, (v and BYTE_MASK).toByte())
+                    v = v ushr BYTE_BITS
                 }
-                byteArrayOf((0x80 + bytes.size).toByte()) + bytes.toByteArray()
+                byteArrayOf((ASN1_HIGH_BIT + bytes.size).toByte()) + bytes.toByteArray()
             }
         }
 
@@ -381,10 +408,10 @@ object RcsMsrpTls {
             var x = v
             val out = mutableListOf<Byte>()
             while (x > 0) {
-                out.add(0, (x and 0x7F).toByte())
-                x = x ushr 7
+                out.add(0, (x and VARINT_MASK).toByte())
+                x = x ushr VARINT_BITS
             }
-            for (i in 0 until out.size - 1) out[i] = (out[i].toInt() or 0x80).toByte()
+            for (i in 0 until out.size - 1) out[i] = (out[i].toInt() or VARINT_CONT).toByte()
             return out.toByteArray()
         }
     }

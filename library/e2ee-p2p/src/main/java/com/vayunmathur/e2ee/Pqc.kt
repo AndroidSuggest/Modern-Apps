@@ -89,16 +89,31 @@ object Pqc {
     // --- helpers ---
 
     private fun lenPrefix(a: ByteArray, b: ByteArray): ByteArray {
-        val out = ByteArray(4 + a.size + b.size)
-        out[0] = (a.size ushr 24).toByte(); out[1] = (a.size ushr 16).toByte()
-        out[2] = (a.size ushr 8).toByte(); out[3] = a.size.toByte()
-        a.copyInto(out, 4); b.copyInto(out, 4 + a.size)
+        val out = ByteArray(LEN_PREFIX_BYTES + a.size + b.size)
+        out[0] = (a.size ushr BYTE_THIRD_SHIFT).toByte()
+        out[1] = (a.size ushr BYTE_SECOND_SHIFT).toByte()
+        out[BYTE_SECOND_INDEX] = (a.size ushr BYTE_BITS).toByte()
+        out[BYTE_THIRD_INDEX] = a.size.toByte()
+        a.copyInto(out, LEN_PREFIX_BYTES)
+        b.copyInto(out, LEN_PREFIX_BYTES + a.size)
         return out
     }
 
+    private const val LEN_PREFIX_BYTES = 4
+    private const val BYTE_BITS = 8
+    private const val BYTE_SECOND_SHIFT = 16
+    private const val BYTE_THIRD_SHIFT = 24
+    private const val BYTE_SECOND_INDEX = 2
+    private const val BYTE_THIRD_INDEX = 3
+
     private fun unLenPrefix(x: ByteArray): Pair<ByteArray, ByteArray> {
-        val len = ((x[0].toInt() and 0xFF) shl 24) or ((x[1].toInt() and 0xFF) shl 16) or
-            ((x[2].toInt() and 0xFF) shl 8) or (x[3].toInt() and 0xFF)
-        return x.copyOfRange(4, 4 + len) to x.copyOfRange(4 + len, x.size)
+        val len = ((x[0].toInt() and BYTE_MASK) shl BYTE_THIRD_SHIFT) or
+            ((x[1].toInt() and BYTE_MASK) shl BYTE_SECOND_SHIFT) or
+            ((x[BYTE_SECOND_INDEX].toInt() and BYTE_MASK) shl BYTE_BITS) or
+            (x[BYTE_THIRD_INDEX].toInt() and BYTE_MASK)
+        return x.copyOfRange(LEN_PREFIX_BYTES, LEN_PREFIX_BYTES + len) to
+            x.copyOfRange(LEN_PREFIX_BYTES + len, x.size)
     }
+
+    private const val BYTE_MASK = 0xFF
 }

@@ -43,7 +43,7 @@ private const val CONNECT_TIMEOUT_MS = 10_000
  * Ours, not a recovered constant: GMS's own timeouts are Phenotype-driven. Long enough for
  * someone to look at the phone and tap.
  */
-private const val ACCEPT_WAIT_MS = 60_000L
+internal const val ACCEPT_WAIT_MS = 60_000L
 
 /**
  * Read timeout inside the pump loop.
@@ -62,6 +62,15 @@ private const val PUMP_READ_TIMEOUT_MS = 2_000
  * seconds into every transfer.
  */
 private const val KEEP_ALIVE_EVERY_MS = 5_000L
+
+/** Poll interval while waiting for the peer to accept. */
+internal const val POLL_INTERVAL_MS = 100L
+
+/** Read buffer for one pump iteration; frames are reassembled in Rust. */
+private const val PUMP_BUFFER_SIZE = 8192
+
+/** Chunk size for one `writeChunk` call while streaming a file. */
+internal const val STREAM_CHUNK_SIZE = 64 * 1024
 
 /**
  * TCP transport pump that wires raw bytes to/from the Rust [ShareSession]
@@ -154,7 +163,11 @@ class TcpTransport(
     /**
      * Open an ephemeral TCP ServerSocket and pump each incoming client through
      * a fresh [ShareSession]. Returns the bound port (for NSD advertisement).
+     *
+     * Broad catch is deliberate: the accept loop must survive undocumented
+     * RuntimeExceptions from the socket layer, logging while active.
      */
+    @Suppress("TooGenericExceptionCaught")
     fun listen(): Int {
         if (serverSocket != null) return _listenPort.value ?: 0
         val server = ServerSocket(0, 10, InetAddress.getByName("0.0.0.0"))
@@ -235,6 +248,9 @@ class TcpTransport(
     // Per-connection pump — raw stream, no Kotlin framing
     // ------------------------------------------------------------------
 
+    // Broad catch is deliberate: the pump must mark the session failed rather than
+    // throw, and socket plus native layers throw undocumented RuntimeExceptions.
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private suspend fun pump(conn: Connection) = withContext(Dispatchers.IO) {
         val session = conn.session
         val socket = conn.socket
@@ -242,48 +258,11 @@ class TcpTransport(
             // Flush any initial outbound (e.g. UKEY2 ClientInit) before the first read.
             drainAll(conn)
             val input = socket.getInputStream()
-            val buf = ByteArray(8192)
+            val buf = ByteArray(PUMP_BUFFER_SIZE)
             socket.soTimeout = PUMP_READ_TIMEOUT_MS
-            var lastKeepAlive = System.currentTimeMillis()
-            fun keepAliveIfDue() {
-                val now = System.currentTimeMillis()
-                if (now - lastKeepAlive < KEEP_ALIVE_EVERY_MS) return
-                lastKeepAlive = now
-                synchronized(conn.writeLock) {
-                    session.sendKeepAlive()
-                    drainAll(conn)
-                }
-            }
+            val keeper = KeepAliveKeeper()
             while (isActive && !socket.isClosed) {
-                val n: Int = try {
-                    input.read(buf)
-                } catch (e: java.net.SocketTimeoutException) {
-                    // Periodic keep-alive: drain outbound even on read timeout so
-                    // handshake retries / accept responses still flush.
-                    keepAliveIfDue()
-                    drainAll(conn)
-                    conn.updateStateFromSession()
-                    if (conn.state.value.isTerminal) break
-                    continue
-                }
-                if (n == -1) {
-                    Log.i(TAG, "peer closed cleanly for ${conn.remoteEndpoint}")
-                    break
-                }
-                if (n == 0) continue
-                val inbound = buf.copyOf(n)
-                val rc = session.feedInbound(inbound)
-                if (rc < 0) {
-                    Log.w(TAG, "feedInbound failed rc=$rc")
-                    conn.error.value = session.failureReason ?: "Protocol error ($rc)"
-                    conn.state.value = ShareState.Failed
-                    break
-                }
-                drainReceived(conn)
-                drainAll(conn)
-                keepAliveIfDue()
-                conn.updateStateFromSession()
-                if (conn.state.value.isTerminal) break
+                if (pumpOnce(conn, input, buf, keeper) == PumpAction.Stop) break
             }
         } catch (e: Exception) {
             if (isActive) Log.w(TAG, "pump error for ${conn.remoteEndpoint}", e)
@@ -306,6 +285,80 @@ class TcpTransport(
             receivedStore.closeSession(session.handle)
             conn.updateStateFromSession()
         }
+    }
+
+    /** Outcome of one [pumpOnce] iteration: keep looping or stop the pump. */
+    private enum class PumpAction { Continue, Stop }
+
+    /** Tracks the last keep-alive so [pumpOnce] stays a straight-line read. */
+    private inner class KeepAliveKeeper(var lastKeepAlive: Long = System.currentTimeMillis()) {
+        fun fireIfDue(conn: Connection) {
+            val now = System.currentTimeMillis()
+            if (now - lastKeepAlive < KEEP_ALIVE_EVERY_MS) return
+            lastKeepAlive = now
+            synchronized(conn.writeLock) {
+                conn.session.sendKeepAlive()
+                drainAll(conn)
+            }
+        }
+    }
+
+    /**
+     * One pump iteration: a single read, feed, drain and state poll.
+     *
+     * Returns [PumpAction.Stop] when the peer closed, the frame was rejected, or the
+     * session reached a terminal state — the single jump the loop is allowed.
+     *
+     * The `SocketTimeoutException` is the pump's periodic wake-up (see
+     * [PUMP_READ_TIMEOUT_MS]), not an error: it is handled, never logged, which is
+     * why it is swallowed here.
+     */
+    @Suppress("SwallowedException")
+    private fun pumpOnce(
+        conn: Connection,
+        input: java.io.InputStream,
+        buf: ByteArray,
+        keeper: KeepAliveKeeper,
+    ): PumpAction {
+        val n: Int = try {
+            input.read(buf)
+        } catch (e: java.net.SocketTimeoutException) {
+            // Periodic keep-alive: drain outbound even on read timeout so
+            // handshake retries / accept responses still flush. A timeout here is
+            // the expected wake-up, not an error — nothing to log or record.
+            onPumpTimeout(conn, keeper)
+            return pollTerminal(conn)
+        }
+        if (n == -1) {
+            Log.i(TAG, "peer closed cleanly for ${conn.remoteEndpoint}")
+            return PumpAction.Stop
+        }
+        return if (n == 0) PumpAction.Continue else handleInbound(conn, buf, n, keeper)
+    }
+
+    private fun onPumpTimeout(conn: Connection, keeper: KeepAliveKeeper) {
+        keeper.fireIfDue(conn)
+        drainAll(conn)
+        conn.updateStateFromSession()
+    }
+
+    private fun pollTerminal(conn: Connection): PumpAction =
+        if (conn.state.value.isTerminal) PumpAction.Stop else PumpAction.Continue
+
+    private fun handleInbound(conn: Connection, buf: ByteArray, n: Int, keeper: KeepAliveKeeper): PumpAction {
+        val inbound = buf.copyOf(n)
+        val rc = conn.session.feedInbound(inbound)
+        if (rc < 0) {
+            Log.w(TAG, "feedInbound failed rc=$rc")
+            conn.error.value = conn.session.failureReason ?: "Protocol error ($rc)"
+            conn.state.value = ShareState.Failed
+            return PumpAction.Stop
+        }
+        drainReceived(conn)
+        drainAll(conn)
+        keeper.fireIfDue(conn)
+        conn.updateStateFromSession()
+        return pollTerminal(conn)
     }
 
     /**
@@ -354,7 +407,7 @@ class TcpTransport(
      * where suspending after cancellation is not allowed. It is reentrant, so a caller that
      * already holds it (see `keepAliveIfDue`) is safe.
      */
-    private fun drainAll(conn: Connection) {
+    internal fun drainAll(conn: Connection) {
         synchronized(conn.writeLock) {
             val out: OutputStream = conn.socket.getOutputStream()
             while (true) {
@@ -367,7 +420,7 @@ class TcpTransport(
         }
     }
 
-    private fun Connection.updateStateFromSession() {
+    internal fun Connection.updateStateFromSession() {
         val polled = session.state
         if (peerName.value == null) session.peerName?.let { peerName.value = it }
         // Announced before the state that makes them worth showing, deliberately: a collector
@@ -493,68 +546,15 @@ class TcpTransport(
             Log.w(TAG, "already announced files on session ${conn.sessionHandle}; ignoring ${files.size} more")
             return@withContext
         }
-        val session = conn.session
-        val staged = files.map {
-            PendingFile(
-                name = it.name,
-                sizeBytes = it.length(),
-                // A real type, so the peer shows an image as an image rather than a document.
-                mimeType = ReceivedFileStore.mimeTypeOf(it),
-            )
-        }
-        conn.expectedTotalBytes.value = staged.sumOf { it.sizeBytes }
-        if (session.setFilesToSend(staged) < 0 || session.queueIntroduction() < 0) {
-            conn.error.value = "Failed to announce files"
-            conn.state.value = ShareState.Failed
-            return@withContext
-        }
+        stageFiles(conn, files) ?: return@withContext
         drainAll(conn)
         // Wait for the peer to accept before streaming a single chunk. Rust flips to
         // Transferring when the Sharing ConnectionResponse arrives; a real device hangs up
         // if payload chunks show up for a transfer its user has not accepted yet, and
         // openFile refuses with -2 in that state anyway.
-        val deadline = System.currentTimeMillis() + ACCEPT_WAIT_MS
-        while (isActive && conn.state.value != ShareState.Transferring) {
-            conn.updateStateFromSession()
-            if (conn.state.value == ShareState.Failed) return@withContext
-            if (System.currentTimeMillis() > deadline) {
-                conn.error.value = "peer never accepted the transfer"
-                conn.state.value = ShareState.Failed
-                return@withContext
-            }
-            delay(100)
-        }
+        if (!awaitAccept(conn)) return@withContext
         for (file in files) {
-            if (!isActive) break
-            val rc = session.openFile(file.name, file.length())
-            if (rc < 0) {
-                conn.error.value = "openFile failed ($rc) for ${file.name}"
-                conn.state.value = ShareState.Failed
-                break
-            }
-            file.inputStream().use { input ->
-                val chunkBuf = ByteArray(64 * 1024)
-                while (true) {
-                    val n = input.read(chunkBuf)
-                    if (n <= 0) break
-                    val chunk = if (n == chunkBuf.size) chunkBuf.copyOf() else chunkBuf.copyOf(n)
-                    val wrc = session.writeChunk(chunk)
-                    if (wrc < 0) {
-                        conn.error.value = "writeChunk failed ($wrc)"
-                        conn.state.value = ShareState.Failed
-                        break
-                    }
-                    conn.bytesSent.value += n
-                    // Flush after each chunk so the pump's next drain picks it up.
-                    drainAll(conn)
-                    conn.updateStateFromSession()
-                    if (conn.state.value == ShareState.Failed) break
-                }
-            }
-            session.closeFile()
-            drainAll(conn)
-            conn.updateStateFromSession()
-            if (conn.state.value == ShareState.Failed) break
+            if (!streamFile(conn, file)) break
         }
     }
 
@@ -567,6 +567,9 @@ class TcpTransport(
      * Returns -1 when no such session exists, which is the normal outcome for a
      * notification action tapped after the process was killed.
      */
+    // Broad catch is deliberate: draining must not throw out of an accept path,
+    // and the socket layer throws undocumented RuntimeExceptions.
+    @Suppress("TooGenericExceptionCaught")
     fun acceptIncoming(handle: Long, accept: Boolean): Int {
         val conn = connectionFor(handle) ?: return -1
         val rc = conn.session.accept(accept)

@@ -180,8 +180,12 @@ object GoogleVoiceCallManager {
             }
         }
 
-        override fun onProvisional(code: Int) {
-            if (code == 180 || code == 183) {
+        private const val SIP_RINGING = 180
+    private const val SIP_SESSION_PROGRESS = 183
+    private const val REDIAL_DELAY_MS = 50 * 60 * 1000L
+
+    override fun onProvisional(code: Int) {
+            if (code == SIP_RINGING || code == SIP_SESSION_PROGRESS) {
                 _state.value = _state.value.copy(phase = CallPhase.Ringing)
             }
         }
@@ -257,7 +261,7 @@ object GoogleVoiceCallManager {
     private fun scheduleRegistrationRefresh() {
         registrationJob?.cancel()
         registrationJob = scope.launch {
-            delay(50 * 60 * 1000L)
+            delay(REDIAL_DELAY_MS)
             registered = false
             runCatching { sip?.register() }.onFailure {
                 android.util.Log.e("GoogleVoiceCall", "registration refresh failed", it)

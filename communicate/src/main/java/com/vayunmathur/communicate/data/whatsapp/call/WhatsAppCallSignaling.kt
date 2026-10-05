@@ -131,11 +131,18 @@ object WhatsAppCallSignaling {
     fun buildTerminate(to: String, callId: String, callCreator: String, reason: String, stanzaId: String): Node =
         call(
             to, stanzaId,
-            Node(tag = "terminate", attrs = mapOf("call-id" to callId, "call-creator" to callCreator, "reason" to reason)),
+            Node(
+                tag = "terminate",
+                attrs = mapOf("call-id" to callId, "call-creator" to callCreator, "reason" to reason)),
         )
 
     /** Trickle a batch of ICE candidates mid-call inside a `<transport>`-like `<webrtc>` node. */
-    fun buildIceUpdate(to: String, callId: String, callCreator: String, stanzaId: String, candidates: List<String>): Node =
+    fun buildIceUpdate(
+        to: String,
+        callId: String,
+        callCreator: String,
+        stanzaId: String,
+        candidates: List<String>): Node =
         call(
             to, stanzaId,
             Node(
@@ -152,15 +159,7 @@ object WhatsAppCallSignaling {
         if (node.tag != "call") return null
         val from = node.attrs["from"] ?: node.attrs["participant"] ?: return null
         val child = node.getChildren().firstOrNull() ?: return null
-        val kind = when (child.tag) {
-            "offer" -> InboundCall.Kind.OFFER
-            "preaccept" -> InboundCall.Kind.PREACCEPT
-            "accept" -> InboundCall.Kind.ACCEPT
-            "reject" -> InboundCall.Kind.REJECT
-            "terminate" -> InboundCall.Kind.TERMINATE
-            "relay" -> InboundCall.Kind.RELAY
-            else -> InboundCall.Kind.UNKNOWN
-        }
+        val kind = kindFor(child.tag)
         val callId = child.attrs["call-id"] ?: node.attrs["id"] ?: ""
         val creator = child.attrs["call-creator"] ?: from
         val isVideo = child.getChildren().any { it.tag == "video" }
@@ -178,6 +177,17 @@ object WhatsAppCallSignaling {
             candidates = webrtc?.let { extractCandidates(it) } ?: emptyList(),
             stanzaId = node.attrs["id"] ?: "",
         )
+    }
+
+    /** Map a call child tag to its kind. */
+    private fun kindFor(tag: String): InboundCall.Kind = when (tag) {
+        "offer" -> InboundCall.Kind.OFFER
+        "preaccept" -> InboundCall.Kind.PREACCEPT
+        "accept" -> InboundCall.Kind.ACCEPT
+        "reject" -> InboundCall.Kind.REJECT
+        "terminate" -> InboundCall.Kind.TERMINATE
+        "relay" -> InboundCall.Kind.RELAY
+        else -> InboundCall.Kind.UNKNOWN
     }
 
     // ------------------------------------------------------------------ webrtc extension helpers

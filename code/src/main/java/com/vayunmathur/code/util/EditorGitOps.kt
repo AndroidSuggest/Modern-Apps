@@ -118,21 +118,21 @@ fun EditorViewModel.clearGitMessage() {
 }
 
 fun EditorViewModel.setGitUsername(value: String) {
-    _gitUsername.value = value
+    gitUsernameState.value = value
     viewModelScope.launch { prefs.setGitUsername(value) }
 }
 
 fun EditorViewModel.setGitToken(value: String) {
-    _gitToken.value = value
+    gitTokenState.value = value
     viewModelScope.launch { prefs.setGitToken(value) }
 }
 
 fun EditorViewModel.setGitAuthorName(value: String) {
-    _gitAuthorName.value = value
+    gitAuthorNameState.value = value
     viewModelScope.launch { prefs.setGitAuthorName(value) }
 }
 
 fun EditorViewModel.setGitAuthorEmail(value: String) {
-    _gitAuthorEmail.value = value
+    gitAuthorEmailState.value = value
     viewModelScope.launch { prefs.setGitAuthorEmail(value) }
 }

@@ -193,7 +193,7 @@ object ConversationSpace {
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .extend(carExtender(context, target.title ?: target.personName, body, smallIcon))
+            .extend(carExtender(target.title ?: target.personName, body, smallIcon))
             .build()
 
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
@@ -208,7 +208,6 @@ object ConversationSpace {
      * reply lives in the car template via `ConversationCallback`.
      */
     private fun carExtender(
-        context: Context,
         title: String,
         text: String,
         @DrawableRes smallIcon: Int,

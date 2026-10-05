@@ -136,36 +136,35 @@ class GalControlSession(
      */
     var onFocusChange: (FocusChange) -> Unit = {}
 
-    private var tlsInbound: ByteBuffer = ByteBuffer.allocate(0)
+    /** Server-side TLS prober: buffers message-3 records and runs the engine. */
+    private val handshakePump = HandshakePump(
+        engine,
+        onFinished = { state = SessionState.AWAITING_AUTH_COMPLETE },
+        onFailed = { reason -> fail(reason) },
+    )
 
     /** Handles one control-channel message and returns whatever should go back. */
-    fun onMessage(type: Int, payload: ByteArray): List<OutboundMessage> = when (type) {
+    fun onMessage(type: Int, payload: ByteArray): List<OutboundMessage> =
+        onSessionMessage(type, payload)
+            ?: onKeepAliveMessage(type, payload)
+            ?: onFocusMessage(type, payload)
+            ?: fail("unexpected control message type 0x${type.toString(HEX_RADIX)}")
+
+    /**
+     * Bring-up traffic: version, TLS, auth, discovery and channel opens.
+     * Null when [type] belongs to another group below.
+     */
+    private fun onSessionMessage(type: Int, payload: ByteArray): List<OutboundMessage>? = when (type) {
         GalMessage.Control.VERSION_REQUEST -> onVersionRequest(payload)
         GalMessage.Control.SSL_HANDSHAKE -> onHandshakeData(payload)
         GalMessage.Control.AUTH_COMPLETE -> onAuthComplete(payload)
         GalMessage.Control.SERVICE_DISCOVERY_RESPONSE -> onServiceDiscovery(payload)
         GalMessage.Control.CHANNEL_OPEN_RESPONSE -> onChannelOpen(payload)
-        GalMessage.Control.PING_REQUEST -> onPing(payload)
-        GalMessage.Control.BYEBYE_REQUEST -> onByeBye()
-        GalMessage.Control.BYEBYE_RESPONSE -> {
-            state = SessionState.CLOSED
-            emptyList()
-        }
-        // Call availability is parsed into [callAvailable] for the higher
-        // layers; the control channel itself has nothing to answer.
-        GalMessage.Control.CALL_AVAILABILITY_STATUS -> onCallAvailability(payload)
-        // An inbound ping response answers our own pings at the transport
-        // layer; the control channel itself has nothing to answer. Focus
-        // notifications feed [focus] instead (see below).
-        GalMessage.Control.PING_RESPONSE -> emptyList()
         // Hot-add/update of one service after the initial discovery (FINDINGS.md
         // control table, id 26): merged into [services] so the driver's
         // wire-order open loop picks it up without a reconnect. This is how an
         // input source that was absent from the initial 0x6 can still appear.
         GalMessage.Control.SERVICE_DISCOVERY_UPDATE -> onServiceDiscoveryUpdate(payload)
-        GalMessage.Control.AUDIO_FOCUS_NOTIFICATION -> onAudioFocusNotification(payload)
-        GalMessage.Control.NAVIGATION_FOCUS_NOTIFICATION -> onNavigationFocusNotification(payload)
-
         // The head unit's rejection of one of our messages. Observed, not fatal:
         // gearhead's `izu` logs it (`ai(1698)`) and carries on, and channel-level
         // errors are per-channel (`iza` answers 0xff on the channel itself). The
@@ -179,11 +178,40 @@ class GalControlSession(
         // instead of sending 0x8. Draining the queue lets the driver move on to
         // the next service instead of stalling with a phantom pending open.
         GalMessage.Control.MESSAGE_ERROR -> onMessageError()
-
         // The head unit says we framed badly: answered in kind, then gone.
         GalMessage.Control.FRAMING_ERROR -> onFramingError()
+        else -> null
+    }
 
-        else -> fail("unexpected control message type 0x${type.toString(16)}")
+    /**
+     * Liveness traffic: pings and the polite teardown.
+     * Null when [type] belongs to another group.
+     */
+    private fun onKeepAliveMessage(type: Int, payload: ByteArray): List<OutboundMessage>? = when (type) {
+        GalMessage.Control.PING_REQUEST -> onPing(payload)
+        GalMessage.Control.BYEBYE_REQUEST -> onByeBye()
+        GalMessage.Control.BYEBYE_RESPONSE -> {
+            state = SessionState.CLOSED
+            emptyList()
+        }
+        // An inbound ping response answers our own pings at the transport
+        // layer; the control channel itself has nothing to answer.
+        GalMessage.Control.PING_RESPONSE -> emptyList()
+        else -> null
+    }
+
+    /**
+     * Observed state feeds: call availability and focus notifications flow into
+     * [callAvailable] and [focus], never answered.
+     * Null when [type] belongs to another group.
+     */
+    private fun onFocusMessage(type: Int, payload: ByteArray): List<OutboundMessage>? = when (type) {
+        // Call availability is parsed into [callAvailable] for the higher
+        // layers; the control channel itself has nothing to answer.
+        GalMessage.Control.CALL_AVAILABILITY_STATUS -> onCallAvailability(payload)
+        GalMessage.Control.AUDIO_FOCUS_NOTIFICATION -> onAudioFocusNotification(payload)
+        GalMessage.Control.NAVIGATION_FOCUS_NOTIFICATION -> onNavigationFocusNotification(payload)
+        else -> null
     }
 
     /**
@@ -305,8 +333,8 @@ class GalControlSession(
         if (state != SessionState.HANDSHAKING) {
             return fail("handshake data arrived in state $state")
         }
-        appendInbound(payload)
-        return pumpHandshake()
+        handshakePump.appendInbound(payload)
+        return handshakePump.pump()
     }
 
     private fun onAuthComplete(payload: ByteArray): List<OutboundMessage> {
@@ -492,9 +520,35 @@ class GalControlSession(
         )
     }
 
-    // ---- TLS ----
+    private fun fail(reason: String): List<OutboundMessage> {
+        failure = reason
+        state = SessionState.CLOSED
+        return emptyList()
+    }
 
-    private fun appendInbound(payload: ByteArray) {
+    companion object {
+        /** Radix for rendering unexpected wire types in failure messages. */
+        private const val HEX_RADIX = 16
+    }
+}
+
+/**
+ * Server-side TLS handshake prober for [GalControlSession].
+ *
+ * Owns the buffered message-3 inbound and runs the engine until it needs
+ * more from the head unit, emitting one clear message 3 per wrapped record.
+ * [onFinished] fires when the engine settles (the head unit confirms with
+ * AuthComplete); [onFailed] records the session failure and discards any
+ * partial flight, matching the old inline pump's contract.
+ */
+private class HandshakePump(
+    private val engine: SSLEngine,
+    private val onFinished: () -> Unit,
+    private val onFailed: (String) -> Unit,
+) {
+    private var tlsInbound: ByteBuffer = ByteBuffer.allocate(0)
+
+    fun appendInbound(payload: ByteArray) {
         val combined = ByteBuffer.allocate(tlsInbound.remaining() + payload.size)
         combined.put(tlsInbound)
         combined.put(payload)
@@ -506,59 +560,96 @@ class GalControlSession(
      * Runs the engine until it needs more from the head unit, emitting a message 3 for each
      * record it produces.
      */
-    private fun pumpHandshake(): List<OutboundMessage> {
+    fun pump(): List<OutboundMessage> {
         val outgoing = mutableListOf<OutboundMessage>()
         val empty = ByteBuffer.allocate(0)
 
         while (true) {
-            when (engine.handshakeStatus) {
-                HandshakeStatus.NEED_TASK -> engine.delegatedTask?.run() ?: return outgoing
-
-                HandshakeStatus.NEED_UNWRAP -> {
-                    if (!tlsInbound.hasRemaining()) return outgoing
-                    val plain = ByteBuffer.allocate(engine.session.applicationBufferSize)
-                    val result = engine.unwrap(tlsInbound, plain)
-                    when (result.status) {
-                        // Partial record: wait for the next message 3.
-                        Status.BUFFER_UNDERFLOW -> return outgoing
-                        Status.OK -> Unit
-                        else -> return fail("TLS unwrap failed: ${result.status}")
-                    }
-                }
-
-                HandshakeStatus.NEED_WRAP -> {
-                    val record = ByteBuffer.allocate(engine.session.packetBufferSize)
-                    val result = engine.wrap(empty, record)
-                    if (result.status != Status.OK) {
-                        return fail("TLS wrap failed: ${result.status}")
-                    }
-                    record.flip()
-                    val bytes = ByteArray(record.remaining())
-                    record.get(bytes)
-                    // Handshake records ride in the clear: they ARE the encryption being
-                    // set up, so the ENCRYPTED frame flag must stay off.
-                    outgoing += OutboundMessage(
-                        GalMessage.Control.SSL_HANDSHAKE,
-                        bytes,
-                        encrypted = false,
-                    )
-                }
-
-                HandshakeStatus.FINISHED, HandshakeStatus.NOT_HANDSHAKING -> {
-                    // The head unit confirms with AuthComplete; we do not send it.
-                    state = SessionState.AWAITING_AUTH_COMPLETE
-                    return outgoing
-                }
-
-                else -> return outgoing
+            when (pumpStep(empty, outgoing)) {
+                null -> return outgoing
+                true -> Unit // The engine advanced; keep pumping.
+                // The step already recorded the failure via [onFailed], whose
+                // contract is an empty reply list: never send a partial flight.
+                false -> return emptyList()
             }
         }
     }
 
-    private fun fail(reason: String): List<OutboundMessage> {
-        failure = reason
-        state = SessionState.CLOSED
-        return emptyList()
+    /**
+     * Runs one engine step: delegated tasks inline, unwraps against buffered
+     * inbound, wraps produce message-3 replies, FINISHED advances the state.
+     * Null stops the pump (needs more inbound or finished), true keeps
+     * pumping, false means the step failed the session.
+     */
+    private fun pumpStep(
+        empty: ByteBuffer,
+        outgoing: MutableList<OutboundMessage>,
+    ): Boolean? {
+        when (engine.handshakeStatus) {
+            HandshakeStatus.NEED_TASK -> {
+                // No task to run: wait for more inbound like the original
+                // `delegatedTask?.run() ?: return outgoing`. A ran task may
+                // have advanced the engine, so keep pumping.
+                engine.delegatedTask ?: return null
+                engine.delegatedTask?.run()
+                return true
+            }
+            HandshakeStatus.NEED_UNWRAP -> return pumpUnwrap()
+            HandshakeStatus.NEED_WRAP -> return pumpWrap(empty, outgoing)
+            HandshakeStatus.FINISHED, HandshakeStatus.NOT_HANDSHAKING -> {
+                // The head unit confirms with AuthComplete; we do not send it.
+                onFinished()
+                return null
+            }
+            else -> return null
+        }
+    }
+
+    /**
+     * Unwraps one buffered inbound record. Null (stop pumping) when no bytes
+     * are buffered yet or the record is partial; true (keep pumping) on a
+     * clean unwrap; false when the engine reports failure.
+     */
+    private fun pumpUnwrap(): Boolean? {
+        if (!tlsInbound.hasRemaining()) return null
+        val plain = ByteBuffer.allocate(engine.session.applicationBufferSize)
+        val status = engine.unwrap(tlsInbound, plain).status
+        return when (status) {
+            // Partial record: wait for the next message 3.
+            Status.BUFFER_UNDERFLOW -> null
+            Status.OK -> true
+            else -> {
+                onFailed("TLS unwrap failed: $status")
+                false
+            }
+        }
+    }
+
+    /**
+     * Wraps one outbound handshake record into a clear message 3.
+     * True (keep pumping) on success, false when the engine reports failure.
+     */
+    private fun pumpWrap(
+        empty: ByteBuffer,
+        outgoing: MutableList<OutboundMessage>,
+    ): Boolean {
+        val record = ByteBuffer.allocate(engine.session.packetBufferSize)
+        val result = engine.wrap(empty, record)
+        if (result.status != Status.OK) {
+            onFailed("TLS wrap failed: ${result.status}")
+            return false
+        }
+        record.flip()
+        val bytes = ByteArray(record.remaining())
+        record.get(bytes)
+        // Handshake records ride in the clear: they ARE the encryption being
+        // set up, so the ENCRYPTED frame flag must stay off.
+        outgoing += OutboundMessage(
+            GalMessage.Control.SSL_HANDSHAKE,
+            bytes,
+            encrypted = false,
+        )
+        return true
     }
 }
 

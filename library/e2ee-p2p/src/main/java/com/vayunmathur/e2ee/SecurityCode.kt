@@ -33,23 +33,34 @@ object SecurityCode {
     private fun compareLex(a: ByteArray, b: ByteArray): Int {
         val n = minOf(a.size, b.size)
         for (i in 0 until n) {
-            val d = (a[i].toInt() and 0xFF) - (b[i].toInt() and 0xFF)
+            val d = (a[i].toInt() and BYTE_MASK) - (b[i].toInt() and BYTE_MASK)
             if (d != 0) return d
         }
         return a.size - b.size
     }
 
+    private const val BYTE_MASK = 0xFF
+
     private fun format(h: ByteArray): String {
         val sb = StringBuilder()
         var i = 0
         var group = 0
-        while (group < 6 && i + 5 <= h.size) {
-            var v = 0L
-            for (j in 0 until 5) v = (v shl 8) or (h[i + j].toLong() and 0xFF)
+        while (group < GROUP_COUNT && i + BYTES_PER_GROUP <= h.size) {
+            var value = 0L
+            for (j in 0 until BYTES_PER_GROUP) {
+                value = (value shl BYTE_BITS) or (h[i + j].toInt() and BYTE_MASK).toLong()
+            }
             if (group > 0) sb.append(' ')
-            sb.append((v % 100000L).toString().padStart(5, '0'))
-            i += 5; group++
+            sb.append((value % GROUP_MODULUS).toString().padStart(GROUP_DIGITS, '0'))
+            i += BYTES_PER_GROUP
+            group++
         }
         return sb.toString()
     }
+
+    private const val GROUP_COUNT = 6
+    private const val BYTES_PER_GROUP = 5
+    private const val BYTE_BITS = 8
+    private const val GROUP_MODULUS = 100000L
+    private const val GROUP_DIGITS = 5
 }

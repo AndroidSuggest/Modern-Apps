@@ -24,10 +24,9 @@ fun precipitationNowcast(context: Context, minutely15: Minutely15?, utcOffsetSec
         Slot(epoch, series.precipitation.getOrNull(i) ?: 0.0)
     }
     if (slots.isEmpty()) return null
-
     // Slot covering "now" (each slot spans 15 min).
     val currentSlot = slots.lastOrNull { it.epoch <= now }
-    if (currentSlot != null && currentSlot.epoch >= now - 15 * 60 && currentSlot.precip > 0.0) {
+    if (currentSlot != null && currentSlot.epoch >= now - SLOT_SECONDS && currentSlot.precip > 0.0) {
         return context.getString(R.string.precip_raining_now)
     }
 
@@ -42,3 +41,6 @@ fun precipitationNowcast(context: Context, minutely15: Minutely15?, utcOffsetSec
         context.getString(R.string.precip_rain_in_min, rounded)
     }
 }
+
+/** Length of one precipitation slot (15 minutes) in seconds. */
+private const val SLOT_SECONDS = 15 * 60

@@ -94,7 +94,9 @@ internal fun TextFormatControls(
     val textFormatter = TextRunFormatter(viewModel, runStart, runEnd, selStart, selEnd, enabled)
 
     val styleLabel = when (para?.style) {
-        ParagraphStyle.HEADING1 -> "H1"; ParagraphStyle.HEADING2 -> "H2"; ParagraphStyle.HEADING3 -> "H3"; ParagraphStyle.HEADING4 -> "H4"; else -> "Normal"
+        ParagraphStyle.HEADING1 ->
+            "H1"; ParagraphStyle.HEADING2 ->
+                "H2"; ParagraphStyle.HEADING3 -> "H3"; ParagraphStyle.HEADING4 -> "H4"; else -> "Normal"
     }
     val alignIcon: @Composable () -> Unit = when (para?.alignment) {
         TextAlign.Center -> { { IconFormatAlignCenter() } }
@@ -102,8 +104,16 @@ internal fun TextFormatControls(
         TextAlign.Justify -> { { IconFormatAlignJustify() } }
         else -> { { IconFormatAlignLeft() } }
     }
-    fun setStyle(s: ParagraphStyle) { viewModel.mutateRunParagraphs(runStart, runEnd, selStart, selEnd) { it.copy(style = s) } }
-    fun setAlign(a: TextAlign) { viewModel.mutateRunParagraphs(runStart, runEnd, selStart, selEnd) { it.copy(alignment = a) } }
+    fun setStyle(s: ParagraphStyle) { viewModel.mutateRunParagraphs(
+        runStart,
+        runEnd,
+        selStart,
+        selEnd) { it.copy(style = s) } }
+    fun setAlign(a: TextAlign) { viewModel.mutateRunParagraphs(
+        runStart,
+        runEnd,
+        selStart,
+        selEnd) { it.copy(alignment = a) } }
 
     Box {
         TextButton(onClick = { styleMenu = true }, enabled = enabled) {
@@ -111,11 +121,21 @@ internal fun TextFormatControls(
             IconArrowDropDown()
         }
         DropdownMenu(expanded = styleMenu, onDismissRequest = { styleMenu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.normal)) }, onClick = { styleMenu = false; setStyle(ParagraphStyle.BODY) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.heading_1)) }, onClick = { styleMenu = false; setStyle(ParagraphStyle.HEADING1) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.heading_2)) }, onClick = { styleMenu = false; setStyle(ParagraphStyle.HEADING2) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.heading_3)) }, onClick = { styleMenu = false; setStyle(ParagraphStyle.HEADING3) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.heading_4)) }, onClick = { styleMenu = false; setStyle(ParagraphStyle.HEADING4) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.normal)) },
+                onClick = { styleMenu = false; setStyle(ParagraphStyle.BODY) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.heading_1)) },
+                onClick = { styleMenu = false; setStyle(ParagraphStyle.HEADING1) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.heading_2)) },
+                onClick = { styleMenu = false; setStyle(ParagraphStyle.HEADING2) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.heading_3)) },
+                onClick = { styleMenu = false; setStyle(ParagraphStyle.HEADING3) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.heading_4)) },
+                onClick = { styleMenu = false; setStyle(ParagraphStyle.HEADING4) })
         }
     }
     EditorBaseButtons(textFormatter)
@@ -123,14 +143,32 @@ internal fun TextFormatControls(
     Box {
         FmtIcon(false, enabled, alignIcon) { alignMenu = true }
         DropdownMenu(expanded = alignMenu, onDismissRequest = { alignMenu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.left)) }, leadingIcon = { IconFormatAlignLeft() }, onClick = { alignMenu = false; setAlign(TextAlign.Start) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.center)) }, leadingIcon = { IconFormatAlignCenter() }, onClick = { alignMenu = false; setAlign(TextAlign.Center) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.right)) }, leadingIcon = { IconFormatAlignRight() }, onClick = { alignMenu = false; setAlign(TextAlign.End) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.justify)) }, leadingIcon = { IconFormatAlignJustify() }, onClick = { alignMenu = false; setAlign(TextAlign.Justify) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.left)) },
+                leadingIcon = { IconFormatAlignLeft() },
+                onClick = { alignMenu = false; setAlign(TextAlign.Start) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.center)) },
+                leadingIcon = { IconFormatAlignCenter() },
+                onClick = { alignMenu = false; setAlign(TextAlign.Center) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.right)) },
+                leadingIcon = { IconFormatAlignRight() },
+                onClick = { alignMenu = false; setAlign(TextAlign.End) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.justify)) },
+                leadingIcon = { IconFormatAlignJustify() },
+                onClick = { alignMenu = false; setAlign(TextAlign.Justify) })
         }
     }
-    FmtIcon(isBullet, enabled, { IconFormatListBulleted() }) { if (focusedPara >= 0) viewModel.toggleListItem(focusedPara) }
-    FmtIcon(isNumbered, enabled, { IconFormatListNumbered() }) { if (focusedPara >= 0) viewModel.toggleNumberedList(focusedPara) }
+    FmtIcon(
+        isBullet,
+        enabled,
+        { IconFormatListBulleted() }) { if (focusedPara >= 0) viewModel.toggleListItem(focusedPara) }
+    FmtIcon(
+        isNumbered,
+        enabled,
+        { IconFormatListNumbered() }) { if (focusedPara >= 0) viewModel.toggleNumberedList(focusedPara) }
     FmtIcon(isCheckbox, enabled, { IconCheckBox() }) { if (focusedPara >= 0) viewModel.toggleCheckbox(focusedPara) }
     FmtIcon(false, enabled, { IconFormatIndentIncrease() }) {
         if (focusedPara >= 0) {
@@ -151,12 +189,26 @@ internal fun TextFormatControls(
             IconArrowDropDown()
         }
         DropdownMenu(expanded = tableMenu, onDismissRequest = { tableMenu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.insert_table_1)) }, onClick = { tableMenu = false; actions.onInsertTable() })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.insert_table_1)) },
+                onClick = { tableMenu = false; actions.onInsertTable() })
             HorizontalDivider()
-            DropdownMenuItem(text = { Text(stringResource(R.string.insert_row_below)) }, enabled = tableEnabled, onClick = { tableMenu = false; viewModel.textTableAddRow(activeTableBlock, activeTableRow) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.insert_column_right)) }, enabled = tableEnabled, onClick = { tableMenu = false; viewModel.textTableAddColumn(activeTableBlock, activeTableCol) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.delete_row)) }, enabled = tableEnabled, onClick = { tableMenu = false; viewModel.textTableDeleteRow(activeTableBlock, activeTableRow) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.delete_column)) }, enabled = tableEnabled, onClick = { tableMenu = false; viewModel.textTableDeleteColumn(activeTableBlock, activeTableCol) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.insert_row_below)) },
+                enabled = tableEnabled,
+                onClick = { tableMenu = false; viewModel.textTableAddRow(activeTableBlock, activeTableRow) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.insert_column_right)) },
+                enabled = tableEnabled,
+                onClick = { tableMenu = false; viewModel.textTableAddColumn(activeTableBlock, activeTableCol) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.delete_row)) },
+                enabled = tableEnabled,
+                onClick = { tableMenu = false; viewModel.textTableDeleteRow(activeTableBlock, activeTableRow) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.delete_column)) },
+                enabled = tableEnabled,
+                onClick = { tableMenu = false; viewModel.textTableDeleteColumn(activeTableBlock, activeTableCol) })
             HorizontalDivider()
             DropdownMenuItem(text = { Text(stringResource(R.string.bold_cell)) }, enabled = tableEnabled, onClick = { tableMenu = false; viewModel.setTextTableCellSpanFormat(activeTableBlock, activeTableRow, activeTableCol) { it.copy(bold = !it.bold) } })
             DropdownMenuItem(text = { Text(stringResource(R.string.italic_cell)) }, enabled = tableEnabled, onClick = { tableMenu = false; viewModel.setTextTableCellSpanFormat(activeTableBlock, activeTableRow, activeTableCol) { it.copy(italic = !it.italic) } })
@@ -169,17 +221,42 @@ internal fun TextFormatControls(
         var moreMenu by remember { mutableStateOf(false) }
         FmtIcon(false, enabled, { IconMoreVert() }) { moreMenu = true }
         DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.font_size_2)) }, onClick = { moreMenu = false; actions.onFontSize() })
-            DropdownMenuItem(text = { Text(stringResource(R.string.clear_formatting)) }, onClick = { moreMenu = false; viewModel.clearRunFormatting(runStart, runEnd, selStart, selEnd) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.font_size_2)) },
+                onClick = { moreMenu = false; actions.onFontSize() })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.clear_formatting)) },
+                onClick = { moreMenu = false; viewModel.clearRunFormatting(runStart, runEnd, selStart, selEnd) })
             HorizontalDivider()
-            DropdownMenuItem(text = { Text(stringResource(R.string.demote_list_item)) }, enabled = focusedPara >= 0, onClick = { moreMenu = false; if (focusedPara >= 0) viewModel.changeListLevel(focusedPara, 1) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.promote_list_item)) }, enabled = focusedPara >= 0, onClick = { moreMenu = false; if (focusedPara >= 0) viewModel.changeListLevel(focusedPara, -1) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.restart_numbering)) }, enabled = focusedPara >= 0, onClick = { moreMenu = false; if (focusedPara >= 0) viewModel.restartNumbering(focusedPara) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.demote_list_item)) },
+                enabled = focusedPara >= 0,
+                onClick = { moreMenu = false; if (focusedPara >= 0) viewModel.changeListLevel(focusedPara, 1) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.promote_list_item)) },
+                enabled = focusedPara >= 0,
+                onClick = { moreMenu = false; if (focusedPara >= 0) viewModel.changeListLevel(focusedPara, -1) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.restart_numbering)) },
+                enabled = focusedPara >= 0,
+                onClick = { moreMenu = false; if (focusedPara >= 0) viewModel.restartNumbering(focusedPara) })
             HorizontalDivider()
-            DropdownMenuItem(text = { Text(stringResource(R.string.duplicate_paragraph)) }, enabled = focusedPara >= 0, onClick = { moreMenu = false; viewModel.duplicateParagraph(focusedPara) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.move_paragraph_up)) }, enabled = focusedPara > 0, onClick = { moreMenu = false; viewModel.moveParagraphUp(focusedPara) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.move_paragraph_down)) }, enabled = focusedPara >= 0, onClick = { moreMenu = false; viewModel.moveParagraphDown(focusedPara) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.delete_paragraph), color = MaterialTheme.colorScheme.error) }, enabled = focusedPara >= 0, onClick = { moreMenu = false; viewModel.deleteParagraph(focusedPara) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.duplicate_paragraph)) },
+                enabled = focusedPara >= 0,
+                onClick = { moreMenu = false; viewModel.duplicateParagraph(focusedPara) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.move_paragraph_up)) },
+                enabled = focusedPara > 0,
+                onClick = { moreMenu = false; viewModel.moveParagraphUp(focusedPara) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.move_paragraph_down)) },
+                enabled = focusedPara >= 0,
+                onClick = { moreMenu = false; viewModel.moveParagraphDown(focusedPara) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.delete_paragraph), color = MaterialTheme.colorScheme.error) },
+                enabled = focusedPara >= 0,
+                onClick = { moreMenu = false; viewModel.deleteParagraph(focusedPara) })
         }
     }
 }
@@ -202,17 +279,37 @@ internal class TextRunFormatter(
         EditorFormat.BOLD -> viewModel.runRangeHasFormat(runStart, runEnd, selStart, selEnd) { it.bold }
         EditorFormat.ITALIC -> viewModel.runRangeHasFormat(runStart, runEnd, selStart, selEnd) { it.italic }
         EditorFormat.UNDERLINE -> viewModel.runRangeHasFormat(runStart, runEnd, selStart, selEnd) { it.underline }
-        EditorFormat.STRIKETHROUGH -> viewModel.runRangeHasFormat(runStart, runEnd, selStart, selEnd) { it.strikethrough }
+        EditorFormat.STRIKETHROUGH -> viewModel.runRangeHasFormat(
+            runStart,
+            runEnd,
+            selStart,
+            selEnd) { it.strikethrough }
         else -> false
     }
 
     override fun toggle(format: EditorFormat) {
         if (!enabled) return
         when (format) {
-            EditorFormat.BOLD -> { val t = !isActive(EditorFormat.BOLD); viewModel.applyRunSpanStyle(runStart, runEnd, selStart, selEnd) { it.copy(bold = t) } }
-            EditorFormat.ITALIC -> { val t = !isActive(EditorFormat.ITALIC); viewModel.applyRunSpanStyle(runStart, runEnd, selStart, selEnd) { it.copy(italic = t) } }
-            EditorFormat.UNDERLINE -> { val t = !isActive(EditorFormat.UNDERLINE); viewModel.applyRunSpanStyle(runStart, runEnd, selStart, selEnd) { it.copy(underline = t) } }
-            EditorFormat.STRIKETHROUGH -> { val t = !isActive(EditorFormat.STRIKETHROUGH); viewModel.applyRunSpanStyle(runStart, runEnd, selStart, selEnd) { it.copy(strikethrough = t) } }
+            EditorFormat.BOLD -> { val t = !isActive(EditorFormat.BOLD); viewModel.applyRunSpanStyle(
+                runStart,
+                runEnd,
+                selStart,
+                selEnd) { it.copy(bold = t) } }
+            EditorFormat.ITALIC -> { val t = !isActive(EditorFormat.ITALIC); viewModel.applyRunSpanStyle(
+                runStart,
+                runEnd,
+                selStart,
+                selEnd) { it.copy(italic = t) } }
+            EditorFormat.UNDERLINE -> { val t = !isActive(EditorFormat.UNDERLINE); viewModel.applyRunSpanStyle(
+                runStart,
+                runEnd,
+                selStart,
+                selEnd) { it.copy(underline = t) } }
+            EditorFormat.STRIKETHROUGH -> { val t = !isActive(EditorFormat.STRIKETHROUGH); viewModel.applyRunSpanStyle(
+                runStart,
+                runEnd,
+                selStart,
+                selEnd) { it.copy(strikethrough = t) } }
             else -> {}
         }
     }
@@ -221,7 +318,10 @@ internal class TextRunFormatter(
         if (!enabled) return null
         val link = viewModel.linkAt(runStart, runEnd, selStart)
         if (link != null) return LinkContext(editing = true, text = link.text, url = link.url)
-        if (selStart != selEnd) return LinkContext(editing = false, text = viewModel.runSelectedText(runStart, runEnd, selStart, selEnd), url = "")
+        if (selStart != selEnd) return LinkContext(
+            editing = false,
+            text = viewModel.runSelectedText(runStart, runEnd, selStart, selEnd),
+            url = "")
         return null
     }
 

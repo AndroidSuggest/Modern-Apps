@@ -88,21 +88,33 @@ object CodecNegotiation {
         demoted: Set<VideoCodec> = emptySet(),
     ): CodecSelection {
         for (codec in PREFERENCE) {
-            if (codec in demoted) continue
-            val mine = senderCodecs.firstOrNull { it.codec == codec } ?: continue
-            val theirs = receiver.forCodec(codec) ?: continue
-            val (fittedWidth, fittedHeight) = theirs.fit(width, height)
-            if (!mine.admits(fittedWidth, fittedHeight, frameRate)) continue
-            return CodecSelection.Chosen(
-                codec = codec,
-                receiverLimits = theirs,
-                bitRateCeiling = tighterCeiling(mine.maxBitRate, theirs.maxBitRate),
-            )
+            chooseForCodec(codec, senderCodecs, receiver, width, height, frameRate, demoted)?.let { return it }
         }
         return CodecSelection.None(
             senderOffered = senderCodecs.map { it.codec },
             receiverOffered = receiver.codecs,
             demoted = demoted,
+        )
+    }
+
+    private fun chooseForCodec(
+        codec: VideoCodec,
+        senderCodecs: List<CodecLimits>,
+        receiver: DecoderLimits,
+        width: Int,
+        height: Int,
+        frameRate: Float,
+        demoted: Set<VideoCodec>,
+    ): CodecSelection.Chosen? {
+        if (codec in demoted) return null
+        val mine = senderCodecs.firstOrNull { it.codec == codec } ?: return null
+        val theirs = receiver.forCodec(codec) ?: return null
+        val (fittedWidth, fittedHeight) = theirs.fit(width, height)
+        if (!mine.admits(fittedWidth, fittedHeight, frameRate)) return null
+        return CodecSelection.Chosen(
+            codec = codec,
+            receiverLimits = theirs,
+            bitRateCeiling = tighterCeiling(mine.maxBitRate, theirs.maxBitRate),
         )
     }
 

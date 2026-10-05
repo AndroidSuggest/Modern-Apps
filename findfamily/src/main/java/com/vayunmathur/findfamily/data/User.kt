@@ -40,7 +40,8 @@ data class User(
 
     @PrimaryKey(autoGenerate = true) override val id: Long = 0,
     val lastWaypointId: Long? = null,
-    /** Peer device platform (`"android"` or `"ios"`), learned from heartbeat payloads. Null until first heartbeat after both sides upgrade. */
+    /** Peer device platform (`"android"` or `"ios"`), learned from heartbeat payloads.
+     * Null until first heartbeat after both sides upgrade. */
     val platform: String? = null,
     /** When to auto-toggle sharing (flip sendingEnabled). Null means Never / disabled. Single field. */
     val sharingAutoToggleAt: Instant? = null,

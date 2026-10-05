@@ -71,8 +71,15 @@ class AlarmActivity : ComponentActivity() {
             // to carry this itself or the snoozed alarm would ring on the wrong channel.
             putExtra(AlarmScheduler.EXTRA_GRADUAL_SECONDS, gradualSeconds)
         }
-        val pendingIntent = PendingIntent.getBroadcast(this, alarmId.toInt(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val pendingIntent = PendingIntent.getBroadcast(
+            this,
+            alarmId.toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         val alarmManager = getSystemService(AlarmManager::class.java)
-        alarmManager.setAlarmClock(AlarmManager.AlarmClockInfo(triggerMillis, pendingIntent), pendingIntent); finish()
+        val info = AlarmManager.AlarmClockInfo(triggerMillis, pendingIntent)
+        alarmManager.setAlarmClock(info, pendingIntent)
+        finish()
     }
 }

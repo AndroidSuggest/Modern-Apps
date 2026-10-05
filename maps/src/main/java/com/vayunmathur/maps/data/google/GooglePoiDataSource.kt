@@ -63,6 +63,17 @@ object GooglePoiDataSource {
     /** [Paths.SUMMARY_KIND] value that makes [Paths.SUMMARY_TEXT] a pump price. */
     private const val GAS_STATION_KIND = "SearchResult.TYPE_GAS_STATION"
 
+    /** Mean Earth radius (m) for the match-distance haversine. */
+    private const val EARTH_RADIUS_M = 6_371_000.0
+    /** Most photo URLs kept per place (hero + gallery preview). */
+    private const val MAX_PHOTO_URLS = 12
+    /** Price-band ceilings ($) mapping a numeric price label to a 1..4 level. */
+    private const val PRICE_BAND_MID = 10
+    private const val PRICE_BAND_HIGH = 20
+    private const val PRICE_BAND_LUXURY = 35
+    private const val MIN_PRICE_LEVEL = 1
+    private const val MAX_PRICE_LEVEL = 4
+
     @Volatile private var sessionWarmed = false
 
     // Bounded LRU cache (access-ordered). Stores the resolved info OR null (a
@@ -206,7 +217,8 @@ object GooglePoiDataSource {
             statusText = statusStr,
             category = entry.at(*Paths.CATEGORY).str(),
             editorialSummary = entry.at(*Paths.EDITORIAL).str()?.trim()?.ifBlank { null },
-            featuredReview = entry.at(*Paths.FEATURED_REVIEW).str()?.trim()?.trim('"', '\u201C', '\u201D')?.ifBlank { null },
+            featuredReview = entry.at(*Paths.FEATURED_REVIEW).str()?.trim()
+                ?.trim('"', '\u201C', '\u201D')?.ifBlank { null },
             fuelPrice = parseFuelPrice(entry),
             hours = parseHours(entry, prefer118 = rich == null && s118 != null),
             photoUrls = parsePhotos(entry),
@@ -274,9 +286,9 @@ object GooglePoiDataSource {
             if (u != null && u.contains("googleusercontent"))
                 urls += u.replace(Regex("=w\\d+-h\\d+.*$"), "=w500-h350")
         }
-        entry.at(*Paths.PHOTOS).arr()?.forEach { add(it.at(6, 0).str()) }
-        entry.at(1, 204, 0).arr()?.forEach { add(it.at(1, 2, 0, 0).str()) }
-        return urls.take(12)
+        entry.at(*Paths.PHOTOS).arr()?.forEach { add(it.at(*Paths.PHOTO_HERO).str()) }
+        entry.at(*Paths.GALLERY).arr()?.forEach { add(it.at(*Paths.GALLERY_PHOTO).str()) }
+        return urls.take(MAX_PHOTO_URLS)
     }
 
     /** Popular-times histogram. Usually stripped on a keyless response (returns
@@ -303,15 +315,20 @@ object GooglePoiDataSource {
      *  of '$' for the symbol style ("$$"→2). Null when there's no price. */
     private fun priceLevelOf(text: String?): Int? {
         if (text.isNullOrBlank()) return null
-        Regex("\\d+").find(text)?.value?.toIntOrNull()?.let { low ->
-            return when {
-                low < 10 -> 1
-                low < 20 -> 2
-                low < 35 -> 3
-                else -> 4
-            }
-        }
-        return text.count { it == '$' }.takeIf { it in 1..4 }
+        priceLevelOfAmount(text)?.let { return it }
+        return text.count { it == '$' }.takeIf { it in MIN_PRICE_LEVEL..MAX_PRICE_LEVEL }
+    }
+
+    private fun priceLevelOfAmount(text: String): Int? {
+        val low = Regex("\\d+").find(text)?.value?.toIntOrNull() ?: return null
+        return priceLevelForLow(low)
+    }
+
+    private fun priceLevelForLow(low: Int): Int {
+        if (low < PRICE_BAND_MID) return MIN_PRICE_LEVEL
+        if (low < PRICE_BAND_HIGH) return MIN_PRICE_LEVEL + 1
+        if (low < PRICE_BAND_LUXURY) return MAX_PRICE_LEVEL - 1
+        return MAX_PRICE_LEVEL
     }
 
     /** Open/closed from the English status text (hl=en pins the language). Closed
@@ -330,7 +347,7 @@ object GooglePoiDataSource {
     private fun String.enc(): String = URLEncoder.encode(this, "UTF-8")
 
     private fun haversine(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val r = 6_371_000.0
+        val r = EARTH_RADIUS_M
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
         val a = sin(dLat / 2) * sin(dLat / 2) +
@@ -388,6 +405,8 @@ object GooglePoiDataSource {
         val PHONE = intArrayOf(1, 178, 0, 0)
         val FEATURE_ID = intArrayOf(1, 10)
         val PHOTOS = intArrayOf(1, 72, 0)
+        // Hero photo inside the PHOTOS list.
+        val PHOTO_HERO = intArrayOf(6, 0)
         val FEATURED_REVIEW = intArrayOf(1, 142, 1, 0, 1, 0, 0)
         val EDITORIAL = intArrayOf(1, 32, 1, 1)
         val OPEN_STATUS = intArrayOf(1, 203, 1, 8, 0)
@@ -402,5 +421,8 @@ object GooglePoiDataSource {
         // tagline for a restaurant. Always check SUMMARY_KIND before reading SUMMARY_TEXT.
         val SUMMARY_TEXT = intArrayOf(1, 88, 0)
         val SUMMARY_KIND = intArrayOf(1, 88, 1)
+        // Extra gallery preview beside the hero photo.
+        val GALLERY = intArrayOf(1, 204, 0)
+        val GALLERY_PHOTO = intArrayOf(1, 2, 0, 0)
     }
 }

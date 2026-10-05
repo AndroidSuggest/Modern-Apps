@@ -4,6 +4,10 @@ import android.graphics.Bitmap
 import androidx.core.graphics.scale
 import kotlin.math.roundToInt
 
+private const val MIN_POLYGON_VERTICES = 3
+private const val POLYGON_SAMPLE_OFFSET = 0.5f
+private const val WAND_TOLERANCE_SCALE = 441f
+
 /** How a new selection combines with the existing one. */
 enum class SelectionCombine { New, Add, Subtract, Intersect }
 
@@ -152,27 +156,37 @@ class Selection(
             points: List<Pair<Float, Float>>,
         ): Selection {
             val mask = FloatArray(width * height)
-            if (points.size < 3) return Selection(mask, width, height)
+            if (points.size < MIN_POLYGON_VERTICES) return Selection(mask, width, height)
             val xs = FloatArray(points.size) { points[it].first * width }
             val ys = FloatArray(points.size) { points[it].second * height }
             for (y in 0 until height) {
-                val py = y + 0.5f
-                for (x in 0 until width) {
-                    val px = x + 0.5f
-                    var inside = false
-                    var j = points.size - 1
-                    for (i in points.indices) {
-                        val yi = ys[i]; val yj = ys[j]
-                        if ((yi > py) != (yj > py)) {
-                            val xCross = xs[i] + (py - yi) / (yj - yi) * (xs[j] - xs[i])
-                            if (px < xCross) inside = !inside
-                        }
-                        j = i
-                    }
-                    if (inside) mask[y * width + x] = 1f
-                }
+                paintPolygonRow(mask, width, xs, ys, y)
             }
             return Selection(mask, width, height)
+        }
+
+        private fun paintPolygonRow(mask: FloatArray, width: Int, xs: FloatArray, ys: FloatArray, y: Int) {
+            val py = y + POLYGON_SAMPLE_OFFSET
+            for (x in 0 until width) {
+                val px = x + POLYGON_SAMPLE_OFFSET
+                if (isPointInPolygon(px, py, xs, ys)) {
+                    mask[y * width + x] = 1f
+                }
+            }
+        }
+
+        private fun isPointInPolygon(px: Float, py: Float, xs: FloatArray, ys: FloatArray): Boolean {
+            var inside = false
+            var j = xs.size - 1
+            for (i in xs.indices) {
+                val yi = ys[i]; val yj = ys[j]
+                if ((yi > py) != (yj > py)) {
+                    val xCross = xs[i] + (py - yi) / (yj - yi) * (xs[j] - xs[i])
+                    if (px < xCross) inside = !inside
+                }
+                j = i
+            }
+            return inside
         }
 
         /**
@@ -200,11 +214,23 @@ class Selection(
             val sx = (seedX * w).roundToInt().coerceIn(0, w - 1)
             val sy = (seedY * h).roundToInt().coerceIn(0, h - 1)
             val seed = px[sy * w + sx]
-            val sr = (seed ushr 16) and 0xFF
-            val sg = (seed ushr 8) and 0xFF
-            val sb = seed and 0xFF
-            // Max channel distance, scaled to 0..441 (sqrt(3)*255) space.
-            val tol = tolerance.coerceIn(0f, 1f) * 441f
+            val matcher = WandMatcher(seed, tolerance)
+
+            val mask = FloatArray(w * h)
+            if (contiguous) {
+                floodWand(mask, px, w, h, sx, sy, matcher)
+            } else {
+                for (i in px.indices) if (matcher.matches(px[i])) mask[i] = 1f
+            }
+            return Selection(mask, w, h)
+        }
+
+        /** Euclidean-distance color matcher for the wand seed, in sqrt(3)*255 space. */
+        private class WandMatcher(seed: Int, tolerance: Float) {
+            private val sr = (seed ushr 16) and 0xFF
+            private val sg = (seed ushr 8) and 0xFF
+            private val sb = seed and 0xFF
+            private val tol = tolerance.coerceIn(0f, 1f) * WAND_TOLERANCE_SCALE
 
             fun matches(c: Int): Boolean {
                 val dr = ((c ushr 16) and 0xFF) - sr
@@ -212,27 +238,48 @@ class Selection(
                 val db = (c and 0xFF) - sb
                 return kotlin.math.sqrt((dr * dr + dg * dg + db * db).toFloat()) <= tol
             }
+        }
 
-            val mask = FloatArray(w * h)
-            if (contiguous) {
-                val stack = ArrayDeque<Int>()
-                stack.addLast(sy * w + sx)
-                val visited = BooleanArray(w * h)
-                visited[sy * w + sx] = true
-                while (stack.isNotEmpty()) {
-                    val idx = stack.removeLast()
-                    if (!matches(px[idx])) continue
-                    mask[idx] = 1f
-                    val cx = idx % w; val cy = idx / w
-                    if (cx > 0 && !visited[idx - 1]) { visited[idx - 1] = true; stack.addLast(idx - 1) }
-                    if (cx < w - 1 && !visited[idx + 1]) { visited[idx + 1] = true; stack.addLast(idx + 1) }
-                    if (cy > 0 && !visited[idx - w]) { visited[idx - w] = true; stack.addLast(idx - w) }
-                    if (cy < h - 1 && !visited[idx + w]) { visited[idx + w] = true; stack.addLast(idx + w) }
-                }
-            } else {
-                for (i in px.indices) if (matches(px[i])) mask[i] = 1f
+        private fun floodWand(
+            mask: FloatArray,
+            px: IntArray,
+            w: Int,
+            h: Int,
+            sx: Int,
+            sy: Int,
+            matcher: WandMatcher,
+        ) {
+            val stack = ArrayDeque<Int>()
+            stack.addLast(sy * w + sx)
+            val visited = BooleanArray(w * h)
+            visited[sy * w + sx] = true
+            while (stack.isNotEmpty()) {
+                val idx = stack.removeLast()
+                if (!matcher.matches(px[idx])) continue
+                mask[idx] = 1f
+                pushWandNeighbours(stack, visited, w, h, idx)
             }
-            return Selection(mask, w, h)
+        }
+
+        private fun pushWandNeighbours(
+            stack: ArrayDeque<Int>,
+            visited: BooleanArray,
+            w: Int,
+            h: Int,
+            idx: Int,
+        ) {
+            val cx = idx % w; val cy = idx / w
+            if (cx > 0) visitWandNeighbour(stack, visited, idx - 1)
+            if (cx < w - 1) visitWandNeighbour(stack, visited, idx + 1)
+            if (cy > 0) visitWandNeighbour(stack, visited, idx - w)
+            if (cy < h - 1) visitWandNeighbour(stack, visited, idx + w)
+        }
+
+        private fun visitWandNeighbour(stack: ArrayDeque<Int>, visited: BooleanArray, idx: Int) {
+            if (!visited[idx]) {
+                visited[idx] = true
+                stack.addLast(idx)
+            }
         }
     }
 }

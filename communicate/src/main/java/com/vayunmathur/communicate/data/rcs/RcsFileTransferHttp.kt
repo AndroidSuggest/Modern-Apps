@@ -27,6 +27,10 @@ import kotlinx.coroutines.withContext
  * `ftHTTPCSURI`); without it, FT degrades to the v1 envelope path.
  */
 object RcsFileTransferHttp {
+    private const val HTTP_UNAUTHORIZED = 401
+    private val HTTP_SUCCESS = 200..299
+    private const val THUMB_MAX_PX = 320
+    private const val THUMB_JPEG_QUALITY = 70
     private const val TAG = "RcsFtHttp"
 
     /** Parsed inbound file-transfer descriptor. */
@@ -73,64 +77,82 @@ object RcsFileTransferHttp {
                 mime = attachment.mimeType,
                 bytes = bytes,
             )
-            val gba = RcsGbaBootstrap.bootstrap(context, server, force = false)
-                ?: RcsGbaAuth.injected
-            val auth = digestAuthHeader(
-                challenge = challenge,
-                method = "POST",
-                uri = server,
-                username = gba?.btId ?: "rcs",
-                password = gba?.let {
-                    android.util.Base64.encodeToString(it.key, android.util.Base64.NO_WRAP)
-                }.orEmpty(),
-            )
-            var response = NetworkClient.performRequest(
-                url = server,
-                method = "POST",
-                headers = mapOf(
-                    "Content-Type" to "multipart/form-data; boundary=$boundary",
-                    "Authorization" to auth,
-                    "User-Agent" to "Communicate-RCS/1.0",
-                ),
-                body = multipart,
-                useSystemTrust = true,
-            )
-            // 401 with a live bootstrap available: force re-bootstrapping and
-            // retry once (mirrors TestRcsApp's GbaRequestExecutor).
-            if (response.status == 401) {
-                val fresh = RcsGbaBootstrap.bootstrap(context, server, force = true)
-                if (fresh != null) {
-                    val retryAuth = digestAuthHeader(
-                        challenge = response.headers.entries
-                            .firstOrNull { it.key.equals("WWW-Authenticate", ignoreCase = true) }
-                            ?.value?.firstOrNull() ?: challenge,
-                        method = "POST",
-                        uri = server,
-                        username = fresh.btId,
-                        password = android.util.Base64.encodeToString(
-                            fresh.key, android.util.Base64.NO_WRAP,
-                        ),
-                    )
-                    response = NetworkClient.performRequest(
-                        url = server,
-                        method = "POST",
-                        headers = mapOf(
-                            "Content-Type" to "multipart/form-data; boundary=$boundary",
-                            "Authorization" to retryAuth,
-                            "User-Agent" to "Communicate-RCS/1.0",
-                        ),
-                        body = multipart,
-                        useSystemTrust = true,
-                    )
-                }
-            }
-            if (!response.isSuccess) return@runCatching null
-            // Server answers with the file URL (plain or XML-wrapped).
-            Regex("https?://[^\\s\"'<>]+").find(response.body)?.value
-        }.getOrElse {
-            Log.w(TAG, "FT upload failed", it)
-            null
+            uploadWithAuth(context, server, boundary, multipart, challenge)
+        }.getOrNull()
+    }
+
+    /** Authenticated upload with one GBA-refresh retry. */
+    private suspend fun uploadWithAuth(
+        context: Context,
+        server: String,
+        boundary: String,
+        multipart: ByteArray,
+        challenge: String,
+    ): String? {
+        val gba = RcsGbaBootstrap.bootstrap(context, server, force = false)
+            ?: RcsGbaAuth.injected
+        val auth = digestAuthHeader(
+            challenge = challenge,
+            method = "POST",
+            uri = server,
+            username = gba?.btId ?: "rcs",
+            password = gba?.let {
+                android.util.Base64.encodeToString(it.key, android.util.Base64.NO_WRAP)
+            }.orEmpty(),
+        )
+        var response = NetworkClient.performRequest(
+            url = server,
+            method = "POST",
+            headers = mapOf(
+                "Content-Type" to "multipart/form-data; boundary=$boundary",
+                "Authorization" to auth,
+                "User-Agent" to "Communicate-RCS/1.0",
+            ),
+            body = multipart,
+            useSystemTrust = true,
+        )
+        // 401 with a live bootstrap available: force re-bootstrapping and
+        // retry once (mirrors TestRcsApp's GbaRequestExecutor).
+        if (response.status == HTTP_UNAUTHORIZED) {
+            response = retryUpload(context, server, boundary, multipart, challenge, response)
         }
+        if (!response.isSuccess) return null
+        // Server answers with the file URL (plain or XML-wrapped).
+        return Regex("https?://[^\\s\"'<>]+").find(response.body)?.value
+    }
+
+    /** Force a GBA refresh and retry the upload once. */
+    private suspend fun retryUpload(
+        context: Context,
+        server: String,
+        boundary: String,
+        multipart: ByteArray,
+        challenge: String,
+        response: com.vayunmathur.library.network.SimpleResponse,
+    ): com.vayunmathur.library.network.SimpleResponse {
+        val fresh = RcsGbaBootstrap.bootstrap(context, server, force = true) ?: return response
+        val retryAuth = digestAuthHeader(
+            challenge = response.headers.entries
+                .firstOrNull { it.key.equals("WWW-Authenticate", ignoreCase = true) }
+                ?.value?.firstOrNull() ?: challenge,
+            method = "POST",
+            uri = server,
+            username = fresh.btId,
+            password = android.util.Base64.encodeToString(
+                fresh.key, android.util.Base64.NO_WRAP,
+            ),
+        )
+        return NetworkClient.performRequest(
+            url = server,
+            method = "POST",
+            headers = mapOf(
+                "Content-Type" to "multipart/form-data; boundary=$boundary",
+                "Authorization" to retryAuth,
+                "User-Agent" to "Communicate-RCS/1.0",
+            ),
+            body = multipart,
+            useSystemTrust = true,
+        )
     }
 
     /**
@@ -140,7 +162,7 @@ object RcsFileTransferHttp {
         if (!RcsFeature.enabled || url.isBlank()) return@withContext null
         runCatching {
             val (status, bytes) = NetworkClient.performRequestBytes(url, useSystemTrust = true)
-            if (status !in 200..299 || bytes.isEmpty()) return@runCatching null
+            if (status !in HTTP_SUCCESS || bytes.isEmpty()) return@runCatching null
             val dir = File(context.cacheDir, "rcs-ft").apply { mkdirs() }
             val file = File(dir, "dl-${UUID.randomUUID()}")
             file.writeBytes(bytes)
@@ -217,47 +239,61 @@ object RcsFileTransferHttp {
         if (!RcsFeature.enabled) return@withContext false
         val session = RcsSessionManager.sessionFor(recipient)
             ?.takeIf { it.msrpRemotePath != null } ?: return@withContext false
-        val conn = RcsMsrpConnectionFor(context, session) ?: return@withContext false
+        val conn = rcsMsrpConnectionFor(context, session) ?: return@withContext false
         runCatching {
             val bytes = context.contentResolver.openInputStream(attachment.contentUri.toUri())
                 ?.use { it.readBytes() }?.takeIf { it.isNotEmpty() } ?: return@runCatching false
-            // 1. File bytes as application/octet-stream chunks.
-            val fileCpim = buildFileCpim(
-                fileName = attachment.fileName ?: "file",
-                mime = attachment.mimeType,
-                size = bytes.size.toLong(),
-                caption = caption,
-            ).toByteArray(Charsets.UTF_8)
-            // 2. Thumbnail for images (small JPEG, base64 in the descriptor).
-            val thumbB64 = if (attachment.mimeType.startsWith("image/", ignoreCase = true)) {
-                makeThumbnail(bytes)?.let {
-                    android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP)
-                }
-            } else {
-                null
-            }
-            val descriptor = buildString {
-                append("File-Name: ${attachment.fileName ?: "file"}\r\n")
-                append("File-MIME: ${attachment.mimeType}\r\n")
-                append("File-Size: ${bytes.size}\r\n")
-                if (!thumbB64.isNullOrBlank()) append("File-Thumb: $thumbB64\r\n")
-                if (caption.isNotBlank()) append("\r\n$caption")
-            }
-            if (!conn.sendCpim(fileCpim, "message/cpim")) return@runCatching false
-            if (!conn.sendCpim(descriptor.toByteArray(Charsets.UTF_8), "message/cpim")) {
-                return@runCatching false
-            }
-            repository.cacheOutgoingRcsFile(
-                context = context,
-                conversationId = recipient,
-                body = caption.ifBlank { attachment.fileName ?: "[file]" },
-                messageId = "local-msrp-ft-${UUID.randomUUID()}",
-                ftUrl = "msrp:${session.callId}",
-                ftMime = attachment.mimeType,
-            )
-            conn.close()
-            true
+            sendFileChunks(context, repository, recipient, attachment, caption, session, conn, bytes)
         }.getOrDefault(false)
+    }
+
+    /** Send file bytes + descriptor over the MSRP connection. */
+    private suspend fun sendFileChunks(
+        context: Context,
+        repository: CommunicateRepository,
+        recipient: String,
+        attachment: CommunicateAttachment,
+        caption: String,
+        session: com.vayunmathur.communicate.data.rcs.RcsSession,
+        conn: RcsMsrp.MsrpConnection,
+        bytes: ByteArray,
+    ): Boolean {
+        // 1. File bytes as application/octet-stream chunks.
+        val fileCpim = buildFileCpim(
+            fileName = attachment.fileName ?: "file",
+            mime = attachment.mimeType,
+            size = bytes.size.toLong(),
+            caption = caption,
+        ).toByteArray(Charsets.UTF_8)
+        // 2. Thumbnail for images (small JPEG, base64 in the descriptor).
+        val thumbB64 = if (attachment.mimeType.startsWith("image/", ignoreCase = true)) {
+            makeThumbnail(bytes)?.let {
+                android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP)
+            }
+        } else {
+            null
+        }
+        val descriptor = buildString {
+            append("File-Name: ${attachment.fileName ?: "file"}\r\n")
+            append("File-MIME: ${attachment.mimeType}\r\n")
+            append("File-Size: ${bytes.size}\r\n")
+            if (!thumbB64.isNullOrBlank()) append("File-Thumb: $thumbB64\r\n")
+            if (caption.isNotBlank()) append("\r\n$caption")
+        }
+        if (!conn.sendCpim(fileCpim, "message/cpim")) return false
+        if (!conn.sendCpim(descriptor.toByteArray(Charsets.UTF_8), "message/cpim")) {
+            return false
+        }
+        repository.cacheOutgoingRcsFile(
+            context = context,
+            conversationId = recipient,
+            body = caption.ifBlank { attachment.fileName ?: "[file]" },
+            messageId = "local-msrp-ft-${UUID.randomUUID()}",
+            ftUrl = "msrp:${session.callId}",
+            ftMime = attachment.mimeType,
+        )
+        conn.close()
+        return true
     }
 
     /**
@@ -266,7 +302,7 @@ object RcsFileTransferHttp {
      * reference) — so this opens a short-lived connection for the transfer.
      * Prefer the persistent map when calling from service-owned code.
      */
-    private suspend fun RcsMsrpConnectionFor(
+    private suspend fun rcsMsrpConnectionFor(
         context: Context,
         session: com.vayunmathur.communicate.data.rcs.RcsSession,
     ): RcsMsrp.MsrpConnection? = withContext(Dispatchers.IO) {
@@ -301,13 +337,13 @@ object RcsFileTransferHttp {
             android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, opts)
             if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
             var sample = 1
-            while (opts.outWidth / sample > 320 || opts.outHeight / sample > 320) sample *= 2
+            while (opts.outWidth / sample > THUMB_MAX_PX || opts.outHeight / sample > THUMB_MAX_PX) sample *= 2
             val decode = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
             val bmp = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, decode)
                 ?: return null
             val out = java.io.ByteArrayOutputStream()
             try {
-                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, out)
+                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, THUMB_JPEG_QUALITY, out)
                 out.toByteArray().takeIf { it.isNotEmpty() }
             } finally {
                 bmp.recycle()

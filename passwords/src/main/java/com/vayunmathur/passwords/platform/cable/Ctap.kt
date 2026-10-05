@@ -18,6 +18,23 @@ object Ctap {
     const val CMD_GET_INFO = 0x04
     const val CMD_GET_NEXT_ASSERTION = 0x08
 
+    private const val NUMBER_OF_CREDENTIALS_KEY = 5L
+    private const val ATTESTATION_FIRST_KEY = 1L
+    private const val ATTESTATION_SECOND_KEY = 2L
+    private const val ATTESTATION_THIRD_KEY = 3L
+    private const val KEY_CLIENT_DATA_HASH = 1L
+    private const val KEY_RP = 2L
+    private const val KEY_USER = 3L
+    private const val KEY_PUB_KEY_PARAMS = 4L
+    private const val KEY_EXCLUDE_LIST = 5L
+    private const val KEY_EXTENSIONS = 6L
+    private const val KEY_OPTIONS = 7L
+    // Command bytes (client -> authenticator).
+    const val CMD_MAKE_CREDENTIAL = 0x01
+    const val CMD_GET_ASSERTION = 0x02
+    const val CMD_GET_INFO = 0x04
+    const val CMD_GET_NEXT_ASSERTION = 0x08
+
     // Status bytes (authenticator -> client). CTAP2 error codes.
     const val OK = 0x00
     const val ERR_INVALID_PARAMETER = 0x02
@@ -135,7 +152,7 @@ data class CtapGetAssertionResponse(
             3L to signature,
             4L to user,
         )
-        numberOfCredentials?.let { map[5L] = it.toLong() }
+        numberOfCredentials?.let { map[Ctap.NUMBER_OF_CREDENTIALS_KEY] = it.toLong() }
         return Cbor.encode(map)
     }
 }
@@ -176,45 +193,47 @@ data class CtapMakeCredentialRequest(
         /** Parses the CBOR payload (the bytes after the 0x01 command byte). */
         fun parse(payload: ByteArray): CtapMakeCredentialRequest {
             val map = CborReader(payload).readIntMap()
-            val clientDataHash = map[1L] as? ByteArray
-                ?: error("makeCredential: missing clientDataHash")
-            val rp = map[2L] as? Map<*, *> ?: error("makeCredential: missing rp")
+            val rp = map[KEY_RP] as? Map<*, *> ?: error("makeCredential: missing rp")
+            val user = map[KEY_USER] as? Map<*, *> ?: error("makeCredential: missing user")
             val rpId = rp["id"] as? String ?: error("makeCredential: missing rp.id")
-            val user = map[3L] as? Map<*, *> ?: error("makeCredential: missing user")
-            val userId = user["id"] as? ByteArray ?: error("makeCredential: missing user.id")
+            val userName = user["name"] as? String ?: ""
+            return CtapMakeCredentialRequest(
+                clientDataHash = requiredBytes(map, KEY_CLIENT_DATA_HASH, "clientDataHash"),
+                rpId = rpId,
+                rpName = rp["name"] as? String ?: rpId,
+                userId = user["id"] as? ByteArray ?: error("makeCredential: missing user.id"),
+                userName = userName,
+                userDisplayName = user["displayName"] as? String ?: userName,
+                algorithms = parseAlgorithms(map[KEY_PUB_KEY_PARAMS]),
+                excludeList = parseExcludeList(map[KEY_EXCLUDE_LIST]),
+                options = parseOptions(map[KEY_OPTIONS]),
+                extensions = map[KEY_EXTENSIONS] as? Map<*, *>,
+            )
+        }
 
-            val algorithms = (map[4L] as? List<Any?>).orEmptyList().mapNotNull { entry ->
+        private fun requiredBytes(map: Map<Long, Any?>, key: Long, name: String): ByteArray =
+            map[key] as? ByteArray ?: error("makeCredential: missing $name")
+
+        private fun parseAlgorithms(raw: Any?): List<Long> =
+            (raw as? List<Any?>).orEmptyList().mapNotNull { entry ->
                 val m = entry as? Map<*, *> ?: return@mapNotNull null
                 if ((m["type"] as? String ?: "public-key") != "public-key") return@mapNotNull null
                 m["alg"] as? Long
             }
 
-            val excludeList = (map[5L] as? List<Any?>).orEmptyList().mapNotNull { entry ->
+        private fun parseExcludeList(raw: Any?): List<Ctap.CredentialDescriptor> =
+            (raw as? List<Any?>).orEmptyList().mapNotNull { entry ->
                 val m = entry as? Map<*, *> ?: return@mapNotNull null
                 val id = m["id"] as? ByteArray ?: return@mapNotNull null
                 Ctap.CredentialDescriptor(id, m["type"] as? String ?: "public-key")
             }
 
-            val options = (map[7L] as? Map<*, *>).orEmptyMap().entries.mapNotNull { (k, v) ->
+        private fun parseOptions(raw: Any?): Map<String, Boolean> =
+            (raw as? Map<*, *>).orEmptyMap().entries.mapNotNull { (k, v) ->
                 val key = k as? String ?: return@mapNotNull null
                 val value = v as? Boolean ?: return@mapNotNull null
                 key to value
             }.toMap()
-
-            val userName = user["name"] as? String ?: ""
-            return CtapMakeCredentialRequest(
-                clientDataHash = clientDataHash,
-                rpId = rpId,
-                rpName = rp["name"] as? String ?: rpId,
-                userId = userId,
-                userName = userName,
-                userDisplayName = user["displayName"] as? String ?: userName,
-                algorithms = algorithms,
-                excludeList = excludeList,
-                options = options,
-                extensions = map[6L] as? Map<*, *>,
-            )
-        }
     }
 }
 
@@ -237,9 +256,9 @@ data class CtapMakeCredentialResponse(
     /** Encodes just the CBOR payload (without the leading status byte). */
     fun encode(): ByteArray = Cbor.encode(
         linkedMapOf<Long, Any>(
-            1L to fmt,
-            2L to authData,
-            3L to LinkedHashMap(attStmt),
+            Ctap.ATTESTATION_FIRST_KEY to fmt,
+            Ctap.ATTESTATION_SECOND_KEY to authData,
+            Ctap.ATTESTATION_THIRD_KEY to LinkedHashMap(attStmt),
         )
     )
 }

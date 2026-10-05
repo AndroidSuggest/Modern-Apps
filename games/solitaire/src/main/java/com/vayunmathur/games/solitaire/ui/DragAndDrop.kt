@@ -37,8 +37,6 @@ fun DraggableCard(
     sourceId: String,
     actions: SolitaireActions,
     modifier: Modifier = Modifier,
-    cardWidth: Dp = CARD_WIDTH,
-    cardHeight: Dp = CARD_HEIGHT,
     content: @Composable () -> Unit
 ) {
     var isDragging by remember { mutableStateOf(false) }

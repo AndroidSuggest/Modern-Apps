@@ -118,7 +118,7 @@ suspend fun CommunicateRepository.sendRcsMessage(
     context: Context,
     address: String,
     body: String,
-    threadRemoteId: String?,
+    threadRemoteId: String? = null,
     attachments: List<CommunicateAttachment> = emptyList(),
     participants: List<String> = emptyList(),
 ): RcsSendResult = withContext(Dispatchers.IO) {
@@ -135,141 +135,202 @@ suspend fun CommunicateRepository.sendRcsMessage(
     }.getOrDefault(false)
     if (!capable) return@withContext RcsSendResult.FallbackSms
     if (!RcsSipTransport.canSend()) return@withContext RcsSendResult.FallbackSms
-    val repository = this@sendRcsMessage
-    // Group thread (remoteId `rcs-group:…`): fan out 1:1 per member. UP has no
-    // pager-mode group MESSAGE — groups are conference dialogs the carrier
-    // focus hosts, or our own hosted focus (see hostGroupFocus). Until the
-    // focus dialog is established, per-member 1:1 delivery keeps messages
-    // flowing; once a focus session exists, hosted-focus relay takes over
-    // inbound, and outbound still fans out (focus fan-out would double-send).
+    // Group thread (remoteId `rcs-group:…`): fan out 1:1 per member.
     if (recipient.startsWith("rcs-group:") && participants.isNotEmpty()) {
-        var anyOk = false
-        for (member in participants.map { it.trim() }.filter { it.isNotEmpty() }.distinct()) {
-            val memberResult = sendRcsMessage(
-                context, member, body, member, attachments, emptyList(),
-            )
-            if (memberResult == RcsSendResult.Sent) anyOk = true
-        }
-        if (anyOk && body.isNotBlank()) {
-            cacheOutgoingRcs(context, recipient, body, "local-${UUID.randomUUID()}")
-        }
-        return@withContext if (anyOk) RcsSendResult.Sent else RcsSendResult.FallbackSms
+        return@withContext sendRcsGroup(context, recipient, body, attachments, participants)
     }
     runCatching {
         // E2EE first: when the conversation has an MLS group, encrypt and send
-        // the framed payload as an MLS content message. Falls through to the
-        // plaintext paths when no group exists or encryption fails.
-        val e2ePayload = encryptForE2E(context, recipient, body)
-        if (e2ePayload != null) {
-            val (startLine, headers, content) = RcsSipTransport.buildChatMessage(
-                fromUri = "sip:me@rcs",
-                toUri = "sip:$recipient@rcs",
-                callId = "${UUID.randomUUID()}@rcs-mls",
-                body = android.util.Base64.encodeToString(
-                    e2ePayload,
-                    android.util.Base64.NO_WRAP,
-                ),
-            )
-            // Re-wrap as the MLS content type (buildChatMessage defaults CPIM).
-            val mlsHeaders = headers.replace(
-                "Content-Type: message/cpim",
-                "Content-Type: ${com.vayunmathur.communicate.data.rcs.e2e.RcsE2E.CT_MLS}",
-            )
-            val ok = RcsSipTransport.sendSipMessage(startLine, mlsHeaders, content)
-            if (!ok) return@withContext RcsSendResult.FallbackSms
+        // the framed payload as an MLS content message.
+        if (sendRcsEncrypted(context, recipient, body)) return@withContext RcsSendResult.Sent
+        // Prefer an established session (MSRP) when one exists; else pager-mode CPIM.
+        if (sendRcsViaSession(context, recipient, body, attachments)) {
+            return@withContext RcsSendResult.Sent
+        }
+        if (attachments.isNotEmpty()) {
+            return@withContext sendRcsAttachments(context, recipient, body, attachments)
+        }
+        return@withContext sendRcsPager(context, recipient, body)
+    }.getOrElse {
+        RcsSendResult.FallbackSms
+    }
+}
+
+/**
+ * Group thread (remoteId `rcs-group:…`): fan out 1:1 per member. UP has no
+ * pager-mode group MESSAGE — groups are conference dialogs the carrier
+ * focus hosts, or our own hosted focus (see hostGroupFocus). Until the
+ * focus dialog is established, per-member 1:1 delivery keeps messages
+ * flowing; once a focus session exists, hosted-focus relay takes over
+ * inbound, and outbound still fans out (focus fan-out would double-send).
+ */
+private suspend fun CommunicateRepository.sendRcsGroup(
+    context: Context,
+    recipient: String,
+    body: String,
+    attachments: List<CommunicateAttachment>,
+    participants: List<String>,
+): RcsSendResult {
+    var anyOk = false
+    for (member in participants.map { it.trim() }.filter { it.isNotEmpty() }.distinct()) {
+        val memberResult = sendRcsMessage(
+            context, member, body, member, attachments, emptyList(),
+        )
+        if (memberResult == RcsSendResult.Sent) anyOk = true
+    }
+    if (anyOk && body.isNotBlank()) {
+        cacheOutgoingRcs(context, recipient, body, "local-${UUID.randomUUID()}")
+    }
+    return if (anyOk) RcsSendResult.Sent else RcsSendResult.FallbackSms
+}
+
+/** E2EE MLS send; true when sent (falls through when no group/encryption fails). */
+private suspend fun CommunicateRepository.sendRcsEncrypted(
+    context: Context,
+    recipient: String,
+    body: String,
+): Boolean {
+    val e2ePayload = encryptForE2E(context, recipient, body) ?: return false
+    val (startLine, headers, content) = RcsSipTransport.buildChatMessage(
+        fromUri = "sip:me@rcs",
+        toUri = "sip:$recipient@rcs",
+        callId = "${UUID.randomUUID()}@rcs-mls",
+        body = android.util.Base64.encodeToString(
+            e2ePayload,
+            android.util.Base64.NO_WRAP,
+        ),
+    )
+    // Re-wrap as the MLS content type (buildChatMessage defaults CPIM).
+    val mlsHeaders = headers.replace(
+        "Content-Type: message/cpim",
+        "Content-Type: ${com.vayunmathur.communicate.data.rcs.e2e.RcsE2E.CT_MLS}",
+    )
+    val ok = RcsSipTransport.sendSipMessage(startLine, mlsHeaders, content)
+    if (!ok) return false
+    if (body.isNotBlank()) {
+        cacheOutgoingRcs(context, recipient, body, "local-${UUID.randomUUID()}")
+    }
+    return true
+}
+
+/** Session (MSRP) send with background session kick; true when sent. */
+private suspend fun CommunicateRepository.sendRcsViaSession(
+    context: Context,
+    recipient: String,
+    body: String,
+    attachments: List<CommunicateAttachment>,
+): Boolean {
+    // When no session exists yet, kick off session establishment in the
+    // background (best-effort — the pager send below still goes out now;
+    // later messages upgrade to MSRP once the dialog completes). Backoff
+    // after dialog errors (§1.6) skips the fast re-INVITE.
+    val session = RcsSessionManager.sessionFor(recipient)
+    if (session?.msrpRemotePath != null && attachments.isEmpty()) {
+        val cpim = RcsSipTransport.buildCpimBody(body).toByteArray(Charsets.UTF_8)
+        if (RcsMsrp.send(session, context, cpim)) {
             if (body.isNotBlank()) {
                 cacheOutgoingRcs(context, recipient, body, "local-${UUID.randomUUID()}")
             }
-            return@withContext RcsSendResult.Sent
+            return true
         }
-        // Prefer an established session (MSRP) when one exists; else pager-mode CPIM.
-        // When no session exists yet, kick off session establishment in the
-        // background (best-effort — the pager send below still goes out now;
-        // later messages upgrade to MSRP once the dialog completes). Backoff
-        // after dialog errors (§1.6) skips the fast re-INVITE.
-        val session = RcsSessionManager.sessionFor(recipient)
-        if (session?.msrpRemotePath != null && attachments.isEmpty()) {
-            val cpim = RcsSipTransport.buildCpimBody(body).toByteArray(Charsets.UTF_8)
-            if (RcsMsrp.send(session, context, cpim)) {
-                if (body.isNotBlank()) {
-                    cacheOutgoingRcs(context, recipient, body, "local-${UUID.randomUUID()}")
-                }
-                return@withContext RcsSendResult.Sent
-            }
+    }
+    if (session == null && shouldStartSession(recipient, attachments)) {
+        val peer = recipient
+        sendScope.launch {
+            runCatching { RcsSessionManager.startSession("sip:$peer@rcs", peer) }
         }
-        if (session == null && attachments.isEmpty() && !recipient.startsWith("rcs-group:") &&
-            !recipient.contains("@") && !recipient.contains(":") &&
-            !RcsSessionManager.inDialogBackoff(recipient)
-        ) {
-            val peer = recipient
-            sendScope.launch {
-                runCatching { RcsSessionManager.startSession("sip:$peer@rcs", peer) }
-            }
-        }
-        if (attachments.isNotEmpty()) {
-            // FT-over-HTTP when the content server is known, else the v1 envelope.
-            val ftOk = if (RcsFileTransferHttp.contentServerUri != null) {
-                var oneOk = false
-                for (attachment in attachments) {
-                    if (RcsFileTransferHttp.sendFile(context, repository, recipient, attachment, body)) {
-                        oneOk = true
-                    }
-                }
-                oneOk
-            } else {
-                RcsFileTransfer.sendFiles(context, repository, recipient, body, attachments)
-            }
-            return@withContext if (ftOk) RcsSendResult.Sent else RcsSendResult.FallbackSms
-        }
-        val (startLine, headers, content) = RcsSipTransport.buildChatMessage(
-            fromUri = "sip:me@rcs",
-            toUri = "sip:$recipient@rcs",
-            body = body,
-        )
-        // Large Message: chunk oversized bodies with a shared Message-ID so
-        // the far end reassembles; cache one row per send (snippet = full text).
-        // Single-chunk 1:1 messages prefer the confirmed dialog (§1.4) when
-        // one exists; multi-chunk stays pager-mode (one dialog CSeq per
-        // chunk would serialize poorly and gain nothing).
-        val messageId = "rcs-${UUID.randomUUID()}"
-        val chunks = chunkLargeMessage(messageId, body)
-        if (chunks.size == 1) {
-            val inDialog = RcsSessionManager.sendInDialogMessage(recipient, content)
-            if (inDialog) {
-                if (body.isNotBlank()) {
-                    cacheOutgoingRcs(context, recipient, body, messageId)
-                }
-                return@withContext RcsSendResult.Sent
-            }
-        }
-        var ok = true
-        for ((index, chunk) in chunks.withIndex()) {
-            val (line, head, payload) = if (chunks.size == 1) {
-                Triple(startLine, headers, content)
-            } else {
-                RcsSipTransport.buildChatMessage(
-                    fromUri = "sip:me@rcs",
-                    toUri = "sip:$recipient@rcs",
-                    callId = "${UUID.randomUUID()}@rcs-lm$index",
-                    body = chunk,
-                )
-            }
-            ok = RcsSipTransport.sendSipMessage(line, head, payload) && ok
-        }
-        if (!ok) {
-            // Transport accepted the capability check but the SIP leg failed
-            // (transient): park for deferred retry (§4.3) AND report
-            // FallbackSms so the caller still sends SMS now. Duplicate risk
-            // (SMS now + RCS later) beats message loss on a dev-gated line.
-            RcsOutbox.enqueue(context, recipient, body)
-            return@withContext RcsSendResult.FallbackSms
-        }
-        if (body.isNotBlank()) {
-            cacheOutgoingRcs(context, recipient, body, messageId)
-        }
-        RcsSendResult.Sent
-    }.getOrDefault(RcsSendResult.FallbackSms)
+    }
+    return false
 }
+
+/** Attachment send (FT-over-HTTP or v1 envelope). */
+private suspend fun CommunicateRepository.sendRcsAttachments(
+    context: Context,
+    recipient: String,
+    body: String,
+    attachments: List<CommunicateAttachment>,
+): RcsSendResult {
+    val repository = this
+    // FT-over-HTTP when the content server is known, else the v1 envelope.
+    val ftOk = if (RcsFileTransferHttp.contentServerUri != null) {
+        var oneOk = false
+        for (attachment in attachments) {
+            if (RcsFileTransferHttp.sendFile(context, repository, recipient, attachment, body)) {
+                oneOk = true
+            }
+        }
+        oneOk
+    } else {
+        RcsFileTransfer.sendFiles(context, repository, recipient, body, attachments)
+    }
+    return if (ftOk) RcsSendResult.Sent else RcsSendResult.FallbackSms
+}
+
+/** Pager-mode send with large-message chunking. */
+private suspend fun CommunicateRepository.sendRcsPager(
+    context: Context,
+    recipient: String,
+    body: String,
+): RcsSendResult {
+    val (startLine, headers, content) = RcsSipTransport.buildChatMessage(
+        fromUri = "sip:me@rcs",
+        toUri = "sip:$recipient@rcs",
+        body = body,
+    )
+    // Large Message: chunk oversized bodies with a shared Message-ID so
+    // the far end reassembles; cache one row per send (snippet = full text).
+    // Single-chunk 1:1 messages prefer the confirmed dialog (§1.4) when
+    // one exists; multi-chunk stays pager-mode (one dialog CSeq per
+    // chunk would serialize poorly and gain nothing).
+    val messageId = "rcs-${UUID.randomUUID()}"
+    val chunks = chunkLargeMessage(messageId, body)
+    if (chunks.size == 1) {
+        val inDialog = RcsSessionManager.sendInDialogMessage(recipient, content)
+        if (inDialog) {
+            if (body.isNotBlank()) {
+                cacheOutgoingRcs(context, recipient, body, messageId)
+            }
+            return RcsSendResult.Sent
+        }
+    }
+    var ok = true
+    for ((index, chunk) in chunks.withIndex()) {
+        val (line, head, payload) = if (chunks.size == 1) {
+            Triple(startLine, headers, content)
+        } else {
+            RcsSipTransport.buildChatMessage(
+                fromUri = "sip:me@rcs",
+                toUri = "sip:$recipient@rcs",
+                callId = "${UUID.randomUUID()}@rcs-lm$index",
+                body = chunk,
+            )
+        }
+        ok = RcsSipTransport.sendSipMessage(line, head, payload) && ok
+    }
+    if (!ok) {
+        // Transport accepted the capability check but the SIP leg failed
+        // (transient): park for deferred retry (§4.3) AND report
+        // FallbackSms so the caller still sends SMS now. Duplicate risk
+        // (SMS now + RCS later) beats message loss on a dev-gated line.
+        RcsOutbox.enqueue(context, recipient, body)
+        return RcsSendResult.FallbackSms
+    }
+    if (body.isNotBlank()) {
+        cacheOutgoingRcs(context, recipient, body, messageId)
+    }
+    return RcsSendResult.Sent
+}
+
+/**
+ * True when a fresh 1:1 SIP session should be started for [recipient]:
+ * a bare user id (not a group/chat URI) with no text attachments.
+ */
+private fun shouldStartSession(recipient: String, attachments: List<CommunicateAttachment>): Boolean =
+    attachments.isEmpty() &&
+        !recipient.startsWith("rcs-group:") &&
+        !recipient.contains("@") &&
+        !recipient.contains(":") &&
+        !RcsSessionManager.inDialogBackoff(recipient)
 
 /**
  * Build an RCS recipient id from a phone number / address. Conference URIs

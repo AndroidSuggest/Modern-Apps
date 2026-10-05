@@ -1,6 +1,7 @@
 package com.vayunmathur.photos.util
 
 import android.app.Application
+import android.database.sqlite.SQLiteException
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -8,9 +9,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.vayunmathur.photos.data.FaceRepository
 import com.vayunmathur.photos.data.Photo
+import com.vayunmathur.photos.data.PhotoScanRepository
 import com.vayunmathur.photos.data.PhotosRepository
 import com.vayunmathur.library.util.DataStoreUtils
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,11 +52,9 @@ import androidx.work.WorkManager
 class GalleryViewModel(
     application: Application,
     private val repository: PhotosRepository,
+    private val scanRepository: PhotoScanRepository = PhotoScanRepository.get(application),
+    private val faceRepository: FaceRepository = FaceRepository.get(application),
 ) : AndroidViewModel(application), GalleryActions {
-
-    // Kept for external callers that still reference photoDao/faceDao as PhotosRepository
-    val photoDao get() = repository
-    val faceDao get() = repository
 
     private val dataStore = DataStoreUtils.getInstance(application)
 
@@ -99,7 +101,7 @@ class GalleryViewModel(
         .map { infos -> infos.any { it.state == WorkInfo.State.RUNNING } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    val ocrCount: StateFlow<Int> = photoDao.getOCRCountFlow()
+    val ocrCount: StateFlow<Int> = repository.getOCRCountFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     /**
@@ -107,11 +109,11 @@ class GalleryViewModel(
      * OCR, CLIP and face progress bars, which all measure progress over the same
      * set of photos. One flow, so one observer and one query per write.
      */
-    val indexTargetCount: StateFlow<Int> = photoDao.getIndexTargetCountFlow()
+    val indexTargetCount: StateFlow<Int> = repository.getIndexTargetCountFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     /** Photos already embedded with TinyCLIP for semantic search (progress numerator). */
-    val clipCount: StateFlow<Int> = photoDao.getClipCountFlow()
+    val clipCount: StateFlow<Int> = repository.getClipCountFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     /** True while the face-grouping worker is actively indexing. */
@@ -121,7 +123,7 @@ class GalleryViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     /** Photos already scanned for faces (progress numerator). */
-    val faceScannedCount: StateFlow<Int> = photoDao.getFaceScannedCountFlow()
+    val faceScannedCount: StateFlow<Int> = repository.getFaceScannedCountFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     /**
@@ -139,7 +141,11 @@ class GalleryViewModel(
      * unrelated image.
      */
     val people: StateFlow<List<PersonCluster>> =
-        combine(photoDao.getAllFlow(), faceDao.personsFlow(), faceDao.faceGeometryFlow()) { allPhotos, persons, faces ->
+        combine(
+            repository.getAllFlow(),
+            faceRepository.personsFlow(),
+            faceRepository.faceGeometryFlow(),
+        ) { allPhotos, persons, faces ->
             Triple(allPhotos, persons, faces)
         }
             // Every per-photo write during indexing re-emits upstream, far faster
@@ -186,7 +192,7 @@ class GalleryViewModel(
 
     /** Number of detected faces (i.e. people) per photo, for the photo detail overlay. */
     val faceCountByPhoto: StateFlow<Map<Long, Int>> =
-        faceDao.faceGeometryFlow()
+        faceRepository.faceGeometryFlow()
             .conflate()
             .map { faces -> faces.groupBy { it.photoId }.mapValues { (_, list) -> list.size } }
             .flowOn(Dispatchers.Default)
@@ -204,7 +210,7 @@ class GalleryViewModel(
      * R.string.albums_unknown.
      */
     val albums: StateFlow<List<Album>> =
-        combine(photoDao.getAllFlow(), _albumCovers) { allPhotos, covers -> allPhotos to covers }
+        combine(repository.getAllFlow(), _albumCovers) { allPhotos, covers -> allPhotos to covers }
             .conflate()
             .map { (allPhotos, covers) ->
                 allPhotos.filter { !it.isTrashed }
@@ -234,7 +240,7 @@ class GalleryViewModel(
      * not on the face row — which is also why [faceCountByPhoto] can't be reused.
      */
     val faceBoxesByPhoto: StateFlow<Map<Long, PhotoFaceBoxes>> =
-        combine(faceDao.faceGeometryFlow(), faceDao.personsFlow()) { faces, persons ->
+        combine(faceRepository.faceGeometryFlow(), faceRepository.personsFlow()) { faces, persons ->
             faces to persons
         }
             .conflate()
@@ -274,7 +280,7 @@ class GalleryViewModel(
         // Debounced search: re-query whenever the query string changes.
         viewModelScope.launch {
             _searchQuery
-                .debounce(150)
+                .debounce(SEARCH_DEBOUNCE_MS)
                 .collectLatest { query ->
                     if (query.isBlank()) {
                         _searchResults.value = emptyList()
@@ -310,8 +316,8 @@ class GalleryViewModel(
     private suspend fun combinedSearch(query: String): List<Photo> {
         // (a) OCR + filename LIKE search (existing behaviour).
         val ocrHits = try {
-            photoDao.searchPhotos(query)
-        } catch (e: Exception) {
+            repository.searchPhotos(query)
+        } catch (e: SQLiteException) {
             Log.e(TAG, "searchPhotos failed", e)
             emptyList()
         }
@@ -323,14 +329,18 @@ class GalleryViewModel(
         val semanticById: Map<Long, Float> = try {
             val textEmb = ClipEmbedder.textEmbedding(getApplication(), query)
             _searchAiState.value = SearchAiState.READY
-            photoDao.getClipEmbeddings()
+            scanRepository.getClipEmbeddings()
                 .asSequence()
                 .map { it.id to ClipEmbedder.cosine(textEmb, ClipEmbedder.bytesToFloats(it.clipEmbedding)) }
                 .filter { it.second >= SEMANTIC_THRESHOLD }
                 .sortedByDescending { it.second }
                 .take(MAX_SEMANTIC_RESULTS)
                 .toMap()
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "semantic search failed", e)
+            _searchAiState.value = SearchAiState.UNAVAILABLE
+            emptyMap()
+        } catch (e: IOException) {
             Log.e(TAG, "semantic search failed", e)
             _searchAiState.value = SearchAiState.UNAVAILABLE
             emptyMap()
@@ -364,7 +374,7 @@ class GalleryViewModel(
 
     fun deletePhoto(photo: Photo) {
         viewModelScope.launch(Dispatchers.IO) {
-            photoDao.delete(photo)
+            repository.delete(photo)
         }
     }
 
@@ -375,7 +385,7 @@ class GalleryViewModel(
      */
     fun trashPhotoLocally(photo: Photo) {
         viewModelScope.launch(Dispatchers.IO) {
-            photoDao.setTrashed(photo.id)
+            repository.setTrashed(photo.id)
         }
     }
 
@@ -413,7 +423,7 @@ class GalleryViewModel(
      * one face that was tapped.
      */
     suspend fun photosForCluster(clusterId: Long): List<Photo> {
-        val ids = repository.photoIdsForCluster(clusterId).toSet()
+        val ids = faceRepository.photoIdsForCluster(clusterId).toSet()
         if (ids.isEmpty()) return emptyList()
         return photos.value.filter { it.id in ids && !it.isTrashed }
     }
@@ -424,7 +434,7 @@ class GalleryViewModel(
         // dispatcher already, so naming an IO dispatcher here only queued the
         // write behind whatever image work was occupying it.
         viewModelScope.launch {
-            repository.setPersonName(id, name)
+            faceRepository.setPersonName(id, name)
         }
     }
 
@@ -498,6 +508,9 @@ class GalleryViewModel(
 
         /** Cap on semantic matches merged into results (keeps the grid relevant). */
         private const val MAX_SEMANTIC_RESULTS = 100
+
+        /** Search re-query debounce window. */
+        private const val SEARCH_DEBOUNCE_MS = 150L
     }
 }
 
@@ -507,17 +520,6 @@ fun GalleryViewModelFactory(
     repository: PhotosRepository,
 ): ViewModelProvider.Factory = viewModelFactory {
     initializer { GalleryViewModel(application, repository) }
-}
-
-/** Legacy overload kept so call sites updated incrementally compile. */
-@Suppress("FunctionName")
-fun GalleryViewModelFactory(
-    application: Application,
-    photoDao: com.vayunmathur.photos.data.PhotoDao,
-    faceDao: com.vayunmathur.photos.data.FaceDao,
-): ViewModelProvider.Factory {
-    val repo = PhotosRepository.get(application)
-    return GalleryViewModelFactory(application, repo)
 }
 
 /** A person-cluster and the library photos they appear in. */

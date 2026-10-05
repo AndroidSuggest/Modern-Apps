@@ -74,30 +74,55 @@ internal object OmmlToMathml {
         val out = StringBuilder()
         var i = 0
         while (i < text.length) {
-            val c = text[i]
-            when {
-                c.isWhitespace() -> i++
-                c.isDigit() || (c == '.' && i + 1 < text.length && text[i + 1].isDigit()) -> {
-                    val start = i
-                    while (i < text.length && (text[i].isDigit() || text[i] == '.')) i++
-                    out.append("<mn>").append(esc(text.substring(start, i))).append("</mn>")
-                }
-                c in "+-*/=<>±×÷⋅∙,()[]{}|" -> { out.append("<mo>").append(esc(c.toString())).append("</mo>"); i++ }
-                c.isLetter() -> {
-                    val start = i
-                    while (i < text.length && text[i].isLetter()) i++
-                    out.append("<mi>").append(esc(text.substring(start, i))).append("</mi>")
-                }
-                else -> { out.append("<mo>").append(esc(c.toString())).append("</mo>"); i++ }
-            }
+            i = appendClassifiedChar(text, i, out)
         }
         return out.toString()
+    }
+
+    /** Appends the token starting at [i]; returns the next index. */
+    private fun appendClassifiedChar(text: String, i: Int, out: StringBuilder): Int {
+        val c = text[i]
+        if (c.isWhitespace()) return i + 1
+        if (isNumberStart(text, i)) return appendNumber(text, i, out)
+        if (c.isLetter()) return appendLetters(text, i, out)
+        appendOp(out, c.toString())
+        return i + 1
+    }
+
+    /** True when text at [i] starts a number (digit, or '.' followed by a digit). */
+    private fun isNumberStart(text: String, i: Int): Boolean {
+        val c = text[i]
+        if (c.isDigit()) return true
+        return c == '.' && i + 1 < text.length && text[i + 1].isDigit()
+    }
+
+    /** Appends a numeric run starting at [start]; returns the next index. */
+    private fun appendNumber(text: String, start: Int, out: StringBuilder): Int {
+        var i = start
+        while (i < text.length && (text[i].isDigit() || text[i] == '.')) i++
+        out.append("<mn>").append(esc(text.substring(start, i))).append("</mn>")
+        return i
+    }
+
+    /** Appends a letter run starting at [start]; returns the next index. */
+    private fun appendLetters(text: String, start: Int, out: StringBuilder): Int {
+        var i = start
+        while (i < text.length && text[i].isLetter()) i++
+        out.append("<mi>").append(esc(text.substring(start, i))).append("</mi>")
+        return i
+    }
+
+    /** Appends an operator token. */
+    private fun appendOp(out: StringBuilder, s: String) {
+        out.append("<mo>").append(esc(s)).append("</mo>")
     }
 
     private fun renderFrac(parser: XmlPullParser): String {
         var num = ""; var den = ""
         eachPart(parser, "f") { name ->
-            when (name) { "num" -> num = renderChildren(parser, "num"); "den" -> den = renderChildren(parser, "den"); else -> OoxmlXml.skipElement(parser) }
+            when (name) { "num" -> num = renderChildren(
+                parser,
+                "num"); "den" -> den = renderChildren(parser, "den"); else -> OoxmlXml.skipElement(parser) }
         }
         return "<mfrac>${row(num)}${row(den)}</mfrac>"
     }
@@ -136,7 +161,8 @@ internal object OmmlToMathml {
                 else -> OoxmlXml.skipElement(parser)
             }
         }
-        return if (degPresent && deg.isNotBlank()) "<mroot>${row(body)}${row(deg)}</mroot>" else "<msqrt>${row(body)}</msqrt>"
+        val sqrt = "<msqrt>${row(body)}</msqrt>"
+        return if (degPresent && deg.isNotBlank()) "<mroot>${row(body)}${row(deg)}</mroot>" else sqrt
     }
 
     private fun renderNary(parser: XmlPullParser): String {
@@ -220,7 +246,10 @@ internal object OmmlToMathml {
             when (name) {
                 "mr" -> {
                     val cells = mutableListOf<String>()
-                    eachPart(parser, "mr") { cn -> if (cn == "e") cells.add(renderChildren(parser, "e")) else OoxmlXml.skipElement(parser) }
+                    eachPart(
+                        parser,
+                        "mr")
+                    { cn -> if (cn == "e") cells.add(renderChildren(parser, "e")) else OoxmlXml.skipElement(parser) }
                     rows.add(cells)
                 }
                 else -> OoxmlXml.skipElement(parser)

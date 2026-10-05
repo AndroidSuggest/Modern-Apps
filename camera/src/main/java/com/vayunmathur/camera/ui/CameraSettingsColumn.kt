@@ -66,20 +66,17 @@ internal fun CameraSettingsColumn(
             CameraSetting.BRIGHTNESS -> HorizontalSettingSlider(
                 value = exposureComp,
                 onValueChange = onExposureComp,
-                icon = { m, c -> IconSunny(m, c) },
-                label = stringResource(com.vayunmathur.camera.R.string.brightness)
+                icon = { m, c -> IconSunny(m, c) }
             )
             CameraSetting.SHADOWS -> HorizontalSettingSlider(
                 value = shadows,
                 onValueChange = onShadows,
-                icon = { m, c -> IconContrast(m, c) },
-                label = stringResource(com.vayunmathur.camera.R.string.shadows)
+                icon = { m, c -> IconContrast(m, c) }
             )
             CameraSetting.WARMTH -> HorizontalSettingSlider(
                 value = warmth,
                 onValueChange = onWarmth,
-                icon = { m, c -> IconLightbulb(m, c) },
-                label = stringResource(com.vayunmathur.camera.R.string.warmth)
+                icon = { m, c -> IconLightbulb(m, c) }
             )
             CameraSetting.EXPOSURE_TIME -> ExposureTimeBar(
                 selectedIndex = exposureTimeIndex,
@@ -89,7 +86,6 @@ internal fun CameraSettingsColumn(
                 value = blurStrength,
                 onValueChange = onBlurStrength,
                 icon = { m, c -> IconBlur(m, c) },
-                label = stringResource(R.string.blur),
                 valueRange = 0f..1f,
                 displayValue = { "%.0f%%".format(it * 100) }
             )

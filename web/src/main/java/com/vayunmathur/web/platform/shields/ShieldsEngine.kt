@@ -64,7 +64,7 @@ object ShieldsEngine {
     suspend fun load(context: Context) {
         if (ready || loading || !ShieldsNative.isAvailable) return
         loading = true
-        try {
+        runCatching {
             withContext(Dispatchers.IO) {
                 val app = context.applicationContext
                 val version = app.assets.open("$ASSET_DIR/version.txt").use {
@@ -86,20 +86,19 @@ object ShieldsEngine {
                 }
                 handle = built
             }
-        } catch (e: Exception) {
+        }.onFailure { e ->
             Log.e(TAG, "load failed — shields stay open", e)
-        } finally {
-            loading = false
         }
+        loading = false
     }
 
     private fun writeCache(dir: File, cache: File, versionFile: File, handle: Long, version: String) {
-        try {
+        runCatching {
             val snapshot = ShieldsNative.nativeSerialize(handle) ?: return
             dir.mkdirs()
             cache.writeBytes(snapshot)
             versionFile.writeText(version)
-        } catch (e: Exception) {
+        }.onFailure { e ->
             Log.w(TAG, "could not cache engine snapshot", e)
         }
     }

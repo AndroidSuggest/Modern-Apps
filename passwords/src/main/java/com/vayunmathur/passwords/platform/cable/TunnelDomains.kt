@@ -25,9 +25,19 @@ object TunnelDomains {
     /** The always-safe default: index 0, which every initiator is guaranteed to know. */
     const val DEFAULT_ID = 0
 
+    private const val MAX_DOMAIN_ID = 0xFFFF
+    private const val ASSIGNED_LIMIT = 256
+    private const val DIGEST_QWORDS = 8
+    private const val BYTE_MASK = 0xFF
+    private const val BYTE_SHIFT = 8
+    private const val TLD_BITS = 2
+    private const val TLD_MASK = 0x3
+    private const val BASE32_BITS = 5
+    private const val BASE32_MASK = 0x1F
+
     fun decode(domainId: Int): String {
-        require(domainId in 0..0xFFFF) { "domain id out of range: $domainId" }
-        if (domainId < 256) {
+        require(domainId in 0..MAX_DOMAIN_ID) { "domain id out of range: $domainId" }
+        if (domainId < ASSIGNED_LIMIT) {
             require(domainId < ASSIGNED.size) { "unknown assigned tunnel domain id: $domainId" }
             return ASSIGNED[domainId]
         }
@@ -45,15 +55,17 @@ object TunnelDomains {
         val digest = MessageDigest.getInstance("SHA-256").digest(input)
 
         var result = 0L
-        for (i in 0 until 8) result = result or ((digest[i].toLong() and 0xFF) shl (8 * i))
+        for (i in 0 until DIGEST_QWORDS) {
+            result = result or ((digest[i].toLong() and BYTE_MASK) shl (BYTE_SHIFT * i))
+        }
 
-        val tld = TLDS[(result and 0x3).toInt()]
-        result = result ushr 2
+        val tld = TLDS[(result and TLD_MASK).toInt()]
+        result = result ushr TLD_BITS
 
         val sb = StringBuilder("cable.")
         while (result != 0L) {
-            sb.append(BASE32[(result and 0x1F).toInt()])
-            result = result ushr 5
+            sb.append(BASE32[(result and BASE32_MASK).toInt()])
+            result = result ushr BASE32_BITS
         }
         return sb.append('.').append(tld).toString()
     }

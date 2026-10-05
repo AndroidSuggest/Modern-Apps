@@ -250,15 +250,15 @@ class PasswordsViewModel(
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION,
                 )
-            } catch (_: Exception) {}
+            } catch (_: SecurityException) {}
             try {
                 val result = withContext(Dispatchers.IO) {
                     importCsvFromUri(ctx.contentResolver, uri, source)
                 }
                 _importMessage.value =
                     "Imported ${result.inserted} rows, skipped ${result.skipped} rows"
-            } catch (e: Exception) {
-                _importMessage.value = "Import failed: ${e.message}"
+            } catch (expected: IllegalStateException) {
+                _importMessage.value = "Import failed: ${expected.message}"
             } finally {
                 _importing.value = false
             }
@@ -267,6 +267,32 @@ class PasswordsViewModel(
 
     private data class ImportResult(val inserted: Int, val skipped: Int)
 
+    private data class ImportColumns(
+        val name: Int,
+        val username: Int,
+        val password: Int,
+        val url: Int,
+        val totp: Int,
+        val email: Int,
+        val note: Int,
+        val type: Int,
+    )
+
+    private fun resolveColumns(header: List<String>, source: ImportSource): ImportColumns {
+        fun findCol(vararg names: String): Int =
+            names.firstNotNullOfOrNull { n -> header.indexOf(n).takeIf { it >= 0 } } ?: -1
+        return ImportColumns(
+            name = findCol(*source.nameHeaders),
+            username = findCol(*source.usernameHeaders),
+            password = findCol(*source.passwordHeaders),
+            url = findCol(*source.urlHeaders),
+            totp = findCol(*source.totpHeaders),
+            email = findCol(*source.emailHeaders),
+            note = findCol(*source.noteHeaders),
+            type = findCol(*source.typeHeaders),
+        )
+    }
+
     private suspend fun importCsvFromUri(
         contentResolver: ContentResolver,
         uri: Uri,
@@ -274,76 +300,73 @@ class PasswordsViewModel(
     ): ImportResult {
         val text = contentResolver.openInputStream(uri)?.use { inputStream ->
             inputStream.bufferedReader().readText()
-        } ?: throw Exception("Unable to open selected file")
+        } ?: throw IllegalStateException("Unable to open selected file")
 
         val rows = parseCsv(text)
         if (rows.isEmpty()) return ImportResult(0, 0)
 
         val header = rows.first().map { it.trim().lowercase() }
-        fun findCol(vararg names: String): Int =
-            names.firstNotNullOfOrNull { n -> header.indexOf(n).takeIf { it >= 0 } } ?: -1
-
-        val nameIdx = findCol(*source.nameHeaders)
-        val usernameIdx = findCol(*source.usernameHeaders)
-        val passwordIdx = findCol(*source.passwordHeaders)
-        val urlIdx = findCol(*source.urlHeaders)
-        val totpIdx = findCol(*source.totpHeaders)
-        val emailIdx = findCol(*source.emailHeaders)
-        val noteIdx = findCol(*source.noteHeaders)
-        val typeIdx = findCol(*source.typeHeaders)
+        val columns = resolveColumns(header, source)
 
         var inserted = 0
         var skipped = 0
 
         for (row in rows.drop(1)) {
             if (row.all { it.isBlank() }) continue
-            try {
-                fun col(idx: Int) = if (idx in row.indices) row[idx] else ""
-                val rawName = col(nameIdx)
-                val rawUrl = col(urlIdx)
-                var name = rawName.ifEmpty { rawUrl }
-                val username = col(usernameIdx)
-                val email = col(emailIdx)
-                val password = col(passwordIdx)
-                val note = col(noteIdx)
-                var totp = col(totpIdx).takeIf { it.isNotEmpty() }
-
-                // Prefix the entry name with its type for non-login entries
-                // (e.g. "sshKey: Tyche"), so specialized items stay identifiable.
-                val type = col(typeIdx).trim()
-                if (type.isNotEmpty() && !type.equals("login", ignoreCase = true)) {
-                    name = if (name.isEmpty()) type else "$type: $name"
-                }
-
-                if (totp != null && totp.startsWith("otpauth://")) {
-                    val match = Regex("[?&]secret=([^&]+)").find(totp)
-                    totp = match?.groupValues?.get(1) ?: totp
-                }
-
-                val urlSeparators =
-                    if (source.splitUrlsOnComma) charArrayOf(',', ';', '\n', '\r')
-                    else charArrayOf(';', '\n', '\r')
-                val websites = rawUrl.split(*urlSeparators)
-                    .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
-
-                repository.upsertPassword(
-                    Password(
-                        name = name,
-                        username = username,
-                        email = email,
-                        password = password,
-                        note = note,
-                        totpSecret = totp,
-                        websites = websites,
-                    ),
-                )
-                inserted++
-            } catch (_: Exception) {
-                skipped++
-            }
+            if (importRow(row, columns, source)) inserted++ else skipped++
         }
 
         return ImportResult(inserted, skipped)
+    }
+
+    private suspend fun importRow(row: List<String>, columns: ImportColumns, source: ImportSource): Boolean {
+        return try {
+            repository.upsertPassword(buildPassword(row, columns, source))
+            true
+        } catch (_: IllegalArgumentException) {
+            false
+        }
+    }
+
+    private fun buildPassword(row: List<String>, columns: ImportColumns, source: ImportSource): Password {
+        fun col(idx: Int) = if (idx in row.indices) row[idx] else ""
+        val rawUrl = col(columns.url)
+        val name = prefixedName(col(columns.name), rawUrl, col(columns.type))
+        return Password(
+            name = name,
+            username = col(columns.username),
+            email = col(columns.email),
+            password = col(columns.password),
+            note = col(columns.note),
+            totpSecret = extractTotpSecret(col(columns.totp)),
+            websites = splitWebsites(rawUrl, source),
+        )
+    }
+
+    private fun prefixedName(rawName: String, rawUrl: String, type: String): String {
+        var name = rawName.ifEmpty { rawUrl }
+        // Prefix the entry name with its type for non-login entries
+        // (e.g. "sshKey: Tyche"), so specialized items stay identifiable.
+        val trimmed = type.trim()
+        if (trimmed.isNotEmpty() && !trimmed.equals("login", ignoreCase = true)) {
+            name = if (name.isEmpty()) trimmed else "$trimmed: $name"
+        }
+        return name
+    }
+
+    private fun extractTotpSecret(raw: String): String? {
+        val totp = raw.takeIf { it.isNotEmpty() } ?: return null
+        if (!totp.startsWith("otpauth://")) return totp
+        val match = Regex("[?&]secret=([^&]+)").find(totp)
+        return match?.groupValues?.get(1) ?: totp
+    }
+
+    private fun splitWebsites(rawUrl: String, source: ImportSource): List<String> {
+        val urlSeparators =
+            if (source.splitUrlsOnComma) charArrayOf(',', ';', '\n', '\r')
+            else charArrayOf(';', '\n', '\r')
+        return rawUrl.split(*urlSeparators)
+            .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
     }
 
     /**
@@ -353,43 +376,65 @@ class PasswordsViewModel(
      */
     private fun parseCsv(text: String): List<List<String>> {
         val rows = mutableListOf<List<String>>()
+        val state = CsvState()
+        var i = 0
+        while (i < text.length) {
+            i = parseCsvChar(text, i, state, rows)
+        }
+        // Flush a trailing field/row when the file does not end with a newline.
+        if (state.current.isNotEmpty() || state.row.isNotEmpty()) {
+            state.row.add(state.current.toString())
+            rows.add(state.row)
+        }
+        return rows
+    }
+
+    private class CsvState {
         var row = mutableListOf<String>()
         val current = StringBuilder()
         var inQuotes = false
-        var i = 0
-        while (i < text.length) {
-            val c = text[i]
-            when {
-                inQuotes -> when {
-                    c == '"' && i + 1 < text.length && text[i + 1] == '"' -> {
-                        current.append('"')
-                        i++
-                    }
-                    c == '"' -> inQuotes = false
-                    else -> current.append(c)
-                }
-                c == '"' -> inQuotes = true
-                c == ',' -> {
-                    row.add(current.toString())
-                    current.setLength(0)
-                }
-                c == '\r' -> {} // handled together with '\n'
-                c == '\n' -> {
-                    row.add(current.toString())
-                    current.setLength(0)
-                    rows.add(row)
-                    row = mutableListOf()
-                }
-                else -> current.append(c)
+    }
+
+    private fun parseCsvChar(text: String, index: Int, state: CsvState, rows: MutableList<List<String>>): Int {
+        var i = index
+        val c = text[i]
+        if (state.inQuotes) {
+            i = parseQuotedChar(text, i, c, state)
+        } else {
+            parseBareChar(c, state, rows)
+        }
+        return i + 1
+    }
+
+    private fun parseQuotedChar(text: String, index: Int, c: Char, state: CsvState): Int {
+        var i = index
+        when {
+            c == '"' && i + 1 < text.length && text[i + 1] == '"' -> {
+                state.current.append('"')
+                i++
             }
-            i++
+            c == '"' -> state.inQuotes = false
+            else -> state.current.append(c)
         }
-        // Flush a trailing field/row when the file does not end with a newline.
-        if (current.isNotEmpty() || row.isNotEmpty()) {
-            row.add(current.toString())
-            rows.add(row)
+        return i
+    }
+
+    private fun parseBareChar(c: Char, state: CsvState, rows: MutableList<List<String>>) {
+        when (c) {
+            '"' -> state.inQuotes = true
+            ',' -> {
+                state.row.add(state.current.toString())
+                state.current.setLength(0)
+            }
+            '\r' -> {} // handled together with '\n'
+            '\n' -> {
+                state.row.add(state.current.toString())
+                state.current.setLength(0)
+                rows.add(state.row)
+                state.row = mutableListOf()
+            }
+            else -> state.current.append(c)
         }
-        return rows
     }
 }
 

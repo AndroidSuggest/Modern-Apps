@@ -139,16 +139,24 @@ fun MainGraph(viewModel: EducationViewModel) {
             entry<Route.Home>(metadata = ListPage()) { HomePage(backStack, viewModel) }
             // Morph on the three levels of the title chain: a course card's title carries into the
             // course bar, a unit card's into the unit bar, a lesson card's into the lesson bar.
-            entry<Route.Course>(metadata = ListDetailPage() + MorphPage()) { CoursePage(backStack, viewModel, it.courseId) }
-            entry<Route.UnitScreen>(metadata = ListDetailPage() + MorphPage()) { UnitPage(backStack, viewModel, it.unitId) }
-            entry<Route.LessonScreen>(metadata = ListDetailPage() + MorphPage()) { LessonPage(backStack, viewModel, it.lessonId) }
+            entry<Route.Course>(metadata = ListDetailPage() + MorphPage()) {
+                CoursePage(backStack, viewModel, it.courseId)
+            }
+            entry<Route.UnitScreen>(metadata = ListDetailPage() + MorphPage()) {
+                UnitPage(backStack, viewModel, it.unitId)
+            }
+            entry<Route.LessonScreen>(metadata = ListDetailPage() + MorphPage()) {
+                LessonPage(backStack, viewModel, it.lessonId)
+            }
             // Quiz/Results are exercises off a lesson, not catalog details.
             entry<Route.Quiz>(metadata = ListDetailPage()) { QuizPage(backStack, viewModel, it.exerciseId) }
             entry<Route.VideoPlayer>(metadata = FullscreenPage()) { VideoPlayerPage(backStack, it.youtubeId, it.title) }
             entry<Route.K2Lesson>(metadata = ListDetailPage()) { K2LessonPage(backStack, viewModel, it.lessonId) }
             entry<Route.K2Quiz>(metadata = ListDetailPage()) { K2QuizPage(backStack, viewModel, it.exerciseId) }
-            entry<Route.K2Reward>(metadata = ListDetailPage()) { K2RewardPage(backStack, viewModel, it.stars) }
-            entry<Route.Results>(metadata = ListDetailPage()) { ResultsPage(backStack, viewModel, it.total, it.correct, it.stars) }
+            entry<Route.K2Reward>(metadata = ListDetailPage()) { K2RewardPage(backStack, it.stars) }
+            entry<Route.Results>(metadata = ListDetailPage()) {
+                ResultsPage(backStack, viewModel, it.total, it.correct, it.stars)
+            }
             entry<Route.ParentGate>(metadata = DialogPage()) { ParentGatePage(backStack, viewModel) }
             entry<Route.Parent>(metadata = ListDetailPage()) { ParentPage(backStack, viewModel) }
             entry<Route.Badges>(metadata = ListDetailPage()) { BadgesPage(backStack, viewModel) }

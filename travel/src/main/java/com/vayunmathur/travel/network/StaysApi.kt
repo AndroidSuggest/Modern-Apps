@@ -76,6 +76,8 @@ object StaysApi {
     suspend fun cancel(id: String): StayBookingResultDto =
         postJson("$BASE/bookings/${enc(id)}/cancel", "", "Cancellation failed")
 
+    private const val MAX_ERROR_SNIPPET_LENGTH = 300
+
     private suspend inline fun <reified T> postJson(url: String, body: Any, fallback: String): T {
         val res = NetworkClient.performRequest(
             url = url,
@@ -84,7 +86,8 @@ object StaysApi {
             body = if (body is String && body.isEmpty()) null else body,
         )
         if (!res.isSuccess) {
-            throw RuntimeException(res.body.trim().take(300).ifBlank { "$fallback (HTTP ${res.status})." })
+            val snippet = res.body.trim().take(MAX_ERROR_SNIPPET_LENGTH)
+            throw IllegalStateException(snippet.ifBlank { "$fallback (HTTP ${res.status})." })
         }
         return json.decodeFromString(res.body)
     }

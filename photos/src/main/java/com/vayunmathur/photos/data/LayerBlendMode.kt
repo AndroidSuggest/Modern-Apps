@@ -7,6 +7,21 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 
+private const val ALPHA_SHIFT = 24
+private const val RED_SHIFT = 16
+private const val GREEN_SHIFT = 8
+private const val CHANNEL_MAX = 255
+private const val CHANNEL_MAX_F = 255f
+private const val HARD_LIGHT_MIDPOINT = 0.5f
+private const val ROUNDING_HALF = 0.5f
+private const val SOFT_LIGHT_KNEE = 0.25f
+private const val SOFT_LIGHT_A = 16f
+private const val SOFT_LIGHT_B = 12f
+private const val SOFT_LIGHT_C = 4f
+private const val LUMINANCE_RED = 0.3f
+private const val LUMINANCE_GREEN = 0.59f
+private const val LUMINANCE_BLUE = 0.11f
+
 /**
  * Photoshop-style layer blend modes. Blending is implemented per-pixel using the
  * W3C compositing & blending formulas so that all modes (including the non-separable
@@ -82,31 +97,41 @@ enum class LayerBlendMode(@StringRes val labelRes: Int) {
         val outG = (sa * csg + ba * (1f - sa) * bg) / ao
         val outB = (sa * csb + ba * (1f - sa) * bb) / ao
 
-        return (to255(ao) shl 24) or (to255(outR) shl 16) or (to255(outG) shl 8) or to255(outB)
+        return (to255(ao) shl ALPHA_SHIFT) or (to255(outR) shl RED_SHIFT) or
+            (to255(outG) shl GREEN_SHIFT) or to255(outB)
     }
 
     private fun blendChannel(cb: Float, cs: Float): Float = when (this) {
         Normal -> cs
-        Multiply -> cb * cs
-        Screen -> cb + cs - cb * cs
         Overlay -> hardLight(cs, cb)
-        Darken -> min(cb, cs)
-        Lighten -> max(cb, cs)
-        ColorDodge -> when {
-            cb <= 0f -> 0f
-            cs >= 1f -> 1f
-            else -> min(1f, cb / (1f - cs))
-        }
-        ColorBurn -> when {
-            cb >= 1f -> 1f
-            cs <= 0f -> 0f
-            else -> 1f - min(1f, (1f - cb) / cs)
-        }
+        ColorDodge -> colorDodge(cb, cs)
+        ColorBurn -> colorBurn(cb, cs)
         HardLight -> hardLight(cb, cs)
         SoftLight -> softLight(cb, cs)
+        else -> blendArithmetic(cb, cs)
+    }
+
+    /** Separable arithmetic modes; non-separable entries never reach here (see [separable]). */
+    private fun blendArithmetic(cb: Float, cs: Float): Float = when (this) {
+        Multiply -> cb * cs
+        Screen -> cb + cs - cb * cs
+        Darken -> min(cb, cs)
+        Lighten -> max(cb, cs)
         Difference -> abs(cb - cs)
         Exclusion -> cb + cs - 2f * cb * cs
         else -> cs
+    }
+
+    private fun colorDodge(cb: Float, cs: Float): Float = when {
+        cb <= 0f -> 0f
+        cs >= 1f -> 1f
+        else -> min(1f, cb / (1f - cs))
+    }
+
+    private fun colorBurn(cb: Float, cs: Float): Float = when {
+        cb >= 1f -> 1f
+        cs <= 0f -> 0f
+        else -> 1f - min(1f, (1f - cb) / cs)
     }
 
     private fun blendNonSeparable(
@@ -121,21 +146,27 @@ enum class LayerBlendMode(@StringRes val labelRes: Int) {
     }
 }
 
-private fun to255(v: Float): Int = (v * 255f + 0.5f).toInt().coerceIn(0, 255)
+private fun to255(v: Float): Int =
+    (v * CHANNEL_MAX_F + ROUNDING_HALF).toInt().coerceIn(0, CHANNEL_MAX)
 
 private fun hardLight(cb: Float, cs: Float): Float =
-    if (cs <= 0.5f) cb * (2f * cs)
+    if (cs <= HARD_LIGHT_MIDPOINT) cb * (2f * cs)
     else cb + (2f * cs - 1f) - cb * (2f * cs - 1f) // Screen(cb, 2*cs-1)
 
 private fun softLight(cb: Float, cs: Float): Float =
-    if (cs <= 0.5f) {
+    if (cs <= HARD_LIGHT_MIDPOINT) {
         cb - (1f - 2f * cs) * cb * (1f - cb)
     } else {
-        val d = if (cb <= 0.25f) ((16f * cb - 12f) * cb + 4f) * cb else sqrt(cb)
+        val d = if (cb <= SOFT_LIGHT_KNEE) softLightLow(cb) else sqrt(cb)
         cb + (2f * cs - 1f) * (d - cb)
     }
 
-private fun lum(r: Float, g: Float, b: Float): Float = 0.3f * r + 0.59f * g + 0.11f * b
+private fun lum(r: Float, g: Float, b: Float): Float =
+    LUMINANCE_RED * r + LUMINANCE_GREEN * g + LUMINANCE_BLUE * b
+
+/** W3C soft-light low-end curve: ((16*Cb - 12)*Cb + 4)*Cb. */
+private fun softLightLow(cb: Float): Float =
+    ((SOFT_LIGHT_A * cb - SOFT_LIGHT_B) * cb + SOFT_LIGHT_C) * cb
 
 private fun clipColor(c: FloatArray): FloatArray {
     val l = lum(c[0], c[1], c[2])

@@ -181,7 +181,7 @@ private fun GameCircuitCanvas(data: GameLayoutData, events: GameLayoutEvents, is
         onOutputMapDelete = { idx: Int -> actions.removeOutputMapping(idx) },
         dragGhostLineEnd = data.state.dragGhostLineEnd,
         onGhostLine = { off: Offset? -> actions.updateGhostLine(off) },
-        inputValues = data.inputDecimals, desiredOutputValues = data.desiredDecimals, outputValues = data.actualDecimals,
+        desiredOutputValues = data.desiredDecimals, outputValues = data.actualDecimals,
         modifier = modifier, isCompact = isCompact,
         onToggleInput = events.onToggleInput,
         inputOnMap = data.inputOnMap,

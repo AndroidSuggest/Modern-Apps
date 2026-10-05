@@ -11,6 +11,7 @@ import java.util.UUID
  * in the manager (it owns the session map + `RcsSipTransport`).
  */
 object RcsSipDialog {
+    private const val BRANCH_TOKEN_LENGTH = 16
     /**
      * Build an ACK for the 2xx to our INVITE (RFC 3261 §13.2.2.4): same
      * Call-ID/From-tag/To-tag/CSeq-number as the INVITE, Request-URI = the
@@ -160,7 +161,7 @@ object RcsSipDialog {
         return null
     }
 
-    fun newBranch(): String = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
+    fun newBranch(): String = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(BRANCH_TOKEN_LENGTH)}"
 
     /** Our local URI for From headers (delegate identity when known). */
     private fun RcsSession.localUri(): String =

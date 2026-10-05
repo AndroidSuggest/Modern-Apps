@@ -47,12 +47,12 @@ class NavStatusChannel(
     }
 
     /** One message for this channel; the head unit sends nothing normative, so all inbound is observed. */
-    fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
+    fun onMessage(channelId: Int, type: Int) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(16)} for channel $channelId")
+            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
-        Log.d(TAG, "unhandled nav-status message 0x${type.toString(16)}")
+        Log.d(TAG, "unhandled nav-status message 0x${type.toString(HEX_RADIX)}")
     }
 
     /**
@@ -97,5 +97,8 @@ class NavStatusChannel(
 
     private companion object {
         const val TAG = "MaAuto.NavStatus"
+
+        /** Radix for hex message-id logging. */
+        const val HEX_RADIX = 16
     }
 }

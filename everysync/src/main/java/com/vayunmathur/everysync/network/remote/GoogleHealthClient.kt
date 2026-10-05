@@ -87,8 +87,8 @@ class GoogleHealthClient(private val accessToken: String) {
         }
         for ((start, end) in chunks(fromMillis, toMillis, MAX_RANGE_DEFAULT, zone)) {
             jobs += async { semaphore.withPermit { fetchSleep(start, end, zone) } }
-            jobs += async { semaphore.withPermit { fetchExercise(start, end, zone) } }
-            jobs += async { semaphore.withPermit { fetchNutrition(start, end, zone) } }
+            jobs += async { semaphore.withPermit { fetchExercise(start, end) } }
+            jobs += async { semaphore.withPermit { fetchNutrition(start, end) } }
         }
         jobs.awaitAll().flatten()
     }
@@ -96,12 +96,18 @@ class GoogleHealthClient(private val accessToken: String) {
     /** Never look back further than [maxBackfillDays] for a given type. */
     private fun backfillFloor(fromMillis: Long, maxBackfillDays: Int): Long {
         if (maxBackfillDays >= UNBOUNDED_DAYS) return fromMillis
-        return maxOf(fromMillis, System.currentTimeMillis() - maxBackfillDays.toLong() * DAY_MILLIS)
+        val cutoff = System.currentTimeMillis() - maxBackfillDays.toLong() * DAY_MILLIS
+        return maxOf(fromMillis, cutoff)
     }
 
     // --- dailyRollUp (steps, distance, floors, elevation, calories, heart rate) ---
 
-    private suspend fun dailyRollUp(spec: Spec, start: LocalDate, end: LocalDate, zone: TimeZone): List<RemoteMeasurement> {
+    private suspend fun dailyRollUp(
+        spec: Spec,
+        start: LocalDate,
+        end: LocalDate,
+        zone: TimeZone,
+    ): List<RemoteMeasurement> {
         val body = """
             {
               "range": {
@@ -115,36 +121,63 @@ class GoogleHealthClient(private val accessToken: String) {
         val out = mutableListOf<RemoteMeasurement>()
         try {
             val resp = NetworkClient.performRequest(
-                "https://health.googleapis.com/v4/users/me/dataTypes/${spec.dataType}/dataPoints:dailyRollUp",
-                "POST", headers(), body,
+                "https://health.googleapis.com/v4/users/me/dataTypes/" +
+                    "${spec.dataType}/dataPoints:dailyRollUp",
+                "POST",
+                headers(),
+                body,
             )
             if (!resp.isSuccess) {
-                Log.e(TAG, "dailyRollUp ${spec.dataType} HTTP ${resp.status}: ${resp.body.take(500)}")
+                Log.e(
+                    TAG,
+                    "dailyRollUp ${spec.dataType} HTTP ${resp.status}: " +
+                        resp.body.take(BODY_PREVIEW_LEN),
+                )
                 return out
             }
             val root = json.parseToJsonElement(resp.body) as? JsonObject ?: return out
             (root["rollupDataPoints"] as? JsonArray)?.forEach { el ->
                 val rollup = el.jsonObject
-                val dayMillis = dateMillis(rollup.nestedObject("civilStartTime", "date"), zone) ?: return@forEach
-                val value = rollup.nestedDouble(spec.jsonField, *spec.valuePath)?.times(spec.scale) ?: return@forEach
+                val civil = rollup.nestedObject("civilStartTime", "date")
+                val dayMillis = dateMillis(civil, zone) ?: return@forEach
+                val raw = rollup.nestedDouble(spec.jsonField, *spec.valuePath) ?: return@forEach
                 out += RemoteMeasurement(
                     clientRecordId = recordId(spec.type, dayMillis),
                     type = spec.type,
-                    value = value,
+                    value = raw.times(spec.scale),
                     startMillis = dayMillis,
                     endMillis = dayMillis + DAY_MILLIS,
                 )
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "dailyRollUp(${spec.dataType}) failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "dailyRollUp(${spec.dataType}) failed", expected)
         }
         return out
     }
 
     // --- dataPoints list (samples, daily summaries, hydration sessions) ---
 
-    private suspend fun listDataPoints(spec: Spec, start: LocalDate, end: LocalDate, zone: TimeZone): List<RemoteMeasurement> {
-        val filter = when (spec.mode) {
+    private suspend fun listDataPoints(
+        spec: Spec,
+        start: LocalDate,
+        end: LocalDate,
+        zone: TimeZone,
+    ): List<RemoteMeasurement> {
+        val filter = listFilter(spec, start, end, zone)
+
+        val out = mutableListOf<RemoteMeasurement>()
+        try {
+            forEachDataPoint(spec.dataType, filter) { dp ->
+                listMeasurement(spec, dp, zone)?.let { out += it }
+            }
+        } catch (expected: Exception) {
+            Log.e(TAG, "listDataPoints(${spec.dataType}) failed", expected)
+        }
+        return out
+    }
+
+    private fun listFilter(spec: Spec, start: LocalDate, end: LocalDate, zone: TimeZone): String =
+        when (spec.mode) {
             Mode.LIST_DAILY ->
                 "${spec.filterField}.date >= \"$start\" AND ${spec.filterField}.date < \"$end\""
             Mode.LIST_SESSION ->
@@ -155,37 +188,42 @@ class GoogleHealthClient(private val accessToken: String) {
                     "${spec.filterField}.sample_time.physical_time < \"${iso(end, zone)}\""
         }
 
-        val out = mutableListOf<RemoteMeasurement>()
-        try {
-            forEachDataPoint(spec.dataType, filter) { dp ->
-                val (startMs, endMs) = when (spec.mode) {
-                    Mode.LIST_DAILY -> dateMillis(dp.nestedObject(spec.jsonField, "date"), zone)?.let { it to it }
-                    Mode.LIST_SESSION -> {
-                        val interval = dp.nestedObject(spec.jsonField, "interval")
-                        val s = sampleMillis(interval?.get("startTime"))
-                        s?.let { it to (sampleMillis(interval?.get("endTime")) ?: it) }
-                    }
-                    else -> sampleMillis(dp.nestedObject(spec.jsonField, "sampleTime")?.get("physicalTime"))?.let { it to it }
-                } ?: return@forEachDataPoint
-                val value = dp.nestedDouble(spec.jsonField, *spec.valuePath)?.times(spec.scale) ?: return@forEachDataPoint
-                out += RemoteMeasurement(
-                    clientRecordId = recordId(spec.type, startMs),
-                    type = spec.type,
-                    value = value,
-                    startMillis = startMs,
-                    endMillis = endMs,
-                )
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "listDataPoints(${spec.dataType}) failed", e)
-        }
-        return out
+    private fun listMeasurement(spec: Spec, dp: JsonObject, zone: TimeZone): RemoteMeasurement? {
+        val (startMs, endMs) = listInterval(spec, dp, zone) ?: return null
+        val raw = dp.nestedDouble(spec.jsonField, *spec.valuePath) ?: return null
+        return RemoteMeasurement(
+            clientRecordId = recordId(spec.type, startMs),
+            type = spec.type,
+            value = raw.times(spec.scale),
+            startMillis = startMs,
+            endMillis = endMs,
+        )
     }
+
+    private fun listInterval(spec: Spec, dp: JsonObject, zone: TimeZone): Pair<Long, Long>? =
+        when (spec.mode) {
+            Mode.LIST_DAILY ->
+                dateMillis(dp.nestedObject(spec.jsonField, "date"), zone)?.let { it to it }
+            Mode.LIST_SESSION -> {
+                val interval = dp.nestedObject(spec.jsonField, "interval")
+                val s = sampleMillis(interval?.get("startTime")) ?: return null
+                s to (sampleMillis(interval?.get("endTime")) ?: s)
+            }
+            else -> {
+                val physical = dp.nestedObject(spec.jsonField, "sampleTime")?.get("physicalTime")
+                sampleMillis(physical)?.let { it to it }
+            }
+        }
 
     // --- sleep (sessions with stage segments) ---
 
-    private suspend fun fetchSleep(start: LocalDate, end: LocalDate, zone: TimeZone): List<RemoteMeasurement> {
-        val filter = "sleep.interval.end_time >= \"${iso(start, zone)}\" AND sleep.interval.end_time < \"${iso(end, zone)}\""
+    private suspend fun fetchSleep(
+        start: LocalDate,
+        end: LocalDate,
+        zone: TimeZone,
+    ): List<RemoteMeasurement> {
+        val filter = "sleep.interval.end_time >= \"${iso(start, zone)}\" AND " +
+            "sleep.interval.end_time < \"${iso(end, zone)}\""
         val out = mutableListOf<RemoteMeasurement>()
         try {
             forEachDataPoint("sleep", filter, SESSION_PAGE_SIZE) { dp ->
@@ -207,16 +245,20 @@ class GoogleHealthClient(private val accessToken: String) {
                     sleepStages = stages,
                 )
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "fetchSleep failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "fetchSleep failed", expected)
         }
         return out
     }
 
     // --- exercise (workout sessions) ---
 
-    private suspend fun fetchExercise(start: LocalDate, end: LocalDate, zone: TimeZone): List<RemoteMeasurement> {
-        val filter = "exercise.interval.civil_start_time >= \"$start\" AND exercise.interval.civil_start_time < \"$end\""
+    private suspend fun fetchExercise(
+        start: LocalDate,
+        end: LocalDate,
+    ): List<RemoteMeasurement> {
+        val filter = "exercise.interval.civil_start_time >= \"$start\" AND " +
+            "exercise.interval.civil_start_time < \"$end\""
         val out = mutableListOf<RemoteMeasurement>()
         try {
             forEachDataPoint("exercise", filter, SESSION_PAGE_SIZE) { dp ->
@@ -234,16 +276,20 @@ class GoogleHealthClient(private val accessToken: String) {
                     notes = ex["notes"]?.jsonPrimitive?.content,
                 )
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "fetchExercise failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "fetchExercise failed", expected)
         }
         return out
     }
 
     // --- nutrition (logged food) ---
 
-    private suspend fun fetchNutrition(start: LocalDate, end: LocalDate, zone: TimeZone): List<RemoteMeasurement> {
-        val filter = "nutrition_log.interval.civil_start_time >= \"$start\" AND nutrition_log.interval.civil_start_time < \"$end\""
+    private suspend fun fetchNutrition(
+        start: LocalDate,
+        end: LocalDate,
+    ): List<RemoteMeasurement> {
+        val filter = "nutrition_log.interval.civil_start_time >= \"$start\" AND " +
+            "nutrition_log.interval.civil_start_time < \"$end\""
         val out = mutableListOf<RemoteMeasurement>()
         try {
             forEachDataPoint("nutrition-log", filter) { dp ->
@@ -260,55 +306,98 @@ class GoogleHealthClient(private val accessToken: String) {
                     nutrition = parseNutrition(nl),
                 )
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "fetchNutrition failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "fetchNutrition failed", expected)
         }
         return out
     }
 
     private fun parseNutrition(nl: JsonObject): RemoteNutrition {
         val grams = mutableMapOf<String, Double>()
-        nl.nestedDouble("totalFat", "grams")?.let { grams["TOTAL_FAT"] = it }
-        nl.nestedDouble("totalCarbohydrate", "grams")?.let { grams["TOTAL_CARBOHYDRATE"] = it }
+        nl.nestedDouble("totalFat", "grams")?.let { grams[TOTAL_FAT_KEY] = it }
+        nl.nestedDouble("totalCarbohydrate", "grams")?.let { grams[TOTAL_CARBS_KEY] = it }
         (nl["nutrients"] as? JsonArray)?.forEach { el ->
             val o = el.jsonObject
             val name = o["nutrient"]?.jsonPrimitive?.content ?: return@forEach
             val g = o.nestedDouble("quantity", "grams") ?: return@forEach
             grams[name] = g
         }
-        return RemoteNutrition(energyKcal = nl.nestedDouble("energy", "kcal"), nutrientGrams = grams)
+        return RemoteNutrition(
+            energyKcal = nl.nestedDouble("energy", "kcal"),
+            nutrientGrams = grams,
+        )
     }
 
     /** GET dataPoints for [dataType] with [filter], following pagination. */
-    private suspend fun forEachDataPoint(dataType: String, filter: String, pageSize: Int = LIST_PAGE_SIZE, onPoint: (JsonObject) -> Unit) {
-        var pageToken: String? = null
-        var pages = 0
+    private suspend fun forEachDataPoint(
+        dataType: String,
+        filter: String,
+        pageSize: Int = LIST_PAGE_SIZE,
+        onPoint: (JsonObject) -> Unit,
+    ) {
+        var pageToken = ""
         var total = 0
-        do {
-            val url = buildString {
-                append("https://health.googleapis.com/v4/users/me/dataTypes/$dataType/dataPoints")
-                append("?pageSize=").append(pageSize).append("&filter=").append(Uri.encode(filter))
-                pageToken?.let { append("&pageToken=").append(Uri.encode(it)) }
-            }
-            val resp = NetworkClient.performRequest(url, "GET", headers(), null)
-            if (!resp.isSuccess) {
-                Log.e(TAG, "list $dataType HTTP ${resp.status}: ${resp.body.take(500)} (filter=$filter)")
-                break
-            }
-            val root = json.parseToJsonElement(resp.body) as? JsonObject ?: break
-            val points = root["dataPoints"] as? JsonArray
-            points?.forEach { onPoint(it.jsonObject); total++ }
-            pageToken = root["nextPageToken"]?.jsonPrimitive?.content?.ifBlank { null }
-        } while (pageToken != null && ++pages < MAX_PAGES)
+        for (page in 0 until MAX_PAGES) {
+            val next = fetchPage(dataType, filter, pageSize, pageToken, onPoint)
+            total += lastPageCount
+            if (next.isNullOrEmpty()) break
+            pageToken = next
+        }
         Log.i(TAG, "list $dataType -> $total points")
     }
+
+    /**
+     * Fetch one page; returns the next page token (null/empty = done).
+     * The number of points delivered to [onPoint] is recorded in [lastPageCount].
+     */
+    private suspend fun fetchPage(
+        dataType: String,
+        filter: String,
+        pageSize: Int,
+        pageToken: String,
+        onPoint: (JsonObject) -> Unit,
+    ): String? {
+        val url = buildString {
+            append("https://health.googleapis.com/v4/users/me/dataTypes/$dataType/dataPoints")
+            append("?pageSize=").append(pageSize).append("&filter=").append(Uri.encode(filter))
+            if (pageToken.isNotEmpty()) {
+                append("&pageToken=").append(Uri.encode(pageToken))
+            }
+        }
+        val resp = NetworkClient.performRequest(url, "GET", headers(), null)
+        if (!resp.isSuccess) {
+            Log.e(
+                TAG,
+                "list $dataType HTTP ${resp.status}: " +
+                    "${resp.body.take(BODY_PREVIEW_LEN)} (filter=$filter)",
+            )
+            lastPageCount = 0
+            return null
+        }
+        val root = json.parseToJsonElement(resp.body) as? JsonObject ?: run {
+            lastPageCount = 0
+            return null
+        }
+        val points = root["dataPoints"] as? JsonArray
+        var count = 0
+        points?.forEach { onPoint(it.jsonObject); count++ }
+        lastPageCount = count
+        return root["nextPageToken"]?.jsonPrimitive?.content?.ifBlank { null }
+    }
+
+    private var lastPageCount = 0
 
     // --- helpers ---
 
     private fun recordId(type: MeasurementType, millis: Long) = "googlehealth:${type.name}:$millis"
 
     /** Split `[fromMillis, toMillis)` into inclusive-start/exclusive-end windows of [chunkDays]. */
-    private fun chunks(fromMillis: Long, toMillis: Long, chunkDays: Int, zone: TimeZone): List<Pair<LocalDate, LocalDate>> {
+    private fun chunks(
+        fromMillis: Long,
+        toMillis: Long,
+        chunkDays: Int,
+        zone: TimeZone,
+    ): List<Pair<LocalDate, LocalDate>> {
         val today = Clock.System.now().toLocalDateTime(zone).date
         // Round the end up a day so the final partial day is covered; never past today.
         val endExclusive = minOf(
@@ -366,71 +455,8 @@ class GoogleHealthClient(private val accessToken: String) {
     }
 
     /** Map a Google Health exercise enum to a Health Connect EXERCISE_TYPE_* value. */
-    private fun exerciseType(google: String?): Int = when (google) {
-        "BADMINTON" -> ExerciseSessionRecord.EXERCISE_TYPE_BADMINTON
-        "BASEBALL" -> ExerciseSessionRecord.EXERCISE_TYPE_BASEBALL
-        "BASKETBALL" -> ExerciseSessionRecord.EXERCISE_TYPE_BASKETBALL
-        "BIKING", "OUTDOOR_BIKE" -> ExerciseSessionRecord.EXERCISE_TYPE_BIKING
-        "STATIONARY_BIKE", "ASSAULT_BIKE", "SPINNING" -> ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY
-        "BOOTCAMP" -> ExerciseSessionRecord.EXERCISE_TYPE_BOOT_CAMP
-        "BOXING" -> ExerciseSessionRecord.EXERCISE_TYPE_BOXING
-        "CALISTHENICS" -> ExerciseSessionRecord.EXERCISE_TYPE_CALISTHENICS
-        "CRICKET" -> ExerciseSessionRecord.EXERCISE_TYPE_CRICKET
-        "DANCING", "BALLET", "BALLROOM_DANCE", "HIP_HOP", "JAZZ_DANCE", "MODERN_DANCE", "TANGO", "ZUMBA" ->
-            ExerciseSessionRecord.EXERCISE_TYPE_DANCING
-        "ELLIPTICAL" -> ExerciseSessionRecord.EXERCISE_TYPE_ELLIPTICAL
-        "EXERCISE_CLASS", "BARRE_CLASS", "CARDIO_SCULPT" -> ExerciseSessionRecord.EXERCISE_TYPE_EXERCISE_CLASS
-        "FENCING" -> ExerciseSessionRecord.EXERCISE_TYPE_FENCING
-        "FOOTBALL_AMERICAN" -> ExerciseSessionRecord.EXERCISE_TYPE_FOOTBALL_AMERICAN
-        "FOOTBALL_AUSTRALIAN" -> ExerciseSessionRecord.EXERCISE_TYPE_FOOTBALL_AUSTRALIAN
-        "GOLF" -> ExerciseSessionRecord.EXERCISE_TYPE_GOLF
-        "GUIDED_BREATHING", "MEDITATE" -> ExerciseSessionRecord.EXERCISE_TYPE_GUIDED_BREATHING
-        "GYMNASTICS" -> ExerciseSessionRecord.EXERCISE_TYPE_GYMNASTICS
-        "HANDBALL" -> ExerciseSessionRecord.EXERCISE_TYPE_HANDBALL
-        "HIIT", "INTERVAL_WORKOUT", "TABATA_WORKOUT", "CIRCUIT_TRAINING", "CROSSFIT" ->
-            ExerciseSessionRecord.EXERCISE_TYPE_HIGH_INTENSITY_INTERVAL_TRAINING
-        "HIKING" -> ExerciseSessionRecord.EXERCISE_TYPE_HIKING
-        "HOCKEY", "FIELD_HOCKEY" -> ExerciseSessionRecord.EXERCISE_TYPE_ICE_HOCKEY
-        "ICE_SKATING", "SPEED_SKATING" -> ExerciseSessionRecord.EXERCISE_TYPE_ICE_SKATING
-        "MARTIAL_ARTS", "KARATE", "TAEKWONDO", "MUAY_THAI", "JIU_JITSU", "KICKBOXING" ->
-            ExerciseSessionRecord.EXERCISE_TYPE_MARTIAL_ARTS
-        "PADDLEBOARDING", "KAYAKING", "CANOEING", "ROWING" -> ExerciseSessionRecord.EXERCISE_TYPE_ROWING
-        "ROWING_MACHINE" -> ExerciseSessionRecord.EXERCISE_TYPE_ROWING_MACHINE
-        "PARAGLIDING" -> ExerciseSessionRecord.EXERCISE_TYPE_PARAGLIDING
-        "PILATES" -> ExerciseSessionRecord.EXERCISE_TYPE_PILATES
-        "RACQUETBALL" -> ExerciseSessionRecord.EXERCISE_TYPE_RACQUETBALL
-        "ROCK_CLIMBING", "CLIMBING", "INDOOR_CLIMBING" -> ExerciseSessionRecord.EXERCISE_TYPE_ROCK_CLIMBING
-        "RUGBY" -> ExerciseSessionRecord.EXERCISE_TYPE_RUGBY
-        "RUNNING", "TRAIL_RUN", "INCLINE_RUN" -> ExerciseSessionRecord.EXERCISE_TYPE_RUNNING
-        "TREADMILL" -> ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL
-        "SAILING", "FOILING" -> ExerciseSessionRecord.EXERCISE_TYPE_SAILING
-        "SCUBA_DIVING", "DIVING" -> ExerciseSessionRecord.EXERCISE_TYPE_SCUBA_DIVING
-        "SKATING", "ROLLER_SKATING", "ROLLERBLADING" -> ExerciseSessionRecord.EXERCISE_TYPE_SKATING
-        "SKIING", "CROSS_COUNTRY_SKI" -> ExerciseSessionRecord.EXERCISE_TYPE_SKIING
-        "SNOWBOARDING" -> ExerciseSessionRecord.EXERCISE_TYPE_SNOWBOARDING
-        "SNOWSHOEING" -> ExerciseSessionRecord.EXERCISE_TYPE_SNOWSHOEING
-        "SOCCER" -> ExerciseSessionRecord.EXERCISE_TYPE_SOCCER
-        "SOFTBALL" -> ExerciseSessionRecord.EXERCISE_TYPE_SOFTBALL
-        "SQUASH" -> ExerciseSessionRecord.EXERCISE_TYPE_SQUASH
-        "STAIRCLIMBER", "STAIR_CLIMBING" -> ExerciseSessionRecord.EXERCISE_TYPE_STAIR_CLIMBING
-        "STEP_TRAINING" -> ExerciseSessionRecord.EXERCISE_TYPE_STAIR_CLIMBING_MACHINE
-        "STRENGTH_TRAINING", "POWERLIFTING", "FUNCTIONAL_STRENGTH_TRAINING", "FREE_WEIGHTS", "WEIGHT_MACHINES", "CORE_TRAINING", "RESISTANCE_BANDS" ->
-            ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING
-        "STRETCHING", "TAI_CHI" -> ExerciseSessionRecord.EXERCISE_TYPE_STRETCHING
-        "SURFING" -> ExerciseSessionRecord.EXERCISE_TYPE_SURFING
-        "SWIMMING_OPEN_WATER" -> ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER
-        "SWIMMING_POOL", "SWIMMING", "SYNCHRONIZED_SWIMMING" -> ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL
-        "TABLE_TENNIS" -> ExerciseSessionRecord.EXERCISE_TYPE_TABLE_TENNIS
-        "TENNIS", "PADEL", "PICKELBALL", "RACKET_SPORTS" -> ExerciseSessionRecord.EXERCISE_TYPE_TENNIS
-        "VOLLEYBALL", "VOLLEYBALL_BEACH" -> ExerciseSessionRecord.EXERCISE_TYPE_VOLLEYBALL
-        "WALKING", "POWER_WALKING", "NORDIC_WALKING", "STROLLER_WALK", "WALK_WITH_WEIGHTS", "RUCKING", "TREADMILL_WALK", "INCLINE_WALK" ->
-            ExerciseSessionRecord.EXERCISE_TYPE_WALKING
-        "WATER_POLO" -> ExerciseSessionRecord.EXERCISE_TYPE_WATER_POLO
-        "WEIGHTLIFTING", "WEIGHTS" -> ExerciseSessionRecord.EXERCISE_TYPE_WEIGHTLIFTING
-        "WHEELCHAIR" -> ExerciseSessionRecord.EXERCISE_TYPE_WHEELCHAIR
-        "YOGA", "YOGA_BIKRAM", "YOGA_HATHA", "YOGA_POWER", "YOGA_VINYASA" -> ExerciseSessionRecord.EXERCISE_TYPE_YOGA
-        else -> ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT
-    }
+    private fun exerciseType(google: String?): Int =
+        google?.let { EXERCISE_TYPE_MAP[it] } ?: ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT
 
     private fun JsonObject.nestedObject(vararg path: String): JsonObject? {
         var cur: JsonElement = this
@@ -479,34 +505,366 @@ class GoogleHealthClient(private val accessToken: String) {
         private const val GRAMS_PER_KG = 1000.0
         private const val MM_PER_METER = 1000.0
         private const val ML_PER_LITER = 1000.0
+        private const val BODY_PREVIEW_LEN = 500
+        private const val TOTAL_FAT_KEY = "TOTAL_FAT"
+        private const val TOTAL_CARBS_KEY = "TOTAL_CARBOHYDRATE"
+
+        private val EXERCISE_TYPE_MAP: Map<String, Int> = buildMap {
+            fun putAll(type: Int, vararg names: String) {
+                for (name in names) put(name, type)
+            }
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_BADMINTON, "BADMINTON")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_BASEBALL, "BASEBALL")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_BASKETBALL, "BASKETBALL")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_BIKING, "BIKING", "OUTDOOR_BIKE")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY,
+                "STATIONARY_BIKE",
+                "ASSAULT_BIKE",
+                "SPINNING",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_BOOT_CAMP, "BOOTCAMP")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_BOXING, "BOXING")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_CALISTHENICS, "CALISTHENICS")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_CRICKET, "CRICKET")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_DANCING,
+                "DANCING",
+                "BALLET",
+                "BALLROOM_DANCE",
+                "HIP_HOP",
+                "JAZZ_DANCE",
+                "MODERN_DANCE",
+                "TANGO",
+                "ZUMBA",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_ELLIPTICAL, "ELLIPTICAL")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_EXERCISE_CLASS,
+                "EXERCISE_CLASS",
+                "BARRE_CLASS",
+                "CARDIO_SCULPT",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_FENCING, "FENCING")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_FOOTBALL_AMERICAN,
+                "FOOTBALL_AMERICAN",
+            )
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_FOOTBALL_AUSTRALIAN,
+                "FOOTBALL_AUSTRALIAN",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_GOLF, "GOLF")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_GUIDED_BREATHING,
+                "GUIDED_BREATHING",
+                "MEDITATE",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_GYMNASTICS, "GYMNASTICS")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_HANDBALL, "HANDBALL")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_HIGH_INTENSITY_INTERVAL_TRAINING,
+                "HIIT",
+                "INTERVAL_WORKOUT",
+                "TABATA_WORKOUT",
+                "CIRCUIT_TRAINING",
+                "CROSSFIT",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_HIKING, "HIKING")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_ICE_HOCKEY,
+                "HOCKEY",
+                "FIELD_HOCKEY",
+            )
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_ICE_SKATING,
+                "ICE_SKATING",
+                "SPEED_SKATING",
+            )
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_MARTIAL_ARTS,
+                "MARTIAL_ARTS",
+                "KARATE",
+                "TAEKWONDO",
+                "MUAY_THAI",
+                "JIU_JITSU",
+                "KICKBOXING",
+            )
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_ROWING,
+                "PADDLEBOARDING",
+                "KAYAKING",
+                "CANOEING",
+                "ROWING",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_ROWING_MACHINE, "ROWING_MACHINE")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_PARAGLIDING, "PARAGLIDING")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_PILATES, "PILATES")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_RACQUETBALL, "RACQUETBALL")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_ROCK_CLIMBING,
+                "ROCK_CLIMBING",
+                "CLIMBING",
+                "INDOOR_CLIMBING",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_RUGBY, "RUGBY")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_RUNNING,
+                "RUNNING",
+                "TRAIL_RUN",
+                "INCLINE_RUN",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL, "TREADMILL")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_SAILING, "SAILING", "FOILING")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_SCUBA_DIVING,
+                "SCUBA_DIVING",
+                "DIVING",
+            )
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_SKATING,
+                "SKATING",
+                "ROLLER_SKATING",
+                "ROLLERBLADING",
+            )
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_SKIING,
+                "SKIING",
+                "CROSS_COUNTRY_SKI",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_SNOWBOARDING, "SNOWBOARDING")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_SNOWSHOEING, "SNOWSHOEING")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_SOCCER, "SOCCER")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_SOFTBALL, "SOFTBALL")
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_SQUASH, "SQUASH")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_STAIR_CLIMBING,
+                "STAIRCLIMBER",
+                "STAIR_CLIMBING",
+            )
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_STAIR_CLIMBING_MACHINE,
+                "STEP_TRAINING",
+            )
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING,
+                "STRENGTH_TRAINING",
+                "POWERLIFTING",
+                "FUNCTIONAL_STRENGTH_TRAINING",
+                "FREE_WEIGHTS",
+                "WEIGHT_MACHINES",
+                "CORE_TRAINING",
+                "RESISTANCE_BANDS",
+            )
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_STRETCHING,
+                "STRETCHING",
+                "TAI_CHI",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_SURFING, "SURFING")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER,
+                "SWIMMING_OPEN_WATER",
+            )
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL,
+                "SWIMMING_POOL",
+                "SWIMMING",
+                "SYNCHRONIZED_SWIMMING",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_TABLE_TENNIS, "TABLE_TENNIS")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_TENNIS,
+                "TENNIS",
+                "PADEL",
+                "PICKELBALL",
+                "RACKET_SPORTS",
+            )
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_VOLLEYBALL,
+                "VOLLEYBALL",
+                "VOLLEYBALL_BEACH",
+            )
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_WALKING,
+                "WALKING",
+                "POWER_WALKING",
+                "NORDIC_WALKING",
+                "STROLLER_WALK",
+                "WALK_WITH_WEIGHTS",
+                "RUCKING",
+                "TREADMILL_WALK",
+                "INCLINE_WALK",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_WATER_POLO, "WATER_POLO")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_WEIGHTLIFTING,
+                "WEIGHTLIFTING",
+                "WEIGHTS",
+            )
+            putAll(ExerciseSessionRecord.EXERCISE_TYPE_WHEELCHAIR, "WHEELCHAIR")
+            putAll(
+                ExerciseSessionRecord.EXERCISE_TYPE_YOGA,
+                "YOGA",
+                "YOGA_BIKRAM",
+                "YOGA_HATHA",
+                "YOGA_POWER",
+                "YOGA_VINYASA",
+            )
+        }
 
         private val SPECS = listOf(
             // Activity — raw intervals (the API's native ~per-minute buckets) for full resolution.
-            Spec("steps", MeasurementType.STEPS, Mode.LIST_SESSION, "steps", arrayOf("count"), filterField = "steps"),
-            Spec("distance", MeasurementType.DISTANCE, Mode.LIST_SESSION, "distance", arrayOf("millimeters"), filterField = "distance", scale = 1.0 / MM_PER_METER),
-            Spec("altitude", MeasurementType.ELEVATION, Mode.LIST_SESSION, "altitude", arrayOf("gainMillimeters"), filterField = "altitude", scale = 1.0 / MM_PER_METER),
-            Spec("active-energy-burned", MeasurementType.ACTIVE_CALORIES, Mode.LIST_SESSION, "activeEnergyBurned", arrayOf("kcal"), filterField = "active_energy_burned"),
+            Spec(
+                "steps",
+                MeasurementType.STEPS,
+                Mode.LIST_SESSION,
+                "steps",
+                arrayOf("count"),
+                filterField = "steps",
+            ),
+            Spec(
+                "distance",
+                MeasurementType.DISTANCE,
+                Mode.LIST_SESSION,
+                "distance",
+                arrayOf("millimeters"),
+                filterField = "distance",
+                scale = 1.0 / MM_PER_METER,
+            ),
+            Spec(
+                "altitude",
+                MeasurementType.ELEVATION,
+                Mode.LIST_SESSION,
+                "altitude",
+                arrayOf("gainMillimeters"),
+                filterField = "altitude",
+                scale = 1.0 / MM_PER_METER,
+            ),
+            Spec(
+                "active-energy-burned",
+                MeasurementType.ACTIVE_CALORIES,
+                Mode.LIST_SESSION,
+                "activeEnergyBurned",
+                arrayOf("kcal"),
+                filterField = "active_energy_burned",
+            ),
             // floors is not list-able and total-calories is rollup-only, so both stay daily rollups.
             Spec("floors", MeasurementType.FLOORS, Mode.ROLLUP, "floors", arrayOf("countSum")),
-            Spec("total-calories", MeasurementType.TOTAL_CALORIES, Mode.ROLLUP, "totalCalories", arrayOf("kcalSum"), maxRangeDays = MAX_RANGE_14),
+            Spec(
+                "total-calories",
+                MeasurementType.TOTAL_CALORIES,
+                Mode.ROLLUP,
+                "totalCalories",
+                arrayOf("kcalSum"),
+                maxRangeDays = MAX_RANGE_14,
+            ),
 
             // Vitals — raw samples where the API provides them.
-            Spec("heart-rate", MeasurementType.HEART_RATE, Mode.LIST_SAMPLE, "heartRate", arrayOf("beatsPerMinute"), filterField = "heart_rate", maxRangeDays = MAX_RANGE_14),
-            Spec("oxygen-saturation", MeasurementType.OXYGEN_SATURATION, Mode.LIST_SAMPLE, "oxygenSaturation", arrayOf("percentage"), filterField = "oxygen_saturation"),
-            Spec("daily-resting-heart-rate", MeasurementType.RESTING_HEART_RATE, Mode.LIST_DAILY, "dailyRestingHeartRate", arrayOf("beatsPerMinute"), filterField = "daily_resting_heart_rate"),
-            Spec("daily-respiratory-rate", MeasurementType.RESPIRATORY_RATE, Mode.LIST_DAILY, "dailyRespiratoryRate", arrayOf("breathsPerMinute"), filterField = "daily_respiratory_rate"),
-            Spec("heart-rate-variability", MeasurementType.HEART_RATE_VARIABILITY, Mode.LIST_SAMPLE, "heartRateVariability", arrayOf("rootMeanSquareOfSuccessiveDifferencesMilliseconds"), filterField = "heart_rate_variability"),
-            Spec("blood-glucose", MeasurementType.BLOOD_GLUCOSE, Mode.LIST_SAMPLE, "bloodGlucose", arrayOf("bloodGlucoseMilligramsPerDeciliter"), filterField = "blood_glucose"),
-            Spec("core-body-temperature", MeasurementType.BODY_TEMPERATURE, Mode.LIST_SAMPLE, "coreBodyTemperature", arrayOf("temperatureCelsius"), filterField = "core_body_temperature"),
-            Spec("vo2-max", MeasurementType.VO2_MAX, Mode.LIST_SAMPLE, "vo2Max", arrayOf("vo2Max"), filterField = "vo2_max"),
+            Spec(
+                "heart-rate",
+                MeasurementType.HEART_RATE,
+                Mode.LIST_SAMPLE,
+                "heartRate",
+                arrayOf("beatsPerMinute"),
+                filterField = "heart_rate",
+                maxRangeDays = MAX_RANGE_14,
+            ),
+            Spec(
+                "oxygen-saturation",
+                MeasurementType.OXYGEN_SATURATION,
+                Mode.LIST_SAMPLE,
+                "oxygenSaturation",
+                arrayOf("percentage"),
+                filterField = "oxygen_saturation",
+            ),
+            Spec(
+                "daily-resting-heart-rate",
+                MeasurementType.RESTING_HEART_RATE,
+                Mode.LIST_DAILY,
+                "dailyRestingHeartRate",
+                arrayOf("beatsPerMinute"),
+                filterField = "daily_resting_heart_rate",
+            ),
+            Spec(
+                "daily-respiratory-rate",
+                MeasurementType.RESPIRATORY_RATE,
+                Mode.LIST_DAILY,
+                "dailyRespiratoryRate",
+                arrayOf("breathsPerMinute"),
+                filterField = "daily_respiratory_rate",
+            ),
+            Spec(
+                "heart-rate-variability",
+                MeasurementType.HEART_RATE_VARIABILITY,
+                Mode.LIST_SAMPLE,
+                "heartRateVariability",
+                arrayOf("rootMeanSquareOfSuccessiveDifferencesMilliseconds"),
+                filterField = "heart_rate_variability",
+            ),
+            Spec(
+                "blood-glucose",
+                MeasurementType.BLOOD_GLUCOSE,
+                Mode.LIST_SAMPLE,
+                "bloodGlucose",
+                arrayOf("bloodGlucoseMilligramsPerDeciliter"),
+                filterField = "blood_glucose",
+            ),
+            Spec(
+                "core-body-temperature",
+                MeasurementType.BODY_TEMPERATURE,
+                Mode.LIST_SAMPLE,
+                "coreBodyTemperature",
+                arrayOf("temperatureCelsius"),
+                filterField = "core_body_temperature",
+            ),
+            Spec(
+                "vo2-max",
+                MeasurementType.VO2_MAX,
+                Mode.LIST_SAMPLE,
+                "vo2Max",
+                arrayOf("vo2Max"),
+                filterField = "vo2_max",
+            ),
 
             // Body composition — samples with real timestamps.
-            Spec("weight", MeasurementType.WEIGHT, Mode.LIST_SAMPLE, "weight", arrayOf("weightGrams"), filterField = "weight", scale = 1.0 / GRAMS_PER_KG),
-            Spec("height", MeasurementType.HEIGHT, Mode.LIST_SAMPLE, "height", arrayOf("heightMillimeters"), filterField = "height", scale = 1.0 / MM_PER_METER),
-            Spec("body-fat", MeasurementType.BODY_FAT, Mode.LIST_SAMPLE, "bodyFat", arrayOf("percentage"), filterField = "body_fat"),
+            Spec(
+                "weight",
+                MeasurementType.WEIGHT,
+                Mode.LIST_SAMPLE,
+                "weight",
+                arrayOf("weightGrams"),
+                filterField = "weight",
+                scale = 1.0 / GRAMS_PER_KG,
+            ),
+            Spec(
+                "height",
+                MeasurementType.HEIGHT,
+                Mode.LIST_SAMPLE,
+                "height",
+                arrayOf("heightMillimeters"),
+                filterField = "height",
+                scale = 1.0 / MM_PER_METER,
+            ),
+            Spec(
+                "body-fat",
+                MeasurementType.BODY_FAT,
+                Mode.LIST_SAMPLE,
+                "bodyFat",
+                arrayOf("percentage"),
+                filterField = "body_fat",
+            ),
 
             // Lifestyle — hydration is a session with a volume.
-            Spec("hydration-log", MeasurementType.HYDRATION, Mode.LIST_SESSION, "hydrationLog", arrayOf("amountConsumed", "milliliters"), filterField = "hydration_log", scale = 1.0 / ML_PER_LITER),
+            Spec(
+                "hydration-log",
+                MeasurementType.HYDRATION,
+                Mode.LIST_SESSION,
+                "hydrationLog",
+                arrayOf("amountConsumed", "milliliters"),
+                filterField = "hydration_log",
+                scale = 1.0 / ML_PER_LITER,
+            ),
         )
     }
 }

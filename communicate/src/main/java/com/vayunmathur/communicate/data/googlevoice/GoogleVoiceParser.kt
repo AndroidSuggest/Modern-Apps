@@ -34,90 +34,6 @@ object GoogleVoiceParser {
     // ------------------------------------------------------------------
 
     /** `api2thread/list`: `[folder,pageSize,window,null,null,[null,1,1,1]]`. */
-    fun buildListBody(folder: GvFolder, pageSize: Int = 20, window: Int = 15): String =
-        buildJsonArray {
-            add(JsonPrimitive(folder.id))
-            add(JsonPrimitive(pageSize))
-            add(JsonPrimitive(window))
-            add(JsonNull)
-            add(JsonNull)
-            addJsonArray {
-                add(JsonNull); add(JsonPrimitive(1)); add(JsonPrimitive(1)); add(JsonPrimitive(1))
-            }
-        }.toString()
-
-    /** `api2thread/search`: `["<query>",200,null,null,null,[null,1,1,1]]`. */
-    fun buildSearchBody(query: String, limit: Int = 200): String =
-        buildJsonArray {
-            add(JsonPrimitive(query))
-            add(JsonPrimitive(limit))
-            add(JsonNull)
-            add(JsonNull)
-            add(JsonNull)
-            addJsonArray {
-                add(JsonNull); add(JsonPrimitive(1)); add(JsonPrimitive(1)); add(JsonPrimitive(1))
-            }
-        }.toString()
-
-    /** `account/get`: `[null,{}]`. */
-    fun buildAccountBody(): String =
-        buildJsonArray {
-            add(JsonNull)
-            add(JsonObject(emptyMap()))
-        }.toString()
-
-    /**
-     * `api2thread/sendsms`, real positional shape recovered from the HAR:
-     * `[null,null,null,null, <text>, <threadId|null>, <[recipient]|null>, null, [<clientTxnId>], <media|null>, ["!<botToken>"...]]`
-     *
-     * ⚠️ The trailing `"!…"` entry is a Google bot-defense (WAA/botguard) token minted by the
-     * site's obfuscated JS; it cannot be produced natively, and the server rejects sends without
-     * it (HTTP 400 INVALID_ARGUMENT). We build the correct prefix; [botToken] must be supplied by
-     * a WebView that ran Google's JS for the send to actually succeed.
-     */
-    fun buildSendSmsBody(
-        recipient: String,
-        text: String,
-        threadRemoteId: String?,
-        clientTxnId: Long = kotlin.random.Random.nextLong(1, Long.MAX_VALUE),
-        botToken: String? = null,
-    ): String = buildJsonArray {
-        add(JsonNull); add(JsonNull); add(JsonNull); add(JsonNull)
-        add(JsonPrimitive(text))
-        add(threadRemoteId?.let { JsonPrimitive(it) } ?: JsonNull)
-        if (threadRemoteId == null) {
-            addJsonArray { add(JsonPrimitive(recipient)) }
-        } else {
-            add(JsonNull)
-        }
-        add(JsonNull)
-        addJsonArray { add(JsonPrimitive(clientTxnId)) }
-        add(JsonNull)
-        if (botToken != null) {
-            addJsonArray { add(JsonPrimitive(botToken)) }
-        }
-    }.toString()
-
-    /** Attribute mutations funnelled through `thread/batchupdateattributes`. */
-    enum class ThreadAction { MarkRead, MarkUnread, Archive, Unarchive }
-
-    /**
-     * `thread/batchupdateattributes`, matching the exact web shapes recovered from the HARs:
-     *  - read/unread toggles the flag at key index 3: `[[[["<id>",null,null,<v>],[null,null,null,1],1]]]`
-     *  - archive/unarchive toggles the flag at key index 2: `[[[["<id>",null,<v>],[null,null,1],1]]]`
-     * (Getting these slots wrong archives a thread when you meant to mark it read.)
-     */
-    fun buildBatchUpdateBody(remoteId: String, action: ThreadAction): String {
-        val id = quote(remoteId)
-        return when (action) {
-            ThreadAction.MarkRead -> "[[[[$id,null,null,1],[null,null,null,1],1]]]"
-            ThreadAction.MarkUnread -> "[[[[$id,null,null,0],[null,null,null,1],1]]]"
-            ThreadAction.Archive -> "[[[[$id,null,1],[null,null,1],1]]]"
-            ThreadAction.Unarchive -> "[[[[$id,null,0],[null,null,1],1]]]"
-        }
-    }
-
-    private fun quote(s: String): String = JsonPrimitive(s).toString()
 
     /** Pull the `"!…"` WAA/botguard token out of a captured web `sendsms` body. */
     fun extractBotToken(capturedBody: String): String? {
@@ -145,7 +61,7 @@ object GoogleVoiceParser {
         return GvAccount(phoneNumber = phone)
     }
 
-    fun parseThreads(body: String, selfNumber: String? = null): List<GvThread> {
+    fun parseThreads(body: String): List<GvThread> {
         val root = parseOrNull(body) ?: return emptyList()
         return findRecords(root, prefixes = listOf("t.")).mapNotNull { it.toThread() }
             .filter { it.phoneNumber.isNotBlank() || it.snippet.isNotBlank() || it.messages.isNotEmpty() }
@@ -157,7 +73,7 @@ object GoogleVoiceParser {
      * but every message is already embedded in the `api2thread/list` record ([2]); the repository
      * therefore feeds a list-record body here.
      */
-    fun parseThreadMessages(body: String, threadId: String, selfNumber: String? = null): List<GvMessage> {
+    fun parseThreadMessages(body: String, threadId: String): List<GvMessage> {
         val root = parseOrNull(body) ?: return emptyList()
         val record = findRecords(root, prefixes = listOf("t.", "c."))
             .firstOrNull { recordId(it) == threadId }
@@ -165,7 +81,7 @@ object GoogleVoiceParser {
         return record.toThread()?.messages ?: emptyList()
     }
 
-    fun parseCalls(body: String, selfNumber: String? = null): List<GvCall> {
+    fun parseCalls(body: String): List<GvCall> {
         val root = parseOrNull(body) ?: return emptyList()
         return findRecords(root, prefixes = listOf("c.")).mapNotNull { record ->
             val id = recordId(record) ?: return@mapNotNull null
@@ -208,13 +124,22 @@ object GoogleVoiceParser {
     // ------------------------------------------------------------------
 
     private const val ITEMS = 2
-    private const val ITEM_ID = 0
-    private const val ITEM_TS = 1
-    private const val ITEM_OWN = 2
-    private const val ITEM_PARTICIPANTS = 3
-    private const val ITEM_TYPE = 4
-    private const val ITEM_DURATION = 8
-    private const val ITEM_BODY = 9
+    internal const val ITEM_ID = 0
+    internal const val ITEM_TS = 1
+    internal const val ITEM_OWN = 2
+    internal const val ITEM_PARTICIPANTS = 3
+    internal const val ITEM_TYPE = 4
+    internal const val ITEM_DURATION = 8
+    internal const val ITEM_BODY = 9
+    internal const val ITEM_COUNTERPARTY = 15
+    internal const val ITEM_MEDIA_FLAG = 16
+    internal const val RECORD_FALLBACK_A = 4
+    internal const val RECORD_FALLBACK_B = 7
+    internal const val E164_LENGTH = 10
+    internal const val MICROS_THRESHOLD = 1_000_000_000_000_000L
+    internal const val MILLIS_PER_SECOND = 1000L
+    internal const val MILLIS_THRESHOLD = 1_000_000_000_000L
+    internal const val SECONDS_THRESHOLD = 1_000_000_000L
 
     private fun parseOrNull(body: String): JsonElement? =
         runCatching { json.parseToJsonElement(body.ifBlank { "null" }) }.getOrNull()
@@ -259,7 +184,8 @@ object GoogleVoiceParser {
             phoneNumber = counterparty,
             displayName = null,
             snippet = newestMsg?.text.orEmpty(),
-            timestampMillis = newestMsg?.timestampMillis ?: (newest?.longAt(ITEM_TS)?.let { normalizeTimestampMillis(it) } ?: 0L),
+            timestampMillis =
+                newestMsg?.timestampMillis ?: (newest?.longAt(ITEM_TS)?.let { normalizeTimestampMillis(it) } ?: 0L),
             unreadCount = 0,
             messages = messages,
         )
@@ -273,13 +199,13 @@ object GoogleVoiceParser {
         // Direction is the type field: 10 = inbound SMS, 11 = outbound SMS (confirmed from the wire).
         val type = longAt(ITEM_TYPE)
         val outgoing = type == 11L
-        val mediaUrls = mediaUrlsIn(this)
+        val mediaUrls = this.mediaUrlsIn()
         val hasMedia = mediaUrls.isNotEmpty() || hasMediaMetadata()
         return GvMessage(
             id = strAt(ITEM_ID) ?: "$threadId#$index",
             threadId = threadId,
             phoneNumber = counterparty,
-            text = normalizedBodyText(hasMedia),
+            text = this.normalizedBodyText(hasMedia),
             timestampMillis = ts,
             outgoing = outgoing,
             read = true,
@@ -291,94 +217,13 @@ object GoogleVoiceParser {
     /** Counterparty from a record: newest item participants, then record-level participant slots. */
     private fun counterpartyOf(record: JsonArray, newest: JsonArray?): String? {
         (newest?.arrAt(ITEM_PARTICIPANTS)?.strAt(0))?.takeIf { it.isNotBlank() }?.let { return it }
-        (record.arrAt(4)?.arrAt(0)?.strAt(0))?.takeIf { it.isNotBlank() }?.let { return it }
-        (record.arrAt(7)?.strAt(0))?.takeIf { it.isNotBlank() }?.let { return it }
+        (record.arrAt(RECORD_FALLBACK_A)?.arrAt(0)?.strAt(0))?.takeIf { it.isNotBlank() }?.let { return it }
+        (record.arrAt(RECORD_FALLBACK_B)?.strAt(0))?.takeIf { it.isNotBlank() }?.let { return it }
         val fromId = recordId(record)?.removePrefix("t.")
         if (fromId != null && (looksLikePhone(fromId) || fromId.all { it.isDigit() })) return fromId
         return null
     }
 
-    private fun JsonArray.normalizedBodyText(hasMedia: Boolean): String {
-        val raw = strAt(ITEM_BODY).orEmpty()
-        return if (hasMedia && raw.trim().isMmsStatusLabel()) "" else raw
-    }
-
-    private fun String.isMmsStatusLabel(): Boolean = when (trim().lowercase()) {
-        "mms sent", "mms received" -> true
-        else -> false
-    }
-
-    private fun JsonArray.hasMediaMetadata(): Boolean = getOrNull(16)?.let(::hasMediaMetadataIn) == true
-
-    private fun hasMediaMetadataIn(el: JsonElement): Boolean = allStrings(el).any {
-        it.looksLikeMimeType() || it.looksLikeAttachmentId()
-    }
-
-    private fun String.looksLikeMimeType(): Boolean {
-        val lower = trim().lowercase()
-        return lower.startsWith("image/") || lower.startsWith("video/") || lower.startsWith("audio/")
-    }
-
-    private fun String.looksLikeAttachmentId(): Boolean = Regex("^[A-Za-z0-9_.-]+-\\d+$").matches(trim())
-
-    private fun mediaUrlsIn(item: JsonArray): List<String> {
-        val text = item.strAt(ITEM_BODY).orEmpty()
-        val knownNonMedia = buildSet {
-            item.strAt(ITEM_ID)?.let(::add)
-            item.strAt(ITEM_OWN)?.let(::add)
-            text.takeIf { it.isNotBlank() }?.let(::add)
-            item.strAt(15)?.let(::add)
-        }
-        return mediaUrlStrings(item)
-            .filterNot { it in knownNonMedia }
-            .distinct()
-    }
-
-    private fun mediaUrlStrings(el: JsonElement): List<String> {
-        val out = mutableListOf<String>()
-        fun visit(e: JsonElement) {
-            when (e) {
-                is JsonArray -> e.forEach { visit(it) }
-                is JsonObject -> e.values.forEach { visit(it) }
-                is JsonPrimitive -> if (e.isString) {
-                    val url = e.content.trim()
-                    if (looksLikeMediaUrl(url)) out.add(url)
-                }
-            }
-        }
-        visit(el)
-        return out
-    }
-
-    private fun looksLikeMediaUrl(raw: String): Boolean {
-        val lower = raw.lowercase()
-        if (!lower.startsWith("https://")) return false
-        val isGoogleAttachmentHost = lower.contains("googleusercontent.com") ||
-            lower.contains("ggpht.com") ||
-            lower.contains("lh3.google.com") ||
-            lower.contains("voice.google.com/media")
-        if (!isGoogleAttachmentHost) return false
-        return lower.contains("=s") ||
-            lower.contains("/mms") ||
-            lower.contains("/media") ||
-            lower.contains("image") ||
-            lower.endsWith(".jpg") ||
-            lower.endsWith(".jpeg") ||
-            lower.endsWith(".png") ||
-            lower.endsWith(".gif") ||
-            lower.endsWith(".webp")
-    }
-
-    private fun recordId(record: JsonArray): String? =
-        (record.firstOrNull() as? JsonPrimitive)?.takeIf { it.isString }?.content
-
-    private fun JsonArray.strAt(i: Int): String? =
-        (getOrNull(i) as? JsonPrimitive)?.takeIf { it.isString }?.content
-
-    private fun JsonArray.longAt(i: Int): Long? =
-        (getOrNull(i) as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toLongOrNull()
-
-    private fun JsonArray.arrAt(i: Int): JsonArray? = getOrNull(i) as? JsonArray
 
     private val PHONE = Regex("^\\+?[0-9]{7,15}$")
     fun looksLikePhone(raw: String): Boolean = PHONE.matches(raw.replace(" ", "").replace("-", ""))
@@ -391,27 +236,26 @@ object GoogleVoiceParser {
         }
     }
 
-    private fun normalizePhone(raw: String): String = raw.filter { it.isDigit() }.takeLast(10)
+    private fun normalizePhone(raw: String): String = raw.filter { it.isDigit() }.takeLast(E164_LENGTH)
 
     /** GV timestamps appear as µs (16 digits), ms (13), or s (10); normalize to millis. */
     fun normalizeTimestampMillis(raw: Long): Long = when {
         raw <= 0 -> 0
-        raw >= 1_000_000_000_000_000L -> raw / 1000
-        raw >= 1_000_000_000_000L -> raw
-        raw >= 1_000_000_000L -> raw * 1000
+        raw >= MICROS_THRESHOLD -> raw / MILLIS_PER_SECOND
+        raw >= MILLIS_THRESHOLD -> raw
+        raw >= SECONDS_THRESHOLD -> raw * MILLIS_PER_SECOND
         else -> 0
     }
 
-    private fun allStrings(el: JsonElement): List<String> {
-        val out = mutableListOf<String>()
-        fun visit(e: JsonElement) {
-            when (e) {
-                is JsonArray -> e.forEach { visit(it) }
-                is JsonObject -> e.values.forEach { visit(it) }
-                is JsonPrimitive -> if (e.isString) out.add(e.content)
-            }
+internal fun allStrings(el: JsonElement): List<String> {
+    val out = mutableListOf<String>()
+    fun visit(e: JsonElement) {
+        when (e) {
+            is JsonArray -> e.forEach { visit(it) }
+            is JsonObject -> e.values.forEach { visit(it) }
+            is JsonPrimitive -> if (e.isString) out.add(e.content)
         }
-        visit(el)
-        return out
     }
+    visit(el)
+    return out
 }

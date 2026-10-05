@@ -59,58 +59,95 @@ class ConnectionTracker {
         appLabel: String,
     ) {
         val now = System.currentTimeMillis()
-        val key = FlowKey(
-            protocol = parsed.protocol,
-            remoteIp = if (direction == Direction.TX) parsed.dstIp else parsed.srcIp,
-            remotePort = if (direction == Direction.TX) parsed.dstPort else parsed.srcPort,
-            localPort = if (direction == Direction.TX) parsed.srcPort else parsed.dstPort,
-        )
-
-        val isNewKey = !flows.containsKey(key)
-        val effectiveRequestIncrement = if (isNewKey) 1L else 0L
-
-        var domain = domainOverride
-        if (domain == null) {
-            domain = dnsCacheRef?.get(key.remoteIp) ?: flows[key]?.domain
-        }
+        val key = flowKey(parsed, direction)
+        val domain = domainOverride ?: dnsCacheRef?.get(key.remoteIp) ?: flows[key]?.domain
 
         flows.compute(key) { _, existing ->
             if (existing == null) {
-                MutableAgg(
-                    timestampStart = now,
-                    timestampLast = now,
-                    uid = uid,
-                    packageName = packageName,
-                    appLabel = appLabel,
-                    localIp = if (direction == Direction.TX) parsed.srcIp else parsed.dstIp,
-                    remoteIp = key.remoteIp,
-                    remotePort = key.remotePort,
-                    localPort = key.localPort,
-                    protocol = parsed.protocol,
-                    domain = domain,
-                    txBytes = if (direction == Direction.TX) bytes.toLong() else 0L,
-                    rxBytes = if (direction == Direction.RX) bytes.toLong() else 0L,
-                    requestCount = effectiveRequestIncrement.coerceAtLeast(1),
-                    dirty = true,
-                )
+                newAggregate(now, parsed, direction, bytes, key, domain, uid, packageName, appLabel)
             } else {
-                existing.timestampLast = now
-                existing.txBytes = if (direction == Direction.TX) existing.txBytes + bytes else existing.txBytes
-                existing.rxBytes = if (direction == Direction.RX) existing.rxBytes + bytes else existing.rxBytes
-                if (effectiveRequestIncrement > 0 && existing.requestCount == 0L) existing.requestCount = effectiveRequestIncrement
-                if (domain != null && existing.domain == null) existing.domain = domain
-                // Late attribution wins: uid -1 means nothing has identified this flow yet.
-                if (existing.uid < 0 && uid >= 0) {
-                    existing.uid = uid
-                    existing.packageName = packageName
-                    existing.appLabel = appLabel
-                } else if (existing.packageName == null && packageName != null) {
-                    existing.packageName = packageName
-                    existing.appLabel = appLabel
-                }
-                existing.dirty = true
+                mergeInto(existing, now, direction, bytes, domain, uid, packageName, appLabel)
                 existing
             }
+        }
+    }
+
+    private fun flowKey(parsed: PacketInspector.ParsedPacket, direction: Direction): FlowKey {
+        val tx = direction == Direction.TX
+        return FlowKey(
+            protocol = parsed.protocol,
+            remoteIp = if (tx) parsed.dstIp else parsed.srcIp,
+            remotePort = if (tx) parsed.dstPort else parsed.srcPort,
+            localPort = if (tx) parsed.srcPort else parsed.dstPort,
+        )
+    }
+
+    private fun newAggregate(
+        now: Long,
+        parsed: PacketInspector.ParsedPacket,
+        direction: Direction,
+        bytes: Int,
+        key: FlowKey,
+        domain: String?,
+        uid: Int,
+        packageName: String?,
+        appLabel: String,
+    ): MutableAgg {
+        val tx = direction == Direction.TX
+        return MutableAgg(
+            timestampStart = now,
+            timestampLast = now,
+            uid = uid,
+            packageName = packageName,
+            appLabel = appLabel,
+            localIp = if (tx) parsed.srcIp else parsed.dstIp,
+            remoteIp = key.remoteIp,
+            remotePort = key.remotePort,
+            localPort = key.localPort,
+            protocol = parsed.protocol,
+            domain = domain,
+            txBytes = if (tx) bytes.toLong() else 0L,
+            rxBytes = if (tx) 0L else bytes.toLong(),
+            requestCount = 1L,
+            dirty = true,
+        )
+    }
+
+    private fun mergeInto(
+        existing: MutableAgg,
+        now: Long,
+        direction: Direction,
+        bytes: Int,
+        domain: String?,
+        uid: Int,
+        packageName: String?,
+        appLabel: String,
+    ) {
+        existing.timestampLast = now
+        if (direction == Direction.TX) {
+            existing.txBytes += bytes
+        } else {
+            existing.rxBytes += bytes
+        }
+        if (domain != null && existing.domain == null) existing.domain = domain
+        upgradeAttribution(existing, uid, packageName, appLabel)
+        existing.dirty = true
+    }
+
+    private fun upgradeAttribution(
+        existing: MutableAgg,
+        uid: Int,
+        packageName: String?,
+        appLabel: String,
+    ) {
+        // Late attribution wins: uid -1 means nothing has identified this flow yet.
+        if (existing.uid < 0 && uid >= 0) {
+            existing.uid = uid
+            existing.packageName = packageName
+            existing.appLabel = appLabel
+        } else if (existing.packageName == null && packageName != null) {
+            existing.packageName = packageName
+            existing.appLabel = appLabel
         }
     }
 

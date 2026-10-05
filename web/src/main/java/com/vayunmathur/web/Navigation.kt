@@ -35,7 +35,9 @@ fun Navigation(viewModel: WebViewModel) {
         entry<Route.Settings>(metadata = detailPane) { SettingsPage(viewModel = viewModel, backStack = backStack) }
         entry<Route.Downloads>(metadata = detailPane) { DownloadsPage(viewModel = viewModel, backStack = backStack) }
         entry<Route.SiteData>(metadata = detailPane) { SiteDataPage(viewModel = viewModel, backStack = backStack) }
-        entry<Route.InstalledSites>(metadata = detailPane) { InstalledSitesPage(viewModel = viewModel, backStack = backStack) }
+        entry<Route.InstalledSites>(metadata = detailPane) {
+            InstalledSitesPage(viewModel = viewModel, backStack = backStack)
+        }
         entry<Route.Shields>(metadata = detailPane) { ShieldsPage(viewModel = viewModel, backStack = backStack) }
     }
 }

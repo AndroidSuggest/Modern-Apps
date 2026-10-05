@@ -2,6 +2,22 @@ package com.vayunmathur.games.chess.data
 import kotlin.math.abs
 import com.vayunmathur.games.chess.R
 
+internal const val BOARD_SIZE = 8
+internal const val WHITE_HOME_ROW = 7
+internal const val BLACK_HOME_ROW = 0
+internal const val KING_HOME_FILE = 4
+internal const val ROOK_KINGSIDE_FILE = 7
+internal const val ROOK_QUEENSIDE_FILE = 0
+internal const val PAWN_DOUBLE_STEP = 2
+internal const val CASTLE_FILE_DISTANCE = 2
+internal const val BLACK_PROMOTION_ROW = 7
+internal const val WHITE_PROMOTION_ROW = 0
+internal const val PAWN_START_ROW_WHITE = 6
+internal const val PAWN_START_ROW_BLACK = 1
+internal const val WHITE_EP_ROW = 4
+internal const val BLACK_EP_ROW = 3
+internal const val SQUARE_COLOR_MOD = 2
+
 enum class PieceType(val resID: Int) {
     KING(R.drawable.chess_king_2_fill1_24px),
     QUEEN(R.drawable.chess_queen_fill1_24px),
@@ -26,9 +42,6 @@ data class CastlingRights(
     val blackKing: Boolean = false,
     val blackQueen: Boolean = false
 )
-
-private fun getFileChar(col: Int): Char = 'a' + col
-private fun getRankChar(row: Int): Char = '8' - row
 
 private val PieceType.notationLetter: String get() = when (this) {
     PieceType.KING -> "K"; PieceType.QUEEN -> "Q"; PieceType.ROOK -> "R"
@@ -83,44 +96,25 @@ data class Board(
             ?: throw IllegalStateException("No piece at start position")
 
         val ambiguity = calculateAmbiguity(start, end, movingPiece)
-        var capturedPiece = pieces[end.row][end.col]
-        val isEnPassantMove = movingPiece.type == PieceType.PAWN && isEnPassant(start, end)
+        val capturedPiece = capturedFor(start, end, movingPiece)
+        val newPieces = movedGrid(start, end, movingPiece, promoteTo)
 
-        if (isEnPassantMove) {
-            capturedPiece = pieces[enPassantCaptureRow(movingPiece.color, end.row)][end.col]
-        }
+        val newCapturedWhite = capturedByWhite +
+            listOfNotNull(capturedPiece?.takeIf { it.color == PieceColor.BLACK })
+        val newCapturedBlack = capturedByBlack +
+            listOfNotNull(capturedPiece?.takeIf { it.color == PieceColor.WHITE })
 
-        val newPieces = pieces.map { it.toMutableList() }.toMutableList()
-
-        var isCastlingMove = false
-        if (movingPiece.type == PieceType.KING && abs(start.col - end.col) == 2) {
-            isCastlingMove = true
-            val rookStartCol = if (end.col > start.col) 7 else 0
-            val rookEndCol = if (end.col > start.col) end.col - 1 else end.col + 1
-            newPieces[start.row][rookEndCol] = newPieces[start.row][rookStartCol]?.copy(hasMoved = true)
-            newPieces[start.row][rookStartCol] = null
-        }
-
-        if (isEnPassantMove) {
-            newPieces[enPassantCaptureRow(movingPiece.color, end.row)][end.col] = null
-        }
-
-        newPieces[end.row][end.col] = movingPiece.copy(type = promoteTo ?: movingPiece.type, hasMoved = true)
-        newPieces[start.row][start.col] = null
-
-        val newCapturedWhite = if (capturedPiece?.color == PieceColor.BLACK) capturedByWhite + capturedPiece else capturedByWhite
-        val newCapturedBlack = if (capturedPiece?.color == PieceColor.WHITE) capturedByBlack + capturedPiece else capturedByBlack
-
-        val tempNextBoard = Board(newPieces.map { it.toList() })
+        val afterBoard = Board(newPieces.map { it.toList() })
         val opponentColor = movingPiece.color.opposite
-        val isCheck = tempNextBoard.isKingInCheck(opponentColor)
-        val isCheckmate = tempNextBoard.isCheckmate(opponentColor)
+        val isCheck = afterBoard.isKingInCheck(opponentColor)
+        val isCheckmate = afterBoard.isCheckmate(opponentColor)
 
         val fullMove = Move(
             start = start, end = end, piece = movingPiece,
             capturedPiece = capturedPiece, promotedTo = promoteTo,
             isCheck = isCheck, isCheckmate = isCheckmate,
-            isCastling = isCastlingMove, ambiguity = ambiguity
+            isCastling = isCastleMove(movingPiece, start, end),
+            ambiguity = ambiguity
         )
 
         return Board(
@@ -128,30 +122,17 @@ data class Board(
             capturedByWhite = newCapturedWhite,
             capturedByBlack = newCapturedBlack,
             lastMove = fullMove,
-            promotionPosition = if (promoteTo == null && isPromotionSquare(movingPiece, end)) end else null,
+            promotionPosition = promotionSquare(movingPiece, end, promoteTo),
             moves = moves + fullMove
         )
     }
 
-    private fun movePieceInternal(start: Position, end: Position): Board {
-        val newPieces = pieces.map { it.toMutableList() }.toMutableList()
-        val piece = newPieces[start.row][start.col] ?: return this
+    private fun isCastleMove(movingPiece: Piece, start: Position, end: Position): Boolean =
+        movingPiece.type == PieceType.KING && abs(start.col - end.col) == CASTLE_FILE_DISTANCE
 
-        if (piece.type == PieceType.PAWN && isEnPassant(start, end)) {
-            newPieces[enPassantCaptureRow(piece.color, end.row)][end.col] = null
-        }
-
-        if (piece.type == PieceType.KING && abs(start.col - end.col) == 2) {
-            val rookStartCol = if (end.col > start.col) 7 else 0
-            val rookEndCol = if (end.col > start.col) end.col - 1 else end.col + 1
-            newPieces[start.row][rookEndCol] = newPieces[start.row][rookStartCol]?.copy(hasMoved = true)
-            newPieces[start.row][rookStartCol] = null
-        }
-
-        newPieces[end.row][end.col] = piece.copy(hasMoved = true)
-        newPieces[start.row][start.col] = null
-
-        return copy(pieces = newPieces.map { it.toList() }, lastMove = Move(start, end, piece))
+    private fun promotionSquare(movingPiece: Piece, end: Position, promoteTo: PieceType?): Position? {
+        if (promoteTo != null) return null
+        return if (isPromotionSquare(movingPiece, end)) end else null
     }
 
     fun promotePawn(position: Position, to: PieceType): Board {
@@ -167,7 +148,8 @@ data class Board(
         val updatedMoves = moves.toMutableList()
         var updatedLastMove = lastMove
         if (updatedMoves.isNotEmpty()) {
-            updatedLastMove = updatedMoves.removeAt(updatedMoves.lastIndex).copy(promotedTo = to, isCheck = isCheck, isCheckmate = isCheckmate)
+            val promoted = updatedMoves.removeAt(updatedMoves.lastIndex)
+            updatedLastMove = promoted.copy(promotedTo = to, isCheck = isCheck, isCheckmate = isCheckmate)
             updatedMoves.add(updatedLastMove)
         }
 
@@ -182,7 +164,7 @@ data class Board(
     fun isValidMove(start: Position, end: Position): Boolean {
         val piece = pieces[start.row][start.col] ?: return false
         if (!isValidMoveIgnoringCheck(start, end)) return false
-        return !movePieceInternal(start, end).isKingInCheck(piece.color)
+        return !applyMoveInternal(start, end).isKingInCheck(piece.color)
     }
 
     /**
@@ -195,21 +177,6 @@ data class Board(
 
     /** Total number of kings on the board (both colors). */
     fun kingCount(): Int = pieces.sumOf { row -> row.count { it?.type == PieceType.KING } }
-
-    private fun isValidMoveIgnoringCheck(start: Position, end: Position): Boolean {
-        val piece = pieces[start.row][start.col] ?: return false
-        val targetPiece = pieces[end.row][end.col]
-        if (targetPiece != null && targetPiece.color == piece.color) return false
-
-        return when (piece.type) {
-            PieceType.PAWN -> isValidPawnMove(start, end, piece.color)
-            PieceType.ROOK -> isValidRookMove(start, end)
-            PieceType.KNIGHT -> isValidKnightMove(start, end)
-            PieceType.BISHOP -> isValidBishopMove(start, end)
-            PieceType.QUEEN -> isValidRookMove(start, end) || isValidBishopMove(start, end)
-            PieceType.KING -> isValidKingMove(start, end, piece)
-        }
-    }
 
     fun isKingInCheck(kingColor: PieceColor): Boolean {
         val kingPos = findKing(kingColor) ?: return false
@@ -264,30 +231,6 @@ data class Board(
         return moves
     }
 
-    /**
-     * Visit every legal `(start, end)` pair for [color], stopping when [visit] returns false.
-     *
-     * The same 64x64 scan [hasLegalMoves] always did. It is cheap in practice because
-     * `isValidMoveIgnoringCheck` rejects almost all 4096 pairs before [isValidMove] clones the
-     * board, leaving around forty clones in a typical position.
-     */
-    private fun walkLegalMoves(color: PieceColor, visit: (Position, Position) -> Boolean) {
-        for (row in 0..7) {
-            for (col in 0..7) {
-                val piece = pieces[row][col] ?: continue
-                if (piece.color != color) continue
-                val start = Position(row, col)
-                for (endRow in 0..7) {
-                    for (endCol in 0..7) {
-                        val end = Position(endRow, endCol)
-                        if (!isValidMove(start, end)) continue
-                        if (!visit(start, end)) return
-                    }
-                }
-            }
-        }
-    }
-
     fun isCheckmate(kingColor: PieceColor): Boolean =
         isKingInCheck(kingColor) && !hasLegalMoves(kingColor)
 
@@ -302,178 +245,27 @@ data class Board(
      */
     fun isInsufficientMaterial(): Boolean {
         val all = pieces.flatten().filterNotNull()
-        if (all.any { it.type == PieceType.PAWN || it.type == PieceType.ROOK || it.type == PieceType.QUEEN }) {
-            return false
-        }
+        if (hasMatingMajor(all)) return false
         val minors = all.filter { it.type == PieceType.BISHOP || it.type == PieceType.KNIGHT }
-        return when (minors.size) {
-            0, 1 -> true // K vs K, or K + single minor vs K
-            else -> {
-                if (minors.any { it.type == PieceType.KNIGHT }) return false
-                // only bishops left: drawn iff every bishop sits on the same square colour
-                val squareColors = pieces.flatMapIndexed { r, cols ->
-                    cols.mapIndexedNotNull { c, p -> if (p?.type == PieceType.BISHOP) (r + c) % 2 else null }
-                }.toSet()
-                squareColors.size == 1
-            }
+        if (minors.size <= 1) return true // K vs K, or K + single minor vs K
+        if (minors.any { it.type == PieceType.KNIGHT }) return false
+        return bishopsShareSquareColor()
+    }
+
+    private fun hasMatingMajor(all: List<Piece>): Boolean {
+        return all.any {
+            it.type == PieceType.PAWN || it.type == PieceType.ROOK || it.type == PieceType.QUEEN
         }
     }
 
-    private fun enPassantCaptureRow(color: PieceColor, endRow: Int): Int =
-        if (color == PieceColor.WHITE) endRow + 1 else endRow - 1
-
-    private fun calculateAmbiguity(start: Position, end: Position, movingPiece: Piece): String {
-        if (movingPiece.type == PieceType.PAWN || movingPiece.type == PieceType.KING) return ""
-
-        val alternatives = pieces.flatMapIndexed { r, cols ->
+    private fun bishopsShareSquareColor(): Boolean {
+        // only bishops left: drawn iff every bishop sits on the same square colour
+        val squareColors = pieces.flatMapIndexed { r, cols ->
             cols.mapIndexedNotNull { c, p ->
-                if (p != null && !(r == start.row && c == start.col) &&
-                    p.type == movingPiece.type && p.color == movingPiece.color &&
-                    isValidMoveIgnoringCheck(Position(r, c), end) &&
-                    !movePieceInternal(Position(r, c), end).isKingInCheck(movingPiece.color)
-                ) Position(r, c) else null
+                if (p?.type == PieceType.BISHOP) (r + c) % SQUARE_COLOR_MOD else null
             }
-        }
-
-        if (alternatives.isEmpty()) return ""
-        val sameFile = alternatives.any { it.col == start.col }
-        val sameRank = alternatives.any { it.row == start.row }
-        return when {
-            sameFile && sameRank -> "${getFileChar(start.col)}${getRankChar(start.row)}"
-            sameFile -> "${getRankChar(start.row)}"
-            else -> "${getFileChar(start.col)}"
-        }
-    }
-
-    private fun findKing(kingColor: PieceColor): Position? {
-        pieces.forEachIndexed { row, cols ->
-            cols.forEachIndexed { col, piece ->
-                if (piece?.type == PieceType.KING && piece.color == kingColor)
-                    return Position(row, col)
-            }
-        }
-        return null
-    }
-
-    private fun isValidPawnMove(start: Position, end: Position, color: PieceColor): Boolean {
-        val direction = if (color == PieceColor.WHITE) -1 else 1
-        val startRow = if (color == PieceColor.WHITE) 6 else 1
-
-        if (start.col == end.col) {
-            if (pieces[end.row][end.col] != null) return false
-            if (start.row + direction == end.row) return true
-            if (start.row == startRow && start.row + 2 * direction == end.row && pieces[start.row + direction][start.col] == null) return true
-        }
-        if (abs(start.col - end.col) == 1 && start.row + direction == end.row) {
-            return pieces[end.row][end.col] != null || isEnPassant(start, end)
-        }
-        return false
-    }
-
-    private fun isEnPassant(start: Position, end: Position): Boolean {
-        val last = lastMove ?: return false
-        val lastPiece = pieces[last.end.row][last.end.col] ?: return false
-        if (lastPiece.type != PieceType.PAWN || abs(last.start.row - last.end.row) != 2) return false
-        val pawnRow = if (lastPiece.color == PieceColor.WHITE) 4 else 3
-        return start.row == pawnRow && end.col == last.end.col &&
-                end.row == last.end.row + if (lastPiece.color == PieceColor.WHITE) 1 else -1
-    }
-
-    private fun isPromotionSquare(piece: Piece, position: Position): Boolean =
-        piece.type == PieceType.PAWN &&
-                ((piece.color == PieceColor.WHITE && position.row == 0) ||
-                        (piece.color == PieceColor.BLACK && position.row == 7))
-
-    private fun isValidRookMove(start: Position, end: Position): Boolean =
-        (start.row == end.row || start.col == end.col) && !isPathBlocked(start, end)
-
-    private fun isValidKnightMove(start: Position, end: Position): Boolean {
-        val rowDiff = abs(start.row - end.row)
-        val colDiff = abs(start.col - end.col)
-        return (rowDiff == 2 && colDiff == 1) || (rowDiff == 1 && colDiff == 2)
-    }
-
-    private fun isValidBishopMove(start: Position, end: Position): Boolean =
-        abs(start.row - end.row) == abs(start.col - end.col) && !isPathBlocked(start, end)
-
-    private fun isValidKingMove(start: Position, end: Position, piece: Piece): Boolean {
-        val rowDiff = abs(start.row - end.row)
-        val colDiff = abs(start.col - end.col)
-
-        if (!piece.hasMoved && rowDiff == 0 && colDiff == 2) {
-            if (isKingInCheck(piece.color)) return false
-            val rookCol = if (end.col > start.col) 7 else 0
-            val rook = pieces[start.row][rookCol]
-            if (rook != null && !rook.hasMoved && rook.type == PieceType.ROOK) {
-                val direction = if (end.col > start.col) 1 else -1
-                var current = start.col + direction
-                while (current != rookCol) {
-                    if (pieces[start.row][current] != null) return false
-                    if (abs(current - start.col) <= 2) {
-                        if (movePieceInternal(start, Position(start.row, current)).isKingInCheck(piece.color)) return false
-                    }
-                    current += direction
-                }
-                return true
-            }
-        }
-        return rowDiff <= 1 && colDiff <= 1
-    }
-
-    private fun isPathBlocked(start: Position, end: Position): Boolean {
-        val rowStep = (end.row - start.row).coerceIn(-1, 1)
-        val colStep = (end.col - start.col).coerceIn(-1, 1)
-        var currentRow = start.row + rowStep
-        var currentCol = start.col + colStep
-        while (currentRow != end.row || currentCol != end.col) {
-            if (pieces[currentRow][currentCol] != null) return true
-            currentRow += rowStep
-            currentCol += colStep
-        }
-        return false
-    }
-
-    fun toFen(): String {
-        val boardStr = pieces.joinToString("/") { row ->
-            buildString {
-                var empty = 0
-                for (piece in row) {
-                    if (piece == null) {
-                        empty++
-                    } else {
-                        if (empty > 0) { append(empty); empty = 0 }
-                        append(piece.fenChar)
-                    }
-                }
-                if (empty > 0) append(empty)
-            }
-        }
-
-        val turn = if (moves.lastOrNull()?.piece?.color == PieceColor.WHITE) "b" else "w"
-
-        var castling = ""
-        pieces[7][4]?.takeIf { it.type == PieceType.KING && !it.hasMoved }?.let {
-            if (pieces[7][7]?.let { r -> r.type == PieceType.ROOK && !r.hasMoved } == true) castling += "K"
-            if (pieces[7][0]?.let { r -> r.type == PieceType.ROOK && !r.hasMoved } == true) castling += "Q"
-        }
-        pieces[0][4]?.takeIf { it.type == PieceType.KING && !it.hasMoved }?.let {
-            if (pieces[0][7]?.let { r -> r.type == PieceType.ROOK && !r.hasMoved } == true) castling += "k"
-            if (pieces[0][0]?.let { r -> r.type == PieceType.ROOK && !r.hasMoved } == true) castling += "q"
-        }
-
-        val enPassant = lastMove?.takeIf { it.piece.type == PieceType.PAWN && abs(it.start.row - it.end.row) == 2 }?.let {
-            "${getFileChar(it.start.col)}${if (it.piece.color == PieceColor.WHITE) '3' else '6'}"
-        } ?: "-"
-
-        return "$boardStr $turn ${castling.ifEmpty { "-" }} $enPassant 0 1"
-    }
-
-    private val Piece.fenChar: String get() {
-        val letter = when (type) {
-            PieceType.KING -> "k"; PieceType.QUEEN -> "q"; PieceType.ROOK -> "r"
-            PieceType.BISHOP -> "b"; PieceType.KNIGHT -> "n"; PieceType.PAWN -> "p"
-        }
-        return if (color == PieceColor.WHITE) letter.uppercase() else letter
+        }.toSet()
+        return squareColors.size == 1
     }
 
     companion object {
@@ -522,6 +314,13 @@ data class Board(
         }
 
         /**
+         * Parses a FEN string into a puzzle [Board]. Only the placement, side-to-move,
+         * castling, and en-passant fields are used (halfmove/fullmove clocks are
+         * ignored). See [fromPuzzle] for how turn/castling/en-passant are reconstructed.
+         */
+        fun fromFen(fen: String): Board = parseFen(fen, ::pieceFromFenChar, ::fromPuzzle)
+
+        /**
          * Builds a puzzle [Board] from a raw piece grid plus the side to move,
          * castling rights, and en-passant target. Shared by [fromFen] and the binary
          * puzzle decoder so both reconstruct positions identically.
@@ -538,115 +337,6 @@ data class Board(
             sideToMove: PieceColor,
             castling: CastlingRights,
             epSquare: Position?
-        ): Board {
-            val pieces = rawPieces.mapIndexed { r, row ->
-                row.mapIndexed { c, p ->
-                    p?.let { piece ->
-                        val moved = when (piece.type) {
-                            PieceType.KING ->
-                                if (piece.color == PieceColor.WHITE)
-                                    !(castling.whiteKing || castling.whiteQueen)
-                                else
-                                    !(castling.blackKing || castling.blackQueen)
-                            PieceType.ROOK -> when {
-                                piece.color == PieceColor.WHITE && r == 7 && c == 7 -> !castling.whiteKing
-                                piece.color == PieceColor.WHITE && r == 7 && c == 0 -> !castling.whiteQueen
-                                piece.color == PieceColor.BLACK && r == 0 && c == 7 -> !castling.blackKing
-                                piece.color == PieceColor.BLACK && r == 0 && c == 0 -> !castling.blackQueen
-                                else -> true
-                            }
-                            else -> true
-                        }
-                        piece.copy(hasMoved = moved)
-                    }
-                }
-            }
-
-            val seed = seedLastMove(pieces, sideToMove, epSquare)
-            return Board(
-                pieces = pieces,
-                lastMove = seed,
-                moves = seed?.let { listOf(it) } ?: emptyList()
-            )
-        }
-
-        /**
-         * A synthetic previous move used to encode turn and en-passant into a puzzle
-         * board. When [epSquare] is set it is the pawn double-step that created the
-         * en-passant target; otherwise it is a zero-length move by the side that did
-         * NOT just move, which only serves to make [toFen]'s turn inference correct.
-         */
-        private fun seedLastMove(
-            pieces: List<List<Piece?>>,
-            sideToMove: PieceColor,
-            epSquare: Position?
-        ): Move? {
-            if (epSquare != null) {
-                // The pawn that just double-moved sits one square beyond the ep target,
-                // in the direction the mover was heading.
-                val (startPos, endPos) = if (sideToMove == PieceColor.WHITE) {
-                    // Black just moved e7->e5; ep target e6 (row epSquare.row).
-                    Position(epSquare.row - 1, epSquare.col) to Position(epSquare.row + 1, epSquare.col)
-                } else {
-                    // White just moved e2->e4; ep target e3.
-                    Position(epSquare.row + 1, epSquare.col) to Position(epSquare.row - 1, epSquare.col)
-                }
-                val pawn = pieces[endPos.row][endPos.col]
-                    ?: Piece(PieceType.PAWN, sideToMove.opposite)
-                return Move(start = startPos, end = endPos, piece = pawn)
-            }
-            // No en-passant: seed a no-op move by the opponent so the turn reads back
-            // correctly. A king "move" onto its own square is never a pawn double-step,
-            // so it cannot be mistaken for an en-passant setup.
-            val opponent = sideToMove.opposite
-            pieces.forEachIndexed { r, row ->
-                row.forEachIndexed { c, p ->
-                    if (p?.type == PieceType.KING && p.color == opponent) {
-                        val pos = Position(r, c)
-                        return Move(start = pos, end = pos, piece = p)
-                    }
-                }
-            }
-            return null
-        }
-
-        /**
-         * Parses a FEN string into a puzzle [Board]. Only the placement, side-to-move,
-         * castling, and en-passant fields are used (halfmove/fullmove clocks are
-         * ignored). See [fromPuzzle] for how turn/castling/en-passant are reconstructed.
-         */
-        fun fromFen(fen: String): Board {
-            val fields = fen.trim().split(Regex("\\s+"))
-            val placement = fields[0]
-            val side = fields.getOrElse(1) { "w" }
-            val castlingField = fields.getOrElse(2) { "-" }
-            val epField = fields.getOrElse(3) { "-" }
-
-            val grid = MutableList(8) { MutableList<Piece?>(8) { null } }
-            var row = 0
-            var col = 0
-            for (ch in placement) {
-                when {
-                    ch == '/' -> { row++; col = 0 }
-                    ch.isDigit() -> col += ch - '0'
-                    else -> { grid[row][col] = pieceFromFenChar(ch); col++ }
-                }
-            }
-
-            val sideToMove = if (side == "b") PieceColor.BLACK else PieceColor.WHITE
-            val castling = CastlingRights(
-                whiteKing = castlingField.contains('K'),
-                whiteQueen = castlingField.contains('Q'),
-                blackKing = castlingField.contains('k'),
-                blackQueen = castlingField.contains('q')
-            )
-            val epSquare = if (epField == "-") null else {
-                val f = epField[0] - 'a'
-                val r = epField[1] - '0'
-                Position(8 - r, f)
-            }
-
-            return fromPuzzle(grid.map { it.toList() }, sideToMove, castling, epSquare)
-        }
+        ): Board = buildPuzzleBoard(rawPieces, sideToMove, castling, epSquare)
     }
 }

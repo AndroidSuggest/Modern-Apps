@@ -82,13 +82,21 @@ class WindowScheduler(private val context: Context) {
 /** Whether wind-down is active at [at], in the device's current timezone. */
 fun WindDownSchedule.activeAt(at: LocalDateTime): Boolean {
     if (!enabled) return false
-    val minute = at.hour * 60 + at.minute
+    val minute = at.hour * MINUTES_PER_HOUR + at.minute
     val day = at.dayOfWeek.value - 1
     val set = (daysMask shr day) and 1 == 1
     if (!set) return false
     return if (startMinute <= endMinute) {
         minute >= startMinute && minute < endMinute
     } else {
-        (minute >= startMinute) || (minute < endMinute && (daysMask shr ((day + 6) % 7)) and 1 == 1)
+        minute >= startMinute || (minute < endMinute && isYesterdaySet(day))
     }
 }
+
+private fun WindDownSchedule.isYesterdaySet(day: Int): Boolean {
+    val yesterday = (day + DAYS_PER_WEEK - 1) % DAYS_PER_WEEK
+    return (daysMask shr yesterday) and 1 == 1
+}
+
+private const val MINUTES_PER_HOUR = 60
+private const val DAYS_PER_WEEK = 7

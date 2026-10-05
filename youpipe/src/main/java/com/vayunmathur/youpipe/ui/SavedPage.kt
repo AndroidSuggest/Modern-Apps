@@ -97,7 +97,7 @@ fun SavedPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeViewModel
     val isDragging = reorderState.isAnyItemDragging
     LaunchedEffect(isDragging) {
         if (!isDragging && hasDragged) {
-            youPipeViewModel.reorderPlaylists(localData)
+            youPipeViewModel.playlistOps.reorderPlaylists(localData)
             hasDragged = false
         }
     }

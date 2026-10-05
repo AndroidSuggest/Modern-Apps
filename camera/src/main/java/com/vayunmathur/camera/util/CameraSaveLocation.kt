@@ -32,16 +32,16 @@ private const val MODE_SAF = "saf"
  */
 internal fun CameraViewModel.loadSaveTarget() {
     if (ds.getString(KEY_SAVE_MODE) != MODE_SAF) {
-        _saveTarget.value = SaveTarget.MediaStoreDefault
+        saveTargetMutable.value = SaveTarget.MediaStoreDefault
         return
     }
     val uriString = ds.getString(KEY_SAVE_TREE_URI)
     val uri = uriString?.takeIf { it.isNotBlank() }?.let { runCatching { it.toUri() }.getOrNull() }
     if (uri != null && SafDocuments.hasPersistedPermission(app.contentResolver, uri)) {
-        _saveTarget.value = SaveTarget.SafTree(uri)
+        saveTargetMutable.value = SaveTarget.SafTree(uri)
     } else {
         Log.w("CameraViewModel", "SAF save folder grant missing; falling back to DCIM/Camera")
-        _saveTarget.value = SaveTarget.MediaStoreDefault
+        saveTargetMutable.value = SaveTarget.MediaStoreDefault
         viewModelScope.launch {
             ds.setString(KEY_SAVE_MODE, MODE_MEDIA_STORE)
             ds.setString(KEY_SAVE_TREE_URI, "")
@@ -51,7 +51,7 @@ internal fun CameraViewModel.loadSaveTarget() {
 
 /** Persists a newly picked SAF tree (permission must already be taken by the caller). */
 fun CameraViewModel.setSaveTreeUri(uri: Uri) {
-    _saveTarget.value = SaveTarget.SafTree(uri)
+    saveTargetMutable.value = SaveTarget.SafTree(uri)
     viewModelScope.launch {
         ds.setString(KEY_SAVE_TREE_URI, uri.toString())
         ds.setString(KEY_SAVE_MODE, MODE_SAF)
@@ -60,7 +60,7 @@ fun CameraViewModel.setSaveTreeUri(uri: Uri) {
 
 /** Clears the SAF folder and returns to the MediaStore default. */
 fun CameraViewModel.clearSaveTreeUri() {
-    _saveTarget.value = SaveTarget.MediaStoreDefault
+    saveTargetMutable.value = SaveTarget.MediaStoreDefault
     viewModelScope.launch {
         ds.setString(KEY_SAVE_MODE, MODE_MEDIA_STORE)
         ds.setString(KEY_SAVE_TREE_URI, "")
@@ -80,7 +80,7 @@ object SafDocuments {
                 treeUri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
-        } catch (e: Exception) {
+        } catch (e: SecurityException) {
             Log.w("SafDocuments", "takePersistableUriPermission failed for $treeUri", e)
         }
     }
@@ -104,7 +104,10 @@ object SafDocuments {
         displayName: String,
     ): Uri? = try {
         DocumentsContract.createDocument(resolver, treeUri, mimeType, displayName)
-    } catch (e: Exception) {
+    } catch (e: IllegalArgumentException) {
+        Log.w("SafDocuments", "createDocument failed for $displayName", e)
+        null
+    } catch (e: java.io.FileNotFoundException) {
         Log.w("SafDocuments", "createDocument failed for $displayName", e)
         null
     }
@@ -114,7 +117,10 @@ object SafDocuments {
         resolver.query(treeUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
             if (c.moveToFirst()) c.getString(0) else null
         }
-    } catch (e: Exception) {
+    } catch (e: SecurityException) {
+        Log.w("SafDocuments", "displayName query failed for $treeUri", e)
+        null
+    } catch (e: IllegalArgumentException) {
         Log.w("SafDocuments", "displayName query failed for $treeUri", e)
         null
     }

@@ -17,6 +17,7 @@ object SignalSafetyNumber {
     private const val TAG = "SignalSafetyNumber"
     private const val ITERATIONS = 5200
     private const val VERSION = 2
+    private const val SAFETY_GROUP = 5
 
     /**
      * The displayable safety number for a pair of identities, or null if either ACI or key is unusable.
@@ -40,14 +41,14 @@ object SignalSafetyNumber {
             IdentityKey(remoteIdentityKey),
         )
         fingerprint.displayableFingerprint.displayText
-    } catch (t: Throwable) {
-        warn("could not compute a safety number: ${t.message}")
+    } catch (expected: Throwable) {
+        warn("could not compute a safety number: ${expected.message}")
         null
     }
 
     /** Group the 60 digits into 12 blocks of 5, the way both apps display them. */
     fun format(displayText: String): String =
-        displayText.chunked(5).joinToString(" ")
+        displayText.chunked(SAFETY_GROUP).joinToString(" ")
 
     private fun aciBytes(aci: String): ByteArray =
         ServiceId.Aci.parseFromString(aci).toServiceIdBinary()

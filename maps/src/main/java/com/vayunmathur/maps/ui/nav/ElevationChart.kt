@@ -46,7 +46,7 @@ fun ElevationChart(
     val fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val axisColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
 
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Column(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             stringResource(R.string.nav_elevation_title),
             fontSize = 14.sp,

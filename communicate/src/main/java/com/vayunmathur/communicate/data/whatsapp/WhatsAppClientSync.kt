@@ -22,7 +22,7 @@ internal fun WhatsAppClient.storeAppStateKey(keyId: ByteArray, keyData: ByteArra
 }
 internal fun WhatsAppClient.getAppStateKey(keyId: ByteArray): ByteArray? {
     val s = appStatePrefs.getString("key_${appStateKeyId64(keyId)}", null) ?: return null
-    return try { Base64.decode(s, Base64.NO_WRAP) } catch (e: Exception) { null }
+    return try { Base64.decode(s, Base64.NO_WRAP) } catch (ignored: Exception) { null }
 }
 internal fun WhatsAppClient.appStateVersion(name: String): Long = appStatePrefs.getLong("ver_$name", 0L)
 internal fun WhatsAppClient.setAppStateVersion(name: String, v: Long) { appStatePrefs.edit { putLong("ver_$name", v) } }
@@ -45,6 +45,13 @@ internal suspend fun WhatsAppClient.handleAppStateKeyShare(share: WhatsAppE2EPro
  * Fetch + decode + apply one app-state collection (snapshot then incremental patches).
  * Ref whatsmeow appstate.go fetchAppState. MAC/LTHash verification is skipped.
  */
+private const val SYNC_PAGE_GUARD = 12
+private const val MAX_RETRY_RECEIPTS = 5
+private const val MS_PER_SECOND = 1000L
+private const val HEX_RADIX = 16
+private const val HEX_PAIR = 2
+private const val LOG_PATH_PREFIX_LENGTH = 40
+
 internal suspend fun WhatsAppClient.fetchAppStateCollection(name: String, fullSync: Boolean) {
     if (!appStateCollectionsFetching.add(name)) return
     try {
@@ -52,66 +59,101 @@ internal suspend fun WhatsAppClient.fetchAppStateCollection(name: String, fullSy
         var wantSnapshot = fullSync || version == 0L
         var more = true
         var guard = 0
-        while (more && guard++ < 12) {
-            val collAttrs = mutableMapOf("name" to name, "return_snapshot" to wantSnapshot.toString())
-            if (!wantSnapshot) collAttrs["version"] = version.toString()
-            val iq = WhatsAppProtocol.Node(
-                tag = "iq",
-                attrs = mapOf(
-                    "id" to generateMessageId(), "type" to "set",
-                    "xmlns" to "w:sync:app:state", "to" to "s.whatsapp.net",
-                ),
-                content = listOf(
-                    WhatsAppProtocol.Node(
-                        tag = "sync",
-                        content = listOf(WhatsAppProtocol.Node(tag = "collection", attrs = collAttrs)),
-                    )
-                ),
-            )
-            val resp = sendIqAndWait(iq) ?: break
-            val coll = resp.getChildByTag("sync")?.getChildByTag("collection") ?: break
-
-            val snapNode = coll.getChildByTag("snapshot")
-            var recCount = 0
-            snapNode?.data?.let { snapData ->
-                val ext = WhatsAppAppStateProto.ExternalBlobReference.parseFrom(snapData)
-                val blob = downloadAppStateBlob(ext)
-                if (blob == null) {
-                    WhatsAppDiag.log(TAG, "app-state $name: snapshot blob download FAILED (path=${ext.directPath.take(40)})")
-                } else {
-                    val snap = WhatsAppAppStateProto.SyncdSnapshot.parseFrom(blob)
-                    recCount = snap.recordsCount
-                    for (rec in snap.recordsList) applyAppStateRecord(name, rec, isSet = true)
-                    if (snap.hasVersion()) version = snap.version.version
-                }
-            }
-            val patchNodes = coll.getChildByTag("patches")?.getChildren()?.filter { it.tag == "patch" } ?: emptyList()
-            patchNodes.forEach { p ->
-                p.data?.let { pd ->
-                    val patch = WhatsAppAppStateProto.SyncdPatch.parseFrom(pd)
-                    val muts = if (patch.hasExternalMutations()) {
-                        downloadAppStateBlob(patch.externalMutations)?.let {
-                            WhatsAppAppStateProto.SyncdMutations.parseFrom(it).mutationsList
-                        } ?: emptyList()
-                    } else patch.mutationsList
-                    for (m in muts) applyAppStateRecord(
-                        name, m.record,
-                        isSet = m.operation == WhatsAppAppStateProto.SyncdMutation.SyncdOperation.SET,
-                    )
-                    if (patch.hasVersion()) version = patch.version.version
-                }
-            }
-            WhatsAppDiag.log(TAG, "app-state $name: snapshot=${snapNode != null} records=$recCount patches=${patchNodes.size} more=${coll.attrs["has_more_patches"]} -> v$version")
-            more = coll.attrs["has_more_patches"] == "true"
+        while (more && guard++ < SYNC_PAGE_GUARD) {
+            val coll = fetchAppStateCollectionPage(name, wantSnapshot, version) ?: break
+            val page = applyAppStatePage(name, coll, version)
+            version = page.first
+            more = page.second
             wantSnapshot = false
         }
         setAppStateVersion(name, version)
         WhatsAppDiag.log(TAG, "app-state: $name synced to v$version")
-    } catch (e: Exception) {
-        WhatsAppDiag.log(TAG, "app-state $name failed: ${e.javaClass.simpleName}: ${e.message}")
+    } catch (expected: Exception) {
+        WhatsAppDiag.log(TAG, "app-state $name failed: ${expected.javaClass.simpleName}: ${expected.message}")
     } finally {
         appStateCollectionsFetching.remove(name)
     }
+}
+
+/** Apply one page (snapshot + patches); returns (version, more). */
+private suspend fun WhatsAppClient.applyAppStatePage(
+    name: String,
+    coll: WhatsAppProtocol.Node,
+    version: Long,
+): Pair<Long, Boolean> {
+    var v = version
+    val snapNode = coll.getChildByTag("snapshot")
+    var recCount = 0
+    snapNode?.data?.let { snapData ->
+        val ext = WhatsAppAppStateProto.ExternalBlobReference.parseFrom(snapData)
+        val blob = downloadAppStateBlob(ext)
+        if (blob == null) {
+            WhatsAppDiag.log(
+                TAG,
+                "app-state $name: snapshot blob download FAILED " +
+                    "(path=${ext.directPath.take(LOG_PATH_PREFIX_LENGTH)})")
+        } else {
+            val snap = WhatsAppAppStateProto.SyncdSnapshot.parseFrom(blob)
+            recCount = snap.recordsCount
+            for (rec in snap.recordsList) applyAppStateRecord(rec, isSet = true)
+            if (snap.hasVersion()) v = snap.version.version
+        }
+    }
+    v = applyAppStatePatches(coll, v)
+    val patchNodes = coll.getChildByTag("patches")?.getChildren()?.filter { it.tag == "patch" } ?: emptyList()
+    WhatsAppDiag.log(TAG, "app-state $name: snapshot=${snapNode != null} records=$recCount" +
+        "patches=${patchNodes.size} more=${coll.attrs["has_more_patches"]} -> v$v")
+    return v to (coll.attrs["has_more_patches"] == "true")
+}
+
+/** Fetch one app-state collection page, or null on transport failure. */
+private suspend fun WhatsAppClient.fetchAppStateCollectionPage(
+    name: String,
+    wantSnapshot: Boolean,
+    version: Long,
+): WhatsAppProtocol.Node? {
+    val collAttrs = mutableMapOf("name" to name, "return_snapshot" to wantSnapshot.toString())
+    if (!wantSnapshot) collAttrs["version"] = version.toString()
+    val iq = WhatsAppProtocol.Node(
+        tag = "iq",
+        attrs = mapOf(
+            "id" to generateMessageId(), "type" to "set",
+            "xmlns" to "w:sync:app:state", "to" to "s.whatsapp.net",
+        ),
+        content = listOf(
+            WhatsAppProtocol.Node(
+                tag = "sync",
+                content = listOf(WhatsAppProtocol.Node(tag = "collection", attrs = collAttrs)),
+            )
+        ),
+    )
+    val resp = sendIqAndWait(iq) ?: return null
+    return resp.getChildByTag("sync")?.getChildByTag("collection")
+}
+
+/** Apply patch nodes; returns the updated version. */
+private suspend fun WhatsAppClient.applyAppStatePatches(
+    coll: WhatsAppProtocol.Node,
+    version: Long,
+): Long {
+    var v = version
+    val patchNodes = coll.getChildByTag("patches")?.getChildren()?.filter { it.tag == "patch" } ?: emptyList()
+    patchNodes.forEach { p ->
+        p.data?.let { pd ->
+            val patch = WhatsAppAppStateProto.SyncdPatch.parseFrom(pd)
+            val muts = if (patch.hasExternalMutations()) {
+                downloadAppStateBlob(patch.externalMutations)?.let {
+                    WhatsAppAppStateProto.SyncdMutations.parseFrom(it).mutationsList
+                } ?: emptyList()
+            } else patch.mutationsList
+            for (m in muts) applyAppStateRecord(
+                m.record,
+                isSet = m.operation == WhatsAppAppStateProto.SyncdMutation.SyncdOperation.SET,
+            )
+            if (patch.hasVersion()) v = patch.version.version
+        }
+    }
+    return v
 }
 
 /** Download + decrypt an app-state external blob (snapshot/mutations) via the media CDN. */
@@ -126,7 +168,6 @@ internal suspend fun WhatsAppClient.downloadAppStateBlob(ext: WhatsAppAppStatePr
 
 /** Decrypt one app-state record and apply it (contact names, mute/pin/archive). */
 internal suspend fun WhatsAppClient.applyAppStateRecord(
-    collection: String,
     record: WhatsAppAppStateProto.SyncdRecord,
     isSet: Boolean,
 ) {
@@ -137,9 +178,19 @@ internal suspend fun WhatsAppClient.applyAppStateRecord(
     }
     val expanded = WhatsAppProtocol.expandAppStateKeys(keyData)
     val plain = WhatsAppProtocol.decryptAppStateValue(record.value.blob.toByteArray(), expanded[1]) ?: return
-    val sad = try { WhatsAppAppStateProto.SyncActionData.parseFrom(plain) } catch (e: Exception) { return }
-    val index = try { org.json.JSONArray(String(sad.index.toByteArray(), Charsets.UTF_8)) } catch (e: Exception) { return }
+    val sad = try { WhatsAppAppStateProto.SyncActionData.parseFrom(plain) } catch (ignored: Exception) { return }
+    val index = try { org.json.JSONArray(String(
+        sad.index.toByteArray(),
+        Charsets.UTF_8)) } catch (ignored: Exception) { return }
     if (index.length() == 0) return
+    applyAppStateAction(index, sad)
+}
+
+/** Route one app-state sync action to its store update. */
+private suspend fun WhatsAppClient.applyAppStateAction(
+    index: org.json.JSONArray,
+    sad: WhatsAppAppStateProto.SyncActionData,
+) {
     val action = index.optString(0)
     val jid = if (index.length() > 1) index.optString(1) else ""
     val value = sad.value
@@ -157,8 +208,42 @@ internal suspend fun WhatsAppClient.applyAppStateRecord(
         "mute" -> if (jid.isNotEmpty()) db?.conversationDao()?.updateMuteEndTime(jid, value.muteAction.muteEndTimestamp)
         "pin_v1" -> if (jid.isNotEmpty()) db?.conversationDao()?.updatePinned(jid, value.pinAction.pinned)
         "archive" -> if (jid.isNotEmpty()) db?.conversationDao()?.updateArchived(jid, value.archiveChatAction.archived)
-        "markChatAsRead" -> if (jid.isNotEmpty()) db?.conversationDao()?.updateMarkedAsUnread(jid, !value.markChatAsReadAction.read)
+        "markChatAsRead" -> if (jid.isNotEmpty()) db?.conversationDao()?.updateMarkedAsUnread(
+            jid,
+            !value.markChatAsReadAction.read)
     }
+}
+
+/** Download the history-sync blob (inline or via media host); null with receipt sent on failure. */
+private suspend fun WhatsAppClient.historySyncBytes(
+    notif: WhatsAppE2EProto.HistorySyncNotification,
+    msgId: String,
+): ByteArray? {
+    if (notif.hasInitialHistBootstrapInlinePayload() &&
+        !notif.initialHistBootstrapInlinePayload.isEmpty
+    ) {
+        // Initial bootstrap chunk is inlined in the notification (DeviceProps requested it).
+        return notif.initialHistBootstrapInlinePayload.toByteArray()
+    }
+    val host = mediaConn()?.first ?: run {
+        WhatsAppDiag.log(TAG, "history sync: no media host"); sendHistorySyncReceipt(msgId); return null
+    }
+    val directPath = notif.directPath
+    if (directPath.isEmpty()) {
+        WhatsAppDiag.log(TAG, "history sync: no directPath")
+        sendHistorySyncReceipt(msgId)
+        return null
+    }
+    val hash = Base64.encodeToString(
+        notif.fileEncSha256.toByteArray(), Base64.URL_SAFE or Base64.NO_WRAP
+    )
+    val url = "https://$host$directPath&hash=$hash&mms-type=md-msg-hist&__wa-mms="
+    return downloadMedia(url, notif.mediaKey.toByteArray(), WhatsAppProtocol.MEDIA_KEY_HISTORY)
+        ?: run {
+            WhatsAppDiag.log(TAG, "history sync: download failed")
+            sendHistorySyncReceipt(msgId)
+            null
+        }
 }
 
 /** Request a missing app-state sync key from our primary (deduped). */
@@ -180,8 +265,8 @@ internal suspend fun WhatsAppClient.requestAppStateKey(keyId: ByteArray) {
         val node = buildEncryptedMessageNode("$ownUser@s.whatsapp.net", generateMessageId(), msg, "text") ?: return
         webSocket?.send(WhatsAppProtocol.encodeNode(node))
         WhatsAppDiag.log(TAG, "app-state: requested missing key $id64")
-    } catch (e: Exception) {
-        WhatsAppDiag.log(TAG, "app-state key request failed: ${e.message}")
+    } catch (expected: Exception) {
+        WhatsAppDiag.log(TAG, "app-state key request failed: ${expected.message}")
     }
 }
 
@@ -190,98 +275,6 @@ internal suspend fun WhatsAppClient.requestAppStateKey(keyId: ByteArray) {
  * Ref whatsmeow retry.go sendRetryReceipt. Retries are capped at 5; the identity/prekey <keys>
  * node is included from the 2nd retry onward.
  */
-internal suspend fun WhatsAppClient.sendRetryReceipt(node: WhatsAppProtocol.Node) {
-    val auth = authData ?: return
-    val crypto = ensureE2E(auth) ?: return
-    val ws = webSocket ?: return
-    val msgId = node.attrs["id"] ?: return
-    val count = undecryptableTracker.merge("retry:$msgId", 1) { a, b -> a + b } ?: 1
-    if (count > 5) {
-        Log.w(TAG, "Not sending more retry receipts for $msgId")
-        return
-    }
-    val keysNode = if (count > 1) {
-        try { crypto.buildRetryReceiptKeysNode(accountDeviceIdentity()) } catch (e: Exception) {
-            Log.w(TAG, "Failed to build retry keys node", e); null
-        }
-    } else null
-    val receipt = WhatsAppProtocol.buildRetryReceipt(node, auth.registrationId, count, keysNode)
-    ws.send(WhatsAppProtocol.encodeNode(receipt))
-    Log.d(TAG, "Sent retry receipt #$count for $msgId")
-}
-
-/**
- * Handle an inbound <receipt type="retry">: the peer failed to decrypt a message we sent and
- * is asking us to re-encrypt and resend it. Rebuild the session from the fresh keys included
- * in the receipt (present from the 2nd retry), then re-encrypt the cached plaintext for just
- * the requesting device and resend with the same message id. Ref whatsmeow retry.go
- * handleRetryReceipt. 1:1 only — group skmsg resends are not cached.
- */
-internal suspend fun WhatsAppClient.handleRetryReceipt(node: WhatsAppProtocol.Node) {
-    val auth = authData ?: return
-    val crypto = ensureE2E(auth) ?: return
-    val ws = webSocket ?: return
-    val msgId = node.attrs["id"] ?: return
-    val from = node.attrs["from"] ?: return
-    // The specific device that couldn't decrypt: participant if present, else the chat peer.
-    val deviceJid = node.attrs["participant"] ?: from
-    if (deviceJid.contains("@g.us")) {
-        WhatsAppDiag.log(TAG, "retry: ignoring group retry for $msgId (not cached)")
-        return
-    }
-    val cached = recentSentDMs[msgId] ?: run {
-        WhatsAppDiag.log(TAG, "retry: no cached message for $msgId; cannot resend")
-        return
-    }
-    val resendKey = "$msgId|$deviceJid"
-    val resendCount = retryResendCounts.merge(resendKey, 1) { a, b -> a + b } ?: 1
-    if (resendCount > 5) {
-        WhatsAppDiag.log(TAG, "retry: giving up on $msgId for $deviceJid after $resendCount attempts")
-        return
-    }
-
-    // Rebuild the session from the keys the peer attached (identity + prekeys), if any.
-    val deviceNum = deviceJid.substringBefore("@").substringAfter(":", "0").toIntOrNull() ?: 0
-    if (node.getChildByTag("keys") != null) {
-        try {
-            // parsePreKeyBundleNode reads <registration> + <keys> from the node it is given.
-            val bundle = crypto.parsePreKeyBundleNode(deviceNum, node)
-            if (bundle != null) {
-                crypto.deleteSession(deviceJid)
-                crypto.processPreKeyBundle(deviceJid, bundle)
-                WhatsAppDiag.log(TAG, "retry: rebuilt session for $deviceJid from receipt keys")
-            }
-        } catch (e: Exception) {
-            WhatsAppDiag.log(TAG, "retry: failed to process receipt keys for $deviceJid: ${e.message}")
-        }
-    }
-    if (!ensureSession(deviceJid)) {
-        WhatsAppDiag.log(TAG, "retry: no session for $deviceJid; cannot resend $msgId")
-        return
-    }
-
-    val ownUser = auth.wid.substringBefore("@").substringBefore(":").substringBefore(".")
-    val devUser = deviceJid.substringBefore("@").substringBefore(":").substringBefore(".")
-    val plaintext = if (devUser == ownUser && cached.dsmPlaintextPadded != null)
-        cached.dsmPlaintextPadded else cached.msgPlaintextPadded
-    val enc = try {
-        crypto.encryptDM(deviceJid, plaintext)
-    } catch (e: Exception) {
-        WhatsAppDiag.log(TAG, "retry: re-encrypt failed for $deviceJid: ${e.message}")
-        return
-    }
-    val includeIdentity = enc.type == "pkmsg"
-    val resend = WhatsAppProtocol.buildFanOutMessageNode(
-        to = cached.to,
-        id = msgId,
-        type = cached.type,
-        participantEncs = listOf(WhatsAppProtocol.ParticipantEnc(deviceJid, enc.type, enc.data)),
-        includeDeviceIdentity = includeIdentity,
-        deviceIdentity = if (includeIdentity) accountDeviceIdentity() else null,
-    )
-    val sent = ws.send(WhatsAppProtocol.encodeNode(resend))
-    WhatsAppDiag.log(TAG, "retry: resent $msgId to $deviceJid (attempt $resendCount type=${enc.type}) sent=$sent")
-}
 
 /**
  * Store poll option hashes for later vote resolution.
@@ -313,7 +306,7 @@ internal suspend fun WhatsAppClient.loadPollSecret(msgId: String): ByteArray? {
     pollSecrets[msgId]?.let { return it }
     val hex = db?.pollSecretDao()?.get(msgId) ?: return null
     return runCatching {
-        hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        hex.chunked(HEX_PAIR).map { it.toInt(HEX_RADIX).toByte() }.toByteArray()
     }.getOrNull()?.also { pollSecrets[msgId] = it }
 }
 
@@ -334,24 +327,7 @@ internal suspend fun WhatsAppClient.handleHistorySync(
     msgId: String,
 ) {
     try {
-        val raw: ByteArray = if (notif.hasInitialHistBootstrapInlinePayload() &&
-            !notif.initialHistBootstrapInlinePayload.isEmpty
-        ) {
-            // Initial bootstrap chunk is inlined in the notification (DeviceProps requested it).
-            notif.initialHistBootstrapInlinePayload.toByteArray()
-        } else {
-            val host = mediaConn()?.first ?: run {
-                WhatsAppDiag.log(TAG, "history sync: no media host"); sendHistorySyncReceipt(msgId); return
-            }
-            val directPath = notif.directPath
-            if (directPath.isEmpty()) { WhatsAppDiag.log(TAG, "history sync: no directPath"); sendHistorySyncReceipt(msgId); return }
-            val hash = Base64.encodeToString(
-                notif.fileEncSha256.toByteArray(), Base64.URL_SAFE or Base64.NO_WRAP
-            )
-            val url = "https://$host$directPath&hash=$hash&mms-type=md-msg-hist&__wa-mms="
-            downloadMedia(url, notif.mediaKey.toByteArray(), WhatsAppProtocol.MEDIA_KEY_HISTORY)
-                ?: run { WhatsAppDiag.log(TAG, "history sync: download failed"); sendHistorySyncReceipt(msgId); return }
-        }
+        val raw: ByteArray = historySyncBytes(notif, msgId) ?: return
 
         val inflated = inflateZlib(raw)
         val hs = WhatsAppE2EProto.HistorySync.parseFrom(inflated)
@@ -361,7 +337,8 @@ internal suspend fun WhatsAppClient.handleHistorySync(
         }
         WhatsAppDiag.log(
             TAG,
-            "history sync: type=${hs.syncType} chunk=${hs.chunkOrder} conversations=${hs.conversationsCount} lidMaps=${hs.phoneNumberToLidMappingsCount} (blob=${raw.size}B inflated=${inflated.size}B)",
+            "history sync: type=${hs.syncType} chunk=${hs.chunkOrder} conversations=${hs.conversationsCount}" +
+                "lidMaps=${hs.phoneNumberToLidMappingsCount} (blob=${raw.size}B inflated=${inflated.size}B)",
         )
 
         // Backfill continues (paginates older messages) from the initial bootstrap and from
@@ -377,9 +354,9 @@ internal suspend fun WhatsAppClient.handleHistorySync(
             emitted += emitHistoryConversation(conv, chatJid, requestMore)
         }
         WhatsAppDiag.log(TAG, "history sync: emitted $emitted message(s)")
-    } catch (e: Exception) {
-        WhatsAppDiag.log(TAG, "history sync failed: ${e.javaClass.simpleName}: ${e.message}")
-        Log.e(TAG, "history sync failed", e)
+    } catch (expected: Exception) {
+        WhatsAppDiag.log(TAG, "history sync failed: ${expected.javaClass.simpleName}: ${expected.message}")
+        Log.e(TAG, "history sync failed", expected)
     }
     // Acknowledge the chunk so the phone advances to the next one and finishes "syncing".
     sendHistorySyncReceipt(msgId)
@@ -408,6 +385,18 @@ internal fun WhatsAppClient.sendHistorySyncReceipt(msgId: String) {
  * number of messages emitted. MessageUpdate is the backfill path (no notifications); IncomingMessage
  * is reserved for live messages.
  */
+/** Displayable body + wrapper for a history message, or null when skipped. */
+private fun extractHistoryBody(
+    hsMsg: WhatsAppE2EProto.HsMessage,
+): Pair<String, WhatsAppE2EProto.WebMessageInfo>? {
+    if (!hsMsg.hasMessage()) return null
+    val wmi = hsMsg.message
+    if (!wmi.hasMessage()) return null
+    val body = WhatsAppProtocol.extractMessageBody(wmi.message)
+    if (body.isEmpty()) return null
+    return body to wmi
+}
+
 internal suspend fun WhatsAppClient.emitHistoryConversation(
     conv: WhatsAppE2EProto.HsConversation,
     rawChatJid: String,
@@ -429,24 +418,21 @@ internal suspend fun WhatsAppClient.emitHistoryConversation(
     var lastTs = conv.conversationTimestamp * 1000
     var peerPush = ""
     for (hsMsg in conv.messagesList) {
-        if (!hsMsg.hasMessage()) continue
-        val wmi = hsMsg.message
-        if (!wmi.hasMessage()) continue
-        val body = WhatsAppProtocol.extractMessageBody(wmi.message)
-        if (body.isEmpty()) continue
-        val key = wmi.key
-        val tsMs = wmi.messageTimestamp * 1000
-        if (!key.fromMe && wmi.pushName.isNotEmpty()) peerPush = wmi.pushName
-        val senderName = if (key.fromMe) null
-        else wmi.pushName.ifEmpty { conv.name.ifEmpty { contactName ?: phone } }
-        msgs.add(HMsg(key.id, body, key.fromMe, tsMs, senderName))
-        if (tsMs >= lastTs) { lastTs = tsMs; lastBody = body }
+        extractHistoryBody(hsMsg)?.let { (body, wmi) ->
+            val key = wmi.key
+            val tsMs = wmi.messageTimestamp * 1000
+            if (!key.fromMe && wmi.pushName.isNotEmpty()) peerPush = wmi.pushName
+            val senderName = if (key.fromMe) null
+            else wmi.pushName.ifEmpty { conv.name.ifEmpty { contactName ?: phone } }
+            msgs.add(HMsg(key.id, body, key.fromMe, tsMs, senderName))
+            if (tsMs >= lastTs) { lastTs = tsMs; lastBody = body }
+        }
     }
     if (msgs.isEmpty()) return 0
 
     // Register the conversation row first.
     val isGroupChat = chatJid.endsWith("@g.us")
-    _events.emit(
+    eventsMutable.emit(
         WhatsAppEvent.ConversationUpdate(
             source = MessageSource.WHATSAPP,
             conversationId = convId,
@@ -461,7 +447,7 @@ internal suspend fun WhatsAppClient.emitHistoryConversation(
     )
     // Then backfill its messages.
     for (m in msgs) {
-        _events.emit(
+        eventsMutable.emit(
             WhatsAppEvent.MessageUpdate(
                 source = MessageSource.WHATSAPP,
                 conversationId = convId,
@@ -482,7 +468,7 @@ internal suspend fun WhatsAppClient.emitHistoryConversation(
         val oldest = msgs.minByOrNull { it.ts }
         if (oldest != null) {
             scope.launch {
-                sendHistoryOnDemandRequest(rawChatJid, oldest.id, oldest.outgoing, oldest.ts / 1000)
+                sendHistoryOnDemandRequest(rawChatJid, oldest.id, oldest.outgoing, oldest.ts / MS_PER_SECOND)
             }
         }
     }
@@ -521,7 +507,7 @@ internal suspend fun WhatsAppClient.sendHistoryOnDemandRequest(
         val node = buildEncryptedMessageNode(ownJid, id, msg, "text") ?: return
         webSocket?.send(WhatsAppProtocol.encodeNode(node))
         WhatsAppDiag.log(TAG, "on-demand history requested for $chatJid (page $pages, oldest=$oldestMsgId)")
-    } catch (e: Exception) {
-        WhatsAppDiag.log(TAG, "on-demand request failed: ${e.message}")
+    } catch (expected: Exception) {
+        WhatsAppDiag.log(TAG, "on-demand request failed: ${expected.message}")
     }
 }

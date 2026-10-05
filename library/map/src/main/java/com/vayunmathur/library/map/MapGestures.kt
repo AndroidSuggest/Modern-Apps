@@ -60,6 +60,7 @@ data class MapClick(
  * about.
  */
 @Composable
+@Suppress("LongMethod")
 internal fun Modifier.mapGestures(
     cameraState: CameraState,
     gestures: GestureOptions,
@@ -90,7 +91,7 @@ internal fun Modifier.mapGestures(
         }
         .pointerInput(cameraState, gestures, zoomRange, density) {
             detectTransformGestures { centroid, pan, zoom, rotation ->
-                if (!gestures.isScrollEnabled && !gestures.isZoomEnabled && !gestures.isRotateEnabled) return@detectTransformGestures
+                if (gestures.isTransformDisabled) return@detectTransformGestures
                 zoomAnim.value?.cancel()
                 cameraState.onGesture(
                     centroidDp = toDp(centroid),
@@ -110,7 +111,7 @@ internal fun Modifier.mapGestures(
         // of a pan. A pinch (fingers moving apart / opposite) or a twist is left untouched, so
         // zoom still works.
         .pointerInput(cameraState, gestures, density) {
-            if ((!gestures.isScrollEnabled && !gestures.isZoomEnabled) || !gestures.isTiltEnabled) {
+            if (gestures.isTiltDisabled) {
                 return@pointerInput
             }
             detectVerticalTiltGestures { dyPx -> cameraState.onTilt(dyPx / density) }
@@ -168,52 +169,85 @@ internal fun Modifier.mapGestures(
 private suspend fun PointerInputScope.detectVerticalTiltGestures(onTilt: (Float) -> Unit) =
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false)
-        val previous = mutableMapOf<PointerId, Offset>()
-        val slop = viewConfiguration.touchSlop
-        var tilting = false
-        var accumulated = 0f
-        while (true) {
-            val event = awaitPointerEvent()
-            val pressed = event.changes.filter { it.pressed }
-            if (pressed.isEmpty()) break
-            // Only a two-finger gesture tilts. Any other count resets so a finger added or lifted
-            // mid-gesture cannot leave a stale baseline that jumps the pitch.
-            if (pressed.size != 2) {
-                previous.clear()
-                tilting = false
-                accumulated = 0f
-                continue
-            }
-            val a = pressed[0]
-            val b = pressed[1]
-            val pa = previous[a.id]
-            val pb = previous[b.id]
-            previous[a.id] = a.position
-            previous[b.id] = b.position
-            if (pa == null || pb == null) continue
-            val dyA = a.position.y - pa.y
-            val dyB = b.position.y - pb.y
-            val dxA = a.position.x - pa.x
-            val dxB = b.position.x - pb.x
-            // Parallel and vertical: same vertical direction, each finger moving more up/down than
-            // sideways. Rejects the pinch (dyA*dyB < 0) and the mostly-horizontal two-finger pan.
-            val parallelVertical =
-                dyA * dyB > 0f && abs(dyA) >= abs(dxA) && abs(dyB) >= abs(dxB)
-            if (!parallelVertical) {
-                tilting = false
-                continue
-            }
-            val dy = (dyA + dyB) / 2f
-            if (!tilting) {
-                accumulated += dy
-                if (abs(accumulated) < slop) continue
-                tilting = true
-            }
-            a.consume()
-            b.consume()
-            onTilt(dy)
-        }
+        val tracker = TiltTracker(viewConfiguration.touchSlop)
+        tiltLoop(tracker, onTilt)
     }
+
+@Suppress("LoopWithTooManyJumpStatements")
+private suspend fun AwaitPointerEventScope.tiltLoop(
+    tracker: TiltTracker,
+    onTilt: (Float) -> Unit
+) {
+    while (true) {
+        val event = awaitPointerEvent()
+        val pressed = event.changes.filter { it.pressed }
+        if (pressed.isEmpty()) break
+        // Only a two-finger gesture tilts. Any other count resets so a finger added or lifted
+        // mid-gesture cannot leave a stale baseline that jumps the pitch.
+        if (pressed.size != TILT_FINGERS) {
+            tracker.reset()
+            continue
+        }
+        val tilt = tracker.advance(pressed[0], pressed[1])
+        if (tilt != null) onTilt(tilt)
+    }
+}
+
+private const val TILT_FINGERS = 2
+
+/** Tracks the two-finger parallel-drag state for the tilt detector. */
+private class TiltTracker(private val slop: Float) {
+    private val previous = mutableMapOf<PointerId, Offset>()
+    private var tilting = false
+    private var accumulated = 0f
+
+    fun reset() {
+        previous.clear()
+        tilting = false
+        accumulated = 0f
+    }
+
+    /**
+     * Advances one frame; returns the tilt delta to report, or null when this frame
+     * claims nothing (new fingers, non-parallel move, or still within slop).
+     */
+    fun advance(first: PointerInputChange, second: PointerInputChange): Float? {
+        val prevFirst = previous[first.id]
+        val prevSecond = previous[second.id]
+        previous[first.id] = first.position
+        previous[second.id] = second.position
+        if (prevFirst == null || prevSecond == null) return null
+        val delta = parallelVerticalDelta(first, second, prevFirst, prevSecond) ?: run {
+            tilting = false
+            return null
+        }
+        if (!tilting) {
+            accumulated += delta
+            if (abs(accumulated) < slop) return null
+            tilting = true
+        }
+        first.consume()
+        second.consume()
+        return delta
+    }
+
+    // Parallel and vertical: same vertical direction, each finger moving more up/down than
+    // sideways. Rejects the pinch (dyFirst*dySecond < 0) and the mostly-horizontal pan.
+    private fun parallelVerticalDelta(
+        first: PointerInputChange,
+        second: PointerInputChange,
+        prevFirst: Offset,
+        prevSecond: Offset
+    ): Float? {
+        val dyFirst = first.position.y - prevFirst.y
+        val dySecond = second.position.y - prevSecond.y
+        val dxFirst = first.position.x - prevFirst.x
+        val dxSecond = second.position.x - prevSecond.x
+        if (dyFirst * dySecond <= 0f) return null
+        if (abs(dyFirst) < abs(dxFirst) || abs(dySecond) < abs(dxSecond)) return null
+        return (dyFirst + dySecond) / 2f
+    }
+}
 
 /** Single-pointer tap gestures: [onTap], [onDoubleTap], and the "quick zoom" that
  * follows a double-tap the user holds and swipes — [onQuickZoomStart] then
@@ -246,29 +280,60 @@ private suspend fun PointerInputScope.detectTapAndQuickZoomGestures(
     // (following the finger instead would drift the map out from under it).
     val anchor = up.position
     val slop = viewConfiguration.touchSlop
-    var zooming = false
-    var dragOrigin = 0f
+    val drag = QuickZoomDrag(slop)
+    quickZoomLoop(secondDown, drag, anchor, onQuickZoomStart, onQuickZoom)
+    if (!drag.started) onDoubleTap(anchor)
+}
+
+@Suppress("LoopWithTooManyJumpStatements")
+private suspend fun AwaitPointerEventScope.quickZoomLoop(
+    secondDown: PointerInputChange,
+    drag: QuickZoomDrag,
+    anchor: Offset,
+    onQuickZoomStart: () -> Unit,
+    onQuickZoom: (anchor: Offset, dragPx: Float) -> Unit
+) {
     while (true) {
         val event = awaitPointerEvent()
         // A second finger means the user wants a pinch; hand it over untouched.
-        if (event.changes.size > 1) return@awaitEachGesture
+        if (event.changes.size > 1) return
         val change = event.changes.firstOrNull { it.id == secondDown.id } ?: break
         if (!change.pressed) {
             change.consume()
             break
         }
         val dy = change.position.y - secondDown.position.y
-        if (!zooming) {
-            if (abs(dy) < slop) continue
-            // Start measuring from the slop boundary so the zoom doesn't jump.
-            dragOrigin = dy - slop * sign(dy)
-            zooming = true
+        val dragDelta = drag.advance(dy)
+        if (dragDelta == null) continue
+        if (!drag.started) {
+            drag.start(dy)
             onQuickZoomStart()
         }
         change.consume()
-        onQuickZoom(anchor, dy - dragOrigin)
+        onQuickZoom(anchor, dy - drag.origin)
     }
-    if (!zooming) onDoubleTap(anchor)
+}
+
+/** Tracks the slop-gated drag of a quick-zoom gesture. */
+private class QuickZoomDrag(private val slop: Float) {
+    var started = false
+        private set
+    var origin = 0f
+        private set
+
+    /** Returns non-null once the drag has passed slop (or already had). */
+    fun advance(dy: Float): Float? {
+        if (started) return dy
+        if (abs(dy) < slop) return null
+        return dy
+    }
+
+    /** Starts measuring from the slop boundary so the zoom doesn't jump. */
+    fun start(dy: Float) {
+        // Start measuring from the slop boundary so the zoom doesn't jump.
+        origin = dy - slop * sign(dy)
+        started = true
+    }
 }
 
 /** The second down of a double-tap, or null if none arrives in time. */

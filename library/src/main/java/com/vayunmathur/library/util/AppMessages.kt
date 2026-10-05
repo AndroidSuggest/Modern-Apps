@@ -55,7 +55,12 @@ object AppMessages {
      * repeatedly-failing operation (e.g. an update retrying, or a per-package install
      * callback firing for a batch) doesn't spam the same snackbar. See issue #630.
      */
-    fun show(text: String, actionLabel: String? = null, duration: Duration = Duration.Short, onAction: (() -> Unit)? = null) {
+    fun show(
+        text: String,
+        actionLabel: String? = null,
+        duration: Duration = Duration.Short,
+        onAction: (() -> Unit)? = null
+    ) {
         if (actionLabel == null) {
             val now = System.currentTimeMillis()
             synchronized(this) {

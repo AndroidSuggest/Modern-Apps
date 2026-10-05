@@ -18,6 +18,7 @@ import android.ranging.uwb.UwbComplexChannel
 import android.ranging.uwb.UwbRangingParams
 import android.util.Log
 import androidx.annotation.RequiresApi
+import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -137,8 +138,11 @@ class UwbController(context: Context) {
      * @param preambleIndex same on both ends; chosen by the initiator.
      * @param peerUuid an arbitrary unique id used by `android.ranging` to
      *   key the peer in callbacks — same on both ends would be nice but not
-     *   required; we use a deterministic-ish UUID derived from sessionId.
+    *   required; we use a deterministic-ish UUID derived from sessionId.
      */
+    // Broad catches are deliberate: android.ranging calls into the UWB radio stack, whose
+    // failures surface as undocumented runtime exceptions; each is logged and mapped below.
+    @Suppress("TooGenericExceptionCaught")
     fun stream(
         role: Role,
         localAddress: ByteArray,
@@ -150,80 +154,16 @@ class UwbController(context: Context) {
         peerUuid: UUID = UUID(0L, sessionId.toLong())
     ): Flow<RangingSample> = callbackFlow {
         val mgr = manager ?: run {
-            trySend(
-                RangingSample(
-                    null, null, null, System.nanoTime(),
-                    peerDisconnected = true
-                )
-            )
+            trySend(disconnectedSample())
             close()
             return@callbackFlow
         }
 
-        val localUwbAddress = try {
-            UwbAddress.fromBytes(localAddress)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create UwbAddress from localAddress", e)
-            trySend(
-                RangingSample(
-                    null, null, null, System.nanoTime(),
-                    peerDisconnected = true
-                )
-            )
-            close(IllegalStateException("Invalid local UWB address", e))
-            return@callbackFlow
-        }
-        val peerUwbAddress = try {
-            UwbAddress.fromBytes(peerAddress)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create UwbAddress from peerAddress", e)
-            trySend(
-                RangingSample(
-                    null, null, null, System.nanoTime(),
-                    peerDisconnected = true
-                )
-            )
-            close(IllegalStateException("Invalid peer UWB address", e))
-            return@callbackFlow
-        }
-        val uwbParams = UwbRangingParams.Builder(
-            /* sessionId = */ sessionId,
-            /* configId = */ UwbRangingParams.CONFIG_UNICAST_DS_TWR,
-            /* deviceAddress = */ localUwbAddress,
-            /* peerAddress = */ peerUwbAddress
+        val localUwbAddress = addressOrAbort(localAddress, "local") ?: return@callbackFlow
+        val peerUwbAddress = addressOrAbort(peerAddress, "peer") ?: return@callbackFlow
+        val rawDevice = buildRawDevice(
+            sessionId, localUwbAddress, peerUwbAddress, sessionKey, channelNumber, preambleIndex, peerUuid
         )
-            .setComplexChannel(
-                UwbComplexChannel.Builder()
-                    .setChannel(channelNumber)
-                    .setPreambleIndex(preambleIndex)
-                    .build()
-            )
-            .setSessionKeyInfo(sessionKey)
-            // ~5 Hz instead of the default ~1 Hz. Smoother distance/direction
-            // updates and seems to keep the radio from settling on a stale
-            // sample when the peer briefly drops out of forward FOV.
-            // (The UPDATE_RATE_* constants live on RawRangingDevice, not on
-            // UwbRangingParams — the setter is on UwbRangingParams.Builder.)
-            .setRangingUpdateRate(RawRangingDevice.UPDATE_RATE_FREQUENT)
-            // (We intentionally don't call setSlotDuration here — DURATION_1_MS
-            // is unsupported by older UWB stacks like the Pixel 7 Pro's and
-            // causes the whole session to fail with REASON_UNSUPPORTED. Let
-            // the radio pick its default slot duration.)
-            .build()
-
-        val rawDevice = RawRangingDevice.Builder()
-            .setRangingDevice(RangingDevice.Builder().setUuid(peerUuid).build())
-            .setUwbRangingParams(uwbParams)
-            .build()
-
-        // Try the richest SessionConfig that the device hasn't rejected.
-        // Tier 2 = AoA + DIRECTIONAL antenna + IMU sensor fusion (best AoA — this
-        //         is what Find My / Apple Find Nearby uses to disambiguate
-        //         the front/back hemisphere and stabilise the arrow).
-        // Tier 1 = AoA + IMU sensor fusion only (drop the antenna mode flag).
-        // Tier 0 = AoA only (Pixel 7 Pro et al. only accept this).
-        // We start one tier above whatever last worked (in case the radio became
-        // available again) and degrade until the session opens successfully.
         val startTier = if (lastWorkingTier >= 0) (lastWorkingTier + 1).coerceAtMost(2) else 2
         Log.i(TAG, "stream: opening session at tier=$startTier (last working was $lastWorkingTier)")
         var currentTier = startTier
@@ -234,7 +174,7 @@ class UwbController(context: Context) {
                 lastWorkingTier = currentTier
             }
             override fun onOpenFailed(reason: Int) {
-                Log.e(TAG, "RangingSession.onOpenFailed(reason=$reason, tier=$currentTier). Reasons: 0=UNKNOWN 1=LOCAL_REQUEST 2=REMOTE_REQUEST 3=UNSUPPORTED 4=SYSTEM_POLICY 5=NO_PEERS_FOUND")
+                Log.e(TAG, openFailedMessage(reason, currentTier))
                 // If REASON_UNSUPPORTED, this config tier was rejected by the
                 // radio. Drop one tier and retry, until we hit tier 0 (AoA-only).
                 if (reason == 3 && currentTier > 0) {
@@ -265,30 +205,15 @@ class UwbController(context: Context) {
                     }
                     return
                 }
-                trySend(
-                    RangingSample(
-                        null, null, null, System.nanoTime(),
-                        peerDisconnected = true
-                    )
-                )
+                trySend(disconnectedSample())
                 close(IllegalStateException("RangingSession open failed (reason=$reason)"))
             }
             override fun onStarted(peer: RangingDevice, technology: Int) {}
             override fun onStopped(peer: RangingDevice, technology: Int) {
-                trySend(
-                    RangingSample(
-                        null, null, null, System.nanoTime(),
-                        peerDisconnected = true
-                    )
-                )
+                trySend(disconnectedSample())
             }
             override fun onClosed(reason: Int) {
-                trySend(
-                    RangingSample(
-                        null, null, null, System.nanoTime(),
-                        peerDisconnected = true
-                    )
-                )
+                trySend(disconnectedSample())
                 close()
             }
             override fun onResults(peer: RangingDevice, data: RangingData) {
@@ -322,10 +247,7 @@ class UwbController(context: Context) {
                     val distOk = (d?.confidence ?: 0) >= 1
                     val azOk = (az?.confidence ?: 0) >= 1
                     val elOk = (el?.confidence ?: 0) >= 1
-                    Log.i(
-                        TAG,
-                        "onResults: dist=${d?.measurement} (conf=${d?.confidence})  raw_az=$rawAzDeg (conf=${az?.confidence})  folded_az=$foldedAzDeg  el=${el?.measurement} (conf=${el?.confidence})  rssi=${runCatching { data.rssi }.getOrNull()}"
-                    )
+                    Log.i(TAG, formatSampleLog(data, rawAzDeg, foldedAzDeg))
                     trySend(
                         RangingSample(
                             distanceMeters = if (distOk) d?.measurement?.toFloat() else null,
@@ -348,13 +270,8 @@ class UwbController(context: Context) {
             null
         }
         if (newSession == null) {
-            trySend(
-                RangingSample(
-                    null, null, null, System.nanoTime(),
-                    peerDisconnected = true
-                )
-            )
-            close(IllegalStateException("RangingManager.createRangingSession returned null or threw exception"))
+            trySend(disconnectedSample())
+            close(IllegalStateException("RangingManager.createRangingSession returned null or threw"))
             return@callbackFlow
         }
         session = newSession
@@ -362,12 +279,7 @@ class UwbController(context: Context) {
             newSession.start(preferenceForTier(startTier, role, rawDevice))
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start RangingSession", e)
-            trySend(
-                RangingSample(
-                    null, null, null, System.nanoTime(),
-                    peerDisconnected = true
-                )
-            )
+            trySend(disconnectedSample())
             close(IllegalStateException("Failed to start RangingSession", e))
             return@callbackFlow
         }
@@ -377,6 +289,73 @@ class UwbController(context: Context) {
             runCatching { session?.close() }
             session = null
         }
+    }
+
+    /**
+     * Parse one FiRa MAC address, failing the flow's session with a disconnect
+     * marker when the bytes are malformed. Returns null on failure.
+     *
+     * Broad catch is deliberate, same as [stream]: `UwbAddress.fromBytes`
+     * validates in the radio stack, whose failures surface as undocumented
+     * runtime exceptions; each is logged and mapped to a disconnect below.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun ProducerScope<RangingSample>.addressOrAbort(
+        bytes: ByteArray,
+        which: String,
+    ): UwbAddress? {
+        return try {
+            UwbAddress.fromBytes(bytes)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create UwbAddress from ${which}Address", e)
+            trySend(disconnectedSample())
+            close(IllegalStateException("Invalid $which UWB address", e))
+            null
+        }
+    }
+
+    /**
+     * Build the raw ranging device from the agreed FiRa params.
+     *
+     * Rate note: ~5 Hz instead of the default ~1 Hz — smoother
+     * distance/direction updates and seems to keep the radio from settling on
+     * a stale sample when the peer briefly drops out of forward FOV.
+     * (The UPDATE_RATE_* constants live on RawRangingDevice, not on
+     * UwbRangingParams — the setter is on UwbRangingParams.Builder.)
+     *
+     * We intentionally don't call setSlotDuration here — DURATION_1_MS is
+     * unsupported by older UWB stacks like the Pixel 7 Pro's and causes the
+     * whole session to fail with REASON_UNSUPPORTED. Let the radio pick its
+     * default slot duration.
+     */
+    private fun buildRawDevice(
+        sessionId: Int,
+        localUwbAddress: UwbAddress,
+        peerUwbAddress: UwbAddress,
+        sessionKey: ByteArray,
+        channelNumber: Int,
+        preambleIndex: Int,
+        peerUuid: UUID,
+    ): RawRangingDevice {
+        val uwbParams = UwbRangingParams.Builder(
+            /* sessionId = */ sessionId,
+            /* configId = */ UwbRangingParams.CONFIG_UNICAST_DS_TWR,
+            /* deviceAddress = */ localUwbAddress,
+            /* peerAddress = */ peerUwbAddress
+        )
+            .setComplexChannel(
+                UwbComplexChannel.Builder()
+                    .setChannel(channelNumber)
+                    .setPreambleIndex(preambleIndex)
+                    .build()
+            )
+            .setSessionKeyInfo(sessionKey)
+            .setRangingUpdateRate(RawRangingDevice.UPDATE_RATE_FREQUENT)
+            .build()
+        return RawRangingDevice.Builder()
+            .setRangingDevice(RangingDevice.Builder().setUuid(peerUuid).build())
+            .setUwbRangingParams(uwbParams)
+            .build()
     }
 
     /**
@@ -455,6 +434,27 @@ class UwbController(context: Context) {
     )
 
     enum class Role { Initiator, Responder }
+
+    /** Marker sample for "the peer is gone / the session failed" — one call site per failure path. */
+    private fun disconnectedSample() =
+        RangingSample(null, null, null, System.nanoTime(), peerDisconnected = true)
+
+    /** One-line form of the onOpenFailed log; kept out of the callback so the line stays short. */
+    private fun openFailedMessage(reason: Int, tier: Int): String =
+        "RangingSession.onOpenFailed(reason=$reason, tier=$tier). " +
+            "Reasons: 0=UNKNOWN 1=LOCAL_REQUEST 2=REMOTE_REQUEST " +
+            "3=UNSUPPORTED 4=SYSTEM_POLICY 5=NO_PEERS_FOUND"
+
+    /** One-line form of the per-result log; kept out of the callback so the line stays short. */
+    private fun formatSampleLog(data: RangingData, rawAzDeg: Float?, foldedAzDeg: Float?): String {
+        val d = data.distance
+        val az = data.azimuth
+        val el = data.elevation
+        return "onResults: dist=${d?.measurement} (conf=${d?.confidence})  " +
+            "raw_az=$rawAzDeg (conf=${az?.confidence})  folded_az=$foldedAzDeg  " +
+            "el=${el?.measurement} (conf=${el?.confidence})  " +
+            "rssi=${runCatching { data.rssi }.getOrNull()}"
+    }
 
     companion object {
         private const val TAG = "UwbController"

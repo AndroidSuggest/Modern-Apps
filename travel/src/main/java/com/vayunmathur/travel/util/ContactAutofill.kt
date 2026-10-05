@@ -54,55 +54,97 @@ private val DATA_PROJECTION = arrayOf(
     ContactsContract.Data.DISPLAY_NAME,
 )
 
-private fun parseContactCursor(c: Cursor): ContactInfo? {
-    val mimeIdx = c.getColumnIndex(ContactsContract.Data.MIMETYPE)
-    // Email.ADDRESS / Phone.NUMBER / Event.START_DATE map to DATA1;
-    // StructuredName given/family map to DATA2/DATA3; Event.TYPE is DATA2.
-    val data1 = c.getColumnIndex(ContactsContract.Data.DATA1)
-    val data2 = c.getColumnIndex(ContactsContract.Data.DATA2)
-    val data3 = c.getColumnIndex(ContactsContract.Data.DATA3)
-    val nameIdx = c.getColumnIndex(ContactsContract.Data.DISPLAY_NAME)
-    if (mimeIdx < 0) return null
+/** Length of an ISO `YYYY-MM-DD` birthday. */
+private const val ISO_DATE_LENGTH = 10
 
-    var given = ""
-    var family = ""
-    var email = ""
-    var phone = ""
-    var birthday = ""
-    var display = ""
+/** Index of the year/month/day separators in an ISO date. */
+private const val ISO_FIRST_DASH = 4
+private const val ISO_SECOND_DASH = 7
 
-    while (c.moveToNext()) {
-        if (display.isBlank() && nameIdx >= 0) display = c.getString(nameIdx).orEmpty()
-        when (c.getString(mimeIdx)) {
-            StructuredName.CONTENT_ITEM_TYPE -> {
-                given = c.getString(data2).orEmpty()
-                family = c.getString(data3).orEmpty()
-            }
-            Email.CONTENT_ITEM_TYPE -> if (email.isBlank()) email = c.getString(data1).orEmpty()
-            Phone.CONTENT_ITEM_TYPE -> if (phone.isBlank()) phone = c.getString(data1).orEmpty()
-            Event.CONTENT_ITEM_TYPE -> {
-                if (birthday.isBlank() && data2 >= 0 && c.getInt(data2) == Event.TYPE_BIRTHDAY) {
-                    birthday = isoBirthday(c.getString(data1))
-                }
-            }
-        }
+/** Column indices for the contact Data row being parsed. */
+private data class ContactColumns(
+    val mime: Int,
+    val data1: Int,
+    val data2: Int,
+    val data3: Int,
+    val displayName: Int,
+)
+
+/** Mutable accumulation of contact fields across cursor rows. */
+private class ContactAccumulator {
+    var given: String = ""
+    var family: String = ""
+    var email: String = ""
+    var phone: String = ""
+    var birthday: String = ""
+    var display: String = ""
+
+    fun toContactInfo(): ContactInfo {
+        applyDisplayNameFallback()
+        return ContactInfo(
+            givenName = given,
+            familyName = family,
+            email = email,
+            phone = normalizePhone(phone),
+            bornOn = birthday,
+        )
     }
 
-    // Fall back to splitting the display name if there's no structured name.
-    if (given.isBlank() && family.isBlank() && display.isNotBlank()) {
+    /** Fall back to splitting the display name if there's no structured name. */
+    private fun applyDisplayNameFallback() {
+        if (given.isNotBlank() || family.isNotBlank() || display.isBlank()) return
         val parts = display.trim().split(" ").filter { it.isNotBlank() }
         given = parts.firstOrNull().orEmpty()
         family = if (parts.size > 1) parts.drop(1).joinToString(" ") else ""
     }
-
-    return ContactInfo(
-        givenName = given,
-        familyName = family,
-        email = email,
-        phone = normalizePhone(phone),
-        bornOn = birthday,
-    )
 }
+
+private fun parseContactCursor(c: Cursor): ContactInfo? {
+    val cols = ContactColumns(
+        mime = c.getColumnIndex(ContactsContract.Data.MIMETYPE),
+        // Email.ADDRESS / Phone.NUMBER / Event.START_DATE map to DATA1;
+        // StructuredName given/family map to DATA2/DATA3; Event.TYPE is DATA2.
+        data1 = c.getColumnIndex(ContactsContract.Data.DATA1),
+        data2 = c.getColumnIndex(ContactsContract.Data.DATA2),
+        data3 = c.getColumnIndex(ContactsContract.Data.DATA3),
+        displayName = c.getColumnIndex(ContactsContract.Data.DISPLAY_NAME),
+    )
+    if (cols.mime < 0) return null
+    val acc = ContactAccumulator()
+    while (c.moveToNext()) {
+        acc.readDisplayName(c, cols)
+        acc.readRow(c, cols)
+    }
+    return acc.toContactInfo()
+}
+
+private fun ContactAccumulator.readDisplayName(c: Cursor, cols: ContactColumns) {
+    if (display.isBlank() && cols.displayName >= 0) {
+        display = c.getString(cols.displayName).orEmpty()
+    }
+}
+
+private fun ContactAccumulator.readRow(c: Cursor, cols: ContactColumns) {
+    when (c.getString(cols.mime)) {
+        StructuredName.CONTENT_ITEM_TYPE -> readStructuredName(c, cols)
+        Email.CONTENT_ITEM_TYPE -> if (email.isBlank()) email = c.getString(cols.data1).orEmpty()
+        Phone.CONTENT_ITEM_TYPE -> if (phone.isBlank()) phone = c.getString(cols.data1).orEmpty()
+        Event.CONTENT_ITEM_TYPE -> readBirthday(c, cols)
+    }
+}
+
+private fun ContactAccumulator.readStructuredName(c: Cursor, cols: ContactColumns) {
+    given = c.getString(cols.data2).orEmpty()
+    family = c.getString(cols.data3).orEmpty()
+}
+
+private fun ContactAccumulator.readBirthday(c: Cursor, cols: ContactColumns) {
+    if (birthday.isNotBlank() || !isBirthdayRow(c, cols)) return
+    birthday = isoBirthday(c.getString(cols.data1))
+}
+
+private fun isBirthdayRow(c: Cursor, cols: ContactColumns): Boolean =
+    cols.data2 >= 0 && c.getInt(cols.data2) == Event.TYPE_BIRTHDAY
 
 /** Strip spaces/dashes/parens so the number is closer to the E.164 Duffel wants. */
 private fun normalizePhone(raw: String): String =
@@ -115,5 +157,8 @@ private fun normalizePhone(raw: String): String =
  */
 private fun isoBirthday(raw: String?): String {
     val s = raw?.trim().orEmpty()
-    return if (s.length == 10 && s[4] == '-' && s[7] == '-' && s.take(4).all { it.isDigit() }) s else ""
+    if (s.length != ISO_DATE_LENGTH) return ""
+    if (s[ISO_FIRST_DASH] != '-' || s[ISO_SECOND_DASH] != '-') return ""
+    if (!s.take(ISO_FIRST_DASH).all { it.isDigit() }) return ""
+    return s
 }

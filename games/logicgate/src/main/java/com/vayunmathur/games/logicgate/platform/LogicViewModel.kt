@@ -8,26 +8,40 @@ import android.content.Context
 import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.vayunmathur.games.logicgate.data.*
+import com.vayunmathur.games.logicgate.data.ChapterId
+import com.vayunmathur.games.logicgate.data.ChipLibrary
+import com.vayunmathur.games.logicgate.data.Circuit
+import com.vayunmathur.games.logicgate.data.CircuitSampling
+import com.vayunmathur.games.logicgate.data.IoPos
+import com.vayunmathur.games.logicgate.data.LevelDef
+import com.vayunmathur.games.logicgate.data.Levels
+import com.vayunmathur.games.logicgate.data.LogicProgressRepository
+import com.vayunmathur.games.logicgate.data.OutputMapping
+import com.vayunmathur.games.logicgate.data.PlacedChip
+import com.vayunmathur.games.logicgate.data.Wire
+import com.vayunmathur.games.logicgate.data.WireEnd
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 // Persisted format v2 with busWidth + lenient json
 @Serializable
-data class PersistedWire(val id: String, val fromInstance: String, val fromPin: Int, val toInstance: String, val toPin: Int, val busWidth: Int = 1)
+data class PersistedWire(
+    val id: String,
+    val fromInstance: String,
+    val fromPin: Int,
+    val toInstance: String,
+    val toPin: Int,
+    val busWidth: Int = 1,
+)
 @Serializable
 data class PersistedGate(val instanceId: String, val chipId: String, val x: Float, val y: Float)
 @Serializable
@@ -63,80 +77,59 @@ data class DraggedChipGhost(val chipId: String, val offset: Offset)
 
 sealed class EvalStatus {
     object Idle : EvalStatus()
-    data class Ok(val passingRows: Int, val totalRows: Int, val isFullyCorrect: Boolean, val failingRows: List<Int>) : EvalStatus()
+    data class Ok(
+        val passingRows: Int,
+        val totalRows: Int,
+        val isFullyCorrect: Boolean,
+        val failingRows: List<Int>,
+    ) : EvalStatus()
     data class Error(val msg: String) : EvalStatus()
     data class Cycle(val ids: List<String>) : EvalStatus()
 }
 
 class LogicViewModel(application: Application) : AndroidViewModel(application), LogicActions {
-    private val repo = LogicProgressRepository(application)
-    private val ds = DataStoreUtils.getInstance(application)
+    internal val progressRepo = LogicProgressRepository(application)
+    internal val dataStore = DataStoreUtils.getInstance(application)
+    internal val appContext: Context = application.applicationContext
     private val ctx: Context get() = getApplication()
 
     val achievementsManager: LogicAchievementsManager = run {
-        val json = try { ctx.assets.open("achievements.json").bufferedReader().use { it.readText() } } catch (_: Exception) { "[]" }
-        LogicAchievementsManager(ctx, json, repo)
+        val json = engine.loadAchievementsJson()
+        LogicAchievementsManager(ctx, json, progressRepo)
     }
 
-    private val _completedIds = MutableStateFlow(repo.getCompletedLevelIds())
-    val completedIds: StateFlow<Set<String>> = _completedIds.asStateFlow()
+    /** Engine owning history, persistence and evaluation (TooManyFunctions cap). */
+    internal val engine by lazy { LogicEngine(this) }
 
-    private val _unlockedChips = MutableStateFlow(repo.unlockedChipIds())
+    private val _completedIds = MutableStateFlow(progressRepo.getCompletedLevelIds())
+    val completedIds: StateFlow<Set<String>> = _completedIds.asStateFlow()
+    internal val completedIdsMutable: MutableStateFlow<Set<String>> get() = _completedIds
+
+    private val _unlockedChips = MutableStateFlow(progressRepo.unlockedChipIds())
     val unlockedChips: StateFlow<Set<String>> = _unlockedChips.asStateFlow()
+    internal val unlockedChipsMutable: MutableStateFlow<Set<String>> get() = _unlockedChips
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+    internal val uiStateValue: UiState get() = _uiState.value
+    internal fun updateUiState(transform: (UiState) -> UiState) {
+        _uiState.update(transform)
+    }
 
-    private var allCircuits: MutableMap<String, Circuit> = mutableMapOf()
-    private var persistJob: Job? = null
-    private val persistMutex = Mutex()
-    private val undoStacks: MutableMap<String, MutableList<Circuit>> = mutableMapOf()
-    private val redoStacks: MutableMap<String, MutableList<Circuit>> = mutableMapOf()
-    private val maxHistory = 24
+    internal var allCircuits: MutableMap<String, Circuit> = mutableMapOf()
+    internal var persistJob: Job? = null
+    internal val persistMutex = Mutex()
+    internal val undoStacks: MutableMap<String, MutableList<Circuit>> = mutableMapOf()
+    internal val redoStacks: MutableMap<String, MutableList<Circuit>> = mutableMapOf()
+    internal val maxHistory = 24
+    internal val vmScope get() = viewModelScope
 
-    private val jsonLenient = Json { ignoreUnknownKeys = true; coerceInputValues = true; isLenient = true }
+    internal val jsonLenient = Json { ignoreUnknownKeys = true; coerceInputValues = true; isLenient = true }
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            loadAllCircuits()
+            engine.loadAllCircuits()
             achievementsManager.checkExistingAchievements()
-        }
-    }
-
-    private suspend fun loadAllCircuits() {
-        val raw = ds.getString(KEY_CIRCUITS) ?: return
-        try {
-            val parsed = jsonLenient.decodeFromString<AllSavedCircuits>(raw)
-            parsed.map.forEach { (lvlId, pc) -> allCircuits[lvlId] = pc.toCircuit() }
-        } catch (_: Exception) {
-            try {
-                val parsedOld = Json.decodeFromString<AllSavedCircuits>(raw)
-                parsedOld.map.forEach { (lvlId, pc) -> allCircuits[lvlId] = pc.toCircuit() }
-            } catch (_: Exception) { }
-        }
-    }
-
-    // Encode + write atomically inside mutex — Alchemist-style single saver pattern,
-    // no race between encoding outside lock and writer inside lock.
-    private fun saveAllCircuitsNow() {
-        viewModelScope.launch(Dispatchers.IO) {
-            persistMutex.withLock {
-                val toSave = AllSavedCircuits(allCircuits.mapValues { it.value.toPersisted() })
-                val json = jsonLenient.encodeToString(toSave)
-                ds.setString(KEY_CIRCUITS, json)
-            }
-        }
-    }
-
-    private fun schedulePersist(delayMs: Long = 400L) {
-        persistJob?.cancel()
-        persistJob = viewModelScope.launch(Dispatchers.IO) {
-            delay(delayMs)
-            persistMutex.withLock {
-                val toSave = AllSavedCircuits(allCircuits.mapValues { it.value.toPersisted() })
-                val json = jsonLenient.encodeToString(toSave)
-                ds.setString(KEY_CIRCUITS, json)
-            }
         }
     }
 
@@ -146,88 +139,61 @@ class LogicViewModel(application: Application) : AndroidViewModel(application), 
         redoStacks.getOrPut(levelId) { mutableListOf() }
         val canUndo = undoStacks[levelId]?.isNotEmpty() == true
         val canRedo = redoStacks[levelId]?.isNotEmpty() == true
-        _uiState.update { it.copy(currentLevelId=levelId, circuit=loaded, evalStatus=EvalStatus.Idle, wiringFrom=null, selectedGateInstanceId=null, dragGhostLineEnd=null, canUndo=canUndo, canRedo=canRedo) }
-        evaluateCurrent()
+        _uiState.update {
+            it.copy(
+                currentLevelId = levelId,
+                circuit = loaded,
+                evalStatus = EvalStatus.Idle,
+                wiringFrom = null,
+                selectedGateInstanceId = null,
+                dragGhostLineEnd = null,
+                canUndo = canUndo,
+                canRedo = canRedo,
+            )
+        }
+        engine.evaluateCurrent()
     }
 
-    fun selectChapter(id: ChapterId) { _uiState.update { it.copy(selectedChapter=id) } }
-
-    fun addGate(chipId: String) { addGateAt(chipId, null, null) }
+    // NOTE: selectChapter/addGate/deleteSelected/completeWiring/toggleTruthTable and the
+    // chip-palette drag handlers were removed 2026-10-05: orphaned by the LogicActions
+    // refactor, zero callers module-wide (UI drives everything through LogicActions).
+    // showTruthTable stays true; selectedChapter stays FOUNDATION.
 
     override fun addGateAt(chipId: String, x: Float?, y: Float?): String {
         val state = _uiState.value
-        val newId = "G_${Uuid.random().toString().take(6)}"
+        val newId = "G_${Uuid.random().toString().take(GATE_ID_SUFFIX)}"
         val cnt = state.circuit.gates.size
         // Alchemist-style responsive placement: use window-relative defaults clamped to sane visible range
         // instead of 0..3000 which places off-screen on small portrait
-        val px = (x ?: (80f + (cnt % 4) * 140f)).coerceIn(8f, 1200f)
-        val py = (y ?: (100f + (cnt / 4) * 110f)).coerceIn(8f, 2000f)
-        val gate = PlacedChip(newId, chipId, x=px, y=py)
-        val newCircuit = state.circuit.copy(gates=state.circuit.gates + gate)
-        pushHistory(state.circuit)
-        updateCircuit(newCircuit, immediatePersist=true)
+        val px = (x ?: engine.defaultGateX(cnt)).coerceIn(PLACEMENT_MIN, PLACEMENT_MAX_X)
+        val py = (y ?: engine.defaultGateY(cnt)).coerceIn(PLACEMENT_MIN, PLACEMENT_MAX_Y)
+        val gate = PlacedChip(newId, chipId, x = px, y = py)
+        val newCircuit = state.circuit.copy(gates = state.circuit.gates + gate)
+        engine.pushHistory(state.circuit)
+        updateCircuit(newCircuit, immediatePersist = true)
         return newId
     }
 
     override fun removeGate(instanceId: String) {
         val s = _uiState.value.circuit
-        pushHistory(s)
-        val newGates = s.gates.filterNot { it.instanceId==instanceId }
-        val newWires = s.wires.filterNot { it.from.instanceId==instanceId || it.to.instanceId==instanceId }
-        val newOuts = s.outputMappings.filterNot { it.from.instanceId==instanceId }
-        updateCircuit(s.copy(gates=newGates, wires=newWires, outputMappings=newOuts))
+        engine.pushHistory(s)
+        val newGates = s.gates.filterNot { it.instanceId == instanceId }
+        val newWires = s.wires.filterNot {
+            it.from.instanceId == instanceId || it.to.instanceId == instanceId
+        }
+        val newOuts = s.outputMappings.filterNot { it.from.instanceId == instanceId }
+        updateCircuit(s.copy(gates = newGates, wires = newWires, outputMappings = newOuts))
     }
 
     override fun clearCircuit() {
         val s = _uiState.value.circuit
         if (s.gates.isEmpty() && s.wires.isEmpty() && s.outputMappings.isEmpty()) return
-        pushHistory(s)
+        engine.pushHistory(s)
         updateCircuit(Circuit())
     }
 
-    override fun selectGate(id: String?) { _uiState.update { it.copy(selectedGateInstanceId = id) } }
-
-    fun deleteSelected() {
-        val id = _uiState.value.selectedGateInstanceId ?: return
-        removeGate(id)
-        _uiState.update { it.copy(selectedGateInstanceId = null) }
-    }
-
-    private fun pushHistory(c: Circuit) {
-        val lvl = _uiState.value.currentLevelId ?: return
-        val stack = undoStacks.getOrPut(lvl) { mutableListOf() }
-        // Alchemist-style dedup: avoid filling undo stack with micro-moves (<1f jitter)
-        val prev = stack.lastOrNull()
-        if (prev != null && circuitsAreSameIgnoringJitter(prev, c)) return
-        stack.add(c)
-        if (stack.size > maxHistory) stack.removeAt(0)
-        redoStacks[lvl]?.clear()
-        _uiState.update { it.copy(canUndo=stack.isNotEmpty(), canRedo=false) }
-    }
-
-    private fun circuitsAreSameIgnoringJitter(a: Circuit, b: Circuit, thresh: Float = 1f): Boolean {
-        if (a.gates.size != b.gates.size) return false
-        if (a.wires.size != b.wires.size) return false
-        if (a.outputMappings.size != b.outputMappings.size) return false
-        for (i in a.gates.indices) {
-            val ga = a.gates[i]; val gb = b.gates[i]
-            if (ga.instanceId != gb.instanceId || ga.chipId != gb.chipId) return false
-            if (kotlin.math.abs(ga.x - gb.x) > thresh || kotlin.math.abs(ga.y - gb.y) > thresh) return false
-        }
-        if (a.wires != b.wires) return false
-        if (a.outputMappings != b.outputMappings) return false
-        // inputPositions/outputPositions with jitter tolerance
-        if (a.inputPositions.size != b.inputPositions.size) return false
-        for ((k, v) in a.inputPositions) {
-            val vb = b.inputPositions[k] ?: return false
-            if (kotlin.math.abs(v.x - vb.x) > thresh || kotlin.math.abs(v.y - vb.y) > thresh) return false
-        }
-        if (a.outputPositions.size != b.outputPositions.size) return false
-        for ((k, v) in a.outputPositions) {
-            val vb = b.outputPositions[k] ?: return false
-            if (kotlin.math.abs(v.x - vb.x) > thresh || kotlin.math.abs(v.y - vb.y) > thresh) return false
-        }
-        return true
+    override fun selectGate(id: String?) {
+        _uiState.update { it.copy(selectedGateInstanceId = id) }
     }
 
     override fun undo() {
@@ -237,10 +203,12 @@ class LogicViewModel(application: Application) : AndroidViewModel(application), 
         val rStack = redoStacks.getOrPut(lvl) { mutableListOf() }
         rStack.add(_uiState.value.circuit)
         val prev = uStack.removeAt(uStack.lastIndex)
-        allCircuits[lvl]=prev
-        _uiState.update { it.copy(circuit=prev, canUndo=uStack.isNotEmpty(), canRedo=rStack.isNotEmpty()) }
-        schedulePersist()
-        evaluateCurrent()
+        allCircuits[lvl] = prev
+        _uiState.update {
+            it.copy(circuit = prev, canUndo = uStack.isNotEmpty(), canRedo = rStack.isNotEmpty())
+        }
+        engine.schedulePersist()
+        engine.evaluateCurrent()
     }
 
     override fun redo() {
@@ -250,275 +218,187 @@ class LogicViewModel(application: Application) : AndroidViewModel(application), 
         val uStack = undoStacks.getOrPut(lvl) { mutableListOf() }
         uStack.add(_uiState.value.circuit)
         val next = rStack.removeAt(rStack.lastIndex)
-        allCircuits[lvl]=next
-        _uiState.update { it.copy(circuit=next, canUndo=uStack.isNotEmpty(), canRedo=rStack.isNotEmpty()) }
-        schedulePersist()
-        evaluateCurrent()
+        allCircuits[lvl] = next
+        _uiState.update {
+            it.copy(circuit = next, canUndo = uStack.isNotEmpty(), canRedo = rStack.isNotEmpty())
+        }
+        engine.schedulePersist()
+        engine.evaluateCurrent()
     }
 
     override fun onGateMoved(instanceId: String, x: Float, y: Float) {
         val s = _uiState.value.circuit
-        val newGates = s.gates.map { if(it.instanceId==instanceId) it.copy(x=x.coerceIn(-4000f,6000f), y=y.coerceIn(-4000f,6000f)) else it }
-        _uiState.update { it.copy(circuit=it.circuit.copy(gates=newGates)) }
+        val newGates = s.gates.map {
+            if (it.instanceId == instanceId) {
+                it.copy(x = engine.clampCanvasX(x), y = engine.clampCanvasY(y))
+            } else {
+                it
+            }
+        }
+        _uiState.update { it.copy(circuit = it.circuit.copy(gates = newGates)) }
     }
     override fun onGateMoveFinished(instanceId: String, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val prevCircuit = allCircuits[_uiState.value.currentLevelId] ?: s
         // push history only if wasn't already pushed for this drag session
-        if (undoStacks[_uiState.value.currentLevelId]?.lastOrNull() != prevCircuit) pushHistory(prevCircuit)
-        val newGates = s.gates.map { if(it.instanceId==instanceId) it.copy(x=x.coerceIn(-4000f,6000f), y=y.coerceIn(-4000f,6000f)) else it }
-        val newCircuit = s.copy(gates=newGates)
+        if (undoStacks[_uiState.value.currentLevelId]?.lastOrNull() != prevCircuit) {
+            engine.pushHistory(prevCircuit)
+        }
+        val newGates = s.gates.map {
+            if (it.instanceId == instanceId) {
+                it.copy(x = engine.clampCanvasX(x), y = engine.clampCanvasY(y))
+            } else {
+                it
+            }
+        }
+        val newCircuit = s.copy(gates = newGates)
         val lvl = _uiState.value.currentLevelId
-        if (lvl!=null) allCircuits[lvl]=newCircuit
-        _uiState.update { it.copy(circuit=newCircuit) }
-        schedulePersist()
-        evaluateCurrent()
+        if (lvl != null) allCircuits[lvl] = newCircuit
+        _uiState.update { it.copy(circuit = newCircuit) }
+        engine.schedulePersist()
+        engine.evaluateCurrent()
     }
 
     override fun onInputMoved(idx: Int, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val newMap = s.inputPositions.toMutableMap()
-        newMap[idx]=IoPos(x.coerceIn(-4000f,6000f), y.coerceIn(-4000f,6000f))
-        _uiState.update { it.copy(circuit=s.copy(inputPositions=newMap)) }
+        newMap[idx] = IoPos(engine.clampCanvasX(x), engine.clampCanvasY(y))
+        _uiState.update { it.copy(circuit = s.copy(inputPositions = newMap)) }
     }
     override fun onInputMoveFinished(idx: Int, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val prevCircuit = allCircuits[_uiState.value.currentLevelId] ?: s
-        pushHistory(prevCircuit)
+        engine.pushHistory(prevCircuit)
         val newMap = s.inputPositions.toMutableMap()
-        newMap[idx]=IoPos(x.coerceIn(-4000f,6000f), y.coerceIn(-4000f,6000f))
-        val newCircuit = s.copy(inputPositions=newMap)
-        val lvl=_uiState.value.currentLevelId
-        if(lvl!=null) allCircuits[lvl]=newCircuit
-        _uiState.update { it.copy(circuit=newCircuit) }
-        schedulePersist()
+        newMap[idx] = IoPos(engine.clampCanvasX(x), engine.clampCanvasY(y))
+        val newCircuit = s.copy(inputPositions = newMap)
+        val lvl = _uiState.value.currentLevelId
+        if (lvl != null) allCircuits[lvl] = newCircuit
+        _uiState.update { it.copy(circuit = newCircuit) }
+        engine.schedulePersist()
     }
     override fun onOutputMoved(idx: Int, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val newMap = s.outputPositions.toMutableMap()
-        newMap[idx]=IoPos(x.coerceIn(-4000f,6000f), y.coerceIn(-4000f,6000f))
-        _uiState.update { it.copy(circuit=s.copy(outputPositions=newMap)) }
+        newMap[idx] = IoPos(engine.clampCanvasX(x), engine.clampCanvasY(y))
+        _uiState.update { it.copy(circuit = s.copy(outputPositions = newMap)) }
     }
     override fun onOutputMoveFinished(idx: Int, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val prevCircuit = allCircuits[_uiState.value.currentLevelId] ?: s
-        pushHistory(prevCircuit)
+        engine.pushHistory(prevCircuit)
         val newMap = s.outputPositions.toMutableMap()
-        newMap[idx]=IoPos(x.coerceIn(-4000f,6000f), y.coerceIn(-4000f,6000f))
-        val newCircuit=s.copy(outputPositions=newMap)
-        val lvl=_uiState.value.currentLevelId
-        if(lvl!=null) allCircuits[lvl]=newCircuit
-        _uiState.update { it.copy(circuit=newCircuit) }
-        schedulePersist()
+        newMap[idx] = IoPos(engine.clampCanvasX(x), engine.clampCanvasY(y))
+        val newCircuit = s.copy(outputPositions = newMap)
+        val lvl = _uiState.value.currentLevelId
+        if (lvl != null) allCircuits[lvl] = newCircuit
+        _uiState.update { it.copy(circuit = newCircuit) }
+        engine.schedulePersist()
+    }
+        _uiState.update { it.copy(circuit = newCircuit) }
+        engine.schedulePersist()
     }
 
-    override fun startWiring(from: WireEnd) { _uiState.update { it.copy(wiringFrom=from) } }
-    override fun cancelWiring() { _uiState.update { it.copy(wiringFrom=null, dragGhostLineEnd=null) } }
-    override fun updateGhostLine(end: Offset?) { _uiState.update { it.copy(dragGhostLineEnd=end) } }
-
-    private fun outputPinWidth(end: WireEnd, level: LevelDef?): Int {
-        if (end.instanceId.startsWith("__IN_")) {
-            val idx = end.instanceId.removePrefix("__IN_").toIntOrNull() ?: return 1
-            return level?.inputWidth(idx) ?: 1
-        }
-        val gate = _uiState.value.circuit.gates.find { it.instanceId==end.instanceId } ?: return 1
-        return ChipLibrary.get(gate.chipId).outputPinWidth(end.pinIndex)
+    override fun startWiring(from: WireEnd) {
+        _uiState.update { it.copy(wiringFrom = from) }
     }
-    private fun inputPinWidth(end: WireEnd, level: LevelDef?): Int {
-        if (end.instanceId.startsWith("__OUT_")) {
-            val idx = end.instanceId.removePrefix("__OUT_").toIntOrNull() ?: return 1
-            return level?.outputWidth(idx) ?: 1
-        }
-        val gate = _uiState.value.circuit.gates.find { it.instanceId==end.instanceId } ?: return 1
-        return ChipLibrary.get(gate.chipId).inputPinWidth(end.pinIndex)
+    override fun cancelWiring() {
+        _uiState.update { it.copy(wiringFrom = null, dragGhostLineEnd = null) }
+    }
+    override fun updateGhostLine(end: Offset?) {
+        _uiState.update { it.copy(dragGhostLineEnd = end) }
     }
 
-    override fun createWire(from: WireEnd, to: WireEnd) {
-        val s = _uiState.value.circuit
-        val lvlId = _uiState.value.currentLevelId
-        val level = lvlId?.let { try { Levels.get(it) } catch(_:Exception){null} }
-        if (from.instanceId==to.instanceId) { _uiState.update{it.copy(wiringFrom=null,dragGhostLineEnd=null)}; return }
-
-        // v2 bidirectional: auto-orient input<->output
-        val srcIsOut = isOutputEnd(from)
-        val dstIsIn = isInputEnd(to)
-        val srcIsIn = isInputEnd(from)
-        val dstIsOut = isOutputEnd(to)
-        val pair = when {
-            srcIsOut && dstIsIn -> from to to
-            srcIsIn && dstIsOut -> to to from
-            else -> { _uiState.update{it.copy(wiringFrom=null,dragGhostLineEnd=null)}; return }
-        }
-        val (realFrom, realTo) = pair
-
-        val srcW = outputPinWidth(realFrom, level)
-        val dstW = inputPinWidth(realTo, level)
-
-        if (srcW != dstW) {
-            val msg = when {
-                srcW==8 && dstW==1 -> "Cannot wire BUS8[8] thick blue directly to 1-bit pin – use SPLIT_8 contractor to split BUS8 -> 8 bits, or use bus target."
-                dstW==8 && srcW==1 -> "Cannot wire 1-bit thin green into BUS8[8] thick blue – use JOIN_8 expander (bits->BUS8[8]) to combine 8 bits into one bus wire (less tedious)."
-                srcW==4 && dstW==1 -> "BUS4[4] orange thick -> bit: use SPLIT_4 contractor."
-                dstW==4 && srcW==1 -> "Bit -> BUS4[4] orange: use JOIN_4 expander."
-                else -> "Width mismatch: source ${srcW}b vs sink ${dstW}b. Use JOIN/SPLIT expander/contractor to convert between bus and bit."
-            }
-            _uiState.update { it.copy(evalStatus=EvalStatus.Error(msg), wiringFrom=null, dragGhostLineEnd=null) }
-            return
-        }
-
-        pushHistory(s)
-        if (realTo.instanceId.startsWith("__OUT_")) {
-            val outIdx = realTo.instanceId.removePrefix("__OUT_").toIntOrNull() ?: run { _uiState.update{it.copy(wiringFrom=null,dragGhostLineEnd=null)}; return }
-            val existing = s.outputMappings.filterNot { it.outputIndex==outIdx }
-            val newMap = existing + OutputMapping(outIdx, realFrom)
-            updateCircuit(s.copy(outputMappings=newMap))
-        } else {
-            val existingWires = s.wires.filterNot { it.to==realTo }
-            val newWire = Wire(id="W_${Uuid.random().toString().take(6)}", from=realFrom, to=realTo, busWidth=srcW)
-            updateCircuit(s.copy(wires=existingWires + newWire))
-        }
-        _uiState.update { it.copy(wiringFrom=null, dragGhostLineEnd=null) }
-    }
-
-    private fun isOutputEnd(end: WireEnd): Boolean {
-        if (end.instanceId.startsWith("__IN_")) return true
-        if (end.instanceId.startsWith("__OUT_")) return false
-        val gate = _uiState.value.circuit.gates.find { it.instanceId==end.instanceId } ?: return false
-        val def = ChipLibrary.get(gate.chipId)
-        return end.pinIndex in 0 until def.outputCount
-    }
-    private fun isInputEnd(end: WireEnd): Boolean {
-        if (end.instanceId.startsWith("__OUT_")) return true
-        if (end.instanceId.startsWith("__IN_")) return false
-        val gate = _uiState.value.circuit.gates.find { it.instanceId==end.instanceId } ?: return false
-        val def = ChipLibrary.get(gate.chipId)
-        return end.pinIndex in 0 until def.inputCount
-    }
-
-    fun completeWiring(to: WireEnd) { val from=_uiState.value.wiringFrom ?: return; createWire(from,to) }
+    override fun createWire(from: WireEnd, to: WireEnd) = engine.wiring.createWire(from, to)
 
     override fun removeWire(wireId: String) {
-        val s=_uiState.value.circuit
-        pushHistory(s)
-        updateCircuit(s.copy(wires=s.wires.filterNot{it.id==wireId}))
+        val s = _uiState.value.circuit
+        engine.pushHistory(s)
+        updateCircuit(s.copy(wires = s.wires.filterNot { it.id == wireId }))
     }
     override fun removeOutputMapping(outIdx: Int) {
-        val s=_uiState.value.circuit
-        pushHistory(s)
-        updateCircuit(s.copy(outputMappings=s.outputMappings.filterNot{it.outputIndex==outIdx}))
+        val s = _uiState.value.circuit
+        engine.pushHistory(s)
+        updateCircuit(s.copy(outputMappings = s.outputMappings.filterNot { it.outputIndex == outIdx }))
     }
 
-    fun onChipPaletteDragStart(chipId: String, offset: Offset) { _uiState.update{it.copy(draggedChipGhost=DraggedChipGhost(chipId,offset))} }
-    fun onChipPaletteDrag(offset: Offset) { _uiState.update{it.copy(draggedChipGhost=it.draggedChipGhost?.copy(offset=offset))} }
-    fun onChipPaletteDragEnd(canvasX: Float?, canvasY: Float?) {
-        val ghost=_uiState.value.draggedChipGhost
-        _uiState.update{it.copy(draggedChipGhost=null)}
-        if(ghost!=null && canvasX!=null && canvasY!=null) addGateAt(ghost.chipId, canvasX, canvasY)
-    }
-
-    private fun updateCircuit(newCircuit: Circuit, immediatePersist: Boolean=false) {
-        val lvlId=_uiState.value.currentLevelId
-        if(lvlId!=null) {
-            allCircuits[lvlId]=newCircuit
-            if(immediatePersist) saveAllCircuitsNow() else schedulePersist()
+    internal fun updateCircuit(newCircuit: Circuit, immediatePersist: Boolean = false) {
+        val lvlId = _uiState.value.currentLevelId
+        if (lvlId != null) {
+            allCircuits[lvlId] = newCircuit
+            if (immediatePersist) engine.saveAllCircuitsNow() else engine.schedulePersist()
         }
-        val lvl = lvlId
-        val canUndoFlag = lvl?.let { undoStacks[it]?.isNotEmpty() } ?: false
-        val canRedoFlag = lvl?.let { redoStacks[it]?.isNotEmpty() } ?: false
-        _uiState.update{it.copy(circuit=newCircuit, canUndo=canUndoFlag, canRedo=canRedoFlag)}
-        evaluateCurrent()
-    }
-
-    fun evaluateCurrent() {
-        val state=_uiState.value
-        val lvlId=state.currentLevelId ?: return
-        val level = try { Levels.get(lvlId) } catch(_:Exception){ return }
-        val circuit=state.circuit
-        if(level.id=="COMPUTER") {
-            val msg = evaluateComputerLevel(circuit)
-            if(msg==null) {
-                val evalResult = CircuitEvaluator.evaluate(level, circuit)
-                when(evalResult){
-                    is EvalResult.Success -> {
-                        _uiState.update{it.copy(evalStatus=EvalStatus.Ok(passingRows=evalResult.rows.size, totalRows=evalResult.rows.size, isFullyCorrect=true, failingRows=emptyList()))}
-                        onLevelWon(level, circuit)
-                    }
-                    is EvalResult.Error -> _uiState.update{it.copy(evalStatus=EvalStatus.Error(evalResult.message))}
-                    is EvalResult.Cycle -> {
-                        _uiState.update{it.copy(evalStatus=EvalStatus.Ok(passingRows=1, totalRows=1, isFullyCorrect=true, failingRows=emptyList()))}
-                        onLevelWon(level, circuit)
-                    }
-                }
-            } else {
-                _uiState.update{it.copy(evalStatus=EvalStatus.Error(msg))}
-            }
-            return
+        val canUndoFlag = lvlId?.let { undoStacks[it]?.isNotEmpty() } ?: false
+        val canRedoFlag = lvlId?.let { redoStacks[it]?.isNotEmpty() } ?: false
+        _uiState.update {
+            it.copy(circuit = newCircuit, canUndo = canUndoFlag, canRedo = canRedoFlag)
         }
-        val evalResult = CircuitEvaluator.evaluate(level, circuit)
-        val (fullyCorrect, failing) = CircuitEvaluator.isCorrect(level, circuit)
-        when(evalResult){
-            is EvalResult.Error -> _uiState.update{it.copy(evalStatus=EvalStatus.Error(evalResult.message))}
-            is EvalResult.Cycle -> _uiState.update{it.copy(evalStatus=EvalStatus.Cycle(evalResult.ids))}
-            is EvalResult.Success -> {
-                val total = if(level.totalInputBits<=10) (1 shl level.totalInputBits) else evalResult.rows.size
-                val passing = total - failing.size
-                _uiState.update{it.copy(evalStatus=EvalStatus.Ok(passing, total, fullyCorrect, failing))}
-                if(fullyCorrect) onLevelWon(level, circuit)
-            }
-        }
+        engine.evaluateCurrent()
     }
 
-    private fun evaluateComputerLevel(circuit: Circuit): String? {
-        val ids = circuit.gates.map{it.chipId}.toSet()
-        if(!ids.contains("CPU") && !ids.contains("CPU_8")) return "Add CPU bus chip – it does fetch-decode-execute from RAM. It needs OPCODE[4] orange bus via SPLIT_4 and ADDR[8] blue bus."
-        if(!ids.contains("RAM_256B") && !ids.contains("RAM_256")) return "Add RAM_256B Main Memory [8] – unified 256x8 where program lives alongside data (von Neumann)."
-        if(circuit.wires.size < 2) return "Wire CPU <-> RAM with BUS wires: CPU.PC[8] blue thick -> MUX_B8 A[8] (fetch phase), CPU.ADDR_M[8] blue -> MUX_B8 B[8] (data phase). MUX_B8 OUT[8] blue -> RAM ADDR[8]. Use bus [8] wires."
-        val hasBusWire = circuit.wires.any{it.busWidth==8}
-        if(!hasBusWire) return "Use 8-bit BUS wires [8] thick blue – they cut tedium from 8 thin green wires to 1 thick. Use JOIN_8 expander to build bus."
-        if(!ids.contains("MUX_B8") && !ids.contains("MUX4_B8") && !ids.contains("MUX8_B8")) return "Add MUX_B8 bus address MUX – it chooses PC[8] for fetch vs ADDR_M[8] for data – key for shared RAM program-from-RAM."
-        if (!ids.contains("SPLIT_4") && !ids.contains("JOIN_4")) return "Add SPLIT_4 contractor for opcode decode – CPU needs OPCODE[4] orange bus via SPLIT_4 from RAM data."
-        if(circuit.outputMappings.isEmpty()) return "Connect final OUT[8] bus – drag from RAM or CPU output bus dot to output terminal."
-        return null
+    fun dismissAchievement() = achievementsManager.dismissNotification()
+
+    companion object {
+        private const val KEY_CIRCUITS = "logicgate_circuits_v1"
+        private const val ACHIEVEMENTS_ASSET = "achievements.json"
+        private const val EMPTY_ACHIEVEMENTS_JSON = "[]"
+
+        /** Canvas drag clamp range (world coordinates). */
+        private const val CANVAS_MIN = -4000f
+        private const val CANVAS_MAX_X = 6000f
+
+        /** Random suffix length for generated wire ids. */
+        private const val WIRE_ID_SUFFIX = 6
+
+        /** Random suffix length for generated gate ids. */
+        private const val GATE_ID_SUFFIX = 6
+
+        /** Minimum CPU<->RAM wires before the COMPUTER level checks bus usage. */
+        private const val MIN_CPU_RAM_WIRES = 2
+
+        /** Responsive default gate placement grid (world coordinates). */
+        private const val PLACEMENT_COLS = 4
+        private const val PLACEMENT_BASE_X = 80f
+        private const val PLACEMENT_BASE_Y = 100f
+        private const val PLACEMENT_DX = 140f
+        private const val PLACEMENT_DY = 110f
+        private const val PLACEMENT_MIN = 8f
+        private const val PLACEMENT_MAX_X = 1200f
+        private const val PLACEMENT_MAX_Y = 2000f
     }
-
-    private fun onLevelWon(level: LevelDef, circuit: Circuit) {
-        viewModelScope.launch{
-            withContext(Dispatchers.IO){ repo.markCompleted(level.id) }
-            _completedIds.value=repo.getCompletedLevelIds()
-            _unlockedChips.value=repo.unlockedChipIds()
-            repo.incCircuitsChecked()
-            achievementsManager.onAchievementUnlocked("first_gate")
-            val allCompleted=_completedIds.value
-            achievementsManager.onProgressUpdated("all_levels", repo.totalCompleted())
-            Levels.chapters.forEach{ ch ->
-                val cnt=allCompleted.count{Levels.byId[it]?.chapter==ch.id}
-                val key=when(ch.id){ChapterId.FOUNDATION->"foundation_complete"; ChapterId.ROUTING->"routing_complete"; ChapterId.ARITH->"arith_complete"; ChapterId.MEMORY->"memory_complete"; ChapterId.CPU->"cpu_complete"}
-                achievementsManager.onProgressUpdated(key,cnt)
-            }
-        }
-    }
-
-    fun toggleTruthTable(){ _uiState.update{it.copy(showTruthTable=!it.showTruthTable)} }
-    fun dismissAchievement()=achievementsManager.dismissNotification()
-
-    companion object { private const val KEY_CIRCUITS="logicgate_circuits_v1" }
 }
 
 private fun PersistedCircuit.toCircuit(): Circuit {
     return Circuit(
-        gates=gates.map{PlacedChip(it.instanceId,it.chipId,it.x,it.y)},
-        wires=wires.map{Wire(it.id, WireEnd(it.fromInstance,it.fromPin), WireEnd(it.toInstance,it.toPin), busWidth=it.busWidth.coerceIn(1,8))},
-        outputMappings=outputs.map{OutputMapping(it.outputIndex, WireEnd(it.fromInstance,it.fromPin))},
-        inputPositions=inputPos.mapValues{IoPos(it.value.x,it.value.y)},
-        outputPositions=outputPos.mapValues{IoPos(it.value.x,it.value.y)}
+        gates = gates.map { PlacedChip(it.instanceId, it.chipId, it.x, it.y) },
+        wires = wires.map {
+            Wire(
+                it.id,
+                WireEnd(it.fromInstance, it.fromPin),
+                WireEnd(it.toInstance, it.toPin),
+                busWidth = it.busWidth.coerceIn(CircuitSampling.BIT, CircuitSampling.BUS_8),
+            )
+        },
+        outputMappings = outputs.map { OutputMapping(it.outputIndex, WireEnd(it.fromInstance, it.fromPin)) },
+        inputPositions = inputPos.mapValues { IoPos(it.value.x, it.value.y) },
+        outputPositions = outputPos.mapValues { IoPos(it.value.x, it.value.y) },
     )
 }
 private fun Circuit.toPersisted(): PersistedCircuit {
     return PersistedCircuit(
-        gates=gates.map{PersistedGate(it.instanceId,it.chipId,it.x,it.y)},
-        wires=wires.map{PersistedWire(it.id,it.from.instanceId,it.from.pinIndex,it.to.instanceId,it.to.pinIndex, busWidth=it.busWidth)},
-        outputs=outputMappings.map{PersistedOutputMap(it.outputIndex,it.from.instanceId,it.from.pinIndex)},
-        inputPos=inputPositions.mapValues{PersistedIoPos(it.value.x,it.value.y)},
-        outputPos=outputPositions.mapValues{PersistedIoPos(it.value.x,it.value.y)}
+        gates = gates.map { PersistedGate(it.instanceId, it.chipId, it.x, it.y) },
+        wires = wires.map {
+            PersistedWire(
+                it.id,
+                it.from.instanceId,
+                it.from.pinIndex,
+                it.to.instanceId,
+                it.to.pinIndex,
+                busWidth = it.busWidth,
+            )
+        },
+        outputs = outputMappings.map { PersistedOutputMap(it.outputIndex, it.from.instanceId, it.from.pinIndex) },
+        inputPos = inputPositions.mapValues { PersistedIoPos(it.value.x, it.value.y) },
+        outputPos = outputPositions.mapValues { PersistedIoPos(it.value.x, it.value.y) },
     )
 }

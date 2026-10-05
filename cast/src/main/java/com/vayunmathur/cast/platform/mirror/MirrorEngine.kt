@@ -9,6 +9,7 @@ import com.vayunmathur.cast.platform.remotedisplay.CastSystemDisplay
 import com.vayunmathur.cast.network.CastUdpTransport
 import com.vayunmathur.cast.protocol.NegotiatedStream
 import com.vayunmathur.cast.protocol.Negotiation
+import com.vayunmathur.cast.protocol.ReceiverFeedback
 import com.vayunmathur.cast.protocol.Rtcp
 import com.vayunmathur.cast.protocol.StreamKind
 import com.vayunmathur.cast.protocol.StreamingSession
@@ -18,10 +19,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "MirrorEngine"
@@ -76,6 +79,18 @@ private const val CODEC_CONFIG_TIMEOUT_MS = 2_000L
  * [MirrorSource.Content] client hands its surface out over Binder and may legitimately be slow to draw.
  */
 private const val NO_VIDEO_OUTPUT_TIMEOUT_MS = 12_000L
+
+/** The NTP timestamp layout: 32 bits of seconds since 1900, then 32 bits of fraction. */
+private const val NTP_FRACTION_BITS = 32
+
+private const val MILLIS_PER_SECOND = 1000L
+
+/** Index of the write end in the pair `createPipe` returns; the read end is ours. */
+private const val PIPE_WRITE_INDEX = 1
+private const val PIPE_READ_INDEX = 0
+
+/** Bits per megabit, for turning a bitrate into a log line. */
+private const val BITS_PER_MEGABIT = 1_000_000.0
 
 /** What could not be started, so the UI can say so rather than looking broken. */
 data class MirrorDegradation(
@@ -253,107 +268,166 @@ class MirrorEngine(
             encoder.release()
             return false
         }
-        // The one branch: mirror the screen into the surface, or hand it to whoever asked for it.
-        when (source) {
-            is MirrorSource.Screen -> {
-                val screen = ScreenCapture(source.projection)
-                if (!screen.start(surface, geometry)) {
-                    encoder.release()
-                    screen.release()
-                    return false
-                }
-                capture = screen
-            }
-            is MirrorSource.SystemDisplay -> {
-                // Same shape as ScreenCapture on purpose, but a system display rather than a
-                // mirror of the phone. The id is written back onto the source so the caller can
-                // publish it to the route - the framework will not go looking for it.
-                //
-                // **Reused when the source already has one**, which is what a re-negotiation after
-                // a resolution change looks like from here: the display is the user's desktop and
-                // survives the encoder being rebuilt around it. Only its surface moves.
-                val existing = source.display
-                if (existing != null) {
-                    if (!existing.attach(surface)) {
-                        encoder.release()
-                        return false
-                    }
-                } else {
-                    val desktop = CastSystemDisplay(appContext)
-                    if (!desktop.start(surface, geometry, source.receiverId, source.supportedModes)) {
-                        encoder.release()
-                        desktop.release()
-                        return false
-                    }
-                    source.display = desktop
-                    source.displayId = desktop.displayId
-                }
-            }
-            is MirrorSource.Content -> contentSurface = surface
-        }
-        Log.i(
-            TAG,
-            "streaming ${videoCodec.label} ${geometry.width}x${geometry.height} " +
-                "@ ${geometry.bitRate / 1_000_000.0} Mbit/s" +
-                if (source.appLabel.isEmpty()) "" else " from ${source.appLabel}",
-        )
+        if (!attachVideoSource(encoder, surface)) return false
+        logStreamStart()
         videoEncoder = encoder
         val sender = StreamSender(stream, udp, StreamingSession())
         senders[StreamKind.Video] = sender
-        videoJob = scope.launch {
-            // A system display is a pending connection until the user picks mirror or desktop, so
-            // it is legitimately blank for as long as they take to answer.
-            val watchForNoOutput = source !is MirrorSource.SystemDisplay
-            // When the encoder first produced anything, which is what the codec-config watchdog is
-            // timed from. Zero until then, so a session whose content has not started drawing yet is
-            // simply waiting rather than failing.
-            var firstOutputAt = 0L
-            val startedAt = SystemClock.elapsedRealtime()
-            while (isActive) {
-                val chunks = encoder.drain()
-                if (chunks.isEmpty()) {
-                    // The one condition the codec-config watchdog below cannot reach, because its
-                    // clock never starts. See [NO_VIDEO_OUTPUT_TIMEOUT_MS].
-                    //
-                    // Disarmed for a system display, which is created as a pending connection and
-                    // composes nothing at all until the user answers the mirror-or-desktop dialog.
-                    // That is an unbounded wait on a person, so a fixed deadline here would end
-                    // the session while the sheet was still on screen.
-                    if (watchForNoOutput &&
-                        firstOutputAt == 0L &&
-                        SystemClock.elapsedRealtime() - startedAt >= NO_VIDEO_OUTPUT_TIMEOUT_MS
-                    ) {
-                        Log.w(
-                            TAG,
-                            "${videoCodec.label} produced no output at all in " +
-                                "${NO_VIDEO_OUTPUT_TIMEOUT_MS}ms; either the encoder is wedged or " +
-                                "nothing is being drawn into its surface",
-                        )
-                        onStopped(MirrorStopReason.NoVideoOutput)
-                        return@launch
-                    }
-                    delay(FRAME_POLL_MS)
-                    continue
-                }
-                if (firstOutputAt == 0L) firstOutputAt = SystemClock.elapsedRealtime()
-                // Checked here rather than in a coroutine of its own, because this loop is already
-                // running at frame cadence and the encoder it is draining is the thing being watched.
-                if (videoCodec.needsCodecConfig &&
-                    !encoder.hasCodecConfig &&
-                    SystemClock.elapsedRealtime() - firstOutputAt >= CODEC_CONFIG_TIMEOUT_MS
-                ) {
-                    Log.w(
-                        TAG,
-                        "${videoCodec.label} has produced ${CODEC_CONFIG_TIMEOUT_MS}ms of frames " +
-                            "and no codec config; the TV can never start its decoder",
-                    )
-                    onStopped(MirrorStopReason.CodecConfig)
-                    return@launch
-                }
-                for (chunk in chunks) sender.send(chunk)
-            }
-        }
+        videoJob = scope.launch { drainVideoLoop(encoder, sender) }
         return true
+    }
+
+    /**
+     * The one branch: mirror the screen into the surface, or hand it to whoever asked for it.
+     *
+     * False when the platform refused, with nothing left held.
+     */
+    private fun attachVideoSource(encoder: VideoEncoder, surface: Surface): Boolean = when (source) {
+        is MirrorSource.Screen -> attachScreen(encoder, surface, source)
+        is MirrorSource.SystemDisplay -> attachDesktop(encoder, surface, source)
+        is MirrorSource.Content -> {
+            contentSurface = surface
+            true
+        }
+    }
+
+    private fun attachScreen(
+        encoder: VideoEncoder,
+        surface: Surface,
+        screenSource: MirrorSource.Screen,
+    ): Boolean {
+        val screen = ScreenCapture(screenSource.projection)
+        if (!screen.start(surface, geometry)) {
+            encoder.release()
+            screen.release()
+            return false
+        }
+        capture = screen
+        return true
+    }
+
+    private fun attachDesktop(
+        encoder: VideoEncoder,
+        surface: Surface,
+        desktopSource: MirrorSource.SystemDisplay,
+    ): Boolean {
+        // Same shape as ScreenCapture on purpose, but a system display rather than a
+        // mirror of the phone. The id is written back onto the source so the caller can
+        // publish it to the route - the framework will not go looking for it.
+        //
+        // **Reused when the source already has one**, which is what a re-negotiation after
+        // a resolution change looks like from here: the display is the user's desktop and
+        // survives the encoder being rebuilt around it. Only its surface moves.
+        val existing = desktopSource.display
+        if (existing != null) {
+            if (!existing.attach(surface)) {
+                encoder.release()
+                return false
+            }
+            return true
+        }
+        val desktop = CastSystemDisplay(appContext)
+        if (!desktop.start(surface, geometry, desktopSource.receiverId, desktopSource.supportedModes)) {
+            encoder.release()
+            desktop.release()
+            return false
+        }
+        desktopSource.display = desktop
+        desktopSource.displayId = desktop.displayId
+        return true
+    }
+
+    private fun logStreamStart() {
+        Log.i(
+            TAG,
+            "streaming ${videoCodec.label} ${geometry.width}x${geometry.height} " +
+                "@ ${geometry.bitRate / BITS_PER_MEGABIT} Mbit/s" +
+                if (source.appLabel.isEmpty()) "" else " from ${source.appLabel}",
+        )
+    }
+
+    private suspend fun drainVideoLoop(encoder: VideoEncoder, sender: StreamSender) {
+        // A system display is a pending connection until the user picks mirror or desktop, so
+        // it is legitimately blank for as long as they take to answer.
+        val watchForNoOutput = source !is MirrorSource.SystemDisplay
+        val tracker = VideoOutputTracker(watchForNoOutput)
+        // The launch's own context, not an extension receiver: this is called from a plain
+        // `scope.launch`, and a member extension's implicit receiver does not satisfy the
+        // `isActive` lookup here.
+        while (currentCoroutineContext().isActive) {
+            val chunks = encoder.drain()
+            if (chunks.isEmpty()) {
+                if (tracker.noteIdle()) {
+                    onStopped(MirrorStopReason.NoVideoOutput)
+                    return
+                }
+                delay(FRAME_POLL_MS)
+                continue
+            }
+            tracker.noteOutput()
+            // Checked here rather than in a coroutine of its own, because this loop is already
+            // running at frame cadence and the encoder it is draining is the thing being watched.
+            if (isMissingCodecConfig(encoder, tracker.firstOutputAt)) return
+            for (chunk in chunks) sender.send(chunk)
+        }
+    }
+
+    private fun isMissingCodecConfig(encoder: VideoEncoder, firstOutputAt: Long): Boolean {
+        if (!videoCodec.needsCodecConfig ||
+            encoder.hasCodecConfig ||
+            SystemClock.elapsedRealtime() - firstOutputAt < CODEC_CONFIG_TIMEOUT_MS
+        ) {
+            return false
+        }
+        Log.w(
+            TAG,
+            "${videoCodec.label} has produced ${CODEC_CONFIG_TIMEOUT_MS}ms of frames " +
+                "and no codec config; the TV can never start its decoder",
+        )
+        onStopped(MirrorStopReason.CodecConfig)
+        return true
+    }
+
+    /**
+     * When the encoder first produced anything, which is what the codec-config watchdog is
+     * timed from. Zero until then, so a session whose content has not started drawing yet is
+     * simply waiting rather than failing.
+     */
+    private inner class VideoOutputTracker(private val watchForNoOutput: Boolean) {
+        var firstOutputAt = 0L
+            private set
+        private val startedAt = SystemClock.elapsedRealtime()
+
+        fun noteOutput() {
+            if (firstOutputAt == 0L) firstOutputAt = SystemClock.elapsedRealtime()
+        }
+
+        /**
+         * True when the encoder has produced nothing for long enough to call it wedged.
+         *
+         * The one condition the codec-config watchdog cannot reach, because its
+         * clock never starts. See [NO_VIDEO_OUTPUT_TIMEOUT_MS].
+         *
+         * Disarmed for a system display, which is created as a pending connection and
+         * composes nothing at all until the user answers the mirror-or-desktop dialog.
+         * That is an unbounded wait on a person, so a fixed deadline here would end
+         * the session while the sheet was still on screen.
+         */
+        fun noteIdle(): Boolean {
+            if (!watchForNoOutput ||
+                firstOutputAt != 0L ||
+                SystemClock.elapsedRealtime() - startedAt < NO_VIDEO_OUTPUT_TIMEOUT_MS
+            ) {
+                return false
+            }
+            Log.w(
+                TAG,
+                "${videoCodec.label} produced no output at all in " +
+                    "${NO_VIDEO_OUTPUT_TIMEOUT_MS}ms; either the encoder is wedged or " +
+                    "nothing is being drawn into its surface",
+            )
+            return true
+        }
     }
 
     private fun startAudio(stream: NegotiatedStream, udp: CastUdpTransport): Boolean {
@@ -367,12 +441,12 @@ class MirrorEngine(
                 if (!source.wantAudio) return false
                 val pipe = try {
                     ParcelFileDescriptor.createPipe()
-                } catch (e: Exception) {
+                } catch (e: IOException) {
                     Log.w(TAG, "could not create the PCM pipe", e)
                     return false
                 }
-                audioWriteEnd = pipe[1]
-                PcmAudioEncoder(pipe[0])
+                audioWriteEnd = pipe[PIPE_WRITE_INDEX]
+                PcmAudioEncoder(pipe[PIPE_READ_INDEX])
             }
         }
         if (!encoder.start()) {
@@ -402,55 +476,12 @@ class MirrorEngine(
      */
     private fun startRtcp(udp: CastUdpTransport) {
         rtcpJob = scope.launch {
-            var lastReport = 0L
-            var lastStatsLog = 0L
+            val state = RtcpLoopState()
             while (isActive) {
                 val now = System.currentTimeMillis()
-                if (now - lastReport >= SENDER_REPORT_INTERVAL_MS) {
-                    lastReport = now
-                    for ((kind, sender) in senders) {
-                        val stream = negotiation.streams.firstOrNull { it.kind == kind } ?: continue
-                        val stats = sender.stats
-                        // Nothing has been sent yet, so there is no clock mapping to report.
-                        if (stats.lastSentAtMillis == 0L) continue
-                        udp.send(
-                            Rtcp.senderReport(
-                                senderSsrc = stream.senderSsrc,
-                                // Paired with the RTP timestamp captured at the same instant, not
-                                // with the current clock.
-                                ntpTimestamp = ntpTimestamp(stats.lastSentAtMillis),
-                                rtpTimestamp = stats.lastRtpTimestamp,
-                                packetCount = stats.packets,
-                                octetCount = stats.octets,
-                            ),
-                        )
-                    }
-                }
-                // The single most useful line for diagnosing "the TV is black": whether packets are
-                // leaving, and whether the receiver is answering. Feedback arriving at all proves it
-                // is parsing our RTP, which halves the search space.
-                if (now - lastStatsLog >= STATS_LOG_INTERVAL_MS) {
-                    lastStatsLog = now
-                    val summary = senders.entries.joinToString(" ") { (kind, sender) ->
-                        "$kind=${sender.stats.packets}pkt/${sender.stats.octets}B"
-                    }
-                    Log.i(
-                        TAG,
-                        "$summary feedback=$feedbackPackets unmatchedRtcp=$unmatchedPackets " +
-                            "sendFailures=${udp.sendFailures}" +
-                            if (coalescedKeyFrameRequests > 0) {
-                                " keyFrameAsks=$coalescedKeyFrameRequests coalesced"
-                            } else {
-                                ""
-                            },
-                    )
-                    coalescedKeyFrameRequests = 0
-                }
-                var packet = udp.receive()
-                while (packet != null) {
-                    handleFeedback(packet)
-                    packet = udp.receive()
-                }
+                state.maybeSendReports(now, udp)
+                state.maybeLogStats(now, udp)
+                drainFeedback(udp)
                 // A receiver whose port has gone unreachable is not coming back, and spinning at it
                 // forever hides the failure from the user behind a notification that says
                 // "Mirroring your screen".
@@ -464,6 +495,76 @@ class MirrorEngine(
         }
     }
 
+    private inner class RtcpLoopState {
+        private var lastReport = 0L
+        private var lastStatsLog = 0L
+
+        fun maybeSendReports(now: Long, udp: CastUdpTransport) {
+            if (now - lastReport < SENDER_REPORT_INTERVAL_MS) return
+            lastReport = now
+            sendSenderReports(udp)
+        }
+
+        fun maybeLogStats(now: Long, udp: CastUdpTransport) {
+            if (now - lastStatsLog < STATS_LOG_INTERVAL_MS) return
+            lastStatsLog = now
+            logStreamStats(udp)
+        }
+    }
+
+    private fun sendSenderReports(udp: CastUdpTransport) {
+        for ((kind, sender) in senders) {
+            reportForSender(udp, kind, sender)
+        }
+    }
+
+    private fun reportForSender(udp: CastUdpTransport, kind: StreamKind, sender: StreamSender) {
+        val stream = negotiation.streams.firstOrNull { it.kind == kind }
+        if (stream == null) return
+        val stats = sender.stats
+        // Nothing has been sent yet, so there is no clock mapping to report.
+        if (stats.lastSentAtMillis == 0L) return
+        udp.send(
+            Rtcp.senderReport(
+                senderSsrc = stream.senderSsrc,
+                // Paired with the RTP timestamp captured at the same instant, not
+                // with the current clock.
+                ntpTimestamp = ntpTimestamp(stats.lastSentAtMillis),
+                rtpTimestamp = stats.lastRtpTimestamp,
+                packetCount = stats.packets,
+                octetCount = stats.octets,
+            ),
+        )
+    }
+
+    private fun logStreamStats(udp: CastUdpTransport) {
+        // The single most useful line for diagnosing "the TV is black": whether packets are
+        // leaving, and whether the receiver is answering. Feedback arriving at all proves it
+        // is parsing our RTP, which halves the search space.
+        val summary = senders.entries.joinToString(" ") { (kind, sender) ->
+            "$kind=${sender.stats.packets}pkt/${sender.stats.octets}B"
+        }
+        Log.i(
+            TAG,
+            "$summary feedback=$feedbackPackets unmatchedRtcp=$unmatchedPackets " +
+                "sendFailures=${udp.sendFailures}" +
+                if (coalescedKeyFrameRequests > 0) {
+                    " keyFrameAsks=$coalescedKeyFrameRequests coalesced"
+                } else {
+                    ""
+                },
+        )
+        coalescedKeyFrameRequests = 0
+    }
+
+    private fun drainFeedback(udp: CastUdpTransport) {
+        var packet = udp.receive()
+        while (packet != null) {
+            handleFeedback(packet)
+            packet = udp.receive()
+        }
+    }
+
     /**
      * Route one datagram to whichever stream it is feedback for.
      *
@@ -472,50 +573,69 @@ class MirrorEngine(
      */
     private fun handleFeedback(packet: ByteArray) {
         for (stream in negotiation.streams) {
-            val sender = senders[stream.kind] ?: continue
-            val feedback = Rtcp.parse(
-                packet = packet,
-                receiverSsrc = stream.receiverSsrc,
-                senderSsrc = stream.senderSsrc,
-                maxFrameId = sender.lastFrameId,
-            ) ?: continue
-            feedbackPackets++
-            if (hexDump) {
-                Log.i(
-                    TAG,
-                    "${stream.kind} feedback checkpoint=${feedback.checkpoint} " +
-                        "nacks=${feedback.nacks.size} acks=${feedback.ackedFrames.size} " +
-                        "pli=${feedback.pictureLoss} playoutDelay=${feedback.playoutDelayMs}",
-                )
-            }
-            val recovery = sender.onFeedback(feedback)
-            sender.retransmit(recovery.retransmissions)
-            if (stream.kind == StreamKind.Video &&
-                (recovery.needsKeyFrame || feedback.pictureLoss)
-            ) {
-                // Either the receiver asked outright (PLI) or it has fallen further behind than the
-                // retransmit buffer can repair. A key frame is the only way out of both.
-                //
-                // **Coalesced, because a receiver can ask far faster than an encoder can answer.** The
-                // receiver reports every 50 ms, so a session it considers unsynchronised produces
-                // twenty of these a second - and each one is a `setParameters` on the encoder.
-                // Measured: fifteen seconds of that while playback was paused left the encoder
-                // unable to produce a picture even after frames started arriving again. One request
-                // per interval is all an encoder can act on anyway; the rest are the same request.
-                val now = System.currentTimeMillis()
-                if (now - lastKeyFrameRequest >= KEY_FRAME_REQUEST_INTERVAL_MS) {
-                    lastKeyFrameRequest = now
-                    Log.i(TAG, "key frame requested (pli=${feedback.pictureLoss})")
-                    videoEncoder?.requestKeyFrame()
-                } else {
-                    coalescedKeyFrameRequests++
-                }
-            }
+            val matched = matchStream(packet, stream) ?: continue
+            onMatchedFeedback(stream, matched.sender, matched.feedback)
             return
         }
         // Receiver reports and event logs also arrive here and are none of our business, but a run
         // where *everything* is unmatched means the SSRC pairing is wrong.
         unmatchedPackets++
+    }
+
+    private data class MatchedFeedback(val sender: StreamSender, val feedback: ReceiverFeedback)
+
+    private fun matchStream(packet: ByteArray, stream: NegotiatedStream): MatchedFeedback? {
+        val sender = senders[stream.kind] ?: return null
+        val feedback = Rtcp.parse(
+            packet = packet,
+            receiverSsrc = stream.receiverSsrc,
+            senderSsrc = stream.senderSsrc,
+            maxFrameId = sender.lastFrameId,
+        ) ?: return null
+        return MatchedFeedback(sender, feedback)
+    }
+
+    private fun onMatchedFeedback(
+        stream: NegotiatedStream,
+        sender: StreamSender,
+        feedback: ReceiverFeedback,
+    ) {
+        feedbackPackets++
+        if (hexDump) {
+            Log.i(
+                TAG,
+                "${stream.kind} feedback checkpoint=${feedback.checkpoint} " +
+                    "nacks=${feedback.nacks.size} acks=${feedback.ackedFrames.size} " +
+                    "pli=${feedback.pictureLoss} playoutDelay=${feedback.playoutDelayMs}",
+            )
+        }
+        val recovery = sender.onFeedback(feedback)
+        sender.retransmit(recovery.retransmissions)
+        if (stream.kind == StreamKind.Video &&
+            (recovery.needsKeyFrame || feedback.pictureLoss)
+        ) {
+            // Either the receiver asked outright (PLI) or it has fallen further behind than the
+            // retransmit buffer can repair. A key frame is the only way out of both.
+            //
+            // **Coalesced, because a receiver can ask far faster than an encoder can answer.** The
+            // receiver reports every 50 ms, so a session it considers unsynchronised produces
+            // twenty of these a second - and each one is a `setParameters` on the encoder.
+            // Measured: fifteen seconds of that while playback was paused left the encoder
+            // unable to produce a picture even after frames started arriving again. One request
+            // per interval is all an encoder can act on anyway; the rest are the same request.
+            requestKeyFrameCoalesced(feedback.pictureLoss)
+        }
+    }
+
+    private fun requestKeyFrameCoalesced(pictureLoss: Boolean) {
+        val now = System.currentTimeMillis()
+        if (now - lastKeyFrameRequest >= KEY_FRAME_REQUEST_INTERVAL_MS) {
+            lastKeyFrameRequest = now
+            Log.i(TAG, "key frame requested (pli=$pictureLoss)")
+            videoEncoder?.requestKeyFrame()
+        } else {
+            coalescedKeyFrameRequests++
+        }
     }
 
     /**
@@ -563,8 +683,8 @@ class MirrorEngine(
 
     /** 32 bits of seconds since 1900, then 32 bits of fraction. */
     private fun ntpTimestamp(millis: Long): Long {
-        val seconds = millis / 1000 + NTP_UNIX_OFFSET_SECONDS
-        val fraction = (millis % 1000) * (1L shl 32) / 1000
-        return (seconds shl 32) or fraction
+        val seconds = millis / MILLIS_PER_SECOND + NTP_UNIX_OFFSET_SECONDS
+        val fraction = (millis % MILLIS_PER_SECOND) * (1L shl NTP_FRACTION_BITS) / MILLIS_PER_SECOND
+        return (seconds shl NTP_FRACTION_BITS) or fraction
     }
 }

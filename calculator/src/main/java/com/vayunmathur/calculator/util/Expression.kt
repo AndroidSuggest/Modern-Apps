@@ -28,6 +28,40 @@ import kotlin.math.sqrt
 import kotlin.math.tan
 import kotlin.math.tanh
 
+/** Degrees in a half circle — the radian/degree scale factor. */
+private const val DEGREES_IN_HALF_CIRCLE = 180.0
+
+/** Radicand of the golden ratio: phi = (1 + sqrt(5)) / 2. */
+private const val PHI_RADICAND = 5.0
+
+/** Factor scaling tau to pi: tau = 2 * pi. */
+private const val TAU_FACTOR = 2.0
+
+/** Lanczos reflection cutoff and half-offset (gamma parameter g = 7, so g + 1/2). */
+private const val LANCZOS_HALF = 0.5
+
+/** Lanczos series parameter g, balancing convergence against coefficient growth. */
+private const val LANCZOS_G = 7.0
+
+/** Largest n computed with an exact iterative product; beyond it gamma takes over. */
+private const val MAX_EXACT_FACTORIAL = 170.0
+
+/** Symbol chars that can start an implicit-multiplication factor (`2pi`, `2√x`, `2θ`). */
+private val IMPLICIT_FACTOR_CHARS = setOf('√', 'π', 'θ')
+
+/** Function names evaluated by [Expression.Call.evalTrig]. */
+private val TRIG_FUNCTIONS = setOf("sin", "cos", "tan", "asin", "acos", "atan", "sec", "csc", "cot")
+
+/** Function names evaluated by [Expression.Call.evalHyperbolic]. */
+private val HYPERBOLIC_FUNCTIONS = setOf("sinh", "cosh", "tanh", "asinh", "acosh", "atanh")
+
+/** Single-argument function names evaluated by [Expression.Call.evalSingle]. */
+private val SINGLE_ARG_FUNCTIONS =
+    setOf("sqrt", "√", "cbrt", "exp", "ln", "log2", "floor", "ceil", "round", "sign", "gamma", "fact")
+
+/** Two-argument function names evaluated by [Expression.Call.evalPair]. */
+private val PAIR_FUNCTIONS = setOf("root", "mod", "atan2", "ncr", "npr", "gcd", "lcm")
+
 /** Whether trigonometric functions interpret/return angles in degrees or radians. */
 enum class AngleMode { RADIANS, DEGREES }
 
@@ -127,52 +161,78 @@ class Expression private constructor(private val root: Node) {
                 return args[0].eval(ctx).abs()
             }
             val a = args.map { it.eval(ctx).requireScalar(name) }
-            fun one(): Double {
-                if (a.size != 1) throw ExpressionError("$name expects 1 argument")
-                return a[0]
+            return Quantity.scalar(evaluateScalar(a, ctx.angle))
+        }
+
+        /** Dispatch a dimensionless call to its function group. */
+        private fun evaluateScalar(a: List<Double>, angle: AngleMode): Double = when {
+            name in TRIG_FUNCTIONS -> evalTrig(singleArg(a), angle)
+            name in HYPERBOLIC_FUNCTIONS -> evalHyperbolic(singleArg(a))
+            name in SINGLE_ARG_FUNCTIONS -> evalSingle(singleArg(a))
+            name in PAIR_FUNCTIONS -> evalPair(a, angle)
+            name == "log" -> if (a.size == 2) ln(a[1]) / ln(a[0]) else log10(singleArg(a))
+            name == "max" -> a.max()
+            name == "min" -> a.min()
+            else -> throw ExpressionError("Unknown function '$name'")
+        }
+
+        private fun singleArg(a: List<Double>): Double {
+            if (a.size != 1) throw ExpressionError("$name expects 1 argument")
+            return a[0]
+        }
+
+        private fun toRad(v: Double, angle: AngleMode) =
+            if (angle == AngleMode.DEGREES) v * PI / DEGREES_IN_HALF_CIRCLE else v
+
+        private fun fromRad(v: Double, angle: AngleMode) =
+            if (angle == AngleMode.DEGREES) v * DEGREES_IN_HALF_CIRCLE / PI else v
+
+        private fun evalTrig(x: Double, angle: AngleMode): Double = when (name) {
+            "sin" -> sin(toRad(x, angle))
+            "cos" -> cos(toRad(x, angle))
+            "tan" -> tan(toRad(x, angle))
+            "asin" -> fromRad(asin(x), angle)
+            "acos" -> fromRad(acos(x), angle)
+            "atan" -> fromRad(atan(x), angle)
+            "sec" -> 1.0 / cos(toRad(x, angle))
+            "csc" -> 1.0 / sin(toRad(x, angle))
+            else -> 1.0 / tan(toRad(x, angle)) // "cot"
+        }
+
+        private fun evalHyperbolic(x: Double): Double = when (name) {
+            "sinh" -> sinh(x)
+            "cosh" -> cosh(x)
+            "tanh" -> tanh(x)
+            "asinh" -> asinh(x)
+            "acosh" -> acosh(x)
+            else -> atanh(x) // "atanh"
+        }
+
+        private fun evalSingle(x: Double): Double = when (name) {
+            "sqrt", "√" -> sqrt(x)
+            "cbrt" -> cbrt(x)
+            "exp" -> exp(x)
+            "ln" -> ln(x)
+            "log2" -> log2(x)
+            "floor" -> floor(x)
+            "ceil" -> ceil(x)
+            "round" -> round(x)
+            "sign" -> sign(x)
+            "gamma" -> gamma(x)
+            else -> factorial(x) // "fact"
+        }
+
+        private fun evalPair(a: List<Double>, angle: AngleMode): Double {
+            require2(a)
+            return when (name) {
+                "root" -> a[1].pow(1.0 / a[0])
+                "mod" -> a[0] % a[1]
+                "atan2" -> fromRad(atan2(a[0], a[1]), angle)
+                "ncr" -> combinations(a[0], a[1])
+                "npr" -> permutations(a[0], a[1])
+                "gcd" -> gcd(a[0], a[1])
+                else -> lcm(a[0], a[1]) // "lcm"
             }
-            fun toRad(v: Double) = if (ctx.angle == AngleMode.DEGREES) v * PI / 180.0 else v
-            fun fromRad(v: Double) = if (ctx.angle == AngleMode.DEGREES) v * 180.0 / PI else v
-            val result: Double = when (name) {
-                "sin" -> sin(toRad(one()))
-                "cos" -> cos(toRad(one()))
-                "tan" -> tan(toRad(one()))
-                "asin" -> fromRad(asin(one()))
-                "acos" -> fromRad(acos(one()))
-                "atan" -> fromRad(atan(one()))
-                "sec" -> 1.0 / cos(toRad(one()))
-                "csc" -> 1.0 / sin(toRad(one()))
-                "cot" -> 1.0 / tan(toRad(one()))
-                "sinh" -> sinh(one())
-                "cosh" -> cosh(one())
-                "tanh" -> tanh(one())
-                "asinh" -> asinh(one())
-                "acosh" -> acosh(one())
-                "atanh" -> atanh(one())
-                "sqrt", "√" -> sqrt(one())
-                "cbrt" -> cbrt(one())
-                "exp" -> exp(one())
-                "ln" -> ln(one())
-                "log2" -> log2(one())
-                "log" -> if (a.size == 2) ln(a[1]) / ln(a[0]) else log10(one())
-                "floor" -> floor(one())
-                "ceil" -> ceil(one())
-                "round" -> round(one())
-                "sign" -> sign(one())
-                "gamma" -> gamma(one())
-                "fact" -> factorial(one())
-                "root" -> { require2(a); a[1].pow(1.0 / a[0]) }
-                "mod" -> { require2(a); a[0] % a[1] }
-                "atan2" -> { require2(a); fromRad(atan2(a[0], a[1])) }
-                "ncr" -> { require2(a); combinations(a[0], a[1]) }
-                "npr" -> { require2(a); permutations(a[0], a[1]) }
-                "gcd" -> { require2(a); gcd(a[0], a[1]) }
-                "lcm" -> { require2(a); lcm(a[0], a[1]) }
-                "max" -> a.max()
-                "min" -> a.min()
-                else -> throw ExpressionError("Unknown function '$name'")
-            }
-            return Quantity.scalar(result)
         }
 
         private fun require2(a: List<Double>) {
@@ -215,35 +275,46 @@ class Expression private constructor(private val root: Node) {
         private fun parseExpr(): Node {
             var left = parseTerm()
             while (true) {
-                val c = peek() ?: break
-                if (c == '+' || c == '-') {
-                    pos++
-                    left = Binary(c, left, parseTerm())
-                } else break
+                left = parseExprStep(left) ?: break
             }
             return left
+        }
+
+        /** One additive step after [left], or null when the expression ends. */
+        private fun parseExprStep(left: Node): Node? {
+            val c = peek() ?: return null
+            if (c != '+' && c != '-') return null
+            pos++
+            return Binary(c, left, parseTerm())
         }
 
         private fun parseTerm(): Node {
             var left = parseFactor()
             while (true) {
-                val c = peek() ?: break
-                when (c) {
-                    '*', '/', '%' -> { pos++; left = Binary(c, left, parseFactor()) }
-                    // Implicit multiplication: value directly followed by a group/name.
-                    '(' -> left = Binary('*', left, parseFactor())
-                    // '|' is ambiguous: it both opens and closes. Inside a pair of bars the
-                    // next '|' is the closing one, so stop and let parsePrimary consume it.
-                    // Treating it as the start of another factor made every |x| expression
-                    // recurse into an unterminated bar and throw.
-                    '|' -> if (barDepth > 0) break else left = Binary('*', left, parseFactor())
-                    else -> if (c.isLetter() || c == '√' || c == 'π' || c == 'θ') {
-                        left = Binary('*', left, parseFactor())
-                    } else break
-                }
+                left = parseTermStep(left) ?: break
             }
             return left
         }
+
+        /** One multiplicative step after [left], or null when the term ends. */
+        private fun parseTermStep(left: Node): Node? {
+            val c = peek() ?: return null
+            // '|' is ambiguous: it both opens and closes. Inside a pair of bars the
+            // next '|' is the closing one, so stop and let parsePrimary consume it.
+            // Treating it as the start of another factor made every |x| expression
+            // recurse into an unterminated bar and throw.
+            if (c == '|' && barDepth > 0) return null
+            val op = when (c) {
+                '*', '/', '%' -> { pos++; c }
+                // Implicit multiplication: value directly followed by a group/name.
+                '(', '|' -> '*'
+                else -> if (isImplicitFactorStart(c)) '*' else return null
+            }
+            return Binary(op, left, parseFactor())
+        }
+
+        /** Whether [c] can start an implicit-multiplication factor (`2x`, `2√x`, `2θ`). */
+        private fun isImplicitFactorStart(c: Char) = c.isLetter() || c in IMPLICIT_FACTOR_CHARS
 
         private fun parseFactor(): Node {
             val c = peek()
@@ -270,27 +341,33 @@ class Expression private constructor(private val root: Node) {
         private fun parsePrimary(): Node {
             val c = peek() ?: throw ExpressionError("Unexpected end of expression")
             when {
-                c == '(' -> {
-                    pos++
-                    val inner = parseExpr()
-                    if (peek() != ')') throw ExpressionError("Missing ')'")
-                    pos++
-                    return inner
-                }
-                c == '|' -> {
-                    pos++
-                    barDepth++
-                    val inner = parseExpr()
-                    if (peek() != '|') throw ExpressionError("Missing '|'")
-                    pos++
-                    barDepth--
-                    return Call("abs", listOf(inner))
-                }
+                c == '(' -> return parseParenGroup()
+                c == '|' -> return parseBarGroup()
                 c.isDigit() || c == '.' -> return parseNumber()
                 c == '#' -> return parseInstant()
-                c.isLetter() || c == '√' || c == 'π' || c == 'θ' -> return parseIdentifier()
+                c.isLetter() || c in IMPLICIT_FACTOR_CHARS -> return parseIdentifier()
                 else -> throw ExpressionError("Unexpected '$c'")
             }
+        }
+
+        /** Parse `(…)`, the opening paren already peeked but not consumed. */
+        private fun parseParenGroup(): Node {
+            pos++
+            val inner = parseExpr()
+            if (peek() != ')') throw ExpressionError("Missing ')'")
+            pos++
+            return inner
+        }
+
+        /** Parse `|…|`, the opening bar already peeked but not consumed. */
+        private fun parseBarGroup(): Node {
+            pos++
+            barDepth++
+            val inner = parseExpr()
+            if (peek() != '|') throw ExpressionError("Missing '|'")
+            pos++
+            barDepth--
+            return Call("abs", listOf(inner))
         }
 
         /** Parse a `#<epochSeconds>` date literal (the `#` has been peeked, not consumed). */
@@ -307,27 +384,37 @@ class Expression private constructor(private val root: Node) {
         private fun parseNumber(): Node {
             skipSpaces()
             val start = pos
-            var seenDot = false
-            while (pos < src.length) {
-                val ch = src[pos]
-                if (ch.isDigit()) pos++
-                else if (ch == '.' && !seenDot) { seenDot = true; pos++ }
-                else break
-            }
-            // Scientific notation: uppercase 'E' only (lowercase 'e' is Euler's constant).
-            if (pos < src.length && src[pos] == 'E') {
-                val save = pos
-                pos++
-                if (pos < src.length && (src[pos] == '+' || src[pos] == '-')) pos++
-                if (pos < src.length && src[pos].isDigit()) {
-                    while (pos < src.length && src[pos].isDigit()) pos++
-                } else {
-                    pos = save // not an exponent after all
-                }
-            }
+            consumeMantissa()
+            consumeExponent()
             val text = src.substring(start, pos)
             val value = text.toDoubleOrNull() ?: throw ExpressionError("Invalid number '$text'")
             return Num(value)
+        }
+
+        /** Integer digits plus at most one fraction part. */
+        private fun consumeMantissa() {
+            consumeDigits()
+            if (pos < src.length && src[pos] == '.') {
+                pos++
+                consumeDigits()
+            }
+        }
+
+        private fun consumeDigits() {
+            while (pos < src.length && src[pos].isDigit()) pos++
+        }
+
+        /** Uppercase-'E' scientific exponent; lowercase 'e' is Euler's constant. */
+        private fun consumeExponent() {
+            if (pos >= src.length || src[pos] != 'E') return
+            val save = pos
+            pos++
+            if (pos < src.length && (src[pos] == '+' || src[pos] == '-')) pos++
+            if (pos < src.length && src[pos].isDigit()) {
+                consumeDigits()
+            } else {
+                pos = save // not an exponent after all
+            }
         }
 
         private fun parseIdentifier(): Node {
@@ -343,24 +430,27 @@ class Expression private constructor(private val root: Node) {
                 "x", "t", "theta" -> Var
                 "ans" -> Ans
                 "pi" -> Num(PI)
-                "tau" -> Num(2 * PI)
+                "tau" -> Num(TAU_FACTOR * PI)
                 "e" -> Num(E)
-                "phi" -> Num((1 + sqrt(5.0)) / 2)
-                else -> {
-                    if (peek() == '(') {
-                        pos++
-                        val args = parseArgs()
-                        if (peek() != ')') throw ExpressionError("Missing ')' after $name")
-                        pos++
-                        Call(name, args)
-                    } else {
-                        // Not a function call: try the unit registry (case-sensitively, so `mm`
-                        // and `Mm` differ) before giving up.
-                        val unit = UnitRegistry.parseTokens[raw]
-                        if (unit != null) UnitNode(unit) else throw ExpressionError("Unknown symbol '$raw'")
-                    }
-                }
+                "phi" -> Num((1 + sqrt(PHI_RADICAND)) / 2)
+                else -> parseFunctionOrUnit(raw, name)
             }
+        }
+
+        /** A trailing name is a function call, or a unit from the registry (case-sensitive). */
+        private fun parseFunctionOrUnit(raw: String, name: String): Node {
+            if (peek() != '(') {
+                // Not a function call: try the unit registry (case-sensitively, so `mm`
+                // and `Mm` differ) before giving up.
+                val unit = UnitRegistry.parseTokens[raw]
+                if (unit != null) return UnitNode(unit)
+                throw ExpressionError("Unknown symbol '$raw'")
+            }
+            pos++
+            val args = parseArgs()
+            if (peek() != ')') throw ExpressionError("Missing ')' after $name")
+            pos++
+            return Call(name, args)
         }
 
         private fun parseArgs(): List<Node> {
@@ -383,30 +473,40 @@ private fun Quantity.requireScalar(context: String): Double {
 
 /** Lanczos approximation of the gamma function (valid across the reals except poles). */
 private fun gamma(x: Double): Double {
-    val g = 7.0
-    val c = doubleArrayOf(
-        0.99999999999980993, 676.5203681218851, -1259.1392167224028,
-        771.32342877765313, -176.61502916214059, 12.507343278686905,
-        -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
-    )
-    if (x < 0.5) return PI / (sin(PI * x) * gamma(1 - x))
+    if (x < LANCZOS_HALF) return PI / (sin(PI * x) * gamma(1 - x))
     val z = x - 1
-    var a = c[0]
-    val t = z + g + 0.5
-    for (i in 1 until c.size) a += c[i] / (z + i)
-    return sqrt(2 * PI) * t.pow(z + 0.5) * exp(-t) * a
+    var a = LANCZOS_COEFFICIENTS[0]
+    val t = z + LANCZOS_G + LANCZOS_HALF
+    for (i in 1 until LANCZOS_COEFFICIENTS.size) a += LANCZOS_COEFFICIENTS[i] / (z + i)
+    return sqrt(2 * PI) * t.pow(z + LANCZOS_HALF) * exp(-t) * a
 }
+
+/** Lanczos series coefficients for g = 7 (nine-term expansion). */
+private val LANCZOS_COEFFICIENTS = doubleArrayOf(
+    0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+)
+
+/** Smallest factor in the exact iterative factorial product. */
+private const val FACTORIAL_FIRST_FACTOR = 2.0
 
 /** Factorial via gamma so non-integers work too; exact for small non-negative integers. */
 private fun factorial(n: Double): Double {
     if (n < 0 && n == floor(n)) return Double.NaN // poles at negative integers
-    if (n == floor(n) && n <= 170) {
-        var result = 1.0
-        var i = 2
-        while (i <= n.toInt()) { result *= i; i++ }
-        return result
-    }
+    if (n == floor(n) && n <= MAX_EXACT_FACTORIAL) return exactFactorial(n.toInt())
     return gamma(n + 1)
+}
+
+/** Exact integer product `1·2·…·n` for small n. */
+private fun exactFactorial(n: Int): Double {
+    var result = 1.0
+    var i = FACTORIAL_FIRST_FACTOR.toInt()
+    while (i <= n) {
+        result *= i
+        i++
+    }
+    return result
 }
 
 private fun combinations(n: Double, r: Double): Double =

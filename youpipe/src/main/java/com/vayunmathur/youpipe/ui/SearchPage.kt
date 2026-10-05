@@ -99,7 +99,6 @@ fun SearchPage(
     }
 
     SearchScreen(
-        backStack = backStack,
         state = SearchUiState(
             query = searchQuery,
             suggestions = suggestions,
@@ -157,14 +156,12 @@ fun SearchPage(
 /**
  * Stateless home screen.
  *
- * [backStack] survives here only because [BottomNavBar] is driven by the back stack itself;
- * everything the user taps inside the screen goes through [actions]. A preview can hand it a
+ * Everything the user taps inside the screen goes through [actions]. A preview can hand it a
  * freshly-remembered stack.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
-    backStack: NavBackStack<Route>,
     state: SearchUiState,
     actions: SearchActions,
 ) {

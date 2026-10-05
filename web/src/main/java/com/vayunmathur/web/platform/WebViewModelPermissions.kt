@@ -1,6 +1,5 @@
 package com.vayunmathur.web.platform
 
-import androidx.lifecycle.viewModelScope
 import com.vayunmathur.web.data.SitePermission
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -14,8 +13,8 @@ fun WebViewModel.requestWebPermission(
     grant: (List<SitePermissionType>) -> Unit,
     deny: () -> Unit
 ) {
-    viewModelScope.launch {
-        val saved = repository.sitePermissionByOrigin(origin)
+    scope.launch {
+        val saved = repository.permissions.byOrigin(origin)
         val (toAsk, preGranted) = if (saved != null) {
             val determined = types.mapNotNull { t ->
                 when (t) {
@@ -58,9 +57,13 @@ fun WebViewModel.requestWebPermission(
     }
 }
 
-internal fun WebViewModel.persistPermission(origin: String, granted: List<SitePermissionType>, requested: List<SitePermissionType>) {
-    viewModelScope.launch {
-        val existing = repository.sitePermissionByOrigin(origin) ?: SitePermission(origin = origin)
+internal fun WebViewModel.persistPermission(
+    origin: String,
+    granted: List<SitePermissionType>,
+    requested: List<SitePermissionType>,
+) {
+    scope.launch {
+        val existing = repository.permissions.byOrigin(origin) ?: SitePermission(origin = origin)
         var updated = existing
         requested.forEach { t ->
             val isGranted = t in granted
@@ -71,15 +74,15 @@ internal fun WebViewModel.persistPermission(origin: String, granted: List<SitePe
                 SitePermissionType.NOTIFICATIONS -> updated.copy(notificationsAllowed = isGranted)
             }
         }
-        repository.upsertSitePermission(updated.copy(updatedAt = System.currentTimeMillis()))
+        repository.permissions.upsert(updated.copy(updatedAt = System.currentTimeMillis()))
     }
 }
 
 fun WebViewModel.clearPermissionPrompt() { pendingPermissionPrompt = null }
 
 fun WebViewModel.requestGeolocation(origin: String, onAllow: () -> Unit, onDeny: () -> Unit) {
-    viewModelScope.launch {
-        val saved = repository.sitePermissionByOrigin(origin)
+    scope.launch {
+        val saved = repository.permissions.byOrigin(origin)
         when (saved?.locationAllowed) {
             true -> { withContext(Dispatchers.Main) { onAllow() }; return@launch }
             false -> { withContext(Dispatchers.Main) { onDeny() }; return@launch }
@@ -91,7 +94,7 @@ fun WebViewModel.requestGeolocation(origin: String, onAllow: () -> Unit, onDeny:
     }
 }
 
-fun WebViewModel.grantGeolocation(origin: String) {
+fun WebViewModel.grantGeolocation() {
     pendingGeolocationPrompt?.let { (orig, allow, _) ->
         persistPermission(orig, listOf(SitePermissionType.LOCATION), listOf(SitePermissionType.LOCATION))
         allow()
@@ -108,18 +111,24 @@ fun WebViewModel.denyGeolocation() {
 }
 
 fun WebViewModel.revokePermission(origin: String, type: SitePermissionType) {
-    viewModelScope.launch {
-        val existing = repository.sitePermissionByOrigin(origin) ?: return@launch
+    scope.launch {
+        val existing = repository.permissions.byOrigin(origin) ?: return@launch
         val updated = when (type) {
             SitePermissionType.CAMERA -> existing.copy(cameraAllowed = null)
             SitePermissionType.MICROPHONE -> existing.copy(microphoneAllowed = null)
             SitePermissionType.LOCATION -> existing.copy(locationAllowed = null)
             SitePermissionType.NOTIFICATIONS -> existing.copy(notificationsAllowed = null)
         }
-        if (updated.cameraAllowed == null && updated.microphoneAllowed == null && updated.locationAllowed == null && updated.notificationsAllowed == null) {
-            repository.deleteSitePermission(updated)
+        if (updated.hasNoDecisions) {
+            repository.permissions.delete(updated)
         } else {
-            repository.upsertSitePermission(updated.copy(updatedAt = System.currentTimeMillis()))
+            repository.permissions.upsert(updated.copy(updatedAt = System.currentTimeMillis()))
         }
     }
 }
+
+private val SitePermission.hasNoDecisions: Boolean
+    get() = cameraAllowed == null &&
+        microphoneAllowed == null &&
+        locationAllowed == null &&
+        notificationsAllowed == null

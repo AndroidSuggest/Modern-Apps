@@ -31,6 +31,10 @@ class RegistrationKeys private constructor(
          * Flip to `true` to generate + attach it (bundleFields still enforces all-or-none).
          */
         const val EMIT_PQ_LAST_RESORT = false
+        private const val MAX_REGISTRATION_ID = 0x3FFF
+        private const val BYTE_BITS = 8
+        private const val INT32_LEN = 4
+        private const val INT24_LEN = 3
 
         fun generate(phoneNumber: String): RegistrationKeys {
             val rng = SecureRandom()
@@ -39,7 +43,7 @@ class RegistrationKeys private constructor(
             val noise = RustWhatsAppCrypto.generateKeyPairSplit()
             val signedPreKey = RustWhatsAppCrypto.generateKeyPairSplit()
 
-            val registrationId = rng.nextInt(0x3FFF) + 1
+            val registrationId = rng.nextInt(MAX_REGISTRATION_ID) + 1
             val signedPreKeyId = 1
 
             val signature = WhatsAppE2E.signSignedPreKey(identity.privateKey, signedPreKey.publicKey)
@@ -54,7 +58,7 @@ class RegistrationKeys private constructor(
             val pq = if (EMIT_PQ_LAST_RESORT) {
                 try {
                     WhatsAppPqPreKey.generate(identity.privateKey, WhatsAppRegistrationConstants.PQ_LAST_RESORT_KEY_ID)
-                } catch (t: Throwable) {
+                } catch (ignored: Throwable) {
                     null
                 }
             } else {
@@ -92,10 +96,10 @@ class RegistrationKeys private constructor(
          */
         fun bundleFields(auth: WhatsAppAuthData): Map<String, String> {
             val map = linkedMapOf(
-                "e_regid" to RegEncoding.b64Url(intBe(auth.registrationId, 4)),
+                "e_regid" to RegEncoding.b64Url(intBe(auth.registrationId, INT32_LEN)),
                 "e_keytype" to RegEncoding.b64Url(byteArrayOf(WhatsAppRegistrationConstants.KEY_TYPE_CURVE25519)),
                 "e_ident" to RegEncoding.b64Url(dec(auth.identityPublicKey)),
-                "e_skey_id" to RegEncoding.b64Url(intBe(auth.signedPreKeyId, 3)),
+                "e_skey_id" to RegEncoding.b64Url(intBe(auth.signedPreKeyId, INT24_LEN)),
                 "e_skey_val" to RegEncoding.b64Url(dec(auth.signedPreKeyPublic)),
                 "e_skey_sig" to RegEncoding.b64Url(dec(auth.signedPreKeySignature)),
                 "authkey" to RegEncoding.b64Url(dec(auth.noisePublicKey)),
@@ -106,7 +110,7 @@ class RegistrationKeys private constructor(
                 auth.pqLastResortPublic.isNotEmpty() &&
                 auth.pqLastResortSignature.isNotEmpty()
             ) {
-                map["e_pq_last_resort_id"] = RegEncoding.b64Url(intBe(auth.pqLastResortKeyId, 3))
+                map["e_pq_last_resort_id"] = RegEncoding.b64Url(intBe(auth.pqLastResortKeyId, INT24_LEN))
                 map["e_pq_last_resort_val"] = RegEncoding.b64Url(dec(auth.pqLastResortPublic))
                 map["e_pq_last_resort_sig"] = RegEncoding.b64Url(dec(auth.pqLastResortSignature))
             }
@@ -117,7 +121,7 @@ class RegistrationKeys private constructor(
         private fun intBe(value: Int, len: Int): ByteArray {
             val out = ByteArray(len)
             for (i in 0 until len) {
-                out[len - 1 - i] = (value ushr (8 * i)).toByte()
+                out[len - 1 - i] = (value ushr (BYTE_BITS * i)).toByte()
             }
             return out
         }

@@ -7,6 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.measure.platform.MeasureViewModel
+import com.vayunmathur.measure.platform.startSensorsImpl
+import com.vayunmathur.measure.platform.stopSensorsImpl
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MeasureViewModel by viewModels()
@@ -25,11 +27,11 @@ class MainActivity : ComponentActivity() {
     // in the background, and the magnetometer is not free to keep polling.
     override fun onStart() {
         super.onStart()
-        viewModel.startSensors()
+        viewModel.startSensorsImpl()
     }
 
     override fun onStop() {
         super.onStop()
-        viewModel.stopSensors()
+        viewModel.stopSensorsImpl()
     }
 }

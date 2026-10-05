@@ -37,6 +37,19 @@ object OtaPackageValidation {
     }
 
     fun validate(metadata: OtaPackageMetadata, expected: Expected): Result {
+        checkServerAgreement(metadata, expected)?.let { return it }
+        checkDevice(metadata, expected)?.let { return it }
+        checkIncrementalSource(metadata, expected)?.let { return it }
+        val offset = metadata.payloadOffset()
+            ?: return Result.Rejected("payload offset missing")
+        val incremental = metadata.preBuildIncremental != null
+        return Result.Valid(payloadOffset = offset, incremental = incremental)
+    }
+
+    private fun checkServerAgreement(
+        metadata: OtaPackageMetadata,
+        expected: Expected,
+    ): Result.Rejected? {
         // The server said this build; the package must agree. A mismatch means the server and
         // the artifact disagree, which is either a broken publish or a swapped file.
         if (metadata.postTimestamp != expected.buildDateUtcSeconds) {
@@ -51,6 +64,13 @@ object OtaPackageValidation {
                     "(package=${metadata.postBuildIncremental} server=${expected.targetBuild})",
             )
         }
+        return null
+    }
+
+    private fun checkDevice(
+        metadata: OtaPackageMetadata,
+        expected: Expected,
+    ): Result.Rejected? {
         if (metadata.preDevice != expected.device) {
             return Result.Rejected(
                 "package is for ${metadata.preDevice}, this is ${expected.device}",
@@ -66,12 +86,17 @@ object OtaPackageValidation {
         if (metadata.otaType != "AB") {
             return Result.Rejected("package is not an A/B update (ota-type=${metadata.otaType})")
         }
+        return null
+    }
 
+    private fun checkIncrementalSource(
+        metadata: OtaPackageMetadata,
+        expected: Expected,
+    ): Result.Rejected? {
         // An incremental is a patch against one exact source build. Applying one to a different
         // starting point produces a corrupt system that may still boot far enough to matter.
         // Both fields are optional — a full package declares neither — but if either is present
         // it must match.
-        val incremental = metadata.preBuildIncremental != null
         if (metadata.preBuildIncremental != null &&
             metadata.preBuildIncremental != expected.currentBuild
         ) {
@@ -85,10 +110,6 @@ object OtaPackageValidation {
         ) {
             return Result.Rejected("incremental source fingerprint mismatch")
         }
-
-        val offset = metadata.payloadOffset()
-            ?: return Result.Rejected("payload offset missing")
-
-        return Result.Valid(payloadOffset = offset, incremental = incremental)
+        return null
     }
 }

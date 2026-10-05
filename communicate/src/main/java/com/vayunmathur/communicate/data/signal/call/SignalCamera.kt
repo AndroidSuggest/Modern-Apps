@@ -51,8 +51,8 @@ class SignalCamera(
             val helper = SurfaceTextureHelper.create("SignalCameraThread", eglBase.eglBaseContext)
             surfaceHelper = helper
             capturer.initialize(helper, appContext, observer)
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not initialize the camera capturer", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not initialize the camera capturer", expected)
         }
     }
 
@@ -68,8 +68,8 @@ class SignalCamera(
                 capturer.stopCapture()
                 capturing = false
             }
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not ${if (enable) "start" else "stop"} video capture", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not ${if (enable) "start" else "stop"} video capture", expected)
         }
     }
 
@@ -112,8 +112,8 @@ class SignalCamera(
             screenCapturer = capturer
             Log.i(TAG, "sharing the screen at ${metrics.widthPixels}x${metrics.heightPixels}")
             true
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not start screen capture", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not start screen capture", expected)
             screenCapturer = null
             false
         }
@@ -126,8 +126,8 @@ class SignalCamera(
             capturer.dispose()
             screenCapturer = null
             true
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not stop screen capture", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not stop screen capture", expected)
             screenCapturer = null
             false
         }
@@ -137,8 +137,8 @@ class SignalCamera(
         frontFacing = !frontFacing
         try {
             capturer?.switchCamera(this)
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not switch camera", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not switch camera", expected)
         }
     }
 
@@ -171,8 +171,8 @@ class SignalCamera(
             return null
         }
         val enumerator = Camera2Enumerator(appContext)
-        val names = try { enumerator.deviceNames } catch (t: Throwable) {
-            Log.w(TAG, "could not enumerate cameras", t)
+        val names = try { enumerator.deviceNames } catch (expected: Throwable) {
+            Log.w(TAG, "could not enumerate cameras", expected)
             return null
         }
         // Front first, since that is what a video call would use; any camera is enough to negotiate.
@@ -183,8 +183,8 @@ class SignalCamera(
         }
         return try {
             Camera2Capturer(appContext, preferred, null)
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not create a camera capturer for $preferred", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not create a camera capturer for $preferred", expected)
             null
         }
     }

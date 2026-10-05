@@ -86,7 +86,8 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
                     when (choice.category) {
                         CommunicateLine.WhatsApp -> {
                             if (!CommunicateRepository.isWhatsAppConnected()) {
-                                AppMessages.show("WhatsApp isn't connected — the number may be logged out or banned. Re-register in Accounts.")
+                                AppMessages.show("WhatsApp isn't connected — the number may be" +
+                                    "logged out or banned. Re-register in Accounts.")
                                 return@launch
                             }
                             val groupJid = withContext(Dispatchers.IO) {
@@ -239,7 +240,11 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
                         tick++
                     }
                 }
-                val threads = produceState<List<SmsThread>?>(initialValue = null, roleRevision, permissionRevision, tick) {
+                val threads = produceState<List<SmsThread>?>(
+                    initialValue = null,
+                    roleRevision,
+                    permissionRevision,
+                    tick) {
                     value = withContext(Dispatchers.IO) { CommunicateRepository.loadSmsThreadsMerged(context) }
                 }
 

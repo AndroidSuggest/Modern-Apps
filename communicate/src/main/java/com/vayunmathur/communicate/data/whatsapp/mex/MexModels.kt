@@ -55,8 +55,8 @@ data class MexResult(
                     }
                 }
                 MexResult(data = data, errors = errors, transportError = null)
-            } catch (t: Throwable) {
-                transport("parse_error:${t.message}")
+            } catch (expected: Throwable) {
+                transport("parse_error:${expected.message}")
             }
         }
     }

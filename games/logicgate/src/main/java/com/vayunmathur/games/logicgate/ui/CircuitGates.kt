@@ -11,7 +11,6 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.games.logicgate.data.ChipDef
@@ -25,7 +24,7 @@ import kotlin.math.max
 internal enum class GateShape { TRIANGLE, DSHAPE, ORSHAPE, RECT }
 internal data class GateStyle(val shape: GateShape, val inverting: Boolean, val doubleBack: Boolean)
 
-internal fun gateStyleFor(def: ChipDef): GateStyle {
+internal fun gateStyleFor(): GateStyle {
     // All components render as compact rounded rectangles.
     return GateStyle(GateShape.RECT, inverting = false, doubleBack = false)
 }
@@ -108,7 +107,7 @@ data class HitInput(val end: WireEnd, val pos: Offset)
 // Large virtual work area so gates can be dragged well beyond the viewport (pan/zoom to reach them).
 private const val CANVAS_MARGIN = 4000f
 
-internal fun clampGateWithPin(pos: Offset, w: Float, h: Float, pinOut: Float, canvasSize: Size, padding: Dp, density: Density): Offset {
+internal fun clampGateWithPin(pos: Offset, canvasSize: Size): Offset {
     if (canvasSize.width <= 0f || canvasSize.height <= 0f) return pos
     return Offset(
         pos.x.coerceIn(-CANVAS_MARGIN, canvasSize.width + CANVAS_MARGIN),

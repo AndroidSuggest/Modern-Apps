@@ -75,6 +75,12 @@ object ClipEmbedder {
 
     private const val TAG = "ClipEmbedder"
 
+    private const val RGB_CHANNELS = 3
+    private const val CHANNEL_MAX_F = 255f
+    private const val RED_SHIFT = 16
+    private const val GREEN_SHIFT = 8
+    private const val CHANNEL_MASK = 0xFF
+
     /** Square RGB input side the vision tower expects (`preprocessor_config.json`). */
     private const val IMAGE_SIZE = ClipHandle.IMAGE_SIZE
 
@@ -190,7 +196,10 @@ object ClipEmbedder {
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
         resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-    } catch (t: Throwable) {
+    } catch (t: IOException) {
+        Log.w(TAG, "decode failed for $uri", t)
+        null
+    } catch (t: SecurityException) {
         Log.w(TAG, "decode failed for $uri", t)
         null
     }
@@ -220,12 +229,12 @@ object ClipEmbedder {
         if (safe !== src) safe.recycle()
 
         val area = IMAGE_SIZE * IMAGE_SIZE
-        val out = FloatArray(3 * area)
+        val out = FloatArray(RGB_CHANNELS * area)
         for (i in 0 until area) {
             val p = px[i]
-            out[i] = ((((p shr 16) and 0xFF) / 255f) - MEAN[0]) / STD[0]
-            out[area + i] = ((((p shr 8) and 0xFF) / 255f) - MEAN[1]) / STD[1]
-            out[2 * area + i] = (((p and 0xFF) / 255f) - MEAN[2]) / STD[2]
+            out[i] = ((((p shr RED_SHIFT) and CHANNEL_MASK) / CHANNEL_MAX_F) - MEAN[0]) / STD[0]
+            out[area + i] = ((((p shr GREEN_SHIFT) and CHANNEL_MASK) / CHANNEL_MAX_F) - MEAN[1]) / STD[1]
+            out[2 * area + i] = (((p and CHANNEL_MASK) / CHANNEL_MAX_F) - MEAN[2]) / STD[2]
         }
         return out
     }

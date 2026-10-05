@@ -1,12 +1,27 @@
 package com.vayunmathur.office.odf
 
 import android.util.Base64
-import com.vayunmathur.library.ui.odf.*
+import com.vayunmathur.library.ui.odf.OdfAnnotation
+import com.vayunmathur.library.ui.odf.OdfChart
+import com.vayunmathur.library.ui.odf.OdfFootnote
+import com.vayunmathur.library.ui.odf.OdfImage
+import com.vayunmathur.library.ui.odf.OdfParagraph
+import com.vayunmathur.library.ui.odf.OdfSpan
 import org.xmlpull.v1.XmlPullParser
 
 // --- Inline content & span creation ---
 
-internal fun OdfParser.makeSpan(text: String, styleName: String?, styles: Map<String, StyleInfo>, href: String? = null): OdfSpan {
+internal const val CROP_LEFT = 0
+internal const val CROP_TOP = 1
+internal const val CROP_RIGHT = 2
+internal const val CROP_BOTTOM = 3
+
+internal fun OdfParser.makeSpan(
+    text: String,
+    styleName: String?,
+    styles: Map<String,
+    StyleInfo>,
+    href: String? = null): OdfSpan {
     val resolved = resolveStyle(styleName, styles)
     return OdfSpan(
         text = text,
@@ -30,6 +45,30 @@ internal fun OdfParser.makeSpan(text: String, styleName: String?, styles: Map<St
     )
 }
 
+/** Inline-parse accumulation state. */
+internal class InlineAcc(
+    val textBuffer: StringBuilder = StringBuilder(),
+    var currentStyleName: String? = null,
+    var currentHref: String? = null,
+    var pendingFrameW: Float = 0f,
+    var pendingFrameH: Float = 0f,
+    var pendingFrameClip: String? = null,
+    var pendingFrameStyleClip: String? = null,
+    // Track-change insertion ranges (changeId -> span start index). (Priority 6)
+    val changeStack: ArrayDeque<Pair<String, Int>> = ArrayDeque(),
+)
+
+/** Inline-parse extra context (avoids long parameter lists in helpers). */
+private class InlineCtx(
+    val styles: Map<String, StyleInfo>,
+    val images: Map<String, ByteArray> = emptyMap(),
+    val footnotes: MutableList<OdfFootnote>? = null,
+    val imagesOut: MutableList<OdfImage>? = null,
+    val objectContents: Map<String, String> = emptyMap(),
+    val chartsOut: MutableList<OdfChart>? = null,
+    val formulasOut: MutableList<String>? = null,
+)
+
 internal fun OdfParser.parseInlineContent(
     parser: XmlPullParser, endTag: String,
     styles: Map<String, StyleInfo>,
@@ -43,246 +82,265 @@ internal fun OdfParser.parseInlineContent(
     val spans = mutableListOf<OdfSpan>()
     val depth = parser.depth
     var eventType = parser.next()
-    val textBuffer = StringBuilder()
-    var currentStyleName: String? = null
-    var currentHref: String? = null
-    var pendingFrameW = 0f
-    var pendingFrameH = 0f
-    var pendingFrameClip: String? = null
-    var pendingFrameStyleClip: String? = null
-    // Track-change insertion ranges (changeId -> span start index) and a buffer flush helper. (Priority 6)
-    val changeStack = ArrayDeque<Pair<String, Int>>()
-    fun flushBuf() {
-        if (textBuffer.isNotEmpty()) {
-            spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-            textBuffer.clear()
-        }
-    }
-
+    val acc = InlineAcc()
+    val ctx = InlineCtx(styles, images, footnotes, imagesOut, objectContents, chartsOut, formulasOut)
     while (!(eventType == XmlPullParser.END_TAG && parser.depth == depth && parser.name == endTag)) {
         when (eventType) {
-            XmlPullParser.START_TAG -> when (parser.name) {
-                "span" -> {
-                    if (textBuffer.isNotEmpty()) {
-                        spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-                        textBuffer.clear()
-                    }
-                    currentStyleName = getAttr(parser, "style-name")
-                }
-                "a" -> {
-                    if (textBuffer.isNotEmpty()) {
-                        spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-                        textBuffer.clear()
-                    }
-                    currentHref = getAttr(parser, "href")
-                }
-                "tab" -> textBuffer.append("\t")
-                "s" -> textBuffer.append(" ".repeat((getAttr(parser, "c")?.toIntOrNull() ?: 1)))
-                "line-break" -> textBuffer.append("\n")
-                "frame" -> {
-                    pendingFrameW = parseDimension(getAttr(parser, "width"))
-                    pendingFrameH = parseDimension(getAttr(parser, "height"))
-                    pendingFrameClip = getAttr(parser, "clip")
-                    pendingFrameStyleClip = resolveStyle(getAttr(parser, "style-name"), styles).clip
-                }
-                "image" -> {
-                    val href = getAttr(parser, "href")
-                    val w = pendingFrameW
-                    val h = pendingFrameH
-                    if (href != null && images.containsKey(href)) {
-                        val bytes = images[href]!!
-                        val (nw, nh) = decodeNaturalSize(bytes)
-                        val clip = parseClip(pendingFrameClip) ?: parseClipLengths(pendingFrameStyleClip, nw, nh)
-                        var img = OdfImage(path = href, imageData = bytes, width = w, height = h, naturalWidthPx = nw, naturalHeightPx = nh)
-                        if (clip != null) img = img.copy(cropLeftPct = clip[0], cropTopPct = clip[1], cropRightPct = clip[2], cropBottomPct = clip[3])
-                        imagesOut?.add(img)
-                        skipElement(parser)
-                    } else {
-                        // Look for inline base64 binary-data. (A2/E37)
-                        val imgDepth = parser.depth
-                        var imgEvent = parser.next()
-                        while (!(imgEvent == XmlPullParser.END_TAG && parser.depth == imgDepth)) {
-                            if (imgEvent == XmlPullParser.START_TAG && parser.name == "binary-data") {
-                                imgEvent = parser.next()
-                                if (imgEvent == XmlPullParser.TEXT) {
-                                    try {
-                                        val bytes = Base64.decode(parser.text.trim(), Base64.DEFAULT)
-                                        val (nw, nh) = decodeNaturalSize(bytes)
-                                        val clip = parseClip(pendingFrameClip) ?: parseClipLengths(pendingFrameStyleClip, nw, nh)
-                                        var img = OdfImage(path = "inline", imageData = bytes, width = w, height = h, naturalWidthPx = nw, naturalHeightPx = nh)
-                                        if (clip != null) img = img.copy(cropLeftPct = clip[0], cropTopPct = clip[1], cropRightPct = clip[2], cropBottomPct = clip[3])
-                                        imagesOut?.add(img)
-                                    } catch (_: Exception) {}
-                                }
-                            }
-                            imgEvent = parser.next()
-                        }
-                        // No real image data found (e.g. an object-replacement preview for a chart);
-                        // skip rather than emitting an empty "[Image]" placeholder.
-                    }
-                }
-                "object" -> {
-                    val href = getAttr(parser, "href")?.removePrefix("./")
-                    val xml = href?.let { objectContents["$it/content.xml"] }
-                    if (xml != null) {
-                        val chart = parseChart(xml)
-                        when {
-                            chart != null -> chartsOut?.add(chart)
-                            xml.contains("math") -> formulasOut?.add(xml)
-                            xml.contains("office:spreadsheet") -> formulasOut?.add("📊 [Embedded spreadsheet]")
-                            xml.contains("office:text") -> formulasOut?.add("📄 [Embedded document]")
-                            else -> formulasOut?.add("📦 [Embedded object]")
-                        }
-                    } else if (href != null) {
-                        formulasOut?.add("📦 [Embedded object]")
-                    }
-                }
-                "note" -> {
-                    if (textBuffer.isNotEmpty()) {
-                        spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-                        textBuffer.clear()
-                    }
-                    val fn = parseFootnote(parser, styles)
-                    if (fn != null) {
-                        footnotes?.add(fn)
-                        spans.add(OdfSpan(text = fn.citation, superscript = true, color = LINK_COLOR))
-                    }
-                }
-                "annotation" -> {
-                    if (textBuffer.isNotEmpty()) {
-                        spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-                        textBuffer.clear()
-                    }
-                    val annotation = parseAnnotation(parser, styles)
-                    if (annotation != null) {
-                        spans.add(OdfSpan(text = " 📝 ", annotation = annotation))
-                    }
-                }
-                "change-start" -> {
-                    flushBuf()
-                    getAttr(parser, "change-id")?.let { changeStack.addLast(it to spans.size) }
-                }
-                "change-end" -> {
-                    flushBuf()
-                    val id = getAttr(parser, "change-id")
-                    val idx = changeStack.indexOfLast { it.first == id }
-                    if (idx >= 0) {
-                        val (cid, start) = changeStack.removeAt(idx)
-                        for (i in start until spans.size) spans[i] = spans[i].copy(changeKind = "insertion", changeId = cid)
-                    }
-                }
-                "change" -> {
-                    // Deletion point: pull the deleted text from the tracked-changes region. (Priority 6)
-                    flushBuf()
-                    getAttr(parser, "change-id")?.let { id ->
-                        spans.add(OdfSpan(text = trackedDeletionText[id] ?: "", changeKind = "deletion", changeId = id))
-                    }
-                }
-                "reference-ref", "bookmark-ref" -> {
-                    // Cross-reference to a reference-mark/bookmark, carrying its cached display text. (Priority 5)
-                    if (textBuffer.isNotEmpty()) {
-                        spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-                        textBuffer.clear()
-                    }
-                    val kind = parser.name
-                    val refName = getAttr(parser, "ref-name")
-                    val refFormat = getAttr(parser, "reference-format")
-                    val d = parser.depth; val fb = StringBuilder(); var ev = parser.next()
-                    while (!(ev == XmlPullParser.END_TAG && parser.depth == d)) {
-                        if (ev == XmlPullParser.TEXT) fb.append(parser.text)
-                        if (ev == XmlPullParser.END_DOCUMENT) break
-                        ev = parser.next()
-                    }
-                    spans.add(makeSpan(fb.toString(), currentStyleName, styles, currentHref)
-                        .copy(refKind = kind, refName = refName, refFormat = refFormat, color = LINK_COLOR))
-                }
-                "reference-mark", "reference-mark-start", "reference-mark-end" -> {
-                    // Cross-reference target marker (zero-width). (Priority 5)
-                    if (textBuffer.isNotEmpty()) {
-                        spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-                        textBuffer.clear()
-                    }
-                    spans.add(OdfSpan(text = "", refKind = parser.name, refName = getAttr(parser, "name")))
-                }
-                "bookmark", "bookmark-start", "bookmark-end" -> {
-                    // Inline bookmark / bookmark range marker (zero-width). (Priority 9)
-                    if (textBuffer.isNotEmpty()) {
-                        spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-                        textBuffer.clear()
-                    }
-                    spans.add(OdfSpan(text = "", refKind = parser.name, refName = getAttr(parser, "name")))
-                }
-                "title", "desc" -> {
-                    // svg:title/svg:desc inside a draw:frame are accessibility alt text (attach to
-                    // the frame's image), NOT text fields. text:title remains a real field. Either way
-                    // consume the whole subtree so its text never leaks into the paragraph. (alt-text fix)
-                    val isSvg = parser.namespace?.contains("svg") == true
-                    val isField = !isSvg && parser.name in FIELD_TAGS
-                    if (textBuffer.isNotEmpty() && (isSvg || isField)) {
-                        spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-                        textBuffer.clear()
-                    }
-                    val kind = parser.name
-                    val d = parser.depth
-                    val fb = StringBuilder()
-                    var ev = parser.next()
-                    while (!(ev == XmlPullParser.END_TAG && parser.depth == d)) {
-                        if (ev == XmlPullParser.TEXT) fb.append(parser.text)
-                        if (ev == XmlPullParser.END_DOCUMENT) break
-                        ev = parser.next()
-                    }
-                    val t = fb.toString().trim()
-                    when {
-                        isSvg -> if (t.isNotEmpty() && imagesOut != null && imagesOut.isNotEmpty()) {
-                            val idx = imagesOut.size - 1
-                            imagesOut[idx] = if (kind == "title") imagesOut[idx].copy(altTitle = t)
-                                else imagesOut[idx].copy(altDesc = t)
-                        }
-                        isField -> spans.add(makeSpan(fb.toString(), currentStyleName, styles, currentHref).copy(field = kind))
-                    }
-                }
-                in FIELD_TAGS -> {
-                    // ODF text field elements -> a span carrying the field kind + cached value. (Priority 2)
-                    if (textBuffer.isNotEmpty()) {
-                        spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-                        textBuffer.clear()
-                    }
-                    val kind = parser.name
-                    val d = parser.depth
-                    val fb = StringBuilder()
-                    var ev = parser.next()
-                    while (!(ev == XmlPullParser.END_TAG && parser.depth == d)) {
-                        if (ev == XmlPullParser.TEXT) fb.append(parser.text)
-                        if (ev == XmlPullParser.END_DOCUMENT) break
-                        ev = parser.next()
-                    }
-                    spans.add(makeSpan(fb.toString(), currentStyleName, styles, currentHref).copy(field = kind))
-                }
-            }
-            XmlPullParser.END_TAG -> when (parser.name) {
-                "span" -> {
-                    if (textBuffer.isNotEmpty()) {
-                        spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-                        textBuffer.clear()
-                    }
-                    currentStyleName = null
-                }
-                "a" -> {
-                    if (textBuffer.isNotEmpty()) {
-                        spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-                        textBuffer.clear()
-                    }
-                    currentHref = null
-                }
-            }
-            XmlPullParser.TEXT -> textBuffer.append(parser.text)
+            XmlPullParser.START_TAG -> applyInlineStartTag(parser, acc, spans, ctx)
+            XmlPullParser.END_TAG -> applyInlineEndTag(parser, acc, spans, ctx)
+            XmlPullParser.TEXT -> acc.textBuffer.append(parser.text)
         }
         eventType = parser.next()
     }
-    if (textBuffer.isNotEmpty()) {
-        spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
-    }
+    flushInlineBuf(acc, spans, styles)
     return spans
+}
+
+private fun OdfParser.flushInlineBuf(
+    acc: InlineAcc,
+    spans: MutableList<OdfSpan>,
+    styles: Map<String, StyleInfo>,
+) {
+    if (acc.textBuffer.isNotEmpty()) {
+        spans.add(makeSpan(acc.textBuffer.toString(), acc.currentStyleName, styles, acc.currentHref))
+        acc.textBuffer.clear()
+    }
+}
+
+private fun OdfParser.applyInlineStartTag(
+    parser: XmlPullParser,
+    acc: InlineAcc,
+    spans: MutableList<OdfSpan>,
+    ctx: InlineCtx,
+) {
+    if (!applyInlineStyleTag(parser, acc, spans, ctx)) {
+        applyInlineMetaTag(parser, acc, spans, ctx)
+    }
+}
+
+private fun OdfParser.applyInlineStyleTag(
+    parser: XmlPullParser,
+    acc: InlineAcc,
+    spans: MutableList<OdfSpan>,
+    ctx: InlineCtx,
+): Boolean {
+    when (parser.name) {
+        "span" -> {
+            flushInlineBuf(acc, spans, ctx.styles)
+            acc.currentStyleName = getAttr(parser, "style-name")
+        }
+        "a" -> {
+            flushInlineBuf(acc, spans, ctx.styles)
+            acc.currentHref = getAttr(parser, "href")
+        }
+        "tab" -> acc.textBuffer.append("\t")
+        "s" -> acc.textBuffer.append(" ".repeat((getAttr(parser, "c")?.toIntOrNull() ?: 1)))
+        "line-break" -> acc.textBuffer.append("\n")
+        "frame" -> {
+            acc.pendingFrameW = parseDimension(getAttr(parser, "width"))
+            acc.pendingFrameH = parseDimension(getAttr(parser, "height"))
+            acc.pendingFrameClip = getAttr(parser, "clip")
+            acc.pendingFrameStyleClip = resolveStyle(getAttr(parser, "style-name"), ctx.styles).clip
+        }
+        "image" -> applyInlineImage(parser, acc, ctx.images, ctx.imagesOut)
+        "object" -> applyInlineObject(parser, ctx.objectContents, ctx.chartsOut, ctx.formulasOut)
+        else -> return false
+    }
+    return true
+}
+
+private fun OdfParser.applyInlineMetaTag(
+    parser: XmlPullParser,
+    acc: InlineAcc,
+    spans: MutableList<OdfSpan>,
+    ctx: InlineCtx,
+) {
+    val flush: () -> Unit = { flushInlineBuf(acc, spans, ctx.styles) }
+    when (parser.name) {
+        "note" -> applyInlineNote(parser, acc, ctx.styles, ctx.footnotes)
+        "annotation" -> applyInlineAnnotation(parser, acc, ctx.styles)
+        "change-start" -> applyChangeStart(parser, acc, spans, flush)
+        "change-end" -> applyChangeEnd(parser, acc, spans, flush)
+        "change" -> applyChangePoint(parser, spans, flush)
+        "reference-ref", "bookmark-ref" -> applyReferenceRef(parser, acc, ctx.styles, spans)
+        "reference-mark", "reference-mark-start", "reference-mark-end" ->
+            addZeroWidthSpan(parser, acc, ctx.styles, spans)
+        "bookmark", "bookmark-start", "bookmark-end" ->
+            addZeroWidthSpan(parser, acc, ctx.styles, spans)
+        "title", "desc" -> applyTitleDesc(parser, acc, ctx.styles, spans, ctx.imagesOut)
+        in FIELD_TAGS -> applyInlineField(parser, acc, ctx.styles, spans)
+    }
+}
+
+private fun OdfParser.addZeroWidthSpan(
+    parser: XmlPullParser,
+    acc: InlineAcc,
+    styles: Map<String, StyleInfo>,
+    spans: MutableList<OdfSpan>,
+) {
+    flushInlineBuf(acc, spans, styles)
+    spans.add(OdfSpan(text = "", refKind = parser.name, refName = getAttr(parser, "name")))
+}
+
+private fun OdfParser.applyInlineField(
+    parser: XmlPullParser,
+    acc: InlineAcc,
+    styles: Map<String, StyleInfo>,
+    spans: MutableList<OdfSpan>,
+) {
+    // ODF text field elements -> a span carrying the field kind + cached value. (Priority 2)
+    flushInlineBuf(acc, spans, styles)
+    val kind = parser.name
+    val fb = readInlineFieldBody(parser)
+    spans.add(makeSpan(fb, acc.currentStyleName, styles, acc.currentHref).copy(field = kind))
+}
+
+private fun OdfParser.readInlineFieldBody(parser: XmlPullParser): String {
+    val d = parser.depth
+    val fb = StringBuilder()
+    var ev = parser.next()
+    while (!(ev == XmlPullParser.END_TAG && parser.depth == d)) {
+        if (ev == XmlPullParser.TEXT) fb.append(parser.text)
+        if (ev == XmlPullParser.END_DOCUMENT) break
+        ev = parser.next()
+    }
+    return fb.toString()
+}
+
+private fun OdfParser.applyInlineEndTag(
+    parser: XmlPullParser,
+    acc: InlineAcc,
+    spans: MutableList<OdfSpan>,
+    ctx: InlineCtx,
+) {
+    when (parser.name) {
+        "span" -> {
+            flushInlineBuf(acc, spans, ctx.styles)
+            acc.currentStyleName = null
+        }
+        "a" -> {
+            flushInlineBuf(acc, spans, ctx.styles)
+            acc.currentHref = null
+        }
+    }
+}
+
+/** Track-change start: push the span index. */
+private fun OdfParser.applyChangeStart(
+    parser: XmlPullParser,
+    acc: InlineAcc,
+    spans: MutableList<OdfSpan>,
+    flushBuf: () -> Unit,
+) {
+    flushBuf()
+    getAttr(parser, "change-id")?.let { acc.changeStack.addLast(it to spans.size) }
+}
+
+/** Track-change end: mark spans as insertion. */
+private fun OdfParser.applyChangeEnd(
+    parser: XmlPullParser,
+    acc: InlineAcc,
+    spans: MutableList<OdfSpan>,
+    flushBuf: () -> Unit,
+) {
+    flushBuf()
+    val id = getAttr(parser, "change-id")
+    val idx = acc.changeStack.indexOfLast { it.first == id }
+    if (idx >= 0) {
+        val (cid, start) = acc.changeStack.removeAt(idx)
+        for (i in start until spans.size) spans[i] = spans[i].copy(
+            changeKind = "insertion",
+            changeId = cid)
+    }
+}
+
+/** Deletion point: pull deleted text from the tracked-changes region. (Priority 6) */
+private fun OdfParser.applyChangePoint(
+    parser: XmlPullParser,
+    spans: MutableList<OdfSpan>,
+    flushBuf: () -> Unit,
+) {
+    flushBuf()
+    getAttr(parser, "change-id")?.let { id ->
+        spans.add(OdfSpan(text = trackedDeletionText[id] ?: "", changeKind = "deletion", changeId = id))
+    }
+}
+
+/** Cross-reference to a reference-mark/bookmark. (Priority 5) */
+private fun OdfParser.applyReferenceRef(
+    parser: XmlPullParser,
+    acc: InlineAcc,
+    styles: Map<String, StyleInfo>,
+    spans: MutableList<OdfSpan>,
+) {
+    if (acc.textBuffer.isNotEmpty()) {
+        spans.add(makeSpan(acc.textBuffer.toString(), acc.currentStyleName, styles, acc.currentHref))
+        acc.textBuffer.clear()
+    }
+    val kind = parser.name
+    val refName = getAttr(parser, "ref-name")
+    val refFormat = getAttr(parser, "reference-format")
+    val d = parser.depth; val fb = StringBuilder(); var ev = parser.next()
+    while (!(ev == XmlPullParser.END_TAG && parser.depth == d)) {
+        if (ev == XmlPullParser.TEXT) fb.append(parser.text)
+        if (ev == XmlPullParser.END_DOCUMENT) break
+        ev = parser.next()
+    }
+    spans.add(makeSpan(fb.toString(), acc.currentStyleName, styles, acc.currentHref)
+        .copy(refKind = kind, refName = refName, refFormat = refFormat, color = LINK_COLOR))
+}
+
+/** svg:title/desc alt text or text field. */
+private fun OdfParser.applyTitleDesc(
+    parser: XmlPullParser,
+    acc: InlineAcc,
+    styles: Map<String, StyleInfo>,
+    spans: MutableList<OdfSpan>,
+    imagesOut: MutableList<OdfImage>?,
+) {
+    // svg:title/svg:desc inside a draw:frame are accessibility alt text (attach to
+    // the frame's image), NOT text fields. text:title remains a real field. Either way
+    // consume the whole subtree so its text never leaks into the paragraph. (alt-text fix)
+    val isSvg = parser.namespace?.contains("svg") == true
+    val isField = !isSvg && parser.name in FIELD_TAGS
+    if (acc.textBuffer.isNotEmpty() && (isSvg || isField)) {
+        spans.add(makeSpan(acc.textBuffer.toString(), acc.currentStyleName, styles, acc.currentHref))
+        acc.textBuffer.clear()
+    }
+    val kind = parser.name
+    val raw = readInlineFieldBody(parser)
+    applyTitleDescResult(kind, raw, raw.trim(), isSvg, isField, acc, styles, spans, imagesOut)
+}
+
+private fun OdfParser.applyTitleDescResult(
+    kind: String,
+    raw: String,
+    trimmed: String,
+    isSvg: Boolean,
+    isField: Boolean,
+    acc: InlineAcc,
+    styles: Map<String, StyleInfo>,
+    spans: MutableList<OdfSpan>,
+    imagesOut: MutableList<OdfImage>?,
+) {
+    when {
+        isSvg -> attachSvgAltText(kind, trimmed, imagesOut)
+        isField -> spans.add(
+            makeSpan(
+                raw,
+                acc.currentStyleName,
+                styles,
+                acc.currentHref
+            ).copy(field = kind)
+        )
+    }
+}
+
+private fun attachSvgAltText(kind: String, t: String, imagesOut: MutableList<OdfImage>?) {
+    if (t.isEmpty() || imagesOut == null || imagesOut.isEmpty()) return
+    val idx = imagesOut.size - 1
+    imagesOut[idx] = if (kind == "title") imagesOut[idx].copy(altTitle = t)
+    else imagesOut[idx].copy(altDesc = t)
 }
 
 // --- Footnotes ---
@@ -295,32 +353,44 @@ internal fun OdfParser.parseFootnote(parser: XmlPullParser, styles: Map<String, 
     var eventType = parser.next()
 
     while (!(eventType == XmlPullParser.END_TAG && parser.depth == depth)) {
-        if (eventType == XmlPullParser.START_TAG) when (parser.name) {
-            "note-citation" -> {
-                val citDepth = parser.depth
-                var citEvent = parser.next()
-                val sb = StringBuilder()
-                while (!(citEvent == XmlPullParser.END_TAG && parser.depth == citDepth)) {
-                    if (citEvent == XmlPullParser.TEXT) sb.append(parser.text)
-                    citEvent = parser.next()
-                }
-                citation = sb.toString().trim()
-            }
-            "note-body" -> {
-                val bodyDepth = parser.depth
-                var bodyEvent = parser.next()
-                while (!(bodyEvent == XmlPullParser.END_TAG && parser.depth == bodyDepth)) {
-                    if (bodyEvent == XmlPullParser.START_TAG && parser.name == "p") {
-                        val spans = parseInlineContent(parser, "p", styles)
-                        if (spans.isNotEmpty()) body.add(OdfParagraph(spans))
-                    }
-                    bodyEvent = parser.next()
-                }
+        if (eventType == XmlPullParser.START_TAG) {
+            when (parser.name) {
+                "note-citation" -> citation = readNoteCitation(parser)
+                "note-body" -> readNoteBody(parser, styles, body)
             }
         }
         eventType = parser.next()
     }
     return if (citation.isNotEmpty()) OdfFootnote(citation, body, isEndnote) else null
+}
+
+/** Citation text of a footnote. */
+private fun OdfParser.readNoteCitation(parser: XmlPullParser): String {
+    val citDepth = parser.depth
+    var citEvent = parser.next()
+    val sb = StringBuilder()
+    while (!(citEvent == XmlPullParser.END_TAG && parser.depth == citDepth)) {
+        if (citEvent == XmlPullParser.TEXT) sb.append(parser.text)
+        citEvent = parser.next()
+    }
+    return sb.toString().trim()
+}
+
+/** Body paragraphs of a footnote. */
+private fun OdfParser.readNoteBody(
+    parser: XmlPullParser,
+    styles: Map<String, StyleInfo>,
+    body: MutableList<OdfParagraph>,
+) {
+    val bodyDepth = parser.depth
+    var bodyEvent = parser.next()
+    while (!(bodyEvent == XmlPullParser.END_TAG && parser.depth == bodyDepth)) {
+        if (bodyEvent == XmlPullParser.START_TAG && parser.name == "p") {
+            val spans = parseInlineContent(parser, "p", styles)
+            if (spans.isNotEmpty()) body.add(OdfParagraph(spans))
+        }
+        bodyEvent = parser.next()
+    }
 }
 
 // --- Annotations ---

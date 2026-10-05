@@ -114,7 +114,7 @@ fun RcsRegistrationScreen(
                                     runCatching {
                                         val url = RcsProvisioning.lastConfigServerUrl
                                         val httpOk = url != null &&
-                                            RcsProvisioning.entitlementCheck(context, url)
+                                            RcsProvisioning.entitlementCheck(url)
                                         httpOk || RcsCapabilityExchange.uceAvailable
                                     }.getOrDefault(false)
                                 }

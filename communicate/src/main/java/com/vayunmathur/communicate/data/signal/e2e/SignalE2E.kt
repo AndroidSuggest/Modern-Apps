@@ -48,8 +48,8 @@ import org.signal.libsignal.protocol.state.SignedPreKeyRecord
  */
 @OptIn(ExperimentalEncodingApi::class)
 class SignalE2E(
-    private val db: SignalDatabase,
-    private val auth: SignalAuthData,
+    internal val db: SignalDatabase,
+    internal val auth: SignalAuthData,
     /** See [PersistentSignalProtocolStore.onIdentityChanged]. */
     private val onIdentityChanged: (String, ByteArray) -> Unit = { _, _ -> },
 ) {
@@ -78,11 +78,11 @@ class SignalE2E(
     } catch (_: Throwable) {
         serialized
     }
-    private val ownIdentityPrivate: ByteArray = b64(auth.identityPrivateKey)
+    internal val ownIdentityPrivate: ByteArray = b64(auth.identityPrivateKey)
     private val ownAci: String = auth.aci.ifEmpty { auth.phoneNumber }
     private val ownDeviceId: Int = auth.deviceId
 
-    private val protocolStore: PersistentSignalProtocolStore by lazy {
+    internal val protocolStore: PersistentSignalProtocolStore by lazy {
         val ikp = loadIdentityPair(auth.identityPrivateKey, auth.identityPublicKey)
         PersistentSignalProtocolStore(
             db = db,
@@ -151,36 +151,9 @@ class SignalE2E(
         )
     }
 
-    /** The identity key currently recorded for [aci], or null if we have never seen one. */
-    /**
-     * The peer's identity key for call key derivation — raw 32 bytes, matching [ownIdentityPublicKey].
-     * The stored identity is the 33-byte serialized form, so the type prefix has to come off.
-     */
-    fun callIdentityKey(aci: String): ByteArray? =
-        storedIdentityKey(aci)?.let { rawPublicKeyBytes(it) }
 
-    fun storedIdentityKey(aci: String): ByteArray? =
-        try { protocolStore.getIdentity(signalAddress(aci))?.serialize() } catch (_: Exception) { null }
 
-    /**
-     * Record [identityKey] as the trusted identity for [aci] and archive existing sessions, so the next
-     * message builds a session against the accepted key. Only call this once the user has verified it.
-     */
-    fun acceptIdentity(aci: String, identityKey: ByteArray): Boolean = try {
-        val address = signalAddress(aci)
-        protocolStore.saveIdentity(address, IdentityKey(identityKey))
-        // Every device's session was built against the old key.
-        deviceIdsWithSessions(aci).forEach { archiveSession(aci, it) }
-        true
-    } catch (t: Throwable) {
-        false
-    }
 
-    /** Devices of [aci] we already have a session with, always including device 1. */
-    fun deviceIdsWithSessions(aci: String): List<Int> {
-        val subDevices = try { protocolStore.getSubDeviceSessions(aci) } catch (_: Exception) { emptyList() }
-        return (listOf(1) + subDevices).distinct().sorted()
-    }
 
     /**
      * Archive rather than delete: the old chain must stay readable so messages already in flight on it
@@ -342,7 +315,10 @@ class SignalE2E(
         )
     }
 
-    fun sealedSenderDecrypt(ciphertext: ByteArray, trustRoots: List<ECPublicKey>, timestampMs: Long = System.currentTimeMillis()): ByteArray {
+    fun sealedSenderDecrypt(
+        ciphertext: ByteArray,
+        trustRoots: List<ECPublicKey>,
+        timestampMs: Long = System.currentTimeMillis()): ByteArray {
         val validator = CertificateValidator(trustRoots)
         val localUuid = try { UUID.fromString(ownAci) } catch (_: Exception) { UUID.randomUUID() }
         val cipher = SealedSessionCipher(protocolStore, localUuid, null, ownDeviceId)
@@ -366,154 +342,14 @@ class SignalE2E(
             get() = signedPreKey == null && lastResortKyber == null && oneTimeEcPreKeys.isEmpty()
     }
 
-    /**
-     * Make sure our own pre-keys are in the protocol store, which is what inbound pre-key messages need
-     * to decrypt. Registration only wrote them to preferences, so without this a first message from a
-     * peer fails with `InvalidKeyIdException: no signed pre-key <id>`.
-     *
-     * Stored material is reused only when it verifies against itself — the private half must derive the
-     * public half, and the signature must check out under our identity key. Anything that fails is
-     * regenerated and re-registered, because a key the server serves but we cannot use produces a
-     * decryption failure with no way to tell from the error which half was wrong.
-     *
-     * A Kyber pre-key is always regenerated: libsignal only exposes `KEMKeyPair.generate()`, with no path
-     * back from persisted bytes.
-     */
-    fun ensureLocalPreKeys(): PreKeyUpload {
-        val signed = ensureSignedPreKey()
-        val kyber = ensureLastResortKyberPreKey()
-        val oneTime = ensureOneTimePreKeys()
-        return PreKeyUpload(signedPreKey = signed, lastResortKyber = kyber, oneTimeEcPreKeys = oneTime)
+
+    fun ensureSignedPreKeyStored() {
+        ensureLocalPreKeys()
     }
 
-    /**
-     * The registration id to address [aci]'s device with, from our session with them. A send whose
-     * `destinationRegistrationId` does not match what the server holds is rejected as a stale device.
-     */
-    fun remoteRegistrationId(aci: String, deviceId: Int): Int? = try {
-        protocolStore.loadSession(signalAddress(aci, deviceId)).remoteRegistrationId
-    } catch (_: Throwable) {
-        null
-    }
-
-    /** The sender's registration id, carried on every pre-key message. */
-    fun senderRegistrationId(ciphertext: ByteArray): Int? = try {
-        PreKeySignalMessage(ciphertext).registrationId
-    } catch (_: Throwable) {
-        null
-    }
-
-    /** Whether our store holds a signed pre-key [id] whose public half is exactly [publicKey]. */
-    fun hasSignedPreKeyMatching(id: Int, publicKey: ByteArray?): Boolean {
-        if (publicKey == null) return true
-        return try {
-            val record = protocolStore.loadSignedPreKey(id)
-            record.keyPair.publicKey.serialize().contentEquals(publicKey)
-        } catch (_: Throwable) {
-            false
-        }
-    }
-
-    /** Rotate the signed pre-key regardless of what is stored, for when the server's copy is unusable. */
-    fun rotateSignedPreKeyNow(): PreKeyUpload.KeyEntity? = rotateSignedPreKey()
-
-    /**
-     * Returns a payload when the signed pre-key had to be regenerated and needs registering, null when the
-     * stored one was sound and simply seeded.
-     */
-    private fun ensureSignedPreKey(): PreKeyUpload.KeyEntity? {
-        val storedId = auth.signedPreKeyId
-        if (storedId != 0 && protocolStore.containsSignedPreKey(storedId)) return null
-        if (storedId != 0 && seedStoredSignedPreKey(storedId)) return null
-        return rotateSignedPreKey()
-    }
-
-    /** True when the stored material verified and was seeded into the store. */
-    private fun seedStoredSignedPreKey(id: Int): Boolean {
-        val pub = b64(auth.signedPreKeyPublic)
-        val priv = b64(auth.signedPreKeyPrivate)
-        val signature = b64(auth.signedPreKeySignature)
-        if (pub.isEmpty() || priv.isEmpty()) {
-            Log.w(TAG, "no stored signed pre-key material; rotating")
-            return false
-        }
-        return try {
-            val privateKey = ECPrivateKey(priv)
-            val derived = privateKey.getPublicKey().serialize()
-            if (!derived.contentEquals(pub)) {
-                // The server serves the public half; without the matching private half every inbound
-                // pre-key message fails in the key agreement rather than at lookup.
-                Log.w(TAG, "stored signed pre-key $id is inconsistent (private half derives a different public key); rotating")
-                return false
-            }
-            val identityOk = signature.isNotEmpty() &&
-                ECPublicKey(ownIdentityPublicKey).verifySignature(pub, signature)
-            if (!identityOk) {
-                Log.w(TAG, "stored signed pre-key $id signature does not verify under our identity key; rotating")
-                return false
-            }
-            protocolStore.storeSignedPreKey(
-                id,
-                SignedPreKeyRecord(id, System.currentTimeMillis(), ECKeyPair(ECPublicKey(pub), privateKey), signature),
-            )
-            Log.i(TAG, "seeded signed pre-key $id into the protocol store")
-            true
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not rebuild signed pre-key $id; rotating", t)
-            false
-        }
-    }
-
-    private fun rotateSignedPreKey(): PreKeyUpload.KeyEntity? = try {
-        val keyPair = ECKeyPair.generate()
-        val publicKey = keyPair.publicKey.serialize()
-        val signature = signSignedPreKey(ownIdentityPrivate, publicKey)
-        val id = auth.signedPreKeyId.takeIf { it != 0 }?.plus(1) ?: 1
-        protocolStore.storeSignedPreKey(
-            id,
-            SignedPreKeyRecord(id, System.currentTimeMillis(), keyPair, signature),
-        )
-        Log.i(TAG, "rotated signed pre-key to $id; needs registering")
-        PreKeyUpload.KeyEntity(id, publicKey, signature)
-    } catch (t: Throwable) {
-        Log.e(TAG, "could not rotate the signed pre-key", t)
-        null
-    }
-
-    private fun ensureLastResortKyberPreKey(): PreKeyUpload.KeyEntity? {
-        val existing = runBlocking { db.e2eKyberPreKeyDao().getAll() }
-        if (existing.any { it.lastResort }) return null
-        return try {
-            val keyPair = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
-            val publicKey = keyPair.publicKey.serialize()
-            val signature = signSignedPreKey(ownIdentityPrivate, publicKey)
-            val id = (runBlocking { db.e2eKyberPreKeyDao().getAll() }.maxOfOrNull { it.id } ?: 0) + 1
-            val record = KyberPreKeyRecord(id, System.currentTimeMillis(), keyPair, signature)
-            protocolStore.storeKyberPreKey(id, record, lastResort = true)
-            Log.i(TAG, "generated last-resort Kyber pre-key $id; needs registering")
-            PreKeyUpload.KeyEntity(id, publicKey, signature)
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not generate a last-resort Kyber pre-key", t)
-            null
-        }
-    }
-
-    private fun ensureOneTimePreKeys(): List<PreKeyUpload.KeyEntity> {
-        val have = runBlocking { db.e2ePreKeyDao().getAll() }.size
-        if (have >= ONE_TIME_PREKEY_FLOOR) return emptyList()
+    fun markPreKeysUploaded() {
         val maxId = runBlocking { db.e2ePreKeyDao().getMaxId() }
-        return (1..ONE_TIME_PREKEY_BATCH).mapNotNull { offset ->
-            val id = maxId + offset
-            try {
-                val keyPair = ECKeyPair.generate()
-                // Stored through the store so it lands as a libsignal record, not a bespoke blob.
-                protocolStore.storePreKey(id, PreKeyRecord(id, keyPair))
-                PreKeyUpload.KeyEntity(id, keyPair.publicKey.serialize())
-            } catch (t: Throwable) {
-                Log.w(TAG, "could not generate one-time pre-key $id", t)
-                null
-            }
-        }
+        runBlocking { db.e2ePreKeyDao().markUploadedUpTo(maxId) }
     }
 
     private data class LocalPreKey(val id: Int, val publicKey: ByteArray)
@@ -533,30 +369,21 @@ class SignalE2E(
         return locals
     }
 
-    fun ensureSignedPreKeyStored() {
-        ensureLocalPreKeys()
-    }
-
-    fun markPreKeysUploaded() {
-        val maxId = runBlocking { db.e2ePreKeyDao().getMaxId() }
-        runBlocking { db.e2ePreKeyDao().markUploadedUpTo(maxId) }
-    }
-
     companion object {
-        private const val TAG = "SignalE2E"
+        internal const val TAG = "SignalE2E"
 
         /** Regenerate one-time pre-keys once the store dips below this. */
-        private const val ONE_TIME_PREKEY_FLOOR = 10
-        private const val ONE_TIME_PREKEY_BATCH = 100
+        internal const val ONE_TIME_PREKEY_FLOOR = 10
+        internal const val ONE_TIME_PREKEY_BATCH = 100
 
         /**
          * Marker for "this ciphertext is a sealed-sender message", mapped to `Envelope.UNIDENTIFIED_SENDER`.
          * Not a `CiphertextMessage` constant — those describe the inner message, which sealed sender wraps.
          */
         const val SEALED_SENDER_TYPE = -1
-        private fun b64(s: String): ByteArray = if (s.isEmpty()) ByteArray(0) else Base64.Default.decode(s)
+        internal fun b64(s: String): ByteArray = if (s.isEmpty()) ByteArray(0) else Base64.Default.decode(s)
 
-        fun signSignedPreKey(identityPrivate32: ByteArray, signedPreKeyPublic32: ByteArray): ByteArray {
+        internal fun signSignedPreKey(identityPrivate32: ByteArray, signedPreKeyPublic32: ByteArray): ByteArray {
             val priv = ECPrivateKey(identityPrivate32)
             return priv.calculateSignature(signedPreKeyPublic32)
         }

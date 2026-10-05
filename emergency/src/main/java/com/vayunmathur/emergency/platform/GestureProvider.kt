@@ -140,14 +140,22 @@ class GestureProvider : ContentProvider() {
     }
 
     private fun defaultGestureEnabled(): Int =
-        if (requireContext().resources.getBoolean(com.vayunmathur.emergency.R.bool.default_emergency_gesture_enabled)) {
+        if (
+            requireContext().resources.getBoolean(
+                com.vayunmathur.emergency.R.bool.default_emergency_gesture_enabled,
+            )
+        ) {
             SETTING_ON
         } else {
             SETTING_OFF
         }
 
     private fun defaultSoundEnabled(): Int =
-        if (requireContext().resources.getBoolean(com.vayunmathur.emergency.R.bool.default_emergency_gesture_sound_enabled)) {
+        if (
+            requireContext().resources.getBoolean(
+                com.vayunmathur.emergency.R.bool.default_emergency_gesture_sound_enabled,
+            )
+        ) {
             SETTING_ON
         } else {
             SETTING_OFF

@@ -20,11 +20,23 @@ object BitmapDecoder {
      */
     const val MAX_ORIGINAL_DIMENSION = 4096
 
+    private const val HALF_DIVISOR = 2
+    private const val SAMPLE_STEP = 2
+    private const val MIN_SAMPLE_SIZE = 1
+    private const val NO_SCALE_RATIO = 1f
+    private const val MIN_DECODE_DIMENSION = 1
+
+    private const val SVG_MIN_SNIFF_BYTES = 5
+    private const val SVG_SNIFF_BYTES = 1024
+    private const val SVG_TAG = "<svg"
+    private const val XML_DECLARATION = "<?xml"
+
     fun isSvg(bytes: ByteArray): Boolean {
-        if (bytes.size < 5) return false
-        val head = String(bytes.take(1024).toByteArray()).trimStart()
-        return head.startsWith("<svg", ignoreCase = true) ||
-            head.startsWith("<?xml") && head.contains("<svg", ignoreCase = true)
+        if (bytes.size < SVG_MIN_SNIFF_BYTES) return false
+        val head = String(bytes.take(SVG_SNIFF_BYTES).toByteArray()).trimStart()
+        if (head.startsWith(SVG_TAG, ignoreCase = true)) return true
+        return head.startsWith(XML_DECLARATION, ignoreCase = true) &&
+            head.contains(SVG_TAG, ignoreCase = true)
     }
 
     suspend fun decode(
@@ -63,20 +75,23 @@ object BitmapDecoder {
             ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
                 val w = info.size.width
                 val h = info.size.height
-                if (targetW > 0 && targetH > 0 && (w > targetW || h > targetH)) {
+                if (isSizedDownsample(w, h, targetW, targetH)) {
                     val ratio = maxOf(w.toFloat() / targetW, h.toFloat() / targetH)
-                    if (ratio > 1f) {
-                        decoder.setTargetSize((w / ratio).toInt().coerceAtLeast(1), (h / ratio).toInt().coerceAtLeast(1))
+                    if (ratio > NO_SCALE_RATIO) {
+                        decoder.setTargetSize(
+                            (w / ratio).toInt().coerceAtLeast(MIN_DECODE_DIMENSION),
+                            (h / ratio).toInt().coerceAtLeast(MIN_DECODE_DIMENSION),
+                        )
                     }
-                } else if (targetW <= 0 || targetH <= 0) {
+                } else if (isUnconstrained(targetW, targetH)) {
                     // Unconstrained request: never hand back a bitmap larger than
                     // MAX_ORIGINAL_DIMENSION on its longest edge (see files #768).
                     val longest = maxOf(w, h)
                     if (longest > MAX_ORIGINAL_DIMENSION) {
                         val ratio = longest.toFloat() / MAX_ORIGINAL_DIMENSION
                         decoder.setTargetSize(
-                            (w / ratio).toInt().coerceAtLeast(1),
-                            (h / ratio).toInt().coerceAtLeast(1),
+                            (w / ratio).toInt().coerceAtLeast(MIN_DECODE_DIMENSION),
+                            (h / ratio).toInt().coerceAtLeast(MIN_DECODE_DIMENSION),
                         )
                     }
                 }
@@ -92,6 +107,14 @@ object BitmapDecoder {
         }
     }
 
+    private fun isSizedDownsample(w: Int, h: Int, targetW: Int, targetH: Int): Boolean {
+        if (targetW <= 0 || targetH <= 0) return false
+        return w > targetW || h > targetH
+    }
+
+    private fun isUnconstrained(targetW: Int, targetH: Int): Boolean =
+        targetW <= 0 || targetH <= 0
+
     /**
      * Power-of-two downsampling for the `BitmapFactory` fallback, pure arithmetic
      * so it is unit-testable without Android bitmaps.
@@ -102,19 +125,28 @@ object BitmapDecoder {
      */
     internal fun sampleSizeFor(srcW: Int, srcH: Int, reqW: Int, reqH: Int): Int {
         var sample = 1
-        if (reqW > 0 && reqH > 0 && srcW > 0 && srcH > 0) {
-            val halfW = srcW / 2
-            val halfH = srcH / 2
+        if (isSizedDownsampleRequest(srcW, srcH, reqW, reqH)) {
+            val halfW = srcW / HALF_DIVISOR
+            val halfH = srcH / HALF_DIVISOR
             while (halfW / sample >= reqW && halfH / sample >= reqH) {
-                sample *= 2
+                sample *= SAMPLE_STEP
             }
-        } else if (srcW > 0 && srcH > 0 && (srcW > MAX_ORIGINAL_DIMENSION || srcH > MAX_ORIGINAL_DIMENSION)) {
+        } else if (isOversizedOriginal(srcW, srcH)) {
             while (srcW / sample > MAX_ORIGINAL_DIMENSION || srcH / sample > MAX_ORIGINAL_DIMENSION) {
-                sample *= 2
+                sample *= SAMPLE_STEP
             }
         }
-        return sample.coerceAtLeast(1)
+        return sample.coerceAtLeast(MIN_SAMPLE_SIZE)
     }
+
+    private fun isSizedDownsampleRequest(srcW: Int, srcH: Int, reqW: Int, reqH: Int): Boolean =
+        isPositiveSize(srcW, srcH) && isPositiveSize(reqW, reqH)
+
+    private fun isPositiveSize(width: Int, height: Int): Boolean = width > 0 && height > 0
+
+    private fun isOversizedOriginal(srcW: Int, srcH: Int): Boolean =
+        isPositiveSize(srcW, srcH) &&
+            (srcW > MAX_ORIGINAL_DIMENSION || srcH > MAX_ORIGINAL_DIMENSION)
 
     private fun decodeWithBitmapFactory(
         bytes: ByteArray,

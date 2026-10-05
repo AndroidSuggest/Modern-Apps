@@ -3,6 +3,7 @@ package com.vayunmathur.sdk.openassistant
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import android.os.ResultReceiver
@@ -17,6 +18,8 @@ class OpenAssistant(private val context: Context, private val timeoutMs: Long = 
     companion object {
         private const val OA_PACKAGE = "com.vayunmathur.openassistant"
         private const val OA_SERVICE = "$OA_PACKAGE.util.InferenceService"
+        private const val DEFAULT_SCHEMA =
+            """{"type":"object","properties":{"response":{"type":"string"}},"required":["response"]}"""
     }
 
     suspend fun generate(prompt: String): String {
@@ -37,7 +40,7 @@ class OpenAssistant(private val context: Context, private val timeoutMs: Long = 
         return try {
             context.packageManager.getPackageInfo(OA_PACKAGE, 0)
             true
-        } catch (_: Exception) {
+        } catch (_: PackageManager.NameNotFoundException) {
             false
         }
     }
@@ -61,14 +64,18 @@ class OpenAssistant(private val context: Context, private val timeoutMs: Long = 
             val intent = Intent().apply {
                 component = ComponentName(OA_PACKAGE, OA_SERVICE)
                 putExtra("user_text", prompt)
-                putExtra("schema", schema ?: """{"type":"object","properties":{"response":{"type":"string"}},"required":["response"]}""")
+                putExtra("schema", schema ?: DEFAULT_SCHEMA)
                 putExtra("RECEIVER", receiver as ResultReceiver)
             }
 
             try {
                 context.startForegroundService(intent)
-            } catch (e: Exception) {
-                cont.resumeWithException(AssistantException("Failed to start InferenceService: ${e.message}"))
+            } catch (e: SecurityException) {
+                val message = "Failed to start InferenceService: ${e.message}"
+                cont.resumeWithException(AssistantException(message))
+            } catch (e: IllegalStateException) {
+                val message = "Failed to start InferenceService: ${e.message}"
+                cont.resumeWithException(AssistantException(message))
             }
         }
 }

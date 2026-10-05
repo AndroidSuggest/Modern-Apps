@@ -65,7 +65,7 @@ fun VideoPlayer(
     val pb = rememberVideoPlayerPlaybackState(ypvm, videoInfo, videoStreams, audioStreams, subtitles)
     val vs = rememberVideoPlayerViewState(
         ypvm, videoInfo, pb.currentVideoStream, pb.aspectRatio, pb.controller, pb.isPlaying,
-        pb.isDragging, pb.playbackSpeed,
+        pb.isDragging,
     )
     with(pb) {
     with(vs) {

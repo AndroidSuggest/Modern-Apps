@@ -3,6 +3,7 @@ package com.vayunmathur.cast.service
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.ForegroundServiceStartNotAllowedException
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -41,6 +42,10 @@ private const val TAG = "CastService"
 private const val CHANNEL_ID = "cast_session"
 
 private const val NOTIF_ID = 4201
+
+/** Request code for the notification's content intent; distinct from the stop action's. */
+private const val REQUEST_OPEN = 0
+private const val REQUEST_STOP = 1
 
 /**
  * Keeps the cast session alive while the app is not in front, and owns the screen-capture
@@ -156,8 +161,11 @@ class CastService : Service() {
         val manager = getSystemService<MediaProjectionManager>()
         val granted = try {
             manager?.getMediaProjection(resultCode, data)
-        } catch (e: Exception) {
+        } catch (e: SecurityException) {
             // The usual cause is calling this before the service was genuinely in the foreground.
+            Log.w(TAG, "getMediaProjection refused", e)
+            null
+        } catch (e: IllegalStateException) {
             Log.w(TAG, "getMediaProjection refused", e)
             null
         }
@@ -219,7 +227,7 @@ class CastService : Service() {
             getString(R.string.cast_notification_text_connecting),
         )
         try {
-            if (Build.VERSION.SDK_INT >= 34) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 val type = if (withProjection) {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
                 } else {
@@ -230,9 +238,11 @@ class CastService : Service() {
                 @Suppress("DEPRECATION")
                 startForeground(NOTIF_ID, notification)
             }
-        } catch (e: Exception) {
+        } catch (e: ForegroundServiceStartNotAllowedException) {
             // A background start the platform refuses. Nothing to recover: the session itself is
             // unaffected, it just will not survive the app being backgrounded.
+            Log.w(TAG, "could not enter the foreground", e)
+        } catch (e: SecurityException) {
             Log.w(TAG, "could not enter the foreground", e)
         }
     }
@@ -253,7 +263,7 @@ class CastService : Service() {
     private fun buildNotification(deviceName: String, text: String): Notification {
         val open = PendingIntent.getActivity(
             this,
-            0,
+            REQUEST_OPEN,
             Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             },
@@ -261,7 +271,7 @@ class CastService : Service() {
         )
         val stop = PendingIntent.getService(
             this,
-            1,
+            REQUEST_STOP,
             Intent(this, CastService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -316,9 +326,11 @@ class CastService : Service() {
         private fun launch(context: Context, intent: Intent) {
             try {
                 context.startForegroundService(intent)
-            } catch (_: Exception) {
+            } catch (_: ForegroundServiceStartNotAllowedException) {
                 // Refused because the app is in the background with no exemption. The session
                 // still works; it just will not outlive the Activity.
+            } catch (_: SecurityException) {
+                // The service or permission is missing from the manifest.
             }
         }
     }

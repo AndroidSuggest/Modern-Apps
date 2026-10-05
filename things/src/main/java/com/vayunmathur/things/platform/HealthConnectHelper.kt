@@ -53,6 +53,9 @@ object HealthConnectHelper {
     private fun zoneOffsetAt(instant: java.time.Instant) =
         java.time.ZoneId.systemDefault().rules.getOffset(instant)
 
+// Broad catch is deliberate: Health Connect IPC can fail with provider-side
+// RuntimeExceptions, and every failure mode is logged below.
+@Suppress("TooGenericExceptionCaught")
     suspend fun writeHydration(
         client: HealthConnectClient,
         instant: java.time.Instant,
@@ -74,6 +77,112 @@ object HealthConnectHelper {
         }
     }
 
+    private data class BodyCompositionValues(
+        val weightKg: Double,
+        val bodyFatPct: Double?,
+        val leanMassKg: Double?,
+        val boneMassKg: Double?,
+        val bodyWaterMassKg: Double?,
+        val bmrKcal: Int?,
+        val clientRecordId: String?,
+    )
+
+    private fun buildBodyRecords(
+        instant: java.time.Instant,
+        off: java.time.ZoneOffset,
+        values: BodyCompositionValues,
+    ): List<androidx.health.connect.client.records.Record> {
+        // Client record IDs are scoped per record type, so one ID per measurement is enough to
+        // make a re-import of the same reading replace the previous rows rather than add to them.
+        val metadata = {
+            if (values.clientRecordId == null) Metadata.manualEntry()
+            else Metadata.manualEntryWithId(values.clientRecordId)
+        }
+        val records = mutableListOf<androidx.health.connect.client.records.Record>()
+        records.add(
+            WeightRecord(
+                time = instant,
+                zoneOffset = off,
+                weight = Mass.kilograms(values.weightKg),
+                metadata = metadata(),
+            )
+        )
+        addFatAndLeanRecords(records, instant, off, values, metadata)
+        addWaterAndMetabolicRecords(records, instant, off, values, metadata)
+        return records
+    }
+
+    private fun addFatAndLeanRecords(
+        records: MutableList<androidx.health.connect.client.records.Record>,
+        instant: java.time.Instant,
+        off: java.time.ZoneOffset,
+        values: BodyCompositionValues,
+        metadata: () -> Metadata,
+    ) {
+        if (values.bodyFatPct != null && values.bodyFatPct > 0) {
+            records.add(
+                BodyFatRecord(
+                    time = instant,
+                    zoneOffset = off,
+                    percentage = Percentage(values.bodyFatPct),
+                    metadata = metadata(),
+                )
+            )
+        }
+        if (values.leanMassKg != null && values.leanMassKg > 0) {
+            records.add(
+                LeanBodyMassRecord(
+                    time = instant,
+                    zoneOffset = off,
+                    mass = Mass.kilograms(values.leanMassKg),
+                    metadata = metadata(),
+                )
+            )
+        }
+        if (values.boneMassKg != null && values.boneMassKg > 0) {
+            records.add(
+                BoneMassRecord(
+                    time = instant,
+                    zoneOffset = off,
+                    mass = Mass.kilograms(values.boneMassKg),
+                    metadata = metadata(),
+                )
+            )
+        }
+    }
+
+    private fun addWaterAndMetabolicRecords(
+        records: MutableList<androidx.health.connect.client.records.Record>,
+        instant: java.time.Instant,
+        off: java.time.ZoneOffset,
+        values: BodyCompositionValues,
+        metadata: () -> Metadata,
+    ) {
+        if (values.bodyWaterMassKg != null && values.bodyWaterMassKg > 0) {
+            records.add(
+                BodyWaterMassRecord(
+                    time = instant,
+                    zoneOffset = off,
+                    mass = Mass.kilograms(values.bodyWaterMassKg),
+                    metadata = metadata(),
+                )
+            )
+        }
+        if (values.bmrKcal != null && values.bmrKcal > 0) {
+            records.add(
+                BasalMetabolicRateRecord(
+                    time = instant,
+                    zoneOffset = off,
+                    basalMetabolicRate = Power.kilocaloriesPerDay(values.bmrKcal.toDouble()),
+                    metadata = metadata(),
+                )
+            )
+        }
+    }
+
+    // Broad catch is deliberate: Health Connect IPC can fail with provider-side
+    // RuntimeExceptions, and every failure mode is logged below.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun writeBodyComposition(
         client: HealthConnectClient,
         instant: java.time.Instant,
@@ -87,71 +196,16 @@ object HealthConnectHelper {
     ) {
         try {
             val off = zoneOffsetAt(instant)
-            // Client record IDs are scoped per record type, so one ID per measurement is enough to
-            // make a re-import of the same reading replace the previous rows rather than add to them.
-            val metadata = {
-                if (clientRecordId == null) Metadata.manualEntry()
-                else Metadata.manualEntryWithId(clientRecordId)
-            }
-            val records = mutableListOf<androidx.health.connect.client.records.Record>()
-            records.add(
-                WeightRecord(
-                    time = instant,
-                    zoneOffset = off,
-                    weight = Mass.kilograms(weightKg),
-                    metadata = metadata(),
-                )
+            val values = BodyCompositionValues(
+                weightKg = weightKg,
+                bodyFatPct = bodyFatPct,
+                leanMassKg = leanMassKg,
+                boneMassKg = boneMassKg,
+                bodyWaterMassKg = bodyWaterMassKg,
+                bmrKcal = bmrKcal,
+                clientRecordId = clientRecordId,
             )
-            if (bodyFatPct != null && bodyFatPct > 0) {
-                records.add(
-                    BodyFatRecord(
-                        time = instant,
-                        zoneOffset = off,
-                        percentage = Percentage(bodyFatPct),
-                        metadata = metadata(),
-                    )
-                )
-            }
-            if (leanMassKg != null && leanMassKg > 0) {
-                records.add(
-                    LeanBodyMassRecord(
-                        time = instant,
-                        zoneOffset = off,
-                        mass = Mass.kilograms(leanMassKg),
-                        metadata = metadata(),
-                    )
-                )
-            }
-            if (boneMassKg != null && boneMassKg > 0) {
-                records.add(
-                    BoneMassRecord(
-                        time = instant,
-                        zoneOffset = off,
-                        mass = Mass.kilograms(boneMassKg),
-                        metadata = metadata(),
-                    )
-                )
-            }
-            if (bodyWaterMassKg != null && bodyWaterMassKg > 0) {
-                records.add(
-                    BodyWaterMassRecord(
-                        time = instant,
-                        zoneOffset = off,
-                        mass = Mass.kilograms(bodyWaterMassKg),
-                        metadata = metadata(),
-                    )
-                )
-            }
-            if (bmrKcal != null && bmrKcal > 0) {
-                records.add(
-                    BasalMetabolicRateRecord(
-                        time = instant,
-                        zoneOffset = off,
-                        basalMetabolicRate = Power.kilocaloriesPerDay(bmrKcal.toDouble()),
-                        metadata = metadata(),
-                    )
-                )
-            }
+            val records = buildBodyRecords(instant, off, values)
             client.insertRecords(records)
             Log.i("HealthConnectHelper", "Wrote ${records.size} body records")
         } catch (e: Exception) {

@@ -42,6 +42,8 @@ import kotlinx.coroutines.flow.callbackFlow
 class PoweredOffScanner(private val context: Context) {
 
     @SuppressLint("MissingPermission")
+    // Broad catch is deliberate: BLE throws varied runtime exceptions; scan failure must close the flow, not crash.
+    @Suppress("TooGenericExceptionCaught")
     fun sightings(): Flow<PoweredOffSighting> = callbackFlow {
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val adapter = manager?.adapter

@@ -55,6 +55,9 @@ class AndroidSpeechRecognizer(private val context: Context) : SpeechRecognizerEn
 
     override fun isAvailable(): Boolean = SpeechRecognizer.isRecognitionAvailable(context)
 
+    // Broad catch is deliberate: startListening throws undocumented
+    // RuntimeExceptions (not just SecurityException) on some builds.
+    @Suppress("TooGenericExceptionCaught")
     override fun start(
         languageCode: String,
         onPartial: (String) -> Unit,
@@ -71,7 +74,9 @@ class AndroidSpeechRecognizer(private val context: Context) : SpeechRecognizerEn
         // last session was cleared, which surfaced as "recognizer busy" on rapid taps;
         // cancel() resets the service's session synchronously before we start a new one.
         val sr = recognizer ?: SpeechRecognizer.createSpeechRecognizer(context).also { recognizer = it }
-        try { sr.cancel() } catch (_: Throwable) {}
+        try { sr.cancel() } catch (ignored: Exception) {
+            // Best-effort session reset; a torn-down recognizer needs no cancel.
+        }
 
         // Captured so the listener's onEndOfSpeech() override can call the callback: an
         // unqualified onEndOfSpeech() inside the override would resolve to the override
@@ -128,8 +133,11 @@ class AndroidSpeechRecognizer(private val context: Context) : SpeechRecognizerEn
 
         try {
             sr.startListening(intent)
-        } catch (t: Throwable) {
-            Log.e(TAG, "startListening failed", t)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "startListening failed", e)
+            onError("Could not start speech recognition")
+        } catch (e: Exception) {
+            Log.e(TAG, "startListening failed", e)
             onError("Could not start speech recognition")
         }
     }
@@ -137,14 +145,15 @@ class AndroidSpeechRecognizer(private val context: Context) : SpeechRecognizerEn
     override fun stop() {
         try {
             recognizer?.stopListening()
-        } catch (_: Throwable) {
+        } catch (ignored: Exception) {
+            // Already torn down; nothing to stop.
         }
     }
-
     override fun destroy() {
         try {
             recognizer?.destroy()
-        } catch (_: Throwable) {
+        } catch (ignored: Exception) {
+            // Already torn down; nothing to destroy.
         }
         recognizer = null
     }
@@ -171,3 +180,4 @@ class AndroidSpeechRecognizer(private val context: Context) : SpeechRecognizerEn
         private const val TAG = "AndroidSpeech"
     }
 }
+

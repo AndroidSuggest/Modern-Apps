@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.GetPublicKeyCredentialOption
 import androidx.credentials.PublicKeyCredential
+import androidx.credentials.exceptions.GetCredentialUnknownException
 import androidx.credentials.provider.PendingIntentHandler
 import androidx.fragment.app.FragmentActivity
 import com.vayunmathur.library.util.AppMessages
@@ -66,8 +67,8 @@ class PasskeyAuthActivity : FragmentActivity() {
                     setResult(RESULT_CANCELED)
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in passkey $flow flow", e)
+        } catch (expected: IllegalStateException) {
+            Log.e(TAG, "Error in passkey $flow flow", expected)
             setResult(RESULT_CANCELED)
         }
         finish()
@@ -208,7 +209,7 @@ class PasskeyAuthActivity : FragmentActivity() {
         val clientDataHash: ByteArray
         val clientDataJsonB64: String
         if (isPrivileged) {
-            clientDataHash = (try { publicKeyOption.clientDataHash } catch (_: Exception) { null })
+            clientDataHash = readPrivilegedHash(publicKeyOption)
                 ?: MessageDigest.getInstance("SHA-256").digest(clientDataJson.toByteArray())
             clientDataJsonB64 = b64Url("<placeholder>".toByteArray())
         } else {
@@ -253,6 +254,15 @@ class PasskeyAuthActivity : FragmentActivity() {
     }
 
     private fun b64Url(data: ByteArray): String = PasskeyUtils.encodeB64Url(data)
+
+    private fun readPrivilegedHash(option: GetPublicKeyCredentialOption): ByteArray? {
+        return try {
+            option.clientDataHash
+        } catch (expected: GetCredentialUnknownException) {
+            Log.d(TAG, "privileged clientDataHash unavailable", expected)
+            null
+        }
+    }
 
     private fun handlePassword() {
         val providerRequest = PendingIntentHandler.retrieveProviderGetCredentialRequest(intent) ?: run {

@@ -47,9 +47,9 @@ data class FrameHeader(
     val size: Int get() = if (isFirst && !isLast) LONG_HEADER_SIZE else SHORT_HEADER_SIZE
 
     init {
-        require(channelId in 0..0xFF) { "channel id $channelId does not fit in a byte" }
-        require(flags in 0..0xFF) { "flags $flags do not fit in a byte" }
-        require(payloadLength in 0..0xFFFF) {
+        require(channelId in MIN_CHANNEL_ID..MAX_UINT8) { "channel id $channelId does not fit in a byte" }
+        require(flags in MIN_CHANNEL_ID..MAX_UINT8) { "flags $flags do not fit in a byte" }
+        require(payloadLength in MIN_CHANNEL_ID..MAX_UINT16) {
             "payload length $payloadLength does not fit in a uint16"
         }
         require((totalLength != null) == (isFirst && !isLast)) {
@@ -69,6 +69,18 @@ data class FrameHeader(
         const val SHORT_HEADER_SIZE = 4
         const val LONG_HEADER_SIZE = 8
 
+        /** Largest value fitting in one unsigned byte: channel ids and flag sets. */
+        private const val MAX_UINT8 = 0xFF
+
+        /** Largest value fitting in an unsigned 16-bit: frame payload lengths. */
+        private const val MAX_UINT16 = 0xFFFF
+
+        /** Lowest value of any header field: ids, flags and lengths are unsigned. */
+        private const val MIN_CHANNEL_ID = 0
+
+        /** The 4-byte total-length prefix on the first fragment of a split message. */
+        private const val TOTAL_LENGTH_SIZE = 4
+
         /**
          * The default maximum frame size, header included (`rto.a()` in gearhead).
          * Head units may negotiate something smaller.
@@ -86,12 +98,12 @@ data class FrameHeader(
                 "need at least $SHORT_HEADER_SIZE bytes for a frame header, " +
                     "have ${buffer.remaining()}"
             }
-            val channelId = buffer.get().toInt() and 0xFF
-            val flags = buffer.get().toInt() and 0xFF
-            val payloadLength = buffer.short.toInt() and 0xFFFF
+            val channelId = buffer.get().toInt() and MAX_UINT8
+            val flags = buffer.get().toInt() and MAX_UINT8
+            val payloadLength = buffer.short.toInt() and MAX_UINT16
             val long = flags and FrameFlags.FIRST != 0 && flags and FrameFlags.LAST == 0
             val totalLength = if (long) {
-                require(buffer.remaining() >= 4) {
+                require(buffer.remaining() >= TOTAL_LENGTH_SIZE) {
                     "first fragment of a fragmented message needs a 4-byte total length"
                 }
                 buffer.int

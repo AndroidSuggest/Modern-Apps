@@ -41,10 +41,22 @@ import kotlin.random.Random
  * Reaching it must not pull in a class whose initialiser loads a `.so`.
  */
 enum class Difficulty(val elo: Int, val temperature: Float, val topP: Float) {
-    BEGINNER(1100, 0.5f, 0.95f),
-    INTERMEDIATE(1500, 0.4f, 0.95f),
-    ADVANCED(1900, 0.35f, 0.95f),
-    GRANDMASTER(2500, 0.3f, 0.95f),
+    BEGINNER(ELO_BEGINNER, TEMP_BEGINNER, TOP_P),
+    INTERMEDIATE(ELO_INTERMEDIATE, TEMP_INTERMEDIATE, TOP_P),
+    ADVANCED(ELO_ADVANCED, TEMP_ADVANCED, TOP_P),
+    GRANDMASTER(ELO_GRANDMASTER, TEMP_GRANDMASTER, TOP_P);
+
+    companion object {
+        private const val ELO_BEGINNER = 1100
+        private const val ELO_INTERMEDIATE = 1500
+        private const val ELO_ADVANCED = 1900
+        private const val ELO_GRANDMASTER = 2500
+        private const val TEMP_BEGINNER = 0.5f
+        private const val TEMP_INTERMEDIATE = 0.4f
+        private const val TEMP_ADVANCED = 0.35f
+        private const val TEMP_GRANDMASTER = 0.3f
+        private const val TOP_P = 0.95f
+    }
 }
 
 /**
@@ -110,8 +122,11 @@ class MaiaEngine(private val context: Context) {
                 val handle = ensure() ?: return@withContext null
                 val logits = try {
                     handle.logits(encodePlanes(board, turn), difficulty.elo, difficulty.elo)
-                } catch (t: Throwable) {
-                    Log.e(TAG, "inference failed", t)
+                } catch (expected: IllegalStateException) {
+                    Log.e(TAG, "inference failed", expected)
+                    null
+                } catch (expected: IllegalArgumentException) {
+                    Log.e(TAG, "inference failed", expected)
                     null
                 } ?: return@withContext null
                 choose(legal, logits, turn, difficulty)
@@ -203,6 +218,15 @@ class MaiaEngine(private val context: Context) {
         /** A floor, so a zero temperature is argmax rather than a division by zero. */
         private const val MIN_TEMPERATURE = 1e-3f
 
+        private const val BOARD_RANKS = 8
+        private const val BOARD_FILES = 8
+        private const val LAST_RANK = 7
+        private const val OPPONENT_PLANE_OFFSET = 6
+        private const val OCCUPIED = 1f
+        private const val PROMOTION_BASE = 4096
+        private const val FROM_FILE_STRIDE = 32
+        private const val TO_FILE_STRIDE = 4
+
         /**
          * The plane a piece type occupies, in `maia3/dataset.py`'s `PIECE_MAP` order.
          *
@@ -228,13 +252,14 @@ class MaiaEngine(private val context: Context) {
          */
         fun encodePlanes(board: Board, turn: PieceColor): FloatArray {
             val planes = FloatArray(MaiaHandle.PLANE_COUNT * MaiaHandle.SQUARES)
-            for (row in 0..7) {
-                for (col in 0..7) {
+            for (row in 0 until BOARD_RANKS) {
+                for (col in 0 until BOARD_FILES) {
                     val piece = board.pieces[row][col] ?: continue
                     val colour = if (turn == PieceColor.BLACK) piece.color.opposite else piece.color
                     val plane = PLANE_ORDER.indexOf(piece.type) +
-                        if (colour == PieceColor.BLACK) 6 else 0
-                    planes[plane * MaiaHandle.SQUARES + squareOf(Position(row, col), turn)] = 1f
+                        if (colour == PieceColor.BLACK) OPPONENT_PLANE_OFFSET else 0
+                    val sq = squareOf(Position(row, col), turn)
+                    planes[plane * MaiaHandle.SQUARES + sq] = OCCUPIED
                 }
             }
             return planes
@@ -253,7 +278,8 @@ class MaiaEngine(private val context: Context) {
             val to = squareOf(move.end, turn)
             val promotion = move.promotedTo ?: return from * MaiaHandle.SQUARES + to
             val piece = Board.PROMOTION_CHOICES.indexOf(promotion)
-            return 4096 + (from % 8) * 32 + (to % 8) * 4 + piece
+            return PROMOTION_BASE + (from % BOARD_FILES) * FROM_FILE_STRIDE +
+                (to % BOARD_FILES) * TO_FILE_STRIDE + piece
         }
 
         /**
@@ -263,9 +289,9 @@ class MaiaEngine(private val context: Context) {
          * a1. Both conversions are here so nothing else has to know either convention.
          */
         private fun squareOf(position: Position, turn: PieceColor): Int {
-            val rank = 7 - position.row
-            val fromMoversSide = if (turn == PieceColor.BLACK) 7 - rank else rank
-            return fromMoversSide * 8 + position.col
+            val rank = LAST_RANK - position.row
+            val fromMoversSide = if (turn == PieceColor.BLACK) LAST_RANK - rank else rank
+            return fromMoversSide * BOARD_FILES + position.col
         }
     }
 }

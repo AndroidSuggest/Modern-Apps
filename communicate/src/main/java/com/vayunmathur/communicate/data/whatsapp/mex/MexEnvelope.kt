@@ -29,7 +29,7 @@ object MexEnvelope {
         if (trimmed.isEmpty()) return JsonObject(emptyMap())
         return try {
             json.parseToJsonElement(trimmed)
-        } catch (t: Throwable) {
+        } catch (ignored: Throwable) {
             JsonObject(emptyMap())
         }
     }

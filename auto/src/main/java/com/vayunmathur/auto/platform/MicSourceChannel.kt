@@ -71,7 +71,7 @@ class MicSourceChannel(
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(16)} for channel $channelId")
+            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         if (type == GalMessage.Microphone.REQUEST) {
@@ -81,7 +81,7 @@ class MicSourceChannel(
         }
         val chunk = AudioCodec.decodeMicData(type, payload)
         if (chunk == null) {
-            Log.d(TAG, "unhandled mic message 0x${type.toString(16)}")
+            Log.d(TAG, "unhandled mic message 0x${type.toString(HEX_RADIX)}")
             return
         }
         val target = handler ?: run {
@@ -163,5 +163,8 @@ class MicSourceChannel(
 
     private companion object {
         const val TAG = "MaAuto.Mic"
+
+        /** Radix for hex message-id logging. */
+        const val HEX_RADIX = 16
     }
 }

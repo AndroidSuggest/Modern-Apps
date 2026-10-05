@@ -190,28 +190,28 @@ internal fun rememberMainPageActions(
     }
 
     val mainActions = object : MainPageActions {
-        override fun clearSelection() = ffViewModel.clearSelection()
-        override fun setShowingPresent(present: Boolean) = ffViewModel.setShowingPresent(present)
+        override fun clearSelection() = ffViewModel.mapState.clearSelection()
+        override fun setShowingPresent(present: Boolean) = ffViewModel.mapState.setShowingPresent(present)
         override fun onGpsWarningClick() { onShowGpsWarning(true) }
         override fun onShowSecurityCode() { onShowSecurityCode(true) }
         override fun openUwbRanging(userId: Long) { backStack.add(Route.UwbRangingPage(userId)) }
         override fun deleteSelectedUser() {
             selectedUser?.let { ffViewModel.deleteUser(it) }
-            ffViewModel.setSelectedUserId(null)
+            ffViewModel.mapState.setSelectedUserId(null)
         }
         override fun deleteSelectedWaypoint() {
             selectedWaypointId?.let { id -> waypoints.firstOrNull { it.id == id } }
                 ?.let { ffViewModel.deleteWaypoint(it) }
-            ffViewModel.setSelectedWaypointId(null)
+            ffViewModel.mapState.setSelectedWaypointId(null)
         }
         override fun addPerson() { backStack.add(Route.AddPersonDialog()) }
-        override fun beginCreateWaypoint() = ffViewModel.beginCreateWaypoint()
+        override fun beginCreateWaypoint() = ffViewModel.mapState.beginCreateWaypoint()
         override fun addLink() { backStack.add(Route.AddLinkDialog) }
         override fun addTracker() { backStack.add(Route.AddTrackerDialog) }
-        override fun saveCurrentWaypoint() = ffViewModel.saveCurrentWaypoint()
-        override fun enterHistory() = ffViewModel.setShowingPresent(false)
-        override fun setWaypointName(name: String) = ffViewModel.setWaypointName(name)
-        override fun setWaypointRange(range: String) = ffViewModel.setWaypointRange(range)
+        override fun saveCurrentWaypoint() = ffViewModel.mapState.saveCurrentWaypoint()
+        override fun enterHistory() = ffViewModel.mapState.setShowingPresent(false)
+        override fun setWaypointName(name: String) = ffViewModel.mapState.setWaypointName(name)
+        override fun setWaypointRange(range: String) = ffViewModel.mapState.setWaypointRange(range)
     }
     return Triple(familyActions, personActions, mainActions)
 }

@@ -52,7 +52,9 @@ object ApkCertificates {
         val info = context.packageManager
             .getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
         fingerprints(signaturesOf(info, contentsOnly = false))
-    } catch (_: Exception) {
+    } catch (_: PackageManager.NameNotFoundException) {
+        emptySet()
+    } catch (_: SecurityException) {
         emptySet()
     }
 
@@ -70,14 +72,16 @@ object ApkCertificates {
         @Suppress("DEPRECATION")
         context.packageManager
             .getPackageArchiveInfo(apk.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
-    } catch (_: Exception) {
+    } catch (_: SecurityException) {
+        null
+    } catch (_: IllegalArgumentException) {
         null
     }
 
     fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->
-            val buf = ByteArray(64 * 1024)
+            val buf = ByteArray(HASH_BUFFER_SIZE)
             var n: Int
             while (input.read(buf).also { n = it } != -1) digest.update(buf, 0, n)
         }
@@ -89,7 +93,7 @@ object ApkCertificates {
 
     /** Short form for UI: first 8 hex bytes, colon separated. */
     fun abbreviate(fingerprint: String): String =
-        fingerprint.chunked(2).take(8).joinToString(":").uppercase()
+        fingerprint.chunked(HEX_PAIR_LEN).take(ABBREVIATED_PAIRS).joinToString(":").uppercase()
 
     /**
      * Normalise a certificate fingerprint to lowercase hex.
@@ -101,15 +105,15 @@ object ApkCertificates {
      */
     fun normalizeFingerprint(value: String): String? {
         val trimmed = value.trim()
-        if (trimmed.length == 64 && trimmed.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) {
+        if (trimmed.length == SHA256_HEX_LEN && trimmed.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) {
             return trimmed.lowercase()
         }
         return try {
             val flags = android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING or
                 android.util.Base64.URL_SAFE
             val bytes = android.util.Base64.decode(trimmed, flags)
-            if (bytes.size == 32) bytes.toHex() else null
-        } catch (_: Exception) {
+            if (bytes.size == SHA256_BYTES) bytes.toHex() else null
+        } catch (_: IllegalArgumentException) {
             null
         }
     }
@@ -135,4 +139,12 @@ object ApkCertificates {
         }.toSet()
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+
+    private companion object {
+        private const val SHA256_HEX_LEN = 64
+        private const val SHA256_BYTES = 32
+        private const val HASH_BUFFER_SIZE = 64 * 1024
+        private const val HEX_PAIR_LEN = 2
+        private const val ABBREVIATED_PAIRS = 8
+    }
 }

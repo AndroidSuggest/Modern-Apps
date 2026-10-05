@@ -76,6 +76,11 @@ class MedicalViewModel(
     internal val repository: HealthRepository = HealthRepository.get(application),
 ) : AndroidViewModel(application) {
 
+    companion object {
+        /** 9am in seconds since midnight: the default time of a new reminder schedule. */
+        internal const val DEFAULT_DOSE_TIME_SECONDS = 9 * 60 * 60
+    }
+
     val vaccinations: StateFlow<List<VaccinationEntry>> = repository.getVaccinationsFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -117,8 +122,8 @@ class MedicalViewModel(
     val doseEvents: StateFlow<List<DoseEvent>> = repository.getDoseEventsFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    internal val _syncing = MutableStateFlow(false)
-    val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
+    internal val syncingState = MutableStateFlow(false)
+    val syncing: StateFlow<Boolean> = syncingState.asStateFlow()
 
     /**
      * Whether this device can mirror to Health Connect at all. Drives an explanatory banner.
@@ -187,7 +192,7 @@ class MedicalViewModel(
         val scheduleId: String? = null,
         val remindersEnabled: Boolean = false,
         /** Seconds since midnight, one per dose. */
-        val times: List<Int> = listOf(9 * 60 * 60),
+        val times: List<Int> = listOf(DEFAULT_DOSE_TIME_SECONDS),
         val repeatUnit: RepeatUnit = RepeatUnit.Daily,
         val interval: Int = 1,
         val daysOfWeek: Int = 0,
@@ -202,11 +207,11 @@ class MedicalViewModel(
         val editingTimeIndex: Int? = null,
     )
 
-    internal val _vaccinationDraft = MutableStateFlow(VaccinationDraft())
-    val vaccinationDraft: StateFlow<VaccinationDraft> = _vaccinationDraft.asStateFlow()
+    internal val vaccinationDraftState = MutableStateFlow(VaccinationDraft())
+    val vaccinationDraft: StateFlow<VaccinationDraft> = vaccinationDraftState.asStateFlow()
 
-    internal val _medicationDraft = MutableStateFlow(MedicationDraft())
-    val medicationDraft: StateFlow<MedicationDraft> = _medicationDraft.asStateFlow()
+    internal val medicationDraftState = MutableStateFlow(MedicationDraft())
+    val medicationDraft: StateFlow<MedicationDraft> = medicationDraftState.asStateFlow()
 
     data class AllergyDraft(
         val editingId: String? = null,
@@ -242,18 +247,18 @@ class MedicalViewModel(
         val note: String = "",
     )
 
-    internal val _allergyDraft = MutableStateFlow(AllergyDraft())
-    val allergyDraft: StateFlow<AllergyDraft> = _allergyDraft.asStateFlow()
+    internal val allergyDraftState = MutableStateFlow(AllergyDraft())
+    val allergyDraft: StateFlow<AllergyDraft> = allergyDraftState.asStateFlow()
 
-    internal val _conditionDraft = MutableStateFlow(ConditionDraft())
-    val conditionDraft: StateFlow<ConditionDraft> = _conditionDraft.asStateFlow()
+    internal val conditionDraftState = MutableStateFlow(ConditionDraft())
+    val conditionDraft: StateFlow<ConditionDraft> = conditionDraftState.asStateFlow()
 
     fun startAllergyDraft(id: String? = null) {
-        _allergyDraft.value = AllergyDraft()
+        allergyDraftState.value = AllergyDraft()
         if (id == null) return
         viewModelScope.launch {
             val entry = repository.getAllergy(id) ?: return@launch
-            _allergyDraft.value = AllergyDraft(
+            allergyDraftState.value = AllergyDraft(
                 editingId = entry.id,
                 rxcui = entry.rxcui,
                 displayName = entry.displayName,
@@ -267,15 +272,15 @@ class MedicalViewModel(
     }
 
     fun editAllergyDraft(transform: (AllergyDraft) -> AllergyDraft) {
-        _allergyDraft.update(transform)
+        allergyDraftState.update(transform)
     }
 
     fun startConditionDraft(id: String? = null) {
-        _conditionDraft.value = ConditionDraft()
+        conditionDraftState.value = ConditionDraft()
         if (id == null) return
         viewModelScope.launch {
             val entry = repository.getCondition(id) ?: return@launch
-            _conditionDraft.value = ConditionDraft(
+            conditionDraftState.value = ConditionDraft(
                 editingId = entry.id,
                 icd10Code = entry.icd10Code,
                 displayName = entry.displayName,
@@ -288,18 +293,18 @@ class MedicalViewModel(
     }
 
     fun editConditionDraft(transform: (ConditionDraft) -> ConditionDraft) {
-        _conditionDraft.update(transform)
+        conditionDraftState.update(transform)
     }
 
-    internal val _labDraft = MutableStateFlow(LabResultDraft())
-    val labDraft: StateFlow<LabResultDraft> = _labDraft.asStateFlow()
+    internal val labDraftState = MutableStateFlow(LabResultDraft())
+    val labDraft: StateFlow<LabResultDraft> = labDraftState.asStateFlow()
 
     fun startLabDraft(id: String? = null) {
-        _labDraft.value = LabResultDraft()
+        labDraftState.value = LabResultDraft()
         if (id == null) return
         viewModelScope.launch {
             val entry = repository.getLabResult(id) ?: return@launch
-            _labDraft.value = LabResultDraft(
+            labDraftState.value = LabResultDraft(
                 editingId = entry.id,
                 loincCode = entry.loincCode,
                 displayName = entry.displayName,
@@ -314,7 +319,7 @@ class MedicalViewModel(
     }
 
     fun editLabDraft(transform: (LabResultDraft) -> LabResultDraft) {
-        _labDraft.update(transform)
+        labDraftState.update(transform)
     }
 
     /**
@@ -324,11 +329,11 @@ class MedicalViewModel(
      * recomposed every time a picker opens over it, and reloading there would discard their edits.
      */
     fun startVaccinationDraft(id: String? = null) {
-        _vaccinationDraft.value = VaccinationDraft()
+        vaccinationDraftState.value = VaccinationDraft()
         if (id == null) return
         viewModelScope.launch {
             val entry = repository.getVaccination(id) ?: return@launch
-            _vaccinationDraft.value = VaccinationDraft(
+            vaccinationDraftState.value = VaccinationDraft(
                 editingId = entry.id,
                 cvxCode = entry.cvxCode,
                 displayName = entry.displayName,
@@ -345,16 +350,16 @@ class MedicalViewModel(
     }
 
     fun editVaccinationDraft(transform: (VaccinationDraft) -> VaccinationDraft) {
-        _vaccinationDraft.update(transform)
+        vaccinationDraftState.update(transform)
     }
 
     fun startMedicationDraft(id: String? = null) {
-        _medicationDraft.value = MedicationDraft()
+        medicationDraftState.value = MedicationDraft()
         if (id == null) return
         viewModelScope.launch {
             val entry = repository.getMedication(id) ?: return@launch
             val schedule = repository.getScheduleFor(id)
-            _medicationDraft.value = MedicationDraft(
+            medicationDraftState.value = MedicationDraft(
                 editingId = entry.id,
                 rxcui = entry.rxcui,
                 ingredient = entry.displayName,
@@ -367,7 +372,8 @@ class MedicalViewModel(
                 note = entry.note.orEmpty(),
                 scheduleId = schedule?.id,
                 remindersEnabled = schedule?.enabled == true,
-                times = schedule?.times?.takeIf { it.isNotEmpty() } ?: listOf(9 * 60 * 60),
+                times = schedule?.times?.takeIf { it.isNotEmpty() }
+                    ?: listOf(DEFAULT_DOSE_TIME_SECONDS),
                 repeatUnit = schedule?.repeatUnit ?: RepeatUnit.Daily,
                 interval = schedule?.interval ?: 1,
                 daysOfWeek = schedule?.daysOfWeek ?: 0,
@@ -378,7 +384,7 @@ class MedicalViewModel(
     }
 
     fun editMedicationDraft(transform: (MedicationDraft) -> MedicationDraft) {
-        _medicationDraft.update(transform)
+        medicationDraftState.update(transform)
     }
 }
 

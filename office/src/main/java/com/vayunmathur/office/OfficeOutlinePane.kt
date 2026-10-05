@@ -28,6 +28,11 @@ import kotlinx.coroutines.launch
  * Hoisted verbatim from `DocumentScreen`'s local `OutlinePane` (split for file length);
  * captures became explicit parameters, behavior identical.
  */
+private val panePadding = 16.dp
+private val paneHalfPadding = 8.dp
+private const val PANE_INDENT = 16
+private val outlineListHeight = 150.dp
+
 @Composable
 fun OfficeOutlinePane(
     bookmarks: List<OdfBookmark>,
@@ -38,26 +43,55 @@ fun OfficeOutlinePane(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier) {
-        Text(stringResource(R.string.outline), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+        Text(
+            stringResource(R.string.outline),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(panePadding))
         HorizontalDivider()
         if (bookmarks.isNotEmpty()) {
-            Text(stringResource(R.string.bookmarks), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(16.dp, 8.dp))
-            LazyColumn(modifier = Modifier.height(150.dp)) {
+            Text(
+                stringResource(R.string.bookmarks),
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(panePadding, paneHalfPadding))
+            LazyColumn(modifier = Modifier.height(outlineListHeight)) {
                 items(bookmarks) { bk ->
-                    Text("🔖 ${bk.name}", modifier = Modifier.fillMaxWidth()
-                        .clickable { scope.launch { listState.animateScrollToItem(bk.contentIndex); drawerState.close() } }
-                        .padding(16.dp, 8.dp))
+                    Text(
+                        "🔖 ${bk.name}",
+                        modifier = Modifier.fillMaxWidth()
+                            .clickable {
+                                scope.launch {
+                                    listState.animateScrollToItem(bk.contentIndex)
+                                    drawerState.close()
+                                }
+                            }
+                            .padding(panePadding, paneHalfPadding),
+                    )
                 }
             }
             HorizontalDivider()
         }
         LazyColumn {
             items(headings) { heading ->
-                Text(heading.text,
-                    style = when (heading.level) { 1 -> MaterialTheme.typography.titleMedium; 2 -> MaterialTheme.typography.titleSmall; else -> MaterialTheme.typography.bodyMedium },
+                Text(
+                    heading.text,
+                    style = when (heading.level) {
+                        1 -> MaterialTheme.typography.titleMedium
+                        2 -> MaterialTheme.typography.titleSmall
+                        else -> MaterialTheme.typography.bodyMedium
+                    },
                     fontWeight = if (heading.level <= 2) FontWeight.Bold else null,
-                    modifier = Modifier.fillMaxWidth().clickable { scope.launch { listState.animateScrollToItem(heading.contentIndex); drawerState.close() } }
-                        .padding(start = (16 + (heading.level - 1) * 16).dp, top = 12.dp, bottom = 12.dp, end = 16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                        .clickable {
+                            scope.launch {
+                                listState.animateScrollToItem(heading.contentIndex)
+                                drawerState.close()
+                            }
+                        }
+                        .padding(
+                            start = (PANE_INDENT + (heading.level - 1) * PANE_INDENT).dp,
+                            top = paneHalfPadding,
+                            bottom = paneHalfPadding,
+                            end = panePadding),
                     maxLines = 2)
             }
         }

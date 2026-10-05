@@ -5,6 +5,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.IntSize
 import com.vayunmathur.games.solitaire.data.Card
 import com.vayunmathur.games.solitaire.data.GameMode
+import com.vayunmathur.games.solitaire.data.SolitaireUiState
 import kotlinx.coroutines.flow.update
 
 // ---- Shared: drag, drop, auto-move, drag state ----
@@ -15,43 +16,54 @@ import kotlinx.coroutines.flow.update
  * from whatever the UI captured when the gesture was set up. Empty when the source
  * no longer holds a card (a stale slot), which is the signal not to start a drag.
  */
-internal fun SolitaireViewModel.draggedCards(sourceId: String): List<Card> = with(_uiState.value) {
-    when {
-        sourceId == "waste" -> klondike?.waste?.lastOrNull()?.let { listOf(it) } ?: emptyList()
-        sourceId.startsWith("freecell_") -> {
-            val ci = sourceId.removePrefix("freecell_").toIntOrNull() ?: return emptyList()
-            freeCell?.freeCells?.getOrNull(ci)?.let { listOf(it) } ?: emptyList()
-        }
-        sourceId.startsWith("tableau_") -> {
-            val parts = sourceId.removePrefix("tableau_").split("_")
-            val col = parts.getOrNull(0)?.toIntOrNull() ?: return emptyList()
-            val idx = parts.getOrNull(1)?.toIntOrNull() ?: return emptyList()
-            val faceUp = when (gameMode) {
-                GameMode.KLONDIKE -> klondike?.tableauPiles?.getOrNull(col)?.faceUp
-                GameMode.SPIDER -> spider?.tableauPiles?.getOrNull(col)?.faceUp
-                GameMode.FREECELL -> freeCell?.tableauPiles?.getOrNull(col)
-                else -> null
-            } ?: return emptyList()
-            if (idx in faceUp.indices) faceUp.subList(idx, faceUp.size) else emptyList()
-        }
+internal fun SolitaireViewModel.draggedCards(sourceId: String): List<Card> {
+    val state = uiStateInternal.value
+    return when {
+        sourceId == "waste" -> state.klondike?.waste?.lastOrNull()?.let { listOf(it) } ?: emptyList()
+        sourceId.startsWith("freecell_") -> freeCellDragCards(state, sourceId)
+        sourceId.startsWith("tableau_") -> tableauDragCards(state, sourceId)
         else -> emptyList()
     }
+}
+
+private fun freeCellDragCards(state: SolitaireUiState, sourceId: String): List<Card> {
+    val ci = sourceId.removePrefix("freecell_").toIntOrNull() ?: return emptyList()
+    return state.freeCell?.freeCells?.getOrNull(ci)?.let { listOf(it) } ?: emptyList()
+}
+
+private fun tableauDragCards(state: SolitaireUiState, sourceId: String): List<Card> {
+    val parts = sourceId.removePrefix("tableau_").split("_")
+    val col = parts.getOrNull(0)?.toIntOrNull() ?: return emptyList()
+    val idx = parts.getOrNull(1)?.toIntOrNull() ?: return emptyList()
+    val faceUp = tableauFaceUp(state, col) ?: return emptyList()
+    return if (idx in faceUp.indices) faceUp.subList(idx, faceUp.size) else emptyList()
+}
+
+private fun tableauFaceUp(state: SolitaireUiState, col: Int): List<Card>? = when (state.gameMode) {
+    GameMode.KLONDIKE -> state.klondike?.tableauPiles?.getOrNull(col)?.faceUp
+    GameMode.SPIDER -> state.spider?.tableauPiles?.getOrNull(col)?.faceUp
+    GameMode.FREECELL -> state.freeCell?.tableauPiles?.getOrNull(col)
+    else -> null
 }
 
 /** A foundation only ever accepts a drag that carries the single top card. */
 internal fun SolitaireViewModel.isSingleCardDrag(sourceId: String): Boolean = draggedCards(sourceId).size == 1
 
-internal fun SolitaireViewModel.tryMoveByDragImpl(sourceId: String, dropOffset: Offset, cardSize: IntSize = IntSize.Zero) {
-    val mode = _uiState.value.gameMode ?: return
+internal fun SolitaireViewModel.tryMoveByDragImpl(
+    sourceId: String,
+    dropOffset: Offset,
+    cardSize: IntSize = IntSize.Zero,
+) {
+    val mode = uiStateInternal.value.gameMode ?: return
     for (targetId in candidateDropTargets(dropOffset, cardSize)) {
-        val before = _uiState.value
+        val before = uiStateInternal.value
         when (mode) {
             GameMode.KLONDIKE -> handleKlondikeDropImpl(sourceId, targetId)
             GameMode.SPIDER -> handleSpiderDropImpl(sourceId, targetId)
             GameMode.FREECELL -> handleFreeCellDropImpl(sourceId, targetId)
             GameMode.PYRAMID -> return // Pyramid is tap-based, not drag-based.
         }
-        if (_uiState.value !== before) return
+        if (uiStateInternal.value !== before) return
     }
 }
 
@@ -86,7 +98,7 @@ internal fun SolitaireViewModel.candidateDropTargets(dropOffset: Offset, cardSiz
 // --- Tap to move (auto) ---
 
 internal fun SolitaireViewModel.autoMoveImpl(sourceId: String) {
-    when (_uiState.value.gameMode) {
+    when (uiStateInternal.value.gameMode) {
         GameMode.KLONDIKE -> klondikeAutoMoveImpl(sourceId)
         GameMode.FREECELL -> freeCellAutoMoveImpl(sourceId)
         else -> {} // Spider has no foundations; Pyramid is already tap-based.
@@ -100,26 +112,26 @@ internal fun SolitaireViewModel.autoMoveImpl(sourceId: String) {
 internal fun SolitaireViewModel.startDragImpl(sourceId: String, startPos: Offset, cardSize: IntSize): Boolean {
     val cards = draggedCards(sourceId)
     if (cards.isEmpty()) {
-        _dragInfo.value = null
+        dragInfoInternal.value = null
         return false
     }
-    _dragInfo.value = DragInfo(cards, sourceId, startPos, startPos, cardSize)
+    dragInfoInternal.value = DragInfo(cards, sourceId, startPos, startPos, cardSize)
     return true
 }
 
 internal fun SolitaireViewModel.updateDragImpl(offset: Offset) {
-    _dragInfo.update { it?.copy(offset = offset) }
+    dragInfoInternal.update { it?.copy(offset = offset) }
 }
 
 internal fun SolitaireViewModel.endDragImpl(dropOffset: Offset, cardSize: IntSize) {
-    val info = _dragInfo.value ?: return
+    val info = dragInfoInternal.value ?: return
     // Use the cardSize recorded at drag start (finger owns that card), with the
     // current drop size as fallback so call sites lacking a size still resolve.
     val effectiveSize = if (cardSize.width > 0 && cardSize.height > 0) cardSize else info.cardSize
     tryMoveByDrag(info.sourceId, dropOffset, effectiveSize)
-    _dragInfo.value = null
+    dragInfoInternal.value = null
 }
 
 internal fun SolitaireViewModel.cancelDragImpl() {
-    _dragInfo.value = null
+    dragInfoInternal.value = null
 }

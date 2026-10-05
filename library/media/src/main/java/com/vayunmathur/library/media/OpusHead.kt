@@ -24,6 +24,16 @@ internal object OpusHead {
     private const val MARKER_SIZE = 8
     private const val CHUNK_LENGTH_SIZE = 8
 
+    private const val VERSION_OFFSET = 8
+    private const val CHANNELS_OFFSET = 9
+    private const val PRE_SKIP_LOW_OFFSET = 10
+    private const val PRE_SKIP_HIGH_OFFSET = 11
+    private const val SAMPLE_RATE_OFFSET = 12
+    private const val OPUS_VERSION = 1
+    private const val BYTE_MASK = 0xff
+    private const val HIGH_BYTE_SHIFT = 8
+    private const val LONG_SIZE_BYTES = 8
+
     /**
      * The Opus encoder's lookahead at 48 kHz, used only when a codec reports no header at
      * all. `libopus` returns 6.5 ms for every configuration the encoder is used in here.
@@ -33,11 +43,11 @@ internal object OpusHead {
     fun build(channels: Int, preSkip: Int, inputSampleRate: Int): ByteArray {
         val head = ByteArray(SIZE)
         MAGIC.toByteArray(Charsets.ISO_8859_1).copyInto(head)
-        head[8] = 1 // version
-        head[9] = channels.toByte()
-        head[10] = preSkip.toByte()
-        head[11] = (preSkip ushr 8).toByte()
-        OggPages.writeIntLe(head, 12, inputSampleRate)
+        head[VERSION_OFFSET] = OPUS_VERSION // version
+        head[CHANNELS_OFFSET] = channels.toByte()
+        head[PRE_SKIP_LOW_OFFSET] = preSkip.toByte()
+        head[PRE_SKIP_HIGH_OFFSET] = (preSkip ushr HIGH_BYTE_SHIFT).toByte()
+        OggPages.writeIntLe(head, SAMPLE_RATE_OFFSET, inputSampleRate)
         // Output gain 0 dB at 16..17, channel mapping family 0 at 18, both already zero.
         return head
     }
@@ -63,7 +73,8 @@ internal object OpusHead {
     }
 
     fun preSkipOf(head: ByteArray): Int =
-        (head[10].toInt() and 0xff) or ((head[11].toInt() and 0xff) shl 8)
+        (head[PRE_SKIP_LOW_OFFSET].toInt() and BYTE_MASK) or
+            ((head[PRE_SKIP_HIGH_OFFSET].toInt() and BYTE_MASK) shl HIGH_BYTE_SHIFT)
 
     /**
      * How many 48 kHz samples one Opus packet decodes to, from its table-of-contents byte.
@@ -102,7 +113,9 @@ internal object OpusHead {
 
     private fun readLongLe(buffer: ByteArray, offset: Int): Long {
         var value = 0L
-        for (i in 0 until 8) value = value or ((buffer[offset + i].toLong() and 0xff) shl (8 * i))
+        for (i in 0 until LONG_SIZE_BYTES) {
+            value = value or ((buffer[offset + i].toLong() and BYTE_MASK) shl (HIGH_BYTE_SHIFT * i))
+        }
         return value
     }
 }

@@ -8,10 +8,13 @@ import android.util.Log
 object ImapParser {
 
     private const val TAG = "ImapParser"
+    private const val ASCII_PRINTABLE_MIN = 0x20
+    private const val ASCII_PRINTABLE_MAX = 0x7E
+    private const val NIL_KEYWORD_LENGTH = 3
 
     // Modified UTF-7 for IMAP mailbox names (RFC 3501 §5.1.3)
     // '&' starts a base64 section terminated by '-'. Base64 modified: ',' instead of '/'.
-    private val base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,"
+    private const val base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,"
     private val base64Inv = IntArray(128) { -1 }.apply {
         for (i in base64Chars.indices) {
             this[base64Chars[i].code] = i
@@ -23,46 +26,49 @@ object ImapParser {
             val sb = StringBuilder()
             var i = 0
             while (i < s.length) {
-                val c = s[i]
-                if (c == '&') {
-                    if (i + 1 < s.length && s[i + 1] == '-') {
-                        sb.append('&')
-                        i += 2
-                        continue
-                    }
-                    val dash = s.indexOf('-', i + 1)
-                    if (dash == -1) {
-                        // Unterminated, treat literally
-                        sb.append(s.substring(i))
-                        break
-                    }
-                    val b64Section = s.substring(i + 1, dash)
-                    if (b64Section.isEmpty()) {
-                        i = dash + 1
-                        continue
-                    }
-                    // Modified Base64 -> standard: replace ',' with '/'
-                    val stdB64 = b64Section.replace(',', '/')
-                    // Pad to multiple of 4
-                    val padded = stdB64 + "===".substring(0, (4 - stdB64.length % 4) % 4)
-                    try {
-                        val bytes = android.util.Base64.decode(padded, android.util.Base64.DEFAULT)
-                        // UTF-16BE
-                        val decoded = String(bytes, Charsets.UTF_16BE)
-                        sb.append(decoded)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "UTF7 decode failed for $b64Section: ${e.message}")
-                        sb.append("&").append(b64Section).append("-")
-                    }
-                    i = dash + 1
-                } else {
-                    sb.append(c)
-                    i++
-                }
+                i = decodeNextChar(s, i, sb)
             }
             sb.toString()
         } catch (_: Exception) {
             s
+        }
+    }
+
+    private fun decodeNextChar(s: String, i: Int, sb: StringBuilder): Int {
+        val c = s[i]
+        if (c != '&') {
+            sb.append(c)
+            return i + 1
+        }
+        if (i + 1 < s.length && s[i + 1] == '-') {
+            sb.append('&')
+            return i + 2
+        }
+        val dash = s.indexOf('-', i + 1)
+        if (dash == -1) {
+            // Unterminated, treat literally
+            sb.append(s.substring(i))
+            return s.length
+        }
+        val b64Section = s.substring(i + 1, dash)
+        if (b64Section.isNotEmpty()) {
+            sb.append(decodeUtf7Section(b64Section))
+        }
+        return dash + 1
+    }
+
+    private fun decodeUtf7Section(b64Section: String): String {
+        // Modified Base64 -> standard: replace ',' with '/'
+        val stdB64 = b64Section.replace(',', '/')
+        // Pad to multiple of 4
+        val padded = stdB64 + "===".substring(0, (4 - stdB64.length % 4) % 4)
+        return try {
+            val bytes = android.util.Base64.decode(padded, android.util.Base64.DEFAULT)
+            // UTF-16BE
+            String(bytes, Charsets.UTF_16BE)
+        } catch (_: IllegalArgumentException) {
+            Log.w(TAG, "UTF7 decode failed for $b64Section")
+            "&$b64Section-"
         }
     }
 
@@ -71,36 +77,44 @@ object ImapParser {
             val sb = StringBuilder()
             var i = 0
             while (i < s.length) {
-                val c = s[i]
-                val code = c.code
-                // Printable ASCII 0x20-0x7E except '&' are direct
-                if (code in 0x20..0x7E && c != '&') {
-                    sb.append(c)
-                    i++
-                } else {
-                    // Collect sequence of non-ASCII or '&'
-                    val start = i
-                    while (i < s.length) {
-                        val cc = s[i]
-                        val coc = cc.code
-                        if (coc in 0x20..0x7E && cc != '&') break
-                        i++
-                    }
-                    val seq = s.substring(start, i)
-                    if (seq == "&") {
-                        sb.append("&-")
-                    } else {
-                        val utf16Bytes = seq.toByteArray(Charsets.UTF_16BE)
-                        var b64 = android.util.Base64.encodeToString(utf16Bytes, android.util.Base64.NO_WRAP)
-                        b64 = b64.trimEnd('=').replace('/', ',')
-                        sb.append('&').append(b64).append('-')
-                    }
-                }
+                i = encodeNextChar(s, i, sb)
             }
             sb.toString()
         } catch (_: Exception) {
             s
         }
+    }
+
+    private fun encodeNextChar(s: String, i: Int, sb: StringBuilder): Int {
+        val c = s[i]
+        val code = c.code
+        // Printable ASCII 0x20-0x7E except '&' are direct
+        if (code in ASCII_PRINTABLE_MIN..ASCII_PRINTABLE_MAX && c != '&') {
+            sb.append(c)
+            return i + 1
+        }
+        return encodeNonAsciiRun(s, i, sb)
+    }
+
+    private fun encodeNonAsciiRun(s: String, i: Int, sb: StringBuilder): Int {
+        // Collect sequence of non-ASCII or '&'
+        var j = i
+        while (j < s.length) {
+            val cc = s[j]
+            val coc = cc.code
+            if (coc in ASCII_PRINTABLE_MIN..ASCII_PRINTABLE_MAX && cc != '&') break
+            j++
+        }
+        val seq = s.substring(i, j)
+        if (seq == "&") {
+            sb.append("&-")
+        } else {
+            val utf16Bytes = seq.toByteArray(Charsets.UTF_16BE)
+            var b64 = android.util.Base64.encodeToString(utf16Bytes, android.util.Base64.NO_WRAP)
+            b64 = b64.trimEnd('=').replace('/', ',')
+            sb.append('&').append(b64).append('-')
+        }
+        return j
     }
 
     /**
@@ -132,7 +146,7 @@ object ImapParser {
                 }
             } else if (rest.uppercase().startsWith("NIL")) {
                 delimiter = null
-                rest = rest.substring(3).trim()
+                rest = rest.substring(NIL_KEYWORD_LENGTH).trim()
             } else {
                 // Unquoted token
                 val space = rest.indexOf(' ')
@@ -170,8 +184,8 @@ object ImapParser {
             mailbox = decodeModifiedUtf7(mailbox)
 
             ImapListEntry(flags, delimiter, mailbox)
-        } catch (e: Exception) {
-            Log.w(TAG, "parseList failed for: $line: ${e.message}")
+        } catch (ignored: Exception) {
+            Log.w(TAG, "parseList failed for: $line: ${ignored.message}")
             null
         }
     }

@@ -5,6 +5,7 @@ import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.youpipe.ui.ChannelInfo
 import com.vayunmathur.youpipe.ui.VideoInfo
 import kotlinx.coroutines.coroutineScope
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.stream.ContentAvailability
@@ -17,8 +18,8 @@ import kotlin.time.toKotlinInstant
 data class SponsorSegment(
     val category: String,
     val segment: List<Float>,
-    val UUID: String
-) {
+    @SerialName("UUID") val uuid: String
+)
     val start: Long get() = (segment[0] * 1000).toLong()
     val end: Long get() = (segment[1] * 1000).toLong()
 }
@@ -43,7 +44,8 @@ fun StreamInfoItem.toVideoInfo(): VideoInfo? {
 }
 
 fun videoURLtoID(url: String): Long {
-    return ByteBuffer.wrap(Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).decode(url.toUri().getQueryParameter("v")!!)).long
+    val encoded = url.toUri().getQueryParameter("v")!!
+    return ByteBuffer.wrap(Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).decode(encoded)).long
 }
 
 fun channelURLtoID(url: String): String {
@@ -100,17 +102,21 @@ fun getChannelVideos(channelId: String): Sequence<VideoInfo> = sequence {
     val ex = ServiceList.YouTube.getChannelTabExtractorFromId(channelId, "videos")
     ex.fetchPage()
     var page = ex.getInitialPage()
-    while(true) {
+    while (true) {
         page.getItems().filterIsInstance<StreamInfoItem>().forEach { item ->
             item.toVideoInfo()?.let { yield(it) }
         }
-        if(page.hasNextPage()) {
-            val next = page.nextPage ?: break
-            page = ex.getPage(next)
-        } else {
-            break
-        }
+        page = nextChannelPage(ex, page) ?: break
     }
+}
+
+private fun nextChannelPage(
+    ex: org.schabi.newpipe.extractor.channel.tabs.ChannelTabExtractor,
+    page: org.schabi.newpipe.extractor.ListExtractor.InfoItemsPage<*>,
+): org.schabi.newpipe.extractor.ListExtractor.InfoItemsPage<*>? {
+    if (!page.hasNextPage()) return null
+    val next = page.nextPage ?: return null
+    return ex.getPage(next)
 }
 
 /** First page of the YouTube Trending kiosk, mapped to [VideoInfo]. */
@@ -148,7 +154,7 @@ data class DeArrowTitle(
     val original: Boolean,
     val votes: Int,
     val locked: Boolean,
-    val UUID: String,
+    @SerialName("UUID") val uuid: String,
 )
 
 @Serializable
@@ -157,7 +163,7 @@ data class DeArrowThumbnail(
     val original: Boolean,
     val votes: Int,
     val locked: Boolean,
-    val UUID: String,
+    @SerialName("UUID") val uuid: String,
 )
 
 @Serializable
@@ -184,7 +190,8 @@ suspend fun getDeArrowBranding(videoId: Long): DeArrowBranding? {
     val idString = decodeVideoID(videoId)
     return try {
         NetworkClient.getJson<DeArrowBranding>("$SPONSORBLOCK_MIRROR/api/branding?videoID=$idString")
-    } catch (e: Exception) {
+    } catch (_: Exception) {
+        // Best-effort enrichment: branding is optional, feed plays fine without it.
         null
     }
 }
@@ -209,7 +216,8 @@ suspend fun getSponsorSegments(videoId: Long): List<SponsorSegment> {
     val idString = decodeVideoID(videoId)
     return try {
         NetworkClient.getJson("$SPONSORBLOCK_MIRROR/api/skipSegments?videoID=$idString")
-    } catch (e: Exception) {
+    } catch (_: Exception) {
+        // Best-effort enrichment: no segments simply means no auto-skip for this video.
         emptyList()
     }
 }

@@ -8,36 +8,60 @@ import android.net.Uri
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.library.ui.odf.OdfContentBlock
+import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.library.ui.odf.OdfImage
+import com.vayunmathur.library.ui.odf.OdfParagraph
+import com.vayunmathur.library.ui.odf.OdfSpan
+import com.vayunmathur.library.ui.odf.ParagraphStyle
+import com.vayunmathur.library.ui.odf.applyRunSpanStyle
+import com.vayunmathur.library.ui.odf.applySpanStyleToRange
+import com.vayunmathur.library.ui.odf.changeListLevel
+import com.vayunmathur.library.ui.odf.clearRunFormatting
+import com.vayunmathur.library.ui.odf.handleListBackspace
+import com.vayunmathur.library.ui.odf.handleListEnter
+import com.vayunmathur.library.ui.odf.insertHorizontalLine
+import com.vayunmathur.library.ui.odf.insertTextInRun
+import com.vayunmathur.library.ui.odf.mutateRunParagraphs
+import com.vayunmathur.library.ui.odf.rangeHasFormat
+import com.vayunmathur.library.ui.odf.restartNumbering
+import com.vayunmathur.library.ui.odf.runParagraphIndexAt
+import com.vayunmathur.library.ui.odf.runRangeHasFormat
+import com.vayunmathur.library.ui.odf.setCheckboxChecked
+import com.vayunmathur.library.ui.odf.setLinkInRun
+import com.vayunmathur.library.ui.odf.toggleCheckbox
+import com.vayunmathur.library.ui.odf.updateParagraphRun
+import com.vayunmathur.library.ui.odf.updateParagraphText
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.office.R
 import kotlin.io.encoding.Base64
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import com.vayunmathur.office.odf.*
-import com.vayunmathur.library.ui.odf.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import com.vayunmathur.office.R
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 // --- Text document editing (split from OfficeViewModel.kt for file length) ---
 
-internal fun OfficeViewModel.curText(): OdfDocument.TextDocument? = (state.value as? OfficeViewModel.ViewState.Loaded)?.document as? OdfDocument.TextDocument
+internal fun OfficeViewModel.curText(): OdfDocument.TextDocument? =
+    (state.value as? OfficeViewModel.ViewState.Loaded)?.document as? OdfDocument.TextDocument
 
 fun OfficeViewModel.updateParagraphText(blockIndex: Int, newText: String) {
     val doc = curText() ?: return
     updateDocument(doc.updateParagraphText(blockIndex, newText) ?: return)
 }
 
-/** Applies a span transform to the character range [start, end). If the range is empty, applies to the whole paragraph. */
+/** Applies a span transform to the character range [start, end). If the range is empty, applies to the whole
+ * paragraph. */
 fun OfficeViewModel.applySpanStyleToRange(blockIndex: Int, start: Int, end: Int, transform: (OdfSpan) -> OdfSpan) {
     val doc = curText() ?: return
     updateDocument(doc.applySpanStyleToRange(blockIndex, start, end, transform) ?: return)
@@ -132,43 +156,25 @@ fun OfficeViewModel.setCheckboxChecked(blockIndex: Int, checked: Boolean) {
     updateDocument(doc.setCheckboxChecked(blockIndex, checked) ?: return)
 }
 
-/** Finds the link covering the caret in a run, or null. */
-fun OfficeViewModel.linkAt(start: Int, endInclusive: Int, gPos: Int): OdfLinkSpan? =
-    curText()?.linkAt(start, endInclusive, gPos)
-
-/** Plain text of the current run selection (used to pre-fill the link dialog). */
-fun OfficeViewModel.runSelectedText(start: Int, endInclusive: Int, gStart: Int, gEnd: Int): String {
-    val doc = curText() ?: return ""
-    val full = (start..endInclusive)
-        .mapNotNull { (doc.content.getOrNull(it) as? OdfContentBlock.Paragraph)?.paragraph }
-        .joinToString("\n") { p -> p.spans.joinToString("") { it.text } }
-    val s = minOf(gStart, gEnd).coerceIn(0, full.length)
-    val e = maxOf(gStart, gEnd).coerceIn(s, full.length)
-    return full.substring(s, e)
-}
-
-/** Replaces a run range with a single link span. */
-fun OfficeViewModel.setLink(start: Int, endInclusive: Int, gStart: Int, gEnd: Int, text: String, url: String) {
-    val doc = curText() ?: return
-    updateDocument(doc.setLinkInRun(start, endInclusive, gStart, gEnd, text, url) ?: return)
-}
-
-/** Removes the link over a run range, keeping the text. */
-fun OfficeViewModel.removeLinkInRun(start: Int, endInclusive: Int, gStart: Int, gEnd: Int) {
-    val doc = curText() ?: return
-    updateDocument(doc.applyRunSpanStyle(start, endInclusive, gStart, gEnd) {
-        it.copy(href = null, underline = false, color = null)
-    } ?: return)
-}
-
-/** Applies a span transform across a (possibly multi-paragraph) selection within a run. Empty selection = caret's whole paragraph. */
-fun OfficeViewModel.applyRunSpanStyle(start: Int, endInclusive: Int, gStart: Int, gEnd: Int, transform: (OdfSpan) -> OdfSpan) {
+/** Applies a span transform across a (possibly multi-paragraph) selection within a run. Empty selection = caret's
+ * whole paragraph. */
+fun OfficeViewModel.applyRunSpanStyle(
+    start: Int,
+    endInclusive: Int,
+    gStart: Int,
+    gEnd: Int,
+    transform: (OdfSpan) -> OdfSpan) {
     val doc = curText() ?: return
     updateDocument(doc.applyRunSpanStyle(start, endInclusive, gStart, gEnd, transform) ?: return)
 }
 
 /** True if every character in the run selection (or caret's whole paragraph) satisfies [predicate]. */
-fun OfficeViewModel.runRangeHasFormat(start: Int, endInclusive: Int, gStart: Int, gEnd: Int, predicate: (OdfSpan) -> Boolean): Boolean =
+fun OfficeViewModel.runRangeHasFormat(
+    start: Int,
+    endInclusive: Int,
+    gStart: Int,
+    gEnd: Int,
+    predicate: (OdfSpan) -> Boolean): Boolean =
     curText()?.runRangeHasFormat(start, endInclusive, gStart, gEnd, predicate) ?: false
 
 /** Paragraph index (within the document) at the given run-global caret position. */
@@ -176,7 +182,12 @@ fun OfficeViewModel.runParagraphIndexAt(start: Int, endInclusive: Int, gPos: Int
     curText()?.runParagraphIndexAt(start, endInclusive, gPos) ?: start
 
 /** Applies a paragraph-level mutation to every paragraph touched by the run selection. */
-fun OfficeViewModel.mutateRunParagraphs(start: Int, endInclusive: Int, gStart: Int, gEnd: Int, transform: (OdfParagraph) -> OdfParagraph) {
+fun OfficeViewModel.mutateRunParagraphs(
+    start: Int,
+    endInclusive: Int,
+    gStart: Int,
+    gEnd: Int,
+    transform: (OdfParagraph) -> OdfParagraph) {
     val doc = curText() ?: return
     updateDocument(doc.mutateRunParagraphs(start, endInclusive, gStart, gEnd, transform) ?: return)
 }
@@ -185,41 +196,6 @@ fun OfficeViewModel.mutateRunParagraphs(start: Int, endInclusive: Int, gStart: I
 fun OfficeViewModel.insertTextInRun(start: Int, endInclusive: Int, gPos: Int, insert: String) {
     val doc = curText() ?: return
     updateDocument(doc.insertTextInRun(start, endInclusive, gPos, insert) ?: return)
-}
-
-/** Inserts a real ODF text field (date/time/page-number/...) at the caret. (Priority 2) */
-fun OfficeViewModel.insertFieldInRun(start: Int, endInclusive: Int, gPos: Int, kind: String, value: String) {
-    val doc = (state.value as? OfficeViewModel.ViewState.Loaded)?.document as? OdfDocument.TextDocument ?: return
-    val paras = runParas(start, endInclusive) ?: return
-    val lens = paraLens(paras)
-    val (pi, off) = runLocate(lens, gPos)
-    val para = paras[pi]
-    val chars = spansToChars(para.spans)
-    val template = OdfSpan(text = "", field = kind)
-    val fieldChars = value.map { template.copy(text = it.toString()) }
-    val at = off.coerceIn(0, chars.size)
-    chars.addAll(at, fieldChars)
-    val newContent = doc.content.toMutableList()
-    newContent[start + pi] = OdfContentBlock.Paragraph(para.copy(spans = charsToSpans(chars)))
-    updateDocument(doc.copy(content = newContent))
-}
-
-/** Computes the current display value for a newly-inserted field. (Priority 2) */
-fun OfficeViewModel.fieldDisplayValue(kind: String): String {
-    val doc = (state.value as? OfficeViewModel.ViewState.Loaded)?.document
-    val meta = doc?.metadata
-    return when (kind) {
-        "date" -> java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-        "time" -> java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
-        "page-number" -> "1"
-        "page-count" -> "1"
-        "file-name" -> doc?.title ?: "Untitled"
-        "author-name" -> meta?.author ?: meta?.creator ?: ""
-        "title" -> meta?.title ?: doc?.title ?: ""
-        "subject" -> meta?.subject ?: ""
-        "description" -> meta?.description ?: ""
-        else -> ""
-    }
 }
 
 /** Clears all character formatting across a run selection (B24). */
@@ -302,17 +278,30 @@ fun OfficeViewModel.deleteBlockBefore(runStart: Int): Boolean {
 }
 
 /** Generates a Table of Contents from headings and inserts it at [blockIndex] (the cursor). */
+private const val HEADING_LEVEL_3 = 3
+private const val HEADING_LEVEL_4 = 4
+private const val TOC_INDENT_DP = 18f
+
 fun OfficeViewModel.insertTableOfContents(blockIndex: Int) {
     val doc = (state.value as? OfficeViewModel.ViewState.Loaded)?.document as? OdfDocument.TextDocument ?: return
-    val headingStyles = setOf(ParagraphStyle.HEADING1, ParagraphStyle.HEADING2, ParagraphStyle.HEADING3, ParagraphStyle.HEADING4)
+    val headingStyles = setOf(
+        ParagraphStyle.HEADING1,
+        ParagraphStyle.HEADING2,
+        ParagraphStyle.HEADING3,
+        ParagraphStyle.HEADING4)
     val entries = mutableListOf<OdfParagraph>()
     for (block in doc.content) {
-        val para = (block as? OdfContentBlock.Paragraph)?.paragraph ?: continue
-        if (para.style !in headingStyles) continue
-        val text = para.spans.joinToString("") { it.text }.trim()
-        if (text.isEmpty()) continue
-        val level = when (para.style) { ParagraphStyle.HEADING1 -> 1; ParagraphStyle.HEADING2 -> 2; ParagraphStyle.HEADING3 -> 3; else -> 4 }
-        entries.add(OdfParagraph(listOf(OdfSpan(text = text)), marginLeft = (level - 1) * 18f))
+        val para = (block as? OdfContentBlock.Paragraph)?.paragraph
+        val text = para?.takeIf { it.style in headingStyles }?.spans?.joinToString("") { it.text }?.trim()
+        if (!text.isNullOrEmpty() && para != null) {
+            val level = when (para.style) {
+                ParagraphStyle.HEADING1 -> 1
+                ParagraphStyle.HEADING2 -> 2
+                ParagraphStyle.HEADING3 -> HEADING_LEVEL_3
+                else -> HEADING_LEVEL_4
+            }
+            entries.add(OdfParagraph(listOf(OdfSpan(text = text)), marginLeft = (level - 1) * TOC_INDENT_DP))
+        }
     }
     if (entries.isEmpty()) return
     val toc = OdfContentBlock.TableOfContents("Table of Contents", entries)

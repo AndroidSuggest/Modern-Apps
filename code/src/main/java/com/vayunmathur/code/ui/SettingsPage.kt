@@ -80,7 +80,7 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
                     )
                     Slider(
                         value = viewModel.fontSize.toFloat(),
-                        onValueChange = { viewModel.setFontSize(it.roundToInt()) },
+                        onValueChange = { viewModel.actions.setFontSize(it.roundToInt()) },
                         valueRange = MIN_FONT_SIZE.toFloat()..MAX_FONT_SIZE.toFloat(),
                         steps = MAX_FONT_SIZE - MIN_FONT_SIZE - 1,
                     )
@@ -110,7 +110,7 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
                     title = stringResource(R.string.soft_wrap),
                     supportingText = stringResource(R.string.soft_wrap_desc),
                     checked = viewModel.softWrap,
-                    onCheckedChange = { viewModel.toggleSoftWrap() },
+                    onCheckedChange = { viewModel.actions.toggleSoftWrap() },
                 )
                 SettingsDivider()
                 SettingsSwitchRow(
@@ -183,7 +183,7 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
             title = stringResource(R.string.theme),
             options = modes,
             selected = viewModel.themeMode,
-            onSelect = { viewModel.setThemeMode(it) },
+            onSelect = { viewModel.actions.setThemeMode(it) },
             onDismiss = { showThemeDialog = false },
         )
     }
@@ -194,7 +194,7 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
             title = stringResource(R.string.tab_width),
             options = widths,
             selected = viewModel.tabWidth,
-            onSelect = { viewModel.setTabWidth(it) },
+            onSelect = { viewModel.actions.setTabWidth(it) },
             onDismiss = { showTabWidthDialog = false },
         )
     }
@@ -204,7 +204,7 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
             title = stringResource(R.string.editor_theme),
             options = EditorThemes.ALL,
             selected = viewModel.editorTheme,
-            onSelect = { viewModel.setEditorTheme(it) },
+            onSelect = { viewModel.actions.setEditorTheme(it) },
             onDismiss = { showEditorThemeDialog = false },
         )
     }

@@ -13,15 +13,32 @@ package com.vayunmathur.maps.util
  * 63 set, so a signed comparison sorts the whole northern hemisphere *below* the southern one:
  * every comparison has to go through [java.lang.Long.compareUnsigned].
  */
+
+/** Longitude/latitude offsets and ranges mapping degrees into 0..1. */
+private const val LON_OFFSET = 180.0
+private const val LON_RANGE = 360.0
+private const val LAT_OFFSET = 90.0
+private const val LAT_RANGE = 180.0
+/** `u32::MAX` as a double, for scaling a 0..1 coordinate into 32 bits. */
+private const val U32_MAX_AS_DOUBLE = 4_294_967_295.0
+/** `u32::MAX` as a long, for saturating the float-to-int conversion. */
+private const val U32_MAX_AS_LONG = 0xFFFF_FFFFL
+/** Bits per coordinate in the Morton key; two key bits (one per axis) per bit. */
+private const val MORTON_BITS = 32
+private const val BITS_PER_AXIS = 2
+private const val BIT_MASK = 1
+/** Stored ints are degrees × 10⁷; multiply (not divide) to match the writer bit-for-bit. */
+private const val E7_TO_DEGREES = 1e-7
+
 fun latLngToSpatial(lat: Double, lon: Double): Long {
-    val x = (lon + 180.0) / 360.0
-    val y = (lat + 90.0) / 180.0
-    val ix = toU32(x * 4_294_967_295.0)
-    val iy = toU32(y * 4_294_967_295.0)
+    val x = (lon + LON_OFFSET) / LON_RANGE
+    val y = (lat + LAT_OFFSET) / LAT_RANGE
+    val ix = toU32(x * U32_MAX_AS_DOUBLE)
+    val iy = toU32(y * U32_MAX_AS_DOUBLE)
     var res = 0L
-    for (i in 0 until 32) {
-        res = res or (((ix ushr i) and 1).toLong() shl (2 * i))
-        res = res or (((iy ushr i) and 1).toLong() shl (2 * i + 1))
+    for (i in 0 until MORTON_BITS) {
+        res = res or (((ix ushr i) and BIT_MASK).toLong() shl (i * BITS_PER_AXIS))
+        res = res or (((iy ushr i) and BIT_MASK).toLong() shl (i * BITS_PER_AXIS + 1))
     }
     return res
 }
@@ -32,7 +49,7 @@ fun spatialFromE7(latE7: Int, lonE7: Int): Long =
     // (they are different operations, and 1e-7 is not exactly representable). No sampled
     // disagreement actually reached the key, but this is a bit-for-bit contract: matching the
     // writer's arithmetic is cheaper than arguing about which differences survive truncation.
-    latLngToSpatial(latE7 * 1e-7, lonE7 * 1e-7)
+    latLngToSpatial(latE7 * E7_TO_DEGREES, lonE7 * E7_TO_DEGREES)
 
 /**
  * The smallest Morton interval that is guaranteed to contain every point of the
@@ -60,4 +77,4 @@ fun spatialRangeForBbox(minLatE7: Int, maxLatE7: Int, minLonE7: Int, maxLonE7: I
  * fold every longitude east of the prime meridian onto the same key. Going via `Long` keeps the
  * full range; `Double.toLong()` already saturates and already maps NaN to 0.
  */
-private fun toU32(v: Double): Int = v.toLong().coerceIn(0L, 0xFFFF_FFFFL).toInt()
+private fun toU32(v: Double): Int = v.toLong().coerceIn(0L, U32_MAX_AS_LONG).toInt()

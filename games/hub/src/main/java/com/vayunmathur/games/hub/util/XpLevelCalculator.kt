@@ -13,13 +13,13 @@ object XpLevelCalculator {
 
     fun level(totalXp: Int): Int {
         if (totalXp <= 0) return 1
-        return floor(sqrt(totalXp.toDouble() / 100.0)).toInt() + 1
+        return floor(sqrt(totalXp.toDouble() / XP_PER_LEVEL_STEP)).toInt() + 1
     }
 
     fun xpForLevel(level: Int): Int {
         if (level <= 1) return 0
         val l = level - 1
-        return l * l * 100
+        return l * l * XP_PER_LEVEL_STEP
     }
 
     fun xpToNextLevel(totalXp: Int): Int {
@@ -38,12 +38,20 @@ object XpLevelCalculator {
     }
 
     fun title(level: Int): String = when {
-        level >= 25 -> "Legend"
-        level >= 18 -> "Grandmaster"
-        level >= 12 -> "Master"
-        level >= 8 -> "Enthusiast"
-        level >= 4 -> "Casual Gamer"
-        level >= 2 -> "Novice"
+        level >= LEGEND_LEVEL -> "Legend"
+        level >= GRANDMASTER_LEVEL -> "Grandmaster"
+        level >= MASTER_LEVEL -> "Master"
+        level >= ENTHUSIAST_LEVEL -> "Enthusiast"
+        level >= CASUAL_LEVEL -> "Casual Gamer"
+        level >= NOVICE_LEVEL -> "Novice"
         else -> "Beginner"
     }
+
+    private const val XP_PER_LEVEL_STEP = 100
+    private const val LEGEND_LEVEL = 25
+    private const val GRANDMASTER_LEVEL = 18
+    private const val MASTER_LEVEL = 12
+    private const val ENTHUSIAST_LEVEL = 8
+    private const val CASUAL_LEVEL = 4
+    private const val NOVICE_LEVEL = 2
 }

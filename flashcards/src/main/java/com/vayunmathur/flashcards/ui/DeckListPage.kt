@@ -33,6 +33,9 @@ import com.vayunmathur.flashcards.util.DeckListActions
 import com.vayunmathur.flashcards.util.DeckListUiState
 import com.vayunmathur.flashcards.util.DeckSummary
 import com.vayunmathur.flashcards.util.FlashcardsViewModel
+import com.vayunmathur.flashcards.util.addDeckImpl
+import com.vayunmathur.flashcards.util.deleteDeckImpl
+import com.vayunmathur.flashcards.util.reorderDecksImpl
 import com.vayunmathur.library.room.SqlCipherDbCodec
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.AppScaffold
@@ -86,10 +89,10 @@ fun DeckListPage(backStack: NavBackStack<Route>, viewModel: FlashcardsViewModel)
                 // CardList on CardList.
                 if (backStack.last() is Route.CardList) backStack.setLast(route) else backStack.add(route)
             }
-            override fun addDeck(name: String) { viewModel.addDeck(name) }
-            override fun deleteDeck(deck: Deck) { viewModel.deleteDeck(deck) }
+            override fun addDeck(name: String) { viewModel.addDeckImpl(name) }
+            override fun deleteDeck(deck: Deck) { viewModel.deleteDeckImpl(deck) }
             override fun startReview(deckId: Long) { backStack.add(Route.Review(deckId)) }
-            override fun reorder(decks: List<Deck>) { viewModel.reorderDecks(decks) }
+            override fun reorder(decks: List<Deck>) { viewModel.reorderDecksImpl(decks) }
         }
     }
 

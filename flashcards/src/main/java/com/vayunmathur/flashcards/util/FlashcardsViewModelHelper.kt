@@ -2,12 +2,16 @@ package com.vayunmathur.flashcards.util
 
 import com.vayunmathur.flashcards.data.CardTemplate
 import com.vayunmathur.flashcards.data.FlashcardsRepository
+import com.vayunmathur.flashcards.data.getAllNoteTypesImpl
+import com.vayunmathur.flashcards.data.upsertCardTemplatesImpl
+import com.vayunmathur.flashcards.data.upsertNoteTypeFieldsImpl
+import com.vayunmathur.flashcards.data.upsertNoteTypeImpl
 import com.vayunmathur.flashcards.data.NoteType
 import com.vayunmathur.flashcards.data.NoteTypeKind
 
 internal object FlashcardsViewModelHelper {
     suspend fun ensureBuiltInNoteTypes(repository: FlashcardsRepository) {
-        if (repository.getAllNoteTypes().isNotEmpty()) return
+        if (repository.getAllNoteTypesImpl().isNotEmpty()) return
         seedNoteType(
             repository = repository,
             id = FlashcardsViewModel.BASIC_NOTE_TYPE_ID,
@@ -47,10 +51,18 @@ internal object FlashcardsViewModelHelper {
         fields: List<String>,
         templates: List<TemplateDraft>,
     ) {
-        repository.upsertNoteType(NoteType(id = id, name = name, type = type, mod = System.currentTimeMillis() / 1000))
-        repository.upsertNoteTypeFields(fields.mapIndexed { ord, f -> com.vayunmathur.flashcards.data.NoteTypeField(noteTypeId = id, ord = ord, name = f) })
-        repository.upsertCardTemplates(
-            templates.mapIndexed { ord, t -> CardTemplate(noteTypeId = id, ord = ord, name = t.name, qfmt = t.qfmt, afmt = t.afmt) },
+        repository.upsertNoteTypeImpl(
+            NoteType(id = id, name = name, type = type, mod = System.currentTimeMillis() / 1000)
+        )
+        repository.upsertNoteTypeFieldsImpl(
+            fields.mapIndexed { ord, f ->
+                com.vayunmathur.flashcards.data.NoteTypeField(noteTypeId = id, ord = ord, name = f)
+            }
+        )
+        repository.upsertCardTemplatesImpl(
+            templates.mapIndexed { ord, t ->
+                CardTemplate(noteTypeId = id, ord = ord, name = t.name, qfmt = t.qfmt, afmt = t.afmt)
+            },
         )
     }
 }

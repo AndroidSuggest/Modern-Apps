@@ -3,8 +3,17 @@ package com.vayunmathur.email.data
 import android.content.Context
 import android.util.Log
 import androidx.core.content.edit
-import androidx.work.*
+import androidx.work.Constraints
+import androidx.work.CoroutineWorker
+import androidx.work.Data
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
 import com.vayunmathur.email.network.imap.ImapClient
+import com.vayunmathur.email.platform.EmailManager
 import com.vayunmathur.email.platform.imapServer
 import com.vayunmathur.email.platform.loginUser
 import com.vayunmathur.email.platform.resolveAuth
@@ -23,9 +32,8 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
 
     override suspend fun doWork(): Result {
         val nonInboxOnly = inputData.getBoolean(KEY_NON_INBOX_ONLY, false)
-        val repository = EmailRepository.get(applicationContext)
-        val dao = repository.getDatabase().emailDao()
-        val accounts = dao.getAccounts()
+        val db = EmailRepository.get(applicationContext).getDatabase()
+        val accounts = db.accountDao().getAccounts()
 
         if (accounts.isEmpty()) {
             Log.d("EmailSync", "No accounts to sync")
@@ -37,113 +45,14 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
         var accountsProcessed = 0
 
         for (account in accounts) {
-            try {
-                Log.d("EmailSync", ">>> RAW Starting sync for ${account.email} (nonInboxOnly=$nonInboxOnly)")
-                val auth = account.resolveAuth(applicationContext)
-
-                val folders = ImapClient.fetchFolders(account.imapServer(), account.loginUser(), auth)
-                dao.insertFolders(folders)
-                Log.d("EmailSync", "Synced ${folders.size} folders.")
-
-                val skipSet = if (account.provider == PROVIDER_GMAIL) ImapClient.GMAIL_VIRTUAL_FOLDERS else emptySet()
-                val messageFolders = if (nonInboxOnly) {
-                    folders.filter { it.holdsMessages && it.fullName !in skipSet && it.fullName != ImapClient.INBOX }
-                } else {
-                    folders.filter { it.holdsMessages && it.fullName !in skipSet }
-                }
-                val totalUnits = (accounts.size * messageFolders.size).coerceAtLeast(1)
-
-                for ((index, folder) in messageFolders.withIndex()) {
-                    try {
-                        val knownUids = dao.getKnownUids(account.email, folder.fullName).toSet()
-                        val deletedUids = dao.getDeletedUids(account.email, folder.fullName).toSet()
-                        val (messages, attachments) = ImapClient.fetchMessages(
-                            server = account.imapServer(),
-                            user = account.loginUser(),
-                            auth = auth,
-                            folderName = folder.fullName,
-                            limit = 50,
-                            fetchBodies = false,
-                            skipUids = knownUids + deletedUids,
-                            context = applicationContext,
-                        )
-                        if (messages.isNotEmpty()) dao.insertMessages(messages)
-                        if (attachments.isNotEmpty()) dao.insertAttachments(attachments)
-
-                        if (!nonInboxOnly) {
-                            if (knownUids.isNotEmpty() && folder.fullName == ImapClient.INBOX) {
-                                syncReadStatusRaw(applicationContext, account, folder.fullName, knownUids)
-                            }
-
-                            if (folder.fullName == ImapClient.INBOX && messages.isNotEmpty()) {
-                                val lastSeen = lastSeenPrefs(applicationContext)
-                                    .getLong(lastSeenKey(account.email, folder.fullName), -1L)
-                                if (lastSeen >= 0L && !com.vayunmathur.email.platform.AppLifecycleTracker.isAppInForeground) {
-                                    val notifiable = messages.filter { it.id > lastSeen }
-                                    com.vayunmathur.email.platform.EmailNotifications.postForNewMessages(
-                                        applicationContext, account.email, notifiable,
-                                    )
-                                }
-                                val maxUid = messages.maxOf { it.id }
-                                if (maxUid > lastSeen) {
-                                    lastSeenPrefs(applicationContext).edit {
-                                        putLong(lastSeenKey(account.email, folder.fullName), maxUid)
-                                    }
-                                }
-                            }
-                        }
-
-                        Log.d("EmailSync", "[${index + 1}/${messageFolders.size}] ${folder.fullName}: ${messages.size} new (skipped ${knownUids.size}).")
-                    } catch (e: Exception) {
-                        Log.e("EmailSync", "   x Failed folder ${folder.fullName}", e)
-                    }
-                    val unitsDone = accountsProcessed * messageFolders.size + (index + 1)
-                    EmailSyncState.setProgress(unitsDone.toFloat() / totalUnits)
-                }
-
-                if (!nonInboxOnly) {
-                    val missing = dao.getMessagesWithoutBody(account.email, BACKFILL_LIMIT)
-                    if (missing.isNotEmpty()) {
-                        Log.d("EmailSync", "Body backfill: ${missing.size} message(s)")
-                        EmailSyncState.setProgress(0f)
-                        for ((idx, msg) in missing.withIndex()) {
-                            if (isStopped) {
-                                Log.d("EmailSync", "Backfill stopped at ${idx}/${missing.size}")
-                                break
-                            }
-                            try {
-                                val current = dao.getMessage(msg.accountEmail, msg.folderName, msg.id) ?: continue
-                                if (current.body != null) continue
-                                val (body, isHtml, attachments) = ImapClient.fetchMessageBody(
-                                    server = account.imapServer(),
-                                    user = account.loginUser(),
-                                    auth = auth,
-                                    folderName = msg.folderName,
-                                    uid = msg.id,
-                                    context = applicationContext,
-                                )
-                                if (body != null || attachments.isNotEmpty()) {
-                                    dao.insertMessages(listOf(current.copy(
-                                        body = body,
-                                        isHtml = isHtml,
-                                        hasAttachments = attachments.isNotEmpty(),
-                                    )))
-                                    if (attachments.isNotEmpty()) dao.insertAttachments(attachments)
-                                }
-                            } catch (e: Exception) {
-                                Log.w("EmailSync", "   x Backfill failed for UID ${msg.id}: ${e.message}")
-                            }
-                            EmailSyncState.setProgress((idx + 1f) / missing.size)
-                        }
-                        Log.d("EmailSync", "Backfill done for ${account.email}")
-                    }
-                }
-
-                Log.d("EmailSync", "<<< Completed RAW sync for ${account.email}")
-            } catch (e: Exception) {
-                Log.e("EmailSync", "Failed to sync account ${account.email}", e)
-                hasErrors = true
+            val ok = try {
+                syncAccount(db, account, nonInboxOnly, accounts.size, accountsProcessed)
+                true
+            } catch (_: Exception) {
+                Log.e("EmailSync", "Failed to sync account ${account.email}")
+                false
             }
+            if (!ok) hasErrors = true
             accountsProcessed++
         }
 
@@ -152,10 +61,171 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
         return if (hasErrors) Result.retry() else Result.success()
     }
 
+    private suspend fun syncAccount(
+        db: EmailDatabase,
+        account: EmailAccount,
+        nonInboxOnly: Boolean,
+        accountCount: Int,
+        accountsProcessed: Int,
+    ) {
+        Log.d("EmailSync", ">>> RAW Starting sync for ${account.email} (nonInboxOnly=$nonInboxOnly)")
+        val auth = account.resolveAuth(applicationContext)
+
+        val folders = ImapClient.fetchFolders(account.imapServer(), account.loginUser(), auth)
+        db.accountDao().insertFolders(folders)
+        Log.d("EmailSync", "Synced ${folders.size} folders.")
+
+        val skipSet = if (account.provider == PROVIDER_GMAIL) ImapClient.GMAIL_VIRTUAL_FOLDERS else emptySet()
+        val messageFolders = if (nonInboxOnly) {
+            folders.filter { it.holdsMessages && it.fullName !in skipSet && it.fullName != ImapClient.INBOX }
+        } else {
+            folders.filter { it.holdsMessages && it.fullName !in skipSet }
+        }
+        val totalUnits = (accountCount * messageFolders.size).coerceAtLeast(1)
+
+        for ((index, folder) in messageFolders.withIndex()) {
+            syncFolder(db, account, auth, folder, nonInboxOnly, index, messageFolders.size)
+            val unitsDone = accountsProcessed * messageFolders.size + (index + 1)
+            EmailSyncState.setProgress(unitsDone.toFloat() / totalUnits)
+        }
+
+        if (!nonInboxOnly) {
+            backfillBodies(db, account, auth)
+        }
+
+        Log.d("EmailSync", "<<< Completed RAW sync for ${account.email}")
+    }
+
+    private suspend fun syncFolder(
+        db: EmailDatabase,
+        account: EmailAccount,
+        auth: EmailManager.AuthType,
+        folder: EmailFolder,
+        nonInboxOnly: Boolean,
+        index: Int,
+        folderCount: Int,
+    ) {
+        val messagesDao = db.messageDao()
+        try {
+            val knownUids = messagesDao.getKnownUids(account.email, folder.fullName).toSet()
+            val deletedUids = messagesDao.getDeletedUids(account.email, folder.fullName).toSet()
+            val (messages, attachments) = ImapClient.fetchMessages(
+                server = account.imapServer(),
+                user = account.loginUser(),
+                auth = auth,
+                folderName = folder.fullName,
+                limit = SYNC_PAGE_SIZE,
+                fetchBodies = false,
+                skipUids = knownUids + deletedUids,
+                context = applicationContext,
+            )
+            if (messages.isNotEmpty()) messagesDao.insertMessages(messages)
+            if (attachments.isNotEmpty()) messagesDao.insertAttachments(attachments)
+
+            if (!nonInboxOnly) {
+                handleInboxExtras(account, folder, messages, knownUids)
+            }
+
+            Log.d(
+                "EmailSync",
+                "[${index + 1}/$folderCount] ${folder.fullName}: " +
+                    "${messages.size} new (skipped ${knownUids.size}).",
+            )
+        } catch (_: Exception) {
+            Log.e("EmailSync", "   x Failed folder ${folder.fullName}")
+        }
+    }
+
+    private suspend fun handleInboxExtras(
+        account: EmailAccount,
+        folder: EmailFolder,
+        messages: List<EmailMessage>,
+        knownUids: Set<Long>,
+    ) {
+        if (knownUids.isNotEmpty() && folder.fullName == ImapClient.INBOX) {
+            syncReadStatusRaw(applicationContext, account, folder.fullName, knownUids)
+        }
+
+        if (folder.fullName == ImapClient.INBOX && messages.isNotEmpty()) {
+            val lastSeen = lastSeenPrefs(applicationContext)
+                .getLong(lastSeenKey(account.email, folder.fullName), NO_LAST_SEEN_UID)
+            if (lastSeen >= 0L && !com.vayunmathur.email.platform.AppLifecycleTracker.isAppInForeground) {
+                val notifiable = messages.filter { it.id > lastSeen }
+                com.vayunmathur.email.platform.EmailNotifications.postForNewMessages(
+                    applicationContext, account.email, notifiable,
+                )
+            }
+            val maxUid = messages.maxOf { it.id }
+            if (maxUid > lastSeen) {
+                lastSeenPrefs(applicationContext).edit {
+                    putLong(lastSeenKey(account.email, folder.fullName), maxUid)
+                }
+            }
+        }
+    }
+
+    private suspend fun backfillBodies(
+        db: EmailDatabase,
+        account: EmailAccount,
+        auth: EmailManager.AuthType,
+    ) {
+        val messagesDao = db.messageDao()
+        val missing = messagesDao.getMessagesWithoutBody(account.email, BACKFILL_LIMIT)
+        if (missing.isEmpty()) return
+        Log.d("EmailSync", "Body backfill: ${missing.size} message(s)")
+        EmailSyncState.setProgress(0f)
+        for ((idx, msg) in missing.withIndex()) {
+            if (isStopped) {
+                Log.d("EmailSync", "Backfill stopped at ${idx}/${missing.size}")
+                break
+            }
+            backfillOne(messagesDao, account, auth, msg)
+            EmailSyncState.setProgress((idx + 1f) / missing.size)
+        }
+        Log.d("EmailSync", "Backfill done for ${account.email}")
+    }
+
+    private suspend fun backfillOne(
+        messagesDao: EmailMessageDao,
+        account: EmailAccount,
+        auth: EmailManager.AuthType,
+        msg: EmailMessage,
+    ) {
+        try {
+            val current = messagesDao.getMessage(msg.accountEmail, msg.folderName, msg.id) ?: return
+            if (current.body != null) return
+            val (body, isHtml, attachments) = ImapClient.fetchMessageBody(
+                server = account.imapServer(),
+                user = account.loginUser(),
+                auth = auth,
+                folderName = msg.folderName,
+                uid = msg.id,
+                context = applicationContext,
+            )
+            if (body != null || attachments.isNotEmpty()) {
+                messagesDao.insertMessages(
+                    listOf(
+                        current.copy(
+                            body = body,
+                            isHtml = isHtml,
+                            hasAttachments = attachments.isNotEmpty(),
+                        ),
+                    ),
+                )
+                if (attachments.isNotEmpty()) messagesDao.insertAttachments(attachments)
+            }
+        } catch (_: Exception) {
+            Log.w("EmailSync", "   x Backfill failed for UID ${msg.id}")
+        }
+    }
+
     companion object {
         private const val SYNC_WORK_NAME = "EmailSyncWorker"
         private const val HOURLY_NON_INBOX_WORK_NAME = "EmailNonInboxHourlySync"
         private const val KEY_NON_INBOX_ONLY = "non_inbox_only"
+        private const val SYNC_PAGE_SIZE = 50
+        private const val READ_STATUS_CHECK_COUNT = 50
+        private const val NO_LAST_SEEN_UID = -1L
 
         /** Sync read status via raw FETCH FLAGS */
         private suspend fun syncReadStatusRaw(
@@ -165,9 +235,8 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
             knownUids: Set<Long>,
         ) {
             try {
-                val db = EmailRepository.get(context).getDatabase()
-                val dao = db.emailDao()
-                val uidsToCheck = knownUids.sortedDescending().take(50)
+                val dao = EmailRepository.get(context).getDatabase().messageDao()
+                val uidsToCheck = knownUids.sortedDescending().take(READ_STATUS_CHECK_COUNT)
                 if (uidsToCheck.isEmpty()) return
                 val auth = account.resolveAuth(context)
                 val server = account.imapServer()
@@ -176,7 +245,7 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
                 ImapClient.withConnection(server, user, auth) { conn ->
                     conn.select(folderName)
                     val uidSet = uidsToCheck.joinToString(",")
-                    val results = conn.uidFetchHeaders(uidSet)
+                    val results = conn.fetch.uidFetchHeaders(uidSet)
                     for (r in results) {
                         val isRead = r.flags.any { it.equals("\\Seen", ignoreCase = true) }
                         try { dao.updateReadStatus(account.email, folderName, r.uid, isRead) } catch (_: Exception) {}

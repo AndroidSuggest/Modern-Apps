@@ -75,7 +75,7 @@ object HolidayCalendarManager {
             context.contentResolver.query(
                 CalendarContract.Calendars.CONTENT_URI,
                 arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.NAME),
-                "${CalendarContract.Calendars.ACCOUNT_TYPE} = ? AND (${CalendarContract.Calendars.NAME} = ? OR ${CalendarContract.Calendars.NAME} = ?)",
+                calendarNameSelection(),
                 arrayOf(CalendarContract.ACCOUNT_TYPE_LOCAL, newName, legacyName),
                 null,
             )?.use { c -> if (c.moveToFirst()) c.getLong(0) else null }
@@ -84,8 +84,20 @@ object HolidayCalendarManager {
 
     private fun calendarName(code: String, lang: String) = NAME_PREFIX + code + "::" + lang
 
+    private fun calendarNameSelection(): String {
+        val type = CalendarContract.Calendars.ACCOUNT_TYPE
+        val name = CalendarContract.Calendars.NAME
+        return "$type = ? AND ($name = ? OR $name = ?)"
+    }
+
     /** Add a read-only holiday calendar for [code] and bulk-insert its holidays. No-op if it already exists. */
-    fun addCountry(context: Context, code: String, displayName: String, lang: String = "en", languageName: String = "English") {
+    fun addCountry(
+        context: Context,
+        code: String,
+        displayName: String,
+        lang: String = "en",
+        languageName: String = "English",
+    ) {
         if (calendarIdFor(context, code, lang) != null) return
         val color = COLORS[code.hashCode().absoluteValue % COLORS.size]
 

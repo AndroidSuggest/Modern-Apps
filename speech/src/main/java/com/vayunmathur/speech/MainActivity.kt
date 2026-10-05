@@ -202,66 +202,81 @@ fun SpeechSetupScreen(state: SpeechSetupUiState, actions: SpeechSetupActions) {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-        // Only when something is actually wrong. Both models ship in the APK, so there is no step
-        // for the user to complete here — either the assets are readable or the install is broken.
-        // They were two permanently-ticked "steps" until the assets stopped being downloads.
-        if (!state.modelReady || !state.ttsModelReady) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        stringResource(R.string.broken_install_title),
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    Text(
-                        text = stringResource(R.string.broken_install_body),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
+                BrokenInstallCard(state)
+                MicStep(state, actions)
+                RecognizerStep(state, actions)
+                TestSection(enabled = state.hasMic)
+                TtsStep(state, actions)
+                TtsTestSection(
+                    enabled = state.ttsModelReady,
+                    languages = state.ttsVoices,
+                    currentLang = state.currentTestLang,
+                )
             }
         }
+    }
+}
 
-        StepCard(
-            index = 1,
-            title = "Microphone access",
-            done = state.hasMic,
-        ) {
-            if (!state.hasMic) {
-                Button(onClick = actions::requestMicPermission) {
-                    Text(stringResource(R.string.grant_microphone))
-                }
+@Composable
+private fun BrokenInstallCard(state: SpeechSetupUiState) {
+    // Only when something is actually wrong. Both models ship in the APK, so there is no step
+    // for the user to complete here — either the assets are readable or the install is broken.
+    // They were two permanently-ticked "steps" until the assets stopped being downloads.
+    if (!state.modelReady || !state.ttsModelReady) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    stringResource(R.string.broken_install_title),
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Text(
+                    text = stringResource(R.string.broken_install_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
+    }
+}
 
-        StepCard(
-            index = 2,
-            title = "Set as speech recognizer",
-            done = state.isRecognizerDefault,
-        ) {
-            OutlinedButton(onClick = actions::openVoiceInputSettings) {
-                Text(stringResource(R.string.open_voice_input_settings))
+@Composable
+private fun MicStep(state: SpeechSetupUiState, actions: SpeechSetupActions) {
+    StepCard(
+        index = 1,
+        title = "Microphone access",
+        done = state.hasMic,
+    ) {
+        if (!state.hasMic) {
+            Button(onClick = actions::requestMicPermission) {
+                Text(stringResource(R.string.grant_microphone))
             }
         }
+    }
+}
 
-        TestSection(enabled = state.hasMic)
-
-        StepCard(
-            index = 3,
-            title = "Set as text-to-speech engine",
-            done = state.isTtsDefault,
-        ) {
-            OutlinedButton(onClick = actions::openTtsSettings) {
-                Text(stringResource(R.string.open_text_to_speech_settings))
-            }
+@Composable
+private fun RecognizerStep(state: SpeechSetupUiState, actions: SpeechSetupActions) {
+    StepCard(
+        index = 2,
+        title = "Set as speech recognizer",
+        done = state.isRecognizerDefault,
+    ) {
+        OutlinedButton(onClick = actions::openVoiceInputSettings) {
+            Text(stringResource(R.string.open_voice_input_settings))
         }
+    }
+}
 
-        TtsTestSection(
-            enabled = state.ttsModelReady,
-            languages = state.ttsVoices,
-            currentLang = state.currentTestLang,
-        )
-            }
+@Composable
+private fun TtsStep(state: SpeechSetupUiState, actions: SpeechSetupActions) {
+    StepCard(
+        index = 3,
+        title = "Set as text-to-speech engine",
+        done = state.isTtsDefault,
+    ) {
+        OutlinedButton(onClick = actions::openTtsSettings) {
+            Text(stringResource(R.string.open_text_to_speech_settings))
         }
     }
 }
@@ -355,42 +370,109 @@ private fun TtsTestSection(
     // One sample sentence per language the bundle covers, and the reason each is written out rather
     // than translated at runtime is that the model reads *characters*: a sentence has to exercise
     // the script, not just the language, or a missing codepoint in the table goes unnoticed.
-    val samples = remember {
-        mapOf(
-            "en" to "Hello, this voice runs entirely on this device.",
-            "ar" to "مرحبا، هذا الصوت يعمل بالكامل على هذا الجهاز.",
-            "bg" to "Здравейте, този глас работи изцяло на това устройство.",
-            "cs" to "Dobrý den, tento hlas běží celý na tomto zařízení.",
-            "da" to "Hej, denne stemme kører helt på denne enhed.",
-            "de" to "Hallo, diese Stimme läuft vollständig auf diesem Gerät.",
-            "el" to "Γεια σας, αυτή η φωνή λειτουργεί εξ ολοκλήρου σε αυτή τη συσκευή.",
-            "es" to "Hola, esta voz funciona por completo en este dispositivo.",
-            "et" to "Tere, see hääl töötab täielikult selles seadmes.",
-            "fi" to "Hei, tämä ääni toimii kokonaan tässä laitteessa.",
-            "fr" to "Bonjour, cette voix fonctionne entièrement sur cet appareil.",
-            "hi" to "नमस्ते, यह आवाज़ पूरी तरह इस उपकरण पर चलती है।",
-            "hr" to "Zdravo, ovaj glas radi u cijelosti na ovom uređaju.",
-            "hu" to "Üdvözlöm, ez a hang teljesen ezen a készüléken fut.",
-            "id" to "Halo, suara ini berjalan sepenuhnya di perangkat ini.",
-            "it" to "Ciao, questa voce funziona interamente su questo dispositivo.",
-            "ja" to "こんにちは。この音声はすべてこの端末で動いています。",
-            "ko" to "안녕하세요. 이 음성은 전부 이 기기에서 동작합니다.",
-            "lt" to "Sveiki, šis balsas veikia visiškai šiame įrenginyje.",
-            "lv" to "Sveiki, šī balss darbojas pilnībā šajā ierīcē.",
-            "nl" to "Hallo, deze stem werkt volledig op dit apparaat.",
-            "pl" to "Cześć, ten głos działa całkowicie na tym urządzeniu.",
-            "pt" to "Olá, esta voz funciona inteiramente neste dispositivo.",
-            "ro" to "Bună, această voce rulează complet pe acest dispozitiv.",
-            "ru" to "Здравствуйте, этот голос работает полностью на этом устройстве.",
-            "sk" to "Dobrý deň, tento hlas beží celý na tomto zariadení.",
-            "sl" to "Zdravo, ta glas deluje popolnoma na tej napravi.",
-            "sv" to "Hej, den här rösten körs helt på den här enheten.",
-            "tr" to "Merhaba, bu ses tamamen bu cihazda çalışıyor.",
-            "uk" to "Вітаю, цей голос працює повністю на цьому пристрої.",
-            "vi" to "Xin chào, giọng nói này chạy hoàn toàn trên thiết bị này.",
-        )
-    }
+    val samples = remember { ttsSamples() }
 
+    TtsTestCard(
+        enabled = enabled,
+        languages = languages,
+        selectedCode = selectedCode,
+        onSelect = { selectedCode = it },
+        status = status,
+        onSpeak = {
+            speakSample(
+                context = context,
+                engine = engine,
+                languages = languages,
+                selectedCode = selectedCode,
+                samples = samples,
+                onStatus = { status = it },
+            )
+        },
+    )
+}
+
+private fun ttsSamples(): Map<String, String> = mapOf(
+    "en" to "Hello, this voice runs entirely on this device.",
+    "ar" to "مرحبا، هذا الصوت يعمل بالكامل على هذا الجهاز.",
+    "bg" to "Здравейте, този глас работи изцяло на това устройство.",
+    "cs" to "Dobrý den, tento hlas běží celý na tomto zařízení.",
+    "da" to "Hej, denne stemme kører helt på denne enhed.",
+    "de" to "Hallo, diese Stimme läuft vollständig auf diesem Gerät.",
+    "el" to "Γεια σας, αυτή η φωνή λειτουργεί εξ ολοκλήρου σε αυτή τη συσκευή.",
+    "es" to "Hola, esta voz funciona por completo en este dispositivo.",
+    "et" to "Tere, see hääl töötab täielikult selles seadmes.",
+    "fi" to "Hei, tämä ääni toimii kokonaan tässä laitteessa.",
+    "fr" to "Bonjour, cette voix fonctionne entièrement sur cet appareil.",
+    "hi" to "नमस्ते, यह आवाज़ पूरी तरह इस उपकरण पर चलती है।",
+    "hr" to "Zdravo, ovaj glas radi u cijelosti na ovom uređaju.",
+    "hu" to "Üdvözlöm, ez a hang teljesen ezen a készüléken fut.",
+    "id" to "Halo, suara ini berjalan sepenuhnya di perangkat ini.",
+    "it" to "Ciao, questa voce funziona interamente su questo dispositivo.",
+    "ja" to "こんにちは。この音声はすべてこの端末で動いています。",
+    "ko" to "안녕하세요. 이 음성은 전부 이 기기에서 동작합니다.",
+    "lt" to "Sveiki, šis balsas veikia visiškai šiame įrenginyje.",
+    "lv" to "Sveiki, šī balss darbojas pilnībā šajā ierīcē.",
+    "nl" to "Hallo, deze stem werkt volledig op dit apparaat.",
+    "pl" to "Cześć, ten głos działa całkowicie na tym urządzeniu.",
+    "pt" to "Olá, esta voz funciona inteiramente neste dispositivo.",
+    "ro" to "Bună, această voce rulează complet pe acest dispozitiv.",
+    "ru" to "Здравствуйте, этот голос работает полностью на этом устройстве.",
+    "sk" to "Dobrý deň, tento hlas beží celý na tomto zariadení.",
+    "sl" to "Zdravo, ta glas deluje popolnoma na tej napravi.",
+    "sv" to "Hej, den här rösten körs helt på den här enheten.",
+    "tr" to "Merhaba, bu ses tamamen bu cihazda çalışıyor.",
+    "uk" to "Вітаю, цей голос працює повністю на цьому пристрої.",
+    "vi" to "Xin chào, giọng nói này chạy hoàn toàn trên thiết bị này.",
+)
+
+private fun speakSample(
+    context: android.content.Context,
+    engine: androidx.compose.runtime.MutableState<TextToSpeech?>,
+    languages: List<TtsVoiceUiState>,
+    selectedCode: String,
+    samples: Map<String, String>,
+    onStatus: (String) -> Unit,
+) {
+    if (languages.isEmpty()) {
+        onStatus("The bundled voices could not be read.")
+        return
+    }
+    val chosen = languages.firstOrNull { it.code == selectedCode }
+        ?: languages.first()
+    val bcp47 = chosen.bcp47
+    val sample = samples[chosen.code] ?: samples["en"]!!
+
+    onStatus("Loading…")
+    engine.value?.shutdown()
+    var tts: TextToSpeech? = null
+    tts = TextToSpeech(
+        context,
+        { st ->
+            if (st == TextToSpeech.SUCCESS) {
+                tts?.language = Locale.forLanguageTag(bcp47)
+                tts?.speak(
+                    sample,
+                    TextToSpeech.QUEUE_FLUSH, null, "sample",
+                )
+                onStatus("")
+            } else {
+                onStatus("Engine failed to start.")
+            }
+        },
+        context.packageName,
+    )
+    engine.value = tts
+}
+
+@Composable
+private fun TtsTestCard(
+    enabled: Boolean,
+    languages: List<TtsVoiceUiState>,
+    selectedCode: String,
+    onSelect: (String) -> Unit,
+    status: String,
+    onSpeak: () -> Unit,
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.try_the_voice), fontWeight = FontWeight.Bold)
@@ -400,44 +482,14 @@ private fun TtsTestSection(
                 VoiceLanguageDropdown(
                     languages = languages,
                     selectedCode = selectedCode,
-                    onSelect = { selectedCode = it },
+                    onSelect = onSelect,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
 
             Button(
                 enabled = enabled,
-                onClick = {
-                    if (languages.isEmpty()) {
-                        status = "The bundled voices could not be read."
-                        return@Button
-                    }
-                    val chosen = languages.firstOrNull { it.code == selectedCode }
-                        ?: languages.first()
-                    val bcp47 = chosen.bcp47
-                    val sample = samples[chosen.code] ?: samples["en"]!!
-
-                    status = "Loading…"
-                    engine.value?.shutdown()
-                    var tts: TextToSpeech? = null
-                    tts = TextToSpeech(
-                        context,
-                        { st ->
-                            if (st == TextToSpeech.SUCCESS) {
-                                tts?.language = Locale.forLanguageTag(bcp47)
-                                tts?.speak(
-                                    sample,
-                                    TextToSpeech.QUEUE_FLUSH, null, "sample",
-                                )
-                                status = ""
-                            } else {
-                                status = "Engine failed to start."
-                            }
-                        },
-                        context.packageName,
-                    )
-                    engine.value = tts
-                },
+                onClick = onSpeak,
             ) { Text(stringResource(R.string.speak_sample)) }
             if (status.isNotBlank()) Text(status, color = MaterialTheme.colorScheme.primary)
         }

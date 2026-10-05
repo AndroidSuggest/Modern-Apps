@@ -94,7 +94,11 @@ class ContentRepository(val packs: List<ContentPack>) {
         /**
          * Reads and parses every `*.json` file under `assets/content/`. Malformed
          * packs are logged and skipped so one bad pack can't break the app.
+         *
+         * Broad catches are deliberate: asset reads and kotlinx.serialization throw
+         * undocumented RuntimeExceptions (not just IOException).
          */
+        @Suppress("TooGenericExceptionCaught")
         fun load(context: Context): ContentRepository {
             val assets = context.assets
             val files = try {
@@ -103,7 +107,6 @@ class ContentRepository(val packs: List<ContentPack>) {
                 Log.e(TAG, "Failed to list content assets", e)
                 emptyList()
             }
-
             val packs = files.mapNotNull { name ->
                 try {
                     val text = assets.open("$ASSET_DIR/$name").bufferedReader().use { it.readText() }

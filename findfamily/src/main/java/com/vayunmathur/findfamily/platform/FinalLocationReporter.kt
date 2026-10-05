@@ -123,46 +123,7 @@ object FinalLocationReporter {
 
                 val pending = goAsync()
                 scope.launch {
-                    try {
-                        // Only on a real shutdown: the controller only advertises once the AP is
-                        // actually down, so arming on BATTERY_LOW would be pointless work in the
-                        // one window where the battery is the scarce thing.
-                        val beacon = if (source == LocationSource.SHUTDOWN) {
-                            // runCatching is load-bearing. This async is a child of the coroutine
-                            // sending the location report, so anything thrown out of it cancels
-                            // that report. armForShutdown catches its own expected failures, but
-                            // the work before its try block reads DataStore and derives 256 EIDs,
-                            // and a throw from there would cost us the fix. The report is the
-                            // proven feature and the beacon is speculative; the beacon never gets
-                            // to take the report down with it.
-                            //
-                            // Note the ordering: withTimeoutOrNull inside, runCatching outside.
-                            // The reverse would let runCatching swallow the timeout's own
-                            // CancellationException and defeat the budget.
-                            async {
-                                runCatching {
-                                    withTimeoutOrNull(BEACON_BUDGET) {
-                                        PoweredOffBeacon.armForShutdown(appContext)
-                                    }
-                                }.onFailure { Log.w(TAG, "beacon arming threw", it) }.getOrNull()
-                            }
-                        } else {
-                            null
-                        }
-                        val done = withTimeoutOrNull(BUDGET) {
-                            report(appContext, source, lastFix(), roster())
-                        }
-                        if (beacon?.await() == null && source == LocationSource.SHUTDOWN) {
-                            Log.i(TAG, "powered-off beacon not armed")
-                        }
-                        // Swallowed on purpose: a parting report that did not make it out must
-                        // never be the reason the device refuses to power off.
-                        if (done == null) Log.w(TAG, "$source report gave up after $BUDGET")
-                    } catch (e: Exception) {
-                        Log.w(TAG, "$source report failed", e)
-                    } finally {
-                        pending.finish()
-                    }
+                    sendFinalReport(source, appContext, lastFix, roster, beaconScope = this, pending)
                 }
             }
         }
@@ -179,6 +140,64 @@ object FinalLocationReporter {
         val r = receiver ?: return
         receiver = null
         runCatching { context.applicationContext.unregisterReceiver(r) }
+    }
+
+    /**
+     * Send the last-chance location report for [source], optionally arming the
+     * powered-off beacon first. Broad catch is deliberate: this crosses the
+     * network, DataStore, and vendor HAL boundaries, and a parting report that
+     * did not make it out must never be the reason the device refuses to
+     * power off.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun sendFinalReport(
+        source: LocationSource,
+        appContext: Context,
+        lastFix: () -> Location?,
+        roster: () -> List<DirectBootStore.Target>,
+        beaconScope: CoroutineScope,
+        pending: BroadcastReceiver.PendingResult,
+    ) {
+        try {
+            // Only on a real shutdown: the controller only advertises once the AP is
+            // actually down, so arming on BATTERY_LOW would be pointless work in the
+            // one window where the battery is the scarce thing.
+            val beacon = if (source == LocationSource.SHUTDOWN) {
+                // runCatching is load-bearing. This async is a child of the coroutine
+                // sending the location report, so anything thrown out of it cancels
+                // that report. armForShutdown catches its own expected failures, but
+                // the work before its try block reads DataStore and derives 256 EIDs,
+                // and a throw from there would cost us the fix. The report is the
+                // proven feature and the beacon is speculative; the beacon never gets
+                // to take the report down with it.
+                //
+                // Note the ordering: withTimeoutOrNull inside, runCatching outside.
+                // The reverse would let runCatching swallow the timeout's own
+                // CancellationException and defeat the budget.
+                beaconScope.async {
+                    runCatching {
+                        withTimeoutOrNull(BEACON_BUDGET) {
+                            PoweredOffBeacon.armForShutdown(appContext)
+                        }
+                    }.onFailure { Log.w(TAG, "beacon arming threw", it) }.getOrNull()
+                }
+            } else {
+                null
+            }
+            val done = withTimeoutOrNull(BUDGET) {
+                report(appContext, source, lastFix(), roster())
+            }
+            if (beacon?.await() == null && source == LocationSource.SHUTDOWN) {
+                Log.i(TAG, "powered-off beacon not armed")
+            }
+            // Swallowed on purpose: a parting report that did not make it out must
+            // never be the reason the device refuses to power off.
+            if (done == null) Log.w(TAG, "$source report gave up after $BUDGET")
+        } catch (e: Exception) {
+            Log.w(TAG, "$source report failed", e)
+        } finally {
+            pending.finish()
+        }
     }
 
     private suspend fun report(

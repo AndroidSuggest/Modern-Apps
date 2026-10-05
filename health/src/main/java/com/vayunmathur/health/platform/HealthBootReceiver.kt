@@ -33,6 +33,9 @@ class HealthBootReceiver : BroadcastReceiver() {
         }
     }
 
+    // Broad catch below is deliberate: onReceive must not throw, and Room plus the
+    // scheduler throw undocumented RuntimeExceptions (not just SQLiteException).
+    @Suppress("TooGenericExceptionCaught")
     private fun reArm(context: Context, action: String) {
         val repository = HealthRepository.get(context)
         val pendingResult = goAsync()

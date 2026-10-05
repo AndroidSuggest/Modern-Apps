@@ -42,112 +42,158 @@ fun Int.toLensFacing(): LensFacing? = when (this) {
  */
 @OptIn(ExperimentalCamera2Interop::class)
 fun enumerateLenses(provider: ProcessCameraProvider): List<PhysicalLens> {
-    data class Raw(
-        val id: String,
-        val facing: LensFacing,
-        val focalMm: Float,
-        val eq35Mm: Float?,
-        val mono: Boolean,
-    )
-    val raws = provider.availableCameraInfos.mapNotNull { info ->
-        try {
-            val cam2 = Camera2CameraInfo.from(info)
-            val facing = when (
-                cam2.getCameraCharacteristic(CameraCharacteristics.LENS_FACING)
-            ) {
-                CameraMetadata.LENS_FACING_FRONT -> LensFacing.FRONT
-                CameraMetadata.LENS_FACING_BACK -> LensFacing.BACK
-                else -> return@mapNotNull null // External / unknown: not a phone lens.
-            }
-            val focal = cam2.getCameraCharacteristic(
-                CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS
-            )?.firstOrNull() ?: return@mapNotNull null
-            val sensorSize = cam2.getCameraCharacteristic(
-                CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE
-            )
-            val eq35 = if (sensorSize != null && sensorSize.width > 0 && sensorSize.height > 0) {
-                val diag = sqrt(sensorSize.width * sensorSize.width + sensorSize.height * sensorSize.height)
-                focal * 43.27f / diag
-            } else {
-                null
-            }
-            val mono = cam2.getCameraCharacteristic(
-                CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT
-            ) == CameraMetadata.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_MONO
-            Raw(cam2.getCameraId(), facing, focal, eq35, mono)
-        } catch (e: Exception) {
-            Log.w("LensSelector", "Skipping camera info during lens enumeration", e)
-            null
-        }
-    }
+    val raws = provider.availableCameraInfos.mapNotNull { info -> readRawLens(info) }
 
-    return LensFacing.entries.flatMap { facing ->
-        val family = raws.filter { it.facing == facing }.sortedBy { it.focalMm }
-        if (family.isEmpty()) return@flatMap emptyList()
-        val nonMono = family.filterNot { it.mono }
-        // Wide reference: 35mm-eq closest to ~27mm; fall back to the median focal length.
-        val reference = nonMono.minByOrNull { it.eq35Mm?.let { eq -> kotlin.math.abs(eq - 27f) } ?: Float.MAX_VALUE }
-            ?: nonMono.getOrNull(nonMono.size / 2)
-            ?: family.first()
-        family.map { raw ->
-            val type = when {
-                raw.mono -> LensType.MONOCHROME
-                raw == reference && facing == LensFacing.FRONT -> LensType.FRONT
-                raw == reference -> LensType.WIDE
-                raw.focalMm < reference.focalMm * 0.85f -> LensType.ULTRA_WIDE
-                raw.focalMm > reference.focalMm * 1.4f -> LensType.TELEPHOTO
-                else -> LensType.WIDE
-            }
-            PhysicalLens(
-                logicalCameraId = raw.id,
-                lensType = type,
-                facing = facing,
-                focalLengthMm35Eq = raw.eq35Mm,
-                nominalZoomRatio = raw.focalMm / reference.focalMm,
-                fallbackPriority = when (type) {
-                    LensType.WIDE, LensType.FRONT -> 0
-                    LensType.ULTRA_WIDE -> 1
-                    LensType.TELEPHOTO -> 2
-                    LensType.MONOCHROME -> 3
-                },
-                labelKey = when (type) {
-                    LensType.ULTRA_WIDE -> "ultrawide"
-                    LensType.WIDE -> "wide"
-                    LensType.TELEPHOTO -> "tele"
-                    LensType.MONOCHROME -> "mono"
-                    LensType.FRONT -> "front"
-                },
-            )
-        }
+    return LensFacing.entries.flatMap { facing -> buildFamily(facing, raws) }
+}
+
+/** Full-frame diagonal (mm) of 35mm film; wide-reference eq focal length + family ratios. */
+private const val FULL_FRAME_DIAGONAL_MM = 43.27f
+private const val WIDE_REFERENCE_EQ_MM = 27f
+private const val ULTRA_WIDE_RATIO = 0.85f
+private const val TELEPHOTO_RATIO = 1.4f
+
+/** Reads one camera info's physical-lens description; null when unusable. */
+@OptIn(ExperimentalCamera2Interop::class)
+private fun readRawLens(info: androidx.camera.core.CameraInfo): RawLens? {
+    return try {
+        readRawLensOrThrow(info)
+    } catch (e: IllegalArgumentException) {
+        Log.w("LensSelector", "Skipping camera info during lens enumeration", e)
+        null
+    }
+}
+
+/** Physical-lens description probed off one CameraInfo (null for external/unknown lenses). */
+@OptIn(ExperimentalCamera2Interop::class)
+private fun readRawLensOrThrow(info: androidx.camera.core.CameraInfo): RawLens? {
+    val cam2 = Camera2CameraInfo.from(info)
+    val facing = when (
+        cam2.getCameraCharacteristic(CameraCharacteristics.LENS_FACING)
+    ) {
+        CameraMetadata.LENS_FACING_FRONT -> LensFacing.FRONT
+        CameraMetadata.LENS_FACING_BACK -> LensFacing.BACK
+        // External / unknown: not a phone lens.
+        else -> return null
+    }
+    val focal = cam2.getCameraCharacteristic(
+        CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS
+    )?.firstOrNull() ?: return null
+    val sensorSize = cam2.getCameraCharacteristic(
+        CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE
+    )
+    val eq35 = if (sensorSize != null && sensorSize.width > 0 && sensorSize.height > 0) {
+        val diag = sqrt(sensorSize.width * sensorSize.width + sensorSize.height * sensorSize.height)
+        focal * FULL_FRAME_DIAGONAL_MM / diag
+    } else {
+        null
+    }
+    val mono = cam2.getCameraCharacteristic(
+        CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT
+    ) == CameraMetadata.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_MONO
+    return RawLens(cam2.getCameraId(), facing, focal, eq35, mono)
+}
+
+private data class RawLens(
+    val id: String,
+    val facing: LensFacing,
+    val focalMm: Float,
+    val eq35Mm: Float?,
+    val mono: Boolean,
+)
+
+/** Classifies one facing family into [PhysicalLens] entries with fallback priorities. */
+private fun buildFamily(facing: LensFacing, raws: List<RawLens>): List<PhysicalLens> {
+    val family = raws.filter { it.facing == facing }.sortedBy { it.focalMm }
+    if (family.isEmpty()) return emptyList()
+    val nonMono = family.filterNot { it.mono }
+    // Wide reference: 35mm-eq closest to ~27mm; fall back to the median focal length.
+    val reference = nonMono.minByOrNull {
+        it.eq35Mm?.let { eq -> kotlin.math.abs(eq - WIDE_REFERENCE_EQ_MM) } ?: Float.MAX_VALUE
+    }
+        ?: nonMono.getOrNull(nonMono.size / 2)
+        ?: family.first()
+    return family.map { raw -> classifyLens(raw, reference, facing) }
+}
+
+/** Classifies one raw lens against the family reference into a [PhysicalLens]. */
+private fun classifyLens(raw: RawLens, reference: RawLens, facing: LensFacing): PhysicalLens {
+    val type = classifyType(raw, reference, facing)
+    return PhysicalLens(
+        logicalCameraId = raw.id,
+        lensType = type,
+        facing = facing,
+        focalLengthMm35Eq = raw.eq35Mm,
+        nominalZoomRatio = raw.focalMm / reference.focalMm,
+        fallbackPriority = priorityOf(type),
+        labelKey = labelOf(type),
+    )
+}
+
+/** Lens type from the family reference geometry (mono wins over the focal heuristic). */
+private fun classifyType(raw: RawLens, reference: RawLens, facing: LensFacing): LensType {
+    if (raw.mono) return LensType.MONOCHROME
+    if (raw == reference) return if (facing == LensFacing.FRONT) LensType.FRONT else LensType.WIDE
+    if (raw.focalMm < reference.focalMm * ULTRA_WIDE_RATIO) return LensType.ULTRA_WIDE
+    if (raw.focalMm > reference.focalMm * TELEPHOTO_RATIO) return LensType.TELEPHOTO
+    return LensType.WIDE
+}
+
+/** Bind-attempt order for a lens type (wide/front first). */
+private fun priorityOf(type: LensType): Int {
+    return when (type) {
+        LensType.WIDE, LensType.FRONT -> PRIORITY_WIDE
+        LensType.ULTRA_WIDE -> PRIORITY_ULTRA_WIDE
+        LensType.TELEPHOTO -> PRIORITY_TELEPHOTO
+        LensType.MONOCHROME -> PRIORITY_MONO
+    }
+}
+
+private const val PRIORITY_WIDE = 0
+private const val PRIORITY_ULTRA_WIDE = 1
+private const val PRIORITY_TELEPHOTO = 2
+private const val PRIORITY_MONO = 3
+
+/** Short UI key for a lens type. */
+private fun labelOf(type: LensType): String {
+    return when (type) {
+        LensType.ULTRA_WIDE -> "ultrawide"
+        LensType.WIDE -> "wide"
+        LensType.TELEPHOTO -> "tele"
+        LensType.MONOCHROME -> "mono"
+        LensType.FRONT -> "front"
     }
 }
 
 /**
- * Fills [_availableLenses][com.vayunmathur.camera.util.CameraViewModel] once per
+ * Fills [availableLensesMutable][com.vayunmathur.camera.util.CameraViewModel] once per
  * process and anchors the default selection (same-facing wide/front). No-op once
  * populated; call at the top of every session setup after obtaining the provider.
  */
 fun CameraViewModel.ensureLensesEnumerated(provider: ProcessCameraProvider) {
-    if (_availableLenses.value.isNotEmpty()) return
+    if (availableLensesMutable.value.isNotEmpty()) return
     val all = try {
         enumerateLenses(provider)
-    } catch (e: Exception) {
+    } catch (e: IllegalStateException) {
+        Log.w("LensSelector", "Lens enumeration failed; sessions fall back to facing-only selectors", e)
+        emptyList()
+    } catch (e: IllegalArgumentException) {
         Log.w("LensSelector", "Lens enumeration failed; sessions fall back to facing-only selectors", e)
         emptyList()
     }
-    _availableLenses.value = all
-    if (_selectedLens.value == null) {
-        val facing = _lensFacing.value.toLensFacing() ?: LensFacing.BACK
-        _selectedLens.value = LensSelectionLogic.filterByFacing(all, facing)
+    availableLensesMutable.value = all
+    if (selectedLensMutable.value == null) {
+        val facing = lensFacingMutable.value.toLensFacing() ?: LensFacing.BACK
+        selectedLensMutable.value = LensSelectionLogic.filterByFacing(all, facing)
             .minByOrNull { it.fallbackPriority }
     }
-    Log.d("LensSelector", "Enumerated ${all.size} lenses; selected=${_selectedLens.value?.labelKey}")
+    Log.d("LensSelector", "Enumerated ${all.size} lenses; selected=${selectedLensMutable.value?.labelKey}")
 }
 
 /** Lenses of the current facing, ordered by fallback priority. */
 fun CameraViewModel.currentLensFamily(): List<PhysicalLens> {
-    val facing = _lensFacing.value.toLensFacing() ?: LensFacing.BACK
-    return LensSelectionLogic.filterByFacing(_availableLenses.value, facing)
+    val facing = lensFacingMutable.value.toLensFacing() ?: LensFacing.BACK
+    return LensSelectionLogic.filterByFacing(availableLensesMutable.value, facing)
 }
 
 /**
@@ -186,7 +232,7 @@ fun CameraViewModel.bindWithFallback(
     family: List<PhysicalLens>,
     bind: (CameraSelector) -> Camera,
 ): Pair<PhysicalLens?, Camera> {
-    val facingInt = _lensFacing.value
+    val facingInt = lensFacingMutable.value
     val ordered = buildList {
         if (requested != null) add(requested)
         family.sortedBy { it.fallbackPriority }.forEach { if (it != requested) add(it) }
@@ -209,7 +255,10 @@ fun CameraViewModel.bindWithFallback(
                 Log.w("LensSelector", "Fell back to lens=${candidate?.labelKey} (requested=${requested?.labelKey})")
             }
             return candidate to camera
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
+            lastError = e
+            Log.w("LensSelector", "Bind failed on lens=${candidate?.labelKey}; trying next", e)
+        } catch (e: IllegalArgumentException) {
             lastError = e
             Log.w("LensSelector", "Bind failed on lens=${candidate?.labelKey}; trying next", e)
         }

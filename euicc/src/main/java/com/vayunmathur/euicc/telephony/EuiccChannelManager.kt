@@ -55,12 +55,7 @@ class EuiccChannelManager(context: Context) {
      * which is exactly the state an LPA starts from.
      */
     private fun resolveEuiccTarget(): EuiccTarget {
-        val cards: List<UiccCardInfo> = try {
-            telephony.uiccCardsInfo
-        } catch (e: SecurityException) {
-            throw EuiccException("cannot read UICC card info - missing privileged permission: $e")
-        }
-
+        val cards = readUiccCards()
         val euicc = cards.firstOrNull { it.isEuicc }
             ?: throw EuiccException("no eUICC found (${cards.size} UICC card(s) reported)")
 
@@ -74,19 +69,19 @@ class EuiccChannelManager(context: Context) {
         return resolved
     }
 
+    private fun readUiccCards(): List<UiccCardInfo> = try {
+        telephony.uiccCardsInfo
+    } catch (e: SecurityException) {
+        throw EuiccException("cannot read UICC card info - missing privileged permission: $e")
+    }
+
     /**
      * Opens the ISD-R channel, installs it as [EuiccNative.activeChannel] for the duration of
      * [block] (so native ops can transmit), and closes it afterward.
      */
     @Synchronized
     fun <T> withIsdrChannel(block: () -> T): T {
-        val response = openChannelByPort(target, ISDR_AID)
-            ?: throw EuiccException("telephony returned no response opening ISD-R")
-        if (response.status != IccOpenLogicalChannelResponse.STATUS_NO_ERROR) {
-            throw EuiccException("cannot open ISD-R channel (status=${response.status})")
-        }
-        val channel = response.channel
-        if (channel <= 0) throw EuiccException("invalid ISD-R channel ($channel)")
+        val channel = openIsdrChannel()
         return try {
             EuiccNative.activeChannel = { apdu -> transmit(channel, apdu) }
             block()
@@ -96,49 +91,66 @@ class EuiccChannelManager(context: Context) {
         }
     }
 
+    private fun openIsdrChannel(): Int {
+        val response = openChannelByPort(target, ISDR_AID)
+            ?: throw EuiccException("telephony returned no response opening ISD-R")
+        val channel = checkOpenResponse(response)
+        if (channel <= 0) throw EuiccException("invalid ISD-R channel ($channel)")
+        return channel
+    }
+
+    private fun checkOpenResponse(response: IccOpenLogicalChannelResponse): Int {
+        if (response.status != IccOpenLogicalChannelResponse.STATUS_NO_ERROR) {
+            throw EuiccException("cannot open ISD-R channel (status=${response.status})")
+        }
+        return response.channel
+    }
+
     /**
      * Transmits one command APDU on [channel] using the field-based telephony API, following
      * `61xx`/`6Cxx` chaining, and returns the full response (response data followed by the two
      * status bytes).
      */
     private fun transmit(channel: Int, command: ByteArray): ByteArray {
-        require(command.size >= 4) { "APDU too short (${command.size} bytes)" }
-        val cla = command[0].toInt() and 0xFF
-        val ins = command[1].toInt() and 0xFF
-        val p1 = command[2].toInt() and 0xFF
-        val p2 = command[3].toInt() and 0xFF
+        require(command.size >= APDU_HEADER_SIZE) {
+            "APDU too short (${command.size} bytes)"
+        }
+        val cla = command[OFFSET_CLA].toInt() and BYTE_MASK
+        val ins = command[OFFSET_INS].toInt() and BYTE_MASK
+        val p1 = command[OFFSET_P1].toInt() and BYTE_MASK
+        val p2 = command[OFFSET_P2].toInt() and BYTE_MASK
         val p3: Int
         val dataHex: String
         when {
-            command.size == 4 -> {
+            command.size == APDU_HEADER_SIZE -> {
                 p3 = 0; dataHex = ""
             }
-            command.size == 5 -> {
+            command.size == APDU_HEADER_SIZE + 1 -> {
                 // Case 2: the fifth byte is Le.
-                p3 = command[4].toInt() and 0xFF; dataHex = ""
+                p3 = command[OFFSET_LC].toInt() and BYTE_MASK; dataHex = ""
             }
             else -> {
                 // Case 3/4: fifth byte is Lc; ignore any trailing Le.
-                val lc = command[4].toInt() and 0xFF
-                val end = (5 + lc).coerceAtMost(command.size)
+                val lc = command[OFFSET_LC].toInt() and BYTE_MASK
+                val end = (OFFSET_DATA + lc).coerceAtMost(command.size)
                 p3 = lc
-                dataHex = command.copyOfRange(5, end).toHex()
+                dataHex = command.copyOfRange(OFFSET_DATA, end).toHex()
             }
         }
 
         val out = StringBuilder()
         var response = transmitByPort(target, channel, cla, ins, p1, p2, p3, dataHex)
-        while (response.length >= 4) {
-            val body = response.substring(0, response.length - 4)
-            val sw1 = response.substring(response.length - 4, response.length - 2).toInt(16)
-            val sw2 = response.substring(response.length - 2).toInt(16)
+        while (response.length >= MIN_RESPONSE_SIZE) {
+            val body = response.substring(0, response.length - SW_SIZE)
+            val sw1 = response.substring(response.length - SW_SIZE, response.length - 2).toInt(HEX_RADIX)
+            val sw2 = response.substring(response.length - 2).toInt(HEX_RADIX)
             when (sw1) {
-                0x61 -> {
+                SW_MORE_DATA -> {
                     // More data available: GET RESPONSE for sw2 bytes.
                     out.append(body)
-                    response = transmitByPort(target, channel, 0x00, 0xC0, 0x00, 0x00, sw2, "")
+                    response = transmitByPort(target, channel, 0x00, INS_GET_RESPONSE, 0x00, 0x00, sw2, "")
                 }
-                0x6C -> {
+                SW_WRONG_LE -> {
                     // Wrong Le: resend the original command with Le = sw2.
                     out.setLength(0)
                     response = transmitByPort(target, channel, cla, ins, p1, p2, sw2, dataHex)
@@ -184,6 +196,38 @@ class EuiccChannelManager(context: Context) {
         /** ISD-R application identifier (SGP.22). */
         const val ISDR_AID = "A0000005591010FFFFFFFF8900000100"
 
+        /** APDU header size: CLA INS P1 P2. */
+        private const val APDU_HEADER_SIZE = 4
+
+        /** APDU byte offsets. */
+        private const val OFFSET_CLA = 0
+        private const val OFFSET_INS = 1
+        private const val OFFSET_P1 = 2
+        private const val OFFSET_P2 = 3
+        private const val OFFSET_LC = 4
+        private const val OFFSET_DATA = 5
+
+        /** Mask for unsigned byte conversion. */
+        private const val BYTE_MASK = 0xFF
+
+        /** Minimum response size (status word only). */
+        private const val MIN_RESPONSE_SIZE = 4
+
+        /** Status word size in hex chars. */
+        private const val SW_SIZE = 4
+
+        /** Radix for parsing status words. */
+        private const val HEX_RADIX = 16
+
+        /** Status: more data available (GET RESPONSE). */
+        private const val SW_MORE_DATA = 0x61
+
+        /** Status: wrong Le, resend with correct length. */
+        private const val SW_WRONG_LE = 0x6C
+
+        /** GET RESPONSE instruction. */
+        private const val INS_GET_RESPONSE = 0xC0
+
         private fun systemApi(name: String, vararg params: Class<*>): Method = try {
             TelephonyManager::class.java.getMethod(name, *params)
         } catch (e: NoSuchMethodException) {
@@ -220,14 +264,19 @@ class EuiccChannelManager(context: Context) {
 }
 
 private fun ByteArray.toHex(): String {
-    val sb = StringBuilder(size * 2)
-    for (b in this) sb.append("%02X".format(b.toInt() and 0xFF))
+    val sb = StringBuilder(size * HEX_CHARS_PER_BYTE)
+    for (b in this) sb.append("%02X".format(b.toInt() and BYTE_MASK))
     return sb.toString()
 }
 
 private fun String.hexToBytes(): ByteArray {
-    if (length % 2 != 0) return ByteArray(0)
-    return ByteArray(length / 2) { i ->
-        substring(i * 2, i * 2 + 2).toInt(16).toByte()
+    if (length % HEX_CHARS_PER_BYTE != 0) return ByteArray(0)
+    return ByteArray(length / HEX_CHARS_PER_BYTE) { i ->
+        substring(i * HEX_CHARS_PER_BYTE, i * HEX_CHARS_PER_BYTE + HEX_CHARS_PER_BYTE)
+            .toInt(HEX_RADIX).toByte()
     }
 }
+
+private const val HEX_CHARS_PER_BYTE = 2
+private const val BYTE_MASK = 0xFF
+private const val HEX_RADIX = 16

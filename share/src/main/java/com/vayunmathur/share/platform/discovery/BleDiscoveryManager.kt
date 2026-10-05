@@ -20,7 +20,8 @@ import android.content.pm.PackageManager
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.content.ContextCompat
-import com.vayunmathur.share.protocol.ShareNative
+import com.vayunmathur.share.protocol.EndpointInfoFields
+import com.vayunmathur.share.protocol.ShareNativeDiscovery
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,7 +59,7 @@ val FAST_INITIATION_SERVICE_UUID: ParcelUuid =
  * needs to list us; a peer that cannot parse it logs `"Failed to parse endpoint %s (%s)"`
  * (`p000\eafg.java:89-93`) and never shows us. Both byte codecs live in Rust
  * (`share/src/main/rust/src/ble_adv.rs`, `endpoint_info.rs`) and are reached through
- * [ShareNative], so there is exactly one implementation of each wire format and it is
+ * [ShareNativeDiscovery], so there is exactly one implementation of each wire format and it is
  * unit-tested on the host. There is deliberately **no Kotlin fallback**: a silent fallback
  * that emits a *different* wire format is how the previous divergence went unnoticed. If
  * the native library is unavailable, advertising and scanning fail loudly.
@@ -89,6 +90,44 @@ class BleDiscoveryManager(private val context: Context) {
 
     private val _bleDevices = MutableStateFlow<Map<String, NearbyDevice>>(emptyMap())
     val bleDevices: StateFlow<Map<String, NearbyDevice>> = _bleDevices.asStateFlow()
+
+    private data class AdvertisedPayload(
+        val data: ByteArray,
+        val fields: EndpointInfoFields,
+    )
+
+    private fun decodeAdvertisedPayload(serviceData: ByteArray, addr: String): AdvertisedPayload? {
+        // Rust rejects a foreign serviceIdHash, so a null here means "not us".
+        val data = parseAdvertisementBytes(serviceData) ?: return null
+        // `data` nests the Sharing blob inside the Nearby Connections envelope; the
+        // envelope is what carries the peer's endpoint id.
+        val endpointInfo = ShareNativeDiscovery.nativeParseBleEndpointInfo(data) ?: run {
+            Log.d(
+                TAG,
+                "skipping $addr: not a NearbySharing endpoint payload (" +
+                    data.joinToString("") { "%02x".format(it) } + ")",
+            )
+            return null
+        }
+        val fields = ShareNativeDiscovery.parseEndpointInfo(endpointInfo) ?: run {
+            Log.d(
+                TAG,
+                "skipping $addr: endpoint info not parseable (" +
+                    endpointInfo.joinToString("") { "%02x".format(it) } + ")",
+            )
+            return null
+        }
+        return AdvertisedPayload(data, fields)
+    }
+
+    private fun parseAdvertisementBytes(serviceData: ByteArray): ByteArray? {
+        return try {
+            ShareNativeDiscovery.nativeParseBleAdvertisement(serviceData)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "libshare_nearby unavailable — cannot parse advertisements", e)
+            null
+        }
+    }
 
     private fun hasPermission(permission: String): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
@@ -127,7 +166,7 @@ class BleDiscoveryManager(private val context: Context) {
      * [endpointInfo].
      *
      * [endpointInfo] must be a Nearby Sharing endpoint-info blob
-     * ([ShareNative.nativeBuildEndpointInfo]); it is wrapped in the Nearby Connections BLE
+     * ([ShareNativeDiscovery.nativeBuildEndpointInfo]); it is wrapped in the Nearby Connections BLE
      * envelope, which is what carries the endpoint id a peer needs to list us.
      * [deviceToken] must be empty or exactly 2 bytes.
      *
@@ -144,7 +183,7 @@ class BleDiscoveryManager(private val context: Context) {
     ): Boolean {
         val adv = advertiserOrNull() ?: return false
         val payload = try {
-            ShareNative.nativeBuildBleEndpointPayload(endpointId, endpointInfo)
+            ShareNativeDiscovery.nativeBuildBleEndpointPayload(endpointId, endpointInfo)
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "libshare_nearby unavailable — refusing to advertise a guessed format", e)
             return false
@@ -163,7 +202,7 @@ class BleDiscoveryManager(private val context: Context) {
     /** Build `0xFEF3` service-data, or null when the payload does not fit [fast] mode. */
     private fun serviceData(payload: ByteArray, deviceToken: ByteArray, fast: Boolean): ByteArray? {
         val serviceData = try {
-            ShareNative.nativeBuildBleAdvertisement(payload, deviceToken, fast)
+            ShareNativeDiscovery.nativeBuildBleAdvertisement(payload, deviceToken, fast)
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "libshare_nearby unavailable — refusing to advertise a guessed format", e)
             return null
@@ -192,6 +231,9 @@ class BleDiscoveryManager(private val context: Context) {
         .build()
 
     @SuppressLint("MissingPermission")
+    // Broad catch is deliberate: Bluetooth advertising throws undocumented
+    // RuntimeExceptions (not just SecurityException) on some stacks.
+    @Suppress("TooGenericExceptionCaught")
     private fun startExtended(
         adv: BluetoothLeAdvertiser,
         payload: ByteArray,
@@ -235,6 +277,9 @@ class BleDiscoveryManager(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
+    // Broad catch is deliberate: Bluetooth advertising throws undocumented
+    // RuntimeExceptions (not just SecurityException) on some stacks.
+    @Suppress("TooGenericExceptionCaught")
     private fun startLegacyFast(
         adv: BluetoothLeAdvertiser,
         payload: ByteArray,
@@ -278,10 +323,13 @@ class BleDiscoveryManager(private val context: Context) {
      * a transfer, so it is opt-in.
      */
     @SuppressLint("MissingPermission")
+    // Broad catch is deliberate: Bluetooth advertising throws undocumented
+    // RuntimeExceptions (not just SecurityException) on some stacks.
+    @Suppress("TooGenericExceptionCaught")
     fun startFastInitiation(metadata: ByteArray = ByteArray(2)): Boolean {
         val adv = advertiserOrNull() ?: return false
         val serviceData = try {
-            ShareNative.nativeFastInitiationServiceData(metadata)
+            ShareNativeDiscovery.nativeFastInitiationServiceData(metadata)
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "libshare_nearby unavailable — cannot build FastInitiation data", e)
             return false
@@ -351,6 +399,32 @@ class BleDiscoveryManager(private val context: Context) {
         fastInitAdvertiseCallback = null
     }
 
+    @SuppressLint("MissingPermission")
+    private fun parseScanResult(result: ScanResult): NearbyDevice? {
+        val record = result.scanRecord ?: return null
+        val serviceData = record.getServiceData(NEARBY_CONNECTIONS_SERVICE_UUID)
+            ?: return null
+        val addr = result.device.address ?: return null
+        val payload = decodeAdvertisedPayload(serviceData, addr) ?: return null
+        // Key on the advertised endpoint id, which is also what the mDNS leg
+        // reports, so one device does not appear twice.
+        val endpointId = ShareNativeDiscovery.nativeParseBleEndpointId(payload.data) ?: addr
+        return NearbyDevice(
+            endpointId = endpointId,
+            // Both names come from bytes already in hand: the endpoint-info blob, then
+            // the advertisement's own local name. `BluetoothDevice.getName()` would
+            // report the same thing but needs BLUETOOTH_CONNECT, which this app does
+            // not hold.
+            endpointName = payload.fields.deviceName
+                ?: record.deviceName
+                ?: addr,
+            host = null,
+            port = null,
+            source = DiscoverySource.Ble,
+            extra = addr,
+        )
+    }
+
     // ------------------------------------------------------------------
     // Scanning (Send: discover peers)
     // ------------------------------------------------------------------
@@ -365,6 +439,9 @@ class BleDiscoveryManager(private val context: Context) {
      * peer publishes none, so those fall back to the Bluetooth name or the MAC address.
      * A BLE-only entry is not connectable: only the mDNS browse supplies host and port.
      */
+    // Broad catch is deliberate: BLE scanning throws undocumented
+    // RuntimeExceptions (not just SecurityException) on some stacks.
+    @Suppress("TooGenericExceptionCaught")
     fun scan(): Flow<NearbyDevice> = callbackFlow {
         if (!hasPermission(Manifest.permission.BLUETOOTH_SCAN)) {
             Log.w(TAG, "scan denied: missing BLUETOOTH_SCAN")
@@ -405,54 +482,12 @@ class BleDiscoveryManager(private val context: Context) {
         val callback = object : ScanCallback() {
             @SuppressLint("MissingPermission")
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                val record = result.scanRecord ?: return
-                val serviceData = record.getServiceData(NEARBY_CONNECTIONS_SERVICE_UUID) ?: return
-                val addr = result.device.address ?: return
-                // Rust rejects a foreign serviceIdHash, so a null here means "not us".
-                val data = try {
-                    ShareNative.nativeParseBleAdvertisement(serviceData)
-                } catch (e: UnsatisfiedLinkError) {
-                    Log.e(TAG, "libshare_nearby unavailable — cannot parse advertisements", e)
-                    close(e)
-                    return
-                } ?: return
-                // `data` nests the Sharing blob inside the Nearby Connections envelope; the
-                // envelope is what carries the peer's endpoint id.
-                val endpointInfo = ShareNative.nativeParseBleEndpointInfo(data) ?: run {
-                    Log.d(
-                        TAG,
-                        "skipping $addr: not a NearbySharing endpoint payload (" +
-                            data.joinToString("") { "%02x".format(it) } + ")",
-                    )
-                    return
+                this@BleDiscoveryManager.parseScanResult(result)?.let { dev ->
+                    _bleDevices.value = _bleDevices.value.toMutableMap().apply {
+                        put(dev.endpointId, dev)
+                    }
+                    trySend(dev)
                 }
-                val fields = ShareNative.parseEndpointInfo(endpointInfo) ?: run {
-                    Log.d(
-                        TAG,
-                        "skipping $addr: endpoint info not parseable (" +
-                            endpointInfo.joinToString("") { "%02x".format(it) } + ")",
-                    )
-                    return
-                }
-                // Key on the advertised endpoint id, which is also what the mDNS leg
-                // reports, so one device does not appear twice.
-                val endpointId = ShareNative.nativeParseBleEndpointId(data) ?: addr
-                val dev = NearbyDevice(
-                    endpointId = endpointId,
-                    // Both names come from bytes already in hand: the endpoint-info blob, then
-                    // the advertisement's own local name. `BluetoothDevice.getName()` would
-                    // report the same thing but needs BLUETOOTH_CONNECT, which this app does
-                    // not hold.
-                    endpointName = fields.deviceName
-                        ?: record.deviceName
-                        ?: addr,
-                    host = null,
-                    port = null,
-                    source = DiscoverySource.Ble,
-                    extra = addr,
-                )
-                _bleDevices.value = _bleDevices.value.toMutableMap().apply { put(endpointId, dev) }
-                trySend(dev)
             }
 
             override fun onScanFailed(errorCode: Int) {
@@ -506,3 +541,4 @@ class BleDiscoveryManager(private val context: Context) {
         advertiser = null
     }
 }
+

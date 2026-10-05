@@ -43,78 +43,141 @@ class OfficeSharingE2ETest {
 
     private fun memberBytes(docId: String, m: OfficeMember) = "$docId|${m.id}|${m.role}".encodeToByteArray()
 
-    @Test
-    fun owner_shares_editor_reconstructs_document_and_viewer_is_rejected() = runBlocking {
+    private data class OwnerSetup(
+        val relay: Relay,
+        val owner: PqcIdentity,
+        val editor: PqcIdentity,
+        val ownerId: String,
+        val editorId: String,
+        val docId: String,
+        val docKey: ByteArray,
+        val opsJson: String,
+    )
+
+    private suspend fun ownerSetup(): OwnerSetup {
         val relay = Relay()
         val owner = PqcIdentity.loadOrCreate(MemStore(), "o")
         val editor = PqcIdentity.loadOrCreate(MemStore(), "e")
         val ownerId = "owner"; val editorId = "editor"
         relay.directory[ownerId] = owner.publicBundle
         relay.directory[editorId] = editor.publicBundle
+        return OwnerSetup(relay, owner, editor, ownerId, editorId, "doc-1", E2ee.newContentKey(), "")
+    }
 
-        val docId = "doc-1"
-        val docKey = E2ee.newContentKey()
-
-        // ---- Owner: push signed op + owner-signed roster + invite ----
+    /** Owner pushes a signed op, the owner-signed roster, and a sealed invite to the relay. */
+    private fun ownerPushesInvite(setup: OwnerSetup, opsJson: String) {
+        val r = setup.relay; val o = setup.owner; val e = setup.editor
+        val docId = setup.docId; val docKey = setup.docKey
         // The signed-op wire carries an opaque ops-JSON string produced by the (now native) CRDT;
         // the crypto + role pipeline exercised here is independent of its contents, so we use a
         // representative payload. CRDT merge/reconstruction is covered by the Rust crate's tests.
-        val opsJson = "[{\"id\":\"1:$ownerId\",\"parent\":\"\",\"left\":\"\",\"kind\":\"e\"," +
-            "\"payload\":\"<office:text>\",\"lamport\":1,\"dev\":\"$ownerId\"}]"
-        val signedOp = SignedOp(ownerId, Base64.encode(owner.sign(opsJson.encodeToByteArray())), opsJson)
-        relay.append(docId, Base64.encode(E2ee.aesEncrypt(docKey, json.encodeToString(signedOp).encodeToByteArray())))
-
-        for (m in listOf(OfficeMember(ownerId, "Owner", OfficeRoles.OWNER), OfficeMember(editorId, "", OfficeRoles.EDITOR))) {
-            val sm = SignedMember(m, Base64.encode(owner.sign(memberBytes(docId, m))))
-            relay.append("members:$docId", Base64.encode(E2ee.aesEncrypt(docKey, json.encodeToString(sm).encodeToByteArray())))
+        val signedOp = SignedOp(setup.ownerId, Base64.encode(o.sign(opsJson.encodeToByteArray())), opsJson)
+        r.append(docId, Base64.encode(E2ee.aesEncrypt(docKey, json.encodeToString(signedOp).encodeToByteArray())))
+        for (m in listOf(
+            OfficeMember(setup.ownerId, "Owner", OfficeRoles.OWNER),
+            OfficeMember(setup.editorId, "", OfficeRoles.EDITOR))) {
+            val sm = SignedMember(m, Base64.encode(o.sign(memberBytes(docId, m))))
+            r.append(
+                "members:$docId",
+                Base64.encode(E2ee.aesEncrypt(docKey, json.encodeToString(sm).encodeToByteArray())))
         }
-        val invite = OfficeSync.Invite(docId, Base64.encode(docKey), "E2E", charMode = true, role = OfficeRoles.EDITOR, ownerKey = Base64.encode(owner.publicBundle))
-        relay.append("inbox:$editorId", Base64.encode(Pqc.encryptTo(editor.publicBundle, json.encodeToString(invite).encodeToByteArray())))
+        val invite = OfficeSync.Invite(
+            docId,
+            Base64.encode(docKey),
+            "E2E",
+            charMode = true,
+            role = OfficeRoles.EDITOR,
+            ownerKey = Base64.encode(o.publicBundle))
+        r.append(
+            "inbox:${setup.editorId}",
+            Base64.encode(Pqc.encryptTo(e.publicBundle, json.encodeToString(invite).encodeToByteArray())))
+    }
 
-        // ---- Editor: open the shared document ----
+    private data class EditorOpened(val docKey: ByteArray, val ownerKey: ByteArray, val roleById: HashMap<String, String>)
+
+    /** Editor opens the invite and rebuilds the owner-signed roster. Returns keys + roster. */
+    private fun editorOpens(setup: OwnerSetup): EditorOpened {
         val inv = json.decodeFromString<OfficeSync.Invite>(
-            editor.decrypt(Base64.decode(relay.pull("inbox:$editorId").single())).decodeToString()
+            setup.editor.decrypt(Base64.decode(setup.relay.pull("inbox:${setup.editorId}").single())).decodeToString()
         )
         assertEquals(OfficeRoles.EDITOR, inv.role)
         assertTrue(inv.ownerKey.isNotBlank(), "invite must carry owner key")
         val recDocKey = Base64.decode(inv.key)
         val ownerKey = Base64.decode(inv.ownerKey)
-
         // roster: honor only owner-signed records
         val roleById = HashMap<String, String>()
-        for (blob in relay.pull("members:$docId")) {
-            val sm = json.decodeFromString<SignedMember>(E2ee.aesDecrypt(recDocKey, Base64.decode(blob)).decodeToString())
-            if (Pqc.verify(ownerKey, memberBytes(docId, sm.member), Base64.decode(sm.sig))) roleById[sm.member.id] = sm.member.role
+        for (blob in setup.relay.pull("members:${setup.docId}")) {
+            val sm = json.decodeFromString<SignedMember>(E2ee.aesDecrypt(
+                recDocKey,
+                Base64.decode(blob)).decodeToString())
+            if (Pqc.verify(
+                ownerKey,
+                memberBytes(setup.docId, sm.member),
+                Base64.decode(sm.sig))) roleById[sm.member.id] = sm.member.role
         }
-        assertEquals(OfficeRoles.OWNER, roleById[ownerId])
+        return EditorOpened(recDocKey, ownerKey, roleById)
+    }
 
+    /** Verifies the owner-signed op is accepted byte-intact through the sig + role gate. */
+    private fun rosterCheck(setup: OwnerSetup, opened: EditorOpened, opsJson: String) {
+        assertEquals(OfficeRoles.OWNER, opened.roleById[setup.ownerId])
         // ops: verify author signature + editor/owner role, then accept the (opaque) ops payload
         var acceptedOps: String? = null
-        for (blob in relay.pull(docId)) {
-            val so = json.decodeFromString<SignedOp>(E2ee.aesDecrypt(recDocKey, Base64.decode(blob)).decodeToString())
-            val authorKey = relay.directory[so.author] ?: continue
+        for (blob in setup.relay.pull(setup.docId)) {
+            val so = json.decodeFromString<SignedOp>(E2ee.aesDecrypt(
+                opened.docKey,
+                Base64.decode(blob)).decodeToString())
+            val authorKey = setup.relay.directory[so.author] ?: continue
             val sigOk = Pqc.verify(authorKey, so.ops.encodeToByteArray(), Base64.decode(so.sig))
-            val roleOk = OfficeRoles.canEdit(roleById[so.author] ?: OfficeRoles.VIEWER)
+            val roleOk = OfficeRoles.canEdit(opened.roleById[so.author] ?: OfficeRoles.VIEWER)
             if (sigOk && roleOk) acceptedOps = so.ops
         }
         assertEquals(opsJson, acceptedOps, "owner-signed op accepted and delivered byte-intact")
+    }
 
+    /** Negative checks: viewer role rejects edits, and forged authorship fails verification. */
+    private fun negativeChecks(setup: OwnerSetup, opened: EditorOpened) {
         // ---- Negative: a viewer's forged op is rejected ----
-        roleById[editorId] = OfficeRoles.VIEWER
-        val forgedJson = "[{\"id\":\"9:$editorId\",\"parent\":\"\",\"left\":\"\",\"kind\":\"c\"," +
-            "\"payload\":\"x\",\"lamport\":9,\"dev\":\"$editorId\"}]"
-        val forged = SignedOp(editorId, Base64.encode(editor.sign(forgedJson.encodeToByteArray())), forgedJson)
-        val sigOk = Pqc.verify(relay.directory[editorId]!!, forged.ops.encodeToByteArray(), Base64.decode(forged.sig))
-        val roleOk = OfficeRoles.canEdit(roleById[forged.author] ?: OfficeRoles.VIEWER)
+        opened.roleById[setup.editorId] = OfficeRoles.VIEWER
+        val forgedJson = "[{\"id\":\"9:${setup.editorId}\",\"parent\":\"\",\"left\":\"\",\"kind\":\"c\"," +
+            "\"payload\":\"x\",\"lamport\":9,\"dev\":\"${setup.editorId}\"}]"
+        val forged = SignedOp(
+            setup.editorId,
+            Base64.encode(setup.editor.sign(forgedJson.encodeToByteArray())),
+            forgedJson)
+        val sigOk = Pqc.verify(
+            setup.relay.directory[setup.editorId]!!,
+            forged.ops.encodeToByteArray(),
+            Base64.decode(forged.sig))
+        val roleOk = OfficeRoles.canEdit(opened.roleById[forged.author] ?: OfficeRoles.VIEWER)
         assertTrue(sigOk, "signature itself is valid")
         assertFalse(sigOk && roleOk, "but a viewer's edit must be rejected by the role gate")
-
         // ---- Negative: an op that lies about authorship fails signature verification ----
-        val liar = SignedOp(ownerId, Base64.encode(editor.sign(forgedJson.encodeToByteArray())), forgedJson)
+        val liar = SignedOp(
+            setup.ownerId,
+            Base64.encode(setup.editor.sign(forgedJson.encodeToByteArray())),
+            forgedJson)
         assertFalse(
-            Pqc.verify(relay.directory[ownerId]!!, liar.ops.encodeToByteArray(), Base64.decode(liar.sig)),
+            Pqc.verify(
+                setup.relay.directory[setup.ownerId]!!,
+                liar.ops.encodeToByteArray(),
+                Base64.decode(liar.sig)),
             "editor cannot forge an op as the owner (wrong signing key)",
         )
+    }
+
+    @Test
+    fun owner_shares_editor_reconstructs_document_and_viewer_is_rejected() = runBlocking {
+        val setup = ownerSetup()
+        // ---- Owner: push signed op + owner-signed roster + invite ----
+        val opsJson = "[{\"id\":\"1:${setup.ownerId}\",\"parent\":\"\",\"left\":\"\",\"kind\":\"e\"," +
+            "\"payload\":\"<office:text>\",\"lamport\":1,\"dev\":\"${setup.ownerId}\"}]"
+        val full = setup.copy(opsJson = opsJson)
+        ownerPushesInvite(full, opsJson)
+        // ---- Editor: open the shared document ----
+        val opened = editorOpens(full)
+        rosterCheck(full, opened, opsJson)
+        negativeChecks(full, opened)
     }
 
     @Test
@@ -141,7 +204,13 @@ class OfficeSharingE2ETest {
 
     @Test
     fun invite_maps_to_metadata_with_role_and_owner_key() {
-        val inv = OfficeSync.Invite("d", "k", "Title", charMode = true, role = OfficeRoles.VIEWER, ownerKey = "OWNERKEY")
+        val inv = OfficeSync.Invite(
+            "d",
+            "k",
+            "Title",
+            charMode = true,
+            role = OfficeRoles.VIEWER,
+            ownerKey = "OWNERKEY")
         val meta = officeDocMetaFromInvite(inv)
         assertEquals("d", meta.docId)
         assertEquals(OfficeRoles.VIEWER, meta.role)

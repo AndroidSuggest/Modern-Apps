@@ -5,6 +5,7 @@ import com.vayunmathur.cast.protocol.DecodableFrame
 import com.vayunmathur.cast.protocol.Negotiation
 import com.vayunmathur.cast.protocol.ReceiverSession
 import com.vayunmathur.cast.protocol.StreamKind
+import java.io.IOException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -64,7 +65,10 @@ class MediaReceiver(
             socket.receive(datagram)
         } catch (_: java.net.SocketTimeoutException) {
             return false
-        } catch (e: Exception) {
+        } catch (e: IOException) {
+            Log.w(TAG, "udp receive failed", e)
+            return false
+        } catch (e: SecurityException) {
             Log.w(TAG, "udp receive failed", e)
             return false
         }
@@ -76,28 +80,38 @@ class MediaReceiver(
         // other half of the mirror costs one rejected parse rather than a duplicate of that logic
         // here. Sender reports match neither and are handled after.
         for ((kind, session) in sessions) {
-            // **Video is dropped before it reaches the session, not after.** The phone starts sending
-            // the moment STREAM_READY goes out and the Activity takes a few hundred ms to produce a
-            // surface, so the first key frame - the only one carrying SPS/PPS - usually arrives in that
-            // window. Letting the session consume it would advance its checkpoint and mark it
-            // synchronised, so no PLI would ever go out and the decoder would later be handed a bare
-            // IDR: a black screen with nothing logged, which is exactly the failure this protocol
-            // exists to make impossible. Dropping it here leaves the session unsynchronised, so its
-            // next feedback asks for a key frame and the sender prepends the parameter sets again.
-            if (kind == StreamKind.Video && !videoReady()) continue
-            val frames = session.onPacket(bytes)
-            if (frames.isEmpty()) continue
-            for (frame in frames) {
-                when (kind) {
-                    StreamKind.Video -> onVideo(frame)
-                    StreamKind.Audio -> onAudio(frame)
-                }
-            }
-            return true
+            if (trySession(kind, session, bytes)) return true
         }
         // Not RTP for either stream. A sender report is the expected case; anything else is somebody
         // else's traffic and is dropped without comment.
         for (session in sessions.values) session.onSenderReport(bytes)
+        return true
+    }
+
+    /**
+     * Offer one datagram to one stream's session, delivering any frames it yields.
+     *
+     * One stream per call so the loop above holds a single jump statement.
+     *
+     * **Video is dropped before it reaches the session, not after.** The phone starts sending
+     * the moment STREAM_READY goes out and the Activity takes a few hundred ms to produce a
+     * surface, so the first key frame - the only one carrying SPS/PPS - usually arrives in that
+     * window. Letting the session consume it would advance its checkpoint and mark it
+     * synchronised, so no PLI would ever go out and the decoder would later be handed a bare
+     * IDR: a black screen with nothing logged, which is exactly the failure this protocol
+     * exists to make impossible. Dropping it here leaves the session unsynchronised, so its
+     * next feedback asks for a key frame and the sender prepends the parameter sets again.
+     */
+    private fun trySession(kind: StreamKind, session: ReceiverSession, bytes: ByteArray): Boolean {
+        if (kind == StreamKind.Video && !videoReady()) return false
+        val frames = session.onPacket(bytes)
+        if (frames.isEmpty()) return false
+        for (frame in frames) {
+            when (kind) {
+                StreamKind.Video -> onVideo(frame)
+                StreamKind.Audio -> onAudio(frame)
+            }
+        }
         return true
     }
 
@@ -117,7 +131,13 @@ class MediaReceiver(
             val packet = session.feedback(senderIdle)
             try {
                 socket.send(DatagramPacket(packet, packet.size, address, senderPort))
-            } catch (e: Exception) {
+            } catch (e: IOException) {
+                Log.w(TAG, "could not send feedback", e)
+                return
+            } catch (e: SecurityException) {
+                Log.w(TAG, "could not send feedback", e)
+                return
+            } catch (e: IllegalArgumentException) {
                 Log.w(TAG, "could not send feedback", e)
                 return
             }

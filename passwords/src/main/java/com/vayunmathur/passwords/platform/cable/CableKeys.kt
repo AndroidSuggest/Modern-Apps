@@ -19,12 +19,21 @@ object CableKeys {
 
     /** `DerivedValueType` enum values from Chromium. */
     enum class Purpose(val value: Int) {
-        EID_KEY(1),
-        TUNNEL_ID(2),
-        PSK(3),
-        PAIRED_SECRET(4),
-        IDENTITY_KEY_SEED(5),
-        PER_CONTACT_ID_SECRET(6),
+        EID_KEY(PURPOSE_EID_KEY),
+        TUNNEL_ID(PURPOSE_TUNNEL_ID),
+        PSK(PURPOSE_PSK),
+        PAIRED_SECRET(PURPOSE_PAIRED_SECRET),
+        IDENTITY_KEY_SEED(PURPOSE_IDENTITY_KEY_SEED),
+        PER_CONTACT_ID_SECRET(PURPOSE_PER_CONTACT_ID_SECRET),
+    }
+
+    private companion object {
+        private const val PURPOSE_EID_KEY = 1
+        private const val PURPOSE_TUNNEL_ID = 2
+        private const val PURPOSE_PSK = 3
+        private const val PURPOSE_PAIRED_SECRET = 4
+        private const val PURPOSE_IDENTITY_KEY_SEED = 5
+        private const val PURPOSE_PER_CONTACT_ID_SECRET = 6
     }
 
     // Output sizes (bytes).
@@ -35,13 +44,18 @@ object CableKeys {
 
     private const val HMAC = "HmacSHA256"
     private const val HASH_LEN = 32
+    private const val HKDF_MAX_MULTIPLIER = 255
+    private const val BYTE_MASK = 0xFF
+    private const val BYTE_SHIFT_1 = 8
+    private const val BYTE_SHIFT_2 = 16
+    private const val BYTE_SHIFT_3 = 24
 
     /**
      * HKDF-SHA256 (RFC 5869) as used by caBLE, on the platform [Mac] (Conscrypt) —
      * no Bouncy Castle. Empty/`null` salt = RFC 5869 zero salt (BoringSSL parity).
      */
     fun hkdf(ikm: ByteArray, salt: ByteArray?, info: ByteArray, length: Int): ByteArray {
-        require(length <= 255 * HASH_LEN) { "HKDF length too large" }
+        require(length <= HKDF_MAX_MULTIPLIER * HASH_LEN) { "HKDF length too large" }
         // Extract.
         val actualSalt = if (salt == null || salt.isEmpty()) ByteArray(HASH_LEN) else salt
         val prk = hmac(actualSalt, ikm)
@@ -89,9 +103,9 @@ object CableKeys {
 
     /** Encodes an int as a little-endian uint32 (the HKDF `info` field). */
     fun leUint32(value: Int): ByteArray = byteArrayOf(
-        (value and 0xFF).toByte(),
-        ((value ushr 8) and 0xFF).toByte(),
-        ((value ushr 16) and 0xFF).toByte(),
-        ((value ushr 24) and 0xFF).toByte(),
+        (value and BYTE_MASK).toByte(),
+        ((value ushr BYTE_SHIFT_1) and BYTE_MASK).toByte(),
+        ((value ushr BYTE_SHIFT_2) and BYTE_MASK).toByte(),
+        ((value ushr BYTE_SHIFT_3) and BYTE_MASK).toByte(),
     )
 }

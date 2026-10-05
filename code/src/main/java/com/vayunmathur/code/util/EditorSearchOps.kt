@@ -3,11 +3,11 @@ package com.vayunmathur.code.util
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.code.syntax.Language
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import kotlin.coroutines.coroutineContext
 
 internal const val MAX_SEARCH_RESULTS = 500
 internal const val MAX_MATCHES_PER_FILE = 50
@@ -28,37 +28,71 @@ internal fun EditorViewModel.searchProjectImpl(query: String, caseSensitive: Boo
     searchResults.clear()
     searchJob = viewModelScope.launch {
         val collected = withContext(Dispatchers.IO) {
-            val out = ArrayList<SearchResult>()
-            val ignore = loadGitIgnore(root)
-            val stack = ArrayDeque<File>()
-            stack.addLast(root)
-            while (stack.isNotEmpty() && out.size < MAX_SEARCH_RESULTS) {
-                coroutineContext.ensureActive()
-                val dir = stack.removeLast()
-                val children = runCatching { FileFiles.listChildren(dir) }.getOrDefault(emptyList())
-                for (child in children) {
-                    if (out.size >= MAX_SEARCH_RESULTS) break
-                    val rel = relativeTo(root, child.file)
-                    if (child.isDirectory) {
-                        if (child.name !in SKIP_DIRS && !ignore.isIgnored(rel, true)) stack.addLast(child.file)
-                        continue
-                    }
-                    if (ignore.isIgnored(rel, false)) continue
-                    if (Language.fromFileName(child.name) == Language.PLAINTEXT) continue
-                    if (child.file.length() > MAX_SEARCH_FILE_SIZE) continue
-                    val text = runCatching { FileFiles.readText(child.file) }.getOrNull() ?: continue
-                    val matches = findLineMatches(text, query, caseSensitive, useRegex, MAX_MATCHES_PER_FILE)
-                    for (m in matches) {
-                        out.add(SearchResult(child.file.absolutePath, child.name, m.line, m.preview))
-                        if (out.size >= MAX_SEARCH_RESULTS) break
-                    }
-                }
-            }
-            out
+            collectSearchResults(root, query, caseSensitive, useRegex)
         }
         searchResults.clear()
         searchResults.addAll(collected)
         isSearching = false
+    }
+}
+
+private suspend fun collectSearchResults(
+    root: File,
+    query: String,
+    caseSensitive: Boolean,
+    useRegex: Boolean,
+): List<SearchResult> {
+    val out = ArrayList<SearchResult>()
+    val ignore = loadGitIgnore(root)
+    val stack = ArrayDeque<File>()
+    stack.addLast(root)
+    while (stack.isNotEmpty() && out.size < MAX_SEARCH_RESULTS) {
+        currentCoroutineContext().ensureActive()
+        collectSearchDir(stack.removeLast(), root, ignore, query, caseSensitive, useRegex, out, stack)
+    }
+    return out
+}
+
+private fun collectSearchDir(
+    dir: File,
+    root: File,
+    ignore: GitIgnore,
+    query: String,
+    caseSensitive: Boolean,
+    useRegex: Boolean,
+    out: MutableList<SearchResult>,
+    stack: ArrayDeque<File>,
+) {
+    val children = runCatching { FileFiles.listChildren(dir) }.getOrDefault(emptyList())
+    for (child in children) {
+        if (out.size >= MAX_SEARCH_RESULTS) return
+        collectSearchChild(child, root, ignore, query, caseSensitive, useRegex, out, stack)
+    }
+}
+
+private fun collectSearchChild(
+    child: FileEntry,
+    root: File,
+    ignore: GitIgnore,
+    query: String,
+    caseSensitive: Boolean,
+    useRegex: Boolean,
+    out: MutableList<SearchResult>,
+    stack: ArrayDeque<File>,
+) {
+    val rel = relativeTo(root, child.file)
+    if (child.isDirectory) {
+        if (child.name !in SKIP_DIRS && !ignore.isIgnored(rel, true)) stack.addLast(child.file)
+        return
+    }
+    if (ignore.isIgnored(rel, false)) return
+    if (Language.fromFileName(child.name) == Language.PLAINTEXT) return
+    if (child.file.length() > MAX_SEARCH_FILE_SIZE) return
+    val text = runCatching { FileFiles.readText(child.file) }.getOrNull() ?: return
+    val matches = findLineMatches(text, query, caseSensitive, useRegex, MAX_MATCHES_PER_FILE)
+    for (m in matches) {
+        if (out.size >= MAX_SEARCH_RESULTS) return
+        out.add(SearchResult(child.file.absolutePath, child.name, m.line, m.preview))
     }
 }
 
@@ -85,30 +119,53 @@ internal fun EditorViewModel.refreshProjectFilesImpl() {
     projectFilesJob?.cancel()
     projectFilesJob = viewModelScope.launch {
         val collected = withContext(Dispatchers.IO) {
-            val out = ArrayList<ProjectFileEntry>()
-            val ignore = loadGitIgnore(root)
-            val stack = ArrayDeque<File>()
-            stack.addLast(root)
-            while (stack.isNotEmpty() && out.size < MAX_PROJECT_FILES) {
-                coroutineContext.ensureActive()
-                val dir = stack.removeLast()
-                val children = runCatching { FileFiles.listChildren(dir) }.getOrDefault(emptyList())
-                for (child in children) {
-                    if (out.size >= MAX_PROJECT_FILES) break
-                    val rel = relativeTo(root, child.file)
-                    if (child.isDirectory) {
-                        if (child.name !in SKIP_DIRS && !ignore.isIgnored(rel, true)) stack.addLast(child.file)
-                        continue
-                    }
-                    if (ignore.isIgnored(rel, false)) continue
-                    out.add(toProjectEntry(child.file))
-                }
-            }
-            out.sortedBy { it.relativePath.lowercase() }
+            collectProjectFiles(root)
         }
         projectFiles.clear()
         projectFiles.addAll(collected)
     }
+}
+
+private suspend fun EditorViewModel.collectProjectFiles(root: File): List<ProjectFileEntry> {
+    val out = ArrayList<ProjectFileEntry>()
+    val ignore = loadGitIgnore(root)
+    val stack = ArrayDeque<File>()
+    stack.addLast(root)
+    while (stack.isNotEmpty() && out.size < MAX_PROJECT_FILES) {
+        currentCoroutineContext().ensureActive()
+        collectProjectDir(stack.removeLast(), root, ignore, out, stack)
+    }
+    return out.sortedBy { it.relativePath.lowercase() }
+}
+
+private fun EditorViewModel.collectProjectDir(
+    dir: File,
+    root: File,
+    ignore: GitIgnore,
+    out: MutableList<ProjectFileEntry>,
+    stack: ArrayDeque<File>,
+) {
+    val children = runCatching { FileFiles.listChildren(dir) }.getOrDefault(emptyList())
+    for (child in children) {
+        if (out.size >= MAX_PROJECT_FILES) return
+        collectProjectChild(child, root, ignore, out, stack)
+    }
+}
+
+private fun EditorViewModel.collectProjectChild(
+    child: FileEntry,
+    root: File,
+    ignore: GitIgnore,
+    out: MutableList<ProjectFileEntry>,
+    stack: ArrayDeque<File>,
+) {
+    val rel = relativeTo(root, child.file)
+    if (child.isDirectory) {
+        if (child.name !in SKIP_DIRS && !ignore.isIgnored(rel, true)) stack.addLast(child.file)
+        return
+    }
+    if (ignore.isIgnored(rel, false)) return
+    out.add(toProjectEntry(child.file))
 }
 
 /** Reads and parses the project root `.gitignore`, or returns an empty matcher. */

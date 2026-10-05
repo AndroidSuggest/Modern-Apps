@@ -69,6 +69,15 @@ private const val REQUEST_TIMEOUT_MS = 60_000L
 /** Android 16 Live Updates; below this a plain determinate bar says the same thing. */
 private const val PROGRESS_STYLE_SDK = 36
 
+/** Bytes per kilobyte, for notification progress text. */
+private const val BYTES_PER_KB = 1024L
+
+/** Notification progress scale: percent. */
+private const val PROGRESS_MAX = 100
+
+/** Standard hash multiplier for combining request-code parts. */
+private const val HASH_MULTIPLIER = 31
+
 /**
  * Longest edge of the preview bitmap in a received-image notification.
  *
@@ -279,13 +288,18 @@ class ShareReceiveNotifier(
             .build()
     }
 
-    private fun progressNotification(conn: Connection, id: Int, snap: Snapshot, percent: Int): android.app.Notification {
+    private fun progressNotification(
+        conn: Connection,
+        id: Int,
+        snap: Snapshot,
+        percent: Int,
+    ): android.app.Notification {
         val total = conn.expectedTotalBytes.value
         val builder = base(CHANNEL_TRANSFERS)
             .setContentTitle(conn.displayName)
             .setContentText(appContext.getString(R.string.share_receiving))
             .setSubText(
-                appContext.getString(R.string.share_progress_kb, snap.bytes / 1024, total / 1024)
+                appContext.getString(R.string.share_progress_kb, snap.bytes / BYTES_PER_KB, total / BYTES_PER_KB)
             )
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setOngoing(true)
@@ -295,22 +309,26 @@ class ShareReceiveNotifier(
                 appContext.getString(R.string.share_action_cancel),
                 sessionAction(ShareTransferService.ACTION_CANCEL, conn.sessionHandle, id),
             )
-        val sizesKb = conn.pendingFiles.value.map { (it.sizeBytes / 1024).toInt().coerceAtLeast(1) }
+        val sizesKb = conn.pendingFiles.value.map { (it.sizeBytes / BYTES_PER_KB).toInt().coerceAtLeast(1) }
         if (Build.VERSION.SDK_INT >= PROGRESS_STYLE_SDK && sizesKb.isNotEmpty()) {
             // One segment per announced file, so a multi-file transfer shows which file it is on.
             builder.setStyle(
                 NotificationCompat.ProgressStyle()
                     .setProgressSegments(sizesKb.map { NotificationCompat.ProgressStyle.Segment(it) })
-                    .setProgress((snap.bytes / 1024).toInt())
+                    .setProgress((snap.bytes / BYTES_PER_KB).toInt())
             )
             builder.setShortCriticalText("$percent%")
         } else {
-            builder.setProgress(100, percent, total <= 0)
+            builder.setProgress(PROGRESS_MAX, percent, total <= 0)
         }
         return builder.build()
     }
 
-    private suspend fun doneNotification(conn: Connection, id: Int, received: List<ReceivedFile>): android.app.Notification {
+    private suspend fun doneNotification(
+        conn: Connection,
+        id: Int,
+        received: List<ReceivedFile>,
+    ): android.app.Notification {
         val builder = base(CHANNEL_TRANSFERS)
             .setContentTitle(conn.displayName)
             .setContentText(appContext.getString(R.string.share_received_count, received.size))
@@ -374,6 +392,9 @@ class ShareReceiveNotifier(
             byExtension == ReceivedFileStore.GENERIC_MIME_TYPE
     }
 
+    // Broad catch is deliberate: image decoding throws undocumented RuntimeExceptions
+    // (not just IOException) on corrupt files, which read as "no preview".
+    @Suppress("TooGenericExceptionCaught")
     private fun decodePreview(image: ReceivedFile): Bitmap? = try {
         val source = ImageDecoder.createSource(appContext.contentResolver, image.uri)
         ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
@@ -479,7 +500,7 @@ class ShareReceiveNotifier(
     }
 
     private fun requestCode(handle: Long, action: String): Int =
-        (handle.hashCode() * 31 + action.hashCode())
+        (handle.hashCode() * HASH_MULTIPLIER + action.hashCode())
 
     companion object {
         /**
@@ -491,6 +512,13 @@ class ShareReceiveNotifier(
          */
         fun cancelStale(context: Context) {
             val nm = context.getSystemService<NotificationManager>() ?: return
+            cancelStaleNotifications(nm)
+        }
+
+        // Broad catch is deliberate: activeNotifications throws SecurityException
+        // plus undocumented RuntimeExceptions without the permission.
+        @Suppress("TooGenericExceptionCaught")
+        private fun cancelStaleNotifications(nm: NotificationManager) {
             try {
                 nm.activeNotifications
                     .filter { it.notification.group == GROUP_KEY }
@@ -501,3 +529,4 @@ class ShareReceiveNotifier(
         }
     }
 }
+

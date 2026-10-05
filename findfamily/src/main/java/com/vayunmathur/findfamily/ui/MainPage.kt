@@ -178,7 +178,7 @@ fun MainPage(
     }
 
     val selectedUserId by ffViewModel.selectedUserId.collectAsState()
-    val selectedWaypointId by ffViewModel.selectedWaypointId.collectAsState()
+    val selectedWaypointId by ffViewModel.mapState.selectedWaypointId.collectAsState()
     val isShowingPresent by ffViewModel.isShowingPresent.collectAsState()
     val historicalPosition by ffViewModel.historicalPosition.collectAsState()
     var showSecurityCode by remember { mutableStateOf(false) }
@@ -193,9 +193,9 @@ fun MainPage(
 
     BackHandler(selectedUserId != null || (selectedWaypointId != null && selectedWaypointId != 0L)) {
         if (historyMode) {
-            ffViewModel.setShowingPresent(true)
+            ffViewModel.mapState.setShowingPresent(true)
         } else {
-            ffViewModel.clearSelection()
+            ffViewModel.mapState.clearSelection()
         }
     }
 
@@ -291,9 +291,8 @@ fun MainPage(
             if (historyMode) {
                 HistoryScrubber(
                     backStack,
-                    ffViewModel,
-                    selectedUserId!!
-                ) { ffViewModel.setHistoricalPosition(it) }
+                    ffViewModel
+                ) { ffViewModel.mapState.setHistoricalPosition(it) }
             }
         },
         map = {

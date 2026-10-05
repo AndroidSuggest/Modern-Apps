@@ -26,6 +26,9 @@ import kotlinx.serialization.json.longOrNull
 object OAuthManager {
     private const val TAG = "OAuthManager"
     private const val PENDING_KEY = "everysync_pending_oauth"
+    private const val REFRESH_SKEW_MILLIS = 60_000L
+    private const val TOKEN_EXPIRY_UNKNOWN = 0L
+    private const val MILLIS_PER_SECOND = 1000L
     private val json = Json { ignoreUnknownKeys = true }
 
     @Serializable
@@ -59,33 +62,59 @@ object OAuthManager {
         customTabs.intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             customTabs.launchUrl(context, url)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch OAuth Custom Tab", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "Failed to launch OAuth Custom Tab", expected)
         }
     }
 
     /** Handle the OAuth redirect. Returns the created account name on success. */
     suspend fun complete(context: Context, redirect: Uri): String? {
-        val ds = DataStoreUtils.getInstance(context)
-        val pending = ds.getString(PENDING_KEY)?.let {
-            runCatching { json.decodeFromString<Pending>(it) }.getOrNull()
-        } ?: return null
-        val code = redirect.getQueryParameter("code") ?: return null
-        val state = redirect.getQueryParameter("state")
-        if (state != pending.state) {
+        val pending = readPending(context)
+        val code = redirect.getQueryParameter("code")
+        val provider = pending?.let { ProviderRegistry.get(it.providerId) }
+        val config = provider?.oauthConfig()
+        if (!isResolvable(pending, code, provider, config)) return null
+        if (redirect.getQueryParameter("state") != pending?.state) {
             Log.e(TAG, "OAuth state mismatch")
             return null
         }
-        val provider = ProviderRegistry.get(pending.providerId) ?: return null
-        val config = provider.oauthConfig() ?: return null
 
-        val tokens = exchangeCode(config, code, pending.verifier) ?: return null
-        val accountName = try {
-            provider.resolveAccountName(context, tokens)
-        } catch (e: Exception) {
-            Log.e(TAG, "resolveAccountName failed", e)
-            "${provider.displayName} account"
-        }
+        val tokens = exchangeCode(config!!, code!!, pending!!.verifier) ?: return null
+        val accountName = resolveName(context, provider!!, tokens)
+        persistAccount(context, provider, accountName, tokens)
+        DataStoreUtils.getInstance(context).setString(PENDING_KEY, "")
+        return accountName
+    }
+
+    private fun isResolvable(
+        pending: Pending?,
+        code: String?,
+        provider: com.vayunmathur.everysync.provider.SyncProvider?,
+        config: OAuthConfig?,
+    ): Boolean = pending != null && code != null && provider != null && config != null
+
+    private suspend fun readPending(context: Context): Pending? {
+        val raw = DataStoreUtils.getInstance(context).getString(PENDING_KEY) ?: return null
+        return runCatching { json.decodeFromString<Pending>(raw) }.getOrNull()
+    }
+
+    private suspend fun resolveName(
+        context: Context,
+        provider: com.vayunmathur.everysync.provider.SyncProvider,
+        tokens: OAuthTokens,
+    ): String = try {
+        provider.resolveAccountName(context, tokens)
+    } catch (expected: Exception) {
+        Log.e(TAG, "resolveAccountName failed", expected)
+        "${provider.displayName} account"
+    }
+
+    private suspend fun persistAccount(
+        context: Context,
+        provider: com.vayunmathur.everysync.provider.SyncProvider,
+        accountName: String,
+        tokens: OAuthTokens,
+    ) {
         TokenStore.getInstance(context).putTokens(accountName, tokens)
         AccountStore.getInstance(context).upsert(
             AccountConfig(
@@ -94,21 +123,34 @@ object OAuthManager {
                 enabledTypes = provider.capabilities,
             ),
         )
-        ds.setString(PENDING_KEY, "")
-        return accountName
     }
 
     /** Return a valid access token, refreshing it first if it has expired. */
-    suspend fun validAccessToken(context: Context, accountName: String, providerId: String): String? {
+    suspend fun validAccessToken(
+        context: Context,
+        accountName: String,
+        providerId: String,
+    ): String? {
         val store = TokenStore.getInstance(context)
         val tokens = store.getTokens(accountName) ?: return null
-        val fresh = if (tokens.expiresAtMs != 0L && tokens.expiresAtMs < System.currentTimeMillis() + 60_000) {
+        val fresh = if (isExpired(tokens)) {
             refresh(context, accountName, providerId, tokens) ?: tokens
-        } else tokens
+        } else {
+            tokens
+        }
         return fresh.accessToken
     }
 
-    private suspend fun refresh(context: Context, accountName: String, providerId: String, tokens: OAuthTokens): OAuthTokens? {
+    private fun isExpired(tokens: OAuthTokens): Boolean =
+        tokens.expiresAtMs != TOKEN_EXPIRY_UNKNOWN &&
+            tokens.expiresAtMs < System.currentTimeMillis() + REFRESH_SKEW_MILLIS
+
+    private suspend fun refresh(
+        context: Context,
+        accountName: String,
+        providerId: String,
+        tokens: OAuthTokens,
+    ): OAuthTokens? {
         val refreshToken = tokens.refreshToken ?: return null
         val config = ProviderRegistry.get(providerId)?.oauthConfig() ?: return null
         val form = buildMap {
@@ -126,7 +168,11 @@ object OAuthManager {
         return updated
     }
 
-    private suspend fun exchangeCode(config: OAuthConfig, code: String, verifier: String): OAuthTokens? {
+    private suspend fun exchangeCode(
+        config: OAuthConfig,
+        code: String,
+        verifier: String,
+    ): OAuthTokens? {
         val form = buildMap {
             put("client_id", config.clientId)
             put("grant_type", "authorization_code")
@@ -143,21 +189,26 @@ object OAuthManager {
                 "${Uri.encode(it.key)}=${Uri.encode(it.value)}"
             }
             val resp = NetworkClient.performRequest(
-                config.tokenEndpoint, "POST",
+                config.tokenEndpoint,
+                "POST",
                 mapOf("Content-Type" to "application/x-www-form-urlencoded"),
                 body,
             )
             val root = json.parseToJsonElement(resp.body) as? JsonObject ?: return null
             val access = root["access_token"]?.jsonPrimitive?.contentOrNullSafe() ?: return null
             val refresh = root["refresh_token"]?.jsonPrimitive?.contentOrNullSafe()
-            val expiresIn = root["expires_in"]?.jsonPrimitive?.longOrNull ?: 0L
+            val expiresIn = root["expires_in"]?.jsonPrimitive?.longOrNull ?: TOKEN_EXPIRY_UNKNOWN
             OAuthTokens(
                 accessToken = access,
                 refreshToken = refresh,
-                expiresAtMs = if (expiresIn > 0) System.currentTimeMillis() + expiresIn * 1000 else 0L,
+                expiresAtMs = if (expiresIn > 0) {
+                    System.currentTimeMillis() + expiresIn * MILLIS_PER_SECOND
+                } else {
+                    TOKEN_EXPIRY_UNKNOWN
+                },
             )
-        } catch (e: Exception) {
-            Log.e(TAG, "token endpoint call failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "token endpoint call failed", expected)
             null
         }
     }

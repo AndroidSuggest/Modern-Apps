@@ -6,8 +6,11 @@ import android.util.Log
 import android.view.Display
 import com.vayunmathur.cast.R
 import com.vayunmathur.cast.domain.ClientPhase
+import com.vayunmathur.cast.platform.mirror.CaptureGeometry
 import com.vayunmathur.cast.platform.mirror.MirrorEngine
 import com.vayunmathur.cast.platform.mirror.MirrorSource
+import com.vayunmathur.cast.protocol.VideoCodec
+import com.vayunmathur.cast.domain.CastDevice
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
@@ -77,74 +80,100 @@ internal fun CastController.onDesktopModeChanged(
     mode: Display.Mode,
 ) {
     val running = activeGeometry ?: return
-    val target = source.supportedModes.firstOrNull {
-        it.width == mode.physicalWidth &&
-            it.height == mode.physicalHeight &&
-            abs(it.frameRate - mode.refreshRate) <= MODE_RATE_TOLERANCE
-    } ?: return
-    if (target.width == running.width &&
-        target.height == running.height &&
-        abs(target.frameRate - running.frameRate) <= MODE_RATE_TOLERANCE
-    ) {
-        return
-    }
+    val target = matchSupportedMode(source, mode) ?: return
+    if (!isModeChange(target, running)) return
     if (renegotiateJob?.isActive == true) return
     renegotiateJob = scope.launch {
-        val activeClient = client ?: return@launch
-        val device = _device.value ?: return@launch
-        val codec = activeCodec ?: return@launch
-        Log.i(
-            TAG,
-            "the user chose ${target.width}x${target.height}@${target.frameRate}; " +
-                "re-negotiating from ${running.width}x${running.height}@${running.frameRate}",
-        )
-        // Only the engine, so the display - and the desktop on it - stays exactly where it is.
-        engine?.stop()
-        engine = null
-        // `reconfigureStream`, not `configureStream`: the watch job is parked in a blocking
-        // read on this socket and would swallow the reply. See MirrorClient for the hand-off.
-        val outcome = mutex.withLock {
-            activeClient.reconfigureStream(
-                width = target.width,
-                height = target.height,
-                frameRate = target.frameRate,
-                bitRate = target.bitRate,
-                videoCodec = codec,
-                audio = true,
-                video = true,
-            )
-        }
-        val ready = outcome as? HandshakeOutcome.Ready
-        if (ready == null) {
-            Log.w(TAG, "the TV would not agree the new mode: $outcome")
-            abandonMirroring(
-                context,
-                null,
-                context.getString(R.string.cast_mirror_negotiation_failed),
-            )
-            return@launch
-        }
-        val newEngine = MirrorEngine(
-            context = context,
-            source = source,
-            receiverHost = device.host,
-            negotiation = ready.negotiation,
-            geometry = target,
-            videoCodec = codec,
+        renegotiateDesktopMode(context, source, target, running)
+    }
+}
+
+private fun matchSupportedMode(
+    source: MirrorSource.SystemDisplay,
+    mode: Display.Mode,
+): CaptureGeometry? = source.supportedModes.firstOrNull {
+    it.width == mode.physicalWidth &&
+        it.height == mode.physicalHeight &&
+        abs(it.frameRate - mode.refreshRate) <= MODE_RATE_TOLERANCE
+}
+
+private fun isModeChange(target: CaptureGeometry, running: CaptureGeometry): Boolean =
+    target.width != running.width ||
+        target.height != running.height ||
+        abs(target.frameRate - running.frameRate) > MODE_RATE_TOLERANCE
+
+private suspend fun CastController.renegotiateDesktopMode(
+    context: Context,
+    source: MirrorSource.SystemDisplay,
+    target: CaptureGeometry,
+    running: CaptureGeometry,
+) {
+    val activeClient = client ?: return
+    val device = deviceMutable.value ?: return
+    val codec = activeCodec ?: return
+    Log.i(
+        TAG,
+        "the user chose ${target.width}x${target.height}@${target.frameRate}; " +
+            "re-negotiating from ${running.width}x${running.height}@${running.frameRate}",
+    )
+    // Only the engine, so the display - and the desktop on it - stays exactly where it is.
+    engine?.stop()
+    engine = null
+    // `reconfigureStream`, not `configureStream`: the watch job is parked in a blocking
+    // read on this socket and would swallow the reply. See MirrorClient for the hand-off.
+    val outcome = mutex.withLock {
+        activeClient.reconfigureStream(
+            width = target.width,
+            height = target.height,
             frameRate = target.frameRate,
-            onDegraded = { _degradation.value = it },
-            onStopped = { reason -> onEngineStopped(context, reason) },
-            onCodecConfig = { csd -> sendCodecConfig(activeClient, csd) },
-        ).apply { hexDump = verboseStreamLogging }
-        engine = newEngine
-        activeGeometry = target
-        if (!newEngine.start()) {
-            engine = null
-            activeGeometry = null
-            return@launch
-        }
-        _sessionState.update {
-            it.copy(phase = ClientPhase.Streaming, negotiation = ready.negotiation)
-        }
+            bitRate = target.bitRate,
+            videoCodec = codec,
+            audio = true,
+            video = true,
+        )
+    }
+    val ready = outcome as? HandshakeOutcome.Ready
+    if (ready == null) {
+        Log.w(TAG, "the TV would not agree the new mode: $outcome")
+        abandonMirroring(
+            context,
+            null,
+            context.getString(R.string.cast_mirror_negotiation_failed),
+        )
+        return
+    }
+    startDesktopEngine(context, source, device, activeClient, codec, target, ready)
+}
+
+private fun CastController.startDesktopEngine(
+    context: Context,
+    source: MirrorSource.SystemDisplay,
+    device: CastDevice,
+    activeClient: MirrorClient,
+    codec: VideoCodec,
+    target: CaptureGeometry,
+    ready: HandshakeOutcome.Ready,
+) {
+    val newEngine = MirrorEngine(
+        context = context,
+        source = source,
+        receiverHost = device.host,
+        negotiation = ready.negotiation,
+        geometry = target,
+        videoCodec = codec,
+        frameRate = target.frameRate,
+        onDegraded = { degradationMutable.value = it },
+        onStopped = { reason -> onEngineStopped(context, reason) },
+        onCodecConfig = { csd -> sendCodecConfig(activeClient, csd) },
+    ).apply { hexDump = verboseStreamLogging }
+    engine = newEngine
+    activeGeometry = target
+    if (!newEngine.start()) {
+        engine = null
+        activeGeometry = null
+        return
+    }
+    sessionStateMutable.update {
+        it.copy(phase = ClientPhase.Streaming, negotiation = ready.negotiation)
     }
 }

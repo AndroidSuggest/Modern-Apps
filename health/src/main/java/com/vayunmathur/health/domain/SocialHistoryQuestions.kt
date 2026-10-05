@@ -97,7 +97,11 @@ object SocialHistoryQuestions {
         // which was written for a clinician describing a patient ("Patient is homeless").
         answers = listOf(
             Answer("LA31993-1", "I have a steady place to live", R.string.housing_steady),
-            Answer("LA31994-9", "I have a place to live today, but I am worried about losing it in the future", R.string.housing_worried),
+            Answer(
+                "LA31994-9",
+                "I have a place to live today, but I am worried about losing it in the future",
+                R.string.housing_worried,
+            ),
             Answer("LA31995-6", "I do not have a steady place to live", R.string.housing_none),
         ),
     )
@@ -126,8 +130,17 @@ object SocialHistoryQuestions {
         // LL5336-4. "I choose not to answer" is kept: declining is a real answer and the record
         // should be able to say so rather than leaving it indistinguishable from never asked.
         answers = listOf(
-            Answer("LA30133-5", "Yes, it has kept me from medical appointments or from getting my medications", R.string.transport_medical),
-            Answer("LA30134-3", "Yes, it has kept me from non-medical meetings, appointments, work, or from getting things that I need", R.string.transport_non_medical),
+            Answer(
+                "LA30133-5",
+                "Yes, it has kept me from medical appointments or from getting my medications",
+                R.string.transport_medical,
+            ),
+            Answer(
+                "LA30134-3",
+                "Yes, it has kept me from non-medical meetings, appointments, work, " +
+                    "or from getting things that I need",
+                R.string.transport_non_medical,
+            ),
             Answer("LA32-8", "No", R.string.transport_no),
             Answer("LA30122-8", "I choose not to answer this question", R.string.decline_to_answer),
         ),

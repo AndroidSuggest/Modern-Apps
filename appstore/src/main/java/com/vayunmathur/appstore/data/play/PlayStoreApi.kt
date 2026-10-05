@@ -1,6 +1,5 @@
 package com.vayunmathur.appstore.data.play
 
-import android.content.Context
 import com.aurora.gplayapi.data.models.App
 import com.aurora.gplayapi.data.models.AuthData
 import com.aurora.gplayapi.data.models.PlayFile
@@ -36,7 +35,9 @@ class PlayStoreApi(
             AppDetailsHelper(authData).using(httpClient)
                 .getAppByPackageName(packageName)
                 .toUnifiedApp()
-        } catch (_: Exception) {
+        } catch (_: java.io.IOException) {
+            null
+        } catch (_: IllegalStateException) {
             null
         }
     }
@@ -55,7 +56,9 @@ class PlayStoreApi(
         packageNames.chunked(DETAILS_BATCH).flatMap { chunk ->
             try {
                 helper.getAppByPackageName(chunk).map { it.toUnifiedApp() }
-            } catch (_: Exception) {
+            } catch (_: java.io.IOException) {
+                emptyList()
+            } catch (_: IllegalStateException) {
                 emptyList()
             }
         }
@@ -80,22 +83,41 @@ class PlayStoreApi(
             val found = LinkedHashMap<String, UnifiedApp>()
             var bundle = helper.searchResults(query)
             var page = 1
-            while (true) {
-                bundle.streamClusters.values
-                    .flatMap { it.clusterAppList }
-                    .forEach { app ->
-                        val unified = app.toUnifiedApp()
-                        found.putIfAbsent(unified.packageName, unified)
-                    }
-                if (answered(found.values.toList())) break
-                if (page >= maxPages || !bundle.hasNext()) break
+            while (shouldReadPage(found.values.toList(), answered, page, maxPages, bundle)) {
+                collectPage(bundle, found)
                 bundle = helper.nextStreamBundle(query, bundle.streamNextPageUrl)
                 page++
             }
             found.values.toList()
-        } catch (_: Exception) {
+        } catch (_: java.io.IOException) {
+            emptyList()
+        } catch (_: IllegalStateException) {
             emptyList()
         }
+    }
+
+    private fun collectPage(
+        bundle: com.aurora.gplayapi.data.models.StreamBundle,
+        found: LinkedHashMap<String, UnifiedApp>,
+    ) {
+        bundle.streamClusters.values
+            .flatMap { it.clusterAppList }
+            .forEach { app ->
+                val unified = app.toUnifiedApp()
+                found.putIfAbsent(unified.packageName, unified)
+            }
+    }
+
+    private fun shouldReadPage(
+        found: List<UnifiedApp>,
+        answered: (List<UnifiedApp>) -> Boolean,
+        page: Int,
+        maxPages: Int,
+        bundle: com.aurora.gplayapi.data.models.StreamBundle,
+    ): Boolean {
+        if (answered(found)) return false
+        if (page >= maxPages || !bundle.hasNext()) return false
+        return true
     }
 
     /** A real top chart, rather than whatever the store's HTML happened to render. */
@@ -107,7 +129,9 @@ class PlayStoreApi(
             TopChartsHelper(authData).using(httpClient)
                 .getCluster(type.value, chart.value)
                 .toApps()
-        } catch (_: Exception) {
+        } catch (_: java.io.IOException) {
+            emptyList()
+        } catch (_: IllegalStateException) {
             emptyList()
         }
     }
@@ -130,7 +154,9 @@ class PlayStoreApi(
                     else PlayCluster(cluster.clusterTitle.ifBlank { "" }, apps)
                 }
                 .filter { it.title.isNotBlank() }
-        } catch (_: Exception) {
+        } catch (_: java.io.IOException) {
+            emptyList()
+        } catch (_: IllegalStateException) {
             emptyList()
         }
     }
@@ -140,7 +166,6 @@ class PlayStoreApi(
      * Throws on failure.
      */
     suspend fun purchase(
-        context: Context,
         packageName: String,
         versionCode: Long,
         offerType: Int = 0,

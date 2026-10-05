@@ -60,8 +60,6 @@ fun KlondikeBoard(state: KlondikeState, actions: SolitaireActions, modifier: Mod
                                     sourceId = "waste",
                                     actions = actions,
                                     modifier = Modifier.offset(x = fanOffset * index),
-                                    cardWidth = cardWidth,
-                                    cardHeight = cardHeight
                                 ) {
                                     CardFace(card, cardWidth = cardWidth, cardHeight = cardHeight)
                                 }

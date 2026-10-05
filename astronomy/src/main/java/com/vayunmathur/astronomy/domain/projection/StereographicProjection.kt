@@ -3,7 +3,15 @@ package com.vayunmathur.astronomy.domain.projection
 import androidx.compose.ui.geometry.Offset
 import com.vayunmathur.astronomy.domain.AstronomyNative
 import com.vayunmathur.astronomy.domain.engine.AltAz
-import kotlin.math.*
+import kotlin.math.PI
+import kotlin.math.acos
+import kotlin.math.asin
+import kotlin.math.atan
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
+import kotlin.math.tan
 
 /**
  * Batch-project a list of [AltAz] under [viewState] via the native

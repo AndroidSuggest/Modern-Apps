@@ -7,6 +7,7 @@ import com.vayunmathur.email.platform.EmailManager
 import com.vayunmathur.email.platform.ServerConfig
 import com.vayunmathur.email.ui.composer.InlineAttachment
 import com.vayunmathur.email.network.imap.TrustAll
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -52,41 +53,79 @@ object SmtpClient {
         val useTrustAll = !TrustAll.isKnownHost(server.host)
         val conn = RawSmtpConnection(server, trustAll = useTrustAll)
         try {
-            conn.connect()
-            conn.ehlo("email.local")
-            if (!server.useSsl && conn.hasCap("STARTTLS")) {
-                conn.startTls(server.host)
-                conn.ehlo("email.local")
-            }
-
-            when (auth) {
-                is EmailManager.AuthType.OAuth -> {
-                    try { conn.authXoauth2(user, auth.token) } catch (e: Exception) { Log.e(TAG, "XOAUTH2 SMTP failed", e); throw e }
-                }
-                is EmailManager.AuthType.Password -> {
-                    if (conn.hasCap("AUTH=PLAIN") || conn.hasCap("PLAIN")) {
-                        try { conn.authPlain(user, auth.value) } catch (e: Exception) {
-                            if (conn.hasCap("LOGIN")) conn.authLogin(user, auth.value) else throw e
-                        }
-                    } else if (conn.hasCap("LOGIN")) {
-                        conn.authLogin(user, auth.value)
-                    } else {
-                        try { conn.authPlain(user, auth.value) } catch (e: Exception) { conn.authLogin(user, auth.value) }
-                    }
-                }
-            }
-
-            conn.mailFrom(fromAddress)
-            val allRecipients = mutableListOf<String>()
-            allRecipients.addAll(splitAddresses(to))
-            cc?.takeIf { it.isNotBlank() }?.let { allRecipients.addAll(splitAddresses(it)) }
-            bcc?.takeIf { it.isNotBlank() }?.let { allRecipients.addAll(splitAddresses(it)) }
-            for (rcpt in allRecipients.distinct()) { conn.rcptTo(rcpt) }
-            conn.data(mimeString)
+            openSession(conn, server)
+            authenticate(conn, user, auth)
+            submitMessage(conn, fromAddress, to, cc, bcc, mimeString)
             conn.quit()
         } finally {
             try { conn.close() } catch (_: Exception) {}
         }
+    }
+
+    private fun openSession(conn: RawSmtpConnection, server: ServerConfig) {
+        conn.connect()
+        conn.ehlo("email.local")
+        if (!server.useSsl && conn.hasCap("STARTTLS")) {
+            conn.startTls(server.host)
+            conn.ehlo("email.local")
+        }
+    }
+
+    private fun authenticate(conn: RawSmtpConnection, user: String, auth: EmailManager.AuthType) {
+        when (auth) {
+            is EmailManager.AuthType.OAuth -> authenticateOauth(conn, user, auth.token)
+            is EmailManager.AuthType.Password -> authenticatePassword(conn, user, auth.value)
+        }
+    }
+
+    private fun authenticateOauth(conn: RawSmtpConnection, user: String, token: String) {
+        try {
+            conn.authXoauth2(user, token)
+        } catch (e: IOException) {
+            Log.e(TAG, "XOAUTH2 SMTP failed", e)
+            throw e
+        }
+    }
+
+    private fun authenticatePassword(conn: RawSmtpConnection, user: String, password: String) {
+        if (conn.hasCap("AUTH=PLAIN") || conn.hasCap("PLAIN")) {
+            authenticatePlainWithLoginFallback(conn, user, password)
+        } else if (conn.hasCap("LOGIN")) {
+            conn.authLogin(user, password)
+        } else {
+            authenticatePlainWithLoginFallback(conn, user, password)
+        }
+    }
+
+    private fun authenticatePlainWithLoginFallback(conn: RawSmtpConnection, user: String, password: String) {
+        try {
+            conn.authPlain(user, password)
+        } catch (e: IOException) {
+            if (conn.hasCap("LOGIN")) conn.authLogin(user, password) else throw e
+        }
+    }
+
+    private fun submitMessage(
+        conn: RawSmtpConnection,
+        fromAddress: String,
+        to: String,
+        cc: String?,
+        bcc: String?,
+        mimeString: String,
+    ) {
+        conn.mailFrom(fromAddress)
+        for (rcpt in collectRecipients(to, cc, bcc)) {
+            conn.rcptTo(rcpt)
+        }
+        conn.data(mimeString)
+    }
+
+    private fun collectRecipients(to: String, cc: String?, bcc: String?): List<String> {
+        val allRecipients = mutableListOf<String>()
+        allRecipients.addAll(splitAddresses(to))
+        cc?.takeIf { it.isNotBlank() }?.let { allRecipients.addAll(splitAddresses(it)) }
+        bcc?.takeIf { it.isNotBlank() }?.let { allRecipients.addAll(splitAddresses(it)) }
+        return allRecipients.distinct()
     }
 
     private fun splitAddresses(input: String): List<String> =

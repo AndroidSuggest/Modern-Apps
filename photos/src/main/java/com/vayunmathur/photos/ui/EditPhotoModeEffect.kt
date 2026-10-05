@@ -26,29 +26,29 @@ internal fun EditPhotoModeEffect(state: EditPhotoEditorState) {
     LaunchedEffect(state.editorMode) {
         when (state.editorMode) {
             EditorMode.Adjust, EditorMode.Filters ->
-                state.vm.ensureAdjustment({ it is BasicAdjustment }, { BasicAdjustment() })
-            EditorMode.Curves -> state.vm.ensureAdjustment({ it is CurvesAdj }, { CurvesAdj() })
-            EditorMode.HSL -> state.vm.ensureAdjustment({ it is HslAdj }, { HslAdj() })
-            EditorMode.Levels -> state.vm.ensureAdjustment({ it is LevelsAdj }, { LevelsAdj() })
-            EditorMode.ColorBalance -> state.vm.ensureAdjustment({ it is ColorBalanceAdj }, { ColorBalanceAdj() })
-            EditorMode.ChannelMixer -> state.vm.ensureAdjustment({ it is ChannelMixerAdj }, { ChannelMixerAdj() })
-            EditorMode.BlackWhite -> state.vm.ensureAdjustment({ it is BlackAndWhiteAdj }, { BlackAndWhiteAdj() })
-            EditorMode.Vibrance -> state.vm.ensureAdjustment({ it is VibranceAdj }, { VibranceAdj() })
-            EditorMode.PhotoFilter -> state.vm.ensureAdjustment({ it is PhotoFilterAdj }, { PhotoFilterAdj() })
-            EditorMode.SelectiveColor -> state.vm.ensureAdjustment({ it is SelectiveColorAdj }, { SelectiveColorAdj() })
-            EditorMode.Posterize -> state.vm.ensureAdjustment({ it is PosterizeAdj }, { PosterizeAdj() })
-            EditorMode.Threshold -> state.vm.ensureAdjustment({ it is ThresholdAdj }, { ThresholdAdj() })
-            EditorMode.Invert -> state.vm.ensureAdjustment({ it is InvertAdj }, { InvertAdj() })
-            EditorMode.LensBlur -> state.vm.ensureAdjustment({ it is BlurAdj }, { BlurAdj() })
-            EditorMode.Selective -> state.vm.ensureAdjustment({ it is SelectiveAdj }, { SelectiveAdj() })
+                state.vm.adjustments.ensureAdjustment({ it is BasicAdjustment }, { BasicAdjustment() })
+            EditorMode.Curves -> state.vm.adjustments.ensureAdjustment({ it is CurvesAdj }, { CurvesAdj() })
+            EditorMode.HSL -> state.vm.adjustments.ensureAdjustment({ it is HslAdj }, { HslAdj() })
+            EditorMode.Levels -> state.vm.adjustments.ensureAdjustment({ it is LevelsAdj }, { LevelsAdj() })
+            EditorMode.ColorBalance -> state.vm.adjustments.ensureAdjustment({ it is ColorBalanceAdj }, { ColorBalanceAdj() })
+            EditorMode.ChannelMixer -> state.vm.adjustments.ensureAdjustment({ it is ChannelMixerAdj }, { ChannelMixerAdj() })
+            EditorMode.BlackWhite -> state.vm.adjustments.ensureAdjustment({ it is BlackAndWhiteAdj }, { BlackAndWhiteAdj() })
+            EditorMode.Vibrance -> state.vm.adjustments.ensureAdjustment({ it is VibranceAdj }, { VibranceAdj() })
+            EditorMode.PhotoFilter -> state.vm.adjustments.ensureAdjustment({ it is PhotoFilterAdj }, { PhotoFilterAdj() })
+            EditorMode.SelectiveColor -> state.vm.adjustments.ensureAdjustment({ it is SelectiveColorAdj }, { SelectiveColorAdj() })
+            EditorMode.Posterize -> state.vm.adjustments.ensureAdjustment({ it is PosterizeAdj }, { PosterizeAdj() })
+            EditorMode.Threshold -> state.vm.adjustments.ensureAdjustment({ it is ThresholdAdj }, { ThresholdAdj() })
+            EditorMode.Invert -> state.vm.adjustments.ensureAdjustment({ it is InvertAdj }, { InvertAdj() })
+            EditorMode.LensBlur -> state.vm.adjustments.ensureAdjustment({ it is BlurAdj }, { BlurAdj() })
+            EditorMode.Selective -> state.vm.adjustments.ensureAdjustment({ it is SelectiveAdj }, { SelectiveAdj() })
             EditorMode.Healing, EditorMode.RedEye, EditorMode.DodgeBurn, EditorMode.Smudge, EditorMode.FilterFx, EditorMode.Liquify,
             EditorMode.Fill, EditorMode.GradientTool, EditorMode.ShapeRect, EditorMode.ShapeEllipse, EditorMode.ShapeLine -> {
                 val idx = state.document.layers.indexOfLast { it is PixelLayer }
-                if (idx >= 0 && idx != state.document.activeLayerIndex) state.vm.setActiveLayer(idx)
+                if (idx >= 0 && idx != state.document.activeLayerIndex) state.vm.layers.setActiveLayer(idx)
             }
             EditorMode.FreeTransform -> {
                 val idx = state.document.layers.indexOfLast { it is PixelLayer }
-                if (idx >= 0 && idx != state.document.activeLayerIndex) state.vm.setActiveLayer(idx)
+                if (idx >= 0 && idx != state.document.activeLayerIndex) state.vm.layers.setActiveLayer(idx)
                 state.ftTL = Offset(0f, 0f); state.ftTR = Offset(1f, 0f); state.ftBL = Offset(0f, 1f); state.ftBR = Offset(1f, 1f)
             }
             else -> {}

@@ -42,8 +42,8 @@ data class CrosswordData(
     companion object {
         fun fromAsset(context: Context, fileName: String): CrosswordData? = try {
             fromString(context.assets.open(fileName).bufferedReader().use { it.readText() })
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (_: Exception) {
+            // Missing or malformed asset: the caller shows a parse error for a null board.
             null
         }
 
@@ -73,12 +73,14 @@ data class CrosswordData(
                 gridStructure = grid,
                 letterPositions = positions
             )
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (_: Exception) {
+            // Malformed grid text: the caller shows a parse error for a null board.
             null
         }
 
-        private fun extractWordsAndPositions(grid: List<String>): Pair<List<String>, Map<String, List<List<Pair<Int, Int>>>>> {
+        private fun extractWordsAndPositions(
+            grid: List<String>,
+        ): Pair<List<String>, Map<String, List<List<Pair<Int, Int>>>>> {
             val words = mutableListOf<String>()
             val positions = mutableMapOf<String, MutableList<List<Pair<Int, Int>>>>()
             val numRows = grid.size

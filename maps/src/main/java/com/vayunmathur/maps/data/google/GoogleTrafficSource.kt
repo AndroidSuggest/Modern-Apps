@@ -56,6 +56,10 @@ object GoogleTrafficSource {
 
     val available: Boolean get() = TILE_URLS.isNotEmpty()
 
+    /** Success range for the tile fetch. */
+    private const val HTTP_OK_MIN = 200
+    private const val HTTP_OK_MAX = 299
+
     // Browser-like identity for the manual [tile] path. The `/maps/vt` endpoint is
     // keyless and serves the PNG to a plain GET, but sending the same headers as
     // the other google scrapes keeps the direct-bytes fetch consistent.
@@ -80,6 +84,6 @@ object GoogleTrafficSource {
         val (status, bytes) = runCatching {
             NetworkClient.performRequestBytes(url = url, headers = REQUEST_HEADERS, useSystemTrust = true)
         }.getOrNull() ?: return@withContext null
-        if (status in 200..299 && bytes.isNotEmpty()) bytes else null
+        if (status in HTTP_OK_MIN..HTTP_OK_MAX && bytes.isNotEmpty()) bytes else null
     }
 }

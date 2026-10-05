@@ -29,6 +29,8 @@ object RideLiveUpdate {
     // Android 16 Live Updates arrived in API 36; below this we fall back to a plain bar.
     private const val LIVE_UPDATE_SDK = 36
 
+    private const val SECONDS_PER_MINUTE = 60
+
     // Ordered phases the tracker advances through, each with its user-facing label.
     private enum class Milestone(val labelRes: Int) {
         FINDING(R.string.status_finding_driver),
@@ -105,13 +107,20 @@ object RideLiveUpdate {
 
     private fun statusText(context: Context, ride: ActiveRide, index: Int): String {
         val label = context.getString(Milestone.entries[index].labelRes)
-        val eta = ride.pickupEtaSeconds
-        if (!ride.status.isTerminal && ride.status.isPrePickup && eta != null && eta > 0) {
-            val minutes = (eta + 59) / 60
-            return context.getString(R.string.notif_status_eta, label, minutes)
-        }
-        return label
+        val minutes = pickupEtaMinutes(ride) ?: return label
+        return context.getString(R.string.notif_status_eta, label, minutes)
     }
+
+    /** Ceiled pickup ETA in minutes, or null when no ETA should be shown yet. */
+    private fun pickupEtaMinutes(ride: ActiveRide): Int? {
+        if (!isPrePickupTrackable(ride)) return null
+        val eta = ride.pickupEtaSeconds
+        if (eta == null || eta <= 0) return null
+        return (eta + SECONDS_PER_MINUTE - 1) / SECONDS_PER_MINUTE
+    }
+
+    private fun isPrePickupTrackable(ride: ActiveRide): Boolean =
+        !ride.status.isTerminal && ride.status.isPrePickup
 
     private fun milestoneIndex(status: RideStatus): Int = when {
         status.isTerminal -> Milestone.COMPLETE.ordinal

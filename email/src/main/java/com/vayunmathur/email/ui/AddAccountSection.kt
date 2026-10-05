@@ -53,13 +53,13 @@ internal suspend fun testAndPersistAccount(
     val loginUser = username.ifBlank { email }
     try {
         EmailManager().fetchFolders(server = imap, user = loginUser, auth = EmailManager.AuthType.Password(password))
-    } catch (e: Exception) {
-        val msg = e.message?.lowercase() ?: ""
-        val isAuth = e is com.vayunmathur.email.network.imap.ImapAuthException || msg.contains("auth") && (msg.contains("failed") || msg.contains("invalid") || msg.contains("no") || msg.contains("login"))
+    } catch (ignored: Exception) {
+        val msg = ignored.message?.lowercase() ?: ""
+        val isAuth = ignored is com.vayunmathur.email.network.imap.ImapAuthException || msg.contains("auth") && (msg.contains("failed") || msg.contains("invalid") || msg.contains("no") || msg.contains("login"))
         if (isAuth) return@withContext "Authentication failed — check your email and app password."
-        return@withContext "Couldn't reach ${imap.host}:${imap.port} — ${e.javaClass.simpleName}: ${e.message ?: "unknown"}"
+        return@withContext "Couldn't reach ${imap.host}:${imap.port} — ${ignored.javaClass.simpleName}: ${ignored.message ?: "unknown"}"
     }
-    val (cipher, iv) = try { CredentialCrypto.encrypt(password) } catch (e: Exception) { return@withContext "Couldn't store password: ${e.message}" }
+    val (cipher, iv) = try { CredentialCrypto.encrypt(password) } catch (ignored: Exception) { return@withContext "Couldn't store password: ${ignored.message}" }
     val account = EmailAccount(
         email = email,
         username = username,

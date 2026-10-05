@@ -3,12 +3,11 @@ package com.vayunmathur.maps.ui.map
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
-import com.vayunmathur.library.map.CameraState
 import com.vayunmathur.maps.ui.RoadsLayer
 import com.vayunmathur.maps.ui.SafetyLayer
 import com.vayunmathur.maps.ui.SatelliteLayer
 import com.vayunmathur.maps.ui.TransitStopsLayer
-import com.vayunmathur.maps.util.OfflineRouter
+import com.vayunmathur.maps.util.OfflineRouterLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -35,7 +34,6 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun MapLayers(
-    cameraState: CameraState,
     satelliteEnabled: Boolean = false,
     safetyEnabled: Boolean = false,
     transitEnabled: Boolean = false,
@@ -43,10 +41,10 @@ fun MapLayers(
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
-        // OfflineRouter.initialize does asset-listing I/O — push to IO. The
+        // OfflineRouterLifecycle.initialize does asset-listing I/O — push to IO. The
         // @Synchronized fun itself is idempotent so recomposition is safe.
         withContext(Dispatchers.IO) {
-            OfflineRouter.initialize(context)
+            OfflineRouterLifecycle.initialize(context)
         }
     }
 

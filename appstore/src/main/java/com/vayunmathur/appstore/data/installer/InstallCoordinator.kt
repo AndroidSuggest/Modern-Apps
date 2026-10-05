@@ -106,30 +106,45 @@ class InstallCoordinator(
         }
         stage(app.packageName, InstallStage.Preparing)
         return try {
-            when (app.source) {
+            val outcome = when (app.source) {
                 AppSource.PLAYSTORE -> installFromPlay(app)
                 AppSource.ACCRESCENT -> installFromAccrescent(app)
                 AppSource.GRAPHENEOS -> installFromGrapheneOS(app)
                 else -> installFromUrl(app)
-            }.also { outcome ->
-                if (outcome.started) {
-                    // The bytes are committed but the OS is still writing them in; hold the
-                    // row at Installing until InstallStatusReceiver reports the real outcome
-                    // (a large split install can take several seconds past this point).
-                    stage(app.packageName, InstallStage.Installing)
-                } else {
-                    stage(app.packageName, InstallStage.Failed(outcome.verification.shortReason()))
-                }
-                record(app.packageName, outcome.verification)
             }
+            record(app.packageName, outcome.verification)
+            finishInstall(app.packageName, outcome)
         } catch (e: CancellationException) {
             clear(app.packageName)
             throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "Install failed for ${app.packageName}", e)
-            stage(app.packageName, InstallStage.Failed(e.message ?: "download failed"))
-            SessionInstaller.Outcome(false, VerificationResult.Rejected(e.message ?: "download failed"))
+        } catch (e: IOException) {
+            failInstall(app.packageName, e)
+        } catch (e: SecurityException) {
+            failInstall(app.packageName, e)
+        } catch (e: IllegalStateException) {
+            failInstall(app.packageName, e)
         }
+    }
+
+    private fun finishInstall(
+        packageName: String,
+        outcome: SessionInstaller.Outcome,
+    ): SessionInstaller.Outcome {
+        if (outcome.started) {
+            // The bytes are committed but the OS is still writing them in; hold the
+            // row at Installing until InstallStatusReceiver reports the real outcome
+            // (a large split install can take several seconds past this point).
+            stage(packageName, InstallStage.Installing)
+        } else {
+            stage(packageName, InstallStage.Failed(outcome.verification.shortReason()))
+        }
+        return outcome
+    }
+
+    private fun failInstall(packageName: String, e: Exception): SessionInstaller.Outcome {
+        Log.e(TAG, "Install failed for $packageName", e)
+        stage(packageName, InstallStage.Failed(e.message ?: "download failed"))
+        return SessionInstaller.Outcome(false, VerificationResult.Rejected(e.message ?: "download failed"))
     }
 
     /** Drop a terminal [InstallStage.Failed] marker, e.g. when the user retries. */
@@ -187,8 +202,8 @@ class InstallCoordinator(
             rawConnection.sslSocketFactory = sslSocketFactory
         }
         val conn = (rawConnection as HttpURLConnection).apply {
-            connectTimeout = 20_000
-            readTimeout = 60_000
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
             instanceFollowRedirects = true
         }
         try {
@@ -196,7 +211,7 @@ class InstallCoordinator(
             // message is the URL, which the UI then shows the user as the reason the install
             // failed. Read the status first and say what the server actually said.
             val code = conn.responseCode
-            if (code !in 200..299) {
+            if (code !in HTTP_OK_MIN..HTTP_OK_MAX) {
                 throw IOException("the server returned HTTP $code for ${target.name}")
             }
 
@@ -218,7 +233,7 @@ class InstallCoordinator(
             val input = if (gzipped) GZIPInputStream(counting) else counting
             input.use { source ->
                 target.outputStream().use { out ->
-                    source.copyTo(out, 64 * 1024)
+                    source.copyTo(out, COPY_BUFFER_SIZE)
                 }
             }
         } finally {
@@ -323,7 +338,8 @@ class InstallCoordinator(
 
             val splits = try {
                 accrescent.downloadInfo(app.packageName)
-            } catch (e: IncompatibleDeviceException) {
+            } catch (expected: IncompatibleDeviceException) {
+                Log.w(TAG, "no Accrescent build for ${app.packageName}", expected)
                 return@withContext SessionInstaller.Outcome(
                     false, VerificationResult.Rejected("this app has no build for your device")
                 )
@@ -429,8 +445,11 @@ class InstallCoordinator(
         certHash: String?,
     ) = try {
         play.purchase(packageName, versionCode, offerType, certHash)
-    } catch (e: Exception) {
-        if (certHash == null) throw e
+    } catch (expected: IOException) {
+        if (certHash == null) throw expected
+        play.purchase(packageName, versionCode, offerType, null)
+    } catch (expected: IllegalStateException) {
+        if (certHash == null) throw expected
         play.purchase(packageName, versionCode, offerType, null)
     }
 
@@ -443,7 +462,7 @@ class InstallCoordinator(
     private suspend fun record(packageName: String, result: VerificationResult) {
         _verification.value = _verification.value + (packageName to result)
         val stamp = result.stamp ?: return
-        runCatching {
+        try {
             db.pinnedStampDao().upsert(
                 PinnedStampEntity(
                     packageName = packageName,
@@ -451,6 +470,10 @@ class InstallCoordinator(
                     firstSeen = System.currentTimeMillis(),
                 )
             )
+        } catch (expected: android.database.sqlite.SQLiteException) {
+            Log.w(TAG, "pin stamp for $packageName", expected)
+        } catch (expected: IllegalStateException) {
+            Log.w(TAG, "pin stamp for $packageName", expected)
         }
     }
 
@@ -470,5 +493,10 @@ class InstallCoordinator(
 
     private companion object {
         const val TAG = "InstallCoordinator"
+        private const val CONNECT_TIMEOUT_MS = 20_000
+        private const val READ_TIMEOUT_MS = 60_000
+        private const val HTTP_OK_MIN = 200
+        private const val HTTP_OK_MAX = 299
+        private const val COPY_BUFFER_SIZE = 64 * 1024
     }
 }

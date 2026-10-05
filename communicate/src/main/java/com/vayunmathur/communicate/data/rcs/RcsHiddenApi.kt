@@ -56,28 +56,7 @@ internal object RcsHiddenApi {
         if (!RcsFeature.enabled) return false
         return runCatching {
             val callbackClass = Class.forName("android.telephony.ims.RcsUceAdapter\$CapabilitiesCallback")
-            val proxy = java.lang.reflect.Proxy.newProxyInstance(
-                adapter.javaClass.classLoader,
-                arrayOf(callbackClass),
-            ) { _, method, args ->
-                when (method.name) {
-                    "onCapabilitiesReceived" -> {
-                        @Suppress("UNCHECKED_CAST")
-                        val caps = (args?.getOrNull(0) as? List<*>) ?: emptyList<Any>()
-                        callback.onCapabilitiesReceived(caps)
-                    }
-                    "onComplete" -> callback.onComplete()
-                    "onError" -> callback.onError(
-                        (args?.getOrNull(0) as? Int) ?: -1,
-                        (args?.getOrNull(1) as? Long) ?: 0L,
-                    )
-                    // equals/hashCode/toString on the proxy itself.
-                    "toString" -> "RcsUceCallbackProxy"
-                    "hashCode" -> System.identityHashCode(callback)
-                    "equals" -> args?.getOrNull(0) === callback
-                    else -> null
-                }
-            }
+            val proxy = buildUceProxy(adapter, callbackClass, callback)
             val method = adapter.javaClass.getMethod(
                 "requestCapabilities",
                 Collection::class.java,
@@ -96,6 +75,31 @@ internal object RcsHiddenApi {
             false
         }
     }
+
+    /** Dynamic proxy bridging the hidden callback to [UceCallback]. */
+    private fun buildUceProxy(adapter: Any, callbackClass: Class<*>, callback: UceCallback): Any =
+        java.lang.reflect.Proxy.newProxyInstance(
+            adapter.javaClass.classLoader,
+            arrayOf(callbackClass),
+        ) { _, method, args ->
+            when (method.name) {
+                "onCapabilitiesReceived" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val caps = (args?.getOrNull(0) as? List<*>) ?: emptyList<Any>()
+                    callback.onCapabilitiesReceived(caps)
+                }
+                "onComplete" -> callback.onComplete()
+                "onError" -> callback.onError(
+                    (args?.getOrNull(0) as? Int) ?: -1,
+                    (args?.getOrNull(1) as? Long) ?: 0L,
+                )
+                // equals/hashCode/toString on the proxy itself.
+                "toString" -> "RcsUceCallbackProxy"
+                "hashCode" -> System.identityHashCode(callback)
+                "equals" -> args?.getOrNull(0) === callback
+                else -> null
+            }
+        }
 
     /** Dynamic-dispatch target for the UCE proxy (caps are framework objects). */
     interface UceCallback {
@@ -125,22 +129,7 @@ internal object RcsHiddenApi {
                 adapter.javaClass.classLoader,
                 arrayOf(callbackClass),
             ) { _, method, args ->
-                when (method.name) {
-                    "onCapabilitiesReceived" -> {
-                        @Suppress("UNCHECKED_CAST")
-                        val caps = (args?.getOrNull(0) as? List<*>) ?: emptyList<Any>()
-                        callback.onCapabilitiesReceived(caps)
-                    }
-                    "onComplete" -> callback.onComplete()
-                    "onError" -> callback.onError(
-                        (args?.getOrNull(0) as? Int) ?: -1,
-                        (args?.getOrNull(1) as? Long) ?: 0L,
-                    )
-                    "toString" -> "RcsUceAvailabilityProxy"
-                    "hashCode" -> System.identityHashCode(callback)
-                    "equals" -> args?.getOrNull(0) === callback
-                    else -> null
-                }
+                dispatchUceCall(method.name, args, callback, "RcsUceAvailabilityProxy")
             }
             val method = adapter.javaClass.getMethod(
                 "requestAvailability",
@@ -157,6 +146,29 @@ internal object RcsHiddenApi {
             if (cause is ImsException) throw cause
             false
         }
+    }
+
+    /** Dispatch one proxied UCE callback method. */
+    private fun dispatchUceCall(
+        name: String,
+        args: Array<out Any?>?,
+        callback: UceCallback,
+        proxyName: String,
+    ): Any? = when (name) {
+        "onCapabilitiesReceived" -> {
+            @Suppress("UNCHECKED_CAST")
+            val caps = (args?.getOrNull(0) as? List<*>) ?: emptyList<Any>()
+            callback.onCapabilitiesReceived(caps)
+        }
+        "onComplete" -> callback.onComplete()
+        "onError" -> callback.onError(
+            (args?.getOrNull(0) as? Int) ?: -1,
+            (args?.getOrNull(1) as? Long) ?: 0L,
+        )
+        "toString" -> proxyName
+        "hashCode" -> System.identityHashCode(callback)
+        "equals" -> args?.getOrNull(0) === callback
+        else -> null
     }
 
     /** Dynamic-dispatch target for the provisioning proxy (config is raw XML bytes). */

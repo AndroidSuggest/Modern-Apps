@@ -78,8 +78,8 @@ class ReminderReceiver : BroadcastReceiver() {
                 if (context.getSystemService(UserManager::class.java)?.isUserUnlocked != false) {
                     ReminderScheduler.reconcileAll(context)
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "could not reschedule after a reminder fired", e)
+            } catch (expected: Exception) {
+                Log.e(TAG, "could not reschedule after a reminder fired", expected)
             } finally {
                 pendingResult.finish()
             }

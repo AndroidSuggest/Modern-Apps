@@ -72,8 +72,8 @@ class SupertonicSynthesizer private constructor(
         } else {
             try {
                 create(bundle, voice)
-            } catch (e: Throwable) {
-                Log.e(TAG, "cannot open the Supertonic bundle in $bundle", e)
+            } catch (expected: Exception) {
+                Log.e(TAG, "cannot open the Supertonic bundle in $bundle", expected)
                 0L
             }
         }
@@ -92,8 +92,8 @@ class SupertonicSynthesizer private constructor(
         if (handle == 0L) return false
         return try {
             MlNative.setSupertonicVoice(handle, bundle.read(styleName(name)))
-        } catch (e: Throwable) {
-            Log.e(TAG, "cannot read the voice $name in $bundle", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "cannot read the voice $name in $bundle", expected)
             false
         }
     }

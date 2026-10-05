@@ -10,62 +10,92 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
+private const val MICROSECONDS_PER_MILLISECOND = 1000L
+
 object VideoFrameDecoder {
 
     suspend fun decode(
         request: ImageRequest,
         context: Context?,
-        fetchedBytesFallback: ByteArray? = null,
     ): Bitmap? = withContext(Dispatchers.IO) {
         val millis = request.videoFrameMillis ?: return@withContext null
         val ctx = context ?: request.context ?: return@withContext null
         val data = request.data ?: return@withContext null
 
-        try {
+        runCatching {
             val retriever = MediaMetadataRetriever()
             try {
-                when (data) {
-                    is Uri -> {
-                        try {
-                            retriever.setDataSource(ctx, data)
-                        } catch (_: Exception) {
-                            // try with path
-                            val p = data.path ?: return@withContext null
-                            retriever.setDataSource(p)
-                        }
-                    }
-                    is String -> {
-                        val uri = try { data.toUri() } catch (_: Exception) { null }
-                        when {
-                            uri != null && uri.scheme == "content" -> retriever.setDataSource(ctx, uri)
-                            data.startsWith("/") || data.startsWith("file://") -> {
-                                val path = if (data.startsWith("file://")) data.removePrefix("file://") else data
-                                retriever.setDataSource(path)
-                            }
-                            data.startsWith("http://") || data.startsWith("https://") -> {
-                                // MediaMetadataRetriever supports remote URL – supply empty headers
-                                retriever.setDataSource(data, HashMap())
-                            }
-                            else -> {
-                                val f = File(data)
-                                if (f.exists()) retriever.setDataSource(f.absolutePath)
-                                else return@withContext null
-                            }
-                        }
-                    }
-                    is File -> retriever.setDataSource(data.absolutePath)
-                    else -> return@withContext null
-                }
-
-                val timeUs = millis * 1000L
-                retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
-                    ?: retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    ?: retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST)
+                bindDataSource(retriever, data, ctx) ?: return@runCatching null
+                extractFrame(retriever, millis)
             } finally {
-                try { retriever.release() } catch (_: Exception) {}
+                runCatching { retriever.release() }
             }
-        } catch (_: Exception) {
-            null
+        }.getOrNull()
+    }
+
+    private fun bindDataSource(
+        retriever: MediaMetadataRetriever,
+        data: Any,
+        ctx: Context,
+    ): Unit? =
+        when (data) {
+            is Uri -> bindUriSource(retriever, data, ctx)
+            is String -> bindStringSource(retriever, data, ctx)
+            is File -> {
+                retriever.setDataSource(data.absolutePath)
+            }
+            else -> null
+        }
+
+    private fun bindUriSource(
+        retriever: MediaMetadataRetriever,
+        data: Uri,
+        ctx: Context,
+    ) {
+        runCatching {
+            retriever.setDataSource(ctx, data)
+        }.getOrElse {
+            val path = data.path ?: return
+            retriever.setDataSource(path)
         }
     }
+
+    private fun bindStringSource(
+        retriever: MediaMetadataRetriever,
+        data: String,
+        ctx: Context,
+    ): Unit? {
+        val uri = runCatching { data.toUri() }.getOrNull()
+        if (uri != null && uri.scheme == CONTENT_SCHEME) {
+            retriever.setDataSource(ctx, uri)
+            return Unit
+        }
+        if (data.startsWith(ABSOLUTE_PATH_PREFIX) || data.startsWith(FILE_URI_PREFIX)) {
+            val path = data.removePrefix(FILE_URI_PREFIX)
+            retriever.setDataSource(path)
+            return Unit
+        }
+        if (data.startsWith(HTTP_PREFIX) || data.startsWith(HTTPS_PREFIX)) {
+            // MediaMetadataRetriever supports remote URL – supply empty headers.
+            retriever.setDataSource(data, HashMap())
+            return Unit
+        }
+        val file = File(data)
+        if (!file.exists()) return null
+        retriever.setDataSource(file.absolutePath)
+        return Unit
+    }
+
+    private fun extractFrame(retriever: MediaMetadataRetriever, millis: Long): Bitmap? {
+        val timeUs = millis * MICROSECONDS_PER_MILLISECOND
+        return retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+            ?: retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            ?: retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST)
+    }
 }
+
+private const val CONTENT_SCHEME = "content"
+private const val ABSOLUTE_PATH_PREFIX = "/"
+private const val FILE_URI_PREFIX = "file://"
+private const val HTTP_PREFIX = "http://"
+private const val HTTPS_PREFIX = "https://"

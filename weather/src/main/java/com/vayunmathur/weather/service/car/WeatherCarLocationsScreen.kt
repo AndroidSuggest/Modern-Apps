@@ -59,7 +59,7 @@ class WeatherCarLocationsScreen(
         }
 
         val tempUnit = TemperatureUnit.Celsius
-        if (carContext.getCarAppApiLevel() >= 8) {
+        if (carContext.getCarAppApiLevel() >= MIN_SECTIONED_API) {
             return sectionedTemplate(locations.map { it to state.forecastFor(it.id) }, tempUnit)
         }
         return legacyListTemplate(locations.map { it to state.forecastFor(it.id) }, tempUnit)
@@ -161,5 +161,7 @@ class WeatherCarLocationsScreen(
 
     private companion object {
         const val DEFAULT_LIST_LIMIT = 100
+        /** Car-app API level that added sectioned list templates. */
+        const val MIN_SECTIONED_API = 8
     }
 }

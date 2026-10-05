@@ -28,6 +28,12 @@ class WhatsAppVideoCallSession(context: Context) : WhatsAppCallSession(context) 
     private var remoteRenderer: SurfaceViewRenderer? = null
     private var remoteVideoTrack: VideoTrack? = null
 
+    private companion object {
+        private const val CAPTURE_WIDTH = 1280
+        private const val CAPTURE_HEIGHT = 720
+        private const val CAPTURE_FPS = 30
+    }
+
     override fun offerConstraints(): MediaConstraints = MediaConstraints().apply {
         mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
         mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
@@ -41,7 +47,8 @@ class WhatsAppVideoCallSession(context: Context) : WhatsAppCallSession(context) 
         val source = f.createVideoSource(false)
         videoSource = source
         capturer.initialize(helper, appContext, source.capturerObserver)
-        runCatching { capturer.startCapture(1280, 720, 30) }
+
+    runCatching { capturer.startCapture(CAPTURE_WIDTH, CAPTURE_HEIGHT, CAPTURE_FPS) }
         val track = f.createVideoTrack("wa_video", source)
         localVideoTrack = track
         peerConnection?.addTrack(track, listOf("wa_stream"))

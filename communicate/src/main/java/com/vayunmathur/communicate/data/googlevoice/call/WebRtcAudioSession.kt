@@ -45,6 +45,11 @@ class WebRtcAudioSession(private val appContext: Context) {
 
     private val iceComplete = CompletableDeferred<Unit>()
 
+    private companion object {
+        private const val DTMF_DURATION_MS = 100
+        private const val DTMF_GAP_MS = 70
+    }
+
     fun initialize() {
         WebRtcInit.ensureInitialized(appContext)
         val encoder = DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true)
@@ -149,7 +154,7 @@ class WebRtcAudioSession(private val appContext: Context) {
         val sender = audioSender ?: return
         val dtmf: DtmfSender = sender.dtmf() ?: return
         // 100ms tone, 70ms gap — standard RFC 4733 timing.
-        dtmf.insertDtmf(digits, 100, 70)
+        dtmf.insertDtmf(digits, DTMF_DURATION_MS, DTMF_GAP_MS)
     }
 
     fun close() {

@@ -2,8 +2,18 @@ package com.vayunmathur.astronomy.ui
 
 import android.hardware.SensorManager
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
@@ -14,8 +24,19 @@ import com.vayunmathur.astronomy.platform.AstronomyViewModel
 import com.vayunmathur.astronomy.platform.ConstellationMode
 import com.vayunmathur.astronomy.platform.SkyMapActions
 import com.vayunmathur.astronomy.platform.SkyMapUiState
+import com.vayunmathur.astronomy.platform.resolveViewCenter
+import com.vayunmathur.astronomy.platform.resolveViewRotation
 import com.vayunmathur.astronomy.ui.components.CameraBackground
-import com.vayunmathur.library.ui.*
+import com.vayunmathur.library.ui.CompassCalibrationBanner
+import com.vayunmathur.library.ui.HistoryScrubberCard
+import com.vayunmathur.library.ui.HistoryStep
+import com.vayunmathur.library.ui.IconCamera
+import com.vayunmathur.library.ui.IconCameraOff
+import com.vayunmathur.library.ui.IconSearch
+import com.vayunmathur.library.ui.IconSettings
+import com.vayunmathur.library.ui.OverlayAction
+import com.vayunmathur.library.ui.TopAppBarOverlay
+import com.vayunmathur.library.ui.rememberHistoryScrubberState
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.ResultEffect
 import kotlinx.datetime.LocalDate
@@ -52,8 +73,10 @@ fun SkyMapPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
     val simTime by viewModel.simTime.collectAsState()
     val isLive by viewModel.isLive.collectAsState()
 
-    val (centerAz, centerAlt) = remember(viewCenter, deviceOrient) { viewModel.resolveCenter() }
-    val rotation = remember(viewCenter, deviceOrient) { viewModel.resolveRotation() }
+    val (centerAz, centerAlt) = remember(viewCenter, deviceOrient) {
+        resolveViewCenter(viewCenter, deviceOrient)
+    }
+    val rotation = remember(viewCenter, deviceOrient) { resolveViewRotation(viewCenter, deviceOrient) }
 
     SkyMapScreen(
         backStack = backStack,

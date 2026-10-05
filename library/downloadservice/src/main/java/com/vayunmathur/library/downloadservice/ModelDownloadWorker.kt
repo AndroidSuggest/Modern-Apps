@@ -59,15 +59,19 @@ class ModelDownloadWorker(context: Context, params: WorkerParameters) :
 
         private const val MAX_RUN_ATTEMPTS = 6
         private const val BACKOFF_SECONDS = 30L
+        private const val SINGLETON_LIST_SIZE = 1
 
         /**
          * Stable unique-work name for [specs], so re-entering the screen observes the run already in
          * flight instead of starting a second one.
          */
         internal fun uniqueName(specs: List<DownloadSpec>): String {
-            val key = specs.joinToString("\u0000") { it.fileName }.hashCode()
-            return "model_download_${key.toUInt().toString(16)}"
+            val key = specs.joinToString(SPEC_SEPARATOR) { it.fileName }.hashCode()
+            return "model_download_${key.toUInt().toString(HEX_RADIX)}"
         }
+
+        private const val SPEC_SEPARATOR = "\u0000"
+        private const val HEX_RADIX = 16
 
         /** Enqueues the download, keeping any run already in progress for the same [specs]. */
         internal fun enqueue(context: Context, specs: List<DownloadSpec>) =

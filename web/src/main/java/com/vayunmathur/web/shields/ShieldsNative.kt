@@ -13,13 +13,12 @@ package com.vayunmathur.web.shields
 internal object ShieldsNative {
 
     val isAvailable: Boolean =
-        try {
+        runCatching {
             System.loadLibrary("web_shields")
             true
-        } catch (t: Throwable) {
+        }.onFailure { t ->
             android.util.Log.e("ShieldsNative", "System.loadLibrary(web_shields) failed", t)
-            false
-        }
+        }.getOrDefault(false)
 
     /** Parses `filters` (Adblock Plus syntax) and returns an engine handle, or 0. */
     external fun nativeCreate(filters: String, resourcesJson: String): Long

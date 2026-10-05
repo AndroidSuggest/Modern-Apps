@@ -28,33 +28,21 @@ object HolidayData {
 
     fun countries(context: Context): List<HolidayCountry> {
         countriesCache?.let { return it }
-        val loaded = runCatching {
-            val text = context.assets.open("holidays/index.json").bufferedReader().use { it.readText() }
-            json.decodeFromString<List<HolidayCountry>>(text)
-        }.onFailure { Log.e("HolidayData", "Failed reading index.json", it) }
-            .getOrDefault(emptyList())
+        val loaded = loadCountries(context)
         countriesCache = loaded
         return loaded
     }
 
     fun languages(context: Context): List<HolidayLanguage> {
         languagesCache?.let { return it }
-        val loaded = runCatching {
-            val text = context.assets.open("holidays/languages.json").bufferedReader().use { it.readText() }
-            json.decodeFromString<List<HolidayLanguage>>(text)
-        }.onFailure { Log.e("HolidayData", "Failed reading languages.json", it) }
-            .getOrDefault(emptyList())
+        val loaded = loadLanguages(context)
         languagesCache = loaded
         return loaded
     }
 
     fun countryLanguages(context: Context): Map<String, List<String>> {
         countryLanguagesCache?.let { return it }
-        val loaded = runCatching {
-            val text = context.assets.open("holidays/country_languages.json").bufferedReader().use { it.readText() }
-            json.decodeFromString<Map<String, List<String>>>(text)
-        }.onFailure { Log.e("HolidayData", "Failed reading country_languages.json", it) }
-            .getOrDefault(emptyMap())
+        val loaded = loadCountryLanguages(context)
         countryLanguagesCache = loaded
         return loaded
     }
@@ -82,11 +70,11 @@ object HolidayData {
         val loaded = runCatching {
             val text = try {
                 context.assets.open("holidays/$lang/$code.json").bufferedReader().use { it.readText() }
-            } catch (e: Exception) {
+            } catch (expected: Exception) {
                 // Fallback to English, then old flat path
                 try {
                     context.assets.open("holidays/en/$code.json").bufferedReader().use { it.readText() }
-                } catch (e2: Exception) {
+                } catch (expectedFallback: Exception) {
                     context.assets.open("holidays/$code.json").bufferedReader().use { it.readText() }
                 }
             }
@@ -95,5 +83,32 @@ object HolidayData {
             .getOrDefault(emptyList())
         holidaysCache[key] = loaded
         return loaded
+    }
+
+    private fun loadCountries(context: Context): List<HolidayCountry> {
+        return readAssetText(context, "holidays/index.json", "index.json")
+            ?.let { runCatching { json.decodeFromString<List<HolidayCountry>>(it) }.getOrNull() }
+            ?: emptyList()
+    }
+
+    private fun loadLanguages(context: Context): List<HolidayLanguage> {
+        return readAssetText(context, "holidays/languages.json", "languages.json")
+            ?.let { runCatching { json.decodeFromString<List<HolidayLanguage>>(it) }.getOrNull() }
+            ?: emptyList()
+    }
+
+    private fun loadCountryLanguages(context: Context): Map<String, List<String>> {
+        return readAssetText(context, "holidays/country_languages.json", "country_languages.json")
+            ?.let { runCatching { json.decodeFromString<Map<String, List<String>>>(it) }.getOrNull() }
+            ?: emptyMap()
+    }
+
+    private fun readAssetText(context: Context, assetPath: String, logName: String): String? {
+        return try {
+            context.assets.open(assetPath).bufferedReader().use { it.readText() }
+        } catch (expected: Exception) {
+            Log.e("HolidayData", "Failed reading $logName", expected)
+            null
+        }
     }
 }

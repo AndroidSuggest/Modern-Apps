@@ -66,6 +66,17 @@ object ReferenceCatalog {
     /** Schema this build can read. Bumped in lockstep with `generate_med_db.py`. */
     private const val SUPPORTED_SCHEMA_VERSION = 4
 
+    /** The unpacked database runs about twice the asset size; reserve that up front. */
+    private const val DB_SIZE_FACTOR = 2
+
+    /** Brotli decoder window and stream-copy buffer. */
+    private const val BROTLI_BUFFER = 64 * 1024
+    private const val COPY_BUFFER = 256 * 1024
+
+    /** Cursor columns of the medication SELECT, in order. */
+    private const val MED_COLUMN_STRENGTH = 3
+    private const val MED_COLUMN_DOSE_FORM = 4
+
     /** Describes the bundled asset; emitted next to it by the generator. */
     @Serializable
     data class Meta(
@@ -203,7 +214,7 @@ object ReferenceCatalog {
                     while (cursor.moveToNext()) add(cursor.getString(0))
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
             Log.e(TAG, "Ingredient search failed", e)
             emptyList()
         }
@@ -223,7 +234,7 @@ object ReferenceCatalog {
                 """.trimIndent(),
                 arrayOf(ingredient),
             ).use { cursor -> cursor.readMedications() }
-        } catch (e: Exception) {
+        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
             Log.e(TAG, "Product lookup failed", e)
             emptyList()
         }
@@ -245,7 +256,7 @@ object ReferenceCatalog {
                 """.trimIndent(),
                 arrayOf(match),
             ).use { cursor -> cursor.readMedications() }
-        } catch (e: Exception) {
+        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
             Log.e(TAG, "Product search failed", e)
             emptyList()
         }
@@ -278,7 +289,7 @@ object ReferenceCatalog {
                     }
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
             Log.e(TAG, "Allergen search failed", e)
             emptyList()
         }
@@ -326,7 +337,7 @@ object ReferenceCatalog {
                     }
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
             Log.e(TAG, "Lab search failed", e)
             emptyList()
         }
@@ -362,7 +373,7 @@ object ReferenceCatalog {
                     }
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
             Log.e(TAG, "Condition search failed", e)
             emptyList()
         }
@@ -375,8 +386,16 @@ object ReferenceCatalog {
                     rxcui = getString(0),
                     name = getString(1),
                     ingredient = getString(2),
-                    strength = if (isNull(3)) null else getString(3),
-                    doseForm = if (isNull(4)) null else getString(4),
+                    strength = if (isNull(MED_COLUMN_STRENGTH)) {
+                        null
+                    } else {
+                        getString(MED_COLUMN_STRENGTH)
+                    },
+                    doseForm = if (isNull(MED_COLUMN_DOSE_FORM)) {
+                        null
+                    } else {
+                        getString(MED_COLUMN_DOSE_FORM)
+                    },
                 )
             )
         }
@@ -411,6 +430,10 @@ object ReferenceCatalog {
      * Expand the bundled asset if that hasn't happened yet. Cheap and idempotent once done, so any
      * screen that needs a picker can call it freely on every appearance.
      */
+    // Broad catch inside is deliberate: the APK bytes are trusted but the disk is not —
+    // any failure mode (I/O, storage, decode) lands in the same Failed status with the
+    // previous database left in place, and cancellation still rethrows.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun prepare(): Result<Meta> = withContext(Dispatchers.IO) {
         // Cheap path, but only once the unpacked copy has been checked against the asset. Every
         // picker calls this on appearance, and re-reading two metadata files each time is pointless
@@ -438,7 +461,7 @@ object ReferenceCatalog {
                 }
             }
 
-            val needed = asset.bytes * 2
+            val needed = asset.bytes * DB_SIZE_FACTOR
             val free = allocateForDatabase(needed)
             if (free in 1 until needed) {
                 return@withLock fail("Not enough free space for the medical catalogue")
@@ -448,30 +471,8 @@ object ReferenceCatalog {
             partDbFile.delete()
 
             try {
-                BrotliInputStream(appContext.assets.open(ASSET_DB), 64 * 1024).use { input ->
-                    partDbFile.outputStream().buffered().use { output ->
-                        val buffer = ByteArray(256 * 1024)
-                        while (true) {
-                            currentCoroutineContext().ensureActive()
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            if (read == 0) continue
-                            output.write(buffer, 0, read)
-                        }
-                    }
-                }
-
-                closeHandle()
-                dbFile.delete()
-                if (!partDbFile.renameTo(dbFile)) {
-                    partDbFile.delete()
-                    return@withLock fail("Couldn't save the medical catalogue")
-                }
-                metaFile.writeText(json.encodeToString(asset))
-
-                openHandle()
-                verified = asset
-                _status.value = Status.Ready(asset)
+                decompressAsset()
+                swapInDatabase(asset)
                 Result.success(asset)
             } catch (e: Exception) {
                 partDbFile.delete()
@@ -485,11 +486,44 @@ object ReferenceCatalog {
         }
     }
 
+    /** Decompresses the bundled asset into the `.part` file. */
+    private suspend fun decompressAsset() {
+        BrotliInputStream(appContext.assets.open(ASSET_DB), BROTLI_BUFFER).use { input ->
+            partDbFile.outputStream().buffered().use { output ->
+                val buffer = ByteArray(COPY_BUFFER)
+                var read = input.read(buffer)
+                while (read >= 0) {
+                    currentCoroutineContext().ensureActive()
+                    if (read > 0) output.write(buffer, 0, read)
+                    read = input.read(buffer)
+                }
+            }
+        }
+    }
+
+    /** Swaps the `.part` file into place and opens it, recording the new metadata. */
+    private fun swapInDatabase(asset: Meta) {
+        closeHandle()
+        dbFile.delete()
+        if (!partDbFile.renameTo(dbFile)) {
+            partDbFile.delete()
+            throw IOException("Couldn't save the medical catalogue")
+        }
+        metaFile.writeText(json.encodeToString(asset))
+
+        openHandle()
+        verified = asset
+        _status.value = Status.Ready(asset)
+    }
+
     private fun assetMeta(): Meta? = try {
         appContext.assets.open(ASSET_META).bufferedReader().use {
             json.decodeFromString<Meta>(it.readText())
         }
-    } catch (e: Exception) {
+    } catch (e: IOException) {
+        Log.i(TAG, "No bundled medical catalogue asset: ${e.message}")
+        null
+    } catch (e: IllegalArgumentException) {
         Log.i(TAG, "No bundled medical catalogue asset: ${e.message}")
         null
     }
@@ -499,7 +533,10 @@ object ReferenceCatalog {
         return try {
             val meta = json.decodeFromString<Meta>(metaFile.readText())
             if (meta.schemaVersion == SUPPORTED_SCHEMA_VERSION) meta else null
-        } catch (e: Exception) {
+        } catch (e: IOException) {
+            Log.e(TAG, "Unreadable unpacked metadata", e)
+            null
+        } catch (e: IllegalArgumentException) {
             Log.e(TAG, "Unreadable unpacked metadata", e)
             null
         }
@@ -519,7 +556,7 @@ object ReferenceCatalog {
                     SQLiteDatabase.OPEN_READONLY,
                     null,
                 ).also { handle = it }
-            } catch (e: Exception) {
+            } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
                 Log.e(TAG, "Failed to open the medical catalogue", e)
                 null
             }

@@ -20,12 +20,16 @@ object Grades {
     const val KINDERGARTEN = 0
     const val MAX = 12
 
+    /** Highest grade in the K-2 band. */
+    const val K2_MAX = 2
+
+    /** Highest grade in the elementary band. */
+    const val ELEMENTARY_MAX = 5
     fun bandForGrade(grade: Int): Band = when {
-        grade <= 2 -> Band.K2
-        grade <= 5 -> Band.ELEMENTARY
+        grade <= K2_MAX -> Band.K2
+        grade <= ELEMENTARY_MAX -> Band.ELEMENTARY
         else -> Band.SCHOLAR
     }
-
     val all: List<Int> = (KINDERGARTEN..MAX).toList()
 }
 

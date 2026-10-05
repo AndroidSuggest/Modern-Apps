@@ -47,7 +47,7 @@ fun CreatePlaylist(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeView
                 )
                 Button(
                     {
-                        youPipeViewModel.createPlaylist(name.trim())
+                        youPipeViewModel.playlistOps.createPlaylist(name.trim())
                         backStack.pop()
                     },
                     Modifier.fillMaxWidth().padding(top = 8.dp),

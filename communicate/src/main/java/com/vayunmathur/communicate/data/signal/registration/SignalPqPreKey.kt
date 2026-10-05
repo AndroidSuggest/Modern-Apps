@@ -20,6 +20,8 @@ import org.signal.libsignal.protocol.kem.KEMKeyType
  */
 object SignalPqPreKey {
 
+    private const val KYBER1024_PUB_SIZE = 1569
+
     data class Generated(
         val keyId: Int,
         val publicKey: ByteArray,   // 1569B = 0x08 || 1568 raw Kyber1024 pub (tag INTACT for wire)
@@ -37,7 +39,7 @@ object SignalPqPreKey {
         val kp = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
         // KEEP the 0x08 tag - serialize() is already 0x08 || 1568 = 1569B
         val pub = kp.publicKey.serialize() // 1569B wire-correct
-        require(pub.size == 1569) { "Kyber1024 pub serialize must be 1569B, got ${pub.size}" }
+        require(pub.size == KYBER1024_PUB_SIZE) { "Kyber1024 pub serialize must be 1569B, got ${pub.size}" }
         val secret = kp.secretKey.serialize()
         // Real libsignal: identityPrivate.calculateSignature(pub.serialize())
         // Use ECPrivateKey bridge for XEdDSA (same curve as identity)
@@ -52,7 +54,7 @@ object SignalPqPreKey {
     fun generateWithECPrivate(identityPrivate: ECPrivateKey, keyId: Int): Generated {
         val kp = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
         val pub = kp.publicKey.serialize()
-        require(pub.size == 1569) { "Kyber1024 pub serialize must be 1569B, got ${pub.size}" }
+        require(pub.size == KYBER1024_PUB_SIZE) { "Kyber1024 pub serialize must be 1569B, got ${pub.size}" }
         val secret = kp.secretKey.serialize()
         val signature = identityPrivate.calculateSignature(pub)
         return Generated(keyId = keyId, publicKey = pub, secretKey = secret, signature = signature)

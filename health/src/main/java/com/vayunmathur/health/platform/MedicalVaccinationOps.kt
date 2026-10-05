@@ -20,7 +20,7 @@ import kotlin.uuid.Uuid
  * display name.
  */
 fun MedicalViewModel.saveVaccinationDraft(fallbackAttachmentName: String) {
-    val draft = _vaccinationDraft.value
+    val draft = vaccinationDraftState.value
     if (draft.displayName.isBlank()) return
 
     viewModelScope.launch {

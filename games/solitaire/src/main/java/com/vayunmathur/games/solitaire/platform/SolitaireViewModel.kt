@@ -3,8 +3,20 @@ package com.vayunmathur.games.solitaire.platform
 import android.app.Application
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.AndroidViewModel
-import com.vayunmathur.games.solitaire.data.*
+import com.vayunmathur.games.solitaire.data.Card
+import com.vayunmathur.games.solitaire.data.CardColorScheme
+import com.vayunmathur.games.solitaire.data.FreeCellState
+import com.vayunmathur.games.solitaire.data.GameConfig
+import com.vayunmathur.games.solitaire.data.GameMode
+import com.vayunmathur.games.solitaire.data.GameStats
+import com.vayunmathur.games.solitaire.data.KlondikeState
+import com.vayunmathur.games.solitaire.data.PyramidState
+import com.vayunmathur.games.solitaire.data.SolitaireUiState
+import com.vayunmathur.games.solitaire.data.SolitaireStatsRepository
+import com.vayunmathur.games.solitaire.data.SolitaireSettingsRepository
+import com.vayunmathur.games.solitaire.data.SpiderState
 import com.vayunmathur.library.util.AchievementsManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,15 +28,15 @@ data class DragInfo(
     val sourceId: String,
     val offset: Offset = Offset.Zero,
     val startPos: Offset = Offset.Zero,
-    val cardSize: androidx.compose.ui.unit.IntSize = androidx.compose.ui.unit.IntSize.Zero
+    val cardSize: IntSize = IntSize.Zero
 )
 
 class SolitaireViewModel(application: Application) : AndroidViewModel(application), SolitaireActions {
-    internal val _uiState = MutableStateFlow(SolitaireUiState())
-    val uiState: StateFlow<SolitaireUiState> = _uiState.asStateFlow()
+    internal val uiStateInternal = MutableStateFlow(SolitaireUiState())
+    val uiState: StateFlow<SolitaireUiState> = uiStateInternal.asStateFlow()
 
-    internal val _dragInfo = MutableStateFlow<DragInfo?>(null)
-    override val dragInfo: StateFlow<DragInfo?> = _dragInfo.asStateFlow()
+    internal val dragInfoInternal = MutableStateFlow<DragInfo?>(null)
+    override val dragInfo: StateFlow<DragInfo?> = dragInfoInternal.asStateFlow()
 
     internal val statsRepository = SolitaireStatsRepository(application)
     internal val settingsRepository = SolitaireSettingsRepository(application)
@@ -50,7 +62,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun getStats(mode: GameMode): GameStats = statsRepository.getModeStats(mode)
 
-    fun hasActiveGame(): Boolean = with(_uiState.value) {
+    fun hasActiveGame(): Boolean = with(uiStateInternal.value) {
         when (gameMode) {
             GameMode.KLONDIKE -> klondike?.isWon == false
             GameMode.SPIDER -> spider?.isWon == false
@@ -70,16 +82,18 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /** The config of the currently active game, for restart / play-again. */
-    fun currentConfig(): GameConfig = with(_uiState.value) {
+    fun currentConfig(): GameConfig = with(uiStateInternal.value) {
         when (gameMode) {
-            GameMode.KLONDIKE -> klondike?.let { GameConfig(drawMode = it.drawMode, klondikeDifficulty = it.difficulty) }
+            GameMode.KLONDIKE -> klondike?.let {
+                GameConfig(drawMode = it.drawMode, klondikeDifficulty = it.difficulty)
+            }
             GameMode.SPIDER -> spider?.let { GameConfig(spiderSuits = it.suitCount) }
             GameMode.PYRAMID -> pyramid?.let { GameConfig(relaxed = it.relaxed) }
             else -> null
         } ?: GameConfig()
     }
 
-    internal fun currentVariant(): String = with(_uiState.value) {
+    internal fun currentVariant(): String = with(uiStateInternal.value) {
         when (gameMode) {
             GameMode.KLONDIKE -> klondike?.variant
             GameMode.SPIDER -> spider?.variant
@@ -90,64 +104,28 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     override fun giveUp() {
-        val mode = _uiState.value.gameMode ?: return
+        val mode = uiStateInternal.value.gameMode ?: return
         statsRepository.recordGameLost(mode, currentVariant())
-        _uiState.value = SolitaireUiState()
+        uiStateInternal.value = SolitaireUiState()
     }
 
     // --- Klondike ---
-    // Bodies live in SolitaireKlondikeOps.kt; these keep the public/interface API.
-
-    fun newKlondikeGame(config: GameConfig) = newKlondikeGameImpl(config)
+    // Public game operations live as extensions in SolitaireKlondikeOps.kt.
 
     override fun drawFromStock() = drawFromStockImpl()
-
-    fun klondikeMoveWasteToTableau(columnIndex: Int) = klondikeMoveWasteToTableauImpl(columnIndex)
-
-    fun klondikeMoveWasteToFoundation(foundationIndex: Int) = klondikeMoveWasteToFoundationImpl(foundationIndex)
-
-    fun klondikeMoveTableauToFoundation(fromColumn: Int, foundationIndex: Int) =
-        klondikeMoveTableauToFoundationImpl(fromColumn, foundationIndex)
-
-    fun klondikeMoveTableauToTableau(fromColumn: Int, cardIndex: Int, toColumn: Int) =
-        klondikeMoveTableauToTableauImpl(fromColumn, cardIndex, toColumn)
 
     override fun klondikeAutoComplete() = klondikeAutoCompleteImpl()
 
     // --- Spider ---
-    // Bodies live in SolitaireSpiderOps.kt; these keep the public/interface API.
-
-    fun newSpiderGame(config: GameConfig) = newSpiderGameImpl(config)
+    // Public game operations live as extensions in SolitaireSpiderOps.kt.
 
     override fun dealSpiderStock() = dealSpiderStockImpl()
 
-    fun spiderMoveCards(fromColumn: Int, cardIndex: Int, toColumn: Int) =
-        spiderMoveCardsImpl(fromColumn, cardIndex, toColumn)
-
     // --- FreeCell ---
-    // Bodies live in SolitaireFreeCellOps.kt; these keep the public API.
-
-    fun newFreeCellGame() = newFreeCellGameImpl()
-
-    fun freeCellMoveToFreeCell(fromColumn: Int, cellIndex: Int) =
-        freeCellMoveToFreeCellImpl(fromColumn, cellIndex)
-
-    fun freeCellMoveFromFreeCell(cellIndex: Int, toColumn: Int) =
-        freeCellMoveFromFreeCellImpl(cellIndex, toColumn)
-
-    fun freeCellMoveFreeCellToFoundation(cellIndex: Int, foundationIndex: Int) =
-        freeCellMoveFreeCellToFoundationImpl(cellIndex, foundationIndex)
-
-    fun freeCellMoveTableauToFoundation(fromColumn: Int, foundationIndex: Int) =
-        freeCellMoveTableauToFoundationImpl(fromColumn, foundationIndex)
-
-    fun freeCellMoveTableauToTableau(fromColumn: Int, cardIndex: Int, toColumn: Int) =
-        freeCellMoveTableauToTableauImpl(fromColumn, cardIndex, toColumn)
+    // Public game operations live as extensions in SolitaireFreeCellOps.kt.
 
     // --- Pyramid ---
-    // Bodies live in SolitairePyramidOps.kt; these keep the public/interface API.
-
-    fun newPyramidGame(config: GameConfig) = newPyramidGameImpl(config)
+    // Public game operations live as extensions in SolitairePyramidOps.kt.
 
     /**
      * Tap a card in the pyramid or on the waste. If it forms a valid pair with
@@ -162,9 +140,6 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
     // --- Shared ---
     // Drag/drop/auto-move bodies live in SolitaireDragOps.kt; these keep the public/interface API.
 
-    fun tryMoveByDrag(sourceId: String, dropOffset: Offset, cardSize: androidx.compose.ui.unit.IntSize = androidx.compose.ui.unit.IntSize.Zero) =
-        tryMoveByDragImpl(sourceId, dropOffset, cardSize)
-
     // --- Tap to move (auto) ---
 
     override fun autoMove(sourceId: String) = autoMoveImpl(sourceId)
@@ -173,56 +148,59 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
      * Starts a drag from [sourceId], deriving the carried cards from current state.
      * Returns false (and starts nothing) when that source holds no card.
      */
-    override fun startDrag(sourceId: String, startPos: Offset, cardSize: androidx.compose.ui.unit.IntSize): Boolean =
-        startDragImpl(sourceId, startPos, cardSize)
+    override fun startDrag(
+        sourceId: String,
+        startPos: Offset,
+        cardSize: IntSize,
+    ): Boolean = startDragImpl(sourceId, startPos, cardSize)
 
     override fun updateDrag(offset: Offset) = updateDragImpl(offset)
 
-    override fun endDrag(dropOffset: Offset, cardSize: androidx.compose.ui.unit.IntSize) =
+    override fun endDrag(dropOffset: Offset, cardSize: IntSize) =
         endDragImpl(dropOffset, cardSize)
 
     override fun cancelDrag() = cancelDragImpl()
 
     override fun undo() {
-        val history = _uiState.value.history
+        val history = uiStateInternal.value.history
         if (history.isEmpty()) return
         val prev = history.last()
         val newHistory = history.dropLast(1)
         when (prev) {
-            is KlondikeState -> _uiState.update {
+            is KlondikeState -> uiStateInternal.update {
                 it.copy(klondike = prev.copy(usedUndo = true), history = newHistory)
             }
-            is SpiderState -> _uiState.update {
+            is SpiderState -> uiStateInternal.update {
                 it.copy(spider = prev.copy(usedUndo = true), history = newHistory)
             }
-            is FreeCellState -> _uiState.update {
+            is FreeCellState -> uiStateInternal.update {
                 it.copy(freeCell = prev.copy(usedUndo = true), history = newHistory)
             }
-            is PyramidState -> _uiState.update {
+            is PyramidState -> uiStateInternal.update {
                 it.copy(pyramid = prev.copy(usedUndo = true), history = newHistory)
             }
         }
     }
 
     override fun restart() {
-        val mode = _uiState.value.gameMode ?: return
+        val mode = uiStateInternal.value.gameMode ?: return
         selectMode(mode, currentConfig())
     }
 
     fun incrementTimer() {
-        _uiState.update { state ->
+        uiStateInternal.update { state ->
             when (state.gameMode) {
                 GameMode.KLONDIKE -> state.copy(
-                    klondike = state.klondike?.let { if (!it.isWon) it.copy(elapsedSeconds = it.elapsedSeconds + 1) else it }
+                    klondike = state.klondike?.tick(),
                 )
                 GameMode.SPIDER -> state.copy(
-                    spider = state.spider?.let { if (!it.isWon) it.copy(elapsedSeconds = it.elapsedSeconds + 1) else it }
+                    spider = state.spider?.tick(),
                 )
                 GameMode.FREECELL -> state.copy(
-                    freeCell = state.freeCell?.let { if (!it.isWon) it.copy(elapsedSeconds = it.elapsedSeconds + 1) else it }
+                    freeCell = state.freeCell?.tick(),
                 )
                 GameMode.PYRAMID -> state.copy(
-                    pyramid = state.pyramid?.let { if (!it.isWon) it.copy(elapsedSeconds = it.elapsedSeconds + 1) else it }
+                    pyramid = state.pyramid?.tick(),
                 )
                 null -> state
             }
@@ -234,7 +212,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     internal fun saveHistory() {
-        val state = _uiState.value
+        val state = uiStateInternal.value
         val current: Any = when (state.gameMode) {
             GameMode.KLONDIKE -> state.klondike ?: return
             GameMode.SPIDER -> state.spider ?: return
@@ -242,16 +220,18 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
             GameMode.PYRAMID -> state.pyramid ?: return
             null -> return
         }
-        _uiState.update { it.copy(history = it.history + current) }
+        uiStateInternal.update { it.copy(history = it.history + current) }
     }
 
-    internal fun onGameWon(mode: GameMode, timeSeconds: Int, moves: Int, usedUndo: Boolean) {
-        statsRepository.recordGameWon(mode, currentVariant(), timeSeconds, moves)
+    internal fun onGameWon(mode: GameMode, timeSeconds: Int, usedUndo: Boolean) {
+        statsRepository.recordGameWon(mode, currentVariant(), timeSeconds)
         achievementsManager.onAchievementUnlocked("first_win")
         when (mode) {
             GameMode.KLONDIKE -> {
                 achievementsManager.onAchievementUnlocked("klondike_first")
-                if (timeSeconds < 180) achievementsManager.onAchievementUnlocked("speed_demon")
+                if (timeSeconds < SPEED_DEMON_SECONDS) {
+                    achievementsManager.onAchievementUnlocked("speed_demon")
+                }
             }
             GameMode.SPIDER -> achievementsManager.onAchievementUnlocked("spider_first")
             GameMode.FREECELL -> achievementsManager.onAchievementUnlocked("freecell_first")
@@ -262,6 +242,11 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         achievementsManager.onProgressUpdated("wins_10", totalWins)
         achievementsManager.onProgressUpdated("wins_50", totalWins)
         achievementsManager.onProgressUpdated("win_streak_5", statsRepository.getBestWinStreak())
+    }
+
+    companion object {
+        /** Klondike win under three minutes earns the speed achievement. */
+        private const val SPEED_DEMON_SECONDS = 180
     }
 }
 

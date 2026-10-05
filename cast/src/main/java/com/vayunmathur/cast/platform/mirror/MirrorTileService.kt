@@ -117,7 +117,7 @@ class MirrorTileService : TileService() {
      */
     @Suppress("DEPRECATION", "StartActivityAndCollapseDeprecated")
     private fun collapseTo(intent: Intent) {
-        if (Build.VERSION.SDK_INT >= 34) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startActivityAndCollapse(
                 PendingIntent.getActivity(
                     this,

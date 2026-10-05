@@ -68,7 +68,7 @@ fun EditorPage(
 
     EditorScreen(
         state = viewModel.uiState,
-        actions = viewModel,
+        actions = viewModel.actions,
         onOpenFolder = onOpenFolder,
         onOpenFile = { fileLauncher.launch(arrayOf("*/*")) },
         onOpenSettings = onOpenSettings,

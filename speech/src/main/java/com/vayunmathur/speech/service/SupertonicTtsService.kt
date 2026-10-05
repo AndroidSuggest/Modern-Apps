@@ -227,13 +227,24 @@ class SupertonicTtsService : TextToSpeechService() {
 
     /** Supertonic's float samples in `-1..1` as little-endian 16-bit PCM. */
     private fun floatsToPcm16(samples: FloatArray): ByteArray {
-        val out = ByteArray(samples.size * 2)
+        val out = ByteArray(samples.size * BYTES_PER_SAMPLE)
         var i = 0
         for (sample in samples) {
-            val value = (sample.coerceIn(-1f, 1f) * 32767f).roundToInt()
-            out[i++] = (value and 0xFF).toByte()
-            out[i++] = ((value shr 8) and 0xFF).toByte()
+            val value = (sample.coerceIn(-1f, 1f) * PCM_PEAK).roundToInt()
+            out[i++] = (value and BYTE_MASK).toByte()
+            out[i++] = ((value shr BYTE_BITS) and BYTE_MASK).toByte()
         }
         return out
+    }
+
+    private companion object {
+        /** Bytes per 16-bit PCM sample. */
+        const val BYTES_PER_SAMPLE = 2
+        /** Full-scale peak for float-to-int16 conversion. */
+        const val PCM_PEAK = 32767f
+        /** Low byte mask for little-endian packing. */
+        const val BYTE_MASK = 0xFF
+        /** Bits per byte, for the high-byte shift. */
+        const val BYTE_BITS = 8
     }
 }

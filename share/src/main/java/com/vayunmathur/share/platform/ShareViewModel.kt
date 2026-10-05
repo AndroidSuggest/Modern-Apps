@@ -96,6 +96,10 @@ class ShareViewModel(
     private var scanNsdJob: Job? = null
     private var scanBleJob: Job? = null
 
+    // Broad catches are deliberate: discovery flows and the transport throw
+    // undocumented RuntimeExceptions (not just IOException), which read as
+    // "scan/connect failed" rather than a ViewModel crash.
+    @Suppress("TooGenericExceptionCaught")
     override fun startScan() {
         if (_isScanning.value) return
         _isScanning.value = true
@@ -159,6 +163,7 @@ class ShareViewModel(
         _isScanning.value = false
     }
 
+    @Suppress("TooGenericExceptionCaught")
     override fun connectToDevice(device: NearbyDevice) {
         val host = device.host
         val port = device.port
@@ -228,6 +233,7 @@ class ShareViewModel(
         }
     }
 
+    @Suppress("TooGenericExceptionCaught")
     private fun stageTextAsFile(text: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -284,6 +290,9 @@ class ShareViewModelFactory(private val application: Application) : ViewModelPro
     }
 }
 
+// Broad catches are deliberate: content-resolver reads throw undocumented
+// RuntimeExceptions (not just IOException/SecurityException) on bad providers.
+@Suppress("TooGenericExceptionCaught")
 internal fun resolveDisplayName(context: Context, uri: Uri): String? {
     if (uri.scheme == "file") return File(uri.path ?: "").name.takeIf { it.isNotBlank() }
     return try {
@@ -295,6 +304,7 @@ internal fun resolveDisplayName(context: Context, uri: Uri): String? {
     }
 }
 
+@Suppress("TooGenericExceptionCaught")
 internal fun uriToTempFile(context: Context, uri: Uri): File? {
     return try {
         val name = resolveDisplayName(context, uri) ?: "share_file_${System.currentTimeMillis()}"

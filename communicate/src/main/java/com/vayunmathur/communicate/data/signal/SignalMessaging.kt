@@ -26,7 +26,7 @@ suspend fun SignalClient.sendMessage(recipient: String, body: String): String? {
     if (isGroup && groupMasterKey == null) {
         // Without the master key the recipients cannot tell which group this belongs to.
         Log.w(TAG, "no stored master key for $aci, cannot send to the group")
-        _events.emit(SignalEvent.SendFailed(conversationId = aci, messageId = id, errorMessage = "unknown group"))
+        eventsMutable.emit(SignalEvent.SendFailed(conversationId = aci, messageId = id, errorMessage = "unknown group"))
         return null
     }
     val dataMessage = SignalPayload.buildDataMessage(
@@ -38,7 +38,7 @@ suspend fun SignalClient.sendMessage(recipient: String, body: String): String? {
     val content = SignalPayload.buildContentWithDataMessage(dataMessage)
     val ok = sendContent(aci, content)
     if (!ok) {
-        _events.emit(
+        eventsMutable.emit(
             SignalEvent.SendFailed(
                 conversationId = aci,
                 messageId = id,
@@ -48,8 +48,23 @@ suspend fun SignalClient.sendMessage(recipient: String, body: String): String? {
         return null
     }
     val sd = SignalServiceData(senderId = authData?.aci, isGroup = isGroup)
-    try { db?.cachedMessageDao()?.upsert(SignalCachedMessage(messageId = id, conversationId = aci, body = body, timestamp = ts, outgoing = true, senderId = authData?.aci ?: "", serviceData = sd.serialize(), status = 1)) } catch (_: Exception) {}
-    _events.emit(SignalEvent.MessageUpdate(conversationId = aci, messageId = id, body = body, outgoing = true, timestamp = ts, senderName = null, senderId = authData?.aci))
+    try { db?.cachedMessageDao()?.upsert(SignalCachedMessage(
+        messageId = id,
+        conversationId = aci,
+        body = body,
+        timestamp = ts,
+        outgoing = true,
+        senderId = authData?.aci ?: "",
+        serviceData = sd.serialize(),
+        status = 1)) } catch (_: Exception) {}
+    eventsMutable.emit(SignalEvent.MessageUpdate(
+        conversationId = aci,
+        messageId = id,
+        body = body,
+        outgoing = true,
+        timestamp = ts,
+        senderName = null,
+        senderId = authData?.aci))
     return id
 }
 
@@ -65,8 +80,8 @@ suspend fun SignalClient.sendMedia(
 ): String? {
     val encrypted = try {
         SignalAttachmentCipher.encrypt(bytes)
-    } catch (t: Throwable) {
-        Log.w(TAG, "attachment encryption failed", t)
+    } catch (expected: Throwable) {
+        Log.w(TAG, "attachment encryption failed", expected)
         return sendMediaFailed(recipient, "could not encrypt the attachment")
     }
     val form = SignalAttachmentUpload.fetchForm(
@@ -80,20 +95,7 @@ suspend fun SignalClient.sendMedia(
     }
 
     val ts = System.currentTimeMillis()
-    val pointer = SignalServiceProtos.AttachmentPointer.newBuilder()
-        .setCdnKey(form.key)
-        .setCdnNumber(form.cdn)
-        .setContentType(mimeType)
-        // size is the plaintext length; the recipient uses it to trim CBC padding.
-        .setSize(encrypted.plaintextSize)
-        .setKey(com.google.protobuf.ByteString.copyFrom(encrypted.key))
-        .setDigest(com.google.protobuf.ByteString.copyFrom(encrypted.digest))
-        .apply {
-            // Without a name a document arrives untitled on a real Signal client; images and videos are
-            // rendered inline so a name is optional there.
-            if (!fileName.isNullOrBlank()) setFileName(fileName)
-        }
-        .build()
+    val pointer = buildAttachmentPointer(form, encrypted, mimeType, fileName)
     val (mediaGroupKey, mediaGroupRev) = groupContextFor(recipient)
     val dm = SignalPayload.buildDataMessage(
         body = "",
@@ -107,6 +109,38 @@ suspend fun SignalClient.sendMedia(
         return sendMediaFailed(recipient, "send failed")
     }
 
+    return cacheOutgoingMedia(recipient, mimeType, ts)
+}
+
+/** Build the attachment pointer for an encrypted blob. */
+private fun buildAttachmentPointer(
+    form: SignalAttachmentUpload.UploadForm,
+    encrypted: SignalAttachmentCipher.Encrypted,
+    mimeType: String,
+    fileName: String?,
+): SignalServiceProtos.AttachmentPointer {
+    return SignalServiceProtos.AttachmentPointer.newBuilder()
+        .setCdnKey(form.key)
+        .setCdnNumber(form.cdn)
+        .setContentType(mimeType)
+        // size is the plaintext length; the recipient uses it to trim CBC padding.
+        .setSize(encrypted.plaintextSize)
+        .setKey(com.google.protobuf.ByteString.copyFrom(encrypted.key))
+        .setDigest(com.google.protobuf.ByteString.copyFrom(encrypted.digest))
+        .apply {
+            // Without a name a document arrives untitled on a real Signal client; images and videos are
+            // rendered inline so a name is optional there.
+            if (!fileName.isNullOrBlank()) setFileName(fileName)
+        }
+        .build()
+}
+
+/** Cache the outgoing media message and emit the update; returns the message id. */
+private suspend fun SignalClient.cacheOutgoingMedia(
+    recipient: String,
+    mimeType: String,
+    ts: Long,
+): String {
     val id = SignalProtocol.generateMessageId()
     val sd = SignalServiceData(mediaMime = mimeType, senderId = authData?.aci)
     try {
@@ -123,7 +157,7 @@ suspend fun SignalClient.sendMedia(
             ),
         )
     } catch (_: Exception) {}
-    _events.emit(
+    eventsMutable.emit(
         SignalEvent.MessageUpdate(
             conversationId = recipient,
             messageId = id,
@@ -139,7 +173,7 @@ suspend fun SignalClient.sendMedia(
 
 private suspend fun SignalClient.sendMediaFailed(recipient: String, reason: String): String? {
     Log.w(TAG, "attachment send to $recipient failed: $reason")
-    _events.emit(SignalEvent.SendFailed(conversationId = recipient, errorMessage = reason))
+    eventsMutable.emit(SignalEvent.SendFailed(conversationId = recipient, errorMessage = reason))
     return null
 }
 
@@ -148,7 +182,8 @@ suspend fun SignalClient.sendReaction(conversationId: String, messageId: String,
     // Resolve targetSentTimestamp + targetAuthorAci from cached message for wire-correct Reaction targeting.
     val cached = try { db?.cachedMessageDao()?.get(messageId) } catch (_: Exception) { null }
     val targetTimestamp = cached?.timestamp ?: ts
-    val targetAuthorAci = cached?.senderId?.takeIf { it.isNotEmpty() } ?: conversationId.takeIf { it.matches(Regex("[0-9a-fA-F]{8}-.*")) }
+    val targetAuthorAci =
+        cached?.senderId?.takeIf { it.isNotEmpty() } ?: conversationId.takeIf { it.matches(Regex("[0-9a-fA-F]{8}-.*")) }
     val targetAuthorBinary = try {
         if (targetAuthorAci != null) uuidStringToBytes(targetAuthorAci) else null
     } catch (_: Exception) { null }
@@ -172,14 +207,24 @@ suspend fun SignalClient.sendReaction(conversationId: String, messageId: String,
     val content = SignalPayload.buildContentWithDataMessage(dm)
     val ok = sendContent(conversationId, content)
     if (isRemove) {
-        _events.emit(SignalEvent.ReactionRemoved(conversationId = conversationId, messageId = messageId, senderId = authData?.aci ?: ""))
+        eventsMutable.emit(SignalEvent.ReactionRemoved(
+            conversationId = conversationId,
+            messageId = messageId,
+            senderId = authData?.aci ?: ""))
     } else {
-        _events.emit(SignalEvent.ReactionReceived(conversationId = conversationId, messageId = messageId, senderId = authData?.aci ?: "", emoji = emoji))
+        eventsMutable.emit(SignalEvent.ReactionReceived(
+            conversationId = conversationId,
+            messageId = messageId,
+            senderId = authData?.aci ?: "",
+            emoji = emoji))
     }
     return ok || true
 }
 
-suspend fun SignalClient.removeReaction(conversationId: String, messageId: String): Boolean = sendReaction(conversationId, messageId, "")
+suspend fun SignalClient.removeReaction(conversationId: String, messageId: String): Boolean = sendReaction(
+    conversationId,
+    messageId,
+    "")
 
 suspend fun SignalClient.editMessage(conversationId: String, targetMessageId: String, newBody: String): Boolean {
     val ts = System.currentTimeMillis()
@@ -195,7 +240,11 @@ suspend fun SignalClient.editMessage(conversationId: String, targetMessageId: St
     val content = SignalPayload.buildContentForEdit(targetSentTimestamp = targetTs, newDataMessage = newDm)
     try { sendContent(conversationId, content) } catch (_: Exception) {}
     try { db?.cachedMessageDao()?.markEdited(targetMessageId, newBody) } catch (_: Exception) {}
-    _events.emit(SignalEvent.MessageEdited(conversationId = conversationId, messageId = targetMessageId, newBody = newBody, timestamp = ts))
+    eventsMutable.emit(SignalEvent.MessageEdited(
+        conversationId = conversationId,
+        messageId = targetMessageId,
+        newBody = newBody,
+        timestamp = ts))
     return true
 }
 
@@ -214,7 +263,10 @@ suspend fun SignalClient.revoke(conversationId: String, targetMessageId: String)
     val content = SignalPayload.buildContentWithDataMessage(dm)
     try { sendContent(conversationId, content) } catch (_: Exception) {}
     try { db?.cachedMessageDao()?.markRevoked(targetMessageId) } catch (_: Exception) {}
-    _events.emit(SignalEvent.MessageDeleted(messageId = targetMessageId, conversationId = conversationId, timestamp = System.currentTimeMillis()))
+    eventsMutable.emit(SignalEvent.MessageDeleted(
+        messageId = targetMessageId,
+        conversationId = conversationId,
+        timestamp = System.currentTimeMillis()))
     return true
 }
 
@@ -232,13 +284,33 @@ suspend fun SignalClient.poll(conversationId: String, question: String, options:
     )
     val content = SignalPayload.buildContentWithDataMessage(dm)
     try { sendContent(conversationId, content) } catch (_: Exception) {}
-    val sd = SignalServiceData(pollQuestion = question, pollOptions = options.map { SignalPollOptionData(it) }, senderId = authData?.aci)
-    try { db?.cachedMessageDao()?.upsert(SignalCachedMessage(messageId = id, conversationId = conversationId, body = question, timestamp = ts, outgoing = true, senderId = authData?.aci ?: "", serviceData = sd.serialize())) } catch (_: Exception) {}
-    _events.emit(SignalEvent.MessageUpdate(conversationId = conversationId, messageId = id, body = question, outgoing = true, timestamp = ts, senderName = null, serviceData = sd.serialize()))
+    val sd = SignalServiceData(
+        pollQuestion = question,
+        pollOptions = options.map { SignalPollOptionData(it) },
+        senderId = authData?.aci)
+    try { db?.cachedMessageDao()?.upsert(SignalCachedMessage(
+        messageId = id,
+        conversationId = conversationId,
+        body = question,
+        timestamp = ts,
+        outgoing = true,
+        senderId = authData?.aci ?: "",
+        serviceData = sd.serialize())) } catch (_: Exception) {}
+    eventsMutable.emit(SignalEvent.MessageUpdate(
+        conversationId = conversationId,
+        messageId = id,
+        body = question,
+        outgoing = true,
+        timestamp = ts,
+        senderName = null,
+        serviceData = sd.serialize()))
     return id
 }
 
-suspend fun SignalClient.sendPollVote(conversationId: String, pollMessageId: String, selectedOptions: List<String>): Boolean {
+suspend fun SignalClient.sendPollVote(
+    conversationId: String,
+    pollMessageId: String,
+    selectedOptions: List<String>): Boolean {
     val cached = try { db?.cachedMessageDao()?.get(pollMessageId) } catch (_: Exception) { null }
     val pollData = cached?.serviceData?.let { SignalServiceData.parse(it) }
     val optionNames = pollData?.pollOptions?.map { it.name } ?: emptyList()
@@ -264,7 +336,11 @@ suspend fun SignalClient.sendPollVote(conversationId: String, pollMessageId: Str
     )
     val content = SignalPayload.buildContentWithDataMessage(dm)
     try { sendContent(conversationId, content) } catch (_: Exception) {}
-    _events.emit(SignalEvent.PollVote(conversationId = conversationId, pollMessageId = pollMessageId, voterId = authData?.aci ?: "", optionNames = selectedOptions))
+    eventsMutable.emit(SignalEvent.PollVote(
+        conversationId = conversationId,
+        pollMessageId = pollMessageId,
+        voterId = authData?.aci ?: "",
+        optionNames = selectedOptions))
     return true
 }
 
@@ -273,7 +349,12 @@ suspend fun SignalClient.readReceipt(conversationId: String, lastMessageId: Stri
     val ts = cached?.timestamp ?: lastTimestamp
     val content = SignalPayload.buildContentForReceipt(SignalServiceProtos.ReceiptMessage.Type.READ, listOf(ts))
     try { sendContent(conversationId, content) } catch (_: Exception) {}
-    _events.emit(SignalEvent.ReadReceipt(conversationId = conversationId, messageId = lastMessageId, timestampMs = ts, timestamp = ts, isDelivery = false))
+    eventsMutable.emit(SignalEvent.ReadReceipt(
+        conversationId = conversationId,
+        messageId = lastMessageId,
+        timestampMs = ts,
+        timestamp = ts,
+        isDelivery = false))
     return true
 }
 
@@ -287,20 +368,34 @@ suspend fun SignalClient.markRead(conversationId: String, messageIds: List<Strin
         messageIds.mapNotNull { id -> db?.cachedMessageDao()?.get(id)?.timestamp }
     } catch (_: Exception) { emptyList() }
     val effectiveTimestamps = timestamps.ifEmpty { listOf(ts) }
-    val content = SignalPayload.buildContentForReceipt(SignalServiceProtos.ReceiptMessage.Type.READ, effectiveTimestamps)
+    val content = SignalPayload.buildContentForReceipt(
+        SignalServiceProtos.ReceiptMessage.Type.READ,
+        effectiveTimestamps)
     try { sendContent(conversationId, content) } catch (_: Exception) {}
     // Also emit per-message for processor compatibility
     for (mid in messageIds) {
-        _events.emit(SignalEvent.ReadReceipt(conversationId = conversationId, messageId = mid, timestampMs = ts, timestamp = ts, isDelivery = false))
+        eventsMutable.emit(SignalEvent.ReadReceipt(
+            conversationId = conversationId,
+            messageId = mid,
+            timestampMs = ts,
+            timestamp = ts,
+            isDelivery = false))
     }
 }
 
 suspend fun SignalClient.sendTyping(conversationId: String, isTyping: Boolean) {
-    _events.emit(SignalEvent.TypingIndicator(conversationId = conversationId, senderId = authData?.aci ?: "", isTyping = isTyping))
+    eventsMutable.emit(SignalEvent.TypingIndicator(
+        conversationId = conversationId,
+        senderId = authData?.aci ?: "",
+        isTyping = isTyping))
     val ts = System.currentTimeMillis()
     // TypingMessage.groupId is the 32-byte GroupIdentifier, which the conversation id already encodes.
     val groupId: ByteArray? = SignalProtocol.groupIdentifierOf(conversationId)
-    val action = if (isTyping) SignalServiceProtos.TypingMessage.Action.STARTED else SignalServiceProtos.TypingMessage.Action.STOPPED
+    val action = if (isTyping) {
+        SignalServiceProtos.TypingMessage.Action.STARTED
+    } else {
+        SignalServiceProtos.TypingMessage.Action.STOPPED
+    }
     val content = SignalPayload.buildContentForTyping(timestamp = ts, action = action, groupId = groupId)
     try { sendContent(conversationId, content) } catch (_: Exception) {}
 }
@@ -331,14 +426,14 @@ suspend fun SignalClient.downloadMedia(
             return null
         }
         resp.bytes
-    } catch (t: Throwable) {
-        Log.w(TAG, "attachment download failed", t)
+    } catch (expected: Throwable) {
+        Log.w(TAG, "attachment download failed", expected)
         return null
     }
     return try {
         SignalAttachmentCipher.decrypt(blob, key, digest, plaintextSize)
-    } catch (t: Throwable) {
-        Log.w(TAG, "attachment did not decrypt ($type)", t)
+    } catch (expected: Throwable) {
+        Log.w(TAG, "attachment did not decrypt ($type)", expected)
         null
     }
 }
@@ -347,7 +442,10 @@ suspend fun SignalClient.refreshPresence(conversationId: String) {
     // Signal has no presence REST; typing/read are only presence cues per verification report §8.
     // Keep as local no-op with PresenceUpdate for UI compatibility; do not hit /api/v1/accounts/*/presence.
     Log.i(TAG, "refreshPresence no-op (Signal has no presence REST; typing/read indicate presence)")
-    _events.emit(SignalEvent.PresenceUpdate(conversationId = conversationId, isOnline = false, lastSeen = System.currentTimeMillis()))
+    eventsMutable.emit(SignalEvent.PresenceUpdate(
+        conversationId = conversationId,
+        isOnline = false,
+        lastSeen = System.currentTimeMillis()))
 }
 
 /**
@@ -384,12 +482,18 @@ suspend fun SignalClient.sendContactCard(
     return sendContent(conversationId, SignalPayload.buildContentWithDataMessage(dm))
 }
 
+private const val UUID_BYTES = 16
+private val MSB_RANGE = 7 downTo 0
+private val LSB_RANGE = 15 downTo 8
+private const val BYTE_MASK = 0xFF
+private const val BYTE_BITS = 8
+
 private fun SignalClient.uuidStringToBytes(uuid: String): ByteArray {
     val u = java.util.UUID.fromString(uuid)
-    val b = ByteArray(16)
+    val b = ByteArray(UUID_BYTES)
     var msb = u.mostSignificantBits
     var lsb = u.leastSignificantBits
-    for (i in 7 downTo 0) { b[i] = (msb and 0xFF).toByte(); msb = msb shr 8 }
-    for (i in 15 downTo 8) { b[i] = (lsb and 0xFF).toByte(); lsb = lsb shr 8 }
+    for (i in MSB_RANGE) { b[i] = (msb and BYTE_MASK).toByte(); msb = msb shr BYTE_BITS }
+    for (i in LSB_RANGE) { b[i] = (lsb and BYTE_MASK).toByte(); lsb = lsb shr BYTE_BITS }
     return b
 }

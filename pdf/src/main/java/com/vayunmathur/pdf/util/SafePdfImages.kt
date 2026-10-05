@@ -77,39 +77,11 @@ object SafePdfImages {
         // can do anything, so it must be refused outright — and Rust decimates that path, so
         // an oversized raw image is a contract violation rather than ordinary input. A JPEG
         // commits nothing until the decoder runs and is scaled down there instead.
-        if (format != 1 && w.toLong() * h.toLong() > MAX_IMAGE_PIXELS) return null
+        if (format != FORMAT_JPEG && w.toLong() * h.toLong() > MAX_IMAGE_PIXELS) return null
         return try {
             when (format) {
-                1 -> {
-                    if (data.size > MAX_IMAGE_DATA_BYTES) {
-                        android.util.Log.w("SafePdfParser", "JPEG too large ${data.size}")
-                        null
-                    } else {
-                        // Subsample instead of dropping. Rust hands the JPEG over at full
-                        // dimensions deliberately (images.rs:1082-1087) because this decoder
-                        // is what is supposed to scale it; without inSampleSize it decodes at
-                        // full size, so a 20 MP photo would commit ~80 MB of ARGB_8888.
-                        val opts = android.graphics.BitmapFactory.Options()
-                        opts.inSampleSize = sampleSizeFor(w, h)
-                        android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size, opts)
-                    }
-                }
-                0 -> {
-                    if (data.size < w * h * 4) return null
-                    val pixels = IntArray(w * h)
-                    var p = 0
-                    for (i in pixels.indices) {
-                        val r = data[p].toInt() and 0xFF
-                        val g = data[p + 1].toInt() and 0xFF
-                        val b = data[p + 2].toInt() and 0xFF
-                        val a = data[p + 3].toInt() and 0xFF
-                        pixels[i] = (a shl 24) or (r shl 16) or (g shl 8) or b
-                        p += 4
-                    }
-                    android.graphics.Bitmap.createBitmap(
-                        pixels, w, h, android.graphics.Bitmap.Config.ARGB_8888
-                    )
-                }
+                FORMAT_JPEG -> decodeJpeg(w, h, data)
+                FORMAT_RAW -> decodeRaw(w, h, data)
                 else -> {
                     // Rust returns no image at all for a format it could not produce, so an
                     // unknown format here is a wire mismatch, not a failed decode to paper over.
@@ -117,9 +89,55 @@ object SafePdfImages {
                     null
                 }
             }
-        } catch (t: Throwable) {
-            android.util.Log.w("SafePdfParser", "decodeBitmap failed w=$w h=$h format=$format", t)
+        } catch (expected: IllegalArgumentException) {
+            android.util.Log.w("SafePdfParser", "decodeBitmap failed w=$w h=$h format=$format", expected)
+            null
+        } catch (expected: OutOfMemoryError) {
+            android.util.Log.w("SafePdfParser", "decodeBitmap OOM w=$w h=$h format=$format", expected)
             null
         }
     }
+
+    private fun decodeJpeg(w: Int, h: Int, data: ByteArray): android.graphics.Bitmap? {
+        if (data.size > MAX_IMAGE_DATA_BYTES) {
+            android.util.Log.w("SafePdfParser", "JPEG too large ${data.size}")
+            return null
+        }
+        // Subsample instead of dropping. Rust hands the JPEG over at full
+        // dimensions deliberately (images.rs:1082-1087) because this decoder
+        // is what is supposed to scale it; without inSampleSize it decodes at
+        // full size, so a 20 MP photo would commit ~80 MB of ARGB_8888.
+        val opts = android.graphics.BitmapFactory.Options()
+        opts.inSampleSize = sampleSizeFor(w, h)
+        return android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size, opts)
+    }
+
+    private fun decodeRaw(w: Int, h: Int, data: ByteArray): android.graphics.Bitmap? {
+        if (data.size < w * h * BYTES_PER_PIXEL) return null
+        val pixels = IntArray(w * h)
+        var p = 0
+        for (i in pixels.indices) {
+            val r = data[p].toInt() and CHANNEL_MASK
+            val g = data[p + GREEN_OFF].toInt() and CHANNEL_MASK
+            val b = data[p + BLUE_OFF].toInt() and CHANNEL_MASK
+            val a = data[p + ALPHA_OFF].toInt() and CHANNEL_MASK
+            pixels[i] = (a shl ALPHA_SHIFT) or (r shl RED_SHIFT) or (g shl GREEN_SHIFT) or b
+            p += BYTES_PER_PIXEL
+        }
+        return android.graphics.Bitmap.createBitmap(
+            pixels, w, h, android.graphics.Bitmap.Config.ARGB_8888
+        )
+    }
+
+    private const val FORMAT_JPEG = 1
+    private const val FORMAT_RAW = 0
+    private const val CHANNEL_MASK = 0xFF
+    private const val BYTES_PER_PIXEL = 4
+    private const val GREEN_OFF = 1
+    private const val BLUE_OFF = 2
+    private const val ALPHA_OFF = 3
+    private const val ALPHA_SHIFT = 24
+    private const val RED_SHIFT = 16
+    private const val GREEN_SHIFT = 8
+}
 }

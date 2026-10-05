@@ -27,6 +27,8 @@ import com.vayunmathur.flashcards.R
 import com.vayunmathur.flashcards.Route
 import com.vayunmathur.flashcards.data.NoteTypeKind
 import com.vayunmathur.flashcards.util.FlashcardsViewModel
+import com.vayunmathur.flashcards.util.deleteNoteTypeImpl
+import com.vayunmathur.flashcards.util.saveNoteTypeImpl
 import com.vayunmathur.flashcards.util.NoteTypeEditActions
 import com.vayunmathur.flashcards.util.NoteTypeEditUiState
 import com.vayunmathur.flashcards.util.NoteTypeListActions
@@ -69,7 +71,7 @@ fun NoteTypeListPage(backStack: NavBackStack<Route>, viewModel: FlashcardsViewMo
             override fun back() { backStack.pop() }
             override fun openNoteType(id: Long) { backStack.add(Route.NoteTypeEdit(id)) }
             override fun addNoteType() { backStack.add(Route.NoteTypeEdit(0)) }
-            override fun deleteNoteType(id: Long) { viewModel.deleteNoteType(id) }
+            override fun deleteNoteType(id: Long) { viewModel.deleteNoteTypeImpl(id) }
         }
     }
 
@@ -158,11 +160,11 @@ fun NoteTypeEditPage(backStack: NavBackStack<Route>, viewModel: FlashcardsViewMo
         object : NoteTypeEditActions {
             override fun back() { backStack.pop() }
             override fun save(name: String, css: String, type: Int, fields: List<String>, templates: List<TemplateDraft>) {
-                viewModel.saveNoteType(noteTypeId, name, css, type, fields, templates)
+                viewModel.saveNoteTypeImpl(noteTypeId, name, css, type, fields, templates)
                 backStack.pop()
             }
             override fun delete() {
-                viewModel.deleteNoteType(noteTypeId)
+                viewModel.deleteNoteTypeImpl(noteTypeId)
                 backStack.pop()
             }
         }

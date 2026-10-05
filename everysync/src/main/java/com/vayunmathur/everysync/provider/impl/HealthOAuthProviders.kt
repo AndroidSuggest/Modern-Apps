@@ -42,8 +42,8 @@ class GoogleHealthProvider : SyncProvider {
             val email = (JSON.parseToJsonElement(resp.body) as? JsonObject)
                 ?.get("email")?.jsonPrimitive?.content
             if (!email.isNullOrBlank()) "$email (Google Health)" else "Google Health"
-        } catch (e: Exception) {
-            Log.e(TAG, "resolveAccountName failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "resolveAccountName failed", expected)
             "Google Health"
         }
     }

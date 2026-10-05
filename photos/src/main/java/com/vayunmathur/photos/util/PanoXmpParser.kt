@@ -13,18 +13,27 @@ object PanoXmpParser {
 
     fun parse(xmp: String?): PanoData? {
         if (xmp.isNullOrEmpty()) return null
-        if (!attr(xmp, "UsePanoramaViewer").equals("true", ignoreCase = true)) return null
+        if (!isPanoramaViewerPacket(xmp)) return null
+        val projection = validProjection(xmp) ?: return null
+        return panoDimensions(xmp, projection)
+    }
 
+    private fun isPanoramaViewerPacket(xmp: String): Boolean =
+        attr(xmp, "UsePanoramaViewer").equals("true", ignoreCase = true)
+
+    private fun validProjection(xmp: String): String? {
         val projection = attr(xmp, "ProjectionType")?.trim()?.lowercase() ?: return null
         if (projection != "equirectangular" && projection != "cylindrical") return null
+        return projection
+    }
 
+    private fun panoDimensions(xmp: String, projection: String): PanoData? {
         val fullWidth = intAttr(xmp, "FullPanoWidthPixels") ?: return null
         val fullHeight = intAttr(xmp, "FullPanoHeightPixels") ?: return null
         val croppedWidth = intAttr(xmp, "CroppedAreaImageWidthPixels") ?: return null
         val croppedHeight = intAttr(xmp, "CroppedAreaImageHeightPixels") ?: return null
         val croppedLeft = intAttr(xmp, "CroppedAreaLeftPixels") ?: 0
         val croppedTop = intAttr(xmp, "CroppedAreaTopPixels") ?: 0
-
         return PanoData(fullWidth, fullHeight, croppedWidth, croppedHeight, croppedLeft, croppedTop, projection)
     }
 

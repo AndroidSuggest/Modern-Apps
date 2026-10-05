@@ -4,6 +4,10 @@ import android.graphics.Bitmap
 import kotlin.math.max
 import kotlin.math.sqrt
 
+private const val ALPHA_SHIFT = 24
+private const val RED_SHIFT = 16
+private const val GREEN_SHIFT = 8
+
 enum class MaskType { Brush, RadialGradient, LinearGradient }
 
 data class SelectiveMask(
@@ -26,55 +30,65 @@ data class SelectiveEdits(
 private fun generateSelectiveMask(mask: SelectiveMask, w: Int, h: Int): FloatArray {
     val alpha = FloatArray(w * h)
     when (mask.type) {
-        MaskType.Brush -> {
-            val brushPx = mask.brushSize * max(w, h)
-            for ((bx, by) in mask.brushPoints) {
-                val px = (bx * w).toInt()
-                val py = (by * h).toInt()
-                val r = brushPx.toInt()
-                for (dy in -r..r) {
-                    for (dx in -r..r) {
-                        val x = px + dx
-                        val y = py + dy
-                        if (x in 0 until w && y in 0 until h) {
-                            val dist = sqrt((dx * dx + dy * dy).toFloat())
-                            if (dist <= brushPx) {
-                                val strength = (1f - dist / brushPx).coerceIn(0f, 1f)
-                                val idx = y * w + x
-                                alpha[idx] = maxOf(alpha[idx], strength)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        MaskType.RadialGradient -> {
-            val cx = mask.centerX * w
-            val cy = mask.centerY * h
-            val r = mask.radius * max(w, h)
-            for (y in 0 until h) {
-                for (x in 0 until w) {
-                    val dist = sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy))
-                    alpha[y * w + x] = (1f - dist / r.coerceAtLeast(1f)).coerceIn(0f, 1f)
-                }
-            }
-        }
-        MaskType.LinearGradient -> {
-            val cx = mask.centerX * w
-            val cy = mask.centerY * h
-            val r = mask.radius * max(w, h)
-            val rad = Math.toRadians(mask.angle.toDouble())
-            val nx = -kotlin.math.sin(rad).toFloat()
-            val ny = kotlin.math.cos(rad).toFloat()
-            for (y in 0 until h) {
-                for (x in 0 until w) {
-                    val dist = kotlin.math.abs((x - cx) * nx + (y - cy) * ny)
-                    alpha[y * w + x] = (1f - dist / r.coerceAtLeast(1f)).coerceIn(0f, 1f)
+        MaskType.Brush -> paintBrushMask(mask, alpha, w, h)
+        MaskType.RadialGradient -> paintRadialMask(mask, alpha, w, h)
+        MaskType.LinearGradient -> paintLinearMask(mask, alpha, w, h)
+    }
+    return alpha
+}
+
+private fun paintBrushMask(mask: SelectiveMask, alpha: FloatArray, w: Int, h: Int) {
+    val brushPx = mask.brushSize * max(w, h)
+    for ((bx, by) in mask.brushPoints) {
+        val px = (bx * w).toInt()
+        val py = (by * h).toInt()
+        paintBrushDab(alpha, w, h, brushPx, px, py)
+    }
+}
+
+private fun paintBrushDab(alpha: FloatArray, w: Int, h: Int, brushPx: Float, px: Int, py: Int) {
+    val r = brushPx.toInt()
+    for (dy in -r..r) {
+        for (dx in -r..r) {
+            val x = px + dx
+            val y = py + dy
+            if (x in 0 until w && y in 0 until h) {
+                val dist = sqrt((dx * dx + dy * dy).toFloat())
+                if (dist <= brushPx) {
+                    val strength = (1f - dist / brushPx).coerceIn(0f, 1f)
+                    val idx = y * w + x
+                    alpha[idx] = maxOf(alpha[idx], strength)
                 }
             }
         }
     }
-    return alpha
+}
+
+private fun paintRadialMask(mask: SelectiveMask, alpha: FloatArray, w: Int, h: Int) {
+    val cx = mask.centerX * w
+    val cy = mask.centerY * h
+    val r = mask.radius * max(w, h)
+    for (y in 0 until h) {
+        for (x in 0 until w) {
+            val dist = sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy))
+            alpha[y * w + x] = (1f - dist / r.coerceAtLeast(1f)).coerceIn(0f, 1f)
+        }
+    }
+}
+
+private fun paintLinearMask(mask: SelectiveMask, alpha: FloatArray, w: Int, h: Int) {
+    val cx = mask.centerX * w
+    val cy = mask.centerY * h
+    val r = mask.radius * max(w, h)
+    val rad = Math.toRadians(mask.angle.toDouble())
+    val nx = -kotlin.math.sin(rad).toFloat()
+    val ny = kotlin.math.cos(rad).toFloat()
+    for (y in 0 until h) {
+        for (x in 0 until w) {
+            val dist = kotlin.math.abs((x - cx) * nx + (y - cy) * ny)
+            alpha[y * w + x] = (1f - dist / r.coerceAtLeast(1f)).coerceIn(0f, 1f)
+        }
+    }
 }
 
 fun SelectiveEdits.applySelectiveEdits(bitmap: Bitmap): Bitmap {
@@ -102,7 +116,7 @@ fun SelectiveEdits.applySelectiveEdits(bitmap: Bitmap): Bitmap {
             val r = (oR + (aR - oR) * m).toInt().coerceIn(0, 255)
             val g = (oG + (aG - oG) * m).toInt().coerceIn(0, 255)
             val b = (oB + (aB - oB) * m).toInt().coerceIn(0, 255)
-            origPixels[i] = (oA shl 24) or (r shl 16) or (g shl 8) or b
+            origPixels[i] = (oA shl ALPHA_SHIFT) or (r shl RED_SHIFT) or (g shl GREEN_SHIFT) or b
         }
         result.setPixels(origPixels, 0, w, 0, 0, w, h)
         adjusted.recycle()

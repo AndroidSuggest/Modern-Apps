@@ -2,6 +2,13 @@ package com.vayunmathur.photos.data
 
 import android.graphics.Bitmap
 
+private const val ALPHA_SHIFT = 24
+private const val RED_SHIFT = 16
+private const val GREEN_SHIFT = 8
+private const val CHANNEL_MAX = 255
+private const val CHANNEL_MAX_F = 255f
+private const val GRADIENT_LUT_SIZE = 256
+
 data class GradientStop(val position: Float, val color: Int)
 
 data class GradientMapAdjustment(val stops: List<GradientStop> = emptyList()) {
@@ -10,9 +17,9 @@ data class GradientMapAdjustment(val stops: List<GradientStop> = emptyList()) {
 
 fun GradientMapAdjustment.applyToBitmap(bitmap: Bitmap): Bitmap {
     val sorted = stops.sortedBy { it.position }
-    val lut = IntArray(256)
-    for (v in 0..255) {
-        val t = v / 255f
+    val lut = IntArray(GRADIENT_LUT_SIZE)
+    for (v in 0..CHANNEL_MAX) {
+        val t = v / CHANNEL_MAX_F
         lut[v] = colorAt(sorted, t)
     }
 
@@ -28,7 +35,7 @@ fun GradientMapAdjustment.applyToBitmap(bitmap: Bitmap): Bitmap {
             val nr = (c ushr 16) and 0xFF
             val ng = (c ushr 8) and 0xFF
             val nb = c and 0xFF
-            (a shl 24) or (nr shl 16) or (ng shl 8) or nb
+            (a shl ALPHA_SHIFT) or (nr shl RED_SHIFT) or (ng shl GREEN_SHIFT) or nb
         }
     }
 }
@@ -63,5 +70,5 @@ private fun lerpColor(c0: Int, c1: Int, f: Float): Int {
     val r = (r0 + (r1 - r0) * f).toInt().coerceIn(0, 255)
     val g = (g0 + (g1 - g0) * f).toInt().coerceIn(0, 255)
     val b = (b0 + (b1 - b0) * f).toInt().coerceIn(0, 255)
-    return (a shl 24) or (r shl 16) or (g shl 8) or b
+    return (a shl ALPHA_SHIFT) or (r shl RED_SHIFT) or (g shl GREEN_SHIFT) or b
 }

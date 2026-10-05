@@ -12,9 +12,9 @@ import kotlin.math.roundToInt
  */
 @Serializable
 enum class BoardSize(val cols: Int, val rows: Int) {
-    SMALL(8, 10),
-    MEDIUM(10, 14),
-    LARGE(12, 18);
+    SMALL(cols = 8, rows = 10),
+    MEDIUM(cols = 10, rows = 14),
+    LARGE(cols = 12, rows = 18);
 
     val cellCount: Int get() = cols * rows
 }
@@ -27,10 +27,10 @@ enum class BoardSize(val cols: Int, val rows: Int) {
  */
 @Serializable
 enum class Difficulty(val mineFraction: Double) {
-    EASY(0.10),
-    MEDIUM(0.15),
-    HARD(0.19),
-    EXPERT(0.23);
+    EASY(mineFraction = 0.10),
+    MEDIUM(mineFraction = 0.15),
+    HARD(mineFraction = 0.19),
+    EXPERT(mineFraction = 0.23);
 
     /**
      * Mines on a [size] field.

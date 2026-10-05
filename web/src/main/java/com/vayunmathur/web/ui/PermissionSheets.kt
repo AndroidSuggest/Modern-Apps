@@ -2,7 +2,6 @@ package com.vayunmathur.web.ui
 
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.web.R
-import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -131,7 +130,6 @@ internal fun LocalNetworkPromptSheet(
 @Composable
 internal fun FileChooserSheet(
     mimeTypes: List<String>,
-    onFiles: (Array<Uri>?) -> Unit,
     onCancel: () -> Unit,
     onTriggerPicker: () -> Unit,
 ) {

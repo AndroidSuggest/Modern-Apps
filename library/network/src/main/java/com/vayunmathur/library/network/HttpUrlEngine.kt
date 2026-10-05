@@ -2,6 +2,7 @@ package com.vayunmathur.library.network
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.util.Log
 import java.io.ByteArrayInputStream
 import java.io.Closeable
 import java.io.IOException
@@ -30,9 +31,16 @@ import javax.net.ssl.SSLSocketFactory
  */
 internal object HttpUrlEngine {
 
+    private const val TAG = "HttpUrlEngine"
+
     const val CONNECT_TIMEOUT = 30_000
     const val READ_TIMEOUT = 60_000
     const val MAX_REDIRECTS = 5
+    const val REDIRECT_STATUS_MIN = 301
+    const val REDIRECT_STATUS_MAX = 308
+    const val STATUS_NOT_MODIFIED = 304
+    const val STATUS_SEE_OTHER = 303
+    const val STATUS_BAD_REQUEST = 400
 
     /** Segment size used when draining a body of unknown length. */
     private const val SEGMENT_SIZE = 64 * 1024
@@ -106,32 +114,19 @@ internal object HttpUrlEngine {
         try {
             conn.requestMethod = method
         } catch (_: java.net.ProtocolException) {
-            var clazz: Class<*>? = conn.javaClass
-            var success = false
-            while (clazz != null && !success) {
-                try {
-                    val f = clazz.getDeclaredField("method")
-                    f.isAccessible = true
-                    f.set(conn, method)
-                    success = true
-                } catch (_: Exception) {
-                    clazz = clazz.superclass
-                }
-            }
-            if (!success) {
-                try {
-                    val delegateField = conn.javaClass.getDeclaredField("delegate")
-                    delegateField.isAccessible = true
-                    val delegate = delegateField.get(conn)
-                    val mf = delegate.javaClass.getDeclaredField("method")
-                    mf.isAccessible = true
-                    mf.set(delegate, method)
-                } catch (e: Exception) {
-                    throw java.net.ProtocolException("Cannot set custom method $method: ${e.message}")
-                }
-            }
+            setMethodByReflection(conn, method)
         }
 
+        applyHeaders(conn, headers)
+
+        if (bodyBytes != null) {
+            writeBody(conn, bodyBytes)
+        }
+
+        return conn
+    }
+
+    private fun applyHeaders(conn: HttpURLConnection, headers: Map<String, *>) {
         headers.forEach { (k, v) ->
             when (v) {
                 is Iterable<*> -> v.forEach { elem ->
@@ -140,17 +135,58 @@ internal object HttpUrlEngine {
                 else -> if (v != null) conn.setRequestProperty(k, v.toString())
             }
         }
+    }
 
-        if (bodyBytes != null) {
-            try {
-                conn.setFixedLengthStreamingMode(bodyBytes.size)
-            } catch (_: Exception) {
-                try { conn.setChunkedStreamingMode(0) } catch (_: Exception) {}
-            }
-            conn.outputStream.use { it.write(bodyBytes) }
+    private fun setMethodByReflection(conn: HttpURLConnection, method: String) {
+        var clazz: Class<*>? = conn.javaClass
+        var success = false
+        while (clazz != null && !success) {
+            success = trySetMethodField(clazz, conn, method)
+            clazz = clazz.superclass
         }
+        if (!success) {
+            setDelegateMethod(conn, method)
+        }
+    }
 
-        return conn
+    private fun trySetMethodField(clazz: Class<*>, conn: HttpURLConnection, method: String): Boolean {
+        return try {
+            val f = clazz.getDeclaredField("method")
+            f.isAccessible = true
+            f.set(conn, method)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun setDelegateMethod(conn: HttpURLConnection, method: String) {
+        try {
+            val delegateField = conn.javaClass.getDeclaredField("delegate")
+            delegateField.isAccessible = true
+            val delegate = delegateField.get(conn)
+            val mf = delegate.javaClass.getDeclaredField("method")
+            mf.isAccessible = true
+            mf.set(delegate, method)
+        } catch (e: NoSuchFieldException) {
+            throw IOException("Cannot set custom method $method", e)
+        } catch (e: IllegalAccessException) {
+            throw IOException("Cannot set custom method $method", e)
+        }
+    }
+
+    private fun writeBody(conn: HttpURLConnection, bodyBytes: ByteArray) {
+        try {
+            conn.setFixedLengthStreamingMode(bodyBytes.size)
+        } catch (_: IllegalStateException) {
+            // Already connected (e.g. a redirect reuses the connection): chunked is the fallback.
+            try {
+                conn.setChunkedStreamingMode(0)
+            } catch (_: IllegalStateException) {
+                Log.d(TAG, "streaming mode already fixed; writing body as-is")
+            }
+        }
+        conn.outputStream.use { it.write(bodyBytes) }
     }
 
     fun extractHeaders(conn: HttpURLConnection): Map<String, List<String>> {
@@ -209,68 +245,115 @@ internal object HttpUrlEngine {
                 currentUrl, currentMethod, headers, currentBody,
                 connectTimeoutMs, readTimeoutMs, sslSocketFactory,
             )
-            val status = try {
-                conn.responseCode
-            } catch (e: Exception) {
-                conn.disconnect()
-                if (wrapConnectErrors) {
-                    throw IOException("Failed to connect to $currentUrl: ${e.message}", e)
-                }
-                throw e
-            }
+            val status = readStatus(conn, currentUrl, wrapConnectErrors)
             val msg = conn.responseMessage ?: ""
             val respHeaders = extractHeaders(conn)
             val finalUrl = conn.url.toString()
 
-            if (followRedirects && status in 301..308 && status != 304 && redirects < MAX_REDIRECTS) {
-                val loc = conn.getHeaderField("Location") ?: conn.getHeaderField("location")
-                if (loc != null) {
-                    currentUrl = URL(URL(currentUrl), loc).toString()
-                    if (status == 303) {
-                        currentMethod = "GET"
-                        currentBody = null
-                    }
-                    redirects++
-                    try { conn.inputStream?.close() } catch (_: Exception) {}
-                    conn.disconnect()
-                    continue
-                }
-            }
-
-            val raw: InputStream? = try {
-                if (status >= 400) conn.errorStream ?: conn.inputStream else conn.inputStream
-            } catch (_: Exception) { null }
-
-            val encoding = (conn.getHeaderField("Content-Encoding")
-                ?: conn.getHeaderField("content-encoding"))?.trim()?.lowercase()
-            val identity = encoding.isNullOrEmpty() || encoding == "identity"
-            val declaredLength = conn.getHeaderField("Content-Length")?.toLongOrNull()
-
-            val decompressed = maybeDecompress(conn, raw)
-            val body: InputStream = if (decompressed == null) {
-                conn.disconnect()
-                ByteArrayInputStream(EMPTY_BYTES)
-            } else {
-                object : InputStream() {
-                    override fun read(): Int = decompressed.read()
-                    override fun read(b: ByteArray, off: Int, len: Int): Int = decompressed.read(b, off, len)
-                    override fun available(): Int = decompressed.available()
-                    override fun close() {
-                        try { decompressed.close() } catch (_: Exception) {}
-                        conn.disconnect()
-                    }
-                }
-            }
-
-            result = OpenResponse(
-                status, msg, respHeaders, finalUrl, body,
-                hasStream = decompressed != null,
-                contentLength = declaredLength,
-                isIdentityEncoding = identity,
+            val redirect = nextRedirect(
+                conn,
+                currentUrl,
+                currentMethod,
+                currentBody,
+                status,
+                followRedirects,
+                redirects,
             )
+            if (redirect != null) {
+                currentUrl = redirect.url
+                currentMethod = redirect.method
+                currentBody = redirect.body
+                redirects = redirect.count
+                continue
+            }
+
+            result = buildResponse(conn, status, msg, respHeaders, finalUrl)
         }
 
         result
+    }
+
+    private data class RedirectStep(val url: String, val method: String, val body: ByteArray?, val count: Int)
+
+    private fun nextRedirect(
+        conn: HttpURLConnection,
+        currentUrl: String,
+        currentMethod: String,
+        currentBody: ByteArray?,
+        status: Int,
+        followRedirects: Boolean,
+        redirects: Int,
+    ): RedirectStep? {
+        if (!followRedirects) return null
+        if (status !in REDIRECT_STATUS_MIN..REDIRECT_STATUS_MAX) return null
+        if (status == STATUS_NOT_MODIFIED) return null
+        if (redirects >= MAX_REDIRECTS) return null
+        val loc = conn.getHeaderField("Location") ?: conn.getHeaderField("location") ?: return null
+        val nextUrl = URL(URL(currentUrl), loc).toString()
+        try { conn.inputStream?.close() } catch (_: IOException) {}
+        conn.disconnect()
+        return if (status == STATUS_SEE_OTHER) {
+            RedirectStep(nextUrl, "GET", null, redirects + 1)
+        } else {
+            RedirectStep(nextUrl, currentMethod, currentBody, redirects + 1)
+        }
+    }
+
+    private fun readStatus(conn: HttpURLConnection, currentUrl: String, wrapConnectErrors: Boolean): Int {
+        return try {
+            conn.responseCode
+        } catch (e: IOException) {
+            conn.disconnect()
+            if (wrapConnectErrors) {
+                throw IOException("Failed to connect to $currentUrl: ${e.message}", e)
+            }
+            throw e
+        }
+    }
+
+    private fun buildResponse(
+        conn: HttpURLConnection,
+        status: Int,
+        msg: String,
+        respHeaders: Map<String, List<String>>,
+        finalUrl: String,
+    ): OpenResponse {
+        val raw: InputStream? = try {
+            if (status >= STATUS_BAD_REQUEST) conn.errorStream ?: conn.inputStream else conn.inputStream
+        } catch (_: IOException) { null }
+
+        val encoding = (conn.getHeaderField("Content-Encoding")
+            ?: conn.getHeaderField("content-encoding"))?.trim()?.lowercase()
+        val identity = encoding.isNullOrEmpty() || encoding == "identity"
+        val declaredLength = conn.getHeaderField("Content-Length")?.toLongOrNull()
+
+        val decompressed = maybeDecompress(conn, raw)
+        val body: InputStream = if (decompressed == null) {
+            conn.disconnect()
+            ByteArrayInputStream(EMPTY_BYTES)
+        } else {
+            DisconnectingStream(conn, decompressed)
+        }
+
+        return OpenResponse(
+            status, msg, respHeaders, finalUrl, body,
+            hasStream = decompressed != null,
+            contentLength = declaredLength,
+            isIdentityEncoding = identity,
+        )
+    }
+
+    private class DisconnectingStream(
+        private val conn: HttpURLConnection,
+        private val wrapped: InputStream,
+    ) : InputStream() {
+        override fun read(): Int = wrapped.read()
+        override fun read(b: ByteArray, off: Int, len: Int): Int = wrapped.read(b, off, len)
+        override fun available(): Int = wrapped.available()
+        override fun close() {
+            try { wrapped.close() } catch (_: IOException) {}
+            conn.disconnect()
+        }
     }
 
     /**
@@ -287,31 +370,14 @@ internal object HttpUrlEngine {
         contentLengthHint: Long?,
         isIdentityEncoding: Boolean,
     ): ByteArray {
-        var read = 0L
-
-        // Fills target from [from] until full or EOF; returns how much of it is populated.
-        fun fill(target: ByteArray, from: Int): Int {
-            var used = from
-            while (used < target.size) {
-                val n = try {
-                    input.read(target, used, target.size - used)
-                } catch (e: Exception) {
-                    throw BodyReadException(read, e)
-                }
-                if (n < 0) break
-                used += n
-                read += n
-            }
-            return used
-        }
-
+        val reader = BodyReader(input)
         // Content-Length describes the encoded body, so it is only a size for identity encoding.
         val hint = if (isIdentityEncoding) contentLengthHint else null
         var presized: ByteArray? = null
         var presizedLen = 0
         if (hint != null && hint > 0 && hint <= MAX_PRESIZE) {
             val exact = ByteArray(hint.toInt())
-            presizedLen = fill(exact, 0)
+            presizedLen = reader.fill(exact, 0)
             // Header promised more than the stream delivered.
             if (presizedLen < exact.size) return exact.copyOf(presizedLen)
             presized = exact
@@ -321,31 +387,26 @@ internal object HttpUrlEngine {
         // header understated it) accumulates in segments so nothing is ever reallocated. Each
         // segment is allocated only once a byte for it is in hand, so a body that ended exactly
         // where the header said costs nothing extra.
-        val segments = ArrayList<ByteArray>()
-        var tail = 0L
-        while (true) {
-            val lead = try {
-                input.read()
-            } catch (e: Exception) {
-                throw BodyReadException(read, e)
-            }
-            if (lead < 0) break
-            read += 1
-            val segment = ByteArray(SEGMENT_SIZE)
-            segment[0] = lead.toByte()
-            val used = fill(segment, 1)
-            segments.add(if (used == SEGMENT_SIZE) segment else segment.copyOf(used))
-            tail += used
-            if (used < SEGMENT_SIZE) break
-        }
+        val tailStart = reader.bytesRead
+        val tail = reader.drainTail()
+        val tailBytes = reader.bytesRead - tailStart
 
-        if (presized != null && tail == 0L) return presized
+        if (presized != null && tail.isEmpty()) return presized
         if (presized == null) {
-            if (segments.isEmpty()) return EMPTY_BYTES
-            if (segments.size == 1) return segments[0]
+            if (tail.isEmpty()) return EMPTY_BYTES
+            if (tail.size == 1) return tail[0]
         }
 
-        val total = presizedLen + tail
+        return assemble(presized, presizedLen, tail, tailBytes)
+    }
+
+    private fun assemble(
+        presized: ByteArray?,
+        presizedLen: Int,
+        segments: List<ByteArray>,
+        tailBytes: Long,
+    ): ByteArray {
+        val total = presizedLen + tailBytes
         if (total > Int.MAX_VALUE) {
             throw IOException("Response body of $total bytes cannot be returned as a single array")
         }
@@ -362,6 +423,56 @@ internal object HttpUrlEngine {
         return out
     }
 
+    /** Fills caller's buffer from [input], tracking bytes read and naming read failures. */
+    private class BodyReader(private val input: InputStream) {
+        var bytesRead = 0L
+            private set
+
+        // Fills target from [from] until full or EOF; returns how much of it is populated.
+        fun fill(target: ByteArray, from: Int): Int {
+            var used = from
+            while (used < target.size) {
+                val n = try {
+                    input.read(target, used, target.size - used)
+                } catch (e: IOException) {
+                    throw BodyReadException(bytesRead, e)
+                }
+                if (n < 0) break
+                used += n
+                bytesRead += n
+            }
+            return used
+        }
+
+        fun drainTail(): List<ByteArray> {
+            val segments = ArrayList<ByteArray>()
+            var tailOpen = true
+            while (tailOpen) {
+                tailOpen = readTailSegment(segments)
+            }
+            return segments
+        }
+
+        /**
+         * Reads one segment. Returns false when the tail is over
+         * (EOF, short segment, or read error ends the body).
+         */
+        private fun readTailSegment(segments: MutableList<ByteArray>): Boolean {
+            val lead = try {
+                input.read()
+            } catch (e: IOException) {
+                throw BodyReadException(bytesRead, e)
+            }
+            if (lead < 0) return false
+            bytesRead += 1
+            val segment = ByteArray(SEGMENT_SIZE)
+            segment[0] = lead.toByte()
+            val used = fill(segment, 1)
+            segments.add(if (used == SEGMENT_SIZE) segment else segment.copyOf(used))
+            return used == SEGMENT_SIZE
+        }
+    }
+
     /**
      * [drainFully] over an [OpenResponse], naming the endpoint if the read fails.
      *
@@ -373,7 +484,7 @@ internal object HttpUrlEngine {
     } catch (e: BodyReadException) {
         throw IOException(
             "Failed to read response body from ${response.finalUrl} after ${e.bytesRead} bytes",
-            e.cause,
+            e,
         )
     }
 

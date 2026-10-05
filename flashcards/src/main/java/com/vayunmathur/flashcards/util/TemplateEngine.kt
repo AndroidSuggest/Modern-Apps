@@ -15,10 +15,12 @@ package com.vayunmathur.flashcards.util
  * types, or null for standard note types.
  */
 object TemplateEngine {
-
     private val clozeRegex = Regex("""\{\{c(\d+)::(.*?)(?:::(.*?))?\}\}""", RegexOption.DOT_MATCHES_ALL)
     private val clozeFieldRegex = Regex("""\{\{cloze:([^}]+)\}\}""")
     private val typeRegex = Regex("""\{\{type:([^}]+)\}\}""")
+
+    /** Bound on nested-conditional passes; templates deeper than this are left as-is. */
+    private const val MAX_CONDITIONAL_PASSES = 100
     private val sectionRegex = Regex(
         """\{\{([#^])([^}]+)\}\}((?:(?!\{\{[#^/]).)*?)\{\{/([^}]+)\}\}""",
         RegexOption.DOT_MATCHES_ALL,
@@ -67,7 +69,7 @@ object TemplateEngine {
     private fun processConditionals(fmt: String, fields: Map<String, String>, clozeOrd: Int?): String {
         var text = fmt
         var guard = 0
-        while (guard++ < 100) {
+        while (guard++ < MAX_CONDITIONAL_PASSES) {
             val match = sectionRegex.find(text) ?: break
             val kind = match.groupValues[1]
             val name = match.groupValues[2].trim()

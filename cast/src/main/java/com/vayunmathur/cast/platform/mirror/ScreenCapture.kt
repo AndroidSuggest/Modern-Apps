@@ -31,7 +31,16 @@ class ScreenCapture(private val projection: MediaProjection) {
             null,
         )
         display != null
-    } catch (e: Exception) {
+    } catch (e: SecurityException) {
+        Log.w(TAG, "could not create the virtual display", e)
+        false
+    } catch (e: IllegalStateException) {
+        Log.w(TAG, "could not create the virtual display", e)
+        false
+    } catch (e: IllegalArgumentException) {
+        Log.w(TAG, "could not create the virtual display", e)
+        false
+    } catch (e: UnsupportedOperationException) {
         Log.w(TAG, "could not create the virtual display", e)
         false
     }

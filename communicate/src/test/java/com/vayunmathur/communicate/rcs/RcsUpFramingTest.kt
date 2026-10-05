@@ -476,7 +476,8 @@ class RcsUpFramingTest {
     fun digestHeaderKnownAnswer() {
         // Same RFC 2617 vector as the hash test, through the full header builder.
         val header = RcsGbaAuth.digestAuthorizationHeader(
-            challenge = "Digest realm=\"testrealm@host.com\", nonce=\"dcd98b7102dd2f0e8b11d0f600bfb0c093\", qop=\"auth\"",
+            challenge =
+                "Digest realm=\"testrealm@host.com\", nonce=\"dcd98b7102dd2f0e8b11d0f600bfb0c093\", qop=\"auth\"",
             method = "GET",
             uri = "/dir/index.html",
             username = "Mufasa",

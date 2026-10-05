@@ -60,19 +60,19 @@ class CarAppHostSession(
         snapshots: () -> com.vayunmathur.auto.protocol.NavSnapshot?,
     ) {
         val sessionHost = manager ?: return
-        sink.setMapDarkApplier { dark -> sessionHost.setNight(dark) }
-        sink.setNavSource(
+        sink.wiring.setMapDarkApplier { dark -> sessionHost.setNight(dark) }
+        sink.wiring.setNavSource(
             get = snapshots,
             onMapSurface = { surface, w, h ->
                 sessionHost.forwardSurface(surface, w, h)
             },
         )
-        sink.setMapTouchForwarder { action, x, y ->
+        sink.wiring.setMapTouchForwarder { action, x, y ->
             sessionHost.injectMapTouch(action, x, y)
         }
         // Legacy template path: every generic template that parses to a
         // Navigation maps back onto the old card state until Phase C.
-        sink.setHostNavState(HostNavState(mapsPresent = true, connected = false))
+        sink.wiring.setHostNavState(HostNavState(mapsPresent = true, connected = false))
     }
 
     /** Tears every session down; the service still owns the `Surface`. */
@@ -97,8 +97,8 @@ class CarAppHostSession(
     }
 
     /** Maps one parsed template onto the legacy card state. */
-    fun onTemplate(component: ComponentName, template: HostTemplate) {
-        HostTemplateBus.toLegacy(template)?.let { video()?.setHostNavState(it) }
+    fun onTemplate(template: HostTemplate) {
+        HostTemplateBus.toLegacy(template)?.let { video()?.wiring?.setHostNavState(it) }
     }
 
     private fun discover(): List<DiscoveredApp> {

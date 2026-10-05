@@ -27,9 +27,17 @@ fun InsertTableDialog(onInsert: (rows: Int, cols: Int) -> Unit, onDismiss: () ->
         title = { Text(stringResource(R.string.insert_table)) },
         text = {
             Column {
-                TextField(value = rows, onValueChange = { rows = it }, label = { Text(stringResource(R.string.rows)) }, singleLine = true)
+                TextField(
+                    value = rows,
+                    onValueChange = { rows = it },
+                    label = { Text(stringResource(R.string.rows)) },
+                    singleLine = true)
                 Spacer(Modifier.height(8.dp))
-                TextField(value = cols, onValueChange = { cols = it }, label = { Text(stringResource(R.string.columns)) }, singleLine = true)
+                TextField(
+                    value = cols,
+                    onValueChange = { cols = it },
+                    label = { Text(stringResource(R.string.columns)) },
+                    singleLine = true)
             }
         },
         confirmButton = {

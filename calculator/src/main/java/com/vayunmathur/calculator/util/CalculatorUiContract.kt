@@ -13,8 +13,8 @@ package com.vayunmathur.calculator.util
 data class HistoryEntry(val expression: String, val result: String)
 
 /** How far the graph can be zoomed out and in, in pixels per unit. */
-private const val MinGraphScale = 2.0
-private const val MaxGraphScale = 400000.0
+private const val MIN_GRAPH_SCALE = 2.0
+private const val MAX_GRAPH_SCALE = 400000.0
 
 /** The visible window in graph units. */
 data class GraphBounds(
@@ -63,7 +63,7 @@ data class GraphViewport(
         widthPx: Float,
         heightPx: Float,
     ): GraphViewport {
-        val newScale = (scale * zoom).coerceIn(MinGraphScale, MaxGraphScale)
+        val newScale = (scale * zoom).coerceIn(MIN_GRAPH_SCALE, MAX_GRAPH_SCALE)
         // Reused only for its centre->centroid offset at the new scale.
         val atNewScale = GraphViewport(scale = newScale)
         return GraphViewport(

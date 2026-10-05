@@ -33,7 +33,7 @@ import com.vayunmathur.passwords.data.Password
 
 class PasswordAutofillService : AutofillService() {
 
-    private val TAG = "AutofillService"
+    private val tag = "AutofillService"
 
     private val isDatabaseAvailable by lazy {
         DatabaseHelper(applicationContext).isKeyGenerated()
@@ -100,8 +100,8 @@ class PasswordAutofillService : AutofillService() {
                 }
 
                 callback.onSuccess(responseBuilder.build())
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in onFillRequest", e)
+            } catch (expected: IllegalStateException) {
+                Log.e(tag, "Error in onFillRequest", expected)
                 callback.onSuccess(null)
             }
         }
@@ -114,7 +114,8 @@ class PasswordAutofillService : AutofillService() {
 
         if (!username.isNullOrBlank() && !password.isNullOrBlank()) {
             runBlocking {
-                val existing = repository.getAllPasswords().firstOrNull { it.username == username || it.email == username }
+                val candidates = repository.getAllPasswords()
+                val existing = candidates.firstOrNull { it.username == username || it.email == username }
                 if (existing != null) {
                     repository.upsertPassword(existing.copy(password = password))
                 } else {
@@ -157,8 +158,8 @@ class PasswordAutofillService : AutofillService() {
                         InlinePresentation(inlineContent.slice, inlineSpec, false)
                     )
                 }
-            } catch (e: Exception) {
-                Log.d(TAG, "Could not create inline presentation", e)
+            } catch (expected: IllegalArgumentException) {
+                Log.d(tag, "Could not create inline presentation", expected)
             }
         }
 
@@ -176,7 +177,7 @@ class PasswordAutofillService : AutofillService() {
             val currentHost = try {
                 val uri = if (currentWeb.contains("://")) currentWeb.toUri() else "https://$currentWeb".toUri()
                 uri.host?.lowercase() ?: currentWeb
-            } catch (_: Exception) {
+            } catch (_: IllegalArgumentException) {
                 currentWeb
             }
             // The stored site is the parent: saving example.com fills on login.example.com, but
@@ -207,36 +208,60 @@ class PasswordAutofillService : AutofillService() {
         }
 
         private fun traverse(node: AssistStructure.ViewNode) {
-            if (webDomain == null && node.webDomain != null) {
-                webDomain = node.webDomain
-            }
-
-            val hints = node.autofillHints
-            val htmlName = node.htmlInfo?.attributes?.find { it.first == "name" }?.second?.lowercase()
-            val idEntry = node.idEntry?.lowercase()
-
-            val isUsername = hints?.any { it.contains("username") || it.contains("email") } == true ||
-                    htmlName?.contains("user") == true || htmlName?.contains("email") == true ||
-                    idEntry?.contains("user") == true || idEntry?.contains("email") == true
-
-            val isPassword = hints?.any { it.contains("password") } == true ||
-                    htmlName?.contains("pass") == true ||
-                    idEntry?.contains("pass") == true ||
-                    (node.inputType and 0xFFF) == 0x81
-
-            if (isUsername && usernameId == null) {
-                usernameId = node.autofillId
-                usernameText = node.autofillValue?.textValue?.toString() ?: node.text?.toString()
-            }
-
-            if (isPassword && passwordId == null) {
-                passwordId = node.autofillId
-                passwordText = node.autofillValue?.textValue?.toString() ?: node.text?.toString()
-            }
+            captureDomain(node)
+            captureCredentials(node)
 
             for (i in 0 until node.childCount) {
                 traverse(node.getChildAt(i))
             }
+        }
+
+        private fun captureDomain(node: AssistStructure.ViewNode) {
+            if (webDomain == null && node.webDomain != null) {
+                webDomain = node.webDomain
+            }
+        }
+
+        private fun captureCredentials(node: AssistStructure.ViewNode) {
+            val signals = fieldSignals(node)
+            if (isUsernameField(signals) && usernameId == null) {
+                usernameId = node.autofillId
+                usernameText = node.autofillValue?.textValue?.toString() ?: node.text?.toString()
+            }
+            if (isPasswordField(signals, node.inputType) && passwordId == null) {
+                passwordId = node.autofillId
+                passwordText = node.autofillValue?.textValue?.toString() ?: node.text?.toString()
+            }
+        }
+
+        private data class FieldSignals(
+            val hints: Array<String>?,
+            val htmlName: String?,
+            val idEntry: String?,
+        )
+
+        private fun fieldSignals(node: AssistStructure.ViewNode): FieldSignals = FieldSignals(
+            hints = node.autofillHints,
+            htmlName = node.htmlInfo?.attributes?.find { it.first == "name" }?.second?.lowercase(),
+            idEntry = node.idEntry?.lowercase(),
+        )
+
+        private fun isUsernameField(signals: FieldSignals): Boolean =
+            signals.hints?.any { it.contains("username") || it.contains("email") } == true ||
+                signals.htmlName?.contains("user") == true ||
+                signals.htmlName?.contains("email") == true ||
+                signals.idEntry?.contains("user") == true ||
+                signals.idEntry?.contains("email") == true
+
+        private fun isPasswordField(signals: FieldSignals, inputType: Int): Boolean =
+            signals.hints?.any { it.contains("password") } == true ||
+                signals.htmlName?.contains("pass") == true ||
+                signals.idEntry?.contains("pass") == true ||
+                (inputType and INPUT_TYPE_MASK) == INPUT_TYPE_TEXT_PASSWORD
+
+        companion object {
+            private const val INPUT_TYPE_MASK = 0xFFF
+            private const val INPUT_TYPE_TEXT_PASSWORD = 0x81
         }
     }
 }

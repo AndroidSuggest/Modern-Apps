@@ -37,6 +37,18 @@ object NightCaptureEngine {
     private const val HIGHLIGHT_COMPRESS_START = 220f
     private const val HIGHLIGHT_COMPRESS_FACTOR = 0.38f
 
+    /** ARGB packing shifts, channel mask, JPEG quality, RGBA stride, dimension cap. */
+    private const val ALPHA_SHIFT = 24
+    private const val RED_SHIFT = 16
+    private const val GREEN_SHIFT = 8
+    private const val CHANNEL_MASK = 0xFF
+    private const val CHANNEL_MAX_FLOAT = 255f
+    private const val CHANNEL_MIN = 0
+    private const val CHANNEL_MAX_INT = 255
+    private const val NIGHT_JPEG_QUALITY = 95
+    private const val RGBA_BYTES_PER_PIXEL = 4
+    private const val MAX_FRAME_SIDE_PX = 20000
+
     /**
      * Aligns and merges [burst] into a single brightened bitmap. Falls back to the
      * middle frame if native align/merge is unavailable. Runs off the main thread.
@@ -61,15 +73,15 @@ object NightCaptureEngine {
         source.getPixels(px, 0, w, 0, 0, w, h)
         for (i in 0 until n) {
             val p = px[i]
-            val a = (p ushr 24) and 0xFF
-            val r = (p shr 16) and 0xFF
-            val g = (p shr 8) and 0xFF
-            val b = p and 0xFF
+            val a = (p ushr ALPHA_SHIFT) and CHANNEL_MASK
+            val r = (p shr RED_SHIFT) and CHANNEL_MASK
+            val g = (p shr GREEN_SHIFT) and CHANNEL_MASK
+            val b = p and CHANNEL_MASK
             // Alpha preserved from source, RGB via highlight-preserving curve
             val rr = brightenChannel(r.toFloat())
             val gg = brightenChannel(g.toFloat())
             val bb = brightenChannel(b.toFloat())
-            px[i] = (a shl 24) or (rr shl 16) or (gg shl 8) or bb
+            px[i] = (a shl ALPHA_SHIFT) or (rr shl RED_SHIFT) or (gg shl GREEN_SHIFT) or bb
         }
         if (merged != null && merged !== source) {
             merged.recycle()
@@ -90,7 +102,7 @@ object NightCaptureEngine {
             try {
                 for (f in burst) {
                     val baos = java.io.ByteArrayOutputStream()
-                    f.compress(Bitmap.CompressFormat.JPEG, 95, baos)
+                    f.compress(Bitmap.CompressFormat.JPEG, NIGHT_JPEG_QUALITY, baos)
                     StitchNative.addFrame(handle, baos.toByteArray(), 0f, 0f, 0f)
                 }
                 val jpeg = StitchNative.merge(handle) ?: return null
@@ -109,21 +121,7 @@ object NightCaptureEngine {
             if (handle == 0L) return null
             try {
                 for (f in burst) {
-                    val w = f.width
-                    val h = f.height
-                    if (w <= 0 || h <= 0 || w > 20000 || h > 20000) continue
-                    val ints = IntArray(w * h)
-                    f.getPixels(ints, 0, w, 0, 0, w, h)
-                    val rgba = ByteArray(w * h * 4)
-                    var j = 0
-                    for (p in ints) {
-                        rgba[j] = ((p shr 16) and 0xFF).toByte() // R
-                        rgba[j + 1] = ((p shr 8) and 0xFF).toByte() // G
-                        rgba[j + 2] = (p and 0xFF).toByte() // B
-                        rgba[j + 3] = ((p ushr 24) and 0xFF).toByte() // A
-                        j += 4
-                    }
-                    StitchNative.addNightRgbaFrame(handle, rgba, w, h)
+                    addRgbaFrame(handle, f)
                 }
                 val jpeg = StitchNative.mergeNight(handle) ?: return null
                 BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
@@ -139,6 +137,44 @@ object NightCaptureEngine {
         }
     }
 
+    /** Frame-size guard: non-empty and within the native dimension cap. */
+    private fun isStitchableSize(w: Int, h: Int): Boolean {
+        if (w <= 0 || h <= 0) return false
+        if (w > MAX_FRAME_SIDE_PX || h > MAX_FRAME_SIDE_PX) return false
+        return true
+    }
+
+    /** Converts one frame to RGBA bytes and adds it to the night session. */
+    private fun addRgbaFrame(handle: Long, f: Bitmap) {
+        val w = f.width
+        val h = f.height
+        if (!isStitchableSize(w, h)) return
+        val ints = IntArray(w * h)
+        f.getPixels(ints, 0, w, 0, 0, w, h)
+        val rgba = ByteArray(w * h * RGBA_BYTES_PER_PIXEL)
+        var j = 0
+        for (p in ints) {
+            rgba[j + RED_OFFSET] = ((p shr RED_SHIFT) and CHANNEL_MASK).toByte() // R
+            rgba[j + GREEN_OFFSET] = ((p shr GREEN_SHIFT) and CHANNEL_MASK).toByte() // G
+            rgba[j + BLUE_OFFSET] = (p and CHANNEL_MASK).toByte() // B
+            rgba[j + ALPHA_OFFSET] = ((p ushr ALPHA_SHIFT) and CHANNEL_MASK).toByte() // A
+            j += RGBA_BYTES_PER_PIXEL
+        }
+        StitchNative.addNightRgbaFrame(handle, rgba, w, h)
+    }
+
+    /** Highlight taper: gain at full white and shadow falloff factor. */
+    private const val WHITE_GAIN = 1.15f
+    private const val GAIN_TAPER = 0.65f
+    private const val SHADOW_FALLOFF = 0.3f
+    /** RGBA channel offsets within one pixel. */
+    private const val RED_OFFSET = 0
+    private const val GREEN_OFFSET = 1
+    private const val BLUE_OFFSET = 2
+    private const val ALPHA_OFFSET = 3
+    /** Unit-luminance reference for the normalized brightness ratio. */
+    private const val UNIT_LUMINANCE = 1f
+
     /**
      * Highlight-preserving brightening:
      * - Shadow lift weighted more in dark regions
@@ -146,12 +182,27 @@ object NightCaptureEngine {
      * - Soft knee compression above [HIGHLIGHT_COMPRESS_START]
      */
     private fun brightenChannel(value: Float): Int {
-        val y = value / 255f
-        val taperedGain = NIGHT_GAIN - y * (NIGHT_GAIN - 1.15f) * 0.65f
-        val lifted = value * taperedGain + NIGHT_SHADOW_LIFT * (1f - y) * (1f - y * 0.3f)
-        val compressed = if (lifted > HIGHLIGHT_COMPRESS_START) {
-            HIGHLIGHT_COMPRESS_START + (lifted - HIGHLIGHT_COMPRESS_START) * HIGHLIGHT_COMPRESS_FACTOR
-        } else lifted
-        return compressed.roundToInt().coerceIn(0, 255)
+        val y = value / CHANNEL_MAX_FLOAT
+        val taperedGain = taperedGain(y)
+        val lifted = value * taperedGain + shadowLift(y)
+        val compressed = compressHighlight(lifted)
+        return compressed.roundToInt().coerceIn(CHANNEL_MIN, CHANNEL_MAX_INT)
+    }
+
+    /** Gain tapering from NIGHT_GAIN in shadows toward WHITE_GAIN at full white. */
+    private fun taperedGain(normalizedY: Float): Float {
+        return NIGHT_GAIN - normalizedY * (NIGHT_GAIN - WHITE_GAIN) * GAIN_TAPER
+    }
+
+    /** Shadow lift weighted toward dark regions with a soft falloff. */
+    private fun shadowLift(normalizedY: Float): Float {
+        return NIGHT_SHADOW_LIFT * (UNIT_LUMINANCE - normalizedY) *
+            (UNIT_LUMINANCE - normalizedY * SHADOW_FALLOFF)
+    }
+
+    /** Soft-knee compression above [HIGHLIGHT_COMPRESS_START]. */
+    private fun compressHighlight(lifted: Float): Float {
+        if (lifted <= HIGHLIGHT_COMPRESS_START) return lifted
+        return HIGHLIGHT_COMPRESS_START + (lifted - HIGHLIGHT_COMPRESS_START) * HIGHLIGHT_COMPRESS_FACTOR
     }
 }

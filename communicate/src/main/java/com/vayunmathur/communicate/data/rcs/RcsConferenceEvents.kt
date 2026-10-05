@@ -48,18 +48,17 @@ object RcsConferenceEvents {
             setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
         )
         for (m in userRe.findAll(body)) {
-            val uri = m.groupValues.getOrNull(1)?.trim() ?: continue
+            val uri = m.groupValues.getOrNull(1)?.trim()
             val inner = m.groupValues.getOrNull(2).orEmpty()
-            if (inner.contains("state=\"deleted\"", ignoreCase = true) ||
+            val deleted = inner.contains("state=\"deleted\"", ignoreCase = true) ||
                 inner.contains("<state>deleted</state>", ignoreCase = true)
-            ) {
-                continue
+            if (uri != null && !deleted) {
+                val state = Regex("<state>([^<]+)</state>", RegexOption.IGNORE_CASE)
+                    .find(inner)?.groupValues?.getOrNull(1)?.trim() ?: "full"
+                val display = Regex("<display-text>([^<]*)</display-text>", RegexOption.IGNORE_CASE)
+                    .find(inner)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
+                users += Participant(uri, state, display)
             }
-            val state = Regex("<state>([^<]+)</state>", RegexOption.IGNORE_CASE)
-                .find(inner)?.groupValues?.getOrNull(1)?.trim() ?: "full"
-            val display = Regex("<display-text>([^<]*)</display-text>", RegexOption.IGNORE_CASE)
-                .find(inner)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
-            users += Participant(uri, state, display)
         }
         return ConferenceInfo(entity, version, users)
     }

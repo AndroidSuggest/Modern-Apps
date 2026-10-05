@@ -98,21 +98,32 @@ fun declareGemma4Tools(tools: List<Gemma4Handle.ToolDeclaration>): String = buil
  * must not be acted on: this returns null until the closing marker is present.
  */
 fun parseGemma4ToolCall(reply: String): Gemma4Handle.ToolCall? {
-    val open = reply.indexOf("<|tool_call>call:")
-    if (open < 0) return null
-    val close = reply.indexOf("<tool_call|>", open)
-    if (close < 0) return null
-    val body = reply.substring(open + "<|tool_call>call:".length, close)
+    val body = toolCallBody(reply) ?: return null
     val brace = body.indexOf('{')
     if (brace < 0) return null
     val name = body.substring(0, brace).trim()
     if (name.isEmpty()) return null
+    return Gemma4Handle.ToolCall(name, parseToolArguments(body, brace + 1))
+}
+
+/** The raw call body between the open/close markers, or null when incomplete. */
+private fun toolCallBody(reply: String): String? {
+    val open = reply.indexOf(TOOL_CALL_OPEN)
+    if (open < 0) return null
+    val close = reply.indexOf(TOOL_CALL_CLOSE, open)
+    if (close < 0) return null
+    return reply.substring(open + TOOL_CALL_OPEN.length, close)
+}
+
+/** Parses `key:<|"|>value<|"|>,...` pairs from [body] starting at [at]. */
+@Suppress("LoopWithTooManyJumpStatements")
+private fun parseToolArguments(body: String, at: Int): Map<String, String> {
     val arguments = LinkedHashMap<String, String>()
-    var at = brace + 1
-    while (at < body.length) {
-        val colon = body.indexOf(':', at)
+    var cursor = at
+    while (cursor < body.length) {
+        val colon = body.indexOf(':', cursor)
         if (colon < 0) break
-        val key = body.substring(at, colon).trim().trim(',', '{', '}')
+        val key = body.substring(cursor, colon).trim().trim(',', '{', '}')
         val valueStart = body.indexOf(GEMMA4_QUOTE, colon)
         if (valueStart < 0) break
         val valueEnd = body.indexOf(GEMMA4_QUOTE, valueStart + GEMMA4_QUOTE.length)
@@ -120,11 +131,14 @@ fun parseGemma4ToolCall(reply: String): Gemma4Handle.ToolCall? {
         if (key.isNotEmpty()) {
             arguments[key] = body.substring(valueStart + GEMMA4_QUOTE.length, valueEnd)
         }
-        at = valueEnd + GEMMA4_QUOTE.length
-        if (at < body.length && body[at] == ',') at++
+        cursor = valueEnd + GEMMA4_QUOTE.length
+        if (cursor < body.length && body[cursor] == ',') cursor++
     }
-    return Gemma4Handle.ToolCall(name, arguments)
+    return arguments
 }
+
+private const val TOOL_CALL_OPEN = "<|tool_call>call:"
+private const val TOOL_CALL_CLOSE = "<tool_call|>"
 
 /** A tool's result, in the shape the model expects to read back. */
 fun renderGemma4ToolResponse(name: String, value: String): String =

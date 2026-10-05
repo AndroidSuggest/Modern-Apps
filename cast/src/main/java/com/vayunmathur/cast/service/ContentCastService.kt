@@ -348,9 +348,7 @@ internal fun nowPlayingOf(
     // Nothing whatever to show, so there is no snapshot here - only a message that would blank the
     // television's headline. An empty [resourceId] on its own is fine and expected: that is what a
     // `Surface` session sends, because it has no resource to name.
-    if (title.isEmpty() && author.isEmpty() && album.isEmpty() && artworkResourceId.isEmpty() &&
-        lyricTexts.isNullOrEmpty() && plainLyrics.isEmpty()
-    ) {
+    if (hasNoDisplayableContent(title, author, album, artworkResourceId, lyricTexts, plainLyrics)) {
         return null
     }
 
@@ -373,18 +371,39 @@ internal fun nowPlayingOf(
     )
 }
 
+/** True when a snapshot would carry nothing the TV could show. */
+private fun hasNoDisplayableContent(
+    title: String,
+    author: String,
+    album: String,
+    artworkResourceId: String,
+    lyricTexts: Array<String>?,
+    plainLyrics: String,
+): Boolean = title.isEmpty() && author.isEmpty() && album.isEmpty() &&
+    artworkResourceId.isEmpty() && lyricTexts.isNullOrEmpty() && plainLyrics.isEmpty()
+
 /** Both bounds, applied together: whichever runs out first ends the list. */
 private fun clampLyrics(timesMs: LongArray, texts: Array<String>): List<LyricLine> {
     val lines = ArrayList<LyricLine>(minOf(texts.size, CastContract.MAX_LYRIC_LINES))
     var chars = 0
     for (i in texts.indices) {
-        if (lines.size >= CastContract.MAX_LYRIC_LINES) break
-        val text = texts[i]
-        if (chars + text.length > CastContract.MAX_LYRIC_CHARS) break
-        lines.add(LyricLine(atMs = timesMs[i], text = text))
-        chars += text.length
+        val line = nextLyricLine(timesMs, texts, i, lines.size, chars) ?: break
+        lines.add(line)
+        chars += texts[i].length
     }
     return lines
+}
+
+private fun nextLyricLine(
+    timesMs: LongArray,
+    texts: Array<String>,
+    index: Int,
+    taken: Int,
+    chars: Int,
+): LyricLine? {
+    if (taken >= CastContract.MAX_LYRIC_LINES) return null
+    if (chars + texts[index].length > CastContract.MAX_LYRIC_CHARS) return null
+    return LyricLine(atMs = timesMs[index], text = texts[index])
 }
 
 /** See [nowPlayingOf], which is where everything this reads is actually decided. */

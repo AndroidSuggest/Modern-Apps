@@ -36,6 +36,20 @@ internal object OfflineRouterTransit {
      * get to spin the board reader for a day's worth of stop times.
      */
     private const val MAX_DEPARTURE_PAGES = 12
+    /** Millis per second, for schedule/overlay time conversions. */
+    private const val MILLIS_PER_SECOND = 1000L
+    /** Seconds per minute, for delay display. */
+    private const val SECONDS_PER_MINUTE = 60
+    /** Mask for one unsigned RGB byte of a GTFS `route_color`. */
+    private const val RGB_MASK = 0xFFFFFF
+    /** Minimum geometry doubles for one board/alight coordinate pair. */
+    private const val MIN_GEOMETRY_DOUBLES = 4
+    /** Minimum native coords for a rail line (one [lon, lat] pair). */
+    private const val MIN_RAIL_COORDS = 4
+    /** Minimum decoded points for a drawable rail line. */
+    private const val MIN_RAIL_POINTS = 2
+    /** Stride of one [lon, lat] pair in a native coordinate array. */
+    private const val COORD_PAIR_STRIDE = 2
 
     /**
      * MOTIS realtime, flattened for the JNI overlay arguments. [coords] is
@@ -43,7 +57,7 @@ internal object OfflineRouterTransit {
      * `[schedSecs, delaySecs, cancelled, ...]`, and both are parallel to
      * [routes]. Empty means "plan against the schedule only".
      */
-    private class Overlay(
+    internal class Overlay(
             val coords: DoubleArray,
             val routes: Array<String>,
             val times: IntArray,
@@ -116,42 +130,62 @@ internal object OfflineRouterTransit {
             start: GeoPoint,
             end: GeoPoint
     ): RouteService.Route? = withContext(Dispatchers.Default) {
-        val base = OfflineRouter.transitBase(context) ?: return@withContext null
+        val base = OfflineRouterLifecycle.transitBase(context) ?: return@withContext null
         val feeds = transitFeeds(base)
         if (feeds.isEmpty()) return@withContext null
 
         for (feed in feeds) {
-            // The index is world-merged, so query times must be in the feed's
-            // timezone. Journeys spanning two zones use the origin's — a known
-            // limitation, but far better than always using the device's.
-            val clock = transitClock(
-                    runCatching {
-                        OfflineRouter.getFeedTimezoneNative(base, feed, start.latitude, start.longitude)
-                    }.getOrNull()
-            )
-            val plan = { overlay: Overlay ->
-                try {
-                    OfflineRouter.findTransitRouteNative(
-                            base, feed,
-                            start.latitude, start.longitude,
-                            end.latitude, end.longitude,
-                            clock.depSecs, clock.weekday, clock.date,
-                            clock.prevWeekday, clock.prevDate,
-                            overlay.coords, overlay.routes, overlay.times
-                    )
-                } catch (_: Exception) {
-                    null
-                }
-            }
-
-            val scheduled = plan(Overlay.EMPTY)
-            if (scheduled == null || scheduled.isEmpty()) continue
-
-            val overlay = realtimeOverlay(context, journeyStops(scheduled), clock)
-            val raw = if (overlay.isEmpty) scheduled else plan(overlay) ?: scheduled
-            return@withContext OfflineRouterRouteBuilder.buildRoute(context, raw, RouteService.TravelMode.TRANSIT)
+            planFeed(context, base, feed, start, end)?.let { return@withContext it }
         }
         null
+    }
+
+    private suspend fun planFeed(
+        context: Context,
+        base: String,
+        feed: String,
+        start: GeoPoint,
+        end: GeoPoint,
+    ): RouteService.Route? {
+        // The index is world-merged, so query times must be in the feed's
+        // timezone. Journeys spanning two zones use the origin's — a known
+        // limitation, but far better than always using the device's.
+        val clock = transitClock(
+            runCatching {
+                OfflineRouter.getFeedTimezoneNative(base, feed, start.latitude, start.longitude)
+            }.getOrNull()
+        )
+        val scheduled = planJourney(base, feed, start, end, clock, Overlay.EMPTY)
+            ?.takeIf { it.isNotEmpty() } ?: return null
+        val overlay = realtimeOverlay(context, journeyStops(scheduled), clock)
+        val raw = if (overlay.isEmpty) {
+            scheduled
+        } else {
+            planJourney(base, feed, start, end, clock, overlay) ?: scheduled
+        }
+        return OfflineRouterRouteBuilder.buildRoute(context, raw, RouteService.TravelMode.TRANSIT)
+    }
+
+    private fun planJourney(
+        base: String,
+        feed: String,
+        start: GeoPoint,
+        end: GeoPoint,
+        clock: TransitClock,
+        overlay: Overlay,
+    ): Array<OfflineRouter.RawStep>? {
+        return try {
+            OfflineRouter.findTransitRouteNative(
+                base, feed,
+                start.latitude, start.longitude,
+                end.latitude, end.longitude,
+                clock.depSecs, clock.weekday, clock.date,
+                clock.prevWeekday, clock.prevDate,
+                overlay.coords, overlay.routes, overlay.times
+            )
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**
@@ -165,7 +199,7 @@ internal object OfflineRouterTransit {
      * proximity lookup is gone, and it simply stays schedule-only.
      */
     private fun journeyStops(steps: Array<OfflineRouter.RawStep>): List<Pair<GeoPoint, String>> =
-            steps.filter { it.isTransit && it.geometry.size >= 4 }
+            steps.filter { it.isTransit && it.geometry.size >= MIN_GEOMETRY_DOUBLES }
                     .flatMap { s ->
                         val g = s.geometry
                         listOfNotNull(
@@ -187,39 +221,14 @@ internal object OfflineRouterTransit {
      * swallowed it.
      */
     private suspend fun realtimeOverlay(
-            context: Context,
-            stops: List<Pair<GeoPoint, String>>,
-            clock: TransitClock,
+        context: Context,
+        stops: List<Pair<GeoPoint, String>>,
+        clock: TransitClock,
     ): Overlay {
-        if (stops.isEmpty() || !ConnectivityMonitor.isOnline(context)) return Overlay.EMPTY
-        val boards = coroutineScope {
-            stops.map { (p, motisId) ->
-                async(Dispatchers.IO) {
-                    p to runCatching {
-                        TransitousDataSource.departures(motisId)
-                    }.getOrDefault(emptyList())
-                }
-            }.awaitAll()
-        }
-
-        val coords = mutableListOf<Double>()
-        val routes = mutableListOf<String>()
-        val times = mutableListOf<Int>()
-        for ((pos, deps) in boards) {
-            for (d in deps) {
-                if (d.line.isBlank()) continue
-                val delaySecs = ((d.realtimeMillis - d.scheduledMillis) / 1000L).toInt()
-                if (delaySecs == 0 && !d.cancelled) continue
-                coords.add(pos.latitude)
-                coords.add(pos.longitude)
-                routes.add(d.line)
-                times.add(((d.scheduledMillis - clock.midnightMillis) / 1000L).toInt())
-                times.add(delaySecs)
-                times.add(if (d.cancelled) 1 else 0)
-            }
-        }
-        if (routes.isEmpty()) return Overlay.EMPTY
-        return Overlay(coords.toDoubleArray(), routes.toTypedArray(), times.toIntArray())
+        if (stops.isEmpty()) return Overlay.EMPTY
+        if (!ConnectivityMonitor.isOnline(context)) return Overlay.EMPTY
+        val boards = TransitBoards.fetchBoards(stops)
+        return TransitBoards.buildOverlay(boards, clock)
     }
 
     /**
@@ -236,7 +245,7 @@ internal object OfflineRouterTransit {
             lat: Double,
             lon: Double,
     ): TransitStop? = withContext(Dispatchers.Default) {
-        val base = OfflineRouter.transitBase(context) ?: return@withContext null
+        val base = OfflineRouterLifecycle.transitBase(context) ?: return@withContext null
         val feeds = transitFeeds(base)
         for (feed in feeds) {
             val id = runCatching {
@@ -267,55 +276,64 @@ internal object OfflineRouterTransit {
             maxLat: Double,
             maxLon: Double,
     ): List<OfflineRouter.Vehicle> = withContext(Dispatchers.Default) {
-        val base = OfflineRouter.transitBase(context) ?: return@withContext emptyList()
+        val base = OfflineRouterLifecycle.transitBase(context) ?: return@withContext emptyList()
         val feeds = transitFeeds(base)
         if (feeds.isEmpty()) return@withContext emptyList()
 
         val out = mutableListOf<OfflineRouter.Vehicle>()
         for (feed in feeds) {
-            // The pack is world-merged, so query time must be in the feed's zone;
-            // resolve it at the bbox centre.
-            val clock = transitClock(
-                    runCatching {
-                        OfflineRouter.getFeedTimezoneNative(
-                                base, feed, (minLat + maxLat) / 2, (minLon + maxLon) / 2
-                        )
-                    }.getOrNull()
-            )
-            val overlay = Overlay.EMPTY
-            val raw = try {
-                OfflineRouter.activeVehiclesNative(
-                        base, feed,
-                        clock.depSecs, clock.weekday, clock.date,
-                        clock.prevWeekday, clock.prevDate,
-                        overlay.coords, overlay.routes, overlay.times,
-                        minLat, minLon, maxLat, maxLon
-                )
-            } catch (_: Exception) {
-                null
-            } ?: continue
-            // TEMP-DIAG-A (light-rail icon): histogram the raw GTFS
-            // route_type ints the pack returns plus the mapped label, so a
-            // Seattle Link viewport shows the exact value behind the icon.
-            // Remove once the mapping fix lands.
-            if (BuildConfig.DEBUG) {
-                val hist = raw.groupingBy { it.mode }.eachCount().toSortedMap()
-                Log.d("TransitIconDiag", "feed=$feed n=${raw.size} rawRouteType->count=$hist")
-            }
-            for (v in raw) {
-                out.add(
-                        OfflineRouter.Vehicle(
-                                lon = v.lon,
-                                lat = v.lat,
-                                bearing = v.bearing.toFloat(),
-                                colour = v.colour,
-                                mode = gtfsRouteTypeToMode(v.mode),
-                                id = v.id,
-                        )
-                )
-            }
+            out.addAll(vehiclesForFeed(base, feed, minLat, minLon, maxLat, maxLon))
         }
         out
+    }
+
+    private fun vehiclesForFeed(
+        base: String,
+        feed: String,
+        minLat: Double,
+        minLon: Double,
+        maxLat: Double,
+        maxLon: Double,
+    ): List<OfflineRouter.Vehicle> {
+        // The pack is world-merged, so query time must be in the feed's zone;
+        // resolve it at the bbox centre.
+        val clock = transitClock(
+            runCatching {
+                OfflineRouter.getFeedTimezoneNative(
+                    base, feed, (minLat + maxLat) / 2, (minLon + maxLon) / 2
+                )
+            }.getOrNull()
+        )
+        val overlay = Overlay.EMPTY
+        val raw = try {
+            OfflineRouter.activeVehiclesNative(
+                base, feed,
+                clock.depSecs, clock.weekday, clock.date,
+                clock.prevWeekday, clock.prevDate,
+                overlay.coords, overlay.routes, overlay.times,
+                minLat, minLon, maxLat, maxLon
+            )
+        } catch (_: Exception) {
+            null
+        } ?: return emptyList()
+        // TEMP-DIAG-A (light-rail icon): histogram the raw GTFS
+        // route_type ints the pack returns plus the mapped label, so a
+        // Seattle Link viewport shows the exact value behind the icon.
+        // Remove once the mapping fix lands.
+        if (BuildConfig.DEBUG) {
+            val hist = raw.groupingBy { it.mode }.eachCount().toSortedMap()
+            Log.d("TransitIconDiag", "feed=$feed n=${raw.size} rawRouteType->count=$hist")
+        }
+        return raw.map { v ->
+            OfflineRouter.Vehicle(
+                lon = v.lon,
+                lat = v.lat,
+                bearing = v.bearing.toFloat(),
+                colour = v.colour,
+                mode = gtfsRouteTypeToMode(v.mode),
+                id = v.id,
+            )
+        }
     }
 
     /**
@@ -331,22 +349,33 @@ internal object OfflineRouterTransit {
             maxLat: Double,
             maxLon: Double,
     ): List<RailLine> = withContext(Dispatchers.Default) {
-        val base = OfflineRouter.transitBase(context) ?: return@withContext emptyList()
+        val base = OfflineRouterLifecycle.transitBase(context) ?: return@withContext emptyList()
         val feeds = transitFeeds(base)
         if (feeds.isEmpty()) return@withContext emptyList()
 
         val out = mutableListOf<RailLine>()
         for (feed in feeds) {
-            val raw = try {
-                OfflineRouter.getRailLinesNative(
-                        base, feed, minLat, minLon, maxLat, maxLon
-                )
-            } catch (_: Exception) {
-                null
-            } ?: continue
-            out.addAll(rawLinesToRailLines(raw))
+            out.addAll(linesForFeed(base, feed, minLat, minLon, maxLat, maxLon))
         }
         out
+    }
+
+    private fun linesForFeed(
+        base: String,
+        feed: String,
+        minLat: Double,
+        minLon: Double,
+        maxLat: Double,
+        maxLon: Double,
+    ): List<RailLine> {
+        val raw = try {
+            OfflineRouter.getRailLinesNative(
+                base, feed, minLat, minLon, maxLat, maxLon
+            )
+        } catch (_: Exception) {
+            null
+        } ?: return emptyList()
+        return rawLinesToRailLines(raw)
     }
 
     /**
@@ -361,48 +390,59 @@ internal object OfflineRouterTransit {
             lat: Double,
             lon: Double,
     ): List<RailLine> = withContext(Dispatchers.Default) {
-        val base = OfflineRouter.transitBase(context) ?: return@withContext emptyList()
+        val base = OfflineRouterLifecycle.transitBase(context) ?: return@withContext emptyList()
         val feeds = transitFeeds(base)
         if (feeds.isEmpty()) return@withContext emptyList()
 
         val out = mutableListOf<RailLine>()
         for (feed in feeds) {
-            val raw = try {
-                OfflineRouter.getStopLinesNative(base, feed, lat, lon)
-            } catch (_: Exception) {
-                null
-            } ?: continue
-            out.addAll(rawLinesToRailLines(raw))
+            out.addAll(stopLinesForFeed(base, feed, lat, lon))
         }
         out
+    }
+
+    private fun stopLinesForFeed(base: String, feed: String, lat: Double, lon: Double): List<RailLine> {
+        val raw = try {
+            OfflineRouter.getStopLinesNative(base, feed, lat, lon)
+        } catch (_: Exception) {
+            null
+        } ?: return emptyList()
+        return rawLinesToRailLines(raw)
     }
 
     private fun rawLinesToRailLines(raw: Array<OfflineRouter.RawRailLine>): List<RailLine> {
         val out = mutableListOf<RailLine>()
         for (line in raw) {
-            if (line.coords.size < 4) continue
-            val points = mutableListOf<GeoPoint>()
-            var i = 0
-            while (i + 1 < line.coords.size) {
-                // Native emits [lon, lat] pairs like a RawStep geometry.
-                points.add(GeoPoint(line.coords[i], line.coords[i + 1]))
-                i += 2
-            }
-            if (points.size < 2) continue
-            out.add(
-                    RailLine(
-                            name = line.name,
-                            color = if (line.color == 0) null
-                                    else String.format("%06X", line.color and 0xFFFFFF),
-                            mode = gtfsRouteTypeToMode(line.routeType),
-                            points = points,
-                            ordinal = line.ordinal,
-                            lanes = line.lanes,
-                            taper = line.taper,
-                    )
-            )
+            lineToRailLine(line)?.let { out.add(it) }
         }
         return out
+    }
+
+    private fun lineToRailLine(line: OfflineRouter.RawRailLine): RailLine? {
+        if (line.coords.size < MIN_RAIL_COORDS) return null
+        val points = linePoints(line.coords)
+        if (points.size < MIN_RAIL_POINTS) return null
+        return RailLine(
+            name = line.name,
+            color = if (line.color == 0) null
+                else String.format("%06X", line.color and RGB_MASK),
+            mode = gtfsRouteTypeToMode(line.routeType),
+            points = points,
+            ordinal = line.ordinal,
+            lanes = line.lanes,
+            taper = line.taper,
+        )
+    }
+
+    private fun linePoints(coords: DoubleArray): List<GeoPoint> {
+        val points = mutableListOf<GeoPoint>()
+        var i = 0
+        while (i + 1 < coords.size) {
+            // Native emits [lon, lat] pairs like a RawStep geometry.
+            points.add(GeoPoint(coords[i], coords[i + 1]))
+            i += COORD_PAIR_STRIDE
+        }
+        return points
     }
 
     /**
@@ -422,57 +462,52 @@ internal object OfflineRouterTransit {
             lat: Double,
             lon: Double,
     ): TripItinerary? = withContext(Dispatchers.Default) {
-        val base = OfflineRouter.transitBase(context) ?: return@withContext null
+        val base = OfflineRouterLifecycle.transitBase(context) ?: return@withContext null
         val feeds = transitFeeds(base)
         for (feed in feeds) {
-            val zoneId = runCatching {
-                OfflineRouter.getFeedTimezoneNative(base, feed, lat, lon)
-            }.getOrNull()
-            val clock = transitClock(zoneId)
-            val pass = { overlay: Overlay ->
-                try {
-                    OfflineRouter.getTripItineraryNative(
-                            base, feed, vehicleId,
-                            clock.weekday, clock.date,
-                            clock.prevWeekday, clock.prevDate,
-                            overlay.coords, overlay.routes, overlay.times
-                    )
-                } catch (_: Exception) {
-                    null
-                }
-            }
-            val scheduled = pass(Overlay.EMPTY) ?: continue
-            val overlay = realtimeOverlay(
-                    context,
-                    scheduled.stops.mapNotNull { s ->
-                        s.motisId.ifBlank { null }?.let { GeoPoint(s.lon, s.lat) to it }
-                    },
-                    clock,
-            )
-            val raw = if (overlay.isEmpty) scheduled else pass(overlay) ?: scheduled
-            return@withContext TripItinerary(
-                    routeName = raw.routeName,
-                    headsign = raw.headsign,
-                    routeColor = if (raw.color == 0) null
-                                 else String.format("%06X", raw.color and 0xFFFFFF),
-                    mode = gtfsRouteTypeToMode(raw.routeType),
-                    cancelled = raw.cancelled,
-                    stops = raw.stops.map { s ->
-                        val arr = clock.midnightMillis + s.arrSecs.toLong() * 1000L
-                        val dep = clock.midnightMillis + s.depSecs.toLong() * 1000L
-                        TripStop(
-                                name = s.name,
-                                lat = s.lat,
-                                lon = s.lon,
-                                arrivesMillis = arr,
-                                departsMillis = dep,
-                                motisId = s.motisId,
-                        )
-                    },
-            )
+            itineraryForFeed(context, base, feed, vehicleId, lat, lon)?.let { return@withContext it }
         }
         null
     }
+
+    private suspend fun itineraryForFeed(
+        context: Context,
+        base: String,
+        feed: String,
+        vehicleId: Long,
+        lat: Double,
+        lon: Double,
+    ): TripItinerary? {
+        val zoneId = runCatching {
+            OfflineRouter.getFeedTimezoneNative(base, feed, lat, lon)
+        }.getOrNull()
+        val clock = transitClock(zoneId)
+        val scheduled = TransitItineraries.fetchItinerary(base, feed, vehicleId, clock, Overlay.EMPTY)
+            ?: return null
+        val overlay = realtimeOverlay(
+            context,
+            scheduled.stops.mapNotNull { s ->
+                s.motisId.ifBlank { null }?.let { GeoPoint(s.lon, s.lat) to it }
+            },
+            clock,
+        )
+        val raw = if (overlay.isEmpty) scheduled
+            else TransitItineraries.fetchItinerary(base, feed, vehicleId, clock, overlay) ?: scheduled
+        return TripItinerary(
+            routeName = raw.routeName,
+            headsign = raw.headsign,
+            routeColor = if (raw.color == 0) null
+                else String.format("%06X", raw.color and RGB_MASK),
+            mode = gtfsRouteTypeToMode(raw.routeType),
+            cancelled = raw.cancelled,
+            stops = raw.stops.map { s -> tripStop(s, clock) },
+        )
+    }
+
+    private fun tripStop(
+        s: OfflineRouter.RawTripStop,
+        clock: TransitClock,
+    ): TripStop = TransitItineraries.tripStop(s, clock)
 
     /**
      * Departure board from the on-device transit index for the stop nearest
@@ -505,81 +540,13 @@ internal object OfflineRouterTransit {
             anchor: java.time.Instant? = null,
             until: java.time.Instant? = null,
     ): List<Departure> = withContext(Dispatchers.Default) {
-        val base = OfflineRouter.transitBase(context) ?: return@withContext emptyList()
+        val base = OfflineRouterLifecycle.transitBase(context) ?: return@withContext emptyList()
         val feeds = transitFeeds(base)
         if (feeds.isEmpty()) return@withContext emptyList()
 
         val all = mutableListOf<Departure>()
         for (feed in feeds) {
-            // Neither the feed's zone nor its nearest stop depends on when we ask, so they are
-            // resolved once even when the board below is walked forward over several pages.
-            val zoneId = runCatching { OfflineRouter.getFeedTimezoneNative(base, feed, lat, lon) }.getOrNull()
-            // The board is fetched before we know which stop it is for, so name the
-            // stop up front from the pack. No pack id (pre-v5, or a feed whose
-            // Transitous source name the build did not know) means no realtime, and
-            // the board stays schedule-only.
-            //
-            // Only the nearest stop's board is fetched, even though the offline
-            // board aggregates co-located platforms within 150 m. That is
-            // deliberate: the Rust overlay matches a delay to a stop within 60 m,
-            // tight enough that adjacent platforms don't collide, so a neighbouring
-            // platform's realtime could not be attributed anyway without carrying
-            // per-stop coordinates back out of the board.
-            val motisId = runCatching {
-                OfflineRouter.nearestStopMotisIdNative(base, feed, lat, lon)
-            }.getOrNull()?.ifBlank { null }
-
-            var from = anchor ?: java.time.Instant.now()
-            var page = 0
-            while (page < MAX_DEPARTURE_PAGES) {
-                page++
-                val clock = transitClock(zoneId, now = { zone -> from.atZone(zone) })
-                // Rebuilt per page because the overlay's times are relative to the clock's
-                // midnight, and a walk of a day either side crosses one. The MOTIS board it
-                // reads is briefly cached, so only the first page pays for the fetch.
-                val overlay = if (motisId == null) {
-                    Overlay.EMPTY
-                } else {
-                    realtimeOverlay(context, listOf(GeoPoint(lon, lat) to motisId), clock)
-                }
-                val raw = try {
-                    OfflineRouter.getStopDeparturesNative(
-                            base, feed, lat, lon,
-                            clock.depSecs, clock.weekday, clock.date,
-                            clock.prevWeekday, clock.prevDate,
-                            overlay.coords, overlay.routes, overlay.times, max
-                    )
-                } catch (_: Exception) {
-                    null
-                } ?: break
-                if (raw.isEmpty()) break
-                for (d in raw) {
-                    val scheduled = clock.midnightMillis + d.depSecs.toLong() * 1000L
-                    all.add(
-                            Departure(
-                                    line = d.routeName,
-                                    headsign = d.headsign,
-                                    scheduledMillis = scheduled,
-                                    realtimeMillis = scheduled + d.delaySecs * 1000L,
-                                    delayMinutes = d.delaySecs / 60,
-                                    realTime = d.realTime,
-                                    platform = null,
-                                    mode = gtfsRouteTypeToMode(d.routeType),
-                                    routeColor = if (d.routeColor == 0) null
-                                                 else String.format("%06X", d.routeColor and 0xFFFFFF),
-                                    cancelled = d.cancelled,
-                                    tripVehicleId = d.tripId,
-                            )
-                    )
-                }
-                if (until == null) break
-                // A short page means the feed has nothing further, not that we arrived.
-                if (raw.size < max) break
-                val last = clock.midnightMillis + raw.last().depSecs.toLong() * 1000L
-                if (last >= until.toEpochMilli()) break
-                // Past the last event returned, or the next page repeats it forever.
-                from = java.time.Instant.ofEpochMilli(last + 1000L)
-            }
+            all.addAll(boardForFeed(context, base, feed, lat, lon, max, anchor, until))
         }
         all.sortBy { it.realtimeMillis }
         // Walking to [until] means the interesting end is the far one: the events just before
@@ -587,17 +554,123 @@ internal object OfflineRouterTransit {
         if (until != null) all.takeLast(max) else all.take(max)
     }
 
-    /** Map a GTFS `route_type` (base + extended ranges) to a coarse mode label. */
-    private fun gtfsRouteTypeToMode(t: Int): String = when (t) {
-        0, 5, 900 -> "TRAM"
-        1, in 400..499 -> "SUBWAY"
-        2, in 100..199 -> "RAIL"
-        3, in 200..299, in 700..799, 800 -> "BUS"
-        4, 1000, 1200 -> "FERRY"
-        6, 1300 -> "AERIAL"
-        7, 1400 -> "FUNICULAR"
-        11 -> "TROLLEYBUS"
-        12 -> "MONORAIL"
-        else -> "TRANSIT"
+    private suspend fun boardForFeed(
+        context: Context,
+        base: String,
+        feed: String,
+        lat: Double,
+        lon: Double,
+        max: Int,
+        anchor: java.time.Instant?,
+        until: java.time.Instant?,
+    ): List<Departure> {
+        // Neither the feed's zone nor its nearest stop depends on when we ask, so they are
+        // resolved once even when the board below is walked forward over several pages.
+        val zoneId = runCatching { OfflineRouter.getFeedTimezoneNative(base, feed, lat, lon) }.getOrNull()
+        // The board is fetched before we know which stop it is for, so name the
+        // stop up front from the pack. No pack id (pre-v5, or a feed whose
+        // Transitous source name the build did not know) means no realtime, and
+        // the board stays schedule-only.
+        //
+        // Only the nearest stop's board is fetched, even though the offline
+        // board aggregates co-located platforms within 150 m. That is
+        // deliberate: the Rust overlay matches a delay to a stop within 60 m,
+        // tight enough that adjacent platforms don't collide, so a neighbouring
+        // platform's realtime could not be attributed anyway without carrying
+        // per-stop coordinates back out of the board.
+        val motisId = runCatching {
+            OfflineRouter.nearestStopMotisIdNative(base, feed, lat, lon)
+        }.getOrNull()?.ifBlank { null }
+
+        val pages = BoardPages(context, base, feed, lat, lon, max, anchor, until, zoneId, motisId)
+        return pages.collectStepped()
     }
+
+    /** Paged board walk for one feed: state + per-page fetch/advance. */
+    private class BoardPages(
+        private val context: Context,
+        private val base: String,
+        private val feed: String,
+        private val lat: Double,
+        private val lon: Double,
+        private val max: Int,
+        anchor: java.time.Instant?,
+        private val until: java.time.Instant?,
+        private val zoneId: String?,
+        private val motisId: String?,
+    ) {
+        private var from: java.time.Instant = anchor ?: java.time.Instant.now()
+        private var page = 0
+        private val all = mutableListOf<Departure>()
+
+        suspend fun collectStepped(): List<Departure> {
+            while (page < MAX_DEPARTURE_PAGES) {
+                page++
+                if (!fetchPage()) break
+            }
+            return all
+        }
+
+        /** Fetch one page; false stops the walk. */
+        private suspend fun fetchPage(): Boolean {
+            val clock = transitClock(zoneId, now = { zone -> from.atZone(zone) })
+            // Rebuilt per page because the overlay's times are relative to the clock's
+            // midnight, and a walk of a day either side crosses one. The MOTIS board it
+            // reads is briefly cached, so only the first page pays for the fetch.
+            val overlay = pageOverlay(clock)
+            val raw = fetchDepartures(base, feed, lat, lon, clock, overlay, max) ?: return false
+            if (raw.isEmpty()) return false
+            for (d in raw) {
+                all.add(departureOf(d, clock))
+            }
+            return advance(raw, clock)
+        }
+
+        /** Overlay for this page (schedule-only when no MOTIS id). */
+        private suspend fun pageOverlay(clock: TransitClock): Overlay {
+            if (motisId == null) return Overlay.EMPTY
+            return realtimeOverlay(context, listOf(GeoPoint(lon, lat) to motisId), clock)
+        }
+
+        /** Advance [from] past this page; false stops the walk. */
+        private fun advance(raw: Array<OfflineRouter.RawDeparture>, clock: TransitClock): Boolean {
+            if (until == null) return false
+            // A short page means the feed has nothing further, not that we arrived.
+            if (raw.size < max) return false
+            val last = clock.midnightMillis + raw.last().depSecs.toLong() * MILLIS_PER_SECOND
+            if (last >= until.toEpochMilli()) return false
+            // Past the last event returned, or the next page repeats it forever.
+            from = java.time.Instant.ofEpochMilli(last + MILLIS_PER_SECOND)
+            return true
+        }
+    }
+
+    private fun fetchDepartures(
+        base: String,
+        feed: String,
+        lat: Double,
+        lon: Double,
+        clock: TransitClock,
+        overlay: Overlay,
+        max: Int,
+    ): Array<OfflineRouter.RawDeparture>? {
+        return try {
+            OfflineRouter.getStopDeparturesNative(
+                base, feed, lat, lon,
+                clock.depSecs, clock.weekday, clock.date,
+                clock.prevWeekday, clock.prevDate,
+                overlay.coords, overlay.routes, overlay.times, max
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun departureOf(
+        d: OfflineRouter.RawDeparture,
+        clock: TransitClock,
+    ): Departure = TransitDepartures.departureOf(d, clock)
+
+    /** Map a GTFS `route_type` (base + extended ranges) to a coarse mode label. */
+    internal fun gtfsRouteTypeToMode(t: Int): String = GtfsRouteTypes.mode(t)
 }

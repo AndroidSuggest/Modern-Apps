@@ -13,7 +13,10 @@ fun Coord.toGeoPoint() = GeoPoint(lon, lat)
 /** @deprecated Use [toGeoPoint] — kept for transitional compat. */
 fun Coord.toPosition() = toGeoPoint()
 
-fun radians(degrees: Double) = degrees * PI / 180
+/** Degrees in a half circle — the divisor converting degrees to radians. */
+private const val DEGREES_IN_HALF_CIRCLE = 180.0
+
+fun radians(degrees: Double) = degrees * PI / DEGREES_IN_HALF_CIRCLE
 
 fun havershine(p1: Coord, p2: Coord): Double {
     val results = FloatArray(1)

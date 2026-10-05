@@ -6,7 +6,15 @@ import androidx.lifecycle.viewModelScope
 import com.vayunmathur.astronomy.data.CatalogRepository
 import com.vayunmathur.astronomy.data.model.PlanetId
 import com.vayunmathur.astronomy.R
-import com.vayunmathur.astronomy.domain.engine.*
+import com.vayunmathur.astronomy.domain.engine.AltAz
+import com.vayunmathur.astronomy.domain.engine.CoordinateTransforms
+import com.vayunmathur.astronomy.domain.engine.LunarCalculator
+import com.vayunmathur.astronomy.domain.engine.PlanetaryCalculator
+import com.vayunmathur.astronomy.domain.engine.RaDec
+import com.vayunmathur.astronomy.domain.engine.RiseSetCalculator
+import com.vayunmathur.astronomy.domain.engine.SolarCalculator
+import com.vayunmathur.astronomy.domain.engine.TimeEngine
+import com.vayunmathur.astronomy.domain.engine.toRad
 import com.vayunmathur.library.sensor.DeviceOrientation
 import com.vayunmathur.astronomy.platform.sensor.LocationProvider
 import com.vayunmathur.library.sensor.OrientationManager
@@ -14,16 +22,26 @@ import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.floor
 import kotlin.time.Clock
-import kotlin.time.Duration.Companion.hours
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
-import kotlin.math.*
 
-data class ObserverLocation(val latRad: Double, val lonRad: Double, val latDeg: Double, val lonDeg: Double, val altM: Double = 0.0)
+data class ObserverLocation(
+    val latRad: Double,
+    val lonRad: Double,
+    val latDeg: Double,
+    val lonDeg: Double,
+    val altM: Double = 0.0,
+)
 
 sealed interface CenterOption {
     data object DevicePointing : CenterOption
@@ -31,11 +49,32 @@ sealed interface CenterOption {
     data class TargetObject(val objectId: String, val azRad: Double, val altRad: Double) : CenterOption
 }
 
-data class VisibleStar(val star: com.vayunmathur.astronomy.data.model.Star, val altAz: AltAz, val raDec: RaDec)
-data class VisiblePlanet(val id: String, val name: String, val altAz: AltAz, val raDec: RaDec, val mag: Double?, val distanceAu: Double)
+data class VisibleStar(
+    val star: com.vayunmathur.astronomy.data.model.Star,
+    val altAz: AltAz,
+    val raDec: RaDec,
+)
+data class VisiblePlanet(
+    val id: String,
+    val name: String,
+    val altAz: AltAz,
+    val raDec: RaDec,
+    val mag: Double?,
+    val distanceAu: Double,
+)
 data class VisibleSun(val altAz: AltAz, val raDec: RaDec, val distanceAu: Double)
-data class VisibleMoon(val altAz: AltAz, val raDec: RaDec, val phase: Double, val illumination: Double, val ageDays: Double)
-data class VisibleDeepSky(val obj: com.vayunmathur.astronomy.data.model.DeepSkyObject, val altAz: AltAz, val raDec: RaDec)
+data class VisibleMoon(
+    val altAz: AltAz,
+    val raDec: RaDec,
+    val phase: Double,
+    val illumination: Double,
+    val ageDays: Double,
+)
+data class VisibleDeepSky(
+    val obj: com.vayunmathur.astronomy.data.model.DeepSkyObject,
+    val altAz: AltAz,
+    val raDec: RaDec,
+)
 
 enum class ConstellationMode { OFF, LINES, LINES_AND_ART }
 
@@ -64,10 +103,20 @@ data class SearchResult(val id: String, val title: String, val subtitle: String,
 
 @OptIn(ExperimentalTime::class)
 class AstronomyViewModel(app: Application) : AndroidViewModel(app), SkyMapActions, SearchActions, SettingsActions {
+    private companion object {
+        const val MIN_FOV_DEG = 10f
+        const val MAX_FOV_DEG = 120f
+        const val TICKER_DELAY_MS = 1000L
+        const val LOCATION_TIMEOUT_MS = 8000L
+        const val TRAJECTORY_HALF_STEPS = 48
+        const val TRAJECTORY_STEP_DAYS = 0.25 / 24.0
+        const val SEARCH_RESULT_LIMIT = 20
+    }
     private val context = getApplication<Application>()
-    private val catalog = CatalogRepository(context)
+    val catalog = CatalogRepository(context)
     private var starIndex: Map<Int, com.vayunmathur.astronomy.data.model.Star> = emptyMap()
     private val ds = DataStoreUtils.getInstance(context)
+    private val prefs = AstronomyPrefs(ds, viewModelScope)
     private val orientationMgr = OrientationManager(context)
 
     private val _simTime = MutableStateFlow(Clock.System.now())
@@ -143,7 +192,9 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app), SkyMapAction
             val resolved = a.anchors.map { an -> an to starIndex[an.hip] }
             if (resolved.any { it.second == null }) return@mapNotNull null
             VisibleArt(a.abbr, a.image, resolved.map { (an, st) ->
-                VisibleArtAnchor(an.x.toFloat(), an.y.toFloat(), CoordinateTransforms.raDecToAltAz(RaDec(st!!.ra, st.dec), lst, obs.latRad))
+                val raDec = RaDec(st!!.ra, st.dec)
+                val altAz = CoordinateTransforms.raDecToAltAz(raDec, lst, obs.latRad)
+                VisibleArtAnchor(an.x.toFloat(), an.y.toFloat(), altAz)
             })
         }
 
@@ -186,7 +237,7 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app), SkyMapAction
         )
     }
 
-    fun getRaDecProvider(objectId: String, refJd: Double): (Double) -> RaDec {
+    fun getRaDecProvider(objectId: String): (Double) -> RaDec {
         return when {
             objectId == "SUN" -> { jd -> SolarCalculator.calc(jd).raDec }
             objectId == "MOON" -> { jd -> LunarCalculator.calc(jd).raDec }
@@ -220,25 +271,6 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app), SkyMapAction
         }
     }
 
-    fun resolveCenter(): Pair<Double, Double> {
-        return when (val vc = _viewCenter.value) {
-            is CenterOption.DevicePointing -> {
-                val orient = _deviceOrientation.value
-                if (orient != null) Pair(orient.pointingAzRad, orient.pointingAltRad)
-                else Pair(0.0, 45.0.toRad())
-            }
-            is CenterOption.Manual -> Pair(vc.azRad, vc.altRad)
-            is CenterOption.TargetObject -> Pair(vc.azRad, vc.altRad)
-        }
-    }
-
-    fun resolveRotation(): Double {
-        return when (_viewCenter.value) {
-            is CenterOption.DevicePointing -> _deviceOrientation.value?.viewRotationRad ?: 0.0
-            else -> 0.0
-        }
-    }
-
     override fun selectObject(id: String) {
         _selectedObjectId.value = id
         updateTrajectoryForSelected()
@@ -261,8 +293,14 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app), SkyMapAction
 
     init {
         loadPrefs()
-        viewModelScope.launch { catalog.loadAll(); starIndex = catalog.stars.associateBy { it.id }; _catalogReady.value = true }
-        viewModelScope.launch { orientationMgr.orientation.collect { _deviceOrientation.value = it } }
+        viewModelScope.launch {
+            catalog.loadAll()
+            starIndex = catalog.stars.associateBy { it.id }
+            _catalogReady.value = true
+        }
+        viewModelScope.launch {
+            orientationMgr.orientation.collect { _deviceOrientation.value = it }
+        }
         orientationMgr.start()
         _viewCenter.value = CenterOption.DevicePointing
         _devicePointingEnabled.value = true
@@ -271,54 +309,98 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app), SkyMapAction
     }
 
     private fun loadPrefs() {
-        _constellationMode.value = runCatching { ConstellationMode.valueOf(ds.getString("astro_const_mode") ?: "LINES") }.getOrDefault(ConstellationMode.LINES)
-        _showGrid.value = ds.getBoolean("astro_show_grid", true) // full-sphere grid per request
-        _showDeepSky.value = ds.getBoolean("astro_show_deep", true)
-        _showPlanets.value = ds.getBoolean("astro_show_planets", true)
-        _magLimit.value = (ds.getDouble("astro_mag_limit")?.toFloat() ?: 6.0f)
-        _nightMode.value = ds.getBoolean("astro_night_mode", false)
-        _showBelowHorizon.value = ds.getBoolean("astro_show_below", true)
-        _fovDeg.value = (ds.getDouble("astro_fov")?.toFloat() ?: 70f)
+        val snapshot = prefs.load()
+        _constellationMode.value = snapshot.constellationMode
+        _showGrid.value = snapshot.showGrid
+        _showDeepSky.value = snapshot.showDeepSky
+        _showPlanets.value = snapshot.showPlanets
+        _magLimit.value = snapshot.magLimit
+        _nightMode.value = snapshot.nightMode
+        _showBelowHorizon.value = snapshot.showBelowHorizon
+        _fovDeg.value = snapshot.fovDeg
         // No still mode: always device pointing
         _devicePointingEnabled.value = true
         _viewCenter.value = CenterOption.DevicePointing
-        ds.getDouble("astro_lat")?.let { latDeg -> ds.getDouble("astro_lon")?.let { lonDeg ->
+        val latDeg = snapshot.latDeg
+        val lonDeg = snapshot.lonDeg
+        if (latDeg != null && lonDeg != null) {
             _observer.value = ObserverLocation(latDeg.toRad(), lonDeg.toRad(), latDeg, lonDeg, 0.0)
-        } }
+        }
     }
 
-    private fun saveBool(key: String, v: Boolean) { viewModelScope.launch { ds.setBoolean(key, v) } }
-    private fun saveDouble(key: String, v: Double) { viewModelScope.launch { ds.setDouble(key, v) } }
-    private fun saveString(key: String, v: String) { viewModelScope.launch { ds.setString(key, v) } }
-
-    override fun setShowConstellations(mode: ConstellationMode) { _constellationMode.value = mode; saveString("astro_const_mode", mode.name) }
-    override fun setShowGrid(v: Boolean) { _showGrid.value = v; saveBool("astro_show_grid", v) }
-    override fun setShowDeepSky(v: Boolean) { _showDeepSky.value = v; saveBool("astro_show_deep", v) }
-    override fun setShowPlanets(v: Boolean) { _showPlanets.value = v; saveBool("astro_show_planets", v) }
-    override fun setNightMode(v: Boolean) { _nightMode.value = v; saveBool("astro_night_mode", v) }
+    override fun setShowConstellations(mode: ConstellationMode) {
+        _constellationMode.value = mode
+        prefs.saveString("astro_const_mode", mode.name)
+    }
+    override fun setShowGrid(v: Boolean) {
+        _showGrid.value = v
+        prefs.saveBool("astro_show_grid", v)
+    }
+    override fun setShowDeepSky(v: Boolean) {
+        _showDeepSky.value = v
+        prefs.saveBool("astro_show_deep", v)
+    }
+    override fun setShowPlanets(v: Boolean) {
+        _showPlanets.value = v
+        prefs.saveBool("astro_show_planets", v)
+    }
+    override fun setNightMode(v: Boolean) {
+        _nightMode.value = v
+        prefs.saveBool("astro_night_mode", v)
+    }
     fun setDevicePointing(v: Boolean) {
-        _devicePointingEnabled.value = v; saveBool("astro_device_pointing", v)
-        if (v) { orientationMgr.start(); _viewCenter.value = CenterOption.DevicePointing } else { orientationMgr.stop(); _viewCenter.value = CenterOption.Manual(0.0, 45.0.toRad()) }
+        _devicePointingEnabled.value = v
+        prefs.saveBool("astro_device_pointing", v)
+        if (v) {
+            orientationMgr.start()
+            _viewCenter.value = CenterOption.DevicePointing
+        } else {
+            orientationMgr.stop()
+            _viewCenter.value = CenterOption.Manual(0.0, 45.0.toRad())
+        }
     }
-    override fun setShowBelowHorizon(v: Boolean) { _showBelowHorizon.value = v; saveBool("astro_show_below", v) }
+    override fun setShowBelowHorizon(v: Boolean) {
+        _showBelowHorizon.value = v
+        prefs.saveBool("astro_show_below", v)
+    }
 
-    override fun setMagLimit(v: Float) { _magLimit.value = v; saveDouble("astro_mag_limit", v.toDouble()) }
-    override fun setFov(v: Float) { _fovDeg.value = v.coerceIn(10f, 120f); saveDouble("astro_fov", v.toDouble()) }
+    override fun setMagLimit(v: Float) {
+        _magLimit.value = v
+        prefs.saveDouble("astro_mag_limit", v.toDouble())
+    }
+    override fun setFov(v: Float) {
+        _fovDeg.value = v.coerceIn(MIN_FOV_DEG, MAX_FOV_DEG)
+        prefs.saveDouble("astro_fov", v.toDouble())
+    }
     override fun setManualLocation(latDeg: Double, lonDeg: Double) {
         _observer.value = ObserverLocation(latDeg.toRad(), lonDeg.toRad(), latDeg, lonDeg)
-        saveDouble("astro_lat", latDeg); saveDouble("astro_lon", lonDeg)
+        prefs.saveDouble("astro_lat", latDeg)
+        prefs.saveDouble("astro_lon", lonDeg)
     }
 
     private fun startTicker() {
         tickerJob?.cancel()
-        tickerJob = viewModelScope.launch { while (true) { if (_isLive.value) _simTime.value = Clock.System.now(); delay(1000) } }
+        tickerJob = viewModelScope.launch {
+            while (true) {
+                if (_isLive.value) { _simTime.value = Clock.System.now() }
+                delay(TICKER_DELAY_MS)
+            }
+        }
     }
 
     override fun refreshLocation() {
         locationJob?.cancel()
         locationJob = viewModelScope.launch {
             if (!LocationProvider.hasPermission(context)) return@launch
-            val loc = withContext(Dispatchers.IO) { try { kotlinx.coroutines.withTimeoutOrNull(8000) { LocationProvider.currentLocation(context) } } catch (_: Exception) { null } }
+            val loc = withContext(Dispatchers.IO) {
+                try {
+                    kotlinx.coroutines.withTimeoutOrNull(LOCATION_TIMEOUT_MS) {
+                        LocationProvider.currentLocation(context)
+                    }
+                } catch (_: Exception) {
+                    null
+                }
+            }
             loc?.let {
                 val latDeg = it.latitude; val lonDeg = it.longitude
                 _observer.value = ObserverLocation(latDeg.toRad(), lonDeg.toRad(), latDeg, lonDeg, it.altitude)
@@ -328,22 +410,25 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app), SkyMapAction
         }
     }
 
-    // The `live` default lives on SkyMapActions; an override may not restate it.
-    override fun setTime(instant: Instant, live: Boolean) { _simTime.value = instant; _isLive.value = live; updateTrajectoryForSelected(); updateRiseSetForSelected() }
+    override fun setTime(instant: Instant, live: Boolean) {
+        _simTime.value = instant
+        _isLive.value = live
+        updateTrajectoryForSelected()
+        updateRiseSetForSelected()
+    }
     fun setLiveNow() { _simTime.value = Clock.System.now(); _isLive.value = true }
 
     // No still mode per request: always tracks phone. Pan disabled in device mode (only zoom allowed)
-    fun onPan(deltaAzDeg: Double, deltaAltDeg: Double) { /* no still mode – always tracks phone */ }
 
     private fun updateTrajectoryForSelected() {
         val id = _selectedObjectId.value ?: return
         val obs = _observer.value ?: return
         viewModelScope.launch(Dispatchers.Default) {
             val jdNow = TimeEngine.instantToJulianDate(_simTime.value)
-            val getRaDec = getRaDecProvider(id, jdNow)
+            val getRaDec = getRaDecProvider(id)
             val pts = mutableListOf<TrajectoryPoint>()
-            for (i in -48..48) {
-                val jd = jdNow + i * 0.25 / 24.0
+            for (i in -TRAJECTORY_HALF_STEPS..TRAJECTORY_HALF_STEPS) {
+                val jd = jdNow + i * TRAJECTORY_STEP_DAYS
                 val rd = getRaDec(jd)
                 val lst = TimeEngine.lstRad(jd, obs.lonRad)
                 pts.add(TrajectoryPoint(jd, CoordinateTransforms.raDecToAltAz(rd, lst, obs.latRad), rd))
@@ -358,20 +443,34 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app), SkyMapAction
         viewModelScope.launch(Dispatchers.Default) {
             val jd = TimeEngine.instantToJulianDate(_simTime.value)
             val jd0 = floor(jd - 0.5) + 0.5
-            val getRaDec = getRaDecProvider(id, jd)
+            val getRaDec = getRaDecProvider(id)
             _riseSet.value = RiseSetCalculator.calc(jd0, obs.latRad, obs.lonRad, getRaDec)
         }
     }
-
-    fun getCatalog() = catalog
 
     override fun search(query: String): List<SearchResult> {
         if (query.isBlank()) return emptyList()
         val q = query.lowercase()
         val results = mutableListOf<SearchResult>()
-        catalog.stars.filter { (it.name?.lowercase()?.contains(q) == true) || (it.properName?.lowercase()?.contains(q) == true) }.take(20).forEach {
-            results.add(SearchResult("STAR_${it.id}", it.properName ?: it.name ?: context.getString(R.string.search_result_star_fallback, it.id.toString()), context.getString(R.string.search_result_star_mag, it.mag.toString()), it.ra to it.dec))
-        }
+        catalog.stars.filter { matchesQuery(it.name, q) || matchesQuery(it.properName, q) }
+            .take(SEARCH_RESULT_LIMIT)
+            .forEach {
+                results.add(
+                    SearchResult(
+                        "STAR_${it.id}",
+                        it.properName ?: it.name
+                            ?: context.getString(
+                                R.string.search_result_star_fallback,
+                                it.id.toString(),
+                            ),
+                        context.getString(
+                            R.string.search_result_star_mag,
+                            it.mag.toString(),
+                        ),
+                        it.ra to it.dec,
+                    ),
+                )
+            }
         PlanetId.entries.map { it to context.getString(it.displayNameRes) }
             .filter { (_, name) -> name.lowercase().contains(q) }
             .forEach { (planet, name) ->
@@ -381,14 +480,51 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app), SkyMapAction
                 }
                 results.add(SearchResult(pid, name, context.getString(R.string.search_result_planet), null))
             }
-        catalog.deepSky.filter { it.id.lowercase().contains(q) || it.name.lowercase().contains(q) }.take(20).forEach {
-            results.add(SearchResult(it.id, "${it.id} ${it.name}", it.type, it.ra to it.dec))
-        }
-        catalog.constellations.filter { it.abbr.lowercase().contains(q) || it.name.lowercase().contains(q) }.forEach {
-            results.add(SearchResult("CONST_${it.abbr}", it.name, context.getString(R.string.search_result_constellation, it.abbr), null))
-        }
+        catalog.deepSky.filter { it.id.lowercase().contains(q) || it.name.lowercase().contains(q) }
+            .take(SEARCH_RESULT_LIMIT)
+            .forEach {
+                results.add(SearchResult(it.id, "${it.id} ${it.name}", it.type, it.ra to it.dec))
+            }
+        catalog.constellations.filter { it.abbr.lowercase().contains(q) || it.name.lowercase().contains(q) }
+            .forEach {
+                results.add(
+                    SearchResult(
+                        "CONST_${it.abbr}",
+                        it.name,
+                        context.getString(R.string.search_result_constellation, it.abbr),
+                        null,
+                    ),
+                )
+            }
         return results
     }
 
+    private fun matchesQuery(value: String?, q: String): Boolean =
+        value?.lowercase()?.contains(q) == true
+
     override fun onCleared() { orientationMgr.stop(); tickerJob?.cancel(); locationJob?.cancel() }
 }
+
+/** Resolves the sky-map view center from explicit state (extracted for TooManyFunctions). */
+internal fun resolveViewCenter(
+    viewCenter: CenterOption,
+    orient: com.vayunmathur.library.sensor.DeviceOrientation?,
+): Pair<Double, Double> =
+    when (viewCenter) {
+        is CenterOption.DevicePointing -> {
+            if (orient != null) Pair(orient.pointingAzRad, orient.pointingAltRad)
+            else Pair(0.0, 45.0.toRad())
+        }
+        is CenterOption.Manual -> Pair(viewCenter.azRad, viewCenter.altRad)
+        is CenterOption.TargetObject -> Pair(viewCenter.azRad, viewCenter.altRad)
+    }
+
+/** Resolves the sky-map view rotation from explicit state (extracted for TooManyFunctions). */
+internal fun resolveViewRotation(
+    viewCenter: CenterOption,
+    orient: com.vayunmathur.library.sensor.DeviceOrientation?,
+): Double =
+    when (viewCenter) {
+        is CenterOption.DevicePointing -> orient?.viewRotationRad ?: 0.0
+        else -> 0.0
+    }

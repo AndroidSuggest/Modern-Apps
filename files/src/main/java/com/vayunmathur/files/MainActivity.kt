@@ -36,8 +36,11 @@ class MainActivity : ComponentActivity() {
         when (intent.action) {
             Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
                 ?.let { viewModel.setIncomingUris(listOf(it)) }
-            Intent.ACTION_SEND_MULTIPLE -> IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-                ?.let { viewModel.setIncomingUris(it) }
+            Intent.ACTION_SEND_MULTIPLE -> IntentCompat.getParcelableArrayListExtra(
+                intent,
+                Intent.EXTRA_STREAM,
+                Uri::class.java,
+            )?.let { viewModel.setIncomingUris(it) }
         }
     }
 }

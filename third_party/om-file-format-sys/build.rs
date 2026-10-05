@@ -53,6 +53,13 @@ fn main() {
         if arch == "aarch64" {
             build.flag("-march=armv8-a");
         }
+        // bitunpack.c uses SSSE3 (`_mm_shuffle_epi8`) on its x86 SSE path, but
+        // nothing enables the instruction set: GCC only declares the intrinsic
+        // with `-mssse3` (MSVC declares it unconditionally, so this is a no-op
+        // there). Host-only smoke check; Android/aarch64 builds are unaffected.
+        if arch == "x86_64" || arch == "x86" {
+            build.flag_if_supported("-mssse3");
+        }
         build.flag_if_supported("-Wdate-time");
         build.flag_if_supported("-Werror=date-time");
     }

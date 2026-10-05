@@ -81,7 +81,7 @@ object GraphAnalysis {
     private const val REFINE_ITERS = 80
 
     private fun evalOrNaN(e: Expression, v: Double, angle: AngleMode): Double =
-        try { e.eval(v, angle) } catch (ex: ExpressionError) { Double.NaN }
+        try { e.eval(v, angle) } catch (ignored: ExpressionError) { Double.NaN }
 
     // ---- Sampling ----
 
@@ -113,61 +113,7 @@ object GraphAnalysis {
         }
 
         if (polar) {
-            // Polar sampling is driven by the viewport rather than by a fixed count: each
-            // step reaches a little further than the last, then halves until the segment it
-            // actually produced is short enough on screen. Measuring the segment rather than
-            // predicting it from a derivative is what keeps a curve smooth where it sweeps
-            // through the origin — a rose's radius is tiny there but its direction is
-            // turning fastest — and it lets the sweep stride across the empty stretches
-            // where the curve has swung out of view. Twelve turns then cost little enough
-            // that spirals and other curves that never close no longer stop after one loop.
-            val pxPerUnit = if (xMax > xMin) columns.coerceAtLeast(2) / (xMax - xMin) else 1.0
-            // Nothing further from the origin than the farthest corner can be on screen.
-            val visibleRadius = maxOf(
-                hypot(xMin, yMin), hypot(xMin, yMax), hypot(xMax, yMin), hypot(xMax, yMax),
-            )
-            val visibleRadiusPx = (visibleRadius * pxPerUnit).coerceAtLeast(1.0)
-            val thetaMax = 2 * PI * polarTurns(expr)
-            // Detail has to stop somewhere, or a tight spiral would sample without end.
-            val budgetStep = thetaMax / POLAR_SAMPLE_BUDGET
-
-            /** How far apart two samples may land: a pixel on screen, looser further out. */
-            fun tolerancePx(radiusPx: Double) =
-                POLAR_CHORD_PX + (radiusPx - visibleRadiusPx).coerceAtLeast(0.0) / 2
-
-            var theta = 0.0
-            var r = evalOrNaN(expr, 0.0, AngleMode.RADIANS)
-            var here = if (r.isFinite()) GraphPoint(r, 0.0) else null
-            here?.let { current.add(it) }
-            var step = POLAR_MAX_STEP
-            while (theta < thetaMax) {
-                step = (step * POLAR_STEP_GROWTH).coerceAtMost(POLAR_MAX_STEP)
-                var nextTheta: Double
-                var nextR: Double
-                var next: GraphPoint?
-                while (true) {
-                    nextTheta = (theta + step).coerceAtMost(thetaMax)
-                    nextR = evalOrNaN(expr, nextTheta, AngleMode.RADIANS)
-                    next = if (nextR.isFinite()) GraphPoint(nextR * cos(nextTheta), nextR * sin(nextTheta)) else null
-                    val from = here
-                    val to = next
-                    if (from == null || to == null || step <= 2 * budgetStep) break
-                    val tolerance = tolerancePx(minOf(abs(r), abs(nextR)) * pxPerUnit)
-                    if (hypot(to.x - from.x, to.y - from.y) * pxPerUnit <= tolerance) break
-                    step /= 2
-                }
-                val to = next
-                if (to == null) {
-                    breakRun()
-                } else {
-                    // A pole must not be bridged, exactly as for a Cartesian asymptote.
-                    if (crossesPole(r, nextR, visibleRadius)) breakRun()
-                    current.add(to)
-                }
-                theta = nextTheta
-                r = nextR
-                here = next
-            }
+            PolarScan(expr, xMin, xMax, yMin, yMax, columns).scan(current, ::breakRun)
         } else {
             val steps = columns.coerceAtLeast(2)
             var i = 0
@@ -187,6 +133,107 @@ object GraphAnalysis {
         }
         breakRun()
         return SampledCurve(id, expr, polar, runs)
+    }
+
+    /** One halved-until-short polar step: the probe that survived refinement, and its step. */
+    private class PolarProbe(val theta: Double, val r: Double, val point: GraphPoint?)
+
+    /** The outcome of refining one polar step: where it landed and the step it kept. */
+    private class PolarAdvance(val theta: Double, val r: Double, val point: GraphPoint?, val step: Double)
+
+    /**
+     * Polar sampling, driven by the viewport rather than by a fixed count: each step reaches
+     * a little further than the last, then halves until the segment it actually produced is
+     * short enough on screen. Measuring the segment rather than predicting it from a
+     * derivative is what keeps a curve smooth where it sweeps through the origin — a rose's
+     * radius is tiny there but its direction is turning fastest — and it lets the sweep stride
+     * across the empty stretches where the curve has swung out of view. Twelve turns then cost
+     * little enough that spirals and other curves that never close no longer stop after one loop.
+     */
+    private class PolarScan(
+        private val expr: Expression,
+        xMin: Double,
+        xMax: Double,
+        yMin: Double,
+        yMax: Double,
+        columns: Int,
+    ) {
+        private val pxPerUnit = if (xMax > xMin) columns.coerceAtLeast(2) / (xMax - xMin) else 1.0
+
+        // Nothing further from the origin than the farthest corner can be on screen.
+        private val visibleRadius = maxOf(
+            hypot(xMin, yMin), hypot(xMin, yMax), hypot(xMax, yMin), hypot(xMax, yMax),
+        )
+        private val visibleRadiusPx = (visibleRadius * pxPerUnit).coerceAtLeast(1.0)
+        private val thetaMax = 2 * PI * polarTurns(expr)
+
+        // Detail has to stop somewhere, or a tight spiral would sample without end.
+        private val budgetStep = thetaMax / POLAR_SAMPLE_BUDGET
+
+        fun scan(current: MutableList<GraphPoint>, breakRun: () -> Unit) {
+            var theta = 0.0
+            var r = evalOrNaN(expr, 0.0, AngleMode.RADIANS)
+            var here = if (r.isFinite()) GraphPoint(r, 0.0) else null
+            here?.let { current.add(it) }
+            var step = POLAR_MAX_STEP
+            while (theta < thetaMax) {
+                step = (step * POLAR_STEP_GROWTH).coerceAtMost(POLAR_MAX_STEP)
+                val advance = refineStep(theta, step, here, r)
+                step = advance.step
+                val to = advance.point
+                if (to == null) {
+                    breakRun()
+                } else {
+                    // A pole must not be bridged, exactly as for a Cartesian asymptote.
+                    if (crossesPole(r, advance.r, visibleRadius)) breakRun()
+                    current.add(to)
+                }
+                theta = advance.theta
+                r = advance.r
+                here = to
+            }
+        }
+
+        /** Probe first, then halve until the segment is short enough on screen. */
+        private fun refineStep(theta: Double, step: Double, here: GraphPoint?, r: Double): PolarAdvance {
+            var refined = step
+            var probe = probe(theta, refined)
+            while (segmentTooLong(here, probe.point, probe.r, r, refined)) {
+                refined /= 2
+                probe = probe(theta, refined)
+            }
+            return PolarAdvance(probe.theta, probe.r, probe.point, refined)
+        }
+
+        /** Whether the segment still needs halving: it never does once detail bottoms out. */
+        private fun segmentTooLong(
+            here: GraphPoint?,
+            to: GraphPoint?,
+            nextR: Double,
+            r: Double,
+            step: Double,
+        ): Boolean {
+            val from = here ?: return false
+            val target = to ?: return false
+            if (step <= 2 * budgetStep) return false
+            val tolerance = tolerancePx(minOf(abs(r), abs(nextR)) * pxPerUnit)
+            return hypot(target.x - from.x, target.y - from.y) * pxPerUnit > tolerance
+        }
+
+        /** How far apart two samples may land: a pixel on screen, looser further out. */
+        private fun tolerancePx(radiusPx: Double) =
+            POLAR_CHORD_PX + (radiusPx - visibleRadiusPx).coerceAtLeast(0.0) / 2
+
+        private fun probe(theta: Double, step: Double): PolarProbe {
+            val nextTheta = (theta + step).coerceAtMost(thetaMax)
+            val nextR = evalOrNaN(expr, nextTheta, AngleMode.RADIANS)
+            val next = if (nextR.isFinite()) {
+                GraphPoint(nextR * cos(nextTheta), nextR * sin(nextTheta))
+            } else {
+                null
+            }
+            return PolarProbe(nextTheta, nextR, next)
+        }
     }
 
     /**
@@ -213,21 +260,27 @@ object GraphAnalysis {
         val probes = DoubleArray(PERIOD_PROBES) { 2 * PI * ((it * GOLDEN_RATIO) % 1.0) }
         val base = DoubleArray(PERIOD_PROBES) { evalOrNaN(expr, probes[it], AngleMode.RADIANS) }
         for (turns in 1 until POLAR_TURNS) {
-            val offset = 2 * PI * turns
-            var repeats = true
-            for (i in probes.indices) {
-                val a = base[i]
-                val b = evalOrNaN(expr, probes[i] + offset, AngleMode.RADIANS)
-                if (a.isNaN() && b.isNaN()) continue
-                // Negated rather than `>`, so a NaN difference counts as a mismatch.
-                if (!(abs(b - a) <= PERIOD_TOLERANCE * (1 + abs(a)))) {
-                    repeats = false
-                    break
-                }
-            }
-            if (repeats) return turns
+            if (repeatsAfterTurns(expr, probes, base, turns)) return turns
         }
         return POLAR_TURNS
+    }
+
+    /** Whether the curve reproduces every probe after [turns] whole turns. */
+    private fun repeatsAfterTurns(
+        expr: Expression,
+        probes: DoubleArray,
+        base: DoubleArray,
+        turns: Int,
+    ): Boolean {
+        val offset = 2 * PI * turns
+        for (i in probes.indices) {
+            val a = base[i]
+            val b = evalOrNaN(expr, probes[i] + offset, AngleMode.RADIANS)
+            if (a.isNaN() && b.isNaN()) continue
+            // Negated rather than `>`, so a NaN difference counts as a mismatch.
+            if (!(abs(b - a) <= PERIOD_TOLERANCE * (1 + abs(a)))) return false
+        }
+        return true
     }
 
     // ---- Feature discovery ----
@@ -266,43 +319,90 @@ object GraphAnalysis {
         out: MutableList<GraphFeature>,
     ) {
         for (run in curve.runs) {
-            for (i in 0 until run.size - 1) {
-                val a = run[i]
-                val b = run[i + 1]
-                if (segmentDistance(at, a, b) > radius) continue
-
-                // Axis crossings. `straddles` accepts an endpoint sitting exactly on the axis,
-                // which a strict sign-change test misses whenever a sample lands on it.
-                if (straddles(a.y, b.y)) {
-                    val x = if (curve.polar) interpolateZero(a.y, b.y, a.x, b.x)
-                    else refineZero({ evalOrNaN(curve.expr, it, angle) }, a.x, b.x)
-                    out.add(GraphFeature(GraphPoint(x, 0.0), FeatureKind.ROOT, listOf(curve.id)))
-                }
-                if (straddles(a.x, b.x)) {
-                    val y = if (curve.polar) interpolateZero(a.x, b.x, a.y, b.y)
-                    else evalOrNaN(curve.expr, 0.0, angle)
-                    if (y.isFinite()) {
-                        out.add(GraphFeature(GraphPoint(0.0, y), FeatureKind.Y_INTERCEPT, listOf(curve.id)))
-                    }
-                }
-            }
-            // Local extrema in y — geometrically the peaks and troughs of the drawn curve,
-            // which is meaningful for polar curves too.
-            for (i in 1 until run.size - 1) {
-                val p = run[i]
-                if (distance(p, at) > radius) continue
-                val isMax = p.y > run[i - 1].y && p.y > run[i + 1].y
-                val isMin = p.y < run[i - 1].y && p.y < run[i + 1].y
-                if (!isMax && !isMin) continue
-                val kind = if (isMax) FeatureKind.MAXIMUM else FeatureKind.MINIMUM
-                val point = if (curve.polar) p else {
-                    val x = refineExtremum({ evalOrNaN(curve.expr, it, angle) }, run[i - 1].x, run[i + 1].x, isMax)
-                    val y = evalOrNaN(curve.expr, x, angle)
-                    if (y.isFinite()) GraphPoint(x, y) else p
-                }
-                out.add(GraphFeature(point, kind, listOf(curve.id)))
-            }
+            crossingsInRun(curve, run, at, radius, angle, out)
+            extremaInRun(curve, run, at, radius, angle, out)
         }
+    }
+
+    /** Axis crossings within one run. */
+    private fun crossingsInRun(
+        curve: SampledCurve,
+        run: List<GraphPoint>,
+        at: GraphPoint,
+        radius: Double,
+        angle: AngleMode,
+        out: MutableList<GraphFeature>,
+    ) {
+        for (i in 0 until run.size - 1) {
+            val a = run[i]
+            val b = run[i + 1]
+            if (segmentDistance(at, a, b) > radius) continue
+            // `straddles` accepts an endpoint sitting exactly on the axis, which a strict
+            // sign-change test misses whenever a sample lands on it.
+            axisCrossings(curve, a, b, angle, out)
+        }
+    }
+
+    /** The root and y-intercept between [a] and [b], when either straddles its axis. */
+    private fun axisCrossings(
+        curve: SampledCurve,
+        a: GraphPoint,
+        b: GraphPoint,
+        angle: AngleMode,
+        out: MutableList<GraphFeature>,
+    ) {
+        if (straddles(a.y, b.y)) {
+            val x = if (curve.polar) interpolateZero(a.y, b.y, a.x, b.x)
+            else refineZero({ evalOrNaN(curve.expr, it, angle) }, a.x, b.x)
+            out.add(GraphFeature(GraphPoint(x, 0.0), FeatureKind.ROOT, listOf(curve.id)))
+        }
+        if (!straddles(a.x, b.x)) return
+        val y = if (curve.polar) interpolateZero(a.x, b.x, a.y, b.y)
+        else evalOrNaN(curve.expr, 0.0, angle)
+        if (y.isFinite()) {
+            out.add(GraphFeature(GraphPoint(0.0, y), FeatureKind.Y_INTERCEPT, listOf(curve.id)))
+        }
+    }
+
+    /**
+     * Local extrema in y — geometrically the peaks and troughs of the drawn curve,
+     * which is meaningful for polar curves too.
+     */
+    private fun extremaInRun(
+        curve: SampledCurve,
+        run: List<GraphPoint>,
+        at: GraphPoint,
+        radius: Double,
+        angle: AngleMode,
+        out: MutableList<GraphFeature>,
+    ) {
+        for (i in 1 until run.size - 1) {
+            extremumAt(curve, run, i, at, radius, angle)?.let { out.add(it) }
+        }
+    }
+
+    private fun extremumAt(
+        curve: SampledCurve,
+        run: List<GraphPoint>,
+        i: Int,
+        at: GraphPoint,
+        radius: Double,
+        angle: AngleMode,
+    ): GraphFeature? {
+        val p = run[i]
+        if (distance(p, at) > radius) return null
+        val isMax = p.y > run[i - 1].y && p.y > run[i + 1].y
+        val isMin = p.y < run[i - 1].y && p.y < run[i + 1].y
+        if (!isMax && !isMin) return null
+        val kind = if (isMax) FeatureKind.MAXIMUM else FeatureKind.MINIMUM
+        val point = if (curve.polar) {
+            p
+        } else {
+            val x = refineExtremum({ evalOrNaN(curve.expr, it, angle) }, run[i - 1].x, run[i + 1].x, isMax)
+            val y = evalOrNaN(curve.expr, x, angle)
+            if (y.isFinite()) GraphPoint(x, y) else p
+        }
+        return GraphFeature(point, kind, listOf(curve.id))
     }
 
     /**
@@ -321,30 +421,73 @@ object GraphAnalysis {
     ) {
         val ids = listOf(a.id, b.id)
         for (runA in a.runs) {
-            for (i in 0 until runA.size - 1) {
-                val p1 = runA[i]
-                val p2 = runA[i + 1]
-                if (segmentDistance(at, p1, p2) > radius) continue
-                for (runB in b.runs) {
-                    for (j in 0 until runB.size - 1) {
-                        val q1 = runB[j]
-                        val q2 = runB[j + 1]
-                        if (segmentDistance(at, q1, q2) > radius) continue
-                        val hit = segmentIntersection(p1, p2, q1, q2) ?: continue
-                        val point = if (!a.polar && !b.polar) {
-                            val lo = minOf(p1.x, p2.x, q1.x, q2.x)
-                            val hi = maxOf(p1.x, p2.x, q1.x, q2.x)
-                            val diff = { x: Double -> evalOrNaN(a.expr, x, angle) - evalOrNaN(b.expr, x, angle) }
-                            val x = refineZero(diff, lo, hi)
-                            val y = evalOrNaN(a.expr, x, angle)
-                            if (y.isFinite()) GraphPoint(x, y) else hit
-                        } else hit
-                        out.add(GraphFeature(point, FeatureKind.INTERSECTION, ids))
-                    }
-                }
-            }
+            scanRunAgainstCurve(runA, a, b, ids, at, radius, angle, out)
         }
         if (!a.polar && !b.polar) tangentialTouches(a, b, at, radius, angle, out)
+    }
+
+    /** Every segment of [runA] checked against every segment of curve [b]. */
+    private fun scanRunAgainstCurve(
+        runA: List<GraphPoint>,
+        a: SampledCurve,
+        b: SampledCurve,
+        ids: List<Long>,
+        at: GraphPoint,
+        radius: Double,
+        angle: AngleMode,
+        out: MutableList<GraphFeature>,
+    ) {
+        for (i in 0 until runA.size - 1) {
+            val p1 = runA[i]
+            val p2 = runA[i + 1]
+            if (segmentDistance(at, p1, p2) > radius) continue
+            for (runB in b.runs) {
+                scanSegmentAgainstRun(p1, p2, runB, a, b, ids, at, radius, angle, out)
+            }
+        }
+    }
+
+    /** One segment of curve A checked against every segment of one run of curve B. */
+    private fun scanSegmentAgainstRun(
+        p1: GraphPoint,
+        p2: GraphPoint,
+        runB: List<GraphPoint>,
+        a: SampledCurve,
+        b: SampledCurve,
+        ids: List<Long>,
+        at: GraphPoint,
+        radius: Double,
+        angle: AngleMode,
+        out: MutableList<GraphFeature>,
+    ) {
+        for (j in 0 until runB.size - 1) {
+            val q1 = runB[j]
+            val q2 = runB[j + 1]
+            if (segmentDistance(at, q1, q2) > radius) continue
+            crossingOf(p1, p2, q1, q2, a, b, ids, angle)?.let { out.add(it) }
+        }
+    }
+
+    /** The feature where segments `p1→p2` and `q1→q2` cross, or null if they don't. */
+    private fun crossingOf(
+        p1: GraphPoint,
+        p2: GraphPoint,
+        q1: GraphPoint,
+        q2: GraphPoint,
+        a: SampledCurve,
+        b: SampledCurve,
+        ids: List<Long>,
+        angle: AngleMode,
+    ): GraphFeature? {
+        val hit = segmentIntersection(p1, p2, q1, q2) ?: return null
+        if (a.polar || b.polar) return GraphFeature(hit, FeatureKind.INTERSECTION, ids)
+        val lo = minOf(p1.x, p2.x, q1.x, q2.x)
+        val hi = maxOf(p1.x, p2.x, q1.x, q2.x)
+        val diff = { x: Double -> evalOrNaN(a.expr, x, angle) - evalOrNaN(b.expr, x, angle) }
+        val x = refineZero(diff, lo, hi)
+        val y = evalOrNaN(a.expr, x, angle)
+        val point = if (y.isFinite()) GraphPoint(x, y) else hit
+        return GraphFeature(point, FeatureKind.INTERSECTION, ids)
     }
 
     /**
@@ -371,23 +514,34 @@ object GraphAnalysis {
         for (i in 2..steps) {
             val x = lo + (hi - lo) * i / steps
             val next = diff(x)
-            if (prev.isFinite() && cur.isFinite() && next.isFinite()) {
-                val xPrev = lo + (hi - lo) * (i - 2) / steps
-                val isTrough = abs(cur) < abs(prev) && abs(cur) < abs(next)
-                if (isTrough) {
-                    val xt = refineExtremum({ -abs(diff(it)) }, xPrev, x, wantMax = true)
-                    val dv = diff(xt)
-                    if (dv.isFinite() && abs(dv) <= tolerance) {
-                        val y = evalOrNaN(a.expr, xt, angle)
-                        if (y.isFinite()) {
-                            out.add(GraphFeature(GraphPoint(xt, y), FeatureKind.INTERSECTION, listOf(a.id, b.id)))
-                        }
-                    }
-                }
-            }
+            val xPrev = lo + (hi - lo) * (i - 2) / steps
+            touchAt(diff, a, b, xPrev, x, prev, cur, next, tolerance, angle)?.let { out.add(it) }
             prev = cur
             cur = next
         }
+    }
+
+    /** The tangential touch in the bracket ending at [x], or null when there isn't one. */
+    private fun touchAt(
+        diff: (Double) -> Double,
+        a: SampledCurve,
+        b: SampledCurve,
+        xPrev: Double,
+        x: Double,
+        prev: Double,
+        cur: Double,
+        next: Double,
+        tolerance: Double,
+        angle: AngleMode,
+    ): GraphFeature? {
+        if (!prev.isFinite() || !cur.isFinite() || !next.isFinite()) return null
+        if (!(abs(cur) < abs(prev) && abs(cur) < abs(next))) return null
+        val xt = refineExtremum({ -abs(diff(it)) }, xPrev, x, wantMax = true)
+        val dv = diff(xt)
+        if (!dv.isFinite() || abs(dv) > tolerance) return null
+        val y = evalOrNaN(a.expr, xt, angle)
+        if (!y.isFinite()) return null
+        return GraphFeature(GraphPoint(xt, y), FeatureKind.INTERSECTION, listOf(a.id, b.id))
     }
 
     // ---- Numeric helpers ----
@@ -470,7 +624,7 @@ object GraphAnalysis {
         val qpy = q1.y - p1.y
         val t = (qpx * sy - qpy * sx) / denom
         val u = (qpx * ry - qpy * rx) / denom
-        if (t < 0.0 || t > 1.0 || u < 0.0 || u > 1.0) return null
+        if (t !in 0.0..1.0 || u !in 0.0..1.0) return null
         return GraphPoint(p1.x + t * rx, p1.y + t * ry)
     }
 

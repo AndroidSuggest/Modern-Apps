@@ -79,7 +79,7 @@ object AlarmScheduler {
 
         // 4. Scenario B: Recurring days (Find the next matching day)
         // We check up to 7 days in the future
-        repeat(7) {
+        repeat(DAYS_IN_WEEK) {
             val dayOfWeek = candidate.dayOfWeek // kotlinx.datetime.DayOfWeek
 
             // Map kotlinx DayOfWeek (Mon=1...Sun=7) to your bitmask (Sun=0...Sat=6)
@@ -96,4 +96,6 @@ object AlarmScheduler {
         // Fallback (should be unreachable if bits are set)
         return candidate.toInstant(timeZone).toEpochMilliseconds()
     }
+
+    private const val DAYS_IN_WEEK = 7
 }

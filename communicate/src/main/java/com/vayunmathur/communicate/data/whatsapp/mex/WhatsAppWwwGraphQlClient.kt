@@ -22,6 +22,7 @@ object WhatsAppWwwGraphQlClient {
 
     private const val TAG = "WAMex"
     private const val URL = "https://graph.whatsapp.com/graphql"
+    private const val LOG_SNIPPET = 200
 
     /** Consumer/wearos/orbit/vr client token (w2.md §4.1 `GraphqlRequestBase.kt:618-636`). */
     private const val CLIENT_TOKEN = "WA|1015890928915437|3201f239340c1c8ec6262a6dad04200e"
@@ -31,7 +32,7 @@ object WhatsAppWwwGraphQlClient {
      * `{"data":…,"errors":…}` envelope into a [MexResult]. Transport failures (network, non-2xx)
      * surface as [MexResult.transport].
      */
-    suspend fun post(context: Context, docId: String, variablesJson: String): MexResult {
+    suspend fun post(docId: String, variablesJson: String): MexResult {
         val body = MexEnvelope.buildWwwBody(CLIENT_TOKEN, docId, variablesJson)
         val headers = mapOf(
             "Content-Type" to "application/json",
@@ -46,13 +47,13 @@ object WhatsAppWwwGraphQlClient {
                 useSystemTrust = true,
             )
             if (!resp.isSuccess) {
-                WhatsAppDiag.log(TAG, "www[$docId]: HTTP ${resp.status}: ${resp.body.take(200)}")
+                WhatsAppDiag.log(TAG, "www[$docId]: HTTP ${resp.status}: ${resp.body.take(LOG_SNIPPET)}")
                 return MexResult.transport("http:${resp.status}")
             }
             MexResult.fromEnvelope(resp.body)
-        } catch (t: Throwable) {
-            WhatsAppDiag.log(TAG, "www[$docId]: request failed: ${t.message}")
-            MexResult.transport("network:${t.message}")
+        } catch (expected: Throwable) {
+            WhatsAppDiag.log(TAG, "www[$docId]: request failed: ${expected.message}")
+            MexResult.transport("network:${expected.message}")
         }
     }
 

@@ -203,7 +203,24 @@ interface SubscriptionVideoDao {
 }
 
 @ColumnTypeConverters(DefaultConverters::class)
-@Database(entities = [Subscription::class, SubscriptionVideo::class, HistoryVideo::class, SubscriptionCategory::class, DownloadedVideo::class, CachedRelatedVideo::class, RecommendationImpression::class, RecommendationPreferences::class, ChannelPreference::class, KeywordPreference::class, Playlist::class, PlaylistItem::class], version = 7, exportSchema = false)
+@Database(
+    entities = [
+        Subscription::class,
+        SubscriptionVideo::class,
+        HistoryVideo::class,
+        SubscriptionCategory::class,
+        DownloadedVideo::class,
+        CachedRelatedVideo::class,
+        RecommendationImpression::class,
+        RecommendationPreferences::class,
+        ChannelPreference::class,
+        KeywordPreference::class,
+        Playlist::class,
+        PlaylistItem::class,
+    ],
+    version = 7,
+    exportSchema = false,
+)
 abstract class SubscriptionDatabase : RoomDatabase() {
     abstract fun subscriptionDao(): SubscriptionDao
     abstract fun subscriptionVideoDao(): SubscriptionVideoDao
@@ -219,6 +236,13 @@ abstract class SubscriptionDatabase : RoomDatabase() {
     abstract fun playlistItemDao(): PlaylistItemDao
 
     companion object : com.vayunmathur.library.util.DatabaseMigrations {
-        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+        override val migrations: List<Migration> = listOf(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7,
+        )
     }
 }

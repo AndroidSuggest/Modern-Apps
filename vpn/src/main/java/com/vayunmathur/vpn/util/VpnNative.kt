@@ -13,9 +13,9 @@ object VpnNative {
     init {
         try {
             System.loadLibrary("vpn_wireguard")
-        } catch (t: Throwable) {
-            android.util.Log.e("VpnNative", "System.loadLibrary(vpn_wireguard) failed", t)
-            throw t
+        } catch (expected: UnsatisfiedLinkError) {
+            android.util.Log.e("VpnNative", "System.loadLibrary(vpn_wireguard) failed", expected)
+            throw expected
         }
     }
 

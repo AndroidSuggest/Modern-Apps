@@ -16,16 +16,24 @@ import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.web.R
-import com.vayunmathur.web.Route
-import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.web.platform.BrowserTab
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.blockedCount
 import com.vayunmathur.web.platform.clearFileChooser
+import com.vayunmathur.web.platform.clearLocalNetworkPrompt
 import com.vayunmathur.web.platform.clearPermissionPrompt
-import com.vayunmathur.web.platform.deliverFileChooserResult
+import com.vayunmathur.web.platform.closeTab
 import com.vayunmathur.web.platform.denyGeolocation
+import com.vayunmathur.web.platform.farblingConfig
 import com.vayunmathur.web.platform.grantGeolocation
+import com.vayunmathur.web.platform.isMultipleSelection
 import com.vayunmathur.web.platform.isNewTab
+import com.vayunmathur.web.platform.markFreshNavigation
+import com.vayunmathur.web.platform.moveTab
+import com.vayunmathur.web.platform.newTab
+import com.vayunmathur.web.platform.safeAcceptTypes
+import com.vayunmathur.web.platform.switchToTab
+import com.vayunmathur.web.platform.toLaunchArray
 import com.vayunmathur.web.platform.shields.ShieldsWebViewClient
 
 /**
@@ -37,7 +45,6 @@ import com.vayunmathur.web.platform.shields.ShieldsWebViewClient
 @Composable
 internal fun BrowserOverlays(
     viewModel: WebViewModel,
-    backStack: NavBackStack<Route>,
     activeTab: BrowserTab?,
     shieldHost: String?,
     webViewPool: MutableMap<String, WebView>,
@@ -115,7 +122,7 @@ internal fun BrowserOverlays(
     viewModel.pendingGeolocationPrompt?.let { (origin, _, _) ->
         GeolocationPromptSheet(
             origin = origin,
-            onAllow = { viewModel.grantGeolocation(origin) },
+            onAllow = { viewModel.grantGeolocation() },
             onDeny = { viewModel.denyGeolocation() }
         )
     }
@@ -132,23 +139,20 @@ internal fun BrowserOverlays(
     }
 
     viewModel.pendingFileChooser?.let { (_, params) ->
-        val mimeTypes = try { params.acceptTypes.toList() } catch (_: Exception) { emptyList() }
-        val allowMultiple = try { params.mode == android.webkit.WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE } catch (_: Exception) { false }
+        val mimeTypes = params.safeAcceptTypes()
+        val allowMultiple = params.isMultipleSelection()
         FileChooserSheet(
             mimeTypes = mimeTypes,
-            onFiles = { uris ->
-                if (uris == null) viewModel.clearFileChooser() else viewModel.deliverFileChooserResult(uris)
-            },
             onCancel = { viewModel.clearFileChooser() },
             onTriggerPicker = {
-                try {
+                runCatching {
                     if (allowMultiple) {
-                        multiDocLauncher.launch(mimeTypes.filter { it.isNotBlank() }.toTypedArray().takeIf { it.isNotEmpty() } ?: arrayOf("*/*"))
+                        multiDocLauncher.launch(mimeTypes.toLaunchArray())
                     } else {
                         val mt = mimeTypes.firstOrNull { it.isNotBlank() } ?: "*/*"
                         singleDocLauncher.launch(arrayOf(mt))
                     }
-                } catch (_: Exception) { viewModel.clearFileChooser() }
+                }.onFailure { viewModel.clearFileChooser() }
             }
         )
     }

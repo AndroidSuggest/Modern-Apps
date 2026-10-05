@@ -94,13 +94,16 @@ class WhisperRecognitionService : RecognitionService() {
             }
             val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, ENCODING)
             if (minBuf <= 0) { finishError(SpeechRecognizer.ERROR_AUDIO); return }
+            // Broad catch is deliberate: AudioRecord's constructor throws undocumented
+            // RuntimeExceptions (not just IllegalArgumentException) on bad state.
+            @Suppress("TooGenericExceptionCaught")
             val rec = try {
                 AudioRecord(
                     MediaRecorder.AudioSource.VOICE_RECOGNITION,
                     SAMPLE_RATE, CHANNEL, ENCODING, maxOf(minBuf, SAMPLE_RATE * 2),
                 )
-            } catch (t: Throwable) {
-                Log.e(TAG, "AudioRecord init failed", t); null
+            } catch (e: Exception) {
+                Log.e(TAG, "AudioRecord init failed", e); null
             }
             if (rec == null || rec.state != AudioRecord.STATE_INITIALIZED) {
                 rec?.release(); finishError(SpeechRecognizer.ERROR_AUDIO); return
@@ -108,8 +111,16 @@ class WhisperRecognitionService : RecognitionService() {
             record = rec
             running = true
             safe { cb.readyForSpeech(Bundle()) }
-            try { rec.startRecording() } catch (t: Throwable) {
-                Log.e(TAG, "startRecording failed", t); finishError(SpeechRecognizer.ERROR_AUDIO); return
+            try {
+                rec.startRecording()
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, "startRecording failed", e)
+                finishError(SpeechRecognizer.ERROR_AUDIO)
+                return
+            } catch (e: SecurityException) {
+                Log.e(TAG, "startRecording failed", e)
+                finishError(SpeechRecognizer.ERROR_AUDIO)
+                return
             }
             thread = Thread { loop() }.apply { start() }
         }
@@ -125,60 +136,117 @@ class WhisperRecognitionService : RecognitionService() {
 
         private fun loop() {
             val chunk = ShortArray(SAMPLE_RATE / 10) // 100 ms
+            val state = VadState()
+            while (running && pumpOnce(chunk, state)) {
+                // All work happens in pumpOnce; an empty body keeps the loop to one jump.
+            }
+            if (cancelled || state.noMatchReported) return
+            finishAndTranscribe(state.speechStarted)
+        }
+
+        /**
+         * One loop iteration: drain a chunk, fold it into the VAD and maybe emit a partial.
+         * True keeps recording; false exits to the final transcription.
+         */
+        private fun pumpOnce(chunk: ShortArray, state: VadState): Boolean {
+            val n = readChunk(chunk) ?: return false
+            if (n <= 0) return true // a failed read that is not a cancel: keep draining
+            appendAudio(chunk, n, state)
+            updateVad(state)
+            maybeEmitPartial(state)
+            return !shouldFinish(state)
+        }
+
+        /**
+         * One 100 ms read. Null ends the session (cancelled); non-positive (without cancel)
+         * means keep draining — the caller skips the iteration.
+         */
+        private fun readChunk(chunk: ShortArray): Int? {
+            val n = record?.read(chunk, 0, chunk.size) ?: -1
+            if (n > 0) return n
+            return if (cancelled) null else n
+        }
+
+        private fun appendAudio(chunk: ShortArray, n: Int, state: VadState) {
+            chunks.add(chunk.copyOf(n))
+            val chunkMs = n * 1000 / SAMPLE_RATE
+            state.totalMs += chunkMs
+            state.lastChunkMs = chunkMs
+            state.lastRms = rms(chunk, n)
+            safe { cb.rmsChanged(rmsToDb(state.lastRms)) }
+        }
+
+        /** Fold the latest chunk into speech/silence tracking. */
+        private fun updateVad(state: VadState) {
+            if (state.lastRms > SPEECH_RMS) {
+                if (!state.began) {
+                    safe { cb.beginningOfSpeech() }
+                    state.began = true
+                }
+                state.speechStarted = true
+                state.silenceMs = 0
+                // New speech since last partial → allow the next pause to fire.
+                state.partialArmed = true
+            } else if (state.speechStarted) {
+                state.silenceMs += state.lastChunkMs
+            }
+        }
+
+        /** VAD pause → emit a partial for the audio so far (phrase boundary). */
+        private fun maybeEmitPartial(state: VadState) {
+            if (!isPartialDue(state)) return
+            state.partialArmed = false
+            partialPending = true
+            val snapshot = flatten()
+            transcribeExec.execute {
+                val t = engine.transcribe(snapshot, lang)?.trim()
+                partialPending = false
+                if (!cancelled && !t.isNullOrBlank()) {
+                    safe {
+                        cb.partialResults(Bundle().apply {
+                            putStringArrayList(
+                                SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf(t),
+                            )
+                        })
+                    }
+                }
+            }
+        }
+
+        private fun isPartialDue(state: VadState): Boolean =
+            state.speechStarted && state.partialArmed && !partialPending &&
+                state.silenceMs in PARTIAL_SILENCE_MS until END_SILENCE_MS
+
+        /**
+         * Terminal conditions for the recording loop. True exits the loop (the caller then
+         * transcribes): user stop, end-of-utterance silence, or the 29 s cap. A no-speech
+         * timeout reports no-match itself and also exits.
+         */
+        private fun shouldFinish(state: VadState): Boolean {
+            if (cancelled) return true
+            if (userStopped) return true
+            if (state.speechStarted && state.silenceMs >= END_SILENCE_MS) return true
+            if (state.totalMs >= MAX_MS) return true
+            if (!state.speechStarted && state.totalMs >= NO_SPEECH_MS) {
+                finishNoMatch()
+                state.noMatchReported = true
+                return true
+            }
+            return false
+        }
+
+        /** Mutable VAD/loop progress, threaded through the extracted loop helpers. */
+        private inner class VadState {
             var speechStarted = false
             var began = false
             var silenceMs = 0
             var totalMs = 0
+            var lastChunkMs = 0
+            var lastRms = 0.0
             // Fire at most one partial per pause: armed by any speech, disarmed on fire.
             var partialArmed = false
-            while (running) {
-                val n = record?.read(chunk, 0, chunk.size) ?: -1
-                if (n <= 0) { if (cancelled) return else continue }
-                chunks.add(chunk.copyOf(n))
-                val chunkMs = n * 1000 / SAMPLE_RATE
-                totalMs += chunkMs
-                val rms = rms(chunk, n)
-                safe { cb.rmsChanged(rmsToDb(rms)) }
-
-                if (rms > SPEECH_RMS) {
-                    if (!began) { safe { cb.beginningOfSpeech() }; began = true }
-                    speechStarted = true
-                    silenceMs = 0
-                    partialArmed = true // new speech since last partial → allow the next pause to fire
-                } else if (speechStarted) {
-                    silenceMs += chunkMs
-                }
-
-                // VAD pause → emit a partial for the audio so far (phrase boundary).
-                if (speechStarted && partialArmed && !partialPending &&
-                    silenceMs in PARTIAL_SILENCE_MS until END_SILENCE_MS
-                ) {
-                    partialArmed = false
-                    partialPending = true
-                    val snapshot = flatten()
-                    transcribeExec.execute {
-                        val t = engine.transcribe(snapshot, lang)?.trim()
-                        partialPending = false
-                        if (!cancelled && !t.isNullOrBlank()) {
-                            safe {
-                                cb.partialResults(Bundle().apply {
-                                    putStringArrayList(
-                                        SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf(t),
-                                    )
-                                })
-                            }
-                        }
-                    }
-                }
-
-                if (cancelled) return
-                if (userStopped) break
-                if (speechStarted && silenceMs >= END_SILENCE_MS) break
-                if (totalMs >= MAX_MS) break
-                if (!speechStarted && totalMs >= NO_SPEECH_MS) { finishNoMatch(); return }
-            }
-            if (cancelled) return
-            finishAndTranscribe(speechStarted)
+            /** Set when the no-speech timeout already reported no-match for this session. */
+            var noMatchReported = false
         }
 
         private fun finishAndTranscribe(speechStarted: Boolean) {
@@ -241,7 +309,7 @@ class WhisperRecognitionService : RecognitionService() {
     }
 
     private fun rmsToDb(rms: Double): Float =
-        (10.0 * log10(rms + 1.0)).toFloat().coerceIn(0f, 30f) / 3f // roughly 0..10 for the UI meter
+        (DB_SCALE * log10(rms + RMS_FLOOR)).toFloat().coerceIn(MIN_DB, MAX_DB) / DB_DIVISOR
 
     companion object {
         private const val TAG = "WhisperRecognition"
@@ -253,5 +321,15 @@ class WhisperRecognitionService : RecognitionService() {
         private const val END_SILENCE_MS = 1000    // trailing silence that ends the utterance
         private const val NO_SPEECH_MS = 8000      // give up if nothing is said
         private const val MAX_MS = 29000           // Whisper handles <= 30 s
+        /** dB scale factor for the UI meter. */
+        private const val DB_SCALE = 10.0
+        /** Floor keeping silence at 0 dB rather than -infinity. */
+        private const val RMS_FLOOR = 1.0
+        /** Meter floor in dB. */
+        private const val MIN_DB = 0f
+        /** Meter ceiling in dB. */
+        private const val MAX_DB = 30f
+        /** Maps the 0..30 dB range onto roughly 0..10 for the UI meter. */
+        private const val DB_DIVISOR = 3f
     }
 }

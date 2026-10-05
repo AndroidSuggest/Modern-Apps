@@ -17,25 +17,36 @@ object StopwatchNotificationHelper {
         val isRunning = ds.getBoolean(StopwatchActionReceiver.KEY_STOPWATCH_RUNNING, false)
         val totalMs = ds.getLong(StopwatchActionReceiver.KEY_STOPWATCH_TOTAL) ?: 0L
         val startMs = ds.getLong(StopwatchActionReceiver.KEY_STOPWATCH_START) ?: 0L
-        
+
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
+
         if (!isRunning && totalMs == 0L) {
             // Stopwatch is reset, cancel notification
             nm.cancel(StopwatchActionReceiver.STOPWATCH_NOTIFICATION_ID)
             return
         }
-        
+
+        val contentText = formatElapsed(isRunning, totalMs, startMs)
+        val builder = baseBuilder(context, contentText)
+        addActions(context, builder, isRunning)
+        nm.notify(StopwatchActionReceiver.STOPWATCH_NOTIFICATION_ID, builder.build())
+    }
+
+    private fun formatElapsed(isRunning: Boolean, totalMs: Long, startMs: Long): String {
         val elapsedMs = if (isRunning) {
             totalMs + (Clock.System.now().toEpochMilliseconds() - startMs)
         } else {
             totalMs
         }
-        
-        val minutes = elapsedMs / 60000
-        val seconds = (elapsedMs % 60000) / 1000
-        val contentText = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
-        
+        val minutes = elapsedMs / MILLIS_PER_MINUTE
+        val seconds = (elapsedMs % MILLIS_PER_MINUTE) / MILLIS_PER_SECOND
+        return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+    }
+
+    private fun baseBuilder(
+        context: Context,
+        contentText: String,
+    ): NotificationCompat.Builder {
         // Content intent to open app
         val contentIntent = PendingIntent.getActivity(
             context, 0,
@@ -44,7 +55,21 @@ object StopwatchNotificationHelper {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        
+        return NotificationCompat.Builder(context, "stopwatch_channel")
+            .setSmallIcon(R.drawable.outline_timer_24)
+            .setContentTitle(context.getString(R.string.label_stopwatch))
+            .setContentText(contentText)
+            .setContentIntent(contentIntent)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+    }
+
+    private fun addActions(
+        context: Context,
+        builder: NotificationCompat.Builder,
+        isRunning: Boolean,
+    ) {
         // Pause/Resume action
         val toggleIntent = PendingIntent.getBroadcast(
             context, 1,
@@ -53,7 +78,7 @@ object StopwatchNotificationHelper {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        
+
         // Lap action
         val lapIntent = PendingIntent.getBroadcast(
             context, 2,
@@ -62,7 +87,7 @@ object StopwatchNotificationHelper {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        
+
         // Stop action
         val stopIntent = PendingIntent.getBroadcast(
             context, 3,
@@ -71,24 +96,32 @@ object StopwatchNotificationHelper {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        
-        val builder = NotificationCompat.Builder(context, "stopwatch_channel")
-            .setSmallIcon(R.drawable.outline_timer_24)
-            .setContentTitle(context.getString(R.string.label_stopwatch))
-            .setContentText(contentText)
-            .setContentIntent(contentIntent)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setShowWhen(false)
-        
+
         if (isRunning) {
-            builder.addAction(R.drawable.ic_pause_24, context.getString(R.string.action_pause), toggleIntent)
-            builder.addAction(R.drawable.ic_lap_24, context.getString(R.string.action_lap), lapIntent)
+            builder.addAction(
+                R.drawable.ic_pause_24,
+                context.getString(R.string.action_pause),
+                toggleIntent,
+            )
+            builder.addAction(
+                R.drawable.ic_lap_24,
+                context.getString(R.string.action_lap),
+                lapIntent,
+            )
         } else {
-            builder.addAction(R.drawable.ic_play_24, context.getString(R.string.action_resume), toggleIntent)
+            builder.addAction(
+                R.drawable.ic_play_24,
+                context.getString(R.string.action_resume),
+                toggleIntent,
+            )
         }
-        builder.addAction(R.drawable.ic_stop_24, context.getString(R.string.action_stop), stopIntent)
-        
-        nm.notify(StopwatchActionReceiver.STOPWATCH_NOTIFICATION_ID, builder.build())
+        builder.addAction(
+            R.drawable.ic_stop_24,
+            context.getString(R.string.action_stop),
+            stopIntent,
+        )
     }
+
+    private const val MILLIS_PER_MINUTE = 60000L
+    private const val MILLIS_PER_SECOND = 1000L
 }

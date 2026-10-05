@@ -1,12 +1,12 @@
 @file:OptIn(
     kotlin.uuid.ExperimentalUuidApi::class,
-    kotlin.concurrent.atomics.ExperimentalAtomicApi::class,
 )
 
 package com.vayunmathur.maps.util
 
 import kotlin.uuid.Uuid
-import kotlin.concurrent.atomics.*
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -51,10 +51,15 @@ object NavigationTts {
      * abandon focus when the queue actually drains, not after the FIRST
      * utterance's onDone fires.
      */
-    private val outstandingUtterances = AtomicInt(0)
+    private val outstandingUtterances = AtomicInteger(0)
 
     /** Thresholds (m) — must be in descending order. */
     private val thresholdsMeters = intArrayOf(1000, 300, 100)
+
+    /** Metres per kilometre, for the spoken distance. */
+    private const val METERS_PER_KILOMETER = 1000
+    /** Short-range cue threshold (m): below this the cue is "now"-style. */
+    private const val SHORT_CUE_THRESHOLD_M = 100
 
     /** Application context for resolving localized spoken phrases. */
     private var appContext: Context? = null
@@ -82,9 +87,9 @@ object NavigationTts {
 
     /** Called from the utterance listener: only abandon focus when no more are pending. */
     private fun onUtteranceFinished() {
-        if (outstandingUtterances.decrementAndFetch() <= 0) {
+        if (outstandingUtterances.decrementAndGet() <= 0) {
             // Reset to 0 in case of decrement-below-zero from spurious callbacks.
-            outstandingUtterances.store(0)
+            outstandingUtterances.set(0)
             abandonFocus()
         }
     }
@@ -94,7 +99,7 @@ object NavigationTts {
         runCatching { tts?.stop() }
         runCatching { tts?.shutdown() }
         tts = null
-        outstandingUtterances.store(0)
+        outstandingUtterances.set(0)
         abandonFocus()
         audioManager = null
         focusRequest = null
@@ -109,7 +114,7 @@ object NavigationTts {
         runCatching { tts?.stop() }
         // tts.stop() doesn't necessarily fire onDone for queued utterances,
         // so manually clear the in-flight counter and drop focus.
-        outstandingUtterances.store(0)
+        outstandingUtterances.set(0)
         abandonFocus()
     }
 
@@ -156,12 +161,13 @@ object NavigationTts {
     private fun phraseFor(thresholdMeters: Int, instruction: String): String {
         val ctx = appContext ?: return instruction
         return when {
-            thresholdMeters >= 1000 -> {
-                val km = thresholdMeters / 1000
+            thresholdMeters >= METERS_PER_KILOMETER -> {
+                val km = thresholdMeters / METERS_PER_KILOMETER
                 val distance = ctx.resources.getQuantityString(R.plurals.tts_kilometers, km, km)
                 ctx.getString(R.string.tts_in_distance, distance, instruction)
             }
-            thresholdMeters >= 100 -> ctx.getString(R.string.tts_in_meters, thresholdMeters, instruction)
+            thresholdMeters >= SHORT_CUE_THRESHOLD_M ->
+                ctx.getString(R.string.tts_in_meters, thresholdMeters, instruction)
             else -> ctx.getString(R.string.tts_now, instruction)
         }
     }
@@ -169,7 +175,7 @@ object NavigationTts {
     private fun speak(text: String) {
         val engine = tts ?: return
         if (!requestFocus()) return
-        outstandingUtterances.incrementAndFetch()
+        outstandingUtterances.incrementAndGet()
         engine.speak(text, TextToSpeech.QUEUE_ADD, null, Uuid.random().toString())
     }
 

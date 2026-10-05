@@ -7,8 +7,9 @@ import java.io.File
  *
  * The screen takes a state value plus an actions interface rather than the ViewModel
  * itself, so it can be rendered by a `@Preview` — which is what the store listing images
- * are generated from. It lives in `util` rather than next to the composables so the
- * dependency runs one way, and [FilesViewModel] implements [FilesActions] directly.
+ * are generated from. [FilesViewModel] implements [FilesActions] through small layers
+ * (see BrowseActionsLayer): each layer overrides one slice of the contract and delegates
+ * the rest, so no single type exceeds the function cap.
  */
 
 /** How the current directory's entries are ordered. */
@@ -65,24 +66,32 @@ data class HomeUiState(
     val bookmarks: List<FileBrowserItem> = emptyList(),
 )
 
-/**
- * Browser callbacks. Every method has a no-op default so a preview can render the screen
- * without supplying behaviour — [Noop] is the whole implementation a preview needs.
- */
-interface FilesActions {
-    fun navigateTo(path: File) {}
-    fun navigateIntoZipDir(dirName: String) {}
-    fun navigateToZipInternalPath(fullInternalPath: String) {}
-    fun navigateToZipParentRealFolder(target: File) {}
-
-    /** Returns true when the back press was consumed (selection cleared, or moved up). */
-    fun handleBack(): Boolean = false
-
+/** Multi-select state. Only valid in real-filesystem mode, never inside a zip. */
+interface SelectionActions {
+    /** Dismisses any selection. Always allowed; a no-op when nothing is selected. */
     fun clearSelection() {}
     fun addToSelection(item: FileBrowserItem) {}
     fun toggleSelection(item: FileBrowserItem) {}
     fun selectAll() {}
+}
 
+/** Where the user is. Location changes are back-stack entries (see FilesNavActions). */
+interface NavigationActions {
+    fun navigateTo(path: File) {}
+    fun navigateIntoZipDir(dirName: String) {}
+    fun navigateToZipInternalPath(fullInternalPath: String) {}
+    fun navigateToZipParentRealFolder(target: File) {}
+    /** Loads a location inside an archive. Called by the navigation layer for a `Route.Zip`. */
+    fun showZip(zip: File, internalPath: String) {}
+    /** Reloads the system-trash listing. Called by the navigation layer for a `Route.Trash`. */
+    fun showTrash() {}
+
+    /** Returns true when the back press was consumed (a selection was dismissed). */
+    fun handleBack(): Boolean = false
+}
+
+/** Structural edits to the current folder: rename, delete, drag-and-drop moves. */
+interface EditActions {
     fun rename(item: FileBrowserItem, newName: String) {}
     fun deleteSelection() {}
     /** Confirms permanent deletion of items the system trash cannot take (folders, unindexed). */
@@ -91,53 +100,98 @@ interface FilesActions {
     fun dismissPermanentDelete() {}
     fun moveInto(sources: List<File>, target: File) {}
     fun moveToBreadcrumb(sources: List<File>, target: File) {}
+}
 
-    fun openZipFile(item: FileBrowserItem) {}
+/** Opening and handing files to other apps. */
+interface ShareOpenActions {
     fun openFile(item: FileBrowserItem) {}
     fun openWith(item: FileBrowserItem) {}
     /** Hands an .apk to the system package installer, prompting for the install permission first. */
     fun installApk(item: FileBrowserItem) {}
     fun shareSelection() {}
+    /** Called by the UI after returning from the "install unknown apps" settings screen. */
+    fun onApkInstallPermissionResult() {}
+}
+
+/** Archives: entering zips, creating them, extracting them, saving shared content. */
+interface ArchiveActions {
+    fun openZipFile(item: FileBrowserItem) {}
     fun archive(archiveName: String) {}
     fun saveIncomingUris() {}
+    fun unzip(zipItem: FileBrowserItem, destPath: File) {}
+}
 
-    // ---- Sort & view ----
+/** Sort order, list/grid, hidden files, and search. */
+interface BrowseViewActions {
     fun setSortBy(sortBy: SortBy) {}
     fun toggleSortDirection() {}
     fun setSortAscending(ascending: Boolean) {}
     fun toggleViewMode() {}
     fun toggleHidden() {}
-
-    // ---- Search ----
     fun setSearchActive(active: Boolean) {}
     fun setSearchQuery(query: String) {}
+}
 
-    // ---- Clipboard (copy/cut/paste) ----
+/** Clipboard (copy/cut/paste). */
+interface ClipboardActions {
     fun copySelection() {}
     fun cutSelection() {}
     fun pasteHere() {}
     fun clearClipboard() {}
+}
 
-    // ---- Create ----
+/** Creating folders and files in the current directory. */
+interface CreateActions {
     fun createFolder(name: String) {}
     fun createFile(name: String) {}
+}
 
-    // ---- Home / categories / bookmarks ----
+/** Home screen: storage meter, categories, bookmarks. */
+interface HomeActions {
     fun goHome() {}
     fun openInternalStorage() {}
     fun openCategory(category: FileCategory) {}
     fun openBookmark(path: File) {}
     fun addBookmark(item: FileBrowserItem) {}
     fun removeBookmark(path: File) {}
+}
 
-    // ---- System trash ----
+/** System-trash listing: selecting, restoring, deleting forever. */
+interface TrashActions {
     fun openTrash() {}
     fun toggleTrashSelection(item: FileBrowserItem) {}
     fun clearTrashSelection() {}
     fun restoreTrashSelection() {}
     fun deleteForeverTrashSelection() {}
     fun emptyTrash() {}
+    /** Refreshes both listings after a trash/restore/delete consent dialog resolves. */
+    fun onTrashConsentResult(granted: Boolean) {}
+}
 
+/** One-shot user feedback (snackbars) without going through a dialog flow. */
+interface FeedbackActions {
+    fun showMessage(message: String) {}
+}
+
+/**
+ * Browser callbacks. Every method has a no-op default so a preview can render the screen
+ * without supplying behaviour — [Noop] is the whole implementation a preview needs.
+ *
+ * Segregated into one sub-interface per concern (selection, navigation, edits, …) so no
+ * single type exceeds the function cap.
+ */
+interface FilesActions :
+    SelectionActions,
+    NavigationActions,
+    EditActions,
+    ShareOpenActions,
+    ArchiveActions,
+    BrowseViewActions,
+    ClipboardActions,
+    CreateActions,
+    HomeActions,
+    TrashActions,
+    FeedbackActions {
     companion object {
         val Noop: FilesActions = object : FilesActions {}
     }

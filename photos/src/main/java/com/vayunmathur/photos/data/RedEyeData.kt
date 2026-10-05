@@ -4,6 +4,13 @@ import android.graphics.Bitmap
 import kotlin.math.max
 import kotlin.math.sqrt
 
+private const val ALPHA_SHIFT = 24
+private const val RED_SHIFT = 16
+private const val GREEN_SHIFT = 8
+private const val CHANNEL_MAX = 255
+private const val RED_DOMINANCE_FACTOR = 1.5f
+private const val DESATURATE_FACTOR = 0.8f
+
 data class RedEyeSpot(
     val x: Float,
     val y: Float,
@@ -40,14 +47,14 @@ fun RedEyeSpots.applyToBitmap(bitmap: Bitmap): Bitmap {
                 val r = (pixel shr 16) and 0xFF
                 val g = (pixel shr 8) and 0xFF
                 val b = pixel and 0xFF
-                if (r > 1.5f * g && r > 1.5f * b) {
-                    val targetR = ((g + b) / 2f) * 0.8f
-                    val targetG = g * 0.8f
-                    val targetB = b * 0.8f
+                if (r > RED_DOMINANCE_FACTOR * g && r > RED_DOMINANCE_FACTOR * b) {
+                    val targetR = ((g + b) / 2f) * DESATURATE_FACTOR
+                    val targetG = g * DESATURATE_FACTOR
+                    val targetB = b * DESATURATE_FACTOR
                     val nr = (r + (targetR - r) * feather).toInt().coerceIn(0, 255)
                     val ng = (g + (targetG - g) * feather).toInt().coerceIn(0, 255)
                     val nb = (b + (targetB - b) * feather).toInt().coerceIn(0, 255)
-                    pixels[idx] = (a shl 24) or (nr shl 16) or (ng shl 8) or nb
+                    pixels[idx] = (a shl ALPHA_SHIFT) or (nr shl RED_SHIFT) or (ng shl GREEN_SHIFT) or nb
                 }
             }
         }

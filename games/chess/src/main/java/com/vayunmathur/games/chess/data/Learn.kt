@@ -42,7 +42,11 @@ data class LearnLevel(
     val failIfPieceOffPath: List<String> = emptyList()
 ) {
     val playerColor: PieceColor get() = if (color == "black") PieceColor.BLACK else PieceColor.WHITE
-    val appleSquares: List<Position> get() = apples?.split(" ")?.filter { it.isNotBlank() }?.map { square(it) } ?: emptyList()
+    val appleSquares: List<Position> get() = apples
+        ?.split(" ")
+        ?.filter { it.isNotBlank() }
+        ?.map { square(it) }
+        ?: emptyList()
 }
 
 @Serializable
@@ -63,7 +67,9 @@ data class LearnCategory(val key: String, val name: String, val stages: List<Lea
 data class LearnData(val categories: List<LearnCategory>)
 
 /** Parses an algebraic square like "e4" into a board [Position] (row 0 = rank 8). */
-fun square(s: String): Position = Position(8 - (s[1] - '0'), s[0] - 'a')
+fun square(s: String): Position = Position(BOARD_RANKS - (s[1] - '0'), s[0] - 'a')
+
+private const val BOARD_RANKS = 8
 
 /** Parses a UCI move like "e2e4" or "e7e8q" into (from, to, promotion). */
 fun parseUci(uci: String): Triple<Position, Position, PieceType?> {

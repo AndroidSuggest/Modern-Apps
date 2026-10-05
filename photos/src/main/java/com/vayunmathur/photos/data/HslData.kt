@@ -6,15 +6,30 @@ import androidx.core.graphics.createBitmap
 import com.vayunmathur.photos.R
 import kotlin.math.abs
 
+private const val ALPHA_SHIFT = 24
+private const val RED_SHIFT = 16
+private const val GREEN_SHIFT = 8
+private const val CHANNEL_MAX = 255
+private const val CHANNEL_MAX_F = 255f
+private const val FULL_CIRCLE_DEGREES = 360f
+private const val HUE_RANGE_HALF_WIDTH = 30f
+private const val HUE_SECTOR_DEGREES = 60f
+private const val PERCENT_DIVISOR = 100f
+private const val HUE_SIXTH = 1f / 6f
+private const val HUE_HALF = 1f / 2f
+private const val HUE_THIRD = 1f / 3f
+private const val HUE_TWO_THIRDS = 2f / 3f
+private const val HUE_BLEND_SCALE = 6f
+
 enum class HslColorRange(@StringRes val labelRes: Int, val hueCenter: Float) {
-    Red(R.string.color_red, 0f),
-    Orange(R.string.color_orange, 30f),
-    Yellow(R.string.yellow, 60f),
-    Green(R.string.color_green, 120f),
-    Cyan(R.string.cyan, 180f),
-    Blue(R.string.color_blue, 240f),
-    Purple(R.string.color_purple, 270f),
-    Magenta(R.string.magenta, 300f),
+    Red(R.string.color_red, hueCenter = 0f),
+    Orange(R.string.color_orange, hueCenter = 30f),
+    Yellow(R.string.yellow, hueCenter = 60f),
+    Green(R.string.color_green, hueCenter = 120f),
+    Cyan(R.string.cyan, hueCenter = 180f),
+    Blue(R.string.color_blue, hueCenter = 240f),
+    Purple(R.string.color_purple, hueCenter = 270f),
+    Magenta(R.string.magenta, hueCenter = 300f),
 }
 
 data class HslChannelAdjustment(
@@ -24,7 +39,8 @@ data class HslChannelAdjustment(
 )
 
 data class HslAdjustments(
-    val channels: Map<HslColorRange, HslChannelAdjustment> = HslColorRange.entries.associateWith { HslChannelAdjustment() },
+    val channels: Map<HslColorRange, HslChannelAdjustment> =
+        HslColorRange.entries.associateWith { HslChannelAdjustment() },
 ) {
     fun isIdentity(): Boolean = channels.values.all { it.hue == 0f && it.saturation == 0f && it.luminance == 0f }
 }
@@ -40,9 +56,9 @@ fun rgbToHsl(r: Int, g: Int, b: Int): FloatArray {
     if (delta == 0f) return floatArrayOf(0f, 0f, l)
     val s = if (l < 0.5f) delta / (cMax + cMin) else delta / (2f - cMax - cMin)
     val h = when (cMax) {
-        rf -> ((gf - bf) / delta + (if (gf < bf) 6f else 0f)) * 60f
-        gf -> ((bf - rf) / delta + 2f) * 60f
-        else -> ((rf - gf) / delta + 4f) * 60f
+        rf -> ((gf - bf) / delta + (if (gf < bf) 6f else 0f)) * HUE_SECTOR_DEGREES
+        gf -> ((bf - rf) / delta + 2f) * HUE_SECTOR_DEGREES
+        else -> ((rf - gf) / delta + 4f) * HUE_SECTOR_DEGREES
     }
     return floatArrayOf(h, s, l)
 }
@@ -59,23 +75,23 @@ fun hslToRgb(h: Float, s: Float, l: Float): IntArray {
         if (tt < 0f) tt += 1f
         if (tt > 1f) tt -= 1f
         return when {
-            tt < 1f / 6f -> p + (q - p) * 6f * tt
-            tt < 1f / 2f -> q
-            tt < 2f / 3f -> p + (q - p) * (2f / 3f - tt) * 6f
+            tt < HUE_SIXTH -> p + (q - p) * HUE_BLEND_SCALE * tt
+            tt < HUE_HALF -> q
+            tt < HUE_TWO_THIRDS -> p + (q - p) * (HUE_TWO_THIRDS - tt) * HUE_BLEND_SCALE
             else -> p
         }
     }
-    val hNorm = h / 360f
+    val hNorm = h / FULL_CIRCLE_DEGREES
     return intArrayOf(
-        (hue2rgb(hNorm + 1f / 3f) * 255f).toInt().coerceIn(0, 255),
-        (hue2rgb(hNorm) * 255f).toInt().coerceIn(0, 255),
-        (hue2rgb(hNorm - 1f / 3f) * 255f).toInt().coerceIn(0, 255),
+        (hue2rgb(hNorm + HUE_THIRD) * CHANNEL_MAX_F).toInt().coerceIn(0, CHANNEL_MAX),
+        (hue2rgb(hNorm) * CHANNEL_MAX_F).toInt().coerceIn(0, CHANNEL_MAX),
+        (hue2rgb(hNorm - HUE_THIRD) * CHANNEL_MAX_F).toInt().coerceIn(0, CHANNEL_MAX),
     )
 }
 
 private fun hueWeight(pixelHue: Float, centerHue: Float): Float {
-    val diff = abs(((pixelHue - centerHue + 180f + 360f) % 360f) - 180f)
-    return (1f - (diff / 30f)).coerceIn(0f, 1f)
+    val diff = abs(((pixelHue - centerHue + 180f + FULL_CIRCLE_DEGREES) % FULL_CIRCLE_DEGREES) - 180f)
+    return (1f - (diff / HUE_RANGE_HALF_WIDTH)).coerceIn(0f, 1f)
 }
 
 fun HslAdjustments.applyHslToBitmap(bitmap: Bitmap): Bitmap {
@@ -95,14 +111,14 @@ fun HslAdjustments.applyHslToBitmap(bitmap: Bitmap): Bitmap {
         for ((range, adj) in channels) {
             val weight = hueWeight(hue, range.hueCenter)
             if (weight > 0f) {
-                hue = (hue + adj.hue * weight) % 360f
-                if (hue < 0f) hue += 360f
-                sat = (sat + adj.saturation / 100f * weight).coerceIn(0f, 1f)
-                lum = (lum + adj.luminance / 100f * weight).coerceIn(0f, 1f)
+                hue = (hue + adj.hue * weight) % FULL_CIRCLE_DEGREES
+                if (hue < 0f) hue += FULL_CIRCLE_DEGREES
+                sat = (sat + adj.saturation / PERCENT_DIVISOR * weight).coerceIn(0f, 1f)
+                lum = (lum + adj.luminance / PERCENT_DIVISOR * weight).coerceIn(0f, 1f)
             }
         }
         val rgb = hslToRgb(hue, sat, lum)
-        pixels[i] = (a shl 24) or (rgb[0] shl 16) or (rgb[1] shl 8) or rgb[2]
+        pixels[i] = (a shl ALPHA_SHIFT) or (rgb[0] shl RED_SHIFT) or (rgb[1] shl GREEN_SHIFT) or rgb[2]
     }
     val result = createBitmap(w, h)
     result.setPixels(pixels, 0, w, 0, 0, w, h)

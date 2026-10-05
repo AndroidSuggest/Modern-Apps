@@ -105,7 +105,6 @@ class MetadataPreviews {
     fun Preview3Timer() {
         DynamicTheme(darkTheme = true) {
             TimerScreen(
-                backStack = rememberNavBackStack<Route>(Route.Timer),
                 // No timers yet, which is what puts the keypad up; "1000" is the digits
                 // for a ten-minute timer, mid-entry.
                 state = TimerUiState(now = { MORNING }),
@@ -121,7 +120,6 @@ class MetadataPreviews {
     fun Preview4Stopwatch() {
         DynamicTheme(darkTheme = true) {
             StopwatchScreen(
-                backStack = rememberNavBackStack<Route>(Route.Stopwatch),
                 state = StopwatchUiState(
                     isRunning = true,
                     countingTime = 3.minutes + 42.seconds + 810.milliseconds,

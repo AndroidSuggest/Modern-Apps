@@ -36,7 +36,9 @@ fun FontSizePickerDialog(onSizeSelected: (Float) -> Unit, onDismiss: () -> Unit)
                                 shape = RoundedCornerShape(4.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant
                             ) {
-                                Text("${size.toInt()}", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                                Text(
+                                    "${size.toInt()}",
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
                             }
                         }
                     }

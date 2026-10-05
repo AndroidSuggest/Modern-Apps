@@ -67,8 +67,8 @@ class PasskeyCredentialService : CredentialProviderService() {
                     repository,
                 )
                 callback.onResult(response)
-            } catch (e: Exception) {
-                Log.e(TAG, "onBeginGetCredentialRequest failed, falling back to unlock", e)
+            } catch (expected: IllegalStateException) {
+                Log.e(TAG, "onBeginGetCredentialRequest failed, falling back to unlock", expected)
                 closeCachedDatabase<PasswordDatabase>()
                 DatabaseHelper(applicationContext).deleteKey()
                 callback.onResult(buildUnlockResponse())
@@ -105,8 +105,8 @@ class PasskeyCredentialService : CredentialProviderService() {
             } else {
                 callback.onResult(BeginCreateCredentialResponse.Builder().build())
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "onBeginCreateCredentialRequest failed", e)
+        } catch (expected: IllegalArgumentException) {
+            Log.e(TAG, "onBeginCreateCredentialRequest failed", expected)
             callback.onError(CreateCredentialUnknownException())
         }
     }

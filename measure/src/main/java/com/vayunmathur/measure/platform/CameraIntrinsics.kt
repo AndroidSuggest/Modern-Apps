@@ -30,45 +30,67 @@ data class Intrinsics(
  */
 object CameraIntrinsicsResolver {
 
+    /** Entries in LENS_INTRINSIC_CALIBRATION: fx, fy, cx, cy. */
+    private const val MIN_CALIBRATION_VALUES = 4
+
     fun resolve(context: Context, analysisSize: Size, cameraId: String? = null): Intrinsics? {
         val manager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
             ?: return null
         val id = cameraId ?: firstBackCameraId(manager) ?: return null
-        val chars = runCatching { manager.getCameraCharacteristics(id) }.getOrNull() ?: return null
-
+        val chars = runCatching { manager.getCameraCharacteristics(id) }.getOrNull()
+            ?: return null
         val activeArray = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
             ?: return null
         val arrayW = activeArray.width().toDouble()
         val arrayH = activeArray.height().toDouble()
         if (arrayW <= 0 || arrayH <= 0) return null
-
         // The analysis stream is centre-cropped to its own aspect ratio before being
         // scaled down, so the two axes generally do not share a scale factor.
-        val scaleX = analysisSize.width / arrayW
-        val scaleY = analysisSize.height / arrayH
+        val scales = Scales(
+            x = analysisSize.width / arrayW,
+            y = analysisSize.height / arrayH,
+        )
+        return calibrationIntrinsics(chars, scales)
+            ?: fallbackIntrinsics(chars, arrayW, arrayH, scales, analysisSize)
+    }
 
+    private data class Scales(val x: Double, val y: Double)
+
+    private fun calibrationIntrinsics(
+        chars: CameraCharacteristics,
+        scales: Scales,
+    ): Intrinsics? {
         val calibration = chars.get(CameraCharacteristics.LENS_INTRINSIC_CALIBRATION)
-        if (calibration != null && calibration.size >= 4) {
-            val fx = calibration[0].toDouble() * scaleX
-            val fy = calibration[1].toDouble() * scaleY
-            val cx = calibration[2].toDouble() * scaleX
-            val cy = calibration[3].toDouble() * scaleY
-            if (fx > 1.0 && fy > 1.0) {
-                return Intrinsics(fx, fy, cx, cy, calibrated = true)
-            }
-        }
+            ?: return null
+        if (calibration.size < MIN_CALIBRATION_VALUES) return null
+        val fx = calibration[0].toDouble() * scales.x
+        val fy = calibration[1].toDouble() * scales.y
+        if (fx <= 1.0 || fy <= 1.0) return null
+        return Intrinsics(
+            fx = fx,
+            fy = fy,
+            cx = calibration[2].toDouble() * scales.x,
+            cy = calibration[3].toDouble() * scales.y,
+            calibrated = true,
+        )
+    }
 
+    private fun fallbackIntrinsics(
+        chars: CameraCharacteristics,
+        arrayW: Double,
+        arrayH: Double,
+        scales: Scales,
+        analysisSize: Size,
+    ): Intrinsics? {
         // Fallback: focal length in millimetres against physical sensor size.
         val focalMm = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
             ?.firstOrNull()?.toDouble() ?: return null
-        val physical = chars.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE) ?: return null
+        val physical = chars.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
+            ?: return null
         if (physical.width <= 0f || physical.height <= 0f) return null
-
-        val fxPx = focalMm / physical.width * arrayW * scaleX
-        val fyPx = focalMm / physical.height * arrayH * scaleY
         return Intrinsics(
-            fx = fxPx,
-            fy = fyPx,
+            fx = focalMm / physical.width * arrayW * scales.x,
+            fy = focalMm / physical.height * arrayH * scales.y,
             cx = analysisSize.width / 2.0,
             cy = analysisSize.height / 2.0,
             calibrated = false,

@@ -50,7 +50,7 @@ class CommunicateCarThreadListScreen(
         // ListTemplate.build() throws when loading==hasList, and an empty
         // section set is legal — but while loading there is nothing to show,
         // so both paths branch on it.
-        if (carContext.getCarAppApiLevel() >= 8) {
+        if (carContext.getCarAppApiLevel() >= CAR_API_SECTIONED_LIST) {
             runCatching { return sectionedTemplate() }
         }
         return legacyListTemplate()
@@ -131,17 +131,17 @@ class CommunicateCarThreadListScreen(
             .map { it.first().uppercaseChar() }
             .joinToString("")
             .ifBlank { "#" }
-        val size = 128
+        val size = AVATAR_SIZE_PX
         val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
-        val palette = intArrayOf(0xFF5C6BC0.toInt(), 0xFF26A69A.toInt(), 0xFFEF5350.toInt(), 0xFFAB47BC.toInt(), 0xFF66BB6A.toInt(), 0xFFFFA726.toInt())
+        val palette = AVATAR_PALETTE
         val bg = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            color = palette[(name.hashCode() and 0x7fffffff) % palette.size]
+            color = palette[(name.hashCode() and INT_POSITIVE_MASK) % palette.size]
         }
         canvas.drawCircle(size / 2f, size / 2f, size / 2f, bg)
         val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.WHITE
-            textSize = size * 0.42f
+            textSize = size * AVATAR_TEXT_FRACTION
             textAlign = android.graphics.Paint.Align.CENTER
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
@@ -151,6 +151,17 @@ class CommunicateCarThreadListScreen(
     }
 
     private companion object {
+        const val CAR_API_SECTIONED_LIST = 8
+        const val AVATAR_SIZE_PX = 128
+        const val INT_POSITIVE_MASK = 0x7fffffff
+        const val AVATAR_TEXT_FRACTION = 0.42f
+        val AVATAR_PALETTE = intArrayOf(
+            0xFF5C6BC0.toInt(),
+            0xFF26A69A.toInt(),
+            0xFFEF5350.toInt(),
+            0xFFAB47BC.toInt(),
+            0xFF66BB6A.toInt(),
+            0xFFFFA726.toInt())
         val LINE_ORDER: List<Pair<CommunicateLine, String>> = listOf(
             CommunicateLine.Sim to "SIM",
             CommunicateLine.GoogleVoice to "Google Voice",

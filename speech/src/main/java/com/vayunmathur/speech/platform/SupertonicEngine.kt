@@ -82,9 +82,12 @@ class SupertonicEngine(private val context: Context) {
     fun synthesize(text: String, language: String, onChunk: (FloatArray) -> Boolean): Boolean {
         val samples = synchronized(lock) {
             val engine = ensure() ?: return false
+            // Broad catch is deliberate: the native synthesizer throws undocumented
+            // RuntimeExceptions (not just IllegalStateException) on bad input.
+            @Suppress("TooGenericExceptionCaught")
             try {
                 engine.synthesize(text, language)
-            } catch (e: Throwable) {
+            } catch (e: Exception) {
                 Log.e(TAG, "synthesis failed", e)
                 return false
             }
@@ -180,9 +183,12 @@ object SupertonicBundle {
 
     fun isPresent(context: Context): Boolean {
         present?.let { return it }
+        // Broad catch is deliberate: AssetManager throws undocumented RuntimeExceptions
+        // (not just IOException) on corrupt installs.
+        @Suppress("TooGenericExceptionCaught")
         val entries = try {
             context.assets.list(SupertonicSynthesizer.ASSET_PATH)?.toSet().orEmpty()
-        } catch (e: Throwable) {
+        } catch (e: Exception) {
             // Deliberately not cached. A throw here is a failure to *read* the assets rather than
             // an answer about them, and pinning `false` on it would unadvertise the engine for the
             // life of the process over something that may not recur.
@@ -213,10 +219,12 @@ object SupertonicBundle {
             root.deleteRecursively()
             bytes
         }.getOrNull() ?: return
-        Log.i(TAG, "removed ${freed / (1024 * 1024)} MB of Piper voices that nothing reads")
+        Log.i(TAG, "removed ${freed / BYTES_PER_MB} MB of Piper voices that nothing reads")
     }
 
     private const val TAG = "SupertonicBundle"
+    /** Bytes in a megabyte, for logging reclaimed voice data. */
+    private const val BYTES_PER_MB = 1024 * 1024
 
     /**
      * The four plans, the codepoint table and the default voice.

@@ -94,32 +94,7 @@ class MainActivity : ComponentActivity() {
                     if (coarseOnly) showUpgradeDialog = true
                 }
 
-                AppPermissionsGate(
-                    spec = AppPermissionsSpec(
-                        title = stringResource(R.string.permission_grant_fine_location),
-                        icon = { IconBluetooth() },
-                        requirements = listOf(
-                            // Request fine AND coarse together: on Android 12+
-                            // this surfaces the Precise/Approximate choice;
-                            // requesting fine alone is ignored by the system.
-                            PermissionRequirement.Runtime(
-                                arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                                )
-                            ),
-                            PermissionRequirement.Runtime(
-                                arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                            ),
-                            // The finder half of powered-off finding is always
-                            // on, so the scanner needs BLUETOOTH_SCAN from the
-                            // start; without it it starts and immediately closes.
-                            PermissionRequirement.Runtime(
-                                arrayOf(Manifest.permission.BLUETOOTH_SCAN)
-                            ),
-                        )
-                    )
-                ) {
+                AppPermissionsGate(spec = findFamilyPermissionsSpec()) {
                     val deepLinkPeerId = remember {
                         intent?.takeIf { it.hasExtra(EXTRA_UWB_PEER_ID) }
                             ?.getLongExtra(EXTRA_UWB_PEER_ID, -1L)
@@ -178,6 +153,33 @@ class MainActivity : ComponentActivity() {
 
 /** A tapped invite link: the sender's id, plus the bundle fingerprint it vouched for. */
 data class AddInvite(val id: Long, val fingerprint: String?)
+
+/** The foreground/background-location + BT-scan gate every FindFamily surface sits behind. */
+@Composable
+private fun findFamilyPermissionsSpec() = AppPermissionsSpec(
+    title = stringResource(R.string.permission_grant_fine_location),
+    icon = { IconBluetooth() },
+    requirements = listOf(
+        // Request fine AND coarse together: on Android 12+
+        // this surfaces the Precise/Approximate choice;
+        // requesting fine alone is ignored by the system.
+        PermissionRequirement.Runtime(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            )
+        ),
+        PermissionRequirement.Runtime(
+            arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        ),
+        // The finder half of powered-off finding is always
+        // on, so the scanner needs BLUETOOTH_SCAN from the
+        // start; without it it starts and immediately closes.
+        PermissionRequirement.Runtime(
+            arrayOf(Manifest.permission.BLUETOOTH_SCAN)
+        ),
+    )
+)
 
 @Composable
 fun MissingFeaturesDialog(backStack: NavBackStack<Route>) {
@@ -273,8 +275,12 @@ fun Navigation(
             MainPage(platform, backStack, ffViewModel, it.selectedUserId, it.selectedWaypointId)
         }
         entry<Route.UserPageHistoryDatePicker>(metadata = DialogPage()) {
-            DatePickerDialog(backStack, "HistoryDatePicker", it.initialDate, maxDate = Clock.System.now().toLocalDateTime(
-                TimeZone.currentSystemDefault()).date)
+            DatePickerDialog(
+                backStack,
+                "HistoryDatePicker",
+                it.initialDate,
+                maxDate = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+            )
         }
         entry<Route.AddPersonDialog>(metadata = DialogPage()) {
             AddPersonDialog(backStack, ffViewModel, platform, it.id, it.fingerprint)

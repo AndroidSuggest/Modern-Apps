@@ -26,39 +26,39 @@ import kotlinx.coroutines.launch
  * offline rows exactly as they were rather than emptying the screen.
  */
 internal suspend fun AppStoreViewModel.loadHome(enabled: Set<AppSource> = enabledSources.value) {
-    _isLoadingHome.value = true
-    _recentlyUpdated.value = catalog.recentlyUpdated(RECENT_LIMIT)
+    isLoadingHomeFlow.value = true
+    recentlyUpdatedFlow.value = catalog.recentlyUpdated(RECENT_LIMIT)
 
     // The Sandboxed Google Play components come from GrapheneOS's release server, not
     // Play. Refreshing its signed index is what turns the stand-ins into installable
     // rows: the version, file list, signer digests and per-APK hashes all come from
     // there. A failed refresh leaves the stand-ins, and the section, exactly as they were.
-    if (_sandboxedGooglePlay.value.isNotEmpty()) {
+    if (sandboxedGooglePlayFlow.value.isNotEmpty()) {
         grapheneOS.refresh(SandboxedGooglePlay.PACKAGES).getOrNull()?.let { packages ->
             val byPackage = packages.associateBy { it.packageName }
-            _sandboxedGooglePlay.value = _sandboxedGooglePlay.value.map { row ->
+            sandboxedGooglePlayFlow.value = sandboxedGooglePlayFlow.value.map { row ->
                 byPackage[row.packageName]?.toUnifiedApp() ?: row
             }
         }
     }
 
     if (AppSource.PLAYSTORE !in enabled) {
-        _isLoadingHome.value = false
+        isLoadingHomeFlow.value = false
         return
     }
 
     val clusters = play.homeClusters()
-    _playSections.value = clusters
+    playSectionsFlow.value = clusters
         .filter { it.apps.isNotEmpty() }
         .take(PLAY_CLUSTER_LIMIT)
         .map { AppSection("play-${it.title}", it.title, it.apps.take(CAROUSEL_LIMIT)) }
 
-    if (_playSections.value.isEmpty()) {
+    if (playSectionsFlow.value.isEmpty()) {
         // No account, or Play changed its stream shape. A top chart is one request and
         // still gives the screen something beyond this repo's own dozen apps.
         val chart = play.topChart()
         if (chart.isNotEmpty()) {
-            _playSections.value = listOf(
+            playSectionsFlow.value = listOf(
                 AppSection(
                     id = "play-top",
                     title = context.getString(R.string.section_play_top_charts),
@@ -67,7 +67,7 @@ internal suspend fun AppStoreViewModel.loadHome(enabled: Set<AppSource> = enable
             )
         }
     }
-    _isLoadingHome.value = false
+    isLoadingHomeFlow.value = false
 }
 
 internal fun AppStoreViewModel.buildSections(
@@ -149,7 +149,7 @@ internal fun AppStoreViewModel.buildSections(
  * be a poor trade for data that is at most a few hours stale.
  */
 internal fun AppStoreViewModel.syncIfNeverSynced(enabled: Set<AppSource>) {
-    if (_recentlyUpdated.value.isNotEmpty()) return
+    if (recentlyUpdatedFlow.value.isNotEmpty()) return
     // Nothing to fetch if both offline sources are switched off; syncSources() would only
     // report "all sources off" at someone who never asked for a sync.
     val offlineSources = setOf(DefaultRepos.FDROID.source, DefaultRepos.MODERN_APPS.source)
@@ -159,20 +159,20 @@ internal fun AppStoreViewModel.syncIfNeverSynced(enabled: Set<AppSource>) {
 
 /** Re-download both offline catalogues, then reload the home rows from them. */
 fun AppStoreViewModel.syncSources() {
-    if (_isSyncing.value) return
+    if (isSyncingFlow.value) return
     viewModelScope.launch {
         val enabled = enabledSources.value
-        _isSyncing.value = true
+        isSyncingFlow.value = true
         val report = catalog.sync(enabled) { step ->
-            _statusMessage.value = context.getString(
+            statusMessageFlow.value = context.getString(
                 when (step) {
                     SyncStep.FDROID -> R.string.sync_step_fdroid
                     SyncStep.MODERN_APPS -> R.string.sync_step_modern_apps
                 }
             )
         }
-        _statusMessage.value = ""
-        _isSyncing.value = false
+        statusMessageFlow.value = ""
+        isSyncingFlow.value = false
 
         AppMessages.show(
             when {
@@ -188,7 +188,7 @@ fun AppStoreViewModel.syncSources() {
             }
         )
 
-        _categories.value = catalog.categories()
+        categoriesFlow.value = catalog.categories()
         loadHome(enabled)
         loadAccrescent(enabled)
         installedRepo.refresh()

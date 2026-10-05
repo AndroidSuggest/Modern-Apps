@@ -39,8 +39,10 @@
 //! weighting — which is fully wired, see `jni.rs` and `multilateration.rs` — did nothing.
 
 use std::fs::File;
-use std::os::unix::fs::FileExt;
-use std::os::unix::io::{AsRawFd, FromRawFd};
+// `FromRawFd` (fd → File) only exists on unix; the host fallbacks below never
+// touch fds.
+#[cfg(unix)]
+use std::os::unix::io::FromRawFd;
 
 use jni::objects::JClass;
 use jni::sys::{jdoubleArray, jint, jlong};
@@ -84,9 +86,26 @@ struct Src {
     base: u64,
 }
 impl Src {
+    /// Same contract as the geocoder's `Src::read` (see `geocoder.rs`).
     fn read(&self, pos: u64, len: usize) -> Option<Vec<u8>> {
         let mut b = vec![0u8; len];
-        self.file.read_exact_at(&mut b, self.base + pos).ok()?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::FileExt;
+            self.file.read_exact_at(&mut b, self.base + pos).ok()?;
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::FileExt;
+            self.file.seek_read(&mut b, self.base + pos).ok()?;
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            use std::io::{Read, Seek, SeekFrom};
+            let mut f = self.file.try_clone().ok()?;
+            f.seek(SeekFrom::Start(self.base + pos)).ok()?;
+            f.read_exact(&mut b).ok()?;
+        }
         Some(b)
     }
     fn rd_u64(&self, pos: u64) -> Option<u64> {
@@ -101,6 +120,7 @@ impl Src {
 // --------------------------------------------------------------------------- mmap
 /// A read-only mapping of one region of the store. Only `high` uses this: it is the one
 /// section with unpredictable access that is too large to hold resident.
+#[cfg(unix)]
 struct Map {
     /// Page-aligned mapping base, as returned by `mmap`.
     addr: *mut libc::c_void,
@@ -110,10 +130,19 @@ struct Map {
     slack: usize,
 }
 
+/// Host fallback: plain heap buffer. A multi-hundred-MB host test store is not
+/// the deployment target (the service is Android-only), so resident memory is
+/// acceptable here; on-device this code never runs.
+#[cfg(not(unix))]
+struct Map {
+    buf: Vec<u8>,
+}
+
 // The mapping is read-only and never mutated after construction.
 unsafe impl Send for Map {}
 unsafe impl Sync for Map {}
 
+#[cfg(unix)]
 impl Map {
     fn new(file: &File, offset: u64, len: usize) -> Option<Map> {
         if len == 0 {
@@ -133,7 +162,10 @@ impl Map {
                 maplen,
                 libc::PROT_READ,
                 libc::MAP_PRIVATE,
-                file.as_raw_fd(),
+                {
+                    use std::os::unix::io::AsRawFd;
+                    file.as_raw_fd()
+                },
                 aligned as libc::off_t,
             )
         };
@@ -156,6 +188,27 @@ impl Map {
     }
 }
 
+#[cfg(not(unix))]
+impl Map {
+    fn new(file: &File, offset: u64, len: usize) -> Option<Map> {
+        if len == 0 {
+            return None;
+        }
+        let mut f = file.try_clone().ok()?;
+        use std::io::{Read, Seek, SeekFrom};
+        f.seek(SeekFrom::Start(offset)).ok()?;
+        let mut buf = vec![0u8; len];
+        f.read_exact(&mut buf).ok()?;
+        Some(Map { buf })
+    }
+
+    #[inline]
+    fn as_slice(&self) -> &[u8] {
+        &self.buf
+    }
+}
+
+#[cfg(unix)]
 impl Drop for Map {
     fn drop(&mut self) {
         unsafe { libc::munmap(self.addr, self.len) };
@@ -179,6 +232,7 @@ pub struct Reader {
 }
 
 impl Reader {
+    #[cfg(unix)]
     fn open(fd: i32, offset: i64) -> Option<Reader> {
         let dupfd = unsafe { libc::dup(fd) };
         if dupfd < 0 {
@@ -186,6 +240,12 @@ impl Reader {
         }
         let file = unsafe { File::from_raw_fd(dupfd) };
         Reader::from_src(Src { file, base: offset as u64 })
+    }
+
+    /// Host fallback: `fd` is an APK asset descriptor, meaningless off-device.
+    #[cfg(not(unix))]
+    fn open(_fd: i32, _offset: i64) -> Option<Reader> {
+        None
     }
 
     /// Open a `.wpsdb` straight from a filesystem path (base offset 0).

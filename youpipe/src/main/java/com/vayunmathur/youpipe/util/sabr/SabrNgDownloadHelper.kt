@@ -32,9 +32,7 @@ internal object SabrNgDownloadHelper {
         outputFile: File,
         onProgress: (Double) -> Unit,
     ) {
-        if (!workDir.exists() && !workDir.mkdirs()) {
-            throw IOException("Could not create SABR download directory: $workDir")
-        }
+        ensureWorkDir(workDir)
         val provider = LocalDomPoTokenProvider.shared(context.applicationContext)
         val tokenMinter: (Boolean) -> ByteArray? = { force ->
             provider.getPoTokenBytes(videoId, force)
@@ -66,13 +64,10 @@ internal object SabrNgDownloadHelper {
             }
             SabrFfmpegMuxer.mux(videoFile, audioFile, outputFile)
             onProgress(1.0)
-        } catch (e: Exception) {
-            Log.e(TAG, "SABR download failed for $videoId", e)
-            if (outputFile.exists()) {
-                outputFile.delete()
-            }
-            if (e is IOException) throw e
-            throw IOException("SABR download failed: ${e.message ?: e.javaClass.simpleName}", e)
+        } catch (e: IOException) {
+            throw cleanupAfterFailure(outputFile, videoId, e)
+        } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
+            throw cleanupAfterFailure(outputFile, videoId, e)
         } finally {
             session.stop()
             audioFile.delete()
@@ -80,6 +75,19 @@ internal object SabrNgDownloadHelper {
             spoolDir.deleteRecursively()
         }
     }
+
+    @Throws(IOException::class)
+    private fun cleanupAfterFailure(outputFile: File, videoId: String, cause: Throwable): IOException {
+        Log.e(TAG, "SABR download failed for $videoId", cause)
+        if (outputFile.exists()) {
+            outputFile.delete()
+        }
+        return downloadIOException(videoId, cause)
+    }
+
+    @Throws(IOException::class)
+    private fun downloadIOException(videoId: String, cause: Throwable): IOException =
+        IOException("SABR download failed for $videoId: ${cause.message ?: cause.javaClass.simpleName}", cause)
 
     @Throws(IOException::class)
     private fun writeTrack(

@@ -4,11 +4,12 @@ package com.vayunmathur.sdk.games
  * Achievement tier determines XP reward baseline.
  * Matches Play Games parity design: BRONZE=10, SILVER=25, GOLD=50, PLATINUM=100.
  */
+@Suppress("MagicNumber")
 enum class AchievementTier(val defaultXp: Int) {
     BRONZE(10),
     SILVER(25),
     GOLD(50),
-    PLATINUM(100)
+    PLATINUM(100),
 }
 
 /**

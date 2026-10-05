@@ -29,6 +29,12 @@ data class CallCapabilities(
 /** Phases an in-app VoIP call moves through, shared by every line that isn't handled by the SIM. */
 enum class InAppCallPhase { Idle, Outgoing, Incoming, Connecting, Active, Ended }
 
+/** True while a call is live (ringing, connecting, or connected). */
+fun InAppCallPhase.isLiveCall(): Boolean = this == InAppCallPhase.Incoming ||
+    this == InAppCallPhase.Outgoing ||
+    this == InAppCallPhase.Connecting ||
+    this == InAppCallPhase.Active
+
 /**
  * The single active in-app call, in the shape the UI and the Telecom bridge need.
  *

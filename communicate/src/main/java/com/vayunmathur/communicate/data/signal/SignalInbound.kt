@@ -37,12 +37,12 @@ internal suspend fun SignalClient.handleInboundFrame(raw: ByteArray) {
 
     val handled = try {
         processEnvelope(wsMessage)
-    } catch (c: kotlinx.coroutines.CancellationException) {
-        throw c
-    } catch (t: Throwable) {
+    } catch (expected: kotlinx.coroutines.CancellationException) {
+        throw expected
+    } catch (expected: Throwable) {
         // Redelivery cannot fix a deterministic failure, and there is no attempt counter, so
         // acking is the lesser evil: not acking would spin on the same envelope forever.
-        Log.e(TAG, "failed to process envelope, acking anyway to avoid a redelivery loop", t)
+        Log.e(TAG, "failed to process envelope, acking anyway to avoid a redelivery loop", expected)
         true
     }
     // An ack deletes the message from the server's queue, so it is deferred until the envelope has
@@ -72,51 +72,17 @@ private suspend fun SignalClient.processEnvelope(wsMessage: WebSocketMessage): B
 
     // Server delivery receipt (plaintext, no content) -> emit ReadReceipt as delivery
     if (env.type == SignalServiceProtos.Envelope.Type.SERVER_DELIVERY_RECEIPT) {
-        val cid = env.sourceAci.ifEmpty { env.destinationAci ?: "unknown" }
-        val ts = if (env.timestamp != 0L) env.timestamp else env.serverTimestamp
-        _events.emit(SignalEvent.ReadReceipt(conversationId = cid, messageId = env.serverGuid, timestampMs = ts, timestamp = ts, isDelivery = true))
+        emitServerReceipt(env)
         return true
     }
 
     if (env.content.isEmpty()) return true
+    return processDecryptedEnvelope(env)
+}
 
-    // Decrypt. A failure must never fall back to the raw envelope bytes: those are attacker
-    // controlled, so treating them as a Content would let anyone forge a message from any ACI.
-    val e = e2e
-    if (e == null) {
-        // Defensive: start() refuses to connect without a store, so this should be unreachable.
-        // Keep the envelope queued rather than acking something we never tried to decrypt.
-        Log.w(TAG, "no protocol store, leaving envelope from ${env.sourceAci} queued")
-        return false
-    }
-    val paddedPlaintext: ByteArray = try {
-        // Which identity the sender addressed matters: a message to our PNI must be decrypted with the
-        // PNI identity and its own pre-keys, not the ACI ones.
-        Log.i(
-            TAG,
-            "envelope type=${env.type} from=${env.sourceAci}:${env.sourceDevice} " +
-                "destination=${env.destinationAci} ourAci=${authData?.aci} ourPni=${authData?.pni}",
-        )
-        when (env.type) {
-            SignalServiceProtos.Envelope.Type.UNIDENTIFIED_SENDER ->
-                e.sealedSenderDecrypt(env.content, unidentifiedSenderTrustRoots(), env.serverTimestamp)
-            SignalServiceProtos.Envelope.Type.PREKEY_MESSAGE ->
-                e.decryptDM(env.sourceAci, env.sourceDevice, true, env.content)
-            SignalServiceProtos.Envelope.Type.DOUBLE_RATCHET ->
-                e.decryptDM(env.sourceAci, env.sourceDevice, false, env.content)
-            // The one unencrypted envelope type, and it may only carry a DecryptionErrorMessage
-            // (enforced after parsing, below).
-            SignalServiceProtos.Envelope.Type.PLAINTEXT_CONTENT -> env.content
-            else -> throw IllegalArgumentException("unknown envelope type ${env.type}")
-        }
-    } catch (t: Throwable) {
-        Log.w(TAG, "decrypt failed for ${env.sourceAci}:${env.sourceDevice}", t)
-        emitDecryptionError(env, t.message)
-        // Ask the sender to rebuild the session; otherwise this fails identically forever.
-        if (env.type != SignalServiceProtos.Envelope.Type.PLAINTEXT_CONTENT) sendRetryReceipt(env)
-        // Redelivery cannot fix a decrypt failure, so ack rather than spin on it.
-        return true
-    }
+/** Decrypt, validate, and dispatch an envelope with content. */
+private suspend fun SignalClient.processDecryptedEnvelope(env: SignalProtocol.SignalEnvelope): Boolean {
+    val paddedPlaintext = decryptEnvelope(env) ?: return true
     // Signal pads the plaintext before encrypting, for every envelope type.
     val plaintext = SignalProtocol.stripMessagePadding(paddedPlaintext)
 
@@ -132,21 +98,12 @@ private suspend fun SignalClient.processEnvelope(wsMessage: WebSocketMessage): B
         return true
     }
     val parsed = SignalProtocol.classifyContent(content)
-    // A sender's profile key rides along with their messages and is what lets us send sealed to them
-    // in return. It is independent of the message kind, so capture it before dispatching — a key on a
-    // reaction or an edit counts just as much as one on a text message.
-    profileKeyFrom(parsed)?.let { key ->
-        db?.let { SignalSealedSender.rememberProfileKey(it, env.sourceAci, key) }
-    }
-    val masterKeyFromData: ByteArray? = when (parsed) {
-        is SignalProtocol.ParsedContent.Data -> if (parsed.dataMessage.hasGroupV2() && parsed.dataMessage.groupV2.hasMasterKey()) parsed.dataMessage.groupV2.masterKey.toByteArray() else null
-        is SignalProtocol.ParsedContent.Edit -> if (parsed.editMessage.hasDataMessage() && parsed.editMessage.dataMessage.hasGroupV2()) parsed.editMessage.dataMessage.groupV2.masterKey.toByteArray() else null
-        else -> null
-    }
+    captureSenderKeys(env, parsed, content)
+    val masterKeyFromData = masterKeyFrom(parsed)
     // A verified PNI signature merges the sender's ACI with the PNI we knew them by, which is what
     // keeps their reply in the conversation we sent to instead of opening a second one.
     if (content.hasPniSignatureMessage()) {
-        linkPniToAci(env.sourceAci, env.sourceDevice, content.pniSignatureMessage)
+        linkPniToAci(env.sourceAci, content.pniSignatureMessage)
     }
     val conversationId = if (masterKeyFromData != null) {
         SignalProtocol.toConversationId(env.sourceAci, masterKeyFromData)
@@ -162,157 +119,51 @@ private suspend fun SignalClient.processEnvelope(wsMessage: WebSocketMessage): B
     if (masterKeyFromData != null) {
         rememberInboundGroup(conversationId, masterKeyFromData, env.sourceAci)
     }
-    // A sender key can arrive on its own Content, with no DataMessage attached — official treats it as its
-    // own case for exactly that reason. Storing it is what lets this sender's later group messages decrypt,
-    // so it must happen before any early return in the content dispatch below.
-    if (content.hasSenderKeyDistributionMessage()) {
-        try {
-            e2e?.processSenderKeyDistribution(
-                env.sourceAci,
-                env.sourceDevice,
-                content.senderKeyDistributionMessage.toByteArray(),
-            )
-            Log.i(TAG, "stored a sender key from ${env.sourceAci}:${env.sourceDevice}")
-        } catch (t: Throwable) {
-            // Losing this means later group messages from this sender cannot be decrypted.
-            Log.w(TAG, "failed to store sender key distribution from ${env.sourceAci}", t)
-        }
-    }
     val senderDevice = env.sourceDevice
     val serverGuid = env.serverGuid ?: SignalProtocol.generateMessageId()
     val timestamp = env.timestamp
 
-    when (parsed) {
-        is SignalProtocol.ParsedContent.Data -> {
-            val dm = parsed.dataMessage
-            when {
-                dm.hasReaction() -> {
-                    val r = dm.reaction
-                    val targetTs = r.targetSentTimestamp
-                    // Find original messageId by timestamp if possible
-                    val targetId = try {
-                        db?.cachedMessageDao()?.getForConversation(conversationId)?.firstOrNull { it.timestamp == targetTs }?.messageId ?: targetTs.toString()
-                    } catch (_: Exception) { targetTs.toString() }
-                    if (r.remove) {
-                        _events.emit(SignalEvent.ReactionRemoved(conversationId = conversationId, messageId = targetId, senderId = senderAci))
-                    } else {
-                        _events.emit(SignalEvent.ReactionReceived(conversationId = conversationId, messageId = targetId, senderId = senderAci, emoji = r.emoji))
-                    }
-                }
-                dm.hasDelete() -> {
-                    val targetTs = dm.delete.targetSentTimestamp
-                    val targetId = try {
-                        db?.cachedMessageDao()?.getForConversation(conversationId)?.firstOrNull { it.timestamp == targetTs }?.messageId ?: targetTs.toString()
-                    } catch (_: Exception) { targetTs.toString() }
-                    _events.emit(SignalEvent.MessageDeleted(messageId = targetId, conversationId = conversationId, timestamp = timestamp))
-                }
-                dm.hasPollCreate() -> {
-                    val pc = dm.pollCreate
-                    val sd = SignalServiceData(pollQuestion = pc.question, pollOptions = pc.optionsList.map { SignalPollOptionData(it) }, senderId = senderAci)
-                    _events.emit(SignalEvent.IncomingMessage(conversationId = conversationId, messageId = serverGuid, body = pc.question, peerName = senderDisplayName, peerPhone = null, timestamp = timestamp, senderId = senderAci, serviceData = sd.serialize(), pollQuestion = pc.question, pollOptions = pc.optionsList))
-                }
-                dm.hasPollVote() -> {
-                    val pv = dm.pollVote
-                    val targetTs = pv.targetSentTimestamp
-                    val pollId = try {
-                        db?.cachedMessageDao()?.getForConversation(conversationId)?.firstOrNull { it.timestamp == targetTs }?.messageId ?: targetTs.toString()
-                    } catch (_: Exception) { targetTs.toString() }
-                    val pollCached = try { db?.cachedMessageDao()?.get(pollId) } catch (_: Exception) { null }
-                    val pollOptions = pollCached?.serviceData?.let { SignalServiceData.parse(it)?.pollOptions?.map { o -> o.name } } ?: emptyList()
-                    val selected = pv.optionIndexesList.mapNotNull { idx -> pollOptions.getOrNull(idx) }.ifEmpty { pv.optionIndexesList.map { it.toString() } }
-                    _events.emit(SignalEvent.PollVote(conversationId = conversationId, pollMessageId = pollId, voterId = senderAci, optionNames = selected))
-                }
-                dm.hasPollTerminate() -> {
-                    // Treat as generic incoming for now; live will handle poll closure UI via serviceData flag.
-                    _events.emit(SignalEvent.IncomingMessage(conversationId = conversationId, messageId = serverGuid, body = dm.body, peerName = senderDisplayName, peerPhone = null, timestamp = timestamp, senderId = senderAci, serviceData = SignalServiceData(senderId = senderAci).serialize()))
-                }
-                else -> {
-                    val body = dm.body
-                    if (body.isBlank() && dm.attachmentsCount == 0 && !dm.hasGroupV2()) return true
-                    // senderKeyDistributionMessage is handled above, before content dispatch.
-                    val sd = SignalServiceData(senderId = senderAci, senderName = senderDisplayName, isGroup = masterKeyFromData != null)
-                    _events.emit(
-                        SignalEvent.IncomingMessage(
-                            conversationId = conversationId,
-                            messageId = serverGuid,
-                            body = body,
-                            peerName = senderDisplayName,
-                            peerPhone = null,
-                            timestamp = timestamp,
-                            senderId = senderAci,
-                            attachments = attachmentsFrom(dm),
-                            serviceData = sd.serialize(),
-                        ),
-                    )
-                }
-            }
-        }
-        is SignalProtocol.ParsedContent.Receipt -> {
-            val rm = parsed.receiptMessage
-            val isDelivery = rm.type == SignalServiceProtos.ReceiptMessage.Type.DELIVERY
-            Log.i(
-                TAG,
-                "receipt from ${env.sourceAci}: type=${rm.type} timestamps=${rm.timestampList}",
-            )
-            for (tsVal in rm.timestampList) {
-                // Resolved by timestamp rather than by conversation: the outgoing message may have been
-                // filed under a different id (phone number vs service id) than this receipt resolves to,
-                // and the timestamp is the message's protocol-level identity either way.
-                val cached = try {
-                    db?.cachedMessageDao()?.getOutgoingByTimestamp(tsVal)
-                } catch (_: Exception) { null }
-                if (cached == null) {
-                    Log.w(TAG, "receipt for unknown outgoing message at $tsVal")
-                }
-                _events.emit(
-                    SignalEvent.ReadReceipt(
-                        conversationId = cached?.conversationId ?: conversationId,
-                        messageId = cached?.messageId ?: tsVal.toString(),
-                        timestampMs = tsVal,
-                        timestamp = tsVal,
-                        isDelivery = isDelivery,
-                    ),
-                )
-            }
-        }
-        is SignalProtocol.ParsedContent.Typing -> {
-            val tm = parsed.typingMessage
-            val isTyping = tm.action == SignalServiceProtos.TypingMessage.Action.STARTED
-            val cid = if (tm.hasGroupId()) {
-                // groupId is the 32-byte GroupIdentifier, which is exactly what the conversation id
-                // encodes, so it maps across directly.
-                SignalProtocol.toConversationId("", SignalGroups.run { tm.groupId.toByteArray().toHex() })
-            } else conversationId
-            _events.emit(SignalEvent.TypingIndicator(conversationId = cid, senderId = senderAci, isTyping = isTyping))
-        }
-        is SignalProtocol.ParsedContent.Edit -> {
-            val em = parsed.editMessage
-            val targetTs = em.targetSentTimestamp
-            val newBody = em.dataMessage.body
-            val targetId = try {
-                db?.cachedMessageDao()?.getForConversation(conversationId)?.firstOrNull { it.timestamp == targetTs }?.messageId ?: targetTs.toString()
-            } catch (_: Exception) { targetTs.toString() }
-            _events.emit(SignalEvent.MessageEdited(conversationId = conversationId, messageId = targetId, newBody = newBody, timestamp = timestamp))
-        }
-        is SignalProtocol.ParsedContent.Call -> {
-            handleCallMessage(parsed.callMessage, senderAci, senderDevice, env, timestamp)
-        }
-        is SignalProtocol.ParsedContent.Sync -> {
-            val sm = parsed.syncMessage
-            // Read/viewed syncs from our own other devices refer to inbound messages by sent timestamp,
-            // so resolve on that rather than scoping to a conversation id that may not match.
-            for (r in sm.readList) {
-                emitReadSync(r.timestamp, conversationId)
-            }
-            for (v in sm.viewedList) {
-                emitReadSync(v.timestamp, conversationId)
-            }
-        }
-        else -> {
-            Log.i(TAG, "unhandled Content type ${parsed::class.simpleName} from $senderAci")
-        }
-    }
+    dispatchParsedContent(
+        parsed,
+        InboundDispatch(
+            env,
+            conversationId,
+            senderAci,
+            senderDevice,
+            senderDisplayName,
+            timestamp,
+            serverGuid,
+            masterKeyFromData,
+        ),
+    )
     return true
+}
+
+/**
+ * Capture the sender's keys before dispatching: the profile key (what lets us send sealed-sender
+ * back to them, independent of message kind) and any sender-key distribution (what lets their
+ * later group messages decrypt, including when it arrives on its own Content with no DataMessage).
+ */
+private suspend fun SignalClient.captureSenderKeys(
+    env: SignalProtocol.SignalEnvelope,
+    parsed: SignalProtocol.ParsedContent,
+    content: SignalServiceProtos.Content,
+) {
+    profileKeyFrom(parsed)?.let { key ->
+        db?.let { SignalSealedSender.rememberProfileKey(it, env.sourceAci, key) }
+    }
+    if (!content.hasSenderKeyDistributionMessage()) return
+    try {
+        e2e?.processSenderKeyDistribution(
+            env.sourceAci,
+            env.sourceDevice,
+            content.senderKeyDistributionMessage.toByteArray(),
+        )
+        Log.i(TAG, "stored a sender key from ${env.sourceAci}:${env.sourceDevice}")
+    } catch (expected: Throwable) {
+        // Losing this means later group messages from this sender cannot be decrypted.
+        Log.w(TAG, "failed to store sender key distribution from ${env.sourceAci}", expected)
+    }
 }
 
 /**
@@ -364,8 +215,8 @@ private suspend fun SignalClient.sendRetryReceipt(env: SignalProtocol.SignalEnve
             is SignalClient.SendOutcome.Success -> Log.i(TAG, "sent a retry receipt to $sender:${env.sourceDevice}")
             else -> Log.w(TAG, "could not send a retry receipt to $sender: $outcome")
         }
-    } catch (t: Throwable) {
-        Log.w(TAG, "could not build a retry receipt for $sender", t)
+    } catch (expected: Throwable) {
+        Log.w(TAG, "could not build a retry receipt for $sender", expected)
     }
 }
 
@@ -374,6 +225,12 @@ private suspend fun SignalClient.sendRetryReceipt(env: SignalProtocol.SignalEnve
  * `cdnKey`/`cdnNumber`; the key and digest travel with the pointer and are what
  * [SignalClient.downloadMedia] needs to decrypt and verify.
  */
+/** Original messageId for a reaction/edit/delete/poll target timestamp, else the timestamp itself. */
+private fun SignalClient.messageIdForTimestamp(conversationId: String, targetTs: Long): String {
+    val cached = db?.cachedMessageDao()?.getForConversation(conversationId)
+    return cached?.firstOrNull { it.timestamp == targetTs }?.messageId ?: targetTs.toString()
+}
+
 private fun SignalClient.attachmentsFrom(dm: SignalServiceProtos.DataMessage): List<SignalAttachment> =
     dm.attachmentsList.mapNotNull { pointer ->
         val cdnKey = pointer.cdnKey?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
@@ -400,7 +257,7 @@ private fun SignalClient.attachmentUrl(cdnKey: String, cdnNumber: Int): String {
 
 private suspend fun SignalClient.emitReadSync(timestamp: Long, fallbackConversationId: String) {
     val cached = try { db?.cachedMessageDao()?.getByTimestamp(timestamp) } catch (_: Exception) { null }
-    _events.emit(
+    eventsMutable.emit(
         SignalEvent.ReadReceipt(
             conversationId = cached?.conversationId ?: fallbackConversationId,
             messageId = cached?.messageId ?: timestamp.toString(),
@@ -413,7 +270,7 @@ private suspend fun SignalClient.emitReadSync(timestamp: Long, fallbackConversat
 
 private suspend fun SignalClient.emitDecryptionError(env: SignalProtocol.SignalEnvelope, message: String?) {
     val cid = SignalProtocol.toConversationId(env.sourceAci, null as ByteArray?)
-    _events.emit(
+    eventsMutable.emit(
         SignalEvent.DecryptionError(
             conversationId = cid,
             senderAci = env.sourceAci,
@@ -440,5 +297,336 @@ private fun SignalClient.groupIdFor(dm: SignalServiceProtos.DataMessage): String
         SignalProtocol.toConversationId("", dm.groupV2.masterKey.toByteArray())
     } else {
         ""
+    }
+}
+
+
+
+/** Emit a server delivery receipt as a ReadReceipt. */
+private suspend fun SignalClient.emitServerReceipt(env: SignalProtocol.SignalEnvelope) {
+    val cid = env.sourceAci.ifEmpty { env.destinationAci ?: "unknown" }
+    val ts = if (env.timestamp != 0L) env.timestamp else env.serverTimestamp
+    eventsMutable.emit(SignalEvent.ReadReceipt(
+        conversationId = cid,
+        messageId = env.serverGuid,
+        timestampMs = ts,
+        timestamp = ts,
+        isDelivery = true))
+}
+
+/**
+ * Decrypt the envelope content; null when queued (no store) or acked (decrypt failure).
+ * A failure must never fall back to the raw envelope bytes: those are attacker
+ * controlled, so treating them as a Content would let anyone forge a message from any ACI.
+ */
+private suspend fun SignalClient.decryptEnvelope(env: SignalProtocol.SignalEnvelope): ByteArray? {
+    val e = e2e
+    if (e == null) {
+        // Defensive: start() refuses to connect without a store, so this should be unreachable.
+        // Keep the envelope queued rather than acking something we never tried to decrypt.
+        Log.w(TAG, "no protocol store, leaving envelope from ${env.sourceAci} queued")
+        return null
+    }
+    return try {
+        // Which identity the sender addressed matters: a message to our PNI must be decrypted with the
+        // PNI identity and its own pre-keys, not the ACI ones.
+        Log.i(
+            TAG,
+            "envelope type=${env.type} from=${env.sourceAci}:${env.sourceDevice} " +
+                "destination=${env.destinationAci} ourAci=${authData?.aci} ourPni=${authData?.pni}",
+        )
+        when (env.type) {
+            SignalServiceProtos.Envelope.Type.UNIDENTIFIED_SENDER ->
+                e.sealedSenderDecrypt(env.content, unidentifiedSenderTrustRoots(), env.serverTimestamp)
+            SignalServiceProtos.Envelope.Type.PREKEY_MESSAGE ->
+                e.decryptDM(env.sourceAci, env.sourceDevice, true, env.content)
+            SignalServiceProtos.Envelope.Type.DOUBLE_RATCHET ->
+                e.decryptDM(env.sourceAci, env.sourceDevice, false, env.content)
+            // The one unencrypted envelope type, and it may only carry a DecryptionErrorMessage
+            // (enforced after parsing, below).
+            SignalServiceProtos.Envelope.Type.PLAINTEXT_CONTENT -> env.content
+            else -> throw IllegalArgumentException("unknown envelope type ${env.type}")
+        }
+    } catch (expected: Throwable) {
+        Log.w(TAG, "decrypt failed for ${env.sourceAci}:${env.sourceDevice}", expected)
+        emitDecryptionError(env, expected.message)
+        // Ask the sender to rebuild the session; otherwise this fails identically forever.
+        if (env.type != SignalServiceProtos.Envelope.Type.PLAINTEXT_CONTENT) sendRetryReceipt(env)
+        // Redelivery cannot fix a decrypt failure, so ack rather than spin on it.
+        null
+    }
+}
+
+/** Group master key from Data/Edit content, or null. */
+private fun masterKeyFrom(parsed: SignalProtocol.ParsedContent): ByteArray? = when (parsed) {
+    is SignalProtocol.ParsedContent.Data -> {
+        val group = parsed.dataMessage.takeIf { it.hasGroupV2() }?.groupV2
+        group?.takeIf { it.hasMasterKey() }?.masterKey?.toByteArray()
+    }
+    is SignalProtocol.ParsedContent.Edit -> {
+        val data = parsed.editMessage.takeIf { it.hasDataMessage() }?.dataMessage
+        val group = data?.takeIf { it.hasGroupV2() }?.groupV2
+        group?.takeIf { it.hasMasterKey() }?.masterKey?.toByteArray()
+    }
+    else -> null
+}
+
+/** Shared inbound dispatch state for one envelope. */
+private class InboundDispatch(
+    val env: SignalProtocol.SignalEnvelope,
+    val conversationId: String,
+    val senderAci: String,
+    val senderDevice: Int,
+    val senderDisplayName: String,
+    val timestamp: Long,
+    val serverGuid: String,
+    val masterKeyFromData: ByteArray?,
+)
+
+/** Handle one parsed content branch. */
+private suspend fun SignalClient.dispatchParsedContent(
+    parsed: SignalProtocol.ParsedContent,
+    dispatch: InboundDispatch,
+) {
+    when (parsed) {
+        is SignalProtocol.ParsedContent.Data -> handleDataContent(parsed, dispatch)
+        is SignalProtocol.ParsedContent.Receipt -> handleReceiptContent(parsed, dispatch)
+        is SignalProtocol.ParsedContent.Typing -> handleTypingContent(parsed, dispatch)
+        is SignalProtocol.ParsedContent.Edit -> handleEditContent(parsed, dispatch)
+        is SignalProtocol.ParsedContent.Call -> handleCallContent(parsed, dispatch)
+        is SignalProtocol.ParsedContent.Sync -> handleSyncContent(parsed, dispatch)
+        else -> {
+            Log.i(TAG, "unhandled Content type ${parsed::class.simpleName} from ${dispatch.senderAci}")
+        }
+    }
+}
+/** Handle Data content. */
+private suspend fun SignalClient.handleDataContent(
+    parsed: SignalProtocol.ParsedContent.Data,
+    dispatch: InboundDispatch,
+) {
+    val dm = parsed.dataMessage
+    when {
+        dm.hasReaction() -> handleReaction(dm, dispatch)
+        dm.hasDelete() -> handleDelete(dm, dispatch)
+        dm.hasPollCreate() -> handlePollCreate(dm, dispatch)
+        dm.hasPollVote() -> handlePollVote(dm, dispatch)
+        dm.hasPollTerminate() -> handlePollTerminate(dm, dispatch)
+        else -> handleTextData(dm, dispatch)
+    }
+}
+
+/** Resolve a target message id by timestamp, falling back to the timestamp itself. */
+private suspend fun SignalClient.targetMessageId(conversationId: String, targetTs: Long): String = try {
+    messageIdForTimestamp(conversationId, targetTs)
+} catch (_: Exception) {
+    targetTs.toString()
+}
+
+private suspend fun SignalClient.handleReaction(
+    dm: SignalServiceProtos.DataMessage,
+    dispatch: InboundDispatch,
+) {
+    val r = dm.reaction
+    val targetId = targetMessageId(dispatch.conversationId, r.targetSentTimestamp)
+    if (r.remove) {
+    eventsMutable.emit(SignalEvent.ReactionRemoved(
+        conversationId = dispatch.conversationId,
+        messageId = targetId,
+        senderId = dispatch.senderAci))
+    } else {
+    eventsMutable.emit(SignalEvent.ReactionReceived(
+        conversationId = dispatch.conversationId,
+        messageId = targetId,
+        senderId = dispatch.senderAci,
+        emoji = r.emoji))
+    }
+}
+
+private suspend fun SignalClient.handleDelete(
+    dm: SignalServiceProtos.DataMessage,
+    dispatch: InboundDispatch,
+) {
+    val targetId = targetMessageId(dispatch.conversationId, dm.delete.targetSentTimestamp)
+    eventsMutable.emit(SignalEvent.MessageDeleted(
+    messageId = targetId,
+    conversationId = dispatch.conversationId,
+    timestamp = dispatch.timestamp))
+}
+
+private suspend fun SignalClient.handlePollCreate(
+    dm: SignalServiceProtos.DataMessage,
+    dispatch: InboundDispatch,
+) {
+    val pc = dm.pollCreate
+    val sd = SignalServiceData(
+    pollQuestion = pc.question,
+    pollOptions = pc.optionsList.map { SignalPollOptionData(it) },
+    senderId = dispatch.senderAci)
+    eventsMutable.emit(SignalEvent.IncomingMessage(
+    conversationId = dispatch.conversationId,
+    messageId = dispatch.serverGuid,
+    body = pc.question,
+    peerName = dispatch.senderDisplayName,
+    peerPhone = null,
+    timestamp = dispatch.timestamp,
+    senderId = dispatch.senderAci,
+    serviceData = sd.serialize(),
+    pollQuestion = pc.question,
+    pollOptions = pc.optionsList))
+}
+
+private suspend fun SignalClient.handlePollVote(
+    dm: SignalServiceProtos.DataMessage,
+    dispatch: InboundDispatch,
+) {
+    val pv = dm.pollVote
+    val pollId = targetMessageId(dispatch.conversationId, pv.targetSentTimestamp)
+    val pollCached = try { db?.cachedMessageDao()?.get(pollId) } catch (_: Exception) { null }
+    val pollOptions = pollCached?.serviceData?.let { raw ->
+    SignalServiceData.parse(raw)?.pollOptions?.map { o -> o.name }
+    } ?: emptyList()
+    val selected = pv.optionIndexesList.mapNotNull { idx ->
+    pollOptions.getOrNull(idx)
+    }.ifEmpty { pv.optionIndexesList.map { it.toString() } }
+    eventsMutable.emit(SignalEvent.PollVote(
+    conversationId = dispatch.conversationId,
+    pollMessageId = pollId,
+    voterId = dispatch.senderAci,
+    optionNames = selected))
+}
+
+private suspend fun SignalClient.handlePollTerminate(
+    dm: SignalServiceProtos.DataMessage,
+    dispatch: InboundDispatch,
+) {
+    // Treat as generic incoming for now; live will handle poll closure UI via serviceData flag.
+    eventsMutable.emit(SignalEvent.IncomingMessage(
+    conversationId = dispatch.conversationId,
+    messageId = dispatch.serverGuid,
+    body = dm.body,
+    peerName = dispatch.senderDisplayName,
+    peerPhone = null,
+    timestamp = dispatch.timestamp,
+    senderId = dispatch.senderAci,
+    serviceData = SignalServiceData(senderId = dispatch.senderAci).serialize()))
+}
+
+private suspend fun SignalClient.handleTextData(
+    dm: SignalServiceProtos.DataMessage,
+    dispatch: InboundDispatch,
+) {
+    val body = dm.body
+    if (body.isBlank() && dm.attachmentsCount == 0 && !dm.hasGroupV2()) return
+    // senderKeyDistributionMessage is handled above, before content dispatch.
+    val sd = SignalServiceData(
+    senderId = dispatch.senderAci,
+    senderName = dispatch.senderDisplayName,
+    isGroup = dispatch.masterKeyFromData != null)
+    eventsMutable.emit(
+    SignalEvent.IncomingMessage(
+        conversationId = dispatch.conversationId,
+        messageId = dispatch.serverGuid,
+        body = body,
+        peerName = dispatch.senderDisplayName,
+        peerPhone = null,
+        timestamp = dispatch.timestamp,
+        senderId = dispatch.senderAci,
+        attachments = attachmentsFrom(dm),
+        serviceData = sd.serialize(),
+    ),
+    )
+}
+
+/** Handle Receipt content. */
+private suspend fun SignalClient.handleReceiptContent(
+    parsed: SignalProtocol.ParsedContent.Receipt,
+    dispatch: InboundDispatch,
+) {
+    val rm = parsed.receiptMessage
+    val isDelivery = rm.type == SignalServiceProtos.ReceiptMessage.Type.DELIVERY
+    Log.i(
+        TAG,
+        "receipt from ${dispatch.env.sourceAci}: type=${rm.type} timestamps=${rm.timestampList}",
+    )
+    for (tsVal in rm.timestampList) {
+        // Resolved by timestamp rather than by conversation: the outgoing message may have been
+        // filed under a different id (phone number vs service id) than this receipt resolves to,
+        // and the timestamp is the message's protocol-level identity either way.
+        val cached = try {
+            db?.cachedMessageDao()?.getOutgoingByTimestamp(tsVal)
+        } catch (_: Exception) { null }
+        if (cached == null) {
+            Log.w(TAG, "receipt for unknown outgoing message at $tsVal")
+        }
+        eventsMutable.emit(
+            SignalEvent.ReadReceipt(
+                conversationId = cached?.conversationId ?: dispatch.conversationId,
+                messageId = cached?.messageId ?: tsVal.toString(),
+                timestampMs = tsVal,
+                timestamp = tsVal,
+                isDelivery = isDelivery,
+            ),
+        )
+    }
+}
+
+/** Handle Typing content. */
+private suspend fun SignalClient.handleTypingContent(
+    parsed: SignalProtocol.ParsedContent.Typing,
+    dispatch: InboundDispatch,
+) {
+    val tm = parsed.typingMessage
+    val isTyping = tm.action == SignalServiceProtos.TypingMessage.Action.STARTED
+    val cid = if (tm.hasGroupId()) {
+        // groupId is the 32-byte GroupIdentifier, which is exactly what the conversation id
+        // encodes, so it maps across directly.
+        SignalProtocol.toConversationId("", SignalGroups.run { tm.groupId.toByteArray().toHex() })
+    } else dispatch.conversationId
+    eventsMutable.emit(SignalEvent.TypingIndicator(
+        conversationId = cid,
+        senderId = dispatch.senderAci,
+        isTyping = isTyping))
+}
+
+/** Handle Edit content. */
+private suspend fun SignalClient.handleEditContent(
+    parsed: SignalProtocol.ParsedContent.Edit,
+    dispatch: InboundDispatch,
+) {
+    val em = parsed.editMessage
+    val targetTs = em.targetSentTimestamp
+    val newBody = em.dataMessage.body
+    val targetId = try {
+        messageIdForTimestamp(dispatch.conversationId, targetTs)
+    } catch (_: Exception) { targetTs.toString() }
+    eventsMutable.emit(SignalEvent.MessageEdited(
+        conversationId = dispatch.conversationId,
+        messageId = targetId,
+        newBody = newBody,
+        timestamp = dispatch.timestamp))
+}
+
+/** Handle Call content. */
+private suspend fun SignalClient.handleCallContent(
+    parsed: SignalProtocol.ParsedContent.Call,
+    dispatch: InboundDispatch,
+) {
+    handleCallMessage(parsed.callMessage, dispatch.senderAci, dispatch.senderDevice, dispatch.env, dispatch.timestamp)
+}
+
+/** Handle Sync content. */
+private suspend fun SignalClient.handleSyncContent(
+    parsed: SignalProtocol.ParsedContent.Sync,
+    dispatch: InboundDispatch,
+) {
+    val sm = parsed.syncMessage
+    // Read/viewed syncs from our own other devices refer to inbound messages by sent timestamp,
+    // so resolve on that rather than scoping to a conversation id that may not match.
+    for (r in sm.readList) {
+        emitReadSync(r.timestamp, dispatch.conversationId)
+    }
+    for (v in sm.viewedList) {
+        emitReadSync(v.timestamp, dispatch.conversationId)
     }
 }

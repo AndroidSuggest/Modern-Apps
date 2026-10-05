@@ -36,7 +36,13 @@ object PackageUtils {
             )?.use { cursor ->
                 if (cursor.moveToFirst()) cursor.getLong(0) else null
             }
-        } catch (e: Exception) {
+        } catch (e: android.database.SQLException) {
+            Log.e(TAG, "Error getting aggregate contact ID", e)
+            null
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Error getting aggregate contact ID", e)
+            null
+        } catch (e: IllegalArgumentException) {
             Log.e(TAG, "Error getting aggregate contact ID", e)
             null
         }
@@ -54,10 +60,7 @@ object PackageUtils {
                     ContactsContract.Data._ID,
                     ContactsContract.Data.MIMETYPE
                 ),
-                "${ContactsContract.Data.CONTACT_ID} = ? AND (" +
-                    "${ContactsContract.Data.MIMETYPE} LIKE ? OR " +
-                    "${ContactsContract.Data.MIMETYPE} LIKE ? OR " +
-                    "${ContactsContract.Data.MIMETYPE} LIKE ?)",
+                buildPlatformSelection(),
                 arrayOf(aggregateContactId.toString(), "%whatsapp%", "%securesms%", "%telegram%"),
                 null
             )?.use { cursor ->
@@ -66,26 +69,52 @@ object PackageUtils {
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idIdx)
                     val mime = cursor.getString(mimeIdx) ?: continue
-                    result = when {
-                        mime.contains("whatsapp") && mime.contains("voip") -> result.copy(whatsAppCallId = id)
-                        mime.contains("whatsapp") && mime.contains("video") -> result.copy(whatsAppVideoId = id)
-                        mime.contains("whatsapp") && (mime.contains("profile") || mime.contains("contact")) -> result.copy(whatsAppMessageId = id)
-                        mime.contains("securesms") && mime.contains("video") -> result.copy(signalVideoId = id)
-                        mime.contains("securesms") && mime.contains("call") -> result.copy(signalCallId = id)
-                        mime.contains("securesms") && (mime.contains("contact") || mime.contains("profile")) -> result.copy(signalMessageId = id)
-                        mime.contains("telegram") && mime.contains("video") -> result.copy(telegramVideoId = id)
-                        mime.contains("telegram") && mime.contains("call") -> result.copy(telegramCallId = id)
-                        mime.contains("telegram") && (mime.contains("profile") || mime.contains("contact")) -> result.copy(telegramMessageId = id)
-                        else -> result
-                    }
+                    result = result.withPlatformRow(mime, id)
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: android.database.SQLException) {
+            Log.e(TAG, "Error querying platform data rows", e)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Error querying platform data rows", e)
+        } catch (e: IllegalArgumentException) {
             Log.e(TAG, "Error querying platform data rows", e)
         }
 
         return result
     }
+
+    private fun buildPlatformSelection(): String =
+        "${ContactsContract.Data.CONTACT_ID} = ? AND (" +
+            "${ContactsContract.Data.MIMETYPE} LIKE ? OR " +
+            "${ContactsContract.Data.MIMETYPE} LIKE ? OR " +
+            "${ContactsContract.Data.MIMETYPE} LIKE ?)"
+
+    private fun ContactPlatforms.withPlatformRow(mime: String, id: Long): ContactPlatforms =
+        when {
+            mime.isWhatsAppCall() -> copy(whatsAppCallId = id)
+            mime.isWhatsAppVideo() -> copy(whatsAppVideoId = id)
+            mime.isWhatsAppMessage() -> copy(whatsAppMessageId = id)
+            mime.isSignalVideo() -> copy(signalVideoId = id)
+            mime.isSignalCall() -> copy(signalCallId = id)
+            mime.isSignalMessage() -> copy(signalMessageId = id)
+            mime.isTelegramVideo() -> copy(telegramVideoId = id)
+            mime.isTelegramCall() -> copy(telegramCallId = id)
+            mime.isTelegramMessage() -> copy(telegramMessageId = id)
+            else -> this
+        }
+
+    private fun String.isWhatsAppCall(): Boolean = contains("whatsapp") && contains("voip")
+    private fun String.isWhatsAppVideo(): Boolean = contains("whatsapp") && contains("video")
+    private fun String.isWhatsAppMessage(): Boolean =
+        contains("whatsapp") && (contains("profile") || contains("contact"))
+    private fun String.isSignalVideo(): Boolean = contains("securesms") && contains("video")
+    private fun String.isSignalCall(): Boolean = contains("securesms") && contains("call")
+    private fun String.isSignalMessage(): Boolean =
+        contains("securesms") && (contains("contact") || contains("profile"))
+    private fun String.isTelegramVideo(): Boolean = contains("telegram") && contains("video")
+    private fun String.isTelegramCall(): Boolean = contains("telegram") && contains("call")
+    private fun String.isTelegramMessage(): Boolean =
+        contains("telegram") && (contains("profile") || contains("contact"))
 }
 
 data class ContactPlatforms(

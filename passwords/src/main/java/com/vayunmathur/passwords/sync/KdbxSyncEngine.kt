@@ -140,7 +140,7 @@ class KdbxSyncEngine(
     ): KdbxSyncResult {
         val remoteBytes = try {
             document.read()
-        } catch (_: Exception) {
+        } catch (_: FileNotFoundException) {
             return KdbxSyncResult.FileMissing
         }
         // A brand new SAF document is zero bytes; that is an empty vault, not a failure.
@@ -179,8 +179,8 @@ class KdbxSyncEngine(
             if (remoteBytes.isNotEmpty()) onBackup(remoteBytes)
             try {
                 document.write(bytes)
-            } catch (e: Exception) {
-                return KdbxSyncResult.Error(e.message ?: "Failed to write KDBX file")
+            } catch (expected: IOException) {
+                return KdbxSyncResult.Error(expected.message ?: "Failed to write KDBX file")
             }
         }
 
@@ -211,36 +211,92 @@ class KdbxSyncEngine(
         baseline: Map<String, SyncSnapshot>,
         now: Long,
     ): Plan<T> {
+        val accumulator = MergeAccumulator<T>()
+        val local = indexLocal(kind, localEntities, accumulator)
+        val remote = indexRemote(kind, local, remoteEntries, accumulator)
+        reconcileAll(kind, local, remote, baseline, now, accumulator)
+        return accumulator.toPlan()
+    }
+
+    private class MergeAccumulator<T> {
         val localUpserts = mutableListOf<T>()
         val localDeletes = mutableListOf<T>()
         val remoteOut = mutableListOf<Map<String, String>>()
         val snapshots = mutableListOf<SyncSnapshot>()
         val removed = mutableListOf<String>()
+        val freshlyIdentified = mutableSetOf<String>()
         var remoteChanged = false
         var pushed = 0
         var pulled = 0
         var deletedLocal = 0
         var deletedRemote = 0
 
+        fun toPlan(): Plan<T> = Plan(
+            localUpserts = localUpserts,
+            localDeletes = localDeletes,
+            remoteFields = remoteOut,
+            snapshots = snapshots,
+            removedSyncIds = removed,
+            remoteChanged = remoteChanged,
+            pushed = pushed,
+            pulled = pulled,
+            deletedLocal = deletedLocal,
+            deletedRemote = deletedRemote,
+        )
+    }
+
+    private fun <T> indexLocal(
+        kind: EntityKind<T>,
+        localEntities: List<T>,
+        accumulator: MergeAccumulator<T>,
+    ): LinkedHashMap<String, T> {
         // Rows written before the sync columns existed have no identity yet.
         val local = LinkedHashMap<String, T>()
         val freshlyIdentified = mutableSetOf<String>()
         for (raw in localEntities) {
             val entity = if (kind.syncId(raw).isBlank()) {
-                kind.rebind(raw, kind.rowId(raw), newSyncId()).also { freshlyIdentified += kind.syncId(it) }
+                kind.rebind(raw, kind.rowId(raw), newSyncId())
+                    .also { freshlyIdentified += kind.syncId(it) }
             } else {
                 raw
             }
             local[kind.syncId(entity)] = entity
         }
+        accumulator.freshlyIdentified.addAll(freshlyIdentified)
+        return local
+    }
 
+    private fun <T> indexRemote(
+        kind: EntityKind<T>,
+        local: Map<String, T>,
+        remoteEntries: List<Map<String, String>>,
+        accumulator: MergeAccumulator<T>,
+    ): LinkedHashMap<String, Map<String, String>> {
         val remote = LinkedHashMap<String, Map<String, String>>()
         val unidentified = mutableListOf<Map<String, String>>()
         for (entry in remoteEntries) {
-            val id = entry[EntryMapper.FIELD_SYNC_ID]?.takeIf { it.isNotBlank() }
-            if (id != null && id !in remote) remote[id] = entry else unidentified += entry
+            storeIdentified(remote, unidentified, entry)
         }
+        adoptUnidentified(kind, local, remote, unidentified, accumulator)
+        return remote
+    }
 
+    private fun storeIdentified(
+        remote: MutableMap<String, Map<String, String>>,
+        unidentified: MutableList<Map<String, String>>,
+        entry: Map<String, String>,
+    ) {
+        val id = entry[EntryMapper.FIELD_SYNC_ID]?.takeIf { it.isNotBlank() }
+        if (id != null && id !in remote) remote[id] = entry else unidentified += entry
+    }
+
+    private fun <T> adoptUnidentified(
+        kind: EntityKind<T>,
+        local: Map<String, T>,
+        remote: LinkedHashMap<String, Map<String, String>>,
+        unidentified: List<Map<String, String>>,
+        accumulator: MergeAccumulator<T>,
+    ) {
         // Entries written by another client carry no _SyncId. Adopt the identity of the
         // local row they describe, otherwise pointing the app at an existing KeePassXC
         // vault would duplicate every entry in it.
@@ -252,98 +308,191 @@ class KdbxSyncEngine(
             val id = match?.takeIf { it !in claimed && it !in remote } ?: newSyncId()
             claimed += id
             remote[id] = entry + (EntryMapper.FIELD_SYNC_ID to id)
-            remoteChanged = true
+            accumulator.remoteChanged = true
         }
+    }
 
+    private fun <T> reconcileAll(
+        kind: EntityKind<T>,
+        local: Map<String, T>,
+        remote: Map<String, Map<String, String>>,
+        baseline: Map<String, SyncSnapshot>,
+        now: Long,
+        accumulator: MergeAccumulator<T>,
+    ) {
         for (id in local.keys + remote.keys) {
-            val localEntity = local[id]
-            val remoteEntry = remote[id]
-            val base = baseline[id]
-
-            if (localEntity != null && remoteEntry != null) {
-                val localFields = kind.fields(localEntity)
-                val remoteEntity = kind.entity(remoteEntry)
-                val remoteFields = kind.fields(remoteEntity)
-                val localHash = EntryMapper.contentHash(localFields)
-                val remoteHash = EntryMapper.contentHash(remoteFields)
-
-                if (localHash == remoteHash) {
-                    remoteOut += remoteEntry
-                    if (id in freshlyIdentified) localUpserts += localEntity
-                    snapshots += kind.snapshot(id, localHash, kind.updatedAt(localEntity), kind.updatedAt(remoteEntity), now)
-                    continue
-                }
-
-                val localDirty = base == null || localHash != base.contentHash
-                val remoteDirty = base == null || remoteHash != base.contentHash
-                val localWins = when {
-                    localDirty && remoteDirty -> kind.updatedAt(localEntity) >= kind.updatedAt(remoteEntity)
-                    else -> localDirty
-                }
-
-                if (localWins) {
-                    // Keep fields no client of ours understands (Notes, Tags, ...).
-                    remoteOut += remoteEntry.filterKeys { it !in EntryMapper.OWNED_KEYS } + localFields
-                    remoteChanged = true
-                    pushed++
-                    if (id in freshlyIdentified) localUpserts += localEntity
-                    val stamp = kind.updatedAt(localEntity)
-                    snapshots += kind.snapshot(id, localHash, stamp, stamp, now)
-                } else {
-                    // Pulled rows keep the remote timestamp, so the next cycle sees them
-                    // as clean rather than bouncing the change back.
-                    localUpserts += kind.rebind(remoteEntity, kind.rowId(localEntity), id)
-                    remoteOut += remoteEntry
-                    pulled++
-                    val stamp = kind.updatedAt(remoteEntity)
-                    snapshots += kind.snapshot(id, remoteHash, stamp, stamp, now)
-                }
-                continue
-            }
-
-            if (localEntity != null) {
-                if (base != null) {
-                    localDeletes += localEntity
-                    removed += id
-                    deletedLocal++
-                } else {
-                    val localFields = kind.fields(localEntity)
-                    remoteOut += localFields
-                    remoteChanged = true
-                    pushed++
-                    if (id in freshlyIdentified) localUpserts += localEntity
-                    val stamp = kind.updatedAt(localEntity)
-                    snapshots += kind.snapshot(id, EntryMapper.contentHash(localFields), stamp, stamp, now)
-                }
-                continue
-            }
-
-            val newRemote = remoteEntry!!
-            if (base != null) {
-                removed += id
-                deletedRemote++
-                remoteChanged = true
-            } else {
-                val remoteEntity = kind.entity(newRemote)
-                localUpserts += kind.rebind(remoteEntity, 0, id)
-                remoteOut += newRemote
-                pulled++
-                val stamp = kind.updatedAt(remoteEntity)
-                snapshots += kind.snapshot(id, EntryMapper.contentHash(kind.fields(remoteEntity)), stamp, stamp, now)
-            }
+            reconcileOne(kind, id, local[id], remote[id], baseline[id], now, accumulator)
         }
+    }
 
-        return Plan(
-            localUpserts = localUpserts,
-            localDeletes = localDeletes,
-            remoteFields = remoteOut,
-            snapshots = snapshots,
-            removedSyncIds = removed,
-            remoteChanged = remoteChanged,
-            pushed = pushed,
-            pulled = pulled,
-            deletedLocal = deletedLocal,
-            deletedRemote = deletedRemote,
+    private fun <T> reconcileOne(
+        kind: EntityKind<T>,
+        id: String,
+        localEntity: T?,
+        remoteEntry: Map<String, String>?,
+        base: SyncSnapshot?,
+        now: Long,
+        accumulator: MergeAccumulator<T>,
+    ) {
+        if (localEntity != null && remoteEntry != null) {
+            reconcilePresent(kind, id, localEntity, remoteEntry, base, now, accumulator)
+            return
+        }
+        if (localEntity != null) {
+            reconcileLocalOnly(kind, id, localEntity, base, now, accumulator)
+            return
+        }
+        reconcileRemoteOnly(kind, id, remoteEntry!!, base, now, accumulator)
+    }
+
+    private fun <T> reconcilePresent(
+        kind: EntityKind<T>,
+        id: String,
+        localEntity: T,
+        remoteEntry: Map<String, String>,
+        base: SyncSnapshot?,
+        now: Long,
+        accumulator: MergeAccumulator<T>,
+    ) {
+        val localFields = kind.fields(localEntity)
+        val remoteEntity = kind.entity(remoteEntry)
+        val remoteFields = kind.fields(remoteEntity)
+        val localHash = EntryMapper.contentHash(localFields)
+        val remoteHash = EntryMapper.contentHash(remoteFields)
+
+        if (localHash == remoteHash) {
+            accumulator.remoteOut += remoteEntry
+            if (id in accumulator.freshlyIdentified) accumulator.localUpserts += localEntity
+            accumulator.snapshots += kind.snapshot(
+                id,
+                localHash,
+                kind.updatedAt(localEntity),
+                kind.updatedAt(remoteEntity),
+                now,
+            )
+            return
+        }
+        reconcileDiverged(kind, id, localEntity, remoteEntity, remoteEntry, localFields, base, now, accumulator)
+    }
+
+    private fun <T> reconcileDiverged(
+        kind: EntityKind<T>,
+        id: String,
+        localEntity: T,
+        remoteEntity: T,
+        remoteEntry: Map<String, String>,
+        localFields: Map<String, String>,
+        base: SyncSnapshot?,
+        now: Long,
+        accumulator: MergeAccumulator<T>,
+    ) {
+        val localHash = EntryMapper.contentHash(localFields)
+        val remoteHash = EntryMapper.contentHash(kind.fields(remoteEntity))
+        val localDirty = base == null || localHash != base.contentHash
+        val remoteDirty = base == null || remoteHash != base.contentHash
+        val localWins = when {
+            localDirty && remoteDirty -> kind.updatedAt(localEntity) >= kind.updatedAt(remoteEntity)
+            else -> localDirty
+        }
+        if (localWins) {
+            applyLocalWins(kind, id, localEntity, remoteEntry, localFields, localHash, now, accumulator)
+        } else {
+            applyRemoteWins(kind, id, localEntity, remoteEntity, remoteEntry, remoteHash, now, accumulator)
+        }
+    }
+
+    private fun <T> applyLocalWins(
+        kind: EntityKind<T>,
+        id: String,
+        localEntity: T,
+        remoteEntry: Map<String, String>,
+        localFields: Map<String, String>,
+        localHash: String,
+        now: Long,
+        accumulator: MergeAccumulator<T>,
+    ) {
+        // Keep fields no client of ours understands (Notes, Tags, ...).
+        accumulator.remoteOut += remoteEntry.filterKeys { it !in EntryMapper.OWNED_KEYS } + localFields
+        accumulator.remoteChanged = true
+        accumulator.pushed++
+        if (id in accumulator.freshlyIdentified) accumulator.localUpserts += localEntity
+        val stamp = kind.updatedAt(localEntity)
+        accumulator.snapshots += kind.snapshot(id, localHash, stamp, stamp, now)
+    }
+
+    private fun <T> applyRemoteWins(
+        kind: EntityKind<T>,
+        id: String,
+        localEntity: T,
+        remoteEntity: T,
+        remoteEntry: Map<String, String>,
+        remoteHash: String,
+        now: Long,
+        accumulator: MergeAccumulator<T>,
+    ) {
+        // Pulled rows keep the remote timestamp, so the next cycle sees them
+        // as clean rather than bouncing the change back.
+        accumulator.localUpserts += kind.rebind(remoteEntity, kind.rowId(localEntity), id)
+        accumulator.remoteOut += remoteEntry
+        accumulator.pulled++
+        val stamp = kind.updatedAt(remoteEntity)
+        accumulator.snapshots += kind.snapshot(id, remoteHash, stamp, stamp, now)
+    }
+
+    private fun <T> reconcileLocalOnly(
+        kind: EntityKind<T>,
+        id: String,
+        localEntity: T,
+        base: SyncSnapshot?,
+        now: Long,
+        accumulator: MergeAccumulator<T>,
+    ) {
+        if (base != null) {
+            accumulator.localDeletes += localEntity
+            accumulator.removed += id
+            accumulator.deletedLocal++
+            return
+        }
+        val localFields = kind.fields(localEntity)
+        accumulator.remoteOut += localFields
+        accumulator.remoteChanged = true
+        accumulator.pushed++
+        if (id in accumulator.freshlyIdentified) accumulator.localUpserts += localEntity
+        val stamp = kind.updatedAt(localEntity)
+        accumulator.snapshots += kind.snapshot(
+            id,
+            EntryMapper.contentHash(localFields),
+            stamp,
+            stamp,
+            now,
+        )
+    }
+
+    private fun <T> reconcileRemoteOnly(
+        kind: EntityKind<T>,
+        id: String,
+        remoteEntry: Map<String, String>,
+        base: SyncSnapshot?,
+        now: Long,
+        accumulator: MergeAccumulator<T>,
+    ) {
+        if (base != null) {
+            accumulator.removed += id
+            accumulator.deletedRemote++
+            accumulator.remoteChanged = true
+            return
+        }
+        val remoteEntity = kind.entity(remoteEntry)
+        accumulator.localUpserts += kind.rebind(remoteEntity, 0, id)
+        accumulator.remoteOut += remoteEntry
+        accumulator.pulled++
+        val stamp = kind.updatedAt(remoteEntity)
+        accumulator.snapshots += kind.snapshot(
+            id,
+            EntryMapper.contentHash(kind.fields(remoteEntity)),
+            stamp,
+            stamp,
+            now,
         )
     }
 }
@@ -412,14 +561,12 @@ suspend fun runKdbxSync(context: Context, db: PasswordDatabase): KdbxSyncResult 
     val passwordHelper = KdbxPasswordHelper(context)
     if (!passwordHelper.isKeyGenerated()) return KdbxSyncResult.NotConfigured
 
-    val result = try {
+    val result = runSyncCatching {
         KdbxSyncEngine(db, NativeKdbxCodec).sync(
             document = SafKdbxDocument(context, uri.toUri()),
             vaultPassword = passwordHelper.getPassphrase(),
             onBackup = { previous -> File(context.filesDir, BACKUP_FILE_NAME).writeBytes(previous) },
         )
-    } catch (e: Exception) {
-        KdbxSyncResult.Error(e.message ?: e.javaClass.simpleName)
     }
 
     when (result) {
@@ -430,6 +577,14 @@ suspend fun runKdbxSync(context: Context, db: PasswordDatabase): KdbxSyncResult 
     return result
 }
 
+private suspend fun runSyncCatching(block: suspend () -> KdbxSyncResult): KdbxSyncResult {
+    return try {
+        block()
+    } catch (expected: IllegalStateException) {
+        KdbxSyncResult.Error(expected.message ?: expected.javaClass.simpleName)
+    }
+}
+
 /** Repository-based overload — preferred; avoids direct PasswordDatabase access. */
 suspend fun runKdbxSync(context: Context, repository: PasswordRepository): KdbxSyncResult {
     if (!KdbxSyncSettings.enabled(context)) return KdbxSyncResult.NotConfigured
@@ -437,14 +592,12 @@ suspend fun runKdbxSync(context: Context, repository: PasswordRepository): KdbxS
     val passwordHelper = KdbxPasswordHelper(context)
     if (!passwordHelper.isKeyGenerated()) return KdbxSyncResult.NotConfigured
 
-    val result = try {
+    val result = runSyncCatching {
         KdbxSyncEngine(repository, NativeKdbxCodec).sync(
             document = SafKdbxDocument(context, uri.toUri()),
             vaultPassword = passwordHelper.getPassphrase(),
             onBackup = { previous -> File(context.filesDir, BACKUP_FILE_NAME).writeBytes(previous) },
         )
-    } catch (e: Exception) {
-        KdbxSyncResult.Error(e.message ?: e.javaClass.simpleName)
     }
 
     when (result) {

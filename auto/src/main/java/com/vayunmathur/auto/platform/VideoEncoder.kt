@@ -12,9 +12,10 @@ import java.nio.ByteBuffer
  * The encoder's input [surface] is what the car display renders into, so frames never touch
  * the CPU: the virtual display composites straight into the encoder.
  *
- * Head units want Baseline profile H.264 ([gal codec][com.vayunmathur.auto.protocol.gal.MediaCodecType.MEDIA_CODEC_VIDEO_H264_BP]),
- * and they want the codec-specific data (SPS/PPS) ahead of the first frame. MediaCodec
- * delivers that either as a `BUFFER_FLAG_CODEC_CONFIG` buffer or via the output format, and
+ * Head units want Baseline profile H.264 (see the `MEDIA_CODEC_VIDEO_H264_BP`
+ * gal codec type), and they want the codec-specific data (SPS/PPS) ahead of
+ * the first frame. MediaCodec delivers that either as a
+ * `BUFFER_FLAG_CODEC_CONFIG` buffer or via the output format, and
  * we forward it as an ordinary frame because that is how GAL carries it.
  */
 class VideoEncoder(

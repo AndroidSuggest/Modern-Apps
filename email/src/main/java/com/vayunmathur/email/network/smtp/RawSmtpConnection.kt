@@ -25,6 +25,13 @@ class RawSmtpConnection(
     companion object {
         private const val TAG = "RawSmtp"
         private const val TIMEOUT_MS = 30_000
+        private const val SOCKET_BUFFER_SIZE = 8192
+        private const val SMTP_REPLY_CODE_LEN = 3
+        private const val SMTP_REPLY_LINE_MIN_LEN = 4
+        private const val SMTP_REPLY_SEPARATOR_IDX = 3
+        private const val SMTP_SUCCESS_MIN = 200
+        private const val SMTP_SUCCESS_MAX = 299
+        private const val SMTP_DATA_INTERMEDIATE = 354
     }
 
     private var socket: Socket? = null
@@ -44,8 +51,8 @@ class RawSmtpConnection(
         s.soTimeout = TIMEOUT_MS
         socket = s
         if (s is SSLSocket) sslSocket = s
-        reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8), 8192)
-        writer = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8), 8192)
+        reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8), SOCKET_BUFFER_SIZE)
+        writer = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8), SOCKET_BUFFER_SIZE)
 
         val greeting = readResponse()
         if (!isPositive(greeting)) throw IOException("SMTP greeting failed: $greeting")
@@ -55,7 +62,7 @@ class RawSmtpConnection(
         sendCommand("EHLO $hostname")
         val resp = readMultilineResponse()
         ehloResponse = resp
-        caps = resp.map { it.substring(3).trim().uppercase() }.toSet()
+        caps = resp.map { it.substring(SMTP_REPLY_CODE_LEN).trim().uppercase() }.toSet()
         if (!isPositive(resp)) throw IOException("EHLO failed: $resp")
         return resp
     }
@@ -64,7 +71,7 @@ class RawSmtpConnection(
         if (!hasCap("STARTTLS")) throw IOException("STARTTLS not advertised")
         sendCommand("STARTTLS")
         val resp = readResponse()
-        if (!isPositive(resp)) throw IOException("STARTTLS failed: $resp")
+        checkSmtpPositive(resp, "STARTTLS")
         val plain = socket ?: throw IOException("No socket for STARTTLS")
 
         val upgraded = TrustAll.upgradeToTls(plain, host, server.port, trustAll || !TrustAll.isKnownHost(server.host))
@@ -109,13 +116,13 @@ class RawSmtpConnection(
     fun authLogin(user: String, pass: String) {
         sendCommand("AUTH LOGIN")
         var resp = readResponse()
-        if (!resp.any { it.startsWith("334") }) throw IOException("AUTH LOGIN step1 failed: $resp")
+        requireContinuation(resp, "AUTH LOGIN step1")
         sendCommand(Base64.encodeToString(user.toByteArray(Charsets.UTF_8), Base64.NO_WRAP))
         resp = readResponse()
-        if (!resp.any { it.startsWith("334") }) throw IOException("AUTH LOGIN step2 failed: $resp")
+        requireContinuation(resp, "AUTH LOGIN step2")
         sendCommand(Base64.encodeToString(pass.toByteArray(Charsets.UTF_8), Base64.NO_WRAP))
         resp = readResponse()
-        if (!isPositive(resp)) throw IOException("AUTH LOGIN failed: $resp")
+        checkSmtpPositive(resp, "AUTH LOGIN")
     }
 
     fun mailFrom(address: String) {
@@ -147,7 +154,15 @@ class RawSmtpConnection(
         writer.flush()
 
         val finalResp = readResponse()
-        if (!isPositive(finalResp)) throw IOException("DATA final failed: $finalResp")
+        checkSmtpPositive(finalResp, "DATA final")
+    }
+
+    private fun checkSmtpPositive(resp: List<String>, op: String) {
+        if (!isPositive(resp)) throw IOException("$op failed: $resp")
+    }
+
+    private fun requireContinuation(resp: List<String>, op: String) {
+        if (!resp.any { it.startsWith("334") }) throw IOException("$op failed: $resp")
     }
 
     fun quit() {
@@ -181,26 +196,30 @@ class RawSmtpConnection(
         val lines = mutableListOf<String>()
         var line: String? = r.readLine()
         while (line != null) {
-            lines.add(line)
-            Log.d(TAG, "S> $line")
-            // Multiline SMTP: 250- continues, 250 ends. Check 4th char.
-            if (line.length >= 4 && line[3] == ' ') break
-            if (line.length < 4) break // malformed, stop
+            val current = line
+            lines.add(current)
+            Log.d(TAG, "S> $current")
+            // Multiline SMTP: 250- continues, 250 ends. Check separator char after the code.
             // If line[3] == '-' keep reading
-            line = r.readLine()
+            line = if (isLastReplyLine(current)) null else r.readLine()
         }
         return lines
+    }
+
+    private fun isLastReplyLine(line: String): Boolean {
+        if (line.length < SMTP_REPLY_LINE_MIN_LEN) return true // malformed, stop
+        return line[SMTP_REPLY_SEPARATOR_IDX] == ' '
     }
 
     private fun readMultilineResponse(): List<String> = readResponse()
 
     private fun isPositive(resp: List<String>): Boolean {
         val last = resp.lastOrNull() ?: return false
-        if (last.length < 3) return false
-        val codeStr = last.substring(0, 3)
+        if (last.length < SMTP_REPLY_CODE_LEN) return false
+        val codeStr = last.substring(0, SMTP_REPLY_CODE_LEN)
         val code = codeStr.toIntOrNull() ?: return false
         // 2xx = positive completion, 354 = start mail input (intermediate positive for DATA)
-        return (code in 200..299) || code == 354
+        return (code in SMTP_SUCCESS_MIN..SMTP_SUCCESS_MAX) || code == SMTP_DATA_INTERMEDIATE
     }
 
     private fun isContinuation(resp: List<String>): Boolean {

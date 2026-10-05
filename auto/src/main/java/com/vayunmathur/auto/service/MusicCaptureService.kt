@@ -40,7 +40,7 @@ class MusicCaptureService : Service() {
             return START_NOT_STICKY
         }
         val notification = notification()
-        if (Build.VERSION.SDK_INT >= 29) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID,
                 notification,

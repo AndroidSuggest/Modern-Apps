@@ -108,7 +108,7 @@ class AudioSinkChannel(
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(16)} for channel $channelId")
+            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         when (val inbound = AudioCodec.decodeSinkInbound(type, payload)) {
@@ -118,7 +118,7 @@ class AudioSinkChannel(
                 onEvent(AudioEvent.AckReceived(role.name, inbound.ackSeq))
             }
             is InboundAudio.Sync -> onEvent(AudioEvent.SyncReceived(role.name))
-            is InboundAudio.Observed -> Log.d(TAG, "$role unhandled audio message 0x${type.toString(16)}")
+            is InboundAudio.Observed -> Log.d(TAG, "$role unhandled audio message 0x${type.toString(HEX_RADIX)}")
         }
     }
 
@@ -234,7 +234,7 @@ class AudioSinkChannel(
     private fun timestampedFrame(audio: ByteArray): ByteArray =
         ByteBuffer.allocate(AudioCodec.TIMESTAMP_BYTES + audio.size)
             .order(ByteOrder.BIG_ENDIAN)
-            .putLong(SystemClock.elapsedRealtimeNanos() / 1_000)
+            .putLong(SystemClock.elapsedRealtimeNanos() / NANOS_PER_MICRO)
             .put(audio)
             .array()
 
@@ -265,6 +265,12 @@ class AudioSinkChannel(
 
     private companion object {
         const val TAG = "MaAuto.Audio"
+
+        /** Radix for hex message-id logging. */
+        const val HEX_RADIX = 16
+
+        /** Nanoseconds per microsecond; timestamps ride the wire in micros. */
+        const val NANOS_PER_MICRO = 1_000L
 
         /** Samples per 0x0000 bulk frame: 1024 mono samples at the negotiated rate. */
         const val FRAMES_PER_PACKET = 1024

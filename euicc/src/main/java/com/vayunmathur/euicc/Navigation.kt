@@ -79,7 +79,6 @@ fun Navigation(viewModel: EuiccViewModel, start: Route? = null) {
                 imei = route.imei,
                 confirmationCode = route.confirmationCode,
                 state = viewModel.download,
-                backStack = backStack,
                 onStart = viewModel::startDownload,
                 onConfirm = viewModel::confirmDownload,
                 onSubmitCode = viewModel::submitConfirmationCode,

@@ -3,6 +3,7 @@ package com.vayunmathur.education.util
 import android.content.Context
 import android.media.MediaPlayer
 import android.speech.tts.TextToSpeech
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -43,6 +44,9 @@ class Narrator(context: Context) {
         }
     }
 
+    // Broad catch is deliberate: asset reads and MediaPlayer setup throw undocumented
+    // RuntimeExceptions (not just IOException), which read as "no bundled clip".
+    @Suppress("TooGenericExceptionCaught")
     private fun playAsset(path: String): Boolean = try {
         appContext.assets.openFd(path).use { afd ->
             val mp = MediaPlayer()
@@ -55,6 +59,7 @@ class Narrator(context: Context) {
         }
         true
     } catch (e: Exception) {
+        Log.w(TAG, "could not play bundled clip $path", e)
         false
     }
 
@@ -63,10 +68,13 @@ class Narrator(context: Context) {
         player?.let { runCatching { it.stop() }; it.release() }
         player = null
     }
-
     fun shutdown() {
         stop()
         tts.shutdown()
+    }
+
+    private companion object {
+        const val TAG = "Narrator"
     }
 }
 

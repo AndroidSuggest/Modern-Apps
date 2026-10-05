@@ -1,132 +1,79 @@
 package com.vayunmathur.email.platform
 
 import android.app.Application
-import android.content.ComponentName
-import android.content.Intent
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.email.data.EmailAccount
 import com.vayunmathur.email.data.EmailMessage
 import com.vayunmathur.email.data.EmailPreview
 import com.vayunmathur.email.data.Attachment
-import com.vayunmathur.email.data.senderDisplayName
 import com.vayunmathur.email.data.EmailRepository
 import com.vayunmathur.email.data.EmailSyncState
 import com.vayunmathur.email.data.EmailSyncWorker
 import com.vayunmathur.email.data.OutboxEntry
-import com.vayunmathur.email.data.OutboxManager
-import com.vayunmathur.email.data.OutboxSendWorker
 import com.vayunmathur.email.platform.MessageListActions
 import com.vayunmathur.email.platform.MessageThreadActions
-import com.vayunmathur.library.util.SecureResultReceiver
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EmailViewModel(application: Application) :
     AndroidViewModel(application), MessageListActions, MessageThreadActions {
     private val repository = EmailRepository.get(application)
-    private val dao: com.vayunmathur.email.data.EmailDao get() = repository.getDatabase().emailDao()
+    private val accountsDao: com.vayunmathur.email.data.EmailAccountDao
+        get() = repository.getDatabase().accountDao()
+    private val messagesDao: com.vayunmathur.email.data.EmailMessageDao
+        get() = repository.getDatabase().messageDao()
+    private val queriesDao: com.vayunmathur.email.data.EmailQueryDao
+        get() = repository.getDatabase().queryDao()
+    private val outboxDao: com.vayunmathur.email.data.EmailOutboxDao
+        get() = repository.getDatabase().outboxDao()
     private val emailManager = EmailManager()
     private val appContext = application.applicationContext
-    
+
+    val draftsActions = EmailDraftActions(viewModelScope, repository.getDatabase().outboxDao())
+    val send = EmailSendActions(viewModelScope, appContext, emailManager)
+    val aiSummaryHelper = AiSummaryHelper(appContext)
+
     val accounts: StateFlow<List<EmailAccount>> =
-        dao.getAccountsFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        accountsDao.getAccountsFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Active sync state — drives the linear progress bar at the top of the inbox. */
     val isSyncing: StateFlow<Boolean> = EmailSyncState.isSyncing
     val syncProgress: StateFlow<Float> = EmailSyncState.progress
 
-    val outbox: Flow<List<OutboxEntry>> = dao.getOutboxFlow()
-    val drafts: Flow<List<com.vayunmathur.email.data.DraftEntry>> = dao.getDraftsFlow()
-
-    /** Load a draft for resuming in the composer. */
-    suspend fun loadDraft(id: Long): com.vayunmathur.email.data.DraftEntry? = dao.getDraft(id)
-
-    /** Insert or update a draft; returns its id (new id when [id] is null). */
-    fun saveDraft(
-        id: Long?,
-        accountEmail: String,
-        to: String,
-        cc: String,
-        bcc: String,
-        subject: String,
-        body: String,
-        onSaved: (Long) -> Unit = {},
-    ) {
-        viewModelScope.launch {
-            val rowId = dao.insertDraft(
-                com.vayunmathur.email.data.DraftEntry(
-                    id = id ?: 0,
-                    accountEmail = accountEmail,
-                    to = to, cc = cc, bcc = bcc, subject = subject, body = body,
-                    updatedAt = System.currentTimeMillis(),
-                )
-            )
-            onSaved(if (id != null && id != 0L) id else rowId)
-        }
-    }
-
-    fun deleteDraft(id: Long) {
-        viewModelScope.launch { dao.deleteDraftById(id) }
-    }
+    val outbox: Flow<List<OutboxEntry>> = outboxDao.getOutboxFlow()
+    val drafts: Flow<List<com.vayunmathur.email.data.DraftEntry>> = outboxDao.getDraftsFlow()
 
     /** Block a sender (matched by email address) so their mail is hidden from the inbox. */
     override fun blockSender(from: String) {
         val address = extractEmailAddress(from)
         if (address.isBlank()) return
-        viewModelScope.launch { dao.insertBlockedSender(com.vayunmathur.email.data.BlockedSender(address.lowercase())) }
-    }
-
-    fun unblockSender(address: String) {
-        viewModelScope.launch { dao.deleteBlockedSender(address) }
-    }
-
-    /** Queue a message to send at [scheduledAt] (epoch millis) via the outbox. */
-    fun scheduleSend(
-        account: EmailAccount,
-        to: String,
-        subject: String,
-        body: String,
-        cc: String? = null,
-        bcc: String? = null,
-        attachments: List<Uri> = emptyList(),
-        inlineImages: List<com.vayunmathur.email.ui.composer.InlineAttachment> = emptyList(),
-        inReplyTo: String? = null,
-        references: String? = null,
-        scheduledAt: Long,
-        asHtml: Boolean = false,
-        onDone: () -> Unit = {},
-    ) {
         viewModelScope.launch {
-            OutboxManager.enqueue(
-                context = getApplication(),
-                accountEmail = account.email,
-                to = to, subject = subject, body = body,
-                cc = cc, bcc = bcc, attachments = attachments,
-                inlineImages = inlineImages,
-                inReplyTo = inReplyTo, references = references,
-                scheduledAt = scheduledAt,
-                isHtml = asHtml,
-            )
-            onDone()
+            val sender = com.vayunmathur.email.data.BlockedSender(address.lowercase())
+            accountsDao.insertBlockedSender(sender)
         }
     }
 
-    private val _aiSummary = MutableStateFlow<String?>(null)
-    val aiSummary: StateFlow<String?> = _aiSummary
+    fun unblockSender(address: String) {
+        viewModelScope.launch { accountsDao.deleteBlockedSender(address) }
+    }
 
-    private val _aiSummaryLoading = MutableStateFlow(false)
-    val aiSummaryLoading: StateFlow<Boolean> = _aiSummaryLoading
+    val aiSummary: StateFlow<String?> = aiSummaryHelper.summary
+    val aiSummaryLoading: StateFlow<Boolean> = aiSummaryHelper.loading
     
     private val _selectedAccountEmail = MutableStateFlow<String?>(null)
     val selectedAccountEmail: StateFlow<String?> = _selectedAccountEmail
@@ -138,7 +85,7 @@ class EmailViewModel(application: Application) :
 
     val folders = _selectedAccountEmail.flatMapLatest { email ->
         if (email == null) flowOf(emptyList())
-        else dao.getFoldersFlow(email)
+        else accountsDao.getFoldersFlow(email)
     }
     
     private val _selectedFolderName = MutableStateFlow("INBOX")
@@ -160,18 +107,18 @@ class EmailViewModel(application: Application) :
         val now = System.currentTimeMillis()
         if (email == null) {
             // Unified Inbox
-            if (query.isEmpty()) dao.getUnifiedMessagesPreviewFlow("INBOX", now)
-            else dao.searchUnifiedMessagesPreviewFlow("INBOX", query, now)
+            if (query.isEmpty()) queriesDao.getUnifiedMessagesPreviewFlow("INBOX", now)
+            else queriesDao.searchUnifiedMessagesPreviewFlow("INBOX", query, now)
         } else {
             if (query.isEmpty()) {
-                dao.getMessagesPreviewFlow(email, folder, now)
+                queriesDao.getMessagesPreviewFlow(email, folder, now)
             } else {
-                dao.searchMessagesPreviewFlow(email, folder, query, now)
+                queriesDao.searchMessagesPreviewFlow(email, folder, query, now)
             }
         }
     }
 
-    val blockedSenders: Flow<List<com.vayunmathur.email.data.BlockedSender>> = dao.getBlockedSendersFlow()
+    val blockedSenders: Flow<List<com.vayunmathur.email.data.BlockedSender>> = accountsDao.getBlockedSendersFlow()
 
     // Hide messages from blocked senders (matched by email address substring).
     val messages: Flow<List<EmailPreview>> = combine(messagesRaw, blockedSenders) { msgs, blocked ->
@@ -182,7 +129,7 @@ class EmailViewModel(application: Application) :
 
     init {
         viewModelScope.launch {
-            dao.getAccounts().firstOrNull()?.let {
+            accountsDao.getAccounts().firstOrNull()?.let {
                 _selectedAccountEmail.value = it.email
             }
         }
@@ -197,7 +144,7 @@ class EmailViewModel(application: Application) :
     /** Persist the per-account signature appended to outgoing messages. */
     fun setSignature(email: String, signature: String) {
         viewModelScope.launch {
-            dao.setSignature(email, signature)
+            accountsDao.setSignature(email, signature)
         }
     }
 
@@ -209,56 +156,12 @@ class EmailViewModel(application: Application) :
     override fun setSearchQuery(query: String) {
         _searchQuery.value = query
         if (query.isEmpty()) {
-            _aiSummary.value = null
-            _aiSummaryLoading.value = false
+            aiSummaryHelper.clear()
         }
     }
 
     override fun requestAiSummary(messages: List<EmailPreview>) {
-        if (_aiSummaryLoading.value) return
-
-        val pm = appContext.packageManager
-        try {
-            pm.getPackageInfo(OA_PACKAGE, 0)
-        } catch (_: Exception) {
-            return
-        }
-
-        _aiSummaryLoading.value = true
-        _aiSummary.value = null
-
-        val emailSnippets = messages.take(5).joinToString("\n---\n") { msg ->
-            val plainBody = msg.peekContent.take(150)
-            "Subject: ${msg.subject}\nFrom: ${senderDisplayName(msg.from)}\n$plainBody"
-        }
-        val prompt = "Summarize these emails in 1-2 sentences:\n\n$emailSnippets"
-        val schema = """{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}"""
-
-        val receiver = SecureResultReceiver(Handler(Looper.getMainLooper())) { code, data ->
-            if (code == 0) {
-                val json = data?.getString("json_result")
-                if (json != null) {
-                    try {
-                        val obj = Json.parseToJsonElement(json).jsonObject
-                        _aiSummary.value = obj["summary"]?.jsonPrimitive?.content
-                    } catch (_: Exception) { }
-                }
-            }
-            _aiSummaryLoading.value = false
-        }
-
-        val intent = Intent().apply {
-            component = ComponentName(OA_PACKAGE, OA_SERVICE)
-            putExtra("user_text", prompt)
-            putExtra("schema", schema)
-            putExtra("RECEIVER", receiver as android.os.ResultReceiver)
-        }
-
-        try {
-            appContext.startForegroundService(intent)
-        } catch (_: Exception) {
-            _aiSummaryLoading.value = false
-        }
+        aiSummaryHelper.request(messages)
     }
 
     override fun toggleMessageSelection(uid: Long) {
@@ -269,11 +172,14 @@ class EmailViewModel(application: Application) :
         _selectedMessageUids.value = emptySet()
     }
 
-    /** Delete a message: remove locally (with a tombstone so sync won't re-add it) and expunge it on the IMAP server. */
+    /**
+     * Delete a message: remove locally (with a tombstone so sync won't re-add
+     * it) and expunge it on the IMAP server.
+     */
     override fun deleteMessage(accountEmail: String, folderName: String, uid: Long) {
         viewModelScope.launch {
-            dao.deleteMessageRow(accountEmail, folderName, uid, tombstone = true)
-            val account = dao.getAccountByEmail(accountEmail) ?: return@launch
+            messagesDao.deleteMessageRow(accountEmail, folderName, uid, tombstone = true)
+            val account = accountsDao.getAccountByEmail(accountEmail) ?: return@launch
             try {
                 emailManager.deleteMessage(
                     server = account.imapServer(),
@@ -282,8 +188,8 @@ class EmailViewModel(application: Application) :
                     folderName = folderName,
                     uid = uid,
                 )
-            } catch (e: Exception) {
-                android.util.Log.w("EmailViewModel", "Failed to delete message on server: ${e.message}")
+            } catch (_: Exception) {
+                android.util.Log.w("EmailViewModel", "Failed to delete message on server")
             }
         }
     }
@@ -291,16 +197,16 @@ class EmailViewModel(application: Application) :
     /** Snooze a message: hide from the inbox until [until] (epoch millis), then resurface. */
     override fun snoozeMessage(accountEmail: String, folderName: String, uid: Long, until: Long) {
         viewModelScope.launch {
-            dao.setSnooze(accountEmail, folderName, uid, until)
+            messagesDao.setSnooze(accountEmail, folderName, uid, until)
             com.vayunmathur.email.data.SnoozeWorker.scheduleNext(getApplication(), until)
         }
     }
 
     override fun markAsRead(accountEmail: String, folderName: String, uid: Long, isRead: Boolean) {
         viewModelScope.launch {
-            dao.updateReadStatus(accountEmail, folderName, uid, isRead)
+            messagesDao.updateReadStatus(accountEmail, folderName, uid, isRead)
             // Sync read status to IMAP server
-            val account = dao.getAccountByEmail(accountEmail) ?: return@launch
+            val account = accountsDao.getAccountByEmail(accountEmail) ?: return@launch
             try {
                 emailManager.setSeenFlag(
                     server = account.imapServer(),
@@ -310,15 +216,15 @@ class EmailViewModel(application: Application) :
                     uid = uid,
                     seen = isRead,
                 )
-            } catch (e: Exception) {
-                android.util.Log.w("EmailViewModel", "Failed to sync read status to server: ${e.message}")
+            } catch (_: Exception) {
+                android.util.Log.w("EmailViewModel", "Failed to sync read status to server")
             }
         }
     }
 
     override fun bulkMarkAsRead(accountEmail: String, uids: List<Long>, isRead: Boolean) {
         viewModelScope.launch {
-            dao.updateBulkReadStatus(accountEmail, uids, isRead)
+            messagesDao.updateBulkReadStatus(accountEmail, uids, isRead)
             clearSelection()
         }
     }
@@ -328,92 +234,30 @@ class EmailViewModel(application: Application) :
     }
 
     suspend fun getMessage(accountEmail: String, folderName: String, uid: Long): EmailMessage? {
-        return dao.getMessage(accountEmail, folderName, uid)
+        return messagesDao.getMessage(accountEmail, folderName, uid)
     }
 
     fun getThread(accountEmail: String, threadId: String): Flow<List<EmailMessage>> {
-        return dao.getThreadFlow(accountEmail, threadId)
+        return messagesDao.getThreadFlow(accountEmail, threadId)
     }
 
     override suspend fun getAttachments(accountEmail: String, messageId: Long): List<Attachment> {
-        return dao.getAttachments(accountEmail, messageId)
+        return messagesDao.getAttachments(accountEmail, messageId)
     }
 
     fun logout(context: android.content.Context) {
         val currentEmail = _selectedAccountEmail.value ?: return
         viewModelScope.launch {
-            dao.getAccounts().find { it.email == currentEmail }?.let { account ->
-                dao.deleteAccount(account)
-                dao.clearFolders(currentEmail)
-                dao.clearMessages(currentEmail)
+            accountsDao.getAccounts().find { it.email == currentEmail }?.let { account ->
+                accountsDao.deleteAccount(account)
+                accountsDao.clearFolders(currentEmail)
+                messagesDao.clearMessages(currentEmail)
             }
-            val remaining = dao.getAccounts()
+            val remaining = accountsDao.getAccounts()
             _selectedAccountEmail.value = remaining.firstOrNull()?.email
             if (remaining.isEmpty()) {
                 EmailSyncWorker.cancelSync(context)
                 com.vayunmathur.email.data.ImapIdleService.stop(context)
-            }
-        }
-    }
-
-    fun sendEmailFrom(
-        account: EmailAccount,
-        to: String,
-        subject: String,
-        body: String,
-        cc: String? = null,
-        bcc: String? = null,
-        attachments: List<Uri> = emptyList(),
-        inlineImages: List<com.vayunmathur.email.ui.composer.InlineAttachment> = emptyList(),
-        inReplyTo: String? = null,
-        references: String? = null,
-        asHtml: Boolean = false,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) {
-        viewModelScope.launch {
-            try {
-                emailManager.sendMessage(
-                    context = getApplication(),
-                    server = account.smtpServer(),
-                    user = account.loginUser(),
-                    auth = account.resolveAuth(appContext),
-                    to = to,
-                    subject = subject,
-                    body = body,
-                    cc = cc,
-                    bcc = bcc,
-                    attachments = attachments,
-                    inlineImages = inlineImages,
-                    inReplyTo = inReplyTo,
-                    references = references,
-                    from = account.email,
-                    asHtml = asHtml,
-                )
-                onSuccess()
-            } catch (e: Exception) {
-                val msg = e.message ?: e::class.simpleName ?: "Unknown error"
-                try {
-                    OutboxManager.enqueue(
-                        context = getApplication(),
-                        accountEmail = account.email,
-                        to = to,
-                        subject = subject,
-                        body = body,
-                        cc = cc,
-                        bcc = bcc,
-                        attachments = attachments,
-                        inlineImages = inlineImages,
-                        inReplyTo = inReplyTo,
-                        references = references,
-                        initialError = msg,
-                        isHtml = asHtml,
-                    )
-                } catch (queueError: Exception) {
-                    onError("$msg (and outbox save failed: ${queueError.message})")
-                    return@launch
-                }
-                onError(msg)
             }
         }
     }
@@ -428,7 +272,7 @@ class EmailViewModel(application: Application) :
     override fun fetchBodyIfNeeded(message: EmailMessage) {
         if (message.body != null) return
         viewModelScope.launch {
-            val account = dao.getAccountByEmail(message.accountEmail) ?: return@launch
+            val account = accountsDao.getAccountByEmail(message.accountEmail) ?: return@launch
             try {
                 // We need raw mime to extract CID files
                 val ctx = getApplication<Application>()
@@ -442,19 +286,27 @@ class EmailViewModel(application: Application) :
                 )
                 val (body, isHtml, attachments) = full.contentTriple
                 if (body != null || attachments.isNotEmpty()) {
-                    dao.insertMessages(listOf(message.copy(body = body, isHtml = isHtml, hasAttachments = attachments.isNotEmpty())))
-                    if (attachments.isNotEmpty()) dao.insertAttachments(attachments)
+                    val updated = message.copy(
+                        body = body,
+                        isHtml = isHtml,
+                        hasAttachments = attachments.isNotEmpty(),
+                    )
+                    messagesDao.insertMessages(listOf(updated))
+                    if (attachments.isNotEmpty()) messagesDao.insertAttachments(attachments)
                 }
-            } catch (e: Exception) {
-                android.util.Log.w("EmailViewModel", "fetchBodyIfNeeded for ${message.id} failed: ${e.message}")
+            } catch (_: Exception) {
+                android.util.Log.w("EmailViewModel", "fetchBodyIfNeeded for ${message.id} failed")
             }
         }
     }
 
-    /** CID map loader for already-fetched message – extracts inline files to cache and returns map */
-    override suspend fun loadCidMap(context: android.content.Context, message: EmailMessage): Map<String, java.io.File> {
+    /** CID map loader for an already-fetched message: extracts inline files to cache. */
+    override suspend fun loadCidMap(
+        context: android.content.Context,
+        message: EmailMessage,
+    ): Map<String, java.io.File> {
         return try {
-            val account = dao.getAccountByEmail(message.accountEmail) ?: return emptyMap()
+            val account = accountsDao.getAccountByEmail(message.accountEmail) ?: return emptyMap()
             val auth = account.resolveAuth(appContext)
             emailManager.fetchCidMap(
                 context = context,
@@ -464,8 +316,8 @@ class EmailViewModel(application: Application) :
                 folderName = message.folderName,
                 uid = message.id,
             )
-        } catch (e: Exception) {
-            android.util.Log.w("EmailViewModel", "loadCidMap failed: ${e.message}")
+        } catch (_: Exception) {
+            android.util.Log.w("EmailViewModel", "loadCidMap failed")
             emptyMap()
         }
     }
@@ -492,23 +344,13 @@ class EmailViewModel(application: Application) :
                     } finally {
                         connection.disconnect()
                     }
-                } catch (e: Exception) {
-                    android.util.Log.w("EmailViewModel", "one-click unsubscribe failed: ${e.message}")
+                } catch (_: Exception) {
+                    android.util.Log.w("EmailViewModel", "one-click unsubscribe failed")
                     false
                 }
             }
             onResult(ok)
         }
-    }
-
-    fun deleteOutboxEntry(entry: OutboxEntry) {
-        viewModelScope.launch {
-            OutboxManager.delete(getApplication(), entry)
-        }
-    }
-
-    fun sendOutboxNow(context: android.content.Context) {
-        OutboxSendWorker.runNow(context)
     }
 
     override fun downloadAttachment(
@@ -530,10 +372,10 @@ class EmailViewModel(application: Application) :
                     fileName = attachment.fileName,
                     mimeType = attachment.mimeType
                 )
-                dao.updateAttachmentLocalUri(account.email, attachment.messageId, attachment.partId, path)
+                messagesDao.updateAttachmentLocalUri(account.email, attachment.messageId, attachment.partId, path)
                 onSuccess(path)
-            } catch (e: Exception) {
-                onError(e.message ?: "Unknown error")
+            } catch (ignored: Exception) {
+                onError(ignored.message ?: "Unknown error")
             }
         }
     }
@@ -551,7 +393,7 @@ class EmailViewModel(application: Application) :
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val account = dao.getAccountByEmail(accountEmail)
+                val account = accountsDao.getAccountByEmail(accountEmail)
                     ?: run {
                         withContext(Dispatchers.Main) { onResult(false, "Account not found") }
                         return@launch
@@ -567,16 +409,11 @@ class EmailViewModel(application: Application) :
                     return@launch
                 }
                 withContext(Dispatchers.Main) { onResult(true, null) }
-            } catch (e: Exception) {
-                android.util.Log.w("EmailViewModel", "exportEml failed: ${e.message}", e)
-                withContext(Dispatchers.Main) { onResult(false, e.message ?: e.javaClass.simpleName) }
+            } catch (ignored: Exception) {
+                android.util.Log.w("EmailViewModel", "exportEml failed", ignored)
+                withContext(Dispatchers.Main) { onResult(false, ignored.message ?: ignored.javaClass.simpleName) }
             }
         }
-    }
-
-    companion object {
-        private const val OA_PACKAGE = "com.vayunmathur.openassistant"
-        private const val OA_SERVICE = "$OA_PACKAGE.util.InferenceService"
     }
 }
 

@@ -4,7 +4,34 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 import com.vayunmathur.health.data.RecordType
-import com.vayunmathur.health.data.RecordType.*
+import com.vayunmathur.health.data.RecordType.BloodGlucose
+import com.vayunmathur.health.data.RecordType.BloodPressure
+import com.vayunmathur.health.data.RecordType.BodyFat
+import com.vayunmathur.health.data.RecordType.BodyWaterMass
+import com.vayunmathur.health.data.RecordType.BoneMass
+import com.vayunmathur.health.data.RecordType.CaloriesActive
+import com.vayunmathur.health.data.RecordType.CaloriesBasal
+import com.vayunmathur.health.data.RecordType.CaloriesTotal
+import com.vayunmathur.health.data.RecordType.Distance
+import com.vayunmathur.health.data.RecordType.Elevation
+import com.vayunmathur.health.data.RecordType.Exercise
+import com.vayunmathur.health.data.RecordType.Floors
+import com.vayunmathur.health.data.RecordType.HeartRate
+import com.vayunmathur.health.data.RecordType.HeartRateVariabilityRmssd
+import com.vayunmathur.health.data.RecordType.Height
+import com.vayunmathur.health.data.RecordType.Hydration
+import com.vayunmathur.health.data.RecordType.LeanBodyMass
+import com.vayunmathur.health.data.RecordType.Mindfulness
+import com.vayunmathur.health.data.RecordType.Nutrition
+import com.vayunmathur.health.data.RecordType.OxygenSaturation
+import com.vayunmathur.health.data.RecordType.RespiratoryRate
+import com.vayunmathur.health.data.RecordType.RestingHeartRate
+import com.vayunmathur.health.data.RecordType.SkinTemperature
+import com.vayunmathur.health.data.RecordType.Sleep
+import com.vayunmathur.health.data.RecordType.Steps
+import com.vayunmathur.health.data.RecordType.Vo2Max
+import com.vayunmathur.health.data.RecordType.Weight
+import com.vayunmathur.health.data.RecordType.Wheelchair
 
 /** Six category buckets shared by every metric / page accent in the app. */
 object HealthColors {

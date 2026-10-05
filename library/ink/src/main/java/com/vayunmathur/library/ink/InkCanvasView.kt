@@ -45,7 +45,7 @@ private class FinishedStrokesView(context: Context) : View(context) {
     private val textPaint = Paint().apply { isAntiAlias = true }
     private val selectionPaint = Paint().apply {
         style = Paint.Style.STROKE
-        strokeWidth = 3f
+        strokeWidth = SELECTION_STROKE_WIDTH
     }
     private val selectionFillPaint = Paint().apply {
         style = Paint.Style.FILL
@@ -54,7 +54,7 @@ private class FinishedStrokesView(context: Context) : View(context) {
     fun setSelectionColor(color: Int) {
         selectionPaint.color = color
         selectionFillPaint.color = android.graphics.Color.argb(
-            40,
+            SELECTION_FILL_ALPHA,
             android.graphics.Color.red(color),
             android.graphics.Color.green(color),
             android.graphics.Color.blue(color),
@@ -68,7 +68,12 @@ private class FinishedStrokesView(context: Context) : View(context) {
             renderer.draw(canvas, stroke, identityMatrix)
             if (selectedStrokeIndex == index) {
                 stroke.shape.computeBoundingBox()?.let { box ->
-                    scratchRect.set(box.xMin - 4f, box.yMin - 4f, box.xMax + 4f, box.yMax + 4f)
+                    scratchRect.set(
+                        box.xMin - SELECTION_PADDING,
+                        box.yMin - SELECTION_PADDING,
+                        box.xMax + SELECTION_PADDING,
+                        box.yMax + SELECTION_PADDING
+                    )
                     canvas.drawRect(scratchRect, selectionFillPaint)
                     canvas.drawRect(scratchRect, selectionPaint)
                 }
@@ -99,7 +104,12 @@ private class FinishedStrokesView(context: Context) : View(context) {
                 if (selectedTextIndex == index) {
                     val textWidth = textPaint.measureText(elem.text)
                     val textHeight = textPaint.textSize
-                    scratchRect.set(-4f, -4f, textWidth + 4f, textHeight + 8f)
+                    scratchRect.set(
+                        -SELECTION_PADDING,
+                        -SELECTION_PADDING,
+                        textWidth + SELECTION_PADDING,
+                        textHeight + SELECTION_TEXT_EXTRA
+                    )
                     drawRect(scratchRect, selectionFillPaint)
                     drawRect(scratchRect, selectionPaint)
                 }
@@ -107,6 +117,12 @@ private class FinishedStrokesView(context: Context) : View(context) {
         }
     }
 }
+
+private const val SELECTION_STROKE_WIDTH = 3f
+private const val SELECTION_FILL_ALPHA = 40
+private const val SELECTION_PADDING = 4f
+private const val SELECTION_TEXT_EXTRA = 8f
+private const val ERASER_HIT_RADIUS = 20f
 
 private class InkState {
     var currentBrush: Brush? = null
@@ -190,29 +206,35 @@ private class StrokeTouchListener(
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouch(v: View, event: MotionEvent): Boolean {
         if (!state.enabled) return false
+        if (state.eraserMode) return handleEraser(event)
+        return handleStroke(v, event)
+    }
 
-        if (state.eraserMode) {
-            if (event.actionMasked == MotionEvent.ACTION_DOWN ||
-                event.actionMasked == MotionEvent.ACTION_MOVE
-            ) {
-                val touchX = event.x
-                val touchY = event.y
-                val hitRadius = 20f
-                finishedStrokesView.strokes.lastOrNull { stroke ->
-                    stroke.shape.computeBoundingBox()?.let { box ->
-                        box.xMin <= touchX + hitRadius && box.xMax >= touchX - hitRadius &&
-                            box.yMin <= touchY + hitRadius && box.yMax >= touchY - hitRadius
-                    } ?: false
-                }?.let { hitStroke ->
-                    state.onStrokeErased?.invoke(hitStroke)
-                }
-            }
-            return true
+    private fun handleEraser(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN ||
+            event.actionMasked == MotionEvent.ACTION_MOVE
+        ) {
+            eraseAt(event.x, event.y)
         }
+        return true
+    }
 
+    private fun eraseAt(touchX: Float, touchY: Float) {
+        finishedStrokesView.strokes.lastOrNull { stroke ->
+            stroke.shape.computeBoundingBox()?.let { box ->
+                box.xMin <= touchX + ERASER_HIT_RADIUS &&
+                    box.xMax >= touchX - ERASER_HIT_RADIUS &&
+                    box.yMin <= touchY + ERASER_HIT_RADIUS &&
+                    box.yMax >= touchY - ERASER_HIT_RADIUS
+            } ?: false
+        }?.let { hitStroke ->
+            state.onStrokeErased?.invoke(hitStroke)
+        }
+    }
+
+    private fun handleStroke(v: View, event: MotionEvent): Boolean {
         val brush = state.currentBrush ?: return false
         val pointerId = event.getPointerId(event.actionIndex)
-
         return when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 v.requestUnbufferedDispatch(event)

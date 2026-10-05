@@ -25,6 +25,8 @@ interface DbBackupCodec {
 
 object BackupHelper {
     private const val TAG = "BackupHelper"
+    private const val RESTORE_TEMP_NAME = "restore_temp"
+    private const val DATASTORE_DEFAULT_NAME = "datastore_default"
 
     fun zipFiles(files: List<File>, baseDir: File, outputStream: OutputStream) {
         ZipOutputStream(BufferedOutputStream(outputStream)).use { zos ->
@@ -65,60 +67,14 @@ object BackupHelper {
         outputStream: OutputStream,
         dbCodec: DbBackupCodec? = null,
     ) {
-        val tempDir = File(context.cacheDir, "backup_temp_${System.currentTimeMillis()}")
-        if (tempDir.exists()) tempDir.deleteRecursively()
-        tempDir.mkdirs()
-
+        val tempDir = createTimestampedTempDir(context)
         val filesToZip = mutableListOf<File>()
 
-        if (dbConfigs.isNotEmpty() && dbCodec == null) {
-            Log.w(TAG, "performFullBackup: dbConfigs provided but no DbBackupCodec; skipping database export")
-        }
-        if (dbCodec != null) {
-            dbConfigs.forEach { (dbName, password) ->
-                val plainDbFile = File(tempDir, "$dbName.db")
-                dbCodec.exportDatabase(context, dbName, password, plainDbFile)
-                if (plainDbFile.exists() && plainDbFile.length() > 0) {
-                    filesToZip.add(plainDbFile)
-                } else {
-                    Log.w(TAG, "performFullBackup: Database export failed or file is empty: $dbName")
-                }
-            }
-        }
-
-        datastoreNames.forEach { dsName ->
-            val dsFile = File(context.filesDir, "datastore/$dsName.preferences_pb")
-            val dsFileAlt = File(context.filesDir, "$dsName.preferences_pb")
-            val actualFile = if (dsFile.exists()) dsFile else if (dsFileAlt.exists()) dsFileAlt else null
-            if (actualFile != null) {
-                val targetFile = File(tempDir, actualFile.name)
-                actualFile.copyTo(targetFile, true)
-                filesToZip.add(targetFile)
-            }
-        }
-
-        prefNames.forEach { prefName ->
-            val prefFile = File(context.dataDir, "shared_prefs/$prefName.xml")
-            if (prefFile.exists()) {
-                val targetFile = File(tempDir, prefFile.name)
-                prefFile.copyTo(targetFile, true)
-                filesToZip.add(targetFile)
-            }
-        }
-
-        extraFiles.forEach { file ->
-            if (file.exists()) {
-                val targetFile = File(tempDir, file.name)
-                if (file.isDirectory) {
-                    file.copyRecursively(targetFile, true)
-                } else {
-                    file.copyTo(targetFile, true)
-                }
-                filesToZip.add(targetFile)
-            } else {
-                Log.w(TAG, "performFullBackup: Extra file does not exist: ${file.absolutePath}")
-            }
-        }
+        warnOnMissingCodec(dbConfigs, dbCodec, ::warnBackupSkipped)
+        exportDatabases(context, dbConfigs, dbCodec, tempDir, filesToZip)
+        stageDatastoreFiles(context, datastoreNames, tempDir, filesToZip)
+        stagePrefFiles(context, prefNames, tempDir, filesToZip)
+        stageExtraFiles(extraFiles, tempDir, filesToZip)
 
         if (filesToZip.isEmpty()) {
             Log.e(TAG, "performFullBackup: NO FILES TO BACKUP!")
@@ -137,58 +93,188 @@ object BackupHelper {
         inputStream: InputStream,
         dbCodec: DbBackupCodec? = null,
     ) {
-        val tempDir = File(context.cacheDir, "restore_temp")
-        if (tempDir.exists()) tempDir.deleteRecursively()
-        tempDir.mkdirs()
-
+        val tempDir = createTempDir(context, RESTORE_TEMP_NAME)
         unzipFiles(inputStream, tempDir)
 
-        if (dbConfigs.isNotEmpty() && dbCodec == null) {
-            Log.w(TAG, "performFullRestore: dbConfigs provided but no DbBackupCodec; skipping database import")
-        }
-        if (dbCodec != null) {
-            dbConfigs.forEach { (dbName, password) ->
-                val plainDbFile = File(tempDir, "$dbName.db")
-                if (plainDbFile.exists()) {
-                    dbCodec.importDatabase(context, dbName, password, plainDbFile)
-                }
-            }
-        }
-
-        datastoreNames.forEach { dsName ->
-            val dsFile = File(tempDir, "$dsName.preferences_pb")
-            if (dsFile.exists()) {
-                val targetFile1 = File(context.filesDir, "datastore/$dsName.preferences_pb")
-                val targetFile2 = File(context.filesDir, "$dsName.preferences_pb")
-                val targetFile = if (dsName == "datastore_default") targetFile2 else targetFile1
-
-                targetFile.parentFile?.mkdirs()
-                dsFile.copyTo(targetFile, true)
-            }
-        }
-
-        prefNames.forEach { prefName ->
-            val prefFile = File(tempDir, "$prefName.xml")
-            if (prefFile.exists()) {
-                val targetFile = File(context.dataDir, "shared_prefs/$prefName.xml")
-                targetFile.parentFile?.mkdirs()
-                prefFile.copyTo(targetFile, true)
-            }
-        }
-
-        extraFilesMapping.forEach { (zipName, targetFile) ->
-            val extractedFile = File(tempDir, zipName)
-            if (extractedFile.exists()) {
-                if (targetFile.exists()) targetFile.deleteRecursively()
-                if (extractedFile.isDirectory) {
-                    extractedFile.copyRecursively(targetFile, true)
-                } else {
-                    targetFile.parentFile?.mkdirs()
-                    extractedFile.copyTo(targetFile, true)
-                }
-            }
-        }
+        warnOnMissingCodec(dbConfigs, dbCodec, ::warnRestoreSkipped)
+        importDatabases(context, dbConfigs, dbCodec, tempDir)
+        restoreDatastoreFiles(context, datastoreNames, tempDir)
+        restorePrefFiles(context, prefNames, tempDir)
+        restoreExtraFiles(extraFilesMapping, tempDir)
 
         tempDir.deleteRecursively()
+    }
+
+    private fun createTimestampedTempDir(context: Context): File {
+        val tempDir = File(context.cacheDir, "backup_temp_${System.currentTimeMillis()}")
+        if (tempDir.exists()) tempDir.deleteRecursively()
+        tempDir.mkdirs()
+        return tempDir
+    }
+
+    private fun createTempDir(context: Context, name: String): File {
+        val tempDir = File(context.cacheDir, name)
+        if (tempDir.exists()) tempDir.deleteRecursively()
+        tempDir.mkdirs()
+        return tempDir
+    }
+
+    private fun warnOnMissingCodec(
+        dbConfigs: List<Pair<String, String>>,
+        dbCodec: DbBackupCodec?,
+        warn: () -> Unit
+    ) {
+        if (dbConfigs.isNotEmpty() && dbCodec == null) warn()
+    }
+
+    private fun warnBackupSkipped() {
+        Log.w(
+            TAG,
+            "performFullBackup: dbConfigs provided but no DbBackupCodec; skipping database export"
+        )
+    }
+
+    private fun warnRestoreSkipped() {
+        Log.w(
+            TAG,
+            "performFullRestore: dbConfigs provided but no DbBackupCodec; skipping database import"
+        )
+    }
+
+    private fun exportDatabases(
+        context: Context,
+        dbConfigs: List<Pair<String, String>>,
+        dbCodec: DbBackupCodec?,
+        tempDir: File,
+        filesToZip: MutableList<File>
+    ) {
+        if (dbCodec == null) return
+        dbConfigs.forEach { (dbName, password) ->
+            val plainDbFile = File(tempDir, "$dbName.db")
+            dbCodec.exportDatabase(context, dbName, password, plainDbFile)
+            if (plainDbFile.exists() && plainDbFile.length() > 0) {
+                filesToZip.add(plainDbFile)
+            } else {
+                Log.w(TAG, "performFullBackup: Database export failed or file is empty: $dbName")
+            }
+        }
+    }
+
+    private fun stageDatastoreFiles(
+        context: Context,
+        datastoreNames: List<String>,
+        tempDir: File,
+        filesToZip: MutableList<File>
+    ) {
+        datastoreNames.forEach { dsName ->
+            findDatastoreFile(context, dsName)?.let { actualFile ->
+                stageFile(actualFile, tempDir, filesToZip)
+            }
+        }
+    }
+
+    private fun findDatastoreFile(context: Context, dsName: String): File? {
+        val primary = File(context.filesDir, "datastore/$dsName.preferences_pb")
+        if (primary.exists()) return primary
+        val legacy = File(context.filesDir, "$dsName.preferences_pb")
+        return legacy.takeIf { it.exists() }
+    }
+
+    private fun stageFile(source: File, tempDir: File, filesToZip: MutableList<File>) {
+        val targetFile = File(tempDir, source.name)
+        source.copyTo(targetFile, true)
+        filesToZip.add(targetFile)
+    }
+
+    private fun stagePrefFiles(
+        context: Context,
+        prefNames: List<String>,
+        tempDir: File,
+        filesToZip: MutableList<File>
+    ) {
+        prefNames.map { File(context.dataDir, "shared_prefs/$it.xml") }
+            .filter { it.exists() }
+            .forEach { stageFile(it, tempDir, filesToZip) }
+    }
+
+    private fun stageExtraFiles(
+        extraFiles: List<File>,
+        tempDir: File,
+        filesToZip: MutableList<File>
+    ) {
+        extraFiles.forEach { file ->
+            if (!file.exists()) {
+                Log.w(TAG, "performFullBackup: Extra file does not exist: ${file.absolutePath}")
+                return@forEach
+            }
+            val targetFile = File(tempDir, file.name)
+            if (file.isDirectory) {
+                file.copyRecursively(targetFile, true)
+            } else {
+                file.copyTo(targetFile, true)
+            }
+            filesToZip.add(targetFile)
+        }
+    }
+
+    private fun importDatabases(
+        context: Context,
+        dbConfigs: List<Pair<String, String>>,
+        dbCodec: DbBackupCodec?,
+        tempDir: File
+    ) {
+        if (dbCodec == null) return
+        dbConfigs.forEach { (dbName, password) ->
+            val plainDbFile = File(tempDir, "$dbName.db")
+            if (plainDbFile.exists()) {
+                dbCodec.importDatabase(context, dbName, password, plainDbFile)
+            }
+        }
+    }
+
+    private fun restoreDatastoreFiles(
+        context: Context,
+        datastoreNames: List<String>,
+        tempDir: File
+    ) {
+        datastoreNames.forEach { dsName ->
+            val extracted = File(tempDir, "$dsName.preferences_pb")
+            if (!extracted.exists()) return@forEach
+            val targetFile = datastoreTarget(context, dsName)
+            targetFile.parentFile?.mkdirs()
+            extracted.copyTo(targetFile, true)
+        }
+    }
+
+    private fun datastoreTarget(context: Context, dsName: String): File {
+        // The default store writes to the filesDir root; named stores live under datastore/.
+        if (dsName == DATASTORE_DEFAULT_NAME) {
+            return File(context.filesDir, "$dsName.preferences_pb")
+        }
+        return File(context.filesDir, "datastore/$dsName.preferences_pb")
+    }
+
+    private fun restorePrefFiles(context: Context, prefNames: List<String>, tempDir: File) {
+        prefNames.forEach { prefName ->
+            val extracted = File(tempDir, "$prefName.xml")
+            if (!extracted.exists()) return@forEach
+            val targetFile = File(context.dataDir, "shared_prefs/$prefName.xml")
+            targetFile.parentFile?.mkdirs()
+            extracted.copyTo(targetFile, true)
+        }
+    }
+
+    private fun restoreExtraFiles(extraFilesMapping: Map<String, File>, tempDir: File) {
+        extraFilesMapping.forEach { (zipName, targetFile) ->
+            val extractedFile = File(tempDir, zipName)
+            if (!extractedFile.exists()) return@forEach
+            if (targetFile.exists()) targetFile.deleteRecursively()
+            if (extractedFile.isDirectory) {
+                extractedFile.copyRecursively(targetFile, true)
+            } else {
+                targetFile.parentFile?.mkdirs()
+                extractedFile.copyTo(targetFile, true)
+            }
+        }
     }
 }

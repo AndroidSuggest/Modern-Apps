@@ -20,6 +20,8 @@ import com.vayunmathur.photos.data.PhotosRepository
 import com.vayunmathur.photos.data.VaultPhoto
 import com.vayunmathur.photos.data.VaultPhotoDao
 import com.vayunmathur.photos.data.VaultRepository
+import java.io.IOException
+import java.security.GeneralSecurityException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -190,7 +192,11 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
                     val existing = thumbCache[thumbnailPath]
                     if (existing != null && !existing.isRecycled) {
                         // Another thread already inserted, recycle the duplicate we just decrypted
-                        try { bmp.recycle() } catch (e: Exception) { Log.w(TAG, "Failed to recycle duplicate thumbnail", e) }
+                        try {
+                            bmp.recycle()
+                        } catch (e: IllegalStateException) {
+                            Log.w(TAG, "Failed to recycle duplicate thumbnail", e)
+                        }
                         published = existing
                     } else {
                         if (existing != null) {
@@ -202,7 +208,9 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
                     }
                     thumbStates[thumbnailPath]?.value = published
                 }
-            } catch (e: Exception) {
+            } catch (e: IOException) {
+                Log.e(TAG, "decryptThumbnail failed for $thumbnailPath", e)
+            } catch (e: IllegalArgumentException) {
                 Log.e(TAG, "decryptThumbnail failed for $thumbnailPath", e)
             }
         }
@@ -237,7 +245,9 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
                     }
                 }
                 clearSelection()
-            } catch (e: Exception) {
+            } catch (e: SecurityException) {
+                Log.e(TAG, "restorePhotos failed", e)
+            } catch (e: IllegalArgumentException) {
                 Log.e(TAG, "restorePhotos failed", e)
             }
         }
@@ -281,7 +291,9 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
                         )
                         collected.add(photo.uri.toUri())
                         sourceRepository.delete(photo)
-                    } catch (e: Exception) {
+                    } catch (e: IOException) {
+                        Log.e(TAG, "encryptAndMove failed for ${photo.uri}", e)
+                    } catch (e: GeneralSecurityException) {
                         Log.e(TAG, "encryptAndMove failed for ${photo.uri}", e)
                     }
                 }
@@ -293,20 +305,6 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    /**
-     * Legacy overload taking a PhotoDao — delegates to repository overload.
-     * Kept for incremental migration; callers should pass PhotosRepository.
-     */
-    fun moveToSecure(
-        photos: List<Photo>,
-        sourcePhotoDao: com.vayunmathur.photos.data.PhotoDao,
-        onSuccess: (List<android.net.Uri>) -> Unit,
-    ) {
-        // Resolve repository from application context
-        val repo = PhotosRepository.get(getApplication())
-        moveToSecure(photos, repo, onSuccess)
-    }
-
     override fun onCleared() {
         synchronized(thumbCache) {
             // Clear every holder first so the UI no longer references any bitmap,
@@ -314,7 +312,11 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
             thumbStates.values.forEach { it.value = null }
             thumbStates.clear()
             thumbCache.values.forEach { bmp ->
-                try { if (!bmp.isRecycled) bmp.recycle() } catch (e: Exception) { Log.w(TAG, "Failed to recycle thumbnail on clear", e) }
+                try {
+                    if (!bmp.isRecycled) bmp.recycle()
+                } catch (e: IllegalStateException) {
+                    Log.w(TAG, "Failed to recycle thumbnail on clear", e)
+                }
             }
             thumbCache.clear()
         }

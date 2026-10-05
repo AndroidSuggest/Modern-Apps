@@ -22,20 +22,23 @@ import androidx.car.app.validation.HostValidator
  */
 class CommunicateCarAppService : CarAppService() {
 
+    private companion object {
+        private const val CAR_API_MIN = 6
+        private const val CAR_API_CONVERSATION = 9
+    }
+
     // Dev posture: accept any host. Before shipping this must be tightened to a
-    // real allow-list (Android Auto / Automotive OS signatures) via
-    // HostValidator.Builder + the car-app allowlist — same follow-up as maps.
     override fun createHostValidator(): HostValidator =
         HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
 
     override fun onCreateSession(): Session = CommunicateCarSession()
 
     // API 6+: per-display sessions.
-    @RequiresCarApi(6)
+    @RequiresCarApi(CAR_API_MIN)
     override fun onCreateSession(sessionInfo: SessionInfo): Session = CommunicateCarSession()
 
     // API 9 (experimental): keep MA brand styling on hosts that offer it.
-    @RequiresCarApi(9)
+    @RequiresCarApi(CAR_API_CONVERSATION)
     @ExperimentalCarApi
     override fun getCarAppThemeSource(): Int =
         CarAppService.THEME_SOURCE_APP

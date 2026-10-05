@@ -196,7 +196,10 @@ class MusicViewModel(
     fun matchedMusicForPlaylist(playlistId: Long): State<List<Long>> {
         val all by matchings.collectAsState()
         return remember(playlistId, all) {
-            derivedStateOf { all.filter { it.rightID == playlistId && it.type == TYPE_MUSIC_PLAYLIST }.map { it.leftID } }
+            derivedStateOf {
+                all.filter { it.rightID == playlistId && it.type == TYPE_MUSIC_PLAYLIST }
+                    .map { it.leftID }
+            }
         }
     }
 

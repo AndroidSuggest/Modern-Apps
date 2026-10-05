@@ -24,25 +24,47 @@ class PqcIdentity internal constructor(
          * to avoid returning an ephemeral identity that would fail to decrypt.
          */
         suspend fun loadOrCreate(store: E2eeKeyStore, prefix: String = "pqc"): PqcIdentity {
-            val kemPub = store.getBytes("${prefix}KemPub")
-            val kemPriv = store.getBytes("${prefix}KemPriv")
-            val dsaPub = store.getBytes("${prefix}DsaPub")
-            val dsaPriv = store.getBytes("${prefix}DsaPriv")
-            if (kemPub != null && kemPriv != null && dsaPub != null && dsaPriv != null) {
-                return PqcIdentity(Pqc.bundle(kemPub, dsaPub), kemPriv, dsaPriv)
-            }
+            readPersisted(store, prefix)?.let { return it }
+            generateAndStore(store, prefix)
+            // Re-read final persisted (winner of concurrent race).
+            return readPersisted(store, prefix) ?: error("PQC identity store returned no keys")
+        }
+
+        private suspend fun readPersisted(store: E2eeKeyStore, prefix: String): PqcIdentity? {
+            val keys = PqcKeys(
+                kemPub = store.getBytes("${prefix}KemPub"),
+                kemPriv = store.getBytes("${prefix}KemPriv"),
+                dsaPub = store.getBytes("${prefix}DsaPub"),
+                dsaPriv = store.getBytes("${prefix}DsaPriv")
+            )
+            if (!keys.isComplete) return null
+            return PqcIdentity(
+                Pqc.bundle(keys.kemPub!!, keys.dsaPub!!),
+                keys.kemPriv!!,
+                keys.dsaPriv!!
+            )
+        }
+
+        private data class PqcKeys(
+            val kemPub: ByteArray?,
+            val kemPriv: ByteArray?,
+            val dsaPub: ByteArray?,
+            val dsaPriv: ByteArray?
+        ) {
+            val isComplete: Boolean
+                get() = kemPub != null && kemPriv != null && hasDsaPair
+
+            private val hasDsaPair: Boolean
+                get() = dsaPub != null && dsaPriv != null
+        }
+
+        private suspend fun generateAndStore(store: E2eeKeyStore, prefix: String) {
             val (kemPubNew, kemPrivNew) = Pqc.generateKem()
             val (dsaPubNew, dsaPrivNew) = Pqc.generateDsa()
             store.setBytes("${prefix}KemPub", kemPubNew, onlyIfAbsent = true)
             store.setBytes("${prefix}KemPriv", kemPrivNew, onlyIfAbsent = true)
             store.setBytes("${prefix}DsaPub", dsaPubNew, onlyIfAbsent = true)
             store.setBytes("${prefix}DsaPriv", dsaPrivNew, onlyIfAbsent = true)
-            // Re-read final persisted (winner of concurrent race).
-            val finalKemPub = store.getBytes("${prefix}KemPub") ?: kemPubNew
-            val finalKemPriv = store.getBytes("${prefix}KemPriv") ?: kemPrivNew
-            val finalDsaPub = store.getBytes("${prefix}DsaPub") ?: dsaPubNew
-            val finalDsaPriv = store.getBytes("${prefix}DsaPriv") ?: dsaPrivNew
-            return PqcIdentity(Pqc.bundle(finalKemPub, finalDsaPub), finalKemPriv, finalDsaPriv)
         }
     }
 }

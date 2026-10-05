@@ -12,6 +12,7 @@ import com.vayunmathur.communicate.data.whatsapp.buildReactionProto
 import com.vayunmathur.communicate.data.whatsapp.buildReadReceipt
 import com.vayunmathur.communicate.data.whatsapp.buildRevokeProto
 import com.vayunmathur.communicate.data.whatsapp.encodeNode
+import com.vayunmathur.communicate.data.whatsapp.transport.WhatsAppSocket
 import com.vayunmathur.communicate.data.whatsapp.generateMessageId
 import com.vayunmathur.communicate.data.whatsapp.isRevokeFromMe
 import android.util.Log
@@ -40,22 +41,32 @@ suspend fun WhatsAppClient.markRead(
 
     val isGroup = to.contains("@g.us")
     if (isGroup && senderJids.isNotEmpty()) {
-        // Batch by sender for group chats (Go HandleMatrixReadReceipt)
-        val bySender = mutableMapOf<String, MutableList<String>>()
-        filteredIds.forEach { msgId ->
-            val sender = senderJids[msgId] ?: ""
-            bySender.getOrPut(sender) { mutableListOf() }.add(msgId)
-        }
-        bySender.forEach { (sender, ids) ->
-            val node = WhatsAppProtocol.buildReadReceipt(
-                chatJid = to,
-                messageIds = ids,
-                senderJid = sender.ifEmpty { null },
-            )
-            ws.send(WhatsAppProtocol.encodeNode(node))
-        }
+        sendGroupReadReceipts(ws, to, filteredIds, senderJids)
     } else {
         val node = WhatsAppProtocol.buildReadReceipt(chatJid = to, messageIds = filteredIds)
+        ws.send(WhatsAppProtocol.encodeNode(node))
+    }
+}
+
+/** Batch group read receipts by sender (Go HandleMatrixReadReceipt). */
+private suspend fun WhatsAppClient.sendGroupReadReceipts(
+    ws: com.vayunmathur.communicate.data.whatsapp.transport.WhatsAppSocket,
+    to: String,
+    filteredIds: List<String>,
+    senderJids: Map<String, String>,
+) {
+    // Batch by sender for group chats (Go HandleMatrixReadReceipt)
+    val bySender = mutableMapOf<String, MutableList<String>>()
+    filteredIds.forEach { msgId ->
+        val sender = senderJids[msgId] ?: ""
+        bySender.getOrPut(sender) { mutableListOf() }.add(msgId)
+    }
+    bySender.forEach { (sender, ids) ->
+        val node = WhatsAppProtocol.buildReadReceipt(
+            chatJid = to,
+            messageIds = ids,
+            senderJid = sender.ifEmpty { null },
+        )
         ws.send(WhatsAppProtocol.encodeNode(node))
     }
 }
@@ -66,13 +77,16 @@ suspend fun WhatsAppClient.markRead(
  * privacy settings — so we honor the user's choice rather than leaking read state. Integrator
  * broadcast contract. [lastTimestamp] is epoch ms (WhatsAppEvent convention) or s; both accepted.
  */
+private const val MS_PER_SECOND = 1000L
+private const val MS_THRESHOLD = 100_000_000_000L
+
 suspend fun WhatsAppClient.sendReadReceipt(
     conversationId: String,
     lastMessageId: String?,
     lastTimestamp: Long,
     senderJid: String? = null,
 ): Boolean {
-    if (_state.value !is State.Connected) return false
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val to = extractJid(conversationId) ?: return false
     if (lastMessageId.isNullOrEmpty()) return false
@@ -83,8 +97,8 @@ suspend fun WhatsAppClient.sendReadReceipt(
         return true
     }
     val tSec = when {
-        lastTimestamp <= 0 -> System.currentTimeMillis() / 1000
-        lastTimestamp > 100_000_000_000L -> lastTimestamp / 1000 // ms → s
+        lastTimestamp <= 0 -> System.currentTimeMillis() / MS_PER_SECOND
+        lastTimestamp > MS_THRESHOLD -> lastTimestamp / MS_PER_SECOND // ms → s
         else -> lastTimestamp
     }
     val node = WhatsAppProtocol.buildReadReceipt(
@@ -136,7 +150,7 @@ suspend fun WhatsAppClient.sendReaction(
     targetFromMe: Boolean,
     targetSenderJid: String?,
 ): Boolean {
-    if (_state.value !is State.Connected) return false
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val chatJid = extractJid(conversationId) ?: return false
     val rawTargetId = extractMessageId(messageId)
@@ -159,7 +173,9 @@ suspend fun WhatsAppClient.sendReaction(
     pendingMessageIDs.add(id)
     val sent = ws.send(WhatsAppProtocol.encodeNode(node))
     if (!sent) pendingMessageIDs.remove(id)
-    WhatsAppDiag.log(TAG, "reaction to=$chatJid target=$rawTargetId emoji=${strippedEmoji.ifEmpty { "<remove>" }} sent=$sent")
+    WhatsAppDiag.log(
+        TAG,
+        "reaction to=$chatJid target=$rawTargetId emoji=${strippedEmoji.ifEmpty { "<remove>" }} sent=$sent")
     return sent
 }
 
@@ -186,7 +202,7 @@ suspend fun WhatsAppClient.sendTyping(
     isTyping: Boolean,
     typingType: WhatsAppClient.TypingType = WhatsAppClient.TypingType.TEXT,
 ) {
-    if (_state.value !is State.Connected) return
+    if (stateMutable.value !is State.Connected) return
     val ws = webSocket ?: return
     val chatJid = extractJid(conversationId) ?: return
 
@@ -205,7 +221,7 @@ suspend fun WhatsAppClient.sendTyping(
  * Signal fan-out and was undeliverable.
  */
 suspend fun WhatsAppClient.sendEdit(conversationId: String, targetMessageId: String, newBody: String): Boolean {
-    if (_state.value !is State.Connected) return false
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val chatJid = extractJid(conversationId) ?: return false
     val id = WhatsAppProtocol.generateMessageId(authData?.wid)
@@ -231,8 +247,11 @@ suspend fun WhatsAppClient.sendEdit(conversationId: String, targetMessageId: Str
  * proto and routes it through the normal Signal fan-out (1:1 or group sender-key) with the
  * message-level `edit` attribute ("7" own / "8" other). Previously sent a plaintext `<enc>`.
  */
-suspend fun WhatsAppClient.sendRevoke(conversationId: String, targetMessageId: String, senderJid: String = ""): Boolean {
-    if (_state.value !is State.Connected) return false
+suspend fun WhatsAppClient.sendRevoke(
+    conversationId: String,
+    targetMessageId: String,
+    senderJid: String = ""): Boolean {
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val chatJid = extractJid(conversationId) ?: return false
     val id = WhatsAppProtocol.generateMessageId(authData?.wid)
@@ -268,7 +287,7 @@ suspend fun WhatsAppClient.sendPollCreation(
     selectableCount: Int = 0,
 ): String? {
     WhatsAppDiag.log(TAG, "poll: sendPollCreation entry conv=$conversationId opts=${options.size}")
-    if (_state.value !is State.Connected) { WhatsAppDiag.log(TAG, "poll: not connected"); return null }
+    if (stateMutable.value !is State.Connected) { WhatsAppDiag.log(TAG, "poll: not connected"); return null }
     val ws = webSocket ?: run { WhatsAppDiag.log(TAG, "poll: no websocket"); return null }
     val to = extractJid(conversationId) ?: run { WhatsAppDiag.log(TAG, "poll: bad convId"); return null }
     val id = WhatsAppProtocol.generateMessageId(authData?.wid)
@@ -331,7 +350,7 @@ suspend fun WhatsAppClient.sendPollVote(
     pollFromMe: Boolean,
     selectedOptionNames: List<String>,
 ): Boolean {
-    if (_state.value !is State.Connected) return false
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val chatJid = extractJid(conversationId) ?: return false
     val rawPollId = extractMessageId(pollMessageId)
@@ -377,7 +396,7 @@ suspend fun WhatsAppClient.sendLocation(
     name: String? = null,
     address: String? = null,
 ): Boolean {
-    if (_state.value !is State.Connected) return false
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val to = extractJid(conversationId) ?: return false
     val id = WhatsAppProtocol.generateMessageId(authData?.wid)
@@ -400,7 +419,7 @@ suspend fun WhatsAppClient.sendContact(
     displayName: String,
     vcard: String,
 ): Boolean {
-    if (_state.value !is State.Connected) return false
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val chatJid = extractJid(conversationId) ?: return false
     val id = WhatsAppProtocol.generateMessageId(authData?.wid)
@@ -429,7 +448,7 @@ suspend fun WhatsAppClient.sendContact(
  * so the whole group is updated server-side, matching whatsmeow SetDisappearingTimer.
  */
 suspend fun WhatsAppClient.setDisappearingTimer(conversationId: String, timerSeconds: Long): Boolean {
-    if (_state.value !is State.Connected) return false
+    if (stateMutable.value !is State.Connected) return false
     val ws = webSocket ?: return false
     val chatJid = extractJid(conversationId) ?: return false
 
@@ -441,22 +460,18 @@ suspend fun WhatsAppClient.setDisappearingTimer(conversationId: String, timerSec
 
     val id = WhatsAppProtocol.generateMessageId(authData?.wid)
     if (chatJid.contains("@g.us")) {
-        val child = if (timerSeconds == 0L) {
-            WhatsAppProtocol.Node(tag = "not_ephemeral")
-        } else {
-            WhatsAppProtocol.Node(tag = "ephemeral", attrs = mapOf("expiration" to timerSeconds.toString()))
-        }
-        val iq = WhatsAppProtocol.Node(
-            tag = "iq",
-            attrs = mapOf("id" to id, "type" to "set", "xmlns" to "w:g2", "to" to chatJid),
-            content = listOf(child),
-        )
-        val resp = sendIqAndWait(iq, timeoutMs = 10_000)
-        val ok = resp != null && resp.attrs["type"] != "error"
-        WhatsAppDiag.log(TAG, "disappearing(group) to=$chatJid secs=$timerSeconds ok=$ok")
-        return ok
+        return setGroupDisappearingTimer(chatJid, id, timerSeconds)
     }
+    return sendDisappearingTimerMessage(ws, chatJid, id, timerSeconds)
+}
 
+/** 1:1 disappearing timer via encrypted protocol message. */
+private suspend fun WhatsAppClient.sendDisappearingTimerMessage(
+    ws: WhatsAppSocket,
+    chatJid: String,
+    id: String,
+    timerSeconds: Long,
+): Boolean {
     val proto = WhatsAppProtocol.buildDisappearingTimerProto(timerSeconds)
     val node = buildEncryptedMessageNode(chatJid, id, proto, "text")
         ?: run { WhatsAppDiag.log(TAG, "disappearing: build FAILED (no enc) for $chatJid"); return false }
@@ -465,4 +480,26 @@ suspend fun WhatsAppClient.setDisappearingTimer(conversationId: String, timerSec
     if (!sent) pendingMessageIDs.remove(id)
     WhatsAppDiag.log(TAG, "disappearing to=$chatJid secs=$timerSeconds sent=$sent")
     return sent
+}
+
+/** Group disappearing timer via `w:g2` IQ. */
+private suspend fun WhatsAppClient.setGroupDisappearingTimer(
+    chatJid: String,
+    id: String,
+    timerSeconds: Long,
+): Boolean {
+    val child = if (timerSeconds == 0L) {
+        WhatsAppProtocol.Node(tag = "not_ephemeral")
+    } else {
+        WhatsAppProtocol.Node(tag = "ephemeral", attrs = mapOf("expiration" to timerSeconds.toString()))
+    }
+    val iq = WhatsAppProtocol.Node(
+        tag = "iq",
+        attrs = mapOf("id" to id, "type" to "set", "xmlns" to "w:g2", "to" to chatJid),
+        content = listOf(child),
+    )
+    val resp = sendIqAndWait(iq, timeoutMs = 10_000)
+    val ok = resp != null && resp.attrs["type"] != "error"
+    WhatsAppDiag.log(TAG, "disappearing(group) to=$chatJid secs=$timerSeconds ok=$ok")
+    return ok
 }

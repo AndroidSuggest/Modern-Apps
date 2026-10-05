@@ -6,7 +6,11 @@ import com.vayunmathur.games.logicgate.data.Levels
 import com.vayunmathur.games.logicgate.data.LogicProgressRepository
 import com.vayunmathur.library.util.AchievementsManager
 
-class LogicAchievementsManager(context: Context, json: String, private val repo: LogicProgressRepository) : AchievementsManager(context, json) {
+class LogicAchievementsManager(
+    context: Context,
+    json: String,
+    private val repo: LogicProgressRepository
+) : AchievementsManager(context, json) {
     override fun checkExistingAchievements() {
         val completedIds = repo.getLevelStats().keys
         if (completedIds.isNotEmpty()) onAchievementUnlocked("first_gate")

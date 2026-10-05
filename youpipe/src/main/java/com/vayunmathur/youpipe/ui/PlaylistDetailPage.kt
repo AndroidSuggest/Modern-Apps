@@ -49,11 +49,12 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.sharedText
 import com.vayunmathur.youpipe.R
 import com.vayunmathur.youpipe.Route
+import com.vayunmathur.youpipe.util.YouPipePlaylistOps
 import com.vayunmathur.youpipe.util.YouPipeViewModel
 
 /**
  * The videos inside one playlist. Items can be reordered by drag handle (persisted via
- * [YouPipeViewModel.reorderPlaylistItems]) and removed via long-press selection. The whole
+ * [YouPipePlaylistOps.reorderPlaylistItems]) and removed via long-press selection. The whole
  * playlist can be deleted from here unless it is the mandatory Watch later playlist.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -113,7 +114,7 @@ fun PlaylistDetailPage(
     val isDragging = reorderState.isAnyItemDragging
     LaunchedEffect(isDragging) {
         if (!isDragging && hasDragged) {
-            youPipeViewModel.reorderPlaylistItems(localData)
+            youPipeViewModel.playlistOps.reorderPlaylistItems(localData)
             hasDragged = false
         }
     }
@@ -137,14 +138,14 @@ fun PlaylistDetailPage(
             if (isSelectionMode) {
                 IconButton(onClick = {
                     localData.filter { it.id in selectedIds }
-                        .forEach { youPipeViewModel.removeFromPlaylist(it) }
+                        .forEach { youPipeViewModel.playlistOps.removeFromPlaylist(it) }
                     selectedIds.clear()
                 }) {
                     IconDelete()
                 }
             } else if (!mandatory) {
                 IconButton(onClick = {
-                    playlist?.let { youPipeViewModel.deletePlaylist(it) }
+                    playlist?.let { youPipeViewModel.playlistOps.deletePlaylist(it) }
                     backStack.pop()
                 }) {
                     IconDelete()

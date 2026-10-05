@@ -25,7 +25,7 @@ import kotlinx.datetime.LocalTime
 
 /** Binds [ClockViewModel] to the stateless [AlarmScreen]. */
 @Composable
-fun AlarmPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel, newAlarmParams: Route.NewAlarmDialog? = null) {
+fun AlarmPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel) {
     val alarms by clockViewModel.alarms.collectAsState()
     val context = LocalContext.current
     val alarmScheduler = AlarmScheduler

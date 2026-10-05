@@ -48,8 +48,8 @@ class AccountStore private constructor(private val context: Application) {
             if (!exists) {
                 am.addAccountExplicitly(Account(accountName, ACCOUNT_TYPE), null, null)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to register system account", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "Failed to register system account", expected)
         }
     }
 
@@ -59,8 +59,8 @@ class AccountStore private constructor(private val context: Application) {
             am.getAccountsByType(ACCOUNT_TYPE)
                 .firstOrNull { it.name == accountName }
                 ?.let { am.removeAccountExplicitly(it) }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to remove system account", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "Failed to remove system account", expected)
         }
     }
 
@@ -70,8 +70,8 @@ class AccountStore private constructor(private val context: Application) {
         if (raw.isNullOrBlank()) return emptyList()
         return try {
             json.decodeFromString<List<AccountConfig>>(raw)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to decode accounts", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "Failed to decode accounts", expected)
             emptyList()
         }
     }

@@ -31,6 +31,9 @@ class WhatsAppDeviceFingerprint private constructor(
         private const val K_ID = "recovery_id"
         private const val K_BACKUP = "backup_token"
         private const val K_ATTEST = "attest_key"
+        private const val RECOVERY_TOKEN_BYTES = 16
+        private const val BACKUP_TOKEN_BYTES = 20
+        private const val ATTESTATION_KEY_BYTES = 32
 
         fun getOrCreate(context: Context): WhatsAppDeviceFingerprint {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -52,9 +55,9 @@ class WhatsAppDeviceFingerprint private constructor(
             return WhatsAppDeviceFingerprint(
                 fdid = uuid(K_FDID),
                 expid = uuid(K_EXPID),
-                recoveryToken = bytes(K_ID, 16),
-                backupToken = bytes(K_BACKUP, 20),
-                attestationKey = bytes(K_ATTEST, 32),
+                recoveryToken = bytes(K_ID, RECOVERY_TOKEN_BYTES),
+                backupToken = bytes(K_BACKUP, BACKUP_TOKEN_BYTES),
+                attestationKey = bytes(K_ATTEST, ATTESTATION_KEY_BYTES),
             )
         }
 

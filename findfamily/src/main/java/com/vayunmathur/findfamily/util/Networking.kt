@@ -1,7 +1,6 @@
 package com.vayunmathur.findfamily.util
 import android.util.Log
 import com.vayunmathur.findfamily.data.LocationValue
-import com.vayunmathur.findfamily.data.LocationValueCompatible
 import com.vayunmathur.findfamily.data.TemporaryLink
 import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.tracker.PoweredOffProtocol
@@ -21,7 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -31,7 +29,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.io.encoding.Base64
 import kotlin.random.Random
 import kotlin.time.Clock
@@ -49,20 +46,20 @@ import kotlin.time.Clock
  * [4B encapLen][encap][aesGCM] with KDF SHA256(BE32(1)||Z) — iOS must match to interop.
  */
 object Networking {
-    private const val TAG = "FF-Networking"
+    internal const val TAG = "FF-Networking"
     private const val PLATFORM = "android"
 
-    private val json = Json { ignoreUnknownKeys = true }
+    internal val json = Json { ignoreUnknownKeys = true }
 
     /** Shared end-to-end-encryption identity (key generation/storage/crypto lives in :library:e2ee-p2p). */
-    private lateinit var pqcIdentity: PqcIdentity
-    @Volatile private var pqcReady = false
+    internal lateinit var pqcIdentity: PqcIdentity
+    @Volatile internal var pqcReady = false
     @Volatile private var pqcInitAttempted = false
 
     var userid = 0L
         private set
 
-    private lateinit var repository: FindFamilyRepository
+    internal lateinit var repository: FindFamilyRepository
     private lateinit var dataStoreUtils: DataStoreUtils
 
     // init() is called from both the app UI (on launch) and the location
@@ -90,6 +87,10 @@ object Networking {
             ds.setByteArray(name, value, onlyIfAbsent)
     }
 
+    // Broad Throwable catch below is deliberate: PQC identity load crosses the
+    // native boundary (libe2ee_pqc.so may fail to load with UnsatisfiedLinkError,
+    // an Error, not an Exception); the app must degrade to not-sharing, not crash.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun init(repository: FindFamilyRepository, dataStoreUtils: DataStoreUtils, meName: String) {
         if (initialized) return
         initMutex.withLock {
@@ -146,6 +147,8 @@ object Networking {
      * here would not be the one in credential-encrypted storage — every publish would arrive
      * at peers as an unknown sender. Doing nothing is the correct failure.
      */
+    // Broad Throwable catch below is deliberate, same as [init]: native load boundary.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun initDirectBoot(ds: DataStoreUtils): Boolean {
         if (initialized) return directBoot
         initMutex.withLock {
@@ -204,12 +207,12 @@ object Networking {
 
     private const val WS_URL = "wss://findfamily.cc/api/ws"
 
-    private const val WS_OP_SUB: Byte = 0x01
+    internal const val WS_OP_SUB: Byte = 0x01
     private const val WS_OP_PUB: Byte = 0x02
-    private const val WS_OP_MSG: Byte = 0x03
+    internal const val WS_OP_MSG: Byte = 0x03
     private const val WS_OP_GETKEY_REQ: Byte = 0x04
-    private const val WS_OP_GETKEY_RESP: Byte = 0x05
-    private const val WS_FLAG_UWB = 0x01
+    internal const val WS_OP_GETKEY_RESP: Byte = 0x05
+    internal const val WS_FLAG_UWB = 0x01
 
     // Custom UWB tracker crowd-finding opcodes live in NetworkingTracker.kt.
 
@@ -219,13 +222,50 @@ object Networking {
 
     internal const val GETKEY_TIMEOUT_MS = 5_000L
 
+    internal const val BYTE_MASK = 0xFFL
+    internal const val INT_BYTE_MASK = 0xFF
+    internal const val BITS_PER_BYTE = 8
+    internal const val U64_LEN = 8
+    internal const val U64_MSB_SHIFT = 56
+    internal const val U32_LEN = 4
+    internal const val U32_BYTE0_SHIFT = 24
+    internal const val U32_BYTE1_SHIFT = 16
+    internal const val SUB_FRAME_HEADER_LEN = 9
+    internal const val BUNDLE_FIELD_OFFSET = 9
+    internal const val KEYRESP_HEADER_LEN = 10
+    internal const val RESOLVE_RESP_MIN_LEN = 18
+    internal const val REPORT_GET_RESP_HEADER_LEN = 3
+
+    /** MSG frame: [op][flags][ciphertext…]. */
+    internal const val MSG_FRAME_HEADER_LEN = 2
+    internal const val MSG_FLAGS_OFFSET = 1
+    internal const val MSG_PAYLOAD_OFFSET = 2
+
+    /** KEYRESP frame: [op][status][u64 target][bundle…]. */
+    internal const val KEYRESP_STATUS_OFFSET = 1
+    internal const val KEYRESP_TARGET_OFFSET = 2
+
+    /** RESOLVE_RESP frame: [op][status][16B epochId][bundle…]. */
+    internal const val RESOLVE_STATUS_OFFSET = 1
+    internal const val RESOLVE_EPOCH_OFFSET = 2
+    internal const val RESOLVE_EPOCH_END = 18
+    internal const val RESOLVE_FOUND_STATUS = 1
+
+    /** REPORT_GET_RESP count field: u16 at [REPORT_COUNT_OFFSET]. */
+    internal const val REPORT_COUNT_OFFSET = 1
+
+    private const val BACKOFF_INITIAL_MS = 1_000L
+    private const val BACKOFF_MAX_MS = 15_000L
+    private const val PUB_FRAME_HEADER_LEN = 10
+    private const val PUB_PAYLOAD_OFFSET = 10
+
     /**
      * Keepalive ping cadence. Mobile NATs/proxies drop idle sockets within a few
      * minutes, and a half-open socket is otherwise only noticed on the next write;
      * a periodic ping keeps the connection alive and surfaces breakage fast so the
      * server's fan-outs land and queued backlog drains promptly on reconnect.
      */
-    private const val PING_INTERVAL_MS = 30_000L
+    internal const val PING_INTERVAL_MS = 30_000L
 
     /**
      * If no frame at all (pong, location push, key response — anything) arrives
@@ -236,13 +276,13 @@ object Networking {
      * server replies to our pings with pongs, so a healthy socket always refreshes
      * this well within the window.
      */
-    private const val LIVENESS_TIMEOUT_MS = 75_000L
+    internal const val LIVENESS_TIMEOUT_MS = 75_000L
 
     @Volatile internal var wsSession: WsSession? = null
     private var liveJob: Job? = null
 
     /** In-flight GETKEY requests, keyed by target userid, completed when the KEYRESP arrives. */
-    private val pendingKeyRequests = ConcurrentHashMap<Long, CompletableDeferred<KeyResult?>>()
+    internal val pendingKeyRequests = ConcurrentHashMap<Long, CompletableDeferred<KeyResult?>>()
 
     /** In-flight tracker RESOLVE requests, keyed by the epoch-id hex, completed on RESOLVE_RESP. */
     internal val pendingResolves = ConcurrentHashMap<String, CompletableDeferred<ByteArray?>>()
@@ -253,21 +293,19 @@ object Networking {
     /** True while the live socket is connected. */
     val liveConnected: Boolean get() = wsSession != null
 
-    private data class KeyResult(val status: Int, val bundle: ByteArray?)
+    internal data class KeyResult(val status: Int, val bundle: ByteArray?)
 
     /** Reads 8 big-endian bytes at [off] back into the original Long bit pattern. */
     internal fun readU64Be(src: ByteArray, off: Int): Long {
         var v = 0L
-        for (i in 0 until 8) v = (v shl 8) or (src[off + i].toLong() and 0xFF)
+        for (i in 0 until U64_LEN) v = (v shl BITS_PER_BYTE) or (src[off + i].toLong() and BYTE_MASK)
         return v
     }
 
     /** Encodes [v] as 8 big-endian bytes into [dst] starting at [off]. */
     internal fun putU64Be(dst: ByteArray, off: Int, v: ULong) {
-        for (i in 0 until 8) dst[off + i] = (v shr (56 - i * 8)).toByte()
+        for (i in 0 until U64_LEN) dst[off + i] = (v shr (U64_MSB_SHIFT - i * BITS_PER_BYTE)).toByte()
     }
-
-    private fun wsFlags(kind: String): Int = if (kind == "uwb") WS_FLAG_UWB else 0
 
     /**
      * Start (or no-op if already running) the live relay loop. On connect it subscribes
@@ -290,7 +328,8 @@ object Networking {
         if (liveJob?.isActive == true) return
         stopLive()
         liveJob = scope.launch(Dispatchers.IO) {
-            var backoff = 1000L
+            val outerScope = this
+            var backoff = BACKOFF_INITIAL_MS
             while (isActive) {
                 // Per-connection scope for the reader. Deliberately independent of the
                 // supervisor loop below: a blocking readFrame() — or a stuck delivery
@@ -301,58 +340,9 @@ object Networking {
                 runCatching {
                     webSocket(WS_URL) {
                         wsSession = this
-                        // SUB doubles as registration: append our PQC bundle so the server stores
-                        // it (no separate register call). Sent every (re)connect, so it self-heals.
-                        val bundle = if (pqcReady) pqcIdentity.publicBundle else ByteArray(0)
-                        val sub = ByteArray(9 + bundle.size)
-                        sub[0] = WS_OP_SUB
-                        putU64Be(sub, 1, userid.toULong())
-                        bundle.copyInto(sub, 9)
-                        send(sub)
-                        backoff = 1000L
-                        Log.d(TAG, "live WS connected, subscribed+registered as ${userid.toULong()} bundleLen=${bundle.size}")
-
-                        val lastInboundMs = AtomicLong(System.currentTimeMillis())
-
-                        // Reader: decrypts and delivers inbound frames, refreshing liveness on
-                        // each one. Runs in the detached connScope and is never joined, so if it
-                        // wedges on a half-open socket the supervisor below can still reconnect.
-                        // It ends on its own once abort() closes the socket and the read errors.
-                        connScope.launch {
-                            runCatching {
-                                incoming.collect { frame ->
-                                    lastInboundMs.set(System.currentTimeMillis())
-                                    when (frame) {
-                                        is WebSocketClient.WsFrame.Binary ->
-                                            dispatchLiveFrame(frame.bytes, onLocations, onUwb)
-                                        else -> Unit
-                                    }
-                                }
-                            }
-                        }
-
-                        // Supervisor: only ever suspends on delay(), so it can always make
-                        // progress to reconnect. Pings are fire-and-forget (a write blocked on a
-                        // half-open socket must not stall this loop). If no inbound frame — pong,
-                        // push, key response, anything — arrives within the timeout, the socket is
-                        // half-open, so break to abort and reconnect.
-                        try {
-                            while (isActive) {
-                                connScope.launch { runCatching { ping() } }
-                                delay(PING_INTERVAL_MS)
-                                val idle = System.currentTimeMillis() - lastInboundMs.get()
-                                if (idle > LIVENESS_TIMEOUT_MS) {
-                                    Log.w(TAG, "no inbound for ${idle}ms; socket half-open, reconnecting")
-                                    break
-                                }
-                            }
-                        } finally {
-                            // Hard, non-blocking close, then abandon the reader (never joined).
-                            // abort() sets closed first, so webSocket()'s graceful close() is a
-                            // no-op and cannot hang the block's return.
-                            runCatching { abort() }
-                            connScope.cancel()
-                        }
+                        sendSubscribe()
+                        backoff = BACKOFF_INITIAL_MS
+                        superviseConnection(connScope, outerScope, onLocations, onUwb)
                     }
                 }.onFailure { Log.w(TAG, "live WS loop error", it) }
                 connScope.cancel()
@@ -365,7 +355,7 @@ object Networking {
                 while (true) { (pendingReportGets.poll() ?: break).complete(emptyList()) }
                 if (!isActive) break
                 delay(backoff)
-                backoff = (backoff * 2).coerceAtMost(15_000)
+                backoff = (backoff * 2).coerceAtMost(BACKOFF_MAX_MS)
             }
         }
     }
@@ -380,78 +370,15 @@ object Networking {
         while (true) { (pendingReportGets.poll() ?: break).complete(emptyList()) }
     }
 
-    /** Parse one server frame and dispatch: MSG → decrypt+deliver; KEYRESP → complete the lookup. */
-    private suspend fun dispatchLiveFrame(
-        buf: ByteArray,
-        onLocations: suspend (List<LocationValue>) -> Unit,
-        onUwb: suspend (List<UwbEnvelope>) -> Unit,
-    ) {
-        val op = buf.firstOrNull() ?: return
-        when (op) {
-            WS_OP_MSG -> {
-                if (buf.size < 2) return
-                val isUwb = (buf[1].toInt() and WS_FLAG_UWB) != 0
-                val raw = buf.copyOfRange(2, buf.size)
-                if (!isUwb) {
-                    val decoded = runCatching { decryptLocationPqcBytes(raw) }
-                        .onFailure { Log.w(TAG, "live location decrypt fail", it) }.getOrNull() ?: return
-                    val (loc, platform) = decoded
-                    if (platform != null) runCatching { repository.setPlatform(loc.userid, platform) }
-                    runCatching { onLocations(listOf(loc)) }
-                } else {
-                    val env = runCatching {
-                        val plain = pqcIdentity.decrypt(raw)
-                        json.decodeFromString<UwbEnvelope>(plain.decodeToString())
-                    }.onFailure { Log.w(TAG, "live uwb decrypt fail", it) }.getOrNull() ?: return
-                    runCatching { onUwb(listOf(env)) }
-                }
-            }
-            WS_OP_GETKEY_RESP -> {
-                if (buf.size < 10) return
-                val status = buf[1].toInt()
-                val target = readU64Be(buf, 2)
-                val bundle = if (buf.size > 10) buf.copyOfRange(10, buf.size) else null
-                pendingKeyRequests.remove(target)?.complete(KeyResult(status, bundle))
-            }
-            WS_OP_RESOLVE_RESP -> {
-                // [0x08][status][16B epochId][bundle…]
-                if (buf.size < 18) return
-                val found = buf[1].toInt() == 1
-                val epochHex = buf.copyOfRange(2, 18).toHex()
-                val bundle = if (found && buf.size > 18) buf.copyOfRange(18, buf.size) else null
-                pendingResolves.remove(epochHex)?.complete(bundle)
-            }
-            WS_OP_REPORT_GET_RESP -> {
-                // [0x0B][u16 count]([u32 len][ct]×count)
-                if (buf.size < 3) return
-                val count = ((buf[1].toInt() and 0xFF) shl 8) or (buf[2].toInt() and 0xFF)
-                val out = ArrayList<ByteArray>(count)
-                var off = 3
-                var i = 0
-                while (i < count && off + 4 <= buf.size) {
-                    val len = ((buf[off].toInt() and 0xFF) shl 24) or
-                        ((buf[off + 1].toInt() and 0xFF) shl 16) or
-                        ((buf[off + 2].toInt() and 0xFF) shl 8) or
-                        (buf[off + 3].toInt() and 0xFF)
-                    off += 4
-                    if (len < 0 || off + len > buf.size) break
-                    out.add(buf.copyOfRange(off, off + len)); off += len; i++
-                }
-                pendingReportGets.poll()?.complete(out)
-            }
-            else -> Unit
-        }
-    }
-
     /** Send an already-encrypted payload to [recipient] over the socket. False if the socket is down. */
     private suspend fun sendLivePublish(recipient: Long, kind: String, raw: ByteArray): Boolean {
         val session = wsSession ?: return false
         return runCatching {
-            val frame = ByteArray(10 + raw.size)
+            val frame = ByteArray(PUB_FRAME_HEADER_LEN + raw.size)
             frame[0] = WS_OP_PUB
-            frame[1] = wsFlags(kind).toByte()
+            frame[1] = (if (kind == "uwb") WS_FLAG_UWB else 0).toByte()
             putU64Be(frame, 2, recipient.toULong())
-            raw.copyInto(frame, 10)
+            raw.copyInto(frame, PUB_PAYLOAD_OFFSET)
             session.send(frame)
             true
         }.onFailure { Log.w(TAG, "live publish failed", it) }.getOrDefault(false)
@@ -462,6 +389,9 @@ object Networking {
      * Returns null when the socket is down or the reply times out — callers treat that as
      * "unknown" and rely on reconnection rather than any HTTP fallback.
      */
+    // Broad catch is deliberate: the relay socket's failures surface as undocumented
+    // runtime exceptions; each is logged and mapped to a failure return below.
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun wsGetKey(userId: Long): KeyResult? {
         val session = wsSession ?: return null
         val deferred = CompletableDeferred<KeyResult?>()
@@ -489,6 +419,8 @@ object Networking {
      * PQC bundle (outdated app — surface [PeerCrypto.NEEDS_UPDATE] via [peerCryptoStatus]) or
      * the socket is down (the next heartbeat retries once reconnected).
      */
+    // Broad catch is deliberate: relay-socket boundary, same as [wsGetKey].
+    @Suppress("TooGenericExceptionCaught")
     suspend fun publishLocation(location: LocationValue, user: User): Boolean {
         val bundle = peerPqcBundle(user)
         if (bundle == null) {
@@ -506,6 +438,8 @@ object Networking {
     }
 
     /** Publish to an anonymous share link (post-quantum only). */
+    // Broad catch is deliberate: relay-socket boundary, same as [wsGetKey].
+    @Suppress("TooGenericExceptionCaught")
     suspend fun publishLocation(location: LocationValue, link: TemporaryLink): Boolean {
         return try {
             val bundle = Base64.decode(link.pqcPublicKey)
@@ -523,6 +457,8 @@ object Networking {
      * pre-unlock path: it takes the same wire format as the [User] overload but reads
      * nothing from Room, which is unreadable before the passcode is entered.
      */
+    // Broad catch is deliberate: relay-socket boundary, same as [wsGetKey].
+    @Suppress("TooGenericExceptionCaught")
     suspend fun publishLocation(location: LocationValue, targetId: Long, bundleB64: String): Boolean {
         return try {
             val ok = sendLivePublish(targetId, "location", sealLocation(location, Base64.decode(bundleB64)))
@@ -540,6 +476,8 @@ object Networking {
     // samples never touch the server.
     // ----------------------------------------------------------------
 
+    // Broad catch is deliberate: relay-socket boundary, same as [wsGetKey].
+    @Suppress("TooGenericExceptionCaught")
     suspend fun publishUwbMessage(envelope: UwbEnvelope, recipientUserId: Long, recipient: User? = null): Boolean {
         val resolvedUser = recipient ?: repository.getUser(recipientUserId)
         val bundle = if (resolvedUser != null) {
@@ -574,12 +512,6 @@ object Networking {
         val str = json.encodeToString(location.toCompatible(senderPlatform = PLATFORM))
         // PQC hybrid: ML-KEM encapsulate → AES-256-GCM, layout [4B encapLen][encap][aes].
         return Pqc.encryptTo(bundle, str.encodeToByteArray())
-    }
-
-    private fun decryptLocationPqcBytes(raw: ByteArray): Pair<LocationValue, String?> {
-        val plainBytes = pqcIdentity.decrypt(raw)
-        val compat = json.decodeFromString<LocationValueCompatible>(plainBytes.decodeToString())
-        return compat.toLocationValue() to compat.senderPlatform
     }
 
     /**
@@ -630,15 +562,15 @@ object Networking {
 
     data class PqcIdentityKeyPair(val publicBundleB64: String, val privateBundleB64: String)
 
-    /** Private bundle layout: [4B kemPrivLen BE][kemPriv][dsaPriv] — mirrors public bundle. */
+    /** Private bundle layout: [u32 kemPrivLen BE][kemPriv][dsaPriv] — mirrors public bundle. */
     private fun buildPrivBundle(kemPriv: ByteArray, dsaPriv: ByteArray): ByteArray {
-        val out = ByteArray(4 + kemPriv.size + dsaPriv.size)
-        out[0] = (kemPriv.size ushr 24).toByte()
-        out[1] = (kemPriv.size ushr 16).toByte()
-        out[2] = (kemPriv.size ushr 8).toByte()
-        out[3] = kemPriv.size.toByte()
-        kemPriv.copyInto(out, 4)
-        dsaPriv.copyInto(out, 4 + kemPriv.size)
+        val out = ByteArray(U32_LEN + kemPriv.size + dsaPriv.size)
+        out[0] = (kemPriv.size ushr U32_BYTE0_SHIFT).toByte()
+        out[1] = (kemPriv.size ushr U32_BYTE1_SHIFT).toByte()
+        out[2] = (kemPriv.size ushr BITS_PER_BYTE).toByte()
+        out[U32_LEN - 1] = kemPriv.size.toByte()
+        kemPriv.copyInto(out, U32_LEN)
+        dsaPriv.copyInto(out, U32_LEN + kemPriv.size)
         return out
     }
 

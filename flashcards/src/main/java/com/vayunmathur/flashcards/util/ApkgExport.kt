@@ -115,65 +115,103 @@ object ApkgExport {
     ) {
         val now = System.currentTimeMillis()
         val crt = now / 1000
+        val defaultDeckId = decks.firstOrNull()?.id ?: 1L
+        val models = buildModelsJson(noteTypes, defaultDeckId)
+        val decksJson = buildDecksJson(decks, crt)
+        val conf = buildConfJson(decks, noteTypes)
+        val dconf = buildDconfJson()
+        val values = ContentValues().apply {
+            put("id", 1)
+            put("crt", crt)
+            put("mod", now)
+            put("scm", now)
+            put("ver", 11)
+            put("dty", 0)
+            put("usn", 0)
+            put("ls", 0)
+            put("conf", conf.toString())
+            put("models", models.toString())
+            put("decks", decksJson.toString())
+            put("dconf", dconf.toString())
+            put("tags", "{}")
+        }
+        db.insert("col", null, values)
+    }
 
+    private fun buildModelsJson(noteTypes: List<NoteTypeWithConfig>, defaultDeckId: Long): JSONObject {
         val models = JSONObject()
         noteTypes.forEach { cfg ->
-            val model = JSONObject()
-            model.put("id", cfg.noteType.id)
-            model.put("name", cfg.noteType.name)
-            model.put("type", cfg.noteType.type)
-            model.put("mod", cfg.noteType.mod)
-            model.put("usn", -1)
-            model.put("sortf", 0)
-            model.put("did", decks.firstOrNull()?.id ?: 1L)
-            model.put("css", cfg.noteType.css)
-            model.put("latexPre", "")
-            model.put("latexPost", "")
-
-            val flds = JSONArray()
-            cfg.fields.forEachIndexed { ord, field ->
-                flds.put(
-                    JSONObject().apply {
-                        put("name", field.name)
-                        put("ord", ord)
-                        put("sticky", false)
-                        put("rtl", false)
-                        put("font", "Arial")
-                        put("size", 20)
-                        put("media", JSONArray())
-                    },
-                )
-            }
-            model.put("flds", flds)
-
-            val tmpls = JSONArray()
-            cfg.templates.forEachIndexed { ord, tpl ->
-                tmpls.put(
-                    JSONObject().apply {
-                        put("name", tpl.name)
-                        put("ord", ord)
-                        put("qfmt", HtmlConvert.markdownTemplateToHtml(tpl.qfmt))
-                        put("afmt", HtmlConvert.markdownTemplateToHtml(tpl.afmt))
-                        put("did", JSONObject.NULL)
-                        put("bqfmt", "")
-                        put("bafmt", "")
-                    },
-                )
-            }
-            model.put("tmpls", tmpls)
-
-            val req = JSONArray()
-            if (cfg.noteType.type == NoteTypeKind.STANDARD) {
-                val fieldOrds = JSONArray().apply { cfg.fields.indices.forEach { put(it) } }
-                cfg.templates.indices.forEach { ord ->
-                    req.put(JSONArray().apply { put(ord); put("any"); put(fieldOrds) })
-                }
-            }
-            model.put("req", req)
-
-            models.put(cfg.noteType.id.toString(), model)
+            models.put(cfg.noteType.id.toString(), buildModelJson(cfg, defaultDeckId))
         }
+        return models
+    }
 
+    private fun buildModelJson(cfg: NoteTypeWithConfig, defaultDeckId: Long): JSONObject {
+        val model = JSONObject()
+        model.put("id", cfg.noteType.id)
+        model.put("name", cfg.noteType.name)
+        model.put("type", cfg.noteType.type)
+        model.put("mod", cfg.noteType.mod)
+        model.put("usn", -1)
+        model.put("sortf", 0)
+        model.put("did", defaultDeckId)
+        model.put("css", cfg.noteType.css)
+        model.put("latexPre", "")
+        model.put("latexPost", "")
+        model.put("flds", buildFieldsJson(cfg))
+        model.put("tmpls", buildTemplatesJson(cfg))
+        model.put("req", buildReqJson(cfg))
+        return model
+    }
+
+    private fun buildFieldsJson(cfg: NoteTypeWithConfig): JSONArray {
+        val flds = JSONArray()
+        cfg.fields.forEachIndexed { ord, field ->
+            flds.put(
+                JSONObject().apply {
+                    put("name", field.name)
+                    put("ord", ord)
+                    put("sticky", false)
+                    put("rtl", false)
+                    put("font", "Arial")
+                    put("size", DEFAULT_FONT_SIZE)
+                    put("media", JSONArray())
+                },
+            )
+        }
+        return flds
+    }
+
+    private fun buildTemplatesJson(cfg: NoteTypeWithConfig): JSONArray {
+        val tmpls = JSONArray()
+        cfg.templates.forEachIndexed { ord, tpl ->
+            tmpls.put(
+                JSONObject().apply {
+                    put("name", tpl.name)
+                    put("ord", ord)
+                    put("qfmt", HtmlConvert.markdownTemplateToHtml(tpl.qfmt))
+                    put("afmt", HtmlConvert.markdownTemplateToHtml(tpl.afmt))
+                    put("did", JSONObject.NULL)
+                    put("bqfmt", "")
+                    put("bafmt", "")
+                },
+            )
+        }
+        return tmpls
+    }
+
+    private fun buildReqJson(cfg: NoteTypeWithConfig): JSONArray {
+        val req = JSONArray()
+        if (cfg.noteType.type == NoteTypeKind.STANDARD) {
+            val fieldOrds = JSONArray().apply { cfg.fields.indices.forEach { put(it) } }
+            cfg.templates.indices.forEach { ord ->
+                req.put(JSONArray().apply { put(ord); put("any"); put(fieldOrds) })
+            }
+        }
+        return req
+    }
+
+    private fun buildDecksJson(decks: List<Deck>, crt: Long): JSONObject {
         val decksJson = JSONObject()
         val deckList = decks.ifEmpty { listOf(Deck(id = 1, name = "Default")) }
         deckList.forEach { deck ->
@@ -197,8 +235,12 @@ object ApkgExport {
                 },
             )
         }
+        return decksJson
+    }
 
-        val conf = JSONObject().apply {
+    private fun buildConfJson(decks: List<Deck>, noteTypes: List<NoteTypeWithConfig>): JSONObject {
+        val deckList = decks.ifEmpty { listOf(Deck(id = 1, name = "Default")) }
+        return JSONObject().apply {
             put("nextPos", 1)
             put("estTimes", true)
             put("activeDecks", JSONArray(listOf(deckList.first().id)))
@@ -210,9 +252,11 @@ object ApkgExport {
             put("newSpread", 0)
             put("dueCounts", true)
             put("curModel", noteTypes.firstOrNull()?.noteType?.id?.toString() ?: "1")
-            put("collapseTime", 1200)
+            put("collapseTime", COLLAPSE_TIME_MINUTES)
         }
+    }
 
+    private fun buildDconfJson(): JSONObject {
         val dconf = JSONObject().apply {
             put(
                 "1",
@@ -261,23 +305,7 @@ object ApkgExport {
                 },
             )
         }
-
-        val values = ContentValues().apply {
-            put("id", 1)
-            put("crt", crt)
-            put("mod", now)
-            put("scm", now)
-            put("ver", 11)
-            put("dty", 0)
-            put("usn", 0)
-            put("ls", 0)
-            put("conf", conf.toString())
-            put("models", models.toString())
-            put("decks", decksJson.toString())
-            put("dconf", dconf.toString())
-            put("tags", "{}")
-        }
-        db.insert("col", null, values)
+        return dconf
     }
 
     private fun writeNotes(
@@ -345,6 +373,11 @@ object ApkgExport {
     private fun fieldChecksum(sfld: String): Long {
         val digest = MessageDigest.getInstance("SHA-1").digest(sfld.toByteArray(Charsets.UTF_8))
         val hex = digest.joinToString("") { "%02x".format(it) }
-        return hex.substring(0, 8).toLong(16)
+        return hex.substring(0, CHECKSUM_HEX_DIGITS).toLong(HEX_RADIX)
     }
+
+    private const val DEFAULT_FONT_SIZE = 20
+    private const val COLLAPSE_TIME_MINUTES = 1200
+    private const val CHECKSUM_HEX_DIGITS = 8
+    private const val HEX_RADIX = 16
 }

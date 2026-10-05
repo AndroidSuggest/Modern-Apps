@@ -24,12 +24,12 @@ object RustMlsCrypto {
         System.loadLibrary("communicate_mls")
         Log.i(TAG, "libcommunicate_mls loaded")
         true
-    } catch (t: Throwable) {
-        if (t.message?.contains("already loaded", ignoreCase = true) == true) {
+    } catch (expected: Throwable) {
+        if (expected.message?.contains("already loaded", ignoreCase = true) == true) {
             Log.i(TAG, "libcommunicate_mls already loaded")
             true
         } else {
-            Log.e(TAG, "System.loadLibrary(communicate_mls) failed", t)
+            Log.e(TAG, "System.loadLibrary(communicate_mls) failed", expected)
             false
         }
     }

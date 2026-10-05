@@ -4,7 +4,7 @@ import androidx.lifecycle.viewModelScope
 import com.vayunmathur.travel.data.Customer
 import com.vayunmathur.travel.data.FrequentFlyer
 import com.vayunmathur.travel.network.CustomerUserInputDto
-import com.vayunmathur.travel.network.TravelApi
+import com.vayunmathur.travel.network.TravelCustomerApi
 import kotlinx.coroutines.launch
 
 fun TravelViewModel.saveFrequentFlyer(airlineIata: String, accountNumber: String, airlineName: String) {
@@ -26,7 +26,7 @@ fun TravelViewModel.removeFrequentFlyer(airlineIata: String) {
 fun TravelViewModel.createCustomer(email: String, givenName: String, familyName: String, phone: String) {
     viewModelScope.launch {
         runCatching {
-            TravelApi.createCustomer(
+            TravelCustomerApi.createCustomer(
                 CustomerUserInputDto(
                     email = email.trim(),
                     givenName = givenName.trim(),
@@ -46,9 +46,9 @@ fun TravelViewModel.createCustomer(email: String, givenName: String, familyName:
                     )
                 )
                 dataStore.setString(activeCustomerKey, dto.id)
-                _customerError.value = null
+                customerErrorMutable.value = null
             }
-        }.onFailure { _customerError.value = errorMessage(it) }
+        }.onFailure { customerErrorMutable.value = errorMessage(it) }
     }
 }
 

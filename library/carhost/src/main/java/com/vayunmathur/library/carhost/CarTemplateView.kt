@@ -1,3 +1,8 @@
+// detekt's TooManyFunctions counts per file; the renderers below are one per template kind
+// plus the shared blocks they all use (TemplateListBody, ActionRow, ArtworkTile). Splitting
+// them into separate files would scatter a single cohesive renderer. FileLength still caps size.
+@file:Suppress("TooManyFunctions")
+
 package com.vayunmathur.library.carhost
 
 import androidx.compose.foundation.Image
@@ -60,6 +65,11 @@ import com.vayunmathur.library.ui.TextButton
  * couplings the app used to own are parameters: the [template] is passed in
  * directly, and the map surface is a [mapContent] slot (`:auto` supplies its real
  * `TextureView` island; headless previews get the flat placeholder).
+ *
+ * Template dispatch plus one renderer per template kind; the shared blocks below
+ * (TemplateListBody, ActionRow, ArtworkTile) are used by most renderers, so moving
+ * them out would scatter the file's single concern. FileLength (fatal lint)
+ * still caps file size.
  */
 @Composable
 fun CarTemplateView(
@@ -77,16 +87,28 @@ fun CarTemplateView(
                 is HostTemplate.Pane -> PaneRenderer(template)
                 is HostTemplate.Search -> SearchRenderer(template)
                 is HostTemplate.Message -> MessageRenderer(template)
-                is HostTemplate.Tabs -> TabsRenderer(template, mapContent)
-                is HostTemplate.MediaPlayback -> MediaPlaybackRenderer(template)
-                is HostTemplate.SignIn -> SignInRenderer(template)
-                is HostTemplate.InCall -> InCallRenderer(template)
-                is HostTemplate.Keypad -> KeypadRenderer(template)
-                is HostTemplate.MapWithContent -> MapWithContentRenderer(template, mapContent)
-                is HostTemplate.LegacyNav -> LegacyNavRenderer(template, mapContent)
-                null -> LoadingRenderer()
+                else -> RenderSecondaryTemplate(template, mapContent)
             }
         }
+    }
+}
+
+/** Second half of the template dispatch, split so each `when` stays under the complexity cap. */
+@Composable
+private fun RenderSecondaryTemplate(
+    template: HostTemplate?,
+    mapContent: @Composable (Modifier) -> Unit,
+) {
+    when (template) {
+        is HostTemplate.Tabs -> TabsRenderer(template, mapContent)
+        is HostTemplate.MediaPlayback -> MediaPlaybackRenderer(template)
+        is HostTemplate.SignIn -> SignInRenderer(template)
+        is HostTemplate.InCall -> InCallRenderer(template)
+        is HostTemplate.Keypad -> KeypadRenderer(template)
+        is HostTemplate.MapWithContent -> MapWithContentRenderer(template, mapContent)
+        is HostTemplate.LegacyNav -> LegacyNavRenderer(template, mapContent)
+        null -> LoadingRenderer()
+        else -> Unit
     }
 }
 
@@ -195,7 +217,13 @@ private fun SearchRenderer(template: HostTemplate.Search, modifier: Modifier = M
             keyboardActions = KeyboardActions(onSearch = { template.onSearchSubmitted?.invoke(text) }),
             modifier = Modifier.fillMaxWidth(),
         )
-        TemplateListBody(null, listOf(HostUiSection(rows = template.rows)), template.loading, template.actions, Modifier.weight(1f))
+        TemplateListBody(
+            null,
+            listOf(HostUiSection(rows = template.rows)),
+            template.loading,
+            template.actions,
+            Modifier.weight(1f)
+        )
     }
 }
 
@@ -247,8 +275,13 @@ private fun MediaPlaybackRenderer(template: HostTemplate.MediaPlayback, modifier
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(CAR_GAP, Alignment.CenterVertically),
     ) {
-        ArtworkTile(template.image, Modifier.size(220.dp), CAR_SHAPE)
-        Text(template.title ?: "Now playing", style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        ArtworkTile(template.image, Modifier.size(MEDIA_ARTWORK_DP.dp), CAR_SHAPE)
+        Text(
+            template.title ?: "Now playing",
+            style = MaterialTheme.typography.headlineSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(CAR_GAP), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = {}) { Text("⏮") }
             Button(onClick = {}) { Text("▶  Play") }
@@ -359,7 +392,11 @@ private fun RenderInner(
         is HostTemplate.Message -> MessageRenderer(content, modifier)
         is HostTemplate.Search -> SearchRenderer(content, modifier)
         is HostTemplate.Navigation -> NavigationRenderer(content, mapContent)
-        null -> if (loading) Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        null -> if (loading) {
+            Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        }
         else -> Unit
     }
 }
@@ -378,7 +415,11 @@ private fun TemplateListBody(
             section.header?.let { header -> item { SectionHeader(header) } }
             when {
                 section.chips -> item { ChipStrip(section.rows) }
-                section.grid -> gridRows(section.rows.map { Tile(it.image, it.title, it.texts.firstOrNull(), false, it.onClick) })
+                section.grid -> gridRows(
+                    section.rows.map {
+                        Tile(it.image, it.title, it.texts.firstOrNull(), false, it.onClick)
+                    }
+                )
                 else -> items(section.rows, key = { it.title }) { TemplateRow(it) }
             }
         }
@@ -485,7 +526,10 @@ private fun ArtworkTile(
         val scale = if (crop) ContentScale.Crop else ContentScale.Fit
         Image(painter, contentDescription = null, contentScale = scale, modifier = modifier.clip(shape))
     } else {
-        Box(modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+        Box(
+            modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
             Text("♪", style = MaterialTheme.typography.headlineMedium)
         }
     }
@@ -532,7 +576,11 @@ private fun SectionHeader(text: String) {
 @Composable
 private fun InfoChip(text: String) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.tertiaryContainer) {
-        Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        )
     }
 }
 
@@ -566,3 +614,4 @@ private val CAR_ROW_GAP = 4.dp
 private val CAR_SHAPE = RoundedCornerShape(12.dp)
 private val CircleShapeLike = RoundedCornerShape(percent = 50)
 private const val GRID_COLUMNS = 3
+private const val MEDIA_ARTWORK_DP = 220

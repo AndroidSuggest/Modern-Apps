@@ -84,8 +84,8 @@ class WavRecorder(val context: Context, val outputFile: File, val scope: Corouti
     private fun writeWavFile(rawFile: File, wavFile: File) {
         val rawData = rawFile.readBytes()
         val totalAudioLen = rawData.size.toLong()
-        val totalDataLen = totalAudioLen + 36
-        val byteRate = (16 * sampleRate * 1 / 8).toLong()
+        val totalDataLen = totalAudioLen + RIFF_SIZE_OFFSET
+        val byteRate = (BITS_PER_SAMPLE * sampleRate * CHANNELS / BITS_PER_BYTE).toLong()
 
         FileOutputStream(wavFile).use { out ->
             val header = ByteBuffer.allocate(WAV_HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN)
@@ -93,13 +93,13 @@ class WavRecorder(val context: Context, val outputFile: File, val scope: Corouti
             header.putInt(totalDataLen.toInt())
             header.put("WAVE".toByteArray(Charsets.US_ASCII))
             header.put("fmt ".toByteArray(Charsets.US_ASCII))
-            header.putInt(16)                 // Subchunk1 size (PCM)
-            header.putShort(1.toShort())      // Audio format = PCM
-            header.putShort(1.toShort())      // Num channels = mono
+            header.putInt(SUBCHUNK1_SIZE)
+            header.putShort(AUDIO_FORMAT_PCM)
+            header.putShort(CHANNELS.toShort())
             header.putInt(sampleRate)
             header.putInt(byteRate.toInt())
-            header.putShort(2.toShort())      // Block align
-            header.putShort(16.toShort())     // Bits per sample
+            header.putShort(BLOCK_ALIGN)
+            header.putShort(BITS_PER_SAMPLE.toShort())
             header.put("data".toByteArray(Charsets.US_ASCII))
             header.putInt(totalAudioLen.toInt())
             out.write(header.array())
@@ -110,6 +110,13 @@ class WavRecorder(val context: Context, val outputFile: File, val scope: Corouti
     companion object {
         /** The canonical PCM WAV header this writes, and the size a silent file will be. */
         const val WAV_HEADER_BYTES = 44
+        private const val RIFF_SIZE_OFFSET = 36
+        private const val BITS_PER_SAMPLE = 16
+        private const val CHANNELS = 1
+        private const val BITS_PER_BYTE = 8
+        private const val SUBCHUNK1_SIZE = 16
+        private const val AUDIO_FORMAT_PCM = 1.toShort()
+        private const val BLOCK_ALIGN = 2.toShort()
     }
 }
 
@@ -127,8 +134,8 @@ fun copyUriToFile(context: Context, uri: Uri): File? {
                 null
             }
         }
-    } catch (e: Exception) {
-        Log.e("AudioRecorder", "Error copying URI to file: $uri", e)
+    } catch (expected: Exception) {
+        Log.e("AudioRecorder", "Error copying URI to file: $uri", expected)
         if (tempFile.exists()) tempFile.delete()
         null
     }

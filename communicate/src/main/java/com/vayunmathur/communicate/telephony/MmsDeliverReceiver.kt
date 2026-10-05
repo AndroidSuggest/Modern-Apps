@@ -91,11 +91,20 @@ class MmsDeliverReceiver : BroadcastReceiver() {
             put(Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_BOX_INBOX)
             put(Telephony.Mms.READ, 0)
             put(Telephony.Mms.SEEN, 0)
-            put(Telephony.Mms.MESSAGE_TYPE, 132) // M-Retrieve.conf
+            put(Telephony.Mms.MESSAGE_TYPE, MMS_TYPE_RETRIEVE_CONF) // M-Retrieve.conf
             msg.subject?.let { put(Telephony.Mms.SUBJECT, it) }
         }
         val mmsUri = context.contentResolver.insert(Telephony.Mms.CONTENT_URI, values) ?: return
         val mmsId = mmsUri.lastPathSegment ?: return
+        insertMmsParts(context, msg, mmsId)
+        // Sender addr row (FROM = 137).
+        if (from != null) {
+            insertMmsSender(context, msg, mmsId, from, threadId)
+        }
+    }
+
+    /** Insert MMS parts (text inline, media via data stream). */
+    private fun insertMmsParts(context: Context, msg: MmsPduReader.Retrieved, mmsId: String) {
         // Parts.
         for (p in msg.parts) {
             val pv = ContentValues().apply {
@@ -113,41 +122,51 @@ class MmsDeliverReceiver : BroadcastReceiver() {
                 }
             }
         }
-        // Sender addr row (FROM = 137).
-        if (from != null) {
-            val av = ContentValues().apply {
-                put("address", from)
-                put("type", 137)
-                put("charset", 106)
-            }
-            context.contentResolver.insert(Uri.parse("content://mms/$mmsId/addr"), av)
+    }
 
-            val textBody = msg.parts.firstOrNull { it.contentType == "text/plain" }?.text
-            val body = textBody?.takeIf { it.isNotBlank() } ?: context.getString(R.string.media_message)
-            ConversationSpace.ensureIncomingChannel(
-                context,
-                ConversationSpace.SIM_CHANNEL_ID,
-                context.getString(R.string.sms_incoming_channel_name),
-                context.getString(R.string.sms_incoming_channel_desc),
-            )
-            ConversationSpace.notifyIncoming(
-                context = context,
-                target = ConversationTarget(
-                    line = CommunicateLine.Sim,
-                    address = from,
-                    threadId = threadId ?: -1L,
-                    personName = from,
-                ),
-                channelId = ConversationSpace.SIM_CHANNEL_ID,
-                body = body,
-                timestamp = System.currentTimeMillis(),
-                smallIcon = R.mipmap.ic_launcher,
-            )
+    /** Insert the sender addr row + notification. */
+    private fun insertMmsSender(
+        context: Context,
+        msg: MmsPduReader.Retrieved,
+        mmsId: String,
+        from: String,
+        threadId: Long?,
+    ) {
+        val av = ContentValues().apply {
+            put("address", from)
+            put("type", MMS_ADDR_TYPE_FROM)
+            put("charset", MMS_CHARSET_UTF8)
         }
+        context.contentResolver.insert(Uri.parse("content://mms/$mmsId/addr"), av)
+
+        val textBody = msg.parts.firstOrNull { it.contentType == "text/plain" }?.text
+        val body = textBody?.takeIf { it.isNotBlank() } ?: context.getString(R.string.media_message)
+        ConversationSpace.ensureIncomingChannel(
+            context,
+            ConversationSpace.SIM_CHANNEL_ID,
+            context.getString(R.string.sms_incoming_channel_name),
+            context.getString(R.string.sms_incoming_channel_desc),
+        )
+        ConversationSpace.notifyIncoming(
+            context = context,
+            target = ConversationTarget(
+                line = CommunicateLine.Sim,
+                address = from,
+                threadId = threadId ?: -1L,
+                personName = from,
+            ),
+            channelId = ConversationSpace.SIM_CHANNEL_ID,
+            body = body,
+            timestamp = System.currentTimeMillis(),
+            smallIcon = R.mipmap.ic_launcher,
+        )
     }
 
     companion object {
         private const val TAG = "MmsDeliverReceiver"
+        private const val MMS_TYPE_RETRIEVE_CONF = 132
+        private const val MMS_ADDR_TYPE_FROM = 137
+        private const val MMS_CHARSET_UTF8 = 106
         private const val ACTION_MMS_DOWNLOADED = "com.vayunmathur.communicate.MMS_DOWNLOADED"
         private const val EXTRA_FILE = "file"
         private const val EXTRA_LOCATION = "location"

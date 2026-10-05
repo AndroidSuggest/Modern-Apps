@@ -62,7 +62,9 @@ object WhatsAppCallCrypto {
     fun deriveSsrc(callKey: ByteArray, callId: String): Int {
         val mac = hmacSha256(callKey, (INFO_SSRC + callId).toByteArray(Charsets.UTF_8))
         val raw = ByteBuffer.wrap(mac, 0, 4).int
-        return raw and 0x7FFFFFFF
+        private const val INT_POSITIVE_MASK = 0x7FFFFFFF
+
+    return raw and INT_POSITIVE_MASK
     }
 
     /**
@@ -71,7 +73,11 @@ object WhatsAppCallCrypto {
      * rekey. Ref whatsapp-documentation.md `call_rekey`.
      */
     fun rekey(prevCallKey: ByteArray, rekeyId: String): ByteArray =
-        hkdfSha256(prevCallKey, rekeyId.toByteArray(Charsets.UTF_8), INFO_REKEY.toByteArray(Charsets.UTF_8), CALL_KEY_LEN)
+        hkdfSha256(
+            prevCallKey,
+            rekeyId.toByteArray(Charsets.UTF_8),
+            INFO_REKEY.toByteArray(Charsets.UTF_8),
+            CALL_KEY_LEN)
 
     // -- primitives --
 

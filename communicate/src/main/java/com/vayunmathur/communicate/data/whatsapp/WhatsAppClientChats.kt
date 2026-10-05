@@ -9,11 +9,15 @@ import com.vayunmathur.communicate.data.whatsapp.generateMessageId
  * Delete a chat, optionally leaving group, with AppState mutations.
  * From Go HandleMatrixDeleteChat.
  */
+/** True when the socket can carry a group-leave stanza right now. */
+private fun WhatsAppClient.canLeaveGroup(): Boolean =
+    stateMutable.value is State.Connected && webSocket != null
+
 suspend fun WhatsAppClient.deleteChat(conversationId: String, leaveGroup: Boolean = true): Boolean {
     val jid = extractJid(conversationId) ?: return false
     val ws = webSocket
 
-    if (leaveGroup && jid.contains("@g.us") && _state.value is State.Connected && ws != null) {
+    if (leaveGroup && jid.contains("@g.us") && canLeaveGroup(ws)) {
         val id = WhatsAppProtocol.generateMessageId(authData?.wid)
         val node = WhatsAppProtocol.buildLeaveGroup(jid, id)
         ws.send(WhatsAppProtocol.encodeNode(node))
@@ -24,7 +28,7 @@ suspend fun WhatsAppClient.deleteChat(conversationId: String, leaveGroup: Boolea
     val lastMsgTimestamp = conversation?.lastMessageTimestamp ?: 0L
 
     // Push AppState delete mutation (Go HandleMatrixDeleteChat PatchDelete)
-    if (_state.value is State.Connected && ws != null) {
+    if (stateMutable.value is State.Connected && ws != null) {
         val patchAttrs = mutableMapOf("jid" to jid, "action" to "delete")
         if (lastMsgTimestamp > 0) patchAttrs["messageTimestamp"] = lastMsgTimestamp.toString()
 
@@ -58,12 +62,12 @@ suspend fun WhatsAppClient.deleteChat(conversationId: String, leaveGroup: Boolea
     }
 
     db?.conversationDao()?.delete(jid)
-    _events.emit(WhatsAppEvent.ConversationDeleted(source, conversationId))
+    eventsMutable.emit(WhatsAppEvent.ConversationDeleted(source, conversationId))
     return true
 }
 
 suspend fun WhatsAppClient.sendNewThread(recipientJid: String, body: String): String? {
-    if (_state.value !is State.Connected) return null
+    if (stateMutable.value !is State.Connected) return null
     val ws = webSocket ?: return null
     val jid = if (recipientJid.contains("@")) recipientJid else "$recipientJid@s.whatsapp.net"
     val id = WhatsAppProtocol.generateMessageId(authData?.wid)
@@ -77,12 +81,12 @@ suspend fun WhatsAppClient.sendNewThread(recipientJid: String, body: String): St
 suspend fun WhatsAppClient.deleteThread(conversationId: String): Boolean {
     val jid = extractJid(conversationId) ?: return false
     db?.conversationDao()?.delete(jid)
-    _events.emit(WhatsAppEvent.ConversationDeleted(source, conversationId))
+    eventsMutable.emit(WhatsAppEvent.ConversationDeleted(source, conversationId))
     return true
 }
 
 suspend fun WhatsAppClient.markChatUnread(conversationId: String, unread: Boolean) {
-    if (_state.value !is State.Connected) return
+    if (stateMutable.value !is State.Connected) return
     val ws = webSocket ?: return
     val chatJid = extractJid(conversationId) ?: return
 
@@ -120,7 +124,7 @@ suspend fun WhatsAppClient.markChatUnread(conversationId: String, unread: Boolea
 }
 
 suspend fun WhatsAppClient.setMute(conversationId: String, muteUntilMs: Long) {
-    if (_state.value !is State.Connected) return
+    if (stateMutable.value !is State.Connected) return
     val ws = webSocket ?: return
     val chatJid = extractJid(conversationId) ?: return
 
@@ -162,7 +166,7 @@ suspend fun WhatsAppClient.setMute(conversationId: String, muteUntilMs: Long) {
 }
 
 suspend fun WhatsAppClient.togglePin(conversationId: String, pinned: Boolean) {
-    if (_state.value !is State.Connected) return
+    if (stateMutable.value !is State.Connected) return
     val ws = webSocket ?: return
     val chatJid = extractJid(conversationId) ?: return
 

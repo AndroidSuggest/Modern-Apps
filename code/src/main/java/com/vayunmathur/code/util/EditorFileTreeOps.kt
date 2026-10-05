@@ -61,43 +61,74 @@ internal suspend fun EditorViewModel.refreshChildren(parentIndex: Int?) {
     val childDepth = parentDepth + 1
 
     val blockStart = (parentIndex ?: -1) + 1
+    val blockEnd = findBlockEnd(blockStart, parentDepth)
+    val preserved = collectPreserved(blockStart, blockEnd, childDepth)
+
+    val entries = withContext(Dispatchers.IO) { FileFiles.listChildren(parentFile) }
+    val rebuilt = rebuildChildren(entries, preserved, childDepth)
+
+    for (k in blockEnd - 1 downTo blockStart) nodes.removeAt(k)
+    nodes.addAll(blockStart, rebuilt)
+}
+
+private fun EditorViewModel.findBlockEnd(blockStart: Int, parentDepth: Int): Int {
     var blockEnd = blockStart
     while (blockEnd < nodes.size && nodes[blockEnd].depth > parentDepth) blockEnd++
+    return blockEnd
+}
 
-    // Preserve existing immediate children (and their loaded subtrees) by path.
+private class PreservedSubtree(
+    val nodes: Map<String, TreeNode>,
+    val children: Map<String, List<TreeNode>>,
+)
+
+// Preserve existing immediate children (and their loaded subtrees) by path.
+private fun EditorViewModel.collectPreserved(
+    blockStart: Int,
+    blockEnd: Int,
+    childDepth: Int,
+): PreservedSubtree {
     val preservedNode = HashMap<String, TreeNode>()
     val preservedSubtree = HashMap<String, List<TreeNode>>()
     var i = blockStart
     while (i < blockEnd) {
         val child = nodes[i]
-        if (child.depth == childDepth) {
-            var j = i + 1
-            while (j < blockEnd && nodes[j].depth > childDepth) j++
-            val key = child.entry.file.absolutePath
-            preservedNode[key] = child
-            preservedSubtree[key] = nodes.subList(i + 1, j).toList()
-            i = j
-        } else {
+        if (child.depth != childDepth) {
             i++
+            continue
         }
+        val end = findChildEnd(i, blockEnd, childDepth)
+        val key = child.entry.file.absolutePath
+        preservedNode[key] = child
+        preservedSubtree[key] = nodes.subList(i + 1, end).toList()
+        i = end
     }
+    return PreservedSubtree(preservedNode, preservedSubtree)
+}
 
-    val entries = withContext(Dispatchers.IO) { FileFiles.listChildren(parentFile) }
+private fun EditorViewModel.findChildEnd(start: Int, blockEnd: Int, childDepth: Int): Int {
+    var j = start + 1
+    while (j < blockEnd && nodes[j].depth > childDepth) j++
+    return j
+}
 
+private fun rebuildChildren(
+    entries: List<FileEntry>,
+    preserved: PreservedSubtree,
+    childDepth: Int,
+): List<TreeNode> {
     val rebuilt = ArrayList<TreeNode>()
     for (entry in entries) {
         val key = entry.file.absolutePath
-        val existing = preservedNode[key]
-        if (existing != null) {
-            rebuilt.add(existing)
-            rebuilt.addAll(preservedSubtree[key].orEmpty())
-        } else {
+        val existing = preserved.nodes[key]
+        if (existing == null) {
             rebuilt.add(TreeNode(entry, childDepth))
+        } else {
+            rebuilt.add(existing)
+            rebuilt.addAll(preserved.children[key].orEmpty())
         }
     }
-
-    for (k in blockEnd - 1 downTo blockStart) nodes.removeAt(k)
-    nodes.addAll(blockStart, rebuilt)
+    return rebuilt
 }
 
 /** Resolves the create target directory: the tree root, or a directory row. */

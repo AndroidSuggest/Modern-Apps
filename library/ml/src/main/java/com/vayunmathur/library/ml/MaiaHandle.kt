@@ -124,8 +124,8 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
             } else {
                 try {
                     create(assets, path)
-                } catch (e: Throwable) {
-                    Log.e(TAG, "cannot open $path", e)
+                } catch (expected: Exception) {
+                    Log.e(TAG, "cannot open $path", expected)
                     0L
                 }
             }

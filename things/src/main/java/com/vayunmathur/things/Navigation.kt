@@ -34,53 +34,15 @@ fun Navigation(
 
     MainNavigation(backStack) {
         entry<Route.Home>(SiblingPage()) {
-            HomePage(
-                bottlePaired = DeviceController.bottlePaired.value,
-                bottleLink = DeviceController.bottleLink.value,
-                bottleConnectionState = DeviceController.connectionState.value,
-                tempC = DeviceController.waterTempC.value,
-                tds = DeviceController.tds.value,
-                batteryPct = DeviceController.batteryPct.value,
-                charging = DeviceController.charging.value,
-                volumePct = DeviceController.bottleVolumePct.value,
-                lastUpdatedMillis = DeviceController.bottleLastUpdated.value,
-                scalePaired = DeviceController.scalePaired.value,
-                scaleLink = DeviceController.scaleLink.value,
-                scaleConnectionState = DeviceController.scaleConnectionState.value,
-                scaleUserSlot = DeviceController.scaleUserSlot.value,
-                scaleSex = DeviceController.scaleSex.value,
-                scaleAge = DeviceController.scaleAge.value,
-                scaleHeight = DeviceController.scaleHeight.value,
-                scaleAthlete = DeviceController.scaleAthlete.value,
-                onScaleSexChange = {
-                    DeviceController.scaleSex.value = it
-                    DeviceController.recalcScaleMetrics()
-                },
-                onScaleAgeChange = {
-                    DeviceController.scaleAge.value = it
-                    DeviceController.recalcScaleMetrics()
-                },
-                onScaleHeightChange = {
-                    DeviceController.scaleHeight.value = it
-                    DeviceController.recalcScaleMetrics()
-                },
-                onScaleAthleteChange = {
-                    DeviceController.scaleAthlete.value = it
-                    DeviceController.recalcScaleMetrics()
-                },
+            HomeEntry(
                 onForgetBottle = onForgetBottle,
                 onForgetScale = onForgetScale,
-                onResetScale = { DeviceController.requestScaleReset() },
                 onHealthConnectClick = onHealthConnectClick,
                 onOpenDevices = { backStack.add(Route.Devices) },
             )
         }
         entry<Route.Devices>(SiblingPage()) {
-            DevicesPage(
-                scanning = DeviceController.scanning.value,
-                discoveredDevices = DeviceController.discoveredDevices,
-                scaleScanning = DeviceController.scaleScanning.value,
-                scaleDevices = DeviceController.scaleDevices,
+            DevicesEntry(
                 onScanClick = onScanClick,
                 onDeviceClick = onDeviceClick,
                 onScaleScanClick = onScaleScanClick,
@@ -93,4 +55,74 @@ fun Navigation(
             )
         }
     }
+}
+
+@Composable
+private fun HomeEntry(
+    onForgetBottle: () -> Unit,
+    onForgetScale: () -> Unit,
+    onHealthConnectClick: () -> Unit,
+    onOpenDevices: () -> Unit,
+) {
+    HomePage(
+        bottlePaired = DeviceController.bottlePaired.value,
+        bottleLink = DeviceController.bottleLink.value,
+        bottleConnectionState = DeviceController.connectionState.value,
+        tempC = DeviceController.waterTempC.value,
+        tds = DeviceController.tds.value,
+        batteryPct = DeviceController.batteryPct.value,
+        charging = DeviceController.charging.value,
+        volumePct = DeviceController.bottleVolumePct.value,
+        lastUpdatedMillis = DeviceController.bottleLastUpdated.value,
+        scalePaired = DeviceController.scalePaired.value,
+        scaleLink = DeviceController.scaleLink.value,
+        scaleConnectionState = DeviceController.scaleConnectionState.value,
+        scaleUserSlot = DeviceController.scaleUserSlot.value,
+        scaleSex = DeviceController.scaleSex.value,
+        scaleAge = DeviceController.scaleAge.value,
+        scaleHeight = DeviceController.scaleHeight.value,
+        scaleAthlete = DeviceController.scaleAthlete.value,
+        onScaleSexChange = {
+            DeviceController.scaleSex.value = it
+            DeviceController.recalcScaleMetrics()
+        },
+        onScaleAgeChange = {
+            DeviceController.scaleAge.value = it
+            DeviceController.recalcScaleMetrics()
+        },
+        onScaleHeightChange = {
+            DeviceController.scaleHeight.value = it
+            DeviceController.recalcScaleMetrics()
+        },
+        onScaleAthleteChange = {
+            DeviceController.scaleAthlete.value = it
+            DeviceController.recalcScaleMetrics()
+        },
+        onForgetBottle = onForgetBottle,
+        onForgetScale = onForgetScale,
+        onResetScale = { DeviceController.requestScaleReset() },
+        onHealthConnectClick = onHealthConnectClick,
+        onOpenDevices = onOpenDevices,
+    )
+}
+
+@Composable
+private fun DevicesEntry(
+    onScanClick: () -> Unit,
+    onDeviceClick: (BleManager.BleDevice) -> Unit,
+    onScaleScanClick: () -> Unit,
+    onScaleDeviceClick: (ScaleBleManager.ScaleBleDevice) -> Unit,
+    onNavigateBack: (() -> Unit)?,
+) {
+    DevicesPage(
+        scanning = DeviceController.scanning.value,
+        discoveredDevices = DeviceController.discoveredDevices,
+        scaleScanning = DeviceController.scaleScanning.value,
+        scaleDevices = DeviceController.scaleDevices,
+        onScanClick = onScanClick,
+        onDeviceClick = onDeviceClick,
+        onScaleScanClick = onScaleScanClick,
+        onScaleDeviceClick = onScaleDeviceClick,
+        onNavigateBack = onNavigateBack,
+    )
 }

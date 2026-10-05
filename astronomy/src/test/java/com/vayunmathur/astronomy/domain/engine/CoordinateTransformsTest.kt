@@ -1,8 +1,8 @@
 package com.vayunmathur.astronomy.domain.engine
 
-import kotlin.math.*
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlin.math.abs
 
 class CoordinateTransformsTest {
 

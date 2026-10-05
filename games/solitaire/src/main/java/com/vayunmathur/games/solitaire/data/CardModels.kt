@@ -8,19 +8,19 @@ enum class Suit(val symbol: String, val isRed: Boolean) {
 }
 
 enum class Rank(val display: String, val value: Int) {
-    ACE("A", 1),
-    TWO("2", 2),
-    THREE("3", 3),
-    FOUR("4", 4),
-    FIVE("5", 5),
-    SIX("6", 6),
-    SEVEN("7", 7),
-    EIGHT("8", 8),
-    NINE("9", 9),
-    TEN("10", 10),
-    JACK("J", 11),
-    QUEEN("Q", 12),
-    KING("K", 13)
+    ACE(display = "A", value = 1),
+    TWO(display = "2", value = 2),
+    THREE(display = "3", value = 3),
+    FOUR(display = "4", value = 4),
+    FIVE(display = "5", value = 5),
+    SIX(display = "6", value = 6),
+    SEVEN(display = "7", value = 7),
+    EIGHT(display = "8", value = 8),
+    NINE(display = "9", value = 9),
+    TEN(display = "10", value = 10),
+    JACK(display = "J", value = 11),
+    QUEEN(display = "Q", value = 12),
+    KING(display = "K", value = 13)
 }
 
 data class Card(val suit: Suit, val rank: Rank)

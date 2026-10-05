@@ -66,7 +66,7 @@ suspend fun RcsSessionManager.hostGroupFocus(
     if (distinct.isEmpty()) return null
     val focusUri = "conf:${UUID.randomUUID()}@rcs.local"
     val localTag = UUID.randomUUID().toString().take(8)
-    _sessions.value = _sessions.value + (conversationId to RcsSession(
+    sessionsMutable.value = sessionsMutable.value + (conversationId to RcsSession(
         dialogId = "focus:$focusUri",
         callId = "focus-${UUID.randomUUID()}",
         localTag = localTag,
@@ -82,7 +82,7 @@ suspend fun RcsSessionManager.hostGroupFocus(
         if (sendReferToFocus(peer, focusUri, subject)) invited = true
     }
     if (!invited) {
-        _sessions.value = _sessions.value - conversationId
+        sessionsMutable.value = sessionsMutable.value - conversationId
         focusMembersMap.remove(focusUri)
         return null
     }
@@ -96,7 +96,7 @@ fun RcsSessionManager.focusMembers(focusUri: String): Set<String>? =
 
 /** Focus URI we host for [conversationId], or null when we don't host it. */
 fun RcsSessionManager.hostedFocusFor(conversationId: String): String? {
-    val session = _sessions.value[conversationId] ?: return null
+    val session = sessionsMutable.value[conversationId] ?: return null
     return if (session.isFocus) session.remoteUri else null
 }
 
@@ -112,14 +112,14 @@ fun RcsSessionManager.noteFocusLeave(focusUri: String, member: String) {
 
 /** Tear down a hosted focus: BYE every joined member dialog, drop state. */
 suspend fun RcsSessionManager.destroyHostedFocus(conversationId: String): Boolean {
-    val session = _sessions.value[conversationId] ?: return true
+    val session = sessionsMutable.value[conversationId] ?: return true
     if (!session.isFocus) return terminateSession(conversationId)
     val focusUri = session.remoteUri
     // BYE every joined member dialog first (§3.2), best-effort.
     val members = focusMembersMap.remove(focusUri)?.toList().orEmpty()
     for (member in members) {
         runCatching {
-            val dialogEntry = _sessions.value.entries.firstOrNull {
+            val dialogEntry = sessionsMutable.value.entries.firstOrNull {
                 it.value.callId.endsWith(member.hashCode().toString()) ||
                     it.value.remoteUri == member
             }
@@ -128,7 +128,7 @@ suspend fun RcsSessionManager.destroyHostedFocus(conversationId: String): Boolea
     }
     focusSubscribers.entries.removeIf { it.value == focusUri }
     focusVersions.remove(focusUri)
-    _sessions.value = _sessions.value - conversationId
+    sessionsMutable.value = sessionsMutable.value - conversationId
     RcsMsrpListen.dropPending(conversationId)
     return true
 }
@@ -144,7 +144,7 @@ suspend fun RcsSessionManager.inviteFocusMember(
     subject: String = "",
 ): Boolean {
     if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return false
-    val session = _sessions.value[conversationId]?.takeIf { it.isFocus } ?: return false
+    val session = sessionsMutable.value[conversationId]?.takeIf { it.isFocus } ?: return false
     val member = peer.trim()
     if (member.isEmpty()) return false
     val ok = sendReferToFocus(member, session.remoteUri, subject)
@@ -162,11 +162,11 @@ suspend fun RcsSessionManager.inviteFocusMember(
  */
 suspend fun RcsSessionManager.removeFocusMember(conversationId: String, peer: String): Boolean {
     if (!RcsFeature.enabled) return false
-    val session = _sessions.value[conversationId]?.takeIf { it.isFocus } ?: return false
+    val session = sessionsMutable.value[conversationId]?.takeIf { it.isFocus } ?: return false
     val member = peer.trim()
     val removed = focusMembersMap[session.remoteUri]?.remove(member) == true
     // BYE any dialog joined by this member.
-    val dialogEntry = _sessions.value.entries.firstOrNull {
+    val dialogEntry = sessionsMutable.value.entries.firstOrNull {
         !it.value.isFocus && it.value.remoteUri == member &&
             it.value.conversationId == conversationId
     }
@@ -254,7 +254,7 @@ fun RcsSessionManager.onConferenceNotify(conversationId: String, body: String): 
     val added = info.users.map { it.uri }.filter { it.isNotBlank() }
     val removed = RcsConferenceEvents.deletedUris(body)
     // Reconcile hosted-focus membership when the NOTIFY targets our focus.
-    val hosted = _sessions.value[conversationId]?.takeIf { it.isFocus }
+    val hosted = sessionsMutable.value[conversationId]?.takeIf { it.isFocus }
     if (hosted != null) {
         focusMembersMap[hosted.remoteUri]?.let { set ->
             set.removeAll(removed.toSet())

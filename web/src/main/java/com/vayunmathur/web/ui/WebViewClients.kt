@@ -21,12 +21,24 @@ import com.vayunmathur.web.platform.BrowserUtils
 import com.vayunmathur.web.platform.PwaHelper
 import com.vayunmathur.web.platform.SitePermissionType
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.allowExternalRedirect
+import com.vayunmathur.web.platform.noteNavigation
+import com.vayunmathur.web.platform.onPwaInfoDetected
+import com.vayunmathur.web.platform.onRequestBlocked
+import com.vayunmathur.web.platform.onTabCanGoBack
+import com.vayunmathur.web.platform.onTabCanGoForward
+import com.vayunmathur.web.platform.onTabProgress
+import com.vayunmathur.web.platform.onTabTitleChange
+import com.vayunmathur.web.platform.onTabUrlChange
+import com.vayunmathur.web.platform.recordHistoryVisit
 import com.vayunmathur.web.platform.requestFileChooser
 import com.vayunmathur.web.platform.requestGeolocation
 import com.vayunmathur.web.platform.requestWebPermission
+import com.vayunmathur.web.platform.resetBlockedCount
 import com.vayunmathur.web.platform.shields.ShieldsWebViewClient
+import com.vayunmathur.web.platform.shieldsFor
 
-internal const val WebViewBrowserTag = "WebViewBrowser"
+internal const val WEB_VIEW_BROWSER_TAG = "WebViewBrowser"
 
 /** Callbacks the clients need that live in the composable (launchers + system-permission state). */
 internal class WebViewClientDeps(
@@ -90,16 +102,16 @@ internal fun createBrowserWebViewClient(
         }
         url?.let { u ->
             if (u.startsWith("http")) {
-                try {
+                runCatching {
                     val origin = BrowserUtils.originFromUrl(u)
                     val cookies = CookieManager.getInstance().getCookie(u)
                     val cookieCount = cookies?.split(";")?.count { it.isNotBlank() } ?: 0
                     view.evalJsForStorageInfo(origin, cookieCount, viewModel)
-                } catch (e: Exception) {
-                    Log.w(WebViewBrowserTag, "storage snapshot failed", e)
+                }.onFailure { e ->
+                    Log.w(WEB_VIEW_BROWSER_TAG, "storage snapshot failed", e)
                 }
                 // PWA / Add-to-Home detection: probe for manifest + best icon + theme-color
-                try {
+                runCatching {
                     view.evaluateJavascript(PwaHelper.MANIFEST_PROBE_JS) { json ->
                         val info = PwaHelper.parseProbeJson(json)
                         if (info != null && info.origin.isNotBlank()) {
@@ -107,8 +119,8 @@ internal fun createBrowserWebViewClient(
                         }
                         // no need to keep raw json
                     }
-                } catch (e: Exception) {
-                    Log.w(WebViewBrowserTag, "pwa probe failed", e)
+                }.onFailure { e ->
+                    Log.w(WEB_VIEW_BROWSER_TAG, "pwa probe failed", e)
                 }
             }
         }

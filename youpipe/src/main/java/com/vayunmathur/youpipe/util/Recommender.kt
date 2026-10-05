@@ -116,21 +116,61 @@ data class RecommendationWeights(
             val f = prefs.freshEvergreen.toDouble().coerceIn(0.0, 1.0)
             val x = prefs.focusedDiverse.toDouble().coerceIn(0.0, 1.0)
             return RecommendationWeights(
-                subscriptionDamping = lerp(0.8, 0.2, d),
-                maxSubscriptionFraction = lerp(0.5, 0.1, d),
-                explorationBase = lerp(0.1, 0.9, d),
-                explorationUcbWeight = lerp(0.0, 1.0, d),
-                uploadFreshnessDecay = lerp(0.01, 0.05, f),
-                freshnessFloor = lerp(0.6, 0.0, f),
-                mmrLambda = lerp(0.95, 0.45, x),
-                perAuthorCap = lerp(5.0, 1.0, x).roundToInt().coerceAtLeast(1),
-                shortTermBlend = 0.35,
-                watchTimeSaturationMinutes = 15.0,
-                recentSuppressionWindowHours = 12.0,
+                subscriptionDamping = lerp(
+                    SUBSCRIPTION_DAMPING_FAMILIAR, SUBSCRIPTION_DAMPING_DISCOVERY, d
+                ),
+                maxSubscriptionFraction = lerp(
+                    MAX_SUBSCRIPTION_FRACTION_FAMILIAR, MAX_SUBSCRIPTION_FRACTION_DISCOVERY, d
+                ),
+                explorationBase = lerp(EXPLORATION_BASE_FAMILIAR, EXPLORATION_BASE_DISCOVERY, d),
+                explorationUcbWeight = lerp(EXPLORATION_UCB_FAMILIAR, EXPLORATION_UCB_DISCOVERY, d),
+                uploadFreshnessDecay = lerp(FRESHNESS_DECAY_EVERGREEN, FRESHNESS_DECAY_FRESH, f),
+                freshnessFloor = lerp(FRESHNESS_FLOOR_EVERGREEN, FRESHNESS_FLOOR_FRESH, f),
+                mmrLambda = lerp(MMR_LAMBDA_FOCUSED, MMR_LAMBDA_DIVERSE, x),
+                perAuthorCap = lerp(PER_AUTHOR_CAP_FOCUSED, PER_AUTHOR_CAP_DIVERSE, x)
+                    .roundToInt().coerceAtLeast(1),
+                shortTermBlend = DEFAULT_SHORT_TERM_BLEND,
+                watchTimeSaturationMinutes = DEFAULT_WATCH_TIME_SATURATION_MINUTES,
+                recentSuppressionWindowHours = DEFAULT_RECENT_SUPPRESSION_WINDOW_HOURS,
             )
         }
     }
 }
+
+/** Dial-mapping endpoints for [RecommendationWeights.fromPreferences]: lerp(familiar, discovery, d). */
+private const val SUBSCRIPTION_DAMPING_FAMILIAR = 0.8
+private const val SUBSCRIPTION_DAMPING_DISCOVERY = 0.2
+private const val MAX_SUBSCRIPTION_FRACTION_FAMILIAR = 0.5
+private const val MAX_SUBSCRIPTION_FRACTION_DISCOVERY = 0.1
+private const val EXPLORATION_BASE_FAMILIAR = 0.1
+private const val EXPLORATION_BASE_DISCOVERY = 0.9
+private const val EXPLORATION_UCB_FAMILIAR = 0.0
+private const val EXPLORATION_UCB_DISCOVERY = 1.0
+private const val FRESHNESS_DECAY_EVERGREEN = 0.01
+private const val FRESHNESS_DECAY_FRESH = 0.05
+private const val FRESHNESS_FLOOR_EVERGREEN = 0.6
+private const val FRESHNESS_FLOOR_FRESH = 0.0
+private const val MMR_LAMBDA_FOCUSED = 0.95
+private const val MMR_LAMBDA_DIVERSE = 0.45
+private const val PER_AUTHOR_CAP_FOCUSED = 5.0
+private const val PER_AUTHOR_CAP_DIVERSE = 1.0
+private const val DEFAULT_SHORT_TERM_BLEND = 0.35
+private const val DEFAULT_WATCH_TIME_SATURATION_MINUTES = 15.0
+private const val DEFAULT_RECENT_SUPPRESSION_WINDOW_HOURS = 12.0
+
+/** Preset dial values: (discovery, freshness, focus). */
+private const val DISCOVER_MORE_DISCOVERY = 0.9f
+private const val DISCOVER_MORE_FRESHNESS = 0.65f
+private const val DISCOVER_MORE_FOCUS = 0.85f
+private const val BALANCED_DISCOVERY = 0.5f
+private const val BALANCED_FRESHNESS = 0.5f
+private const val BALANCED_FOCUS = 0.5f
+private const val MOSTLY_SUBS_DISCOVERY = 0.15f
+private const val MOSTLY_SUBS_FRESHNESS = 0.5f
+private const val MOSTLY_SUBS_FOCUS = 0.35f
+private const val DEEP_DIVES_DISCOVERY = 0.4f
+private const val DEEP_DIVES_FRESHNESS = 0.1f
+private const val DEEP_DIVES_FOCUS = 0.15f
 
 /** A named bundle of the three feed-mix dials. */
 enum class RecommendationPreset(
@@ -138,10 +178,10 @@ enum class RecommendationPreset(
     val freshEvergreen: Float,
     val focusedDiverse: Float,
 ) {
-    DISCOVER_MORE(0.9f, 0.65f, 0.85f),
-    BALANCED(0.5f, 0.5f, 0.5f),
-    MOSTLY_SUBSCRIPTIONS(0.15f, 0.5f, 0.35f),
-    DEEP_DIVES(0.4f, 0.1f, 0.15f),
+    DISCOVER_MORE(DISCOVER_MORE_DISCOVERY, DISCOVER_MORE_FRESHNESS, DISCOVER_MORE_FOCUS),
+    BALANCED(BALANCED_DISCOVERY, BALANCED_FRESHNESS, BALANCED_FOCUS),
+    MOSTLY_SUBSCRIPTIONS(MOSTLY_SUBS_DISCOVERY, MOSTLY_SUBS_FRESHNESS, MOSTLY_SUBS_FOCUS),
+    DEEP_DIVES(DEEP_DIVES_DISCOVERY, DEEP_DIVES_FRESHNESS, DEEP_DIVES_FOCUS),
 }
 
 /** Learned interest signals derived from watch history. */
@@ -158,11 +198,14 @@ private val STOPWORDS = setOf(
 
 private fun lerp(a: Double, b: Double, t: Double): Double = a + (b - a) * t
 
+/** Minimum token length kept by [tokenize]; shorter tokens are noise. */
+private const val MIN_TOKEN_LENGTH = 3
+
 /** Lowercases, strips punctuation, splits on whitespace, and drops stopwords / short tokens. */
 fun tokenize(title: String): List<String> =
     title.lowercase()
         .split(Regex("[^a-z0-9]+"))
-        .filter { it.length >= 3 && it !in STOPWORDS }
+        .filter { it.length >= MIN_TOKEN_LENGTH && it !in STOPWORDS }
 
 /**
  * Whether a channel search hit [hitName] is a close enough match to the [author]
@@ -345,49 +388,110 @@ fun rankRecommendations(
     val eligible = candidates.filter { passesHardFilters(it.video, channelPrefs, mutedKeywords, contentFilters) }
     val idf = computeIdf(eligible.map { it.video }.distinctBy { it.videoID })
 
-    val best = HashMap<Long, Scored>()
-    for (c in eligible) {
-        val v = c.video
-        val h = historyById[v.videoID]
-        if (h != null && v.duration > 0 && h.progress.toDouble() / (v.duration * 1000) >= 0.9) continue
-
-        val author = v.author.lowercase()
-        val pref = channelPrefs[author]
-        val isSub = author in subNames
-        val bonus = explorationBonus(author, channelStats, weights)
-        var score = scoreCandidate(c, profile, now, weights, idf, bonus)
-        if (isSub) score *= weights.subscriptionDamping
-        if (pref != null) score *= pref.multiplier
-
-        val existing = best[v.videoID]
-        if (existing == null || score > existing.score) {
-            best[v.videoID] = Scored(
-                video = v,
-                score = score,
-                tokens = tokenize(v.name).toSet(),
-                isSub = isSub,
-                pinned = pref?.pinned == true,
-                source = c.source,
-                reason = reasonFor(c),
-            )
-        }
-    }
-
+    val best = dedupAndScore(eligible, historyById, profile, now, weights, subNames, channelPrefs, channelStats, idf)
     if (best.isEmpty()) return emptyList()
 
-    val maxScore = best.values.maxOf { it.score }.takeIf { it > 0.0 } ?: 1.0
-
-    val pool = best.values.filter { scored ->
-        if (scored.pinned) return@filter true
-        val shownAt = recentlyShown[scored.video.videoID] ?: return@filter true
-        if (weights.recentSuppressionWindowHours <= 0.0) return@filter true
-        val hoursAgo = (now - shownAt).inWholeHours.toDouble()
-        val relevance = scored.score / maxScore
-        !(hoursAgo < weights.recentSuppressionWindowHours && relevance < weights.recentSuppressionRelevanceThreshold)
-    }.sortedByDescending { it.score }.toMutableList()
-
+    val pool = suppressionPool(best, recentlyShown, now, weights)
     if (pool.isEmpty()) return emptyList()
 
+    val selected = mmrSelect(pool, weights, noise)
+    return selected.map { RankedVideo(it.video, it.source, it.reason) }
+}
+
+private fun dedupAndScore(
+    eligible: List<Candidate>,
+    historyById: Map<Long, HistoryVideo>,
+    profile: InterestProfile,
+    now: Instant,
+    weights: RecommendationWeights,
+    subNames: Set<String>,
+    channelPrefs: Map<String, ChannelPref>,
+    channelStats: Map<String, ChannelImpressionStat>,
+    idf: Map<String, Double>,
+): Map<Long, Scored> {
+    val best = HashMap<Long, Scored>()
+    for (c in eligible) {
+        scoreCandidateIntoBest(c, best, historyById, profile, now, weights, subNames, channelPrefs, channelStats, idf)
+    }
+    return best
+}
+
+private fun scoreCandidateIntoBest(
+    c: Candidate,
+    best: HashMap<Long, Scored>,
+    historyById: Map<Long, HistoryVideo>,
+    profile: InterestProfile,
+    now: Instant,
+    weights: RecommendationWeights,
+    subNames: Set<String>,
+    channelPrefs: Map<String, ChannelPref>,
+    channelStats: Map<String, ChannelImpressionStat>,
+    idf: Map<String, Double>,
+) {
+    val v = c.video
+    if (isAlreadyWatched(v, historyById[v.videoID])) return
+
+    val author = v.author.lowercase()
+    val pref = channelPrefs[author]
+    val isSub = author in subNames
+    val bonus = explorationBonus(author, channelStats, weights)
+    var score = scoreCandidate(c, profile, now, weights, idf, bonus)
+    if (isSub) score *= weights.subscriptionDamping
+    if (pref != null) score *= pref.multiplier
+
+    val existing = best[v.videoID]
+    if (existing == null || score > existing.score) {
+        best[v.videoID] = Scored(
+            video = v,
+            score = score,
+            tokens = tokenize(v.name).toSet(),
+            isSub = isSub,
+            pinned = pref?.pinned == true,
+            source = c.source,
+            reason = reasonFor(c),
+        )
+    }
+}
+
+private fun isAlreadyWatched(v: VideoInfo, h: HistoryVideo?): Boolean {
+    if (h == null || v.duration <= 0) return false
+    return h.progress.toDouble() / (v.duration * MILLIS_PER_SECOND) >= WATCHED_COMPLETION_THRESHOLD
+}
+
+private fun suppressionPool(
+    best: Map<Long, Scored>,
+    recentlyShown: Map<Long, Instant>,
+    now: Instant,
+    weights: RecommendationWeights,
+): MutableList<Scored> {
+    if (best.isEmpty()) return mutableListOf()
+    val maxScore = best.values.maxOf { it.score }.takeIf { it > 0.0 } ?: 1.0
+    return best.values.filter { scored ->
+        keepAfterSuppression(scored, recentlyShown[scored.video.videoID], now, weights, maxScore)
+    }.sortedByDescending { it.score }.toMutableList()
+}
+
+private fun keepAfterSuppression(
+    scored: Scored,
+    shownAt: Instant?,
+    now: Instant,
+    weights: RecommendationWeights,
+    maxScore: Double,
+): Boolean {
+    if (scored.pinned) return true
+    if (shownAt == null) return true
+    if (weights.recentSuppressionWindowHours <= 0.0) return true
+    val hoursAgo = (now - shownAt).inWholeHours.toDouble()
+    val relevance = scored.score / maxScore
+    return !(hoursAgo < weights.recentSuppressionWindowHours && relevance < weights.recentSuppressionRelevanceThreshold)
+}
+
+private fun mmrSelect(
+    pool: MutableList<Scored>,
+    weights: RecommendationWeights,
+    noise: (VideoInfo) -> Double,
+): List<Scored> {
+    val maxScore = pool.maxOf { it.score }.takeIf { it > 0.0 } ?: 1.0
     val resultLimit = minOf(pool.size, weights.maxResults)
     val subQuota = (weights.maxResults * weights.maxSubscriptionFraction).toInt()
 
@@ -399,25 +503,10 @@ fun rankRecommendations(
     // it so the feed is never shortened just because only sub items remain.
     for (enforceSubQuota in listOf(true, false)) {
         while (selected.size < resultLimit && pool.isNotEmpty()) {
-            var bestIdx = -1
-            var bestMmr = Double.NEGATIVE_INFINITY
-            for (i in pool.indices) {
-                val cand = pool[i]
-                val author = cand.video.author.lowercase()
-                if ((authorCount[author] ?: 0) >= weights.perAuthorCap) continue
-                if (enforceSubQuota && cand.isSub && subCount >= subQuota) continue
-
-                val maxSim = selected.maxOfOrNull { similarity(cand, it) } ?: 0.0
-                var relevance = cand.score / maxScore + noise(cand.video)
-                if (cand.pinned) relevance += PINNED_RELEVANCE_BOOST
-                val mmr = weights.mmrLambda * relevance - (1 - weights.mmrLambda) * maxSim
-                if (mmr > bestMmr) {
-                    bestMmr = mmr
-                    bestIdx = i
-                }
-            }
-            if (bestIdx < 0) break
-
+            val bestIdx = bestMmrIndex(
+                pool, selected, authorCount, subCount, subQuota,
+                enforceSubQuota, weights, noise, maxScore,
+            ) ?: break
             val chosen = pool.removeAt(bestIdx)
             selected.add(chosen)
             val a = chosen.video.author.lowercase()
@@ -426,11 +515,68 @@ fun rankRecommendations(
         }
         if (selected.size >= resultLimit) break
     }
+    return selected
+}
 
-    return selected.map { RankedVideo(it.video, it.source, it.reason) }
+private fun bestMmrIndex(
+    pool: List<Scored>,
+    selected: List<Scored>,
+    authorCount: Map<String, Int>,
+    subCount: Int,
+    subQuota: Int,
+    enforceSubQuota: Boolean,
+    weights: RecommendationWeights,
+    noise: (VideoInfo) -> Double,
+    maxScore: Double,
+): Int? {
+    var bestIdx: Int? = null
+    var bestMmr = Double.NEGATIVE_INFINITY
+    for (i in pool.indices) {
+        val cand = pool[i]
+        if (!isMmrEligible(cand, authorCount, subCount, subQuota, enforceSubQuota, weights)) continue
+
+        val maxSim = selected.maxOfOrNull { similarity(cand, it) } ?: 0.0
+        val mmr = mmrScore(cand, maxSim, weights, noise, maxScore)
+        if (mmr > bestMmr) {
+            bestMmr = mmr
+            bestIdx = i
+        }
+    }
+    return bestIdx
+}
+
+private fun isMmrEligible(
+    cand: Scored,
+    authorCount: Map<String, Int>,
+    subCount: Int,
+    subQuota: Int,
+    enforceSubQuota: Boolean,
+    weights: RecommendationWeights,
+): Boolean {
+    val author = cand.video.author.lowercase()
+    if ((authorCount[author] ?: 0) >= weights.perAuthorCap) return false
+    if (enforceSubQuota && cand.isSub && subCount >= subQuota) return false
+    return true
+}
+
+private fun mmrScore(
+    cand: Scored,
+    maxSim: Double,
+    weights: RecommendationWeights,
+    noise: (VideoInfo) -> Double,
+    maxScore: Double,
+): Double {
+    var relevance = cand.score / maxScore + noise(cand.video)
+    if (cand.pinned) relevance += PINNED_RELEVANCE_BOOST
+    return weights.mmrLambda * relevance - (1 - weights.mmrLambda) * maxSim
 }
 
 private const val PINNED_RELEVANCE_BOOST = 1_000.0
+private const val MILLIS_PER_SECOND = 1000L
+private const val WATCHED_COMPLETION_THRESHOLD = 0.9
+private const val SHORTS_MAX_DURATION_SEC = 60
+private const val AUTHOR_SIMILARITY_WEIGHT = 0.6
+private const val TOKEN_SIMILARITY_WEIGHT = 0.4
 
 private fun passesHardFilters(
     v: VideoInfo,
@@ -439,15 +585,22 @@ private fun passesHardFilters(
     filters: ContentFilters,
 ): Boolean {
     if (channelPrefs[v.author.lowercase()]?.blocked == true) return false
-    if (mutedKeywords.isNotEmpty() && tokenize(v.name).any { it in mutedKeywords }) return false
+    if (isMutedKeywordMatch(v, mutedKeywords)) return false
     if (filters.hidePaid && v.isPaid) return false
-    val d = v.duration
-    if (filters.hideLive && d <= 0) return false
-    if (filters.hideShorts && d in 1 until 60) return false
-    if (d > 0) {
-        if (filters.minDurationSec > 0 && d < filters.minDurationSec) return false
-        if (filters.maxDurationSec > 0 && d > filters.maxDurationSec) return false
-    }
+    return passesDurationFilters(v.duration, filters)
+}
+
+private fun isMutedKeywordMatch(v: VideoInfo, mutedKeywords: Set<String>): Boolean {
+    if (mutedKeywords.isEmpty()) return false
+    return tokenize(v.name).any { it in mutedKeywords }
+}
+
+private fun passesDurationFilters(duration: Long, filters: ContentFilters): Boolean {
+    if (filters.hideLive && duration <= 0) return false
+    if (filters.hideShorts && duration in 1 until SHORTS_MAX_DURATION_SEC) return false
+    if (duration <= 0) return true
+    if (filters.minDurationSec > 0 && duration < filters.minDurationSec) return false
+    if (filters.maxDurationSec > 0 && duration > filters.maxDurationSec) return false
     return true
 }
 
@@ -463,7 +616,7 @@ private data class Scored(
 
 private fun similarity(a: Scored, b: Scored): Double {
     val authorSim = if (a.video.author.equals(b.video.author, ignoreCase = true)) 1.0 else 0.0
-    return 0.6 * authorSim + 0.4 * jaccard(a.tokens, b.tokens)
+    return AUTHOR_SIMILARITY_WEIGHT * authorSim + TOKEN_SIMILARITY_WEIGHT * jaccard(a.tokens, b.tokens)
 }
 
 private fun jaccard(a: Set<String>, b: Set<String>): Double {

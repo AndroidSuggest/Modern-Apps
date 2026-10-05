@@ -11,7 +11,6 @@ import com.vayunmathur.clock.ui.components.sendTimerNotification
 import com.vayunmathur.clock.platform.ClockViewModel
 import com.vayunmathur.clock.platform.TimerActions
 import com.vayunmathur.clock.platform.TimerUiState
-import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.ui.rememberClock
 import kotlin.time.Clock
 import kotlin.time.Duration
@@ -20,7 +19,7 @@ import kotlin.time.Instant
 
 /** Binds [ClockViewModel] to the stateless [TimerScreen]. */
 @Composable
-fun TimerPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel) {
+fun TimerPage(clockViewModel: ClockViewModel) {
     // Countdowns are shown to the second, so a one-second tick is enough; the ViewModel's 100ms
     // flow exists for the stopwatch's centiseconds. Read inside each timer's row, not here.
     val ticker = rememberClock()
@@ -57,5 +56,5 @@ fun TimerPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel) {
         }
     }
 
-    TimerScreen(backStack = backStack, state = TimerUiState(now = now, timers = timers), actions = actions)
+    TimerScreen(state = TimerUiState(now = now, timers = timers), actions = actions)
 }

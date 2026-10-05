@@ -88,15 +88,20 @@ object ICalendar {
         if (prop == null) return Triple(null, false, null)
         val (params, value) = prop
         val up = params.uppercase()
-        val allDay = up.contains("VALUE=DATE") || (value.length == 8 && value.all { it.isDigit() })
+        val allDay = up.contains("VALUE=DATE") ||
+            (value.length == DATE_ONLY_LEN && value.all { it.isDigit() })
         return try {
             when {
                 allDay -> {
-                    val fmt = SimpleDateFormat("yyyyMMdd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+                    val fmt = SimpleDateFormat("yyyyMMdd", Locale.US).apply {
+                        timeZone = TimeZone.getTimeZone("UTC")
+                    }
                     Triple(fmt.parse(value)?.time, true, "UTC")
                 }
                 value.endsWith("Z") -> {
-                    val fmt = SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+                    val fmt = SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", Locale.US).apply {
+                        timeZone = TimeZone.getTimeZone("UTC")
+                    }
                     Triple(fmt.parse(value)?.time, false, "UTC")
                 }
                 else -> {
@@ -154,4 +159,5 @@ object ICalendar {
 
     private const val HOUR_MS = 60L * 60L * 1000L
     private const val DAY_MS = 24L * HOUR_MS
+    private const val DATE_ONLY_LEN = 8
 }

@@ -61,33 +61,53 @@ fun computeCompletions(
     userSnippets: List<UserSnippet> = emptyList(),
 ): List<Completion> {
     if (prefix.isEmpty()) return emptyList()
+    val collector = CompletionCollector(prefix, limit)
+    collector.addSnippets(userSnippetsFor(userSnippets, language) + snippetsFor(language))
+    collector.addWords(bufferWords(bufferTexts, prefix))
+    collector.addKeywords(keywordsFor(language).filter { it.startsWith(prefix) && it != prefix }.sorted())
+    return collector.take()
+}
+
+private class CompletionCollector(val prefix: String, val limit: Int) {
     val results = ArrayList<Completion>()
     val used = HashSet<String>()
 
-    // 1. Snippets whose trigger starts with the prefix (user snippets first, so they win ties).
-    for (s in userSnippetsFor(userSnippets, language) + snippetsFor(language)) {
-        if (s.trigger.startsWith(prefix) && used.add("s:${s.trigger}")) {
-            val caret = s.template.indexOf(CARET_MARKER).let { if (it < 0) s.template.length else it }
-            val body = s.template.replace(CARET_MARKER, "")
-            results.add(Completion("${s.trigger}…", body, caret, CompletionKind.SNIPPET))
+    fun addSnippets(snippets: List<Snippet>) {
+        // Snippets whose trigger starts with the prefix (user snippets first, so they win ties).
+        for (s in snippets) {
+            if (s.trigger.startsWith(prefix) && used.add("s:${s.trigger}")) {
+                val caret = s.template.indexOf(CARET_MARKER).let { if (it < 0) s.template.length else it }
+                val body = s.template.replace(CARET_MARKER, "")
+                results.add(Completion("${s.trigger}…", body, caret, CompletionKind.SNIPPET))
+            }
         }
     }
 
-    // 2. Identifiers from the open buffers, ranked by frequency then length.
+    fun addWords(words: List<Pair<String, Int>>) {
+        // Identifiers from the open buffers, ranked by frequency then length.
+        for ((word, _) in words) {
+            if (used.add("w:$word")) results.add(Completion(word, word, word.length, CompletionKind.WORD))
+        }
+    }
+
+    fun addKeywords(keywords: List<String>) {
+        for (k in keywords) {
+            if (used.add("k:$k")) results.add(Completion(k, k, k.length, CompletionKind.KEYWORD))
+        }
+    }
+
+    fun take(): List<Completion> = results.take(limit)
+}
+
+private fun bufferWords(bufferTexts: List<String>, prefix: String): List<Pair<String, Int>> {
     val freq = HashMap<String, Int>()
     for (text in bufferTexts) {
         for (m in IDENTIFIER.findAll(text)) freq.merge(m.value, 1) { a, b -> a + b }
     }
-    val words = freq.keys
+    return freq.keys
         .filter { it.startsWith(prefix) && it != prefix }
         .sortedWith(compareByDescending<String> { freq[it] ?: 0 }.thenBy { it.length }.thenBy { it })
-    for (w in words) if (used.add("w:$w")) results.add(Completion(w, w, w.length, CompletionKind.WORD))
-
-    // 3. Language keywords.
-    val keywords = keywordsFor(language).filter { it.startsWith(prefix) && it != prefix }.sorted()
-    for (k in keywords) if (used.add("k:$k")) results.add(Completion(k, k, k.length, CompletionKind.KEYWORD))
-
-    return results.take(limit)
+        .map { it to (freq[it] ?: 0) }
 }
 
 // --- Per-language keyword and snippet tables (a focused subset; buffer words fill the rest) ---

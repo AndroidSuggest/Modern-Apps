@@ -26,11 +26,22 @@ fun CommentDialog(onAdd: (author: String, text: String) -> Unit, onDismiss: () -
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.insert_comment)) },
         text = {
             Column {
-                TextField(value = author, onValueChange = { author = it }, label = { Text(stringResource(R.string.meta_author)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                TextField(
+                    value = author,
+                    onValueChange = { author = it },
+                    label = { Text(stringResource(R.string.meta_author)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                TextField(value = text, onValueChange = { text = it }, label = { Text(stringResource(R.string.comment)) }, modifier = Modifier.fillMaxWidth())
+                TextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text(stringResource(R.string.comment)) },
+                    modifier = Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { TextButton(onClick = { if (text.isNotBlank()) { onAdd(author, text); onDismiss() } }) { Text(stringResource(R.string.insert)) } },
+        confirmButton = { TextButton(onClick = { if (text.isNotBlank()) { onAdd(
+            author,
+            text); onDismiss() } }) { Text(stringResource(R.string.insert)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } })
 }

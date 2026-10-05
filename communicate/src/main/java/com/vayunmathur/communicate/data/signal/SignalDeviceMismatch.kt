@@ -21,6 +21,8 @@ data class SignalDeviceMismatch(
 ) {
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
+        private const val HTTP_MISMATCH = 409
+        private const val HTTP_STALE = 410
 
         /** Returns null when the body does not parse or names no devices at all. */
         fun parse(status: Int, body: String): SignalDeviceMismatch? {
@@ -30,14 +32,14 @@ data class SignalDeviceMismatch(
                 return null
             }
             val result = when (status) {
-                409 -> SignalDeviceMismatch(
+                HTTP_MISMATCH -> SignalDeviceMismatch(
                     fetch = root.ints("missingDevices"),
                     archive = root.ints("extraDevices"),
                 )
                 // Stale sessions are archived to keep the old chain readable, then rebuilt from fresh
                 // pre-keys. Archiving alone would leave the device unsendable until the server came
                 // back with a 409 naming it.
-                410 -> root.ints("staleDevices").let { stale ->
+                HTTP_STALE -> root.ints("staleDevices").let { stale ->
                     SignalDeviceMismatch(fetch = stale, archive = stale)
                 }
                 else -> return null

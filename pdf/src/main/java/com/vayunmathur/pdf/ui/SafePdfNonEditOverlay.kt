@@ -19,7 +19,6 @@ import com.vayunmathur.pdf.util.SafePdfPage
 internal fun NonEditOverlay(
     page: SafePdfPage,
     links: List<SafeLink>,
-    cw: Float,
     ch: Float,
     scale: Float,
     ocr: OcrEngine?,

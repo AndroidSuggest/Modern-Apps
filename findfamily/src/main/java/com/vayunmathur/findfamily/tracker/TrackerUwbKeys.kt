@@ -23,6 +23,11 @@ object TrackerUwbKeys {
     private const val STS_INFO = "com.vayunmathur.findfamily/uwb-sts"
     private const val ADDR_INFO = "com.vayunmathur.findfamily/uwb-addr"
 
+    /** Shifts for the big-endian u32 encoding. */
+    private const val U32_MSB_SHIFT = 24
+    private const val U32_MID_SHIFT = 16
+    private const val U32_LOW_SHIFT = 8
+
     /**
      * The 8-byte static-STS key for one ranging session:
      * `HKDF-SHA256(secret, info = "…/uwb-sts" || u32_be(sessionId))`.
@@ -60,9 +65,9 @@ object TrackerUwbKeys {
     }
 
     private fun u32be(v: Int): ByteArray = byteArrayOf(
-        (v ushr 24).toByte(),
-        (v ushr 16).toByte(),
-        (v ushr 8).toByte(),
+        (v ushr U32_MSB_SHIFT).toByte(),
+        (v ushr U32_MID_SHIFT).toByte(),
+        (v ushr U32_LOW_SHIFT).toByte(),
         v.toByte(),
     )
 }

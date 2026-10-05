@@ -132,16 +132,33 @@ fun metricValueFormatter(
     WeatherMetric.Humidity, WeatherMetric.CloudCover ->
         { v -> "${v.roundToInt()}%" }
     WeatherMetric.Precipitation ->
-        { v -> if (windUnit == WindUnit.Mph) String.format(java.util.Locale.US, "%.2f in", mmToInches(v)) else String.format(java.util.Locale.US, "%.1f mm", v) }
+        { v -> formatPrecipitation(v, windUnit) }
     WeatherMetric.WindSpeed, WeatherMetric.WindGusts ->
         { v -> formatWind(v, windUnit) }
     WeatherMetric.Pressure ->
         { v -> formatPressure(v, pressureUnit) }
     WeatherMetric.Visibility ->
-        { v -> if (windUnit == WindUnit.Mph) "${metersToMiles(v).roundToInt()} mi" else "${(v / 1000).roundToInt()} km" }
+        { v -> formatVisibility(v, windUnit) }
     WeatherMetric.UvIndex ->
         { v -> v.roundToInt().toString() }
 }
+
+private fun formatVisibility(v: Double, windUnit: WindUnit): String =
+    if (windUnit == WindUnit.Mph) {
+        "${metersToMiles(v).roundToInt()} mi"
+    } else {
+        "${(v / METERS_PER_KM).roundToInt()} km"
+    }
+
+/** Meters in a kilometre. */
+private const val METERS_PER_KM = 1000.0
+
+private fun formatPrecipitation(v: Double, windUnit: WindUnit): String =
+    if (windUnit == WindUnit.Mph) {
+        String.format(java.util.Locale.US, "%.2f in", mmToInches(v))
+    } else {
+        String.format(java.util.Locale.US, "%.1f mm", v)
+    }
 
 /** A single (time, raw value) sample. Values are in API units (°C, km/h, hPa, m, %, mm). */
 data class MetricPoint(val epochSec: Long, val value: Double)
@@ -157,8 +174,16 @@ fun metricSeries(
     selected: SelectedDateOrTime?,
 ): List<MetricPoint> {
     val hourly = forecast.hourly ?: return emptyList()
+    val raw = rawSeries(hourly, metric)
+    val targetDate = targetDateFor(forecast, selected)
+    return collectDayPoints(hourly.time, raw, targetDate, forecast.utcOffsetSeconds)
+}
 
-    val raw: List<Double> = when (metric) {
+private fun rawSeries(
+    hourly: com.vayunmathur.weather.network.Hourly,
+    metric: WeatherMetric,
+): List<Double> {
+    val outcome: List<Double> = when (metric) {
         WeatherMetric.Temperature -> hourly.temperature
         WeatherMetric.FeelsLike -> hourly.apparentTemperature
         WeatherMetric.Humidity -> hourly.relativeHumidity.map { it.toDouble() }
@@ -171,21 +196,32 @@ fun metricSeries(
         WeatherMetric.CloudCover -> hourly.cloudCover.map { it.toDouble() }
         WeatherMetric.UvIndex -> hourly.uvIndex
     }
+    return outcome
+}
 
-    val targetDate = when (selected) {
-        is SelectedDateOrTime.Day -> selected.isoDate
-        is SelectedDateOrTime.Time -> selected.isoTime.substringBefore('T')
-        // No selection: plot today (the location's local calendar day) so the
-        // graph always runs midnight-to-midnight, never a rolling 24h window.
-        null -> todayIsoDate(forecast)
-    }
+private fun targetDateFor(
+    forecast: ForecastResponse,
+    selected: SelectedDateOrTime?,
+): String = when (selected) {
+    is SelectedDateOrTime.Day -> selected.isoDate
+    is SelectedDateOrTime.Time -> selected.isoTime.substringBefore('T')
+    // No selection: plot today (the location's local calendar day) so the
+    // graph always runs midnight-to-midnight, never a rolling 24h window.
+    null -> todayIsoDate(forecast)
+}
 
+private fun collectDayPoints(
+    times: List<String>,
+    raw: List<Double>,
+    targetDate: String,
+    utcOffsetSeconds: Int,
+): List<MetricPoint> {
     val out = ArrayList<MetricPoint>()
-    for (i in hourly.time.indices) {
+    for (i in times.indices) {
         val value = raw.getOrNull(i) ?: continue
-        val iso = hourly.time[i]
+        val iso = times[i]
         if (iso.substringBefore('T') != targetDate) continue
-        val epoch = parseLocalIsoToEpochSec(iso, forecast.utcOffsetSeconds) ?: continue
+        val epoch = parseLocalIsoToEpochSec(iso, utcOffsetSeconds) ?: continue
         out.add(MetricPoint(epoch, value))
     }
     return out

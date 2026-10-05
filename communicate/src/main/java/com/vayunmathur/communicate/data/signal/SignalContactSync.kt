@@ -27,6 +27,7 @@ import java.nio.ByteBuffer
  */
 object SignalContactSync {
     private const val TAG = "SignalContactSync"
+    private const val LONG_BYTES = 8
 
     data class SyncResult(
         val deviceCount: Int,
@@ -61,7 +62,8 @@ object SignalContactSync {
                 ContactsContract.CommonDataKinds.Phone.CONTENT_URI, projection, null, null, null,
             )?.use { cursor ->
                 buildList {
-                    val nameIdx = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY)
+                    val nameIdx =
+                        cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY)
                     val numIdx = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
                     while (cursor.moveToNext()) {
                         val number = cursor.getString(numIdx).orEmpty().trim()
@@ -77,7 +79,7 @@ object SignalContactSync {
     fun e164ToUint64Bytes(e164: String): ByteArray {
         val digits = e164.filter { it.isDigit() }
         val num = digits.toLongOrNull() ?: 0L
-        return ByteBuffer.allocate(8).putLong(num).array()
+        return ByteBuffer.allocate(LONG_BYTES).putLong(num).array()
     }
 
     fun uint64ToE164(value: Long): String = "+$value"
@@ -100,26 +102,25 @@ object SignalContactSync {
         } catch (_: Exception) {}
     }
 
-    suspend fun sync(context: Context): SyncResult {
-        if (!SignalFeature.enabled) return SyncResult(0, 0, 0, "disabled")
-        val region = defaultRegion(context)
-        val device = readDeviceContacts(context)
-        val byE164 = LinkedHashMap<String, String>()
-        for ((name, number) in device) {
-            val e164 = normalizeE164(number, region) ?: continue
-            byE164.putIfAbsent(e164, name)
-        }
-        if (byE164.isEmpty()) return SyncResult(device.size, 0, 0)
+    /** CDSI lookup bundle with the partition it was built from. */
+    private data class CdsiLookup(
+        val result: SignalCdsi.LookupResult,
+        val previous: Set<String>,
+        val new: Set<String>,
+    )
 
-        val now = System.currentTimeMillis()
+    /** Fetch credentials + run the CDSI lookup; null on failure. */
+    private suspend fun fetchLookup(
+        context: Context,
+        byE164: Map<String, String>,
+    ): CdsiLookup? {
         val db = SignalDatabase.getDatabase(context)
-        val auth = SignalAuthData.load(context)
-            ?: return SyncResult(device.size, byE164.size, 0, "not registered")
+        val auth = SignalAuthData.load(context) ?: return null
 
         val credentials = SignalCdsi.fetchCredentials(
             authHeader = SignalGroups.basicAuth(auth),
             sslSocketFactory = SignalTrust.sslSocketFactory(context),
-        ) ?: return SyncResult(device.size, byE164.size, 0, "no CDSI credentials")
+        ) ?: return null
 
         // Numbers we have already asked about pair with the stored token for a cheaper incremental
         // lookup; anything else is new. A stale token is handled inside lookup().
@@ -136,11 +137,28 @@ object SignalContactSync {
             previousE164s = previous,
             newE164s = new,
             token = loadCdsiToken(context),
-        ) ?: return SyncResult(device.size, byE164.size, 0, "CDSI lookup failed")
+        ) ?: return null
 
         saveCdsiToken(context, result.token)
+        return CdsiLookup(result, previous, new)
+    }
 
-        val discoveredByE164 = result.discovered.associateBy { entry -> entry.e164 }
+    suspend fun sync(context: Context): SyncResult {
+        if (!SignalFeature.enabled) return SyncResult(0, 0, 0, "disabled")
+        val region = defaultRegion(context)
+        val device = readDeviceContacts(context)
+        val byE164 = LinkedHashMap<String, String>()
+        for ((name, number) in device) {
+            val e164 = normalizeE164(number, region) ?: continue
+            byE164.putIfAbsent(e164, name)
+        }
+        if (byE164.isEmpty()) return SyncResult(device.size, 0, 0)
+
+        val lookup = fetchLookup(context, byE164)
+            ?: return SyncResult(device.size, byE164.size, 0, "CDSI lookup failed")
+        val now = System.currentTimeMillis()
+        val db = SignalDatabase.getDatabase(context)
+        val discoveredByE164 = lookup.result.discovered.associateBy { entry -> entry.e164 }
         var onSignal = 0
         val toUpsert = byE164.map { (e164, name) ->
             val hit = discoveredByE164[e164]
@@ -161,9 +179,9 @@ object SignalContactSync {
         db.contactDao().upsertAll(toUpsert)
         Log.i(
             TAG,
-            "CDSI sync: device=${device.size} e164=${byE164.size} previous=${previous.size} " +
-                "new=${new.size} registered=$onSignal " +
-                "withAci=${result.discovered.count { it.aci != null }}",
+            "CDSI sync: device=${device.size} e164=${byE164.size} previous=${lookup.previous.size} " +
+                "new=${lookup.new.size} registered=$onSignal " +
+                "withAci=${lookup.result.discovered.count { it.aci != null }}",
         )
         // Publish reachability into the contacts provider, so the contacts app can offer "message on Signal"
         // for these numbers using the vendor's own mimetypes.
@@ -174,8 +192,8 @@ object SignalContactSync {
                     ContactPlatformRows.Reachability(e164 = it.phoneE164, whatsApp = false, signal = true)
                 },
             )
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not publish Signal reachability to contacts", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not publish Signal reachability to contacts", expected)
         }
         return SyncResult(device.size, byE164.size, onSignal)
     }

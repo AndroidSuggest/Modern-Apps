@@ -61,7 +61,7 @@ fun ReleaseGroupPage(
 @Composable
 fun ReleaseGroupScreen(
     state: ReleaseGroupUiState,
-    actions: com.vayunmathur.musicbrainz.platform.MusicBrainzActions,
+    @Suppress("UNUSED_PARAMETER") actions: com.vayunmathur.musicbrainz.platform.MusicBrainzActions,
     backStack: NavBackStack<Route>,
     /** Pairs the heading with the row this album was opened from. */
     sharedTextKey: Any? = null,

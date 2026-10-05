@@ -102,7 +102,10 @@ class RegistrationHttpClient(
 
         val body = send("code", p)
         val j = parse(body)
-        Log.e(TAG, "W2 code raw=${body.take(2000)} reason=${j.optStringOrNull("reason")} param=${j.optStringOrNull("param")}")
+        Log.e(
+            TAG,
+            "W2 code raw=${body.take(LOG_BODY_SNIPPET)} " +
+                "reason=${j.optStringOrNull("reason")} param=${j.optStringOrNull("param")}")
         return CodeResult(
             status = j.optString("status", "error"),
             method = j.optStringOrNull("method"),
@@ -166,8 +169,15 @@ class RegistrationHttpClient(
         if (auth != null) p.bundle(RegistrationKeys.bundleFields(auth))
         val body = send("exist", p)
         val j = parse(body)
-        Log.e(TAG, "W2 exist raw=${body.take(2000)} reason=${j.optStringOrNull("reason")} param=${j.optStringOrNull("param")}")
-        return ExistResult(j.optString("status", "error"), j.optStringOrNull("reason"), j.optStringOrNull("param"), body)
+        Log.e(
+            TAG,
+            "W2 exist raw=${body.take(LOG_BODY_SNIPPET)} " +
+                "reason=${j.optStringOrNull("reason")} param=${j.optStringOrNull("param")}")
+        return ExistResult(
+            j.optString("status", "error"),
+            j.optStringOrNull("reason"),
+            j.optStringOrNull("param"),
+            body)
     }
 
     /**
@@ -362,14 +372,14 @@ class RegistrationHttpClient(
                 lid = lid?.let { if (it.contains("@")) it else "$it@lid" } ?: auth.lid,
                 serverTime = j.optLongOrNull("server_time") ?: 0L,
                 registered = true,
-                loggedInAt = System.currentTimeMillis() / 1000,
+                loggedInAt = System.currentTimeMillis() / MS_PER_SECOND,
             ).also { WhatsAppAuthData.save(context, it) }
         } else {
             null
         }
         val reason = j.optStringOrNull("reason")
         val param = j.optStringOrNull("param")
-        if (status != "ok") Log.e(TAG, "W2 register raw=${body.take(2000)} reason=$reason param=$param")
+        if (status != "ok") Log.e(TAG, "W2 register raw=${body.take(LOG_BODY_SNIPPET)} reason=$reason param=$param")
         return RegisterResult(
             status = status,
             newJid = newJid ?: login?.let { "$it@s.whatsapp.net" },
@@ -420,10 +430,10 @@ class RegistrationHttpClient(
             val tm = runCatching { context.getSystemService(TelephonyManager::class.java) }.getOrNull()
             val netOp = tm?.networkOperator.orEmpty()
             val simOp = tm?.simOperator.orEmpty()
-            a01("mcc", if (netOp.length >= 3) netOp.substring(0, 3) else "000")
-            a01("mnc", if (netOp.length > 3) netOp.substring(3) else "000")
-            a01("sim_mcc", if (simOp.length >= 3) simOp.substring(0, 3) else "000")
-            a01("sim_mnc", if (simOp.length > 3) simOp.substring(3) else "000")
+            a01("mcc", if (netOp.length >= MCC_LENGTH) netOp.substring(0, MCC_LENGTH) else "000")
+            a01("mnc", if (netOp.length > MCC_LENGTH) netOp.substring(MCC_LENGTH) else "000")
+            a01("sim_mcc", if (simOp.length >= MCC_LENGTH) simOp.substring(0, MCC_LENGTH) else "000")
+            a01("sim_mnc", if (simOp.length > MCC_LENGTH) simOp.substring(MCC_LENGTH) else "000")
             a01("network_radio_type", "1")
             a01("simnum", "1")
             a01("hasinrc", "0")
@@ -525,11 +535,11 @@ class RegistrationHttpClient(
                 body = body,
                 useSystemTrust = true,
             )
-            Log.i(TAG, "/v2/$path -> ${resp.status}: ${resp.body.take(400)}")
+            Log.i(TAG, "/v2/$path -> ${resp.status}: ${resp.body.take(LOG_RESP_SNIPPET)}")
             resp.body
-        } catch (t: Throwable) {
-            Log.e(TAG, "/v2/$path request failed", t)
-            """{"status":"error","reason":"network:${t.message}"}"""
+        } catch (expected: Throwable) {
+            Log.e(TAG, "/v2/$path request failed", expected)
+            """{"status":"error","reason":"network:${expected.message}"}"""
         }
     }
 
@@ -574,6 +584,10 @@ class RegistrationHttpClient(
          * The official-valued builder in [RegistrationIntegrity] is kept dormant for recoverability.
          */
         private const val SEND_INTEGRITY_SIGNALS = false
+        private const val MS_PER_SECOND = 1000L
+        private const val LOG_BODY_SNIPPET = 2000
+        private const val LOG_RESP_SNIPPET = 400
+        private const val MCC_LENGTH = 3
     }
 
     /** WAMSYS endpoint kinds that carry per-endpoint integrity params (w2.md §3.1-3.3). */

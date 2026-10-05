@@ -25,9 +25,12 @@ object MediaStoreSaver {
 
     // Millisecond suffix: two singles in the same second otherwise share IMG_<ts>.jpg
     // (burst adds its own suffix, singles don't), producing confusing duplicates.
+    /** Nanos per milli; millisecond suffix keeps same-second singles unique. */
+    private const val NANOS_PER_MILLI = 1_000_000
+
     fun timestamp(): String {
         val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
-        return now.format(FileStamp) + "_%03d".format(now.nanosecond / 1_000_000)
+        return now.format(FileStamp) + "_%03d".format(now.nanosecond / NANOS_PER_MILLI)
     }
 
     fun imageValues(displayName: String): ContentValues = contentValues(displayName, "image/jpeg")
@@ -51,7 +54,13 @@ object MediaStoreSaver {
             resolver.openOutputStream(uri)?.use { os ->
                 bitmap.compress(Bitmap.CompressFormat.JPEG, quality, os)
             } ?: false
-        } catch (e: Exception) {
+        } catch (e: java.io.FileNotFoundException) {
+            android.util.Log.w("MediaStoreSaver", "saveBitmap write failed for $uri", e)
+            false
+        } catch (e: java.io.IOException) {
+            android.util.Log.w("MediaStoreSaver", "saveBitmap write failed for $uri", e)
+            false
+        } catch (e: SecurityException) {
             android.util.Log.w("MediaStoreSaver", "saveBitmap write failed for $uri", e)
             false
         }
@@ -75,7 +84,13 @@ object MediaStoreSaver {
                 os.write(bytes)
             }
             true
-        } catch (e: Exception) {
+        } catch (e: java.io.FileNotFoundException) {
+            android.util.Log.w("MediaStoreSaver", "saveJpegBytes write failed for $uri", e)
+            false
+        } catch (e: java.io.IOException) {
+            android.util.Log.w("MediaStoreSaver", "saveJpegBytes write failed for $uri", e)
+            false
+        } catch (e: SecurityException) {
             android.util.Log.w("MediaStoreSaver", "saveJpegBytes write failed for $uri", e)
             false
         }
@@ -97,7 +112,13 @@ object MediaStoreSaver {
             bitmap.compress(Bitmap.CompressFormat.JPEG, quality, os)
         }
         dest
-    } catch (e: Exception) {
+    } catch (e: java.io.FileNotFoundException) {
+        android.util.Log.w("MediaStoreSaver", "saveBitmapToUri failed for $dest", e)
+        null
+    } catch (e: java.io.IOException) {
+        android.util.Log.w("MediaStoreSaver", "saveBitmapToUri failed for $dest", e)
+        null
+    } catch (e: SecurityException) {
         android.util.Log.w("MediaStoreSaver", "saveBitmapToUri failed for $dest", e)
         null
     }
@@ -112,7 +133,13 @@ object MediaStoreSaver {
             os.write(bytes)
         }
         dest
-    } catch (e: Exception) {
+    } catch (e: java.io.FileNotFoundException) {
+        android.util.Log.w("MediaStoreSaver", "saveJpegBytesToUri failed for $dest", e)
+        null
+    } catch (e: java.io.IOException) {
+        android.util.Log.w("MediaStoreSaver", "saveJpegBytesToUri failed for $dest", e)
+        null
+    } catch (e: SecurityException) {
         android.util.Log.w("MediaStoreSaver", "saveJpegBytesToUri failed for $dest", e)
         null
     }
@@ -123,7 +150,13 @@ object MediaStoreSaver {
             file.inputStream().use { input -> input.copyTo(os) }
         }
         dest
-    } catch (e: Exception) {
+    } catch (e: java.io.FileNotFoundException) {
+        android.util.Log.w("MediaStoreSaver", "saveVideoFileToUri failed for $dest", e)
+        null
+    } catch (e: java.io.IOException) {
+        android.util.Log.w("MediaStoreSaver", "saveVideoFileToUri failed for $dest", e)
+        null
+    } catch (e: SecurityException) {
         android.util.Log.w("MediaStoreSaver", "saveVideoFileToUri failed for $dest", e)
         null
     }
@@ -135,7 +168,13 @@ object MediaStoreSaver {
                 file.inputStream().use { input -> input.copyTo(os) }
             }
             true
-        } catch (e: Exception) {
+        } catch (e: java.io.FileNotFoundException) {
+            android.util.Log.w("MediaStoreSaver", "saveVideoFile write failed for $uri", e)
+            false
+        } catch (e: java.io.IOException) {
+            android.util.Log.w("MediaStoreSaver", "saveVideoFile write failed for $uri", e)
+            false
+        } catch (e: SecurityException) {
             android.util.Log.w("MediaStoreSaver", "saveVideoFile write failed for $uri", e)
             false
         }

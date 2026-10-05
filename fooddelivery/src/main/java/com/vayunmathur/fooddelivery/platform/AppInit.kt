@@ -3,7 +3,7 @@ package com.vayunmathur.fooddelivery.platform
 import android.content.Context
 import android.util.Log
 import androidx.core.content.edit
-import com.vayunmathur.fooddelivery.api.BitesApi
+import com.vayunmathur.fooddelivery.api.BitesAuth
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 import kotlinx.coroutines.CompletableDeferred
@@ -46,21 +46,24 @@ object AppInit {
                 // pinning to it fails the handshake before any request goes out. STANDARD adds the
                 // Amazon roots.
                 NetworkClient.init(appCtx, TrustBundle.STANDARD)
-            } catch (e: Exception) {
+            } catch (e: IllegalStateException) {
+                Log.w("AppInit", "network warm-up failed", e)
+            } catch (e: SecurityException) {
                 Log.w("AppInit", "network warm-up failed", e)
             }
             try {
                 val prefs = appCtx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                // The application context, not an Activity: BitesApi outlives every Activity.
-                BitesApi.onTokenUpdated = { tokenJson ->
+                // The application context, not an Activity: BitesAuth outlives every Activity.
+                BitesAuth.onTokenUpdated = { tokenJson ->
                     prefs.edit { putString(KEY_TOKEN, tokenJson) }
                 }
-                prefs.getString(KEY_TOKEN, null)?.let { BitesApi.restoreToken(it) }
-            } catch (e: Exception) {
+                prefs.getString(KEY_TOKEN, null)?.let { BitesAuth.restoreToken(it) }
+            } catch (e: SecurityException) {
                 Log.w("AppInit", "token warm-up failed", e)
-            } finally {
-                ready.complete(Unit)
+            } catch (e: IllegalArgumentException) {
+                Log.w("AppInit", "token warm-up failed", e)
             }
+            ready.complete(Unit)
         }
     }
 

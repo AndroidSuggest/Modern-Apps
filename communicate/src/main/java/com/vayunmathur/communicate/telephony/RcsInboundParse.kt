@@ -56,6 +56,24 @@ internal data class InboundRcs(
 private val largeChunks =
     java.util.concurrent.ConcurrentHashMap<String, MutableMap<String, MutableMap<Int, String>>>()
 
+/** Empty-body receipt result for control stanzas. */
+private fun receiptResult(from: String, callId: String): InboundRcs = InboundRcs(
+    conversationId = from,
+    body = "",
+    senderId = from,
+    messageId = "in-$callId",
+    kind = InboundKind.Receipt,
+)
+
+/** Empty-body typing result for is-composing stanzas. */
+private fun typingResult(from: String, callId: String): InboundRcs = InboundRcs(
+    conversationId = from,
+    body = "",
+    senderId = from,
+    messageId = "in-$callId",
+    kind = InboundKind.Typing,
+)
+
 internal fun RcsSyncService.parseEnvelope(message: SipMessage): Envelope? {
     return runCatching {
         // Modem quirk (TestRcsApp RegistrationControllerImpl.repairHeaderSection):
@@ -96,111 +114,96 @@ internal fun RcsSyncService.parseInbound(envelope: Envelope): InboundRcs? {
                 }
             }
             RcsImdn.onReportReceived(raw)
-            return InboundRcs(
-                conversationId = from,
-                body = "",
-                senderId = from,
-                messageId = "in-${envelope.callId}",
-                kind = InboundKind.Receipt,
-            )
+            return receiptResult(from, envelope.callId)
         }
         if (contentType?.contains("im-composing", ignoreCase = true) == true ||
             parseIsComposingBody(raw) != null
         ) {
             RcsSessionManager.onSipRequest("MESSAGE", envelope.callId, from, contentType, raw)
-            return InboundRcs(
-                conversationId = from,
-                body = "",
-                senderId = from,
-                messageId = "in-${envelope.callId}",
-                kind = InboundKind.Typing,
-            )
+            return typingResult(from, envelope.callId)
         }
-        val body = extractTextBody(envelope.raw.toByteArray(Charsets.UTF_8)) ?: return null
-        if (body.isBlank()) return null
-        // Revoke: blank the referenced row, no inbox row.
-        parseRevokeBody(body)?.let { revokedId ->
-            serviceScope.launch {
-                runCatching {
-                    val db = RcsDatabase.getDatabase(this@parseInbound)
-                    db.cachedMessageDao().get(revokedId)?.let {
-                        db.cachedMessageDao().upsert(it.copy(body = ""))
-                    }
+        parseTextInbound(from, envelope, raw)
+    }.getOrNull()
+}
+
+/** Text-body inbound: revoke/edit/body routing. */
+private fun RcsSyncService.parseTextInbound(from: String, envelope: Envelope, raw: String): InboundRcs? {
+    val body = extractTextBody(envelope.raw.toByteArray(Charsets.UTF_8)) ?: return null
+    if (body.isBlank()) return null
+    // Revoke: blank the referenced row, no inbox row.
+    parseRevokeBody(body)?.let { revokedId ->
+        serviceScope.launch {
+            runCatching {
+                val db = RcsDatabase.getDatabase(this@parseTextInbound)
+                db.cachedMessageDao().get(revokedId)?.let {
+                    db.cachedMessageDao().upsert(it.copy(body = ""))
                 }
             }
-            return InboundRcs(
-                conversationId = from,
-                body = "",
-                senderId = from,
-                messageId = "in-${envelope.callId}",
-                kind = InboundKind.Receipt,
-            )
         }
-        // Edit: swap the referenced row body, no new inbox row.
-        parseEditBody(body)?.let { (originalId, newText) ->
-            serviceScope.launch {
-                runCatching {
-                    val db = RcsDatabase.getDatabase(this@parseInbound)
-                    db.cachedMessageDao().get(originalId)?.let {
-                        db.cachedMessageDao().upsert(it.copy(body = newText))
-                    }
+        return receiptResult(from, envelope.callId)
+    }
+    // Edit: swap the referenced row body, no new inbox row.
+    parseEditBody(body)?.let { (originalId, newText) ->
+        serviceScope.launch {
+            runCatching {
+                val db = RcsDatabase.getDatabase(this@parseTextInbound)
+                db.cachedMessageDao().get(originalId)?.let {
+                    db.cachedMessageDao().upsert(it.copy(body = newText))
                 }
             }
-            return InboundRcs(
-                conversationId = from,
-                body = "",
-                senderId = from,
-                messageId = "in-${envelope.callId}",
-                kind = InboundKind.Receipt,
-            )
         }
-        // Geolocation Push → location row.
-        parseGeopushBody(body)?.let { (lat, lon, label) ->
-            return InboundRcs(
-                conversationId = from,
-                body = label ?: "📍 $lat, $lon",
-                senderId = from,
-                messageId = "in-${envelope.callId}-${envelope.viaBranch}",
-                kind = InboundKind.Text,
-                ftUrl = "geo:$lat,$lon",
-                ftMime = "application/vnd.gsma.rcs.geopush+xml",
-                imdnMessageId = extractImdnMessageId(raw),
-            )
-        }
-        // Large Message chunks: buffer per Message-ID; emit only when complete.
-        parseChunkHeader(body)?.let { (chunkId, part, total) ->
-            val complete = bufferLargeChunk(from, chunkId, part, total, body)
-            if (complete == null) {
-                return InboundRcs(
-                    conversationId = from,
-                    body = "",
-                    senderId = from,
-                    messageId = "in-${envelope.callId}",
-                    kind = InboundKind.Receipt,
-                )
-            }
-            return InboundRcs(
-                conversationId = from,
-                body = complete,
-                senderId = from,
-                messageId = "in-$chunkId",
-                kind = InboundKind.Text,
-                imdnMessageId = extractImdnMessageId(raw),
-            )
-        }
-        // FT-over-HTTP descriptors expose URL + mime for the renderer.
-        val ft = RcsFileTransferHttp.parseFtBody(body)
-        InboundRcs(
+        return receiptResult(from, envelope.callId)
+    }
+    return parseBodyContent(from, envelope, raw, body)
+}
+
+/** Geolocation, large-message chunks, and file-transfer bodies. */
+private fun RcsSyncService.parseBodyContent(
+    from: String,
+    envelope: Envelope,
+    raw: String,
+    body: String,
+): InboundRcs {
+    // Geolocation Push → location row.
+    parseGeopushBody(body)?.let { (lat, lon, label) ->
+        return InboundRcs(
             conversationId = from,
-            body = ft?.let { body.substringAfter("\r\n").ifBlank { "[file]" } } ?: body,
+            body = label ?: "📍 $lat, $lon",
             senderId = from,
             messageId = "in-${envelope.callId}-${envelope.viaBranch}",
             kind = InboundKind.Text,
-            ftUrl = ft?.url,
-            ftMime = ft?.mime,
+            ftUrl = "geo:$lat,$lon",
+            ftMime = "application/vnd.gsma.rcs.geopush+xml",
             imdnMessageId = extractImdnMessageId(raw),
         )
-    }.getOrNull()
+    }
+    // Large Message chunks: buffer per Message-ID; emit only when complete.
+    parseChunkHeader(body)?.let { (chunkId, part, total) ->
+        val complete = bufferLargeChunk(from, chunkId, part, total, body)
+        if (complete == null) {
+            return receiptResult(from, envelope.callId)
+        }
+        return InboundRcs(
+            conversationId = from,
+            body = complete,
+            senderId = from,
+            messageId = "in-$chunkId",
+            kind = InboundKind.Text,
+            imdnMessageId = extractImdnMessageId(raw),
+        )
+    }
+    // FT-over-HTTP descriptors expose URL + mime for the renderer.
+    val ft = RcsFileTransferHttp.parseFtBody(body)
+    return InboundRcs(
+        conversationId = from,
+        body = ft?.let { body.substringAfter("\r\n").ifBlank { "[file]" } } ?: body,
+        senderId = from,
+        messageId = "in-${envelope.callId}-${envelope.viaBranch}",
+        kind = InboundKind.Text,
+        ftUrl = ft?.url,
+        ftMime = ft?.mime,
+        imdnMessageId = extractImdnMessageId(raw),
+    )
 }
 
 /**
@@ -217,9 +220,7 @@ internal suspend fun RcsSyncService.handleE2EEInbound(envelope: Envelope): Inbou
     val raw = envelope.raw
     val body = extractTextBody(raw.toByteArray(Charsets.UTF_8)) ?: raw
     // Key-request → auto-publish our key package (one round trip setup).
-    if (contentType?.contains(RcsE2E.CT_KEY_REQUEST, ignoreCase = true) == true ||
-        body.contains(RcsE2E.CT_KEY_REQUEST, ignoreCase = true)
-    ) {
+    if (isKeyRequest(contentType, body)) {
         RcsE2E.localE164(this)?.let { local ->
             RcsKeyDirectory.publishTo(this, local, from)
         }
@@ -227,56 +228,86 @@ internal suspend fun RcsSyncService.handleE2EEInbound(envelope: Envelope): Inbou
     }
     // Key package publication → stash, satisfy pending groups, and create
     // the 1:1 group if none exists yet.
-    if (contentType?.contains(RcsE2E.CT_KEY_PACKAGE, ignoreCase = true) == true ||
-        body.contains(RcsE2E.CT_KEY_PACKAGE, ignoreCase = true)
-    ) {
-        RcsKeyDirectory.parsePublished(body)?.let { kp ->
-            // Identity-change check (§5.4): verified peer with a new package
-            // clears verification (re-key warning path — UI surfaces it).
-            runCatching { RcsE2E.checkPeerIdentityChange(this, from, kp) }
-            RcsPeerKeys.store(this, from, kp)
-            // Pending encrypted groups: create each ready one now.
-            for ((pendingId, packages) in RcsPendingGroups.readyFor(from)) {
-                RcsE2E.localE164(this)?.let { local ->
-                    if (RcsE2E.setupEncryptedGroup(this, local, pendingId, packages)) {
-                        RcsPendingGroups.remove(pendingId)
-                    }
-                }
-            }
-            // Auto-setup: first key package for a 1:1 conversation with no
-            // group creates it and sends Welcome. Closed-loop peers opt in
-            // by running this code; no group forms with non-participants.
-            val conversationId = from
-            if (RcsE2E.groupIdFor(this, conversationId) == null &&
-                !RcsPendingGroups.isPending(conversationId)
-            ) {
-                RcsE2E.localE164(this)?.let { local ->
-                    RcsE2E.setupGroupWithPeer(this, local, conversationId, from, kp)
-                }
-            }
-        }
+    if (isKeyPackage(contentType, body)) {
+        handleKeyPackage(from, body)
         return InboundRcs(from, "", from, "in-kp-${System.currentTimeMillis()}", InboundKind.Typing)
     }
     // Welcome envelope → join the group, then announce with a notice row.
-    if (contentType?.contains(RcsE2E.CT_WELCOME, ignoreCase = true) == true ||
-        body.contains(RcsE2E.CT_WELCOME, ignoreCase = true) == true
-    ) {
-        val welcomeBytes = decodePayloadBody(body) ?: return null
-        val conversationId = from
-        val groupId = RcsE2E.joinEncryptedGroup(this, conversationId, welcomeBytes)
-        if (groupId != null) {
-            // Rotate: publish a fresh key package so future adds work.
-            RcsE2E.localE164(this)?.let { local ->
-                RcsE2E.freshKeyPackage(this, local)
-            }
-            return InboundRcs(
-                conversationId, "🔒 Encrypted chat started", from,
-                "in-welcome-${System.currentTimeMillis()}",
-            )
-        }
-        return null
+    if (isWelcome(contentType, body)) {
+        return handleWelcome(from, body)
     }
     // MLS data (commit or application) → decrypt against the conversation group.
+    return handleMlsData(from, contentType, body)
+}
+
+/** True when the stanza is a key-request. */
+private fun isKeyRequest(contentType: String?, body: String): Boolean =
+    contentType?.contains(RcsE2E.CT_KEY_REQUEST, ignoreCase = true) == true ||
+        body.contains(RcsE2E.CT_KEY_REQUEST, ignoreCase = true)
+
+/** True when the stanza carries a key package publication. */
+private fun isKeyPackage(contentType: String?, body: String): Boolean =
+    contentType?.contains(RcsE2E.CT_KEY_PACKAGE, ignoreCase = true) == true ||
+        body.contains(RcsE2E.CT_KEY_PACKAGE, ignoreCase = true)
+
+/** True when the stanza is a group welcome. */
+private fun isWelcome(contentType: String?, body: String): Boolean =
+    contentType?.contains(RcsE2E.CT_WELCOME, ignoreCase = true) == true ||
+        body.contains(RcsE2E.CT_WELCOME, ignoreCase = true) == true
+
+/** Stash a key package, satisfy pending groups, auto-setup 1:1. */
+private suspend fun RcsSyncService.handleKeyPackage(from: String, body: String) {
+    RcsKeyDirectory.parsePublished(body)?.let { kp ->
+        // Identity-change check (§5.4): verified peer with a new package
+        // clears verification (re-key warning path — UI surfaces it).
+        runCatching { RcsE2E.checkPeerIdentityChange(this, from, kp) }
+        RcsPeerKeys.store(from, kp)
+        // Pending encrypted groups: create each ready one now.
+        for ((pendingId, packages) in RcsPendingGroups.readyFor(from)) {
+            RcsE2E.localE164(this)?.let { local ->
+                if (RcsE2E.setupEncryptedGroup(this, local, pendingId, packages)) {
+                    RcsPendingGroups.remove(pendingId)
+                }
+            }
+        }
+        // Auto-setup: first key package for a 1:1 conversation with no
+        // group creates it and sends Welcome. Closed-loop peers opt in
+        // by running this code; no group forms with non-participants.
+        val conversationId = from
+        if (RcsE2E.groupIdFor(this, conversationId) == null &&
+            !RcsPendingGroups.isPending(conversationId)
+        ) {
+            RcsE2E.localE164(this)?.let { local ->
+                RcsE2E.setupGroupWithPeer(this, local, conversationId, from, kp)
+            }
+        }
+    }
+}
+
+/** Join a welcomed group; notice row, or null when fully absorbed. */
+private suspend fun RcsSyncService.handleWelcome(from: String, body: String): InboundRcs? {
+    val welcomeBytes = decodePayloadBody(body) ?: return null
+    val conversationId = from
+    val groupId = RcsE2E.joinEncryptedGroup(this, conversationId, welcomeBytes)
+    if (groupId != null) {
+        // Rotate: publish a fresh key package so future adds work.
+        RcsE2E.localE164(this)?.let { local ->
+            RcsE2E.freshKeyPackage(this, local)
+        }
+        return InboundRcs(
+            conversationId, "🔒 Encrypted chat started", from,
+            "in-welcome-${System.currentTimeMillis()}",
+        )
+    }
+    return null
+}
+
+/** Decrypt MLS data; visible row for app messages, null otherwise. */
+private suspend fun RcsSyncService.handleMlsData(
+    from: String,
+    contentType: String?,
+    body: String,
+): InboundRcs? {
     val isMls = contentType?.contains(RcsE2E.CT_MLS, ignoreCase = true) == true ||
         contentType?.contains(RcsE2E.CT_COMMIT, ignoreCase = true) == true ||
         RcsE2E.isMlsPayload(body)

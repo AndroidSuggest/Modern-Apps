@@ -9,8 +9,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executor
 
+/** Zoom-out floor for offering the wide-angle zoom-bar entry. */
+private const val WIDE_ZOOM_ENTRY_MAX = 0.95f
+
+/** Tele zoom-bar entries and the tolerance for including them at the range edge. */
+private val TELE_ZOOM_LEVELS = listOf(2f, 5f)
+private const val TELE_ZOOM_TOLERANCE = 0.05f
+
 fun CameraViewModel.setQrResult(text: String?) {
-    _qrResult.value = text
+    qrResultMutable.value = text
 }
 
 /**
@@ -19,61 +26,86 @@ fun CameraViewModel.setQrResult(text: String?) {
  * that would double-apply and could feedback-loop with onZoomRatioChanged.
  */
 fun CameraViewModel.onViewfinderZoomRatio(ratio: Float) {
-    _zoomRatio.value = ratio
+    zoomRatioMutable.value = ratio
     viewModelScope.launch { ds.setString("camera_zoom_ratio", ratio.toString()) }
 }
 
 fun CameraViewModel.setZoomRatio(ratio: Float) {
     val cam = boundCamera
     val zs = cam?.cameraInfo?.zoomState?.value
-    Log.d("NightPreview", "setZoomRatio() requested=$ratio clamped? min=${zs?.minZoomRatio} max=${zs?.maxZoomRatio} current=${zs?.zoomRatio} nightPreviewActive=${_nightPreviewActive.value} photoActive=${_photoSessionActive.value} boundCamera=${cam != null}")
+    Log.d(
+        "NightPreview",
+        "setZoomRatio() requested=$ratio clamped? min=${zs?.minZoomRatio} max=${zs?.maxZoomRatio} " +
+            "current=${zs?.zoomRatio} nightPreviewActive=${nightPreviewActiveMutable.value} " +
+            "photoActive=${photoSessionActiveMutable.value} boundCamera=${cam != null}"
+    )
     val clamped = zs?.let {
         ratio.coerceIn(it.minZoomRatio, it.maxZoomRatio)
     } ?: ratio
-    if (clamped != ratio) Log.w("NightPreview", "setZoomRatio() CLAMPED $ratio -> $clamped due to zoomState min/max – vendor NIGHT often reports max=1x, causing bar to show only 1x")
-    _zoomRatio.value = clamped
+    if (clamped != ratio) {
+        Log.w(
+            "NightPreview",
+            "setZoomRatio() CLAMPED $ratio -> $clamped due to zoomState min/max – " +
+                "vendor NIGHT often reports max=1x, causing bar to show only 1x"
+        )
+    }
+    zoomRatioMutable.value = clamped
     viewModelScope.launch { ds.setString("camera_zoom_ratio", clamped.toString()) }
     try {
         cam?.cameraControl?.setZoomRatio(clamped)
-    } catch (e: Exception) {
+    } catch (e: IllegalStateException) {
+        Log.e("NightPreview", "setZoomRatio() setZoomRatio() threw (was hidden before)", e)
+    } catch (e: IllegalArgumentException) {
         Log.e("NightPreview", "setZoomRatio() setZoomRatio() threw (was hidden before)", e)
     }
 }
 
 /**
  * Restore the previously selected zoom after a (re)bind instead of snapping back to the
- * hardware default. [_zoomRatio] holds the last value the user picked (kept in memory across
+ * hardware default. [zoomRatioMutable] holds the last value the user picked (kept in memory across
  * teardown/rebind and loaded from DataStore on process restart); clamp it to the new lens'
  * supported range and re-apply it to the camera. Fixes issue #631 (zoom reset on resume).
  */
 internal fun CameraViewModel.restoreZoom(minZoom: Float, maxZoom: Float) {
-    val desired = _zoomRatio.value.coerceIn(minZoom, maxZoom)
-    _zoomRatio.value = desired
+    val desired = zoomRatioMutable.value.coerceIn(minZoom, maxZoom)
+    zoomRatioMutable.value = desired
     try {
         boundCamera?.cameraControl?.setZoomRatio(desired)
-    } catch (e: Exception) {
+    } catch (e: IllegalStateException) {
+        Log.e("NightPreview", "restoreZoom() setZoomRatio() threw", e)
+    } catch (e: IllegalArgumentException) {
         Log.e("NightPreview", "restoreZoom() setZoomRatio() threw", e)
     }
 }
 
 fun CameraViewModel.updateZoomLevels(minZoom: Float, maxZoom: Float) {
-    Log.d("NightPreview", "updateZoomLevels() min=$minZoom max=$maxZoom nightPreviewActive=${_nightPreviewActive.value} photoActive=${_photoSessionActive.value} currentRatio=${_zoomRatio.value} thread=${Thread.currentThread().name}")
+    Log.d(
+        "NightPreview",
+        "updateZoomLevels() min=$minZoom max=$maxZoom " +
+            "nightPreviewActive=${nightPreviewActiveMutable.value} " +
+            "photoActive=${photoSessionActiveMutable.value} currentRatio=${zoomRatioMutable.value} " +
+            "thread=${Thread.currentThread().name}"
+    )
     val levels = mutableListOf<Pair<String, Float>>()
     // Wide-angle entry only when the lens can actually zoom out past 1x.
-    if (minZoom < 0.95f) {
+    if (minZoom < WIDE_ZOOM_ENTRY_MAX) {
         levels.add(formatZoomLabel(minZoom) to minZoom)
     }
     levels.add("1x" to 1f)
-    for (tele in listOf(2f, 5f)) {
-        if (tele <= maxZoom + 0.05f) levels.add(formatZoomLabel(tele) to tele)
+    for (tele in TELE_ZOOM_LEVELS) {
+        if (tele <= maxZoom + TELE_ZOOM_TOLERANCE) levels.add(formatZoomLabel(tele) to tele)
     }
-    Log.d("NightPreview", "updateZoomLevels() emitting levels=$levels – if min=1f max=1f, only [1x] will show, explaining 'all zoom levels also disappear'")
-    _availableZoomLevels.value = levels
+    Log.d(
+        "NightPreview",
+        "updateZoomLevels() emitting levels=$levels – if min=1f max=1f, only [1x] will show, " +
+            "explaining 'all zoom levels also disappear'"
+    )
+    availableZoomLevelsMutable.value = levels
 }
 
 fun CameraViewModel.startFocusAndMetering(action: FocusMeteringAction) {
     // A fresh tap clears any existing AE/AF lock.
-    _focusLocked.value = false
+    focusLockedMutable.value = false
     boundCamera?.cameraControl?.startFocusAndMetering(action)
 }
 
@@ -84,12 +116,12 @@ fun CameraViewModel.startFocusAndMetering(action: FocusMeteringAction) {
 fun CameraViewModel.lockFocusAndMetering(action: FocusMeteringAction) {
     val cam = boundCamera ?: return
     cam.cameraControl.startFocusAndMetering(action)
-    _focusLocked.value = true
+    focusLockedMutable.value = true
 }
 
 fun CameraViewModel.clearFocusLock() {
     boundCamera?.cameraControl?.cancelFocusAndMetering()
-    _focusLocked.value = false
+    focusLockedMutable.value = false
 }
 
 fun CameraViewModel.enableTorch(enabled: Boolean) {
@@ -142,27 +174,30 @@ internal fun CameraViewModel.attachDesiredAnalyzer() {
     else analysis.setAnalyzer(executor, analyzer)
 }
 
+/** Recording-timer tick (1s). */
+private const val RECORDING_TIMER_TICK_MS = 1000L
+
 /** Publishes whether the session just bound has an analysis stream, and re-arms the analyzer. */
 internal fun CameraViewModel.onSessionBound() {
-    _analysisStreamActive.value = imageAnalysis != null
+    analysisStreamActiveMutable.value = imageAnalysis != null
     attachDesiredAnalyzer()
 }
 
 internal fun CameraViewModel.startRecordingTimer() {
-    _isRecording.value = true
-    _recordingPaused.value = false
-    _recordingDurationSec.value = 0
+    isRecordingMutable.value = true
+    recordingPausedMutable.value = false
+    recordingDurationSecMutable.value = 0
     recordingTimerJob = viewModelScope.launch {
         while (true) {
-            delay(1000)
-            if (!_recordingPaused.value) _recordingDurationSec.value += 1
+            delay(RECORDING_TIMER_TICK_MS)
+            if (!recordingPausedMutable.value) recordingDurationSecMutable.value += 1
         }
     }
 }
 
 internal fun CameraViewModel.stopRecordingTimer() {
-    _isRecording.value = false
-    _recordingPaused.value = false
+    isRecordingMutable.value = false
+    recordingPausedMutable.value = false
     recordingTimerJob?.cancel()
-    _recordingDurationSec.value = 0
+    recordingDurationSecMutable.value = 0
 }

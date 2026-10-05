@@ -30,6 +30,8 @@ object UpdateNotifications {
     /** Reused for every progress update so the notification is replaced, not stacked. */
     const val ID_PROGRESS = 1
     private const val ID_RESULT = 2
+    /** Notification progress scale: percent. */
+    private const val MAX_PROGRESS = 100
 
     fun ensureChannels(context: Context) {
         context.ensureNotificationChannel(
@@ -58,7 +60,7 @@ object UpdateNotifications {
             .setContentTitle(title)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .setProgress(100, percent.coerceIn(0, 100), percent < 0)
+            .setProgress(MAX_PROGRESS, percent.coerceIn(0, MAX_PROGRESS), percent < 0)
             .setOngoing(true)
             // Without this every progress edit re-alerts, several times a second.
             .setOnlyAlertOnce(true)

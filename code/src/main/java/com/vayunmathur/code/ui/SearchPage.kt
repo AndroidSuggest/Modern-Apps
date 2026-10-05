@@ -49,7 +49,7 @@ fun SearchPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
     LaunchedEffect(query, caseSensitive, useRegex) {
         if (query.isBlank()) return@LaunchedEffect
         delay(250)
-        viewModel.searchProject(query, caseSensitive, useRegex)
+        viewModel.actions.searchProject(query, caseSensitive, useRegex)
     }
 
     AppScaffold(title = stringResource(R.string.search), backStack = backStack, scrollBehavior = appBarScrollBehavior()) { padding ->
@@ -114,7 +114,7 @@ fun SearchPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    viewModel.openSearchResult(result)
+                                    viewModel.actions.openSearchResult(result)
                                     backStack.pop()
                                 }
                                 .padding(start = 24.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),

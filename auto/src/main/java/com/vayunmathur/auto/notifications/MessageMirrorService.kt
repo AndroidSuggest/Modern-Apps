@@ -78,7 +78,10 @@ class MessageMirrorService : NotificationListenerService() {
         return "${sbn.packageName}:${sbn.tag}:${sbn.id}"
     }
 
-    private fun conversationTitle(sbn: StatusBarNotification, latest: NotificationCompat.MessagingStyle.Message): String {
+    private fun conversationTitle(
+        sbn: StatusBarNotification,
+        latest: NotificationCompat.MessagingStyle.Message,
+    ): String {
         val styleTitle = NotificationCompat.MessagingStyle
             .extractMessagingStyleFromNotification(sbn.notification)
             ?.conversationTitle

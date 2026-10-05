@@ -127,11 +127,22 @@ object SafePdfListings {
      * check below is the real guard against a truncated buffer.
      */
     private fun readString(buf: ByteBuffer): String {
-        if (buf.remaining() < 2) throw IllegalArgumentException("readString header truncated")
-        val len = buf.short.toInt() and 0xFFFF
-        if (buf.remaining() < len) throw IllegalArgumentException("readString truncated len=$len remaining=${buf.remaining()}")
+        if (buf.remaining() < STRING_LEN_BYTES) {
+            throw IllegalArgumentException("readString header truncated")
+        }
+        val len = buf.short.toInt() and U16_MASK
+        if (buf.remaining() < len) {
+            throw IllegalArgumentException(
+                "readString truncated len=$len remaining=${buf.remaining()}"
+            )
+        }
         val b = ByteArray(len)
         buf.get(b)
         return String(b, Charsets.UTF_8)
+    }
+
+    private companion object {
+        private const val STRING_LEN_BYTES = 2
+        private const val U16_MASK = 0xFFFF
     }
 }

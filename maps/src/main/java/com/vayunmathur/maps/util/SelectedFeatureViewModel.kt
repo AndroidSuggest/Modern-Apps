@@ -13,7 +13,17 @@ import com.vayunmathur.maps.data.parse
 import com.vayunmathur.maps.data.google.PoiSection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.scan
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.vayunmathur.library.map.GeoPoint
@@ -262,6 +272,10 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
     // is read once per selection (not collected): the flow restarts on the
     // next selection change anyway, and collecting the tab here would re-plan
     // every mode on each tab switch.
+    //
+    // The scan seed: one null per travel mode, merged over as each plan lands.
+    private fun emptyRoutes(): Map<RouteService.TravelMode, RouteService.RouteType?> =
+        RouteService.TravelMode.entries.associateWith { null as RouteService.RouteType? }
     @OptIn(ExperimentalCoroutinesApi::class)
     val routes = selectedFeature
         .flatMapLatest { feature ->
@@ -274,7 +288,7 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
 
                 suspend fun plan(mode: RouteService.TravelMode): RouteService.RouteType? =
                     try {
-                        OfflineRouter.getRouteForMode(application, routeFeature, pos, mode)
+                        OfflineRouterRoadRoutes.getRouteForMode(application, routeFeature, pos, mode)
                     } catch (_: Exception) {
                         null
                     } ?: RouteService.EmptyRoute()
@@ -295,7 +309,7 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
                 }
                 emit(mapOf(selectedMode to first) + rest)
             }
-                .scan(RouteService.TravelMode.entries.associateWith { null as RouteService.RouteType? }) { accumulator, newEntry ->
+                .scan(emptyRoutes()) { accumulator, newEntry ->
                     accumulator + newEntry // Combine the old map with the new calculation
                 }
                 .flowOn(Dispatchers.Default)

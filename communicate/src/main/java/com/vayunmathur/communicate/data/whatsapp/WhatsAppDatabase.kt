@@ -433,13 +433,15 @@ interface WhatsAppE2ESignedPreKeyDao {
 
 @Dao
 interface WhatsAppE2ESenderKeyDao {
-    @Query("SELECT * FROM whatsapp_e2e_sender_keys WHERE address = :address AND deviceId = :deviceId AND distributionId = :distributionId LIMIT 1")
+    @Query("SELECT * FROM whatsapp_e2e_sender_keys WHERE address = :address AND " +
+        "deviceId = :deviceId AND distributionId = :distributionId LIMIT 1")
     suspend fun get(address: String, deviceId: Int, distributionId: String): WhatsAppE2ESenderKey?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entity: WhatsAppE2ESenderKey)
 
-    @Query("DELETE FROM whatsapp_e2e_sender_keys WHERE address = :address AND deviceId = :deviceId AND distributionId = :distributionId")
+    @Query("DELETE FROM whatsapp_e2e_sender_keys WHERE address = :address " +
+        "AND deviceId = :deviceId AND distributionId = :distributionId")
     suspend fun delete(address: String, deviceId: Int, distributionId: String)
 }
 

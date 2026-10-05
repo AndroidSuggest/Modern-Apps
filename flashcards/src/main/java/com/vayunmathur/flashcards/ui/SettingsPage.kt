@@ -26,6 +26,18 @@ import com.vayunmathur.flashcards.R
 import com.vayunmathur.flashcards.Route
 import com.vayunmathur.flashcards.util.FlashcardsViewModel
 import com.vayunmathur.flashcards.util.SettingsActions
+import com.vayunmathur.flashcards.util.setDesiredRetentionImpl
+import com.vayunmathur.flashcards.util.setNewPerDayImpl
+import com.vayunmathur.flashcards.util.setMaxReviewsImpl
+import com.vayunmathur.flashcards.util.setThemeModeImpl
+import com.vayunmathur.flashcards.util.setAutoPlayImpl
+import com.vayunmathur.flashcards.util.setReminderEnabledImpl
+import com.vayunmathur.flashcards.util.setReminderTimeImpl
+import com.vayunmathur.flashcards.util.saveDeckPresetImpl
+import com.vayunmathur.flashcards.util.applyDeckPresetImpl
+import com.vayunmathur.flashcards.util.deleteDeckPresetImpl
+import com.vayunmathur.flashcards.util.optimizeAllDecksImpl
+import com.vayunmathur.flashcards.util.exportApkgImpl
 import com.vayunmathur.flashcards.util.SettingsUiState
 import com.vayunmathur.flashcards.util.ThemeMode
 import com.vayunmathur.library.ui.AlertDialog
@@ -71,26 +83,26 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: FlashcardsViewModel)
 
     val actions = object : SettingsActions {
         override fun back() { backStack.pop() }
-        override fun setDesiredRetention(value: Double) { viewModel.setDesiredRetention(value) }
-        override fun setNewPerDay(value: Int) { viewModel.setNewPerDay(value) }
-        override fun setMaxReviews(value: Int) { viewModel.setMaxReviews(value) }
-        override fun setThemeMode(mode: Int) { viewModel.setThemeMode(mode) }
-        override fun setAutoPlay(enabled: Boolean) { viewModel.setAutoPlay(enabled) }
+        override fun setDesiredRetention(value: Double) { viewModel.setDesiredRetentionImpl(value) }
+        override fun setNewPerDay(value: Int) { viewModel.setNewPerDayImpl(value) }
+        override fun setMaxReviews(value: Int) { viewModel.setMaxReviewsImpl(value) }
+        override fun setThemeMode(mode: Int) { viewModel.setThemeModeImpl(mode) }
+        override fun setAutoPlay(enabled: Boolean) { viewModel.setAutoPlayImpl(enabled) }
         override fun setReminderEnabled(enabled: Boolean) {
             if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 requestNotifications()
             }
-            viewModel.setReminderEnabled(enabled)
+            viewModel.setReminderEnabledImpl(enabled)
         }
         override fun setReminderTime(hour: Int, minute: Int) {
-            viewModel.setReminderTime(hour, minute)
+            viewModel.setReminderTimeImpl(hour, minute)
         }
-        override fun saveDeckPreset(name: String) { viewModel.saveDeckPreset(name) }
-        override fun applyDeckPreset(name: String) { viewModel.applyDeckPreset(name) }
-        override fun deleteDeckPreset(name: String) { viewModel.deleteDeckPreset(name) }
-        override fun optimizeFsrs() { viewModel.optimizeAllDecks() }
+        override fun saveDeckPreset(name: String) { viewModel.saveDeckPresetImpl(name) }
+        override fun applyDeckPreset(name: String) { viewModel.applyDeckPresetImpl(name) }
+        override fun deleteDeckPreset(name: String) { viewModel.deleteDeckPresetImpl(name) }
+        override fun optimizeFsrs() { viewModel.optimizeAllDecksImpl() }
         override fun manageNoteTypes() { backStack.add(Route.NoteTypeList) }
-        override fun exportCollection() { viewModel.exportApkg(null) }
+        override fun exportCollection() { viewModel.exportApkgImpl(null) }
     }
 
     SettingsScreen(state = settings.copy(presets = presets), actions = actions)

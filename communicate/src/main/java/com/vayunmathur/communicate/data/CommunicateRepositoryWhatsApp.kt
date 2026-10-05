@@ -9,6 +9,8 @@ import com.vayunmathur.communicate.data.whatsapp.WhatsAppConversation
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppDatabase
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppServiceData
+import com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager
+import com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallState
 import com.vayunmathur.communicate.data.whatsapp.createGroup
 import com.vayunmathur.communicate.data.whatsapp.placeCall
 import com.vayunmathur.communicate.data.whatsapp.sendContact
@@ -20,6 +22,7 @@ import com.vayunmathur.communicate.data.whatsapp.sendReaction
 import com.vayunmathur.communicate.data.whatsapp.sendReadReceipt
 import com.vayunmathur.communicate.data.whatsapp.sendRevoke
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 
 /**
@@ -119,7 +122,10 @@ suspend fun CommunicateRepository.sendWhatsAppReaction(
 suspend fun CommunicateRepository.editWhatsAppMessage(jid: String, messageId: String, newBody: String): Boolean =
     withContext(Dispatchers.IO) { WhatsAppClient.sendEdit(jid, messageId, newBody) }
 
-suspend fun CommunicateRepository.revokeWhatsAppMessage(jid: String, messageId: String, senderJid: String = ""): Boolean =
+suspend fun CommunicateRepository.revokeWhatsAppMessage(
+    jid: String,
+    messageId: String,
+    senderJid: String = ""): Boolean =
     withContext(Dispatchers.IO) { WhatsAppClient.sendRevoke(jid, messageId, senderJid) }
 
 suspend fun CommunicateRepository.sendWhatsAppPollVote(
@@ -173,7 +179,11 @@ internal suspend fun CommunicateRepository.sendAttachments(
     allOk
 }
 
-suspend fun CommunicateRepository.sendWhatsAppMedia(jid: String, bytes: ByteArray, mimeType: String, fileName: String?): Boolean =
+suspend fun CommunicateRepository.sendWhatsAppMedia(
+    jid: String,
+    bytes: ByteArray,
+    mimeType: String,
+    fileName: String?): Boolean =
     withContext(Dispatchers.IO) { WhatsAppClient.sendMedia(jid, bytes, mimeType, fileName) }
 
 /** True only when the WhatsApp primary client is logged in (needed for send/group ops). */
@@ -206,7 +216,10 @@ suspend fun CommunicateRepository.whatsAppContactDiscovery(
     discoveryContext: String = "SEARCH",
 ): com.vayunmathur.communicate.data.whatsapp.mex.MexResult = withContext(Dispatchers.IO) {
     if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@withContext mexDisabled
-    com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.contactDiscovery(context, rawPhoneNumbers, discoveryContext)
+    com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.contactDiscovery(
+        context,
+        rawPhoneNumbers,
+        discoveryContext)
 }
 
 /** MEX username read (`xwa2_username_get`). */
@@ -225,7 +238,11 @@ suspend fun CommunicateRepository.whatsAppUsernameSet(
     sessionId: String? = null,
 ): com.vayunmathur.communicate.data.whatsapp.mex.MexResult = withContext(Dispatchers.IO) {
     if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@withContext mexDisabled
-    com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.usernameSet(context, username, pin, sessionId = sessionId)
+    com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.usernameSet(
+        context,
+        username,
+        pin,
+        sessionId = sessionId)
 }
 
 /** MEX blocklist read (`xwa2_blocklist_get`). */
@@ -244,7 +261,10 @@ suspend fun CommunicateRepository.whatsAppPresence(
     lastActiveFilter: String? = null,
 ): com.vayunmathur.communicate.data.whatsapp.mex.MexResult = withContext(Dispatchers.IO) {
     if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@withContext mexDisabled
-    com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.getOnlineOrLastStatus(context, lidJids, lastActiveFilter)
+    com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.getOnlineOrLastStatus(
+        context,
+        lidJids,
+        lastActiveFilter)
 }
 
 /**
@@ -274,55 +294,11 @@ suspend fun CommunicateRepository.whatsAppSyncContacts(
 }
 
 // ---- WhatsApp calling (Phase D/E), dev-gated pass-throughs to the call manager ----
+// See CommunicateRepositoryWhatsAppCalls.kt.
 
 /** Observable call state for the WhatsApp calling UI. */
-val CommunicateRepository.whatsAppCallState: kotlinx.coroutines.flow.StateFlow<com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallState>
-    get() = com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.state
-
-/** Place a WhatsApp audio/video call to [conversationId] (a `wa:<jid>` id or bare JID). */
-fun CommunicateRepository.whatsAppPlaceCall(conversationId: String, video: Boolean = false) {
-    if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return
-    WhatsAppClient.placeCall(conversationId, video)
-}
-
-fun CommunicateRepository.whatsAppAnswerCall() {
-    if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return
-    com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.answer()
-}
-
-fun CommunicateRepository.whatsAppRejectCall() {
-    if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return
-    com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.reject()
-}
-
-fun CommunicateRepository.whatsAppHangupCall() {
-    if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return
-    com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.hangup()
-}
-
-fun CommunicateRepository.whatsAppSetCallMuted(muted: Boolean) =
-    com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.setMuted(muted)
-
-fun CommunicateRepository.whatsAppSetCallSpeaker(on: Boolean) =
-    com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.setSpeaker(on)
-
-/**
- * Create a WhatsApp group with [subject] and the given [contacts] (phone numbers / addresses).
- * Each contact is normalized to a full WhatsApp user JID before the create IQ is sent. Returns
- * the new group's `@g.us` JID on success so the caller can open the thread, or null on failure.
- */
-suspend fun CommunicateRepository.createWhatsAppGroup(
-    context: Context,
-    subject: String,
-    contacts: List<String>,
-): String? = withContext(Dispatchers.IO) {
-    val jids = contacts
-        .map { toWhatsAppJid(context, it) }
-        .filter { it.endsWith("@s.whatsapp.net") }
-        .distinct()
-    if (jids.isEmpty()) return@withContext null
-    WhatsAppClient.createGroup(subject, jids)
-}
+val CommunicateRepository.whatsAppCallState: StateFlow<WhatsAppCallState>
+    get() = WhatsAppCallManager.state
 
 suspend fun CommunicateRepository.sendWhatsAppReadReceipt(
     jid: String,
@@ -359,7 +335,7 @@ suspend fun CommunicateRepository.markWhatsAppRead(
     // For groups the receipt needs the participant; 1:1 goes to the chat JID itself.
     val sender = if (jid.endsWith("@g.us")) lastInbound.senderJid.takeIf { it.isNotBlank() } else null
     runCatching {
-        WhatsAppClient.sendReadReceipt(jid, lastInbound.messageId, lastInbound.timestamp / 1000, sender)
+        WhatsAppClient.sendReadReceipt(jid, lastInbound.messageId, lastInbound.timestamp / MS_PER_SECOND, sender)
     }
     lastInbound.messageId
 }
@@ -374,7 +350,10 @@ private fun CommunicateRepository.jidToDisplayAddress(jid: String): String {
     return if (phone.isNotEmpty() && phone.all { it.isDigit() }) "+$phone" else phone
 }
 
-private fun CommunicateRepository.whatsAppDisplayName(context: Context, jid: String, sd: WhatsAppServiceData?): String? {
+private fun CommunicateRepository.whatsAppDisplayName(
+    context: Context,
+    jid: String,
+    sd: WhatsAppServiceData?): String? {
     if (jid.endsWith("@g.us")) return sd?.senderName // group display name not cached in v1
     val phone = jidLocalPart(jid)
     return findContactName(context, "+$phone") ?: sd?.senderName
@@ -403,7 +382,11 @@ internal fun CommunicateRepository.toWhatsAppJid(context: Context, address: Stri
 }
 
 /** Insert an outgoing WhatsApp message into the local cache so it shows in our own thread. */
-internal suspend fun CommunicateRepository.cacheOutgoingWhatsApp(context: Context, jid: String, body: String, messageId: String) {
+internal suspend fun CommunicateRepository.cacheOutgoingWhatsApp(
+    context: Context,
+    jid: String,
+    body: String,
+    messageId: String) {
     runCatching {
         val db = WhatsAppDatabase.getDatabase(context)
         val now = System.currentTimeMillis()

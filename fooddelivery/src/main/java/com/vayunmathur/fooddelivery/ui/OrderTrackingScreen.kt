@@ -56,7 +56,7 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.util.sharedText
 import android.util.Log
 import com.vayunmathur.fooddelivery.R
-import com.vayunmathur.fooddelivery.api.BitesApi
+import com.vayunmathur.fooddelivery.api.BitesOrders
 import com.vayunmathur.fooddelivery.data.Order
 import com.vayunmathur.fooddelivery.data.OrderStage
 import com.vayunmathur.fooddelivery.notifications.OrderTrackingService
@@ -91,7 +91,7 @@ fun OrderTrackingScreen(orderId: Int, onBack: () -> Unit) {
         // opened from the Orders tab (or a re-opened app) is covered. Idempotent.
         OrderTrackingService.start(context, orderId)
         while (true) {
-            val found = BitesApi.getOrders().firstOrNull { it.id == orderId }
+            val found = BitesOrders.getOrders().firstOrNull { it.id == orderId }
             order = found
             Log.d("Tracking", "order=${found?.id} stage=${found?.stage} " +
                 "driver=${found?.driverPosition} eta=${found?.etaMillis}")

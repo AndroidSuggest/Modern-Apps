@@ -74,11 +74,11 @@ class LocationReportingTask(
         val fixes = resolveFixes(wifiIds, cellIds, allIds)
         if (fixes.isEmpty()) return null
 
-        val interleaved = DoubleArray(fixes.size * 3)
+        val interleaved = DoubleArray(fixes.size * COORDS_PER_FIX)
         for ((i, f) in fixes.withIndex()) {
-            interleaved[i * 3] = f.latitude
-            interleaved[i * 3 + 1] = f.longitude
-            interleaved[i * 3 + 2] = f.accuracyMeters
+            interleaved[i * COORDS_PER_FIX] = f.latitude
+            interleaved[i * COORDS_PER_FIX + 1] = f.longitude
+            interleaved[i * COORDS_PER_FIX + 2] = f.accuracyMeters
         }
         val out = NetworkLocationNative.estimatePosition(interleaved) ?: return null
         return DevicePosition(out[0], out[1], out[2])
@@ -124,5 +124,8 @@ class LocationReportingTask(
 
     private companion object {
         const val MIN_INTERVAL_MS = 1_000L
+
+        /** Coordinates per fix in the interleaved native array (lat, lon, accuracy). */
+        const val COORDS_PER_FIX = 3
     }
 }

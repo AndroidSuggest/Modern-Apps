@@ -20,9 +20,15 @@ fun Navigation(viewModel: MusicBrainzViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.Search)
     MainNavigation(backStack) {
         entry<Route.Search>(metadata = ListPage()) { SearchPage(backStack, viewModel) }
-        entry<Route.Artist>(metadata = ListDetailPage() + MorphPage()) { ArtistPage(backStack, viewModel, it.artistId) }
-        entry<Route.ReleaseGroup>(metadata = ListDetailPage() + MorphPage()) { ReleaseGroupPage(backStack, viewModel, it.releaseGroupId) }
-        entry<Route.Release>(metadata = ListDetailPage() + MorphPage()) { ReleasePage(backStack, viewModel, it.releaseId) }
+        entry<Route.Artist>(metadata = ListDetailPage() + MorphPage()) {
+            ArtistPage(backStack, viewModel, it.artistId)
+        }
+        entry<Route.ReleaseGroup>(metadata = ListDetailPage() + MorphPage()) {
+            ReleaseGroupPage(backStack, viewModel, it.releaseGroupId)
+        }
+        entry<Route.Release>(metadata = ListDetailPage() + MorphPage()) {
+            ReleasePage(backStack, viewModel, it.releaseId)
+        }
         entry<Route.Downloads>(metadata = ListDetailPage()) { DownloadsPage(backStack, viewModel) }
         entry<Route.Settings>(metadata = ListDetailPage()) { SettingsPage(backStack, viewModel) }
         entry<Route.TidalLogin>(metadata = ListDetailPage()) { TidalLoginPage(backStack, viewModel) }

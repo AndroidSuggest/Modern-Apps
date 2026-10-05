@@ -38,7 +38,6 @@ internal fun rememberRcsPeerTyping(
 
 /** Fire an outbound typing report for a draft change (RCS 1:1 only). */
 internal fun kotlinx.coroutines.CoroutineScope.sendRcsTyping(
-    context: android.content.Context,
     line: CommunicateLine,
     isGroup: Boolean,
     remoteId: String?,
@@ -49,7 +48,7 @@ internal fun kotlinx.coroutines.CoroutineScope.sendRcsTyping(
     val peer = remoteId?.takeIf { it.isNotBlank() } ?: address
     launch {
         com.vayunmathur.communicate.data.rcs.RcsTypingThrottle.onDraftChanged(
-            context, peer, draft,
+            peer, draft,
         )
     }
 }

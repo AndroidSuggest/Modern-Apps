@@ -23,6 +23,11 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 @OptIn(ExperimentalEncodingApi::class)
 object SignalSealedSender {
     private const val TAG = "SignalSealedSender"
+    private const val GCM_TAG_BITS = 128
+    private const val GCM_IV_BYTES = 12
+    private const val BLOCK_BYTES = 16
+    private const val BASE64_QUAD = 4
+    private const val BASE64_SINGLE_PAD = 3
 
     /** Refresh this far ahead of expiry so a send never races the rotation. */
     private const val EXPIRY_BUFFER_MS = 24 * 60 * 60 * 1000L
@@ -60,8 +65,8 @@ object SignalSealedSender {
                     includesE164 = fetched.senderE164.isPresent,
                 ),
             )
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not cache the sender certificate", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not cache the sender certificate", expected)
         }
         return fetched
     }
@@ -80,8 +85,8 @@ object SignalSealedSender {
                 headers = mapOf("Authorization" to "Basic $authHeader"),
                 sslSocketFactory = sslSocketFactory,
             )
-        } catch (t: Throwable) {
-            Log.w(TAG, "delivery certificate fetch failed", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "delivery certificate fetch failed", expected)
             return null
         }
         if (!resp.isSuccess) {
@@ -107,8 +112,8 @@ object SignalSealedSender {
         }
         return try {
             SenderCertificate(decodeBase64(encoded))
-        } catch (t: Throwable) {
-            warn("delivery certificate did not parse: ${t.message}")
+        } catch (expected: Throwable) {
+            warn("delivery certificate did not parse: ${expected.message}")
             null
         }
     }
@@ -130,8 +135,8 @@ object SignalSealedSender {
         }
         try {
             db.profileKeyDao().upsert(SignalProfileKey(address = aci, profileKey = profileKey))
-        } catch (t: Throwable) {
-            Log.w(TAG, "could not store the profile key for $aci", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "could not store the profile key for $aci", expected)
         }
     }
 
@@ -148,11 +153,11 @@ object SignalSealedSender {
             cipher.init(
                 Cipher.ENCRYPT_MODE,
                 SecretKeySpec(profileKey, "AES"),
-                GCMParameterSpec(128, ByteArray(12)),
+                GCMParameterSpec(GCM_TAG_BITS, ByteArray(GCM_IV_BYTES)),
             )
-            cipher.doFinal(ByteArray(16)).copyOf(16)
-        } catch (t: Throwable) {
-            Log.w(TAG, "access key derivation failed", t)
+            cipher.doFinal(ByteArray(BLOCK_BYTES)).copyOf(BLOCK_BYTES)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "access key derivation failed", expected)
             null
         }
     }
@@ -161,9 +166,9 @@ object SignalSealedSender {
         "$ACCESS_KEY_HEADER:${Base64.Default.encode(accessKey)}"
 
     private fun decodeBase64(value: String): ByteArray {
-        val padded = when (value.length % 4) {
+        val padded = when (value.length % BASE64_QUAD) {
             2 -> "$value=="
-            3 -> "$value="
+            BASE64_SINGLE_PAD -> "$value="
             else -> value
         }
         return Base64.Default.decode(padded)

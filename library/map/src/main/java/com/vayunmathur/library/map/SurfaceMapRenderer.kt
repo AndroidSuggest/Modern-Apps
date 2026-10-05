@@ -71,7 +71,13 @@ import java.io.File
  *   widths, icons and text with it, so a wrong value gives a legible-but-wrong map rather
  *   than a visible failure.
  * @param onFrame called on the main thread after each frame that was actually presented.
+ *
+ * Public setters mirror the render-state surface one-for-one (palette, layers, puck,
+ * markers, vehicles, route, rail, traffic, region, connectivity, Moon textures); the
+ * route/traffic/picking halves live as extensions in SurfaceMapOverlays.kt, so this
+ * file holds only frame-loop, surface-lifecycle and attach-replay logic.
  */
+@Suppress("TooManyFunctions")
 class SurfaceMapRenderer(
     context: Context,
     private val density: Float,
@@ -127,13 +133,7 @@ class SurfaceMapRenderer(
      * gesture or animation moves it, so this is the backstop under the push channel
      * `VulkanMapSurface` installs.
      */
-    private var lastPosition: CameraPosition? = null
-    private var lastWidthDp = 0f
-    private var lastHeightDp = 0f
-    /** The globe flag the last frame was drawn with — part of the change backstop above. */
-    private var lastGlobe = false
-    /** The Moon flag the last frame was drawn with — part of the change backstop above. */
-    private var lastMoon = false
+    private var lastFrame: FrameSnapshot? = null
 
     /**
      * Where the map is looking, and which way is up. Read once per frame on the main
@@ -356,7 +356,7 @@ class SurfaceMapRenderer(
         this.heightPx = heightPx
         // A new native renderer has drawn nothing, so the previous surface's snapshot must not
         // let the camera diff conclude the first frame changed nothing.
-        lastPosition = null
+        lastFrame = null
         if (!MapNative.isAvailable) {
             Log.e(TAG, "libmap_renderer.so did not load; the map will not draw")
             renderState = MapRenderState.Unavailable(MapRenderState.Reason.RendererLibraryMissing)
@@ -458,67 +458,81 @@ class SurfaceMapRenderer(
      * presented frame rather than to wall-clock jitter.
      */
     fun renderFrame(frameTimeNanos: Long): Boolean {
-        if (handle == 0L) return false
-        val position: CameraPosition
-        val widthDp: Float
-        val heightDp: Float
+        val snapshot = readFrameSnapshot() ?: return false
+        trackFrameChange(snapshot)
+        val drawn = renderSnapshot(snapshot, frameTimeNanos)
+        if (drawn) onFrame()
+        if (!regionResolved) applyRegionMask()
+        return drawn
+    }
+
+    /** Camera + viewport + globe state for one frame, or null when nothing can draw. */
+    private data class FrameSnapshot(
+        val position: CameraPosition,
+        val widthDp: Float,
+        val heightDp: Float,
+        val globe: Boolean,
+        val moon: Boolean
+    ) {
+        /** True when this frame would draw anything different from [previous]. */
+        fun hasChangedSince(previous: FrameSnapshot?): Boolean = previous == null || this != previous
+    }
+
+    private fun readFrameSnapshot(): FrameSnapshot? {
+        if (handle == 0L) return null
+        val state = composeCamera
+        if (state != null) {
+            val viewport = state.viewportDp ?: return null
+            val position = state.position
+            val globe = state.globeEnabled && position.zoom < GLOBE_DETAIL_ZOOM
+            return FrameSnapshot(
+                position = position,
+                widthDp = viewport.width,
+                heightDp = viewport.height,
+                globe = globe,
+                moon = globe && state.body == MapBody.Moon
+            )
+        }
+        if (widthPx <= 0 || heightPx <= 0 || density <= 0f) return null
+        val globe = globeEnabled && camera.zoom < GLOBE_DETAIL_ZOOM
+        return FrameSnapshot(
+            position = camera,
+            widthDp = widthPx / density,
+            heightDp = heightPx / density,
+            globe = globe,
+            moon = globe && body == MapBody.Moon
+        )
+    }
+
+    // The backstop for a camera that moved without telling us: the Compose path pulls its
+    // camera out of a CameraState here, and a gesture that somehow reached it without
+    // waking the loop would otherwise draw one frame and settle mid-movement.
+    private fun trackFrameChange(snapshot: FrameSnapshot) {
+        if (!snapshot.hasChangedSince(lastFrame)) return
+        lastFrame = snapshot
+        lastChangeNanos = System.nanoTime()
+    }
+
+    private fun renderSnapshot(snapshot: FrameSnapshot, frameTimeNanos: Long): Boolean {
         // The Compose path carries the twist-gesture bearing end to end: `CameraState`
         // holds it, `Projection` rotates overlays with it, and the native frame below draws
         // the basemap with it — so the basemap and everything positioned through the
         // projection turn together. Tilt is honoured the same way on both paths.
-        val bearing: Float
-        // The globe flag, pulled per frame like the camera itself (see `globeEnabled`):
-        // past the detail threshold both sides use the flat path bit-identically.
-        val globe: Boolean
-        // The body, pulled per frame like the globe flag: Moon only reads while
-        // the globe is active (past the threshold both sides use flat Earth).
-        val moon: Boolean
-        val state = composeCamera
-        if (state != null) {
-            val viewport = state.viewportDp ?: return false
-            position = state.position
-            widthDp = viewport.width
-            heightDp = viewport.height
-            bearing = position.bearing.toFloat()
-            globe = state.globeEnabled && position.zoom < GLOBE_DETAIL_ZOOM
-            moon = globe && state.body == MapBody.Moon
-        } else {
-            if (widthPx <= 0 || heightPx <= 0 || density <= 0f) return false
-            position = camera
-            widthDp = widthPx / density
-            heightDp = heightPx / density
-            bearing = position.bearing.toFloat()
-            globe = globeEnabled && position.zoom < GLOBE_DETAIL_ZOOM
-            moon = globe && body == MapBody.Moon
-        }
-        // The backstop for a camera that moved without telling us: the Compose path pulls its
-        // camera out of a CameraState here, and a gesture that somehow reached it without
-        // waking the loop would otherwise draw one frame and settle mid-movement.
-        if (position != lastPosition || widthDp != lastWidthDp || heightDp != lastHeightDp || globe != lastGlobe || moon != lastMoon) {
-            lastPosition = position
-            lastWidthDp = widthDp
-            lastHeightDp = heightDp
-            lastGlobe = globe
-            lastMoon = moon
-            lastChangeNanos = System.nanoTime()
-        }
-        val drawn = MapNative.render(
+        val position = snapshot.position
+        return MapNative.render(
             handle,
             position.target.longitude.toFloat(),
             position.target.latitude.toFloat(),
             position.zoom.toFloat(),
-            bearing,
+            position.bearing.toFloat(),
             position.pitch.toFloat(),
-            widthDp,
-            heightDp,
+            snapshot.widthDp,
+            snapshot.heightDp,
             density,
             frameTimeNanos,
-            globe,
-            moon,
+            snapshot.globe,
+            snapshot.moon,
         )
-        if (drawn) onFrame()
-        if (!regionResolved) applyRegionMask()
-        return drawn
     }
 
     private fun syncFrameLoop() {

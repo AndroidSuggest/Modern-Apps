@@ -162,30 +162,54 @@ object GalMessage {
 /**
  * Service ids as advertised in the head unit's discovery response, which double as the
  * channel ids. Mirrors gearhead's internal `rro` enum.
+ *
+ * The ids live at file level (not in the companion): enum entries are initialised
+ * before the companion object, so entries cannot read companion constants.
  */
+private const val AUDIO_SINK_GUIDANCE_ID = 3
+private const val AUDIO_SINK_SYSTEM_ID = 4
+private const val AUDIO_SINK_MEDIA_ID = 5
+private const val AUDIO_SOURCE_ID = 6
+private const val SENSOR_SOURCE_ID = 7
+private const val INPUT_SOURCE_ID = 8
+private const val BLUETOOTH_ID = 9
+private const val NAVIGATION_STATUS_ID = 10
+private const val MEDIA_PLAYBACK_STATUS_ID = 11
+private const val MEDIA_BROWSER_ID = 12
+private const val PHONE_STATUS_ID = 13
+private const val NOTIFICATION_ID = 14
+private const val RADIO_ID = 15
+private const val VENDOR_EXTENSION_ID = 16
+private const val WIFI_PROJECTION_ID = 17
+private const val WIFI_DISCOVERY_ID = 18
+private const val CAR_CONTROL_ID = 19
+private const val CAR_LOCAL_MEDIA_ID = 20
+private const val BUFFERED_MEDIA_SINK_ID = 21
+private const val CAR_INTENT_ID = 22
+
 enum class GalService(val id: Int) {
     CONTROL(1),
     VIDEO_SINK(2),
-    AUDIO_SINK_GUIDANCE(3),
-    AUDIO_SINK_SYSTEM(4),
-    AUDIO_SINK_MEDIA(5),
-    AUDIO_SOURCE(6),
-    SENSOR_SOURCE(7),
-    INPUT_SOURCE(8),
-    BLUETOOTH(9),
-    NAVIGATION_STATUS(10),
-    MEDIA_PLAYBACK_STATUS(11),
-    MEDIA_BROWSER(12),
-    PHONE_STATUS(13),
-    NOTIFICATION(14),
-    RADIO(15),
-    VENDOR_EXTENSION(16),
-    WIFI_PROJECTION(17),
-    WIFI_DISCOVERY(18),
-    CAR_CONTROL(19),
-    CAR_LOCAL_MEDIA(20),
-    BUFFERED_MEDIA_SINK(21),
-    CAR_INTENT(22),
+    AUDIO_SINK_GUIDANCE(AUDIO_SINK_GUIDANCE_ID),
+    AUDIO_SINK_SYSTEM(AUDIO_SINK_SYSTEM_ID),
+    AUDIO_SINK_MEDIA(AUDIO_SINK_MEDIA_ID),
+    AUDIO_SOURCE(AUDIO_SOURCE_ID),
+    SENSOR_SOURCE(SENSOR_SOURCE_ID),
+    INPUT_SOURCE(INPUT_SOURCE_ID),
+    BLUETOOTH(BLUETOOTH_ID),
+    NAVIGATION_STATUS(NAVIGATION_STATUS_ID),
+    MEDIA_PLAYBACK_STATUS(MEDIA_PLAYBACK_STATUS_ID),
+    MEDIA_BROWSER(MEDIA_BROWSER_ID),
+    PHONE_STATUS(PHONE_STATUS_ID),
+    NOTIFICATION(NOTIFICATION_ID),
+    RADIO(RADIO_ID),
+    VENDOR_EXTENSION(VENDOR_EXTENSION_ID),
+    WIFI_PROJECTION(WIFI_PROJECTION_ID),
+    WIFI_DISCOVERY(WIFI_DISCOVERY_ID),
+    CAR_CONTROL(CAR_CONTROL_ID),
+    CAR_LOCAL_MEDIA(CAR_LOCAL_MEDIA_ID),
+    BUFFERED_MEDIA_SINK(BUFFERED_MEDIA_SINK_ID),
+    CAR_INTENT(CAR_INTENT_ID),
     ;
 
     companion object {

@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -65,7 +66,11 @@ class WallpaperViewModel(application: Application) : AndroidViewModel(applicatio
                 prev?.recycle()
                 _bitmap.value = argb
                 _loadState.value = WallpaperLoadState.Loaded
-            } catch (e: Exception) {
+            } catch (e: IOException) {
+                Log.e(TAG, "wallpaper decode failed for $uriString", e)
+                prev?.let { _bitmap.value = it }
+                _loadState.value = WallpaperLoadState.Failed
+            } catch (e: SecurityException) {
                 Log.e(TAG, "wallpaper decode failed for $uriString", e)
                 prev?.let { _bitmap.value = it }
                 _loadState.value = WallpaperLoadState.Failed
@@ -94,6 +99,12 @@ fun WallpaperViewModelFactory(application: Application): ViewModelProvider.Facto
 object WallpaperUtil {
 
     const val TAG = "WallpaperUtil"
+
+    private fun hasValidCropInputs(srcW: Int, srcH: Int, baseDisplayW: Float, baseDisplayH: Float): Boolean {
+        val hasSource = srcW > 0 && srcH > 0
+        val hasDisplay = baseDisplayW > 0f && baseDisplayH > 0f
+        return hasSource && hasDisplay
+    }
 
     /**
      * Result of the set-wallpaper operation.
@@ -176,7 +187,10 @@ object WallpaperUtil {
             } finally {
                 opaqueBmp.recycle()
             }
-        } catch (e: Exception) {
+        } catch (e: IOException) {
+            Log.e(TAG, "setWallpaper failed", e)
+            SetResult.Failure(e)
+        } catch (e: SecurityException) {
             Log.e(TAG, "setWallpaper failed", e)
             SetResult.Failure(e)
         } catch (oom: OutOfMemoryError) {
@@ -210,7 +224,7 @@ object WallpaperUtil {
         containerW: Float,
         containerH: Float,
     ): Rect {
-        if (srcW <= 0 || srcH <= 0 || baseDisplayW <= 0f || baseDisplayH <= 0f) {
+        if (!hasValidCropInputs(srcW, srcH, baseDisplayW, baseDisplayH)) {
             return Rect(0, 0, srcW.coerceAtLeast(1), srcH.coerceAtLeast(1))
         }
         val effW = baseDisplayW * zoom

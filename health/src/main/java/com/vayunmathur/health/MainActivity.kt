@@ -82,6 +82,7 @@ import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
 import com.vayunmathur.library.ui.dialog.TimePickerDialogContent
 import com.vayunmathur.library.util.DialogPage
+import com.vayunmathur.library.util.EntryProviderScope
 import com.vayunmathur.library.util.ListDetailPage
 import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
@@ -93,21 +94,42 @@ import kotlinx.serialization.Serializable
 
 val CLASSES = setOf(
     // Activity & Energy
-    StepsRecord::class, WheelchairPushesRecord::class, DistanceRecord::class, TotalCaloriesBurnedRecord::class,
-    ActiveCaloriesBurnedRecord::class, BasalMetabolicRateRecord::class, FloorsClimbedRecord::class, ElevationGainedRecord::class,
+    StepsRecord::class,
+    WheelchairPushesRecord::class,
+    DistanceRecord::class,
+    TotalCaloriesBurnedRecord::class,
+    ActiveCaloriesBurnedRecord::class,
+    BasalMetabolicRateRecord::class,
+    FloorsClimbedRecord::class,
+    ElevationGainedRecord::class,
 
     // Vitals & Clinical
-    HeartRateRecord::class, RestingHeartRateRecord::class, HeartRateVariabilityRmssdRecord::class, RespiratoryRateRecord::class,
-    OxygenSaturationRecord::class, BloodPressureRecord::class, BloodGlucoseRecord::class, Vo2MaxRecord::class, SkinTemperatureRecord::class,
+    HeartRateRecord::class,
+    RestingHeartRateRecord::class,
+    HeartRateVariabilityRmssdRecord::class,
+    RespiratoryRateRecord::class,
+    OxygenSaturationRecord::class,
+    BloodPressureRecord::class,
+    BloodGlucoseRecord::class,
+    Vo2MaxRecord::class,
+    SkinTemperatureRecord::class,
 
     // Body Composition
-    WeightRecord::class, HeightRecord::class, BodyFatRecord::class, LeanBodyMassRecord::class, BoneMassRecord::class, BodyWaterMassRecord::class,
+    WeightRecord::class,
+    HeightRecord::class,
+    BodyFatRecord::class,
+    LeanBodyMassRecord::class,
+    BoneMassRecord::class,
+    BodyWaterMassRecord::class,
 
     // Exercise
     ExerciseSessionRecord::class,
 
     // Lifestyle & Nutrition
-    MindfulnessSessionRecord::class, HydrationRecord::class, NutritionRecord::class, SleepSessionRecord::class
+    MindfulnessSessionRecord::class,
+    HydrationRecord::class,
+    NutritionRecord::class,
+    SleepSessionRecord::class,
 )
 
 val PERMISSIONS = CLASSES.map { HealthPermission.getReadPermission(it) }.toSet() + 
@@ -272,28 +294,42 @@ fun Navigation(viewModel: HealthViewModel, medicalViewModel: MedicalViewModel) {
         bottomBar = {
             com.vayunmathur.library.util.BottomNavBar(
                 backStack = backStack,
-                pages = listOf(
-                    com.vayunmathur.library.util.BottomBarItem(
-                        stringResource(R.string.nav_today),
-                        Route.Today,
-                    ) { IconFavorite() },
-                    com.vayunmathur.library.util.BottomBarItem(
-                        stringResource(R.string.nav_nutrition),
-                        Route.NutritionDetails,
-                    ) { IconFire() },
-                    com.vayunmathur.library.util.BottomBarItem(
-                        stringResource(R.string.nav_body),
-                        Route.Body,
-                    ) { IconBodySystem() },
-                    com.vayunmathur.library.util.BottomBarItem(
-                        stringResource(R.string.nav_medical),
-                        Route.Medical,
-                    ) { IconMedicalServices() },
-                ),
+                pages = bottomBarItems(),
                 currentPage = backStack.last()
             )
         }
     ) {
+        mainEntries(backStack, viewModel)
+        medicalEntries(backStack, medicalViewModel)
+    }
+}
+
+/** The four bottom tabs, in order. */
+@Composable
+private fun bottomBarItems() = listOf(
+    com.vayunmathur.library.util.BottomBarItem(
+        stringResource(R.string.nav_today),
+        Route.Today,
+    ) { IconFavorite() },
+    com.vayunmathur.library.util.BottomBarItem(
+        stringResource(R.string.nav_nutrition),
+        Route.NutritionDetails,
+    ) { IconFire() },
+    com.vayunmathur.library.util.BottomBarItem(
+        stringResource(R.string.nav_body),
+        Route.Body,
+    ) { IconBodySystem() },
+    com.vayunmathur.library.util.BottomBarItem(
+        stringResource(R.string.nav_medical),
+        Route.Medical,
+) { IconMedicalServices() },
+)
+
+/** Fitness and nutrition destinations. */
+private fun EntryProviderScope<Route>.mainEntries(
+    backStack: NavBackStack<Route>,
+    viewModel: HealthViewModel,
+) {
         entry<Route.Today>(metadata = SiblingPage()) {
             TodayPage(backStack, viewModel)
         }
@@ -321,6 +357,13 @@ fun Navigation(viewModel: HealthViewModel, medicalViewModel: MedicalViewModel) {
         entry<Route.ExerciseDetails>(metadata = MorphPage()) {
             ExerciseDetailsPage(backStack, viewModel)
         }
+}
+
+/** Medical records destinations. */
+private fun EntryProviderScope<Route>.medicalEntries(
+    backStack: NavBackStack<Route>,
+    medicalViewModel: MedicalViewModel,
+) {
         entry<Route.Medical>(metadata = SiblingPage() + ListPage()) {
             MedicalPage(backStack, medicalViewModel)
         }
@@ -348,5 +391,4 @@ fun Navigation(viewModel: HealthViewModel, medicalViewModel: MedicalViewModel) {
         entry<Route.MedicalTimePicker>(metadata = DialogPage()) {
             TimePickerDialogContent(backStack, it.key, it.initialTime)
         }
-    }
 }

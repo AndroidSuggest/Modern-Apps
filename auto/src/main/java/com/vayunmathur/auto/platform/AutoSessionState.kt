@@ -455,7 +455,7 @@ object AutoSessionState {
                     while (frameTimes.isNotEmpty() && now - frameTimes.first() > FPS_WINDOW_MS) {
                         frameTimes.removeFirst()
                     }
-                    frameTimes.size * 1_000.0 / FPS_WINDOW_MS
+                    frameTimes.size * MILLIS_PER_SECOND / FPS_WINDOW_MS
                 }
                 _encodedFps.value = fps
                 // Blend this frame's encode-to-send latency into the rolling mean.
@@ -520,20 +520,50 @@ object AutoSessionState {
     /** Records an audio/mic observation. Thread-safe like every other flow write here. */
     fun onAudioEvent(event: AudioEvent) {
         when (event) {
+            is AudioEvent.SinkSetup,
+            is AudioEvent.SinkStatus,
+            is AudioEvent.SinkStarted,
+            is AudioEvent.SinkStopped,
+            -> onSinkEvent(event)
+
+            is AudioEvent.MicTurn,
+            AudioEvent.MicAcked,
+            AudioEvent.MicIdle,
+            -> onMicEvent(event)
+
+            else -> onStreamEvent(event)
+        }
+    }
+
+    private fun onSinkEvent(event: AudioEvent) {
+        when (event) {
             is AudioEvent.SinkSetup -> Unit
             is AudioEvent.SinkStatus -> _sinkStatus.value += event.status.role to event.status
             is AudioEvent.SinkStarted -> Unit
             is AudioEvent.SinkStopped -> Unit
+            else -> Unit
+        }
+    }
+
+    private fun onStreamEvent(event: AudioEvent) {
+        when (event) {
             is AudioEvent.FramesSent -> _audioBytesSent.value += event.bytes
             is AudioEvent.SyncReceived -> _audioSyncs.value++
             is AudioEvent.AckReceived -> _audioAcks.value++
             is AudioEvent.TtsSpoken -> _ttsSpoken.value++
             is AudioEvent.TtsDropped -> _ttsDropped.value++
+            is AudioEvent.MusicCaptured -> _musicBytesCaptured.value += event.bytes
+            is AudioEvent.MusicDropped -> Unit
+            else -> Unit
+        }
+    }
+
+    private fun onMicEvent(event: AudioEvent) {
+        when (event) {
             is AudioEvent.MicTurn -> _micTurns.value++
             AudioEvent.MicAcked -> _micAcks.value++
             AudioEvent.MicIdle -> Unit
-            is AudioEvent.MusicCaptured -> _musicBytesCaptured.value += event.bytes
-            is AudioEvent.MusicDropped -> Unit
+            else -> Unit
         }
     }
 
@@ -563,7 +593,7 @@ object AutoSessionState {
             while (ackTimes.isNotEmpty() && nowUptime - ackTimes.first() > FPS_WINDOW_MS) {
                 ackTimes.removeFirst()
             }
-            fps = ackTimes.size * 1_000.0 / FPS_WINDOW_MS
+            fps = ackTimes.size * MILLIS_PER_SECOND / FPS_WINDOW_MS
             unwrapped = if (ackSeq != null) ackTracker.onAck(ackSeq) else null
         }
         _ackFps.value = fps
@@ -580,4 +610,7 @@ object AutoSessionState {
 
     /** Sliding window the fps rates are computed over. */
     private const val FPS_WINDOW_MS = 5_000L
+
+    /** Millis per second; converts windowed counts into per-second rates. */
+    private const val MILLIS_PER_SECOND = 1_000.0
 }

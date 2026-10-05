@@ -3,6 +3,10 @@ package com.vayunmathur.photos.data
 import android.graphics.Bitmap
 import kotlin.math.abs
 
+private const val ALPHA_SHIFT = 24
+private const val RED_SHIFT = 16
+private const val GREEN_SHIFT = 8
+
 data class ColorBalanceAdjustment(
     val shadowsRedCyan: Float = 0f,
     val shadowsGreenMagenta: Float = 0f,
@@ -53,7 +57,7 @@ fun ColorBalanceAdjustment.applyToBitmap(bitmap: Bitmap): Bitmap {
             val ir = nr.toInt().coerceIn(0, 255)
             val ig = ng.toInt().coerceIn(0, 255)
             val ib = nb.toInt().coerceIn(0, 255)
-            (a shl 24) or (ir shl 16) or (ig shl 8) or ib
+            (a shl ALPHA_SHIFT) or (ir shl RED_SHIFT) or (ig shl GREEN_SHIFT) or ib
         }
     }
 }

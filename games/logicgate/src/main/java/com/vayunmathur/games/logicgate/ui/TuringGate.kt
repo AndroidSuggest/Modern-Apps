@@ -54,8 +54,7 @@ internal fun TuringGate(
     inDeleteZone: (Float) -> Boolean,
     onDragZone: (Boolean, Boolean) -> Unit,
     density: androidx.compose.ui.unit.Density,
-    pinHitR: Float,
-    isCompact: Boolean = false
+    pinHitR: Float
 ) {
     val def = chipDef ?: return
     val id = gateBox.chip.instanceId
@@ -66,7 +65,7 @@ internal fun TuringGate(
     val w = gateBox.w; val h = gateBox.h
     val wDp = with(density) { w.toDp() }
     val hDp = with(density) { h.toDp() }
-    val gateStyle = remember(def.id) { gateStyleFor(def) }
+    val gateStyle = remember(def.id) { gateStyleFor() }
     val isTriangle = gateStyle.shape == GateShape.TRIANGLE
 
     Box(modifier = Modifier.graphicsLayer { translationX = localPos.x; translationY = localPos.y }) {
@@ -107,7 +106,7 @@ internal fun TuringGate(
                                 if (!longHandled && elapsed > 520 && dragTotal.getDistance() < 12f) { longHandled = true; onDragZone(false, false); onDelete(id); break }
                                 if (dragTotal.getDistance() > 4f) {
                                     ch.consume()
-                                    localPos = clampGateWithPin(localPos + delta, w, h, gateBox.pinOut, canvasSize, 12.dp, density)
+                                    localPos = clampGateWithPin(localPos + delta, canvasSize)
                                     onMove(id, localPos.x, localPos.y) // keep connected wires attached live
                                     onDragZone(true, inDeleteZone(localPos.y + h / 2f))
                                 }

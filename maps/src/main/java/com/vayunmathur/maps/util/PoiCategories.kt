@@ -16,61 +16,69 @@ package com.vayunmathur.maps.util
  * the offline index still speaks.
  */
 object PoiCategories {
+    /**
+     * Human-readable labels indexed by type id (0..50), in the stable numbering
+     * defined in `scripts/maps/README.md` / `osm_ingest/src/tags.rs`.
+     *
+     * A list rather than a `when`: the ids are dense, so the index IS the id and
+     * there is nothing to renumber — only append. Unknown ids read as "Place".
+     */
+    private val LABELS: List<String> = listOf(
+        "Restaurant", // 0
+        "Cafe", // 1
+        "Fast food", // 2
+        "Bar", // 3
+        "Shop", // 4
+        "Grocery", // 5
+        "Gas station", // 6
+        "Pharmacy", // 7
+        "Hotel", // 8
+        "Bank", // 9
+        "Hospital", // 10
+        "School", // 11
+        "Park", // 12
+        "Gym", // 13
+        "Place of worship", // 14
+        "Attraction", // 15
+        "Parking", // 16
+        "Cinema", // 17
+        "Theatre", // 18
+        "Library", // 19
+        "Post office", // 20
+        "Police", // 21
+        "Fire station", // 22
+        "Town hall", // 23
+        "Clothing", // 24
+        "Electronics", // 25
+        "Hardware", // 26
+        "Beauty", // 27
+        "Car", // 28
+        "Bakery", // 29
+        "Books", // 30
+        "Furniture", // 31
+        "Sports", // 32
+        "Department store", // 33
+        "Dentist", // 34
+        "Doctor", // 35
+        "Veterinary", // 36
+        "Charging station", // 37
+        "Museum", // 38
+        "Office", // 39
+        "Tourist info", // 40
+        "Florist", // 41
+        "Jewelry", // 42
+        "Optician", // 43
+        "Laundry", // 44
+        "Pet", // 45
+        "Liquor", // 46
+        "Toys", // 47
+        "Gift", // 48
+        "Marketplace", // 49
+        "Station", // 50
+    )
+
     /** Human-readable category label (used as the search-result subtitle). */
-    fun label(type: Int): String = when (type) {
-        0 -> "Restaurant"
-        1 -> "Cafe"
-        2 -> "Fast food"
-        3 -> "Bar"
-        4 -> "Shop"
-        5 -> "Grocery"
-        6 -> "Gas station"
-        7 -> "Pharmacy"
-        8 -> "Hotel"
-        9 -> "Bank"
-        10 -> "Hospital"
-        11 -> "School"
-        12 -> "Park"
-        13 -> "Gym"
-        14 -> "Place of worship"
-        15 -> "Attraction"
-        16 -> "Parking"
-        17 -> "Cinema"
-        18 -> "Theatre"
-        19 -> "Library"
-        20 -> "Post office"
-        21 -> "Police"
-        22 -> "Fire station"
-        23 -> "Town hall"
-        24 -> "Clothing"
-        25 -> "Electronics"
-        26 -> "Hardware"
-        27 -> "Beauty"
-        28 -> "Car"
-        29 -> "Bakery"
-        30 -> "Books"
-        31 -> "Furniture"
-        32 -> "Sports"
-        33 -> "Department store"
-        34 -> "Dentist"
-        35 -> "Doctor"
-        36 -> "Veterinary"
-        37 -> "Charging station"
-        38 -> "Museum"
-        39 -> "Office"
-        40 -> "Tourist info"
-        41 -> "Florist"
-        42 -> "Jewelry"
-        43 -> "Optician"
-        44 -> "Laundry"
-        45 -> "Pet"
-        46 -> "Liquor"
-        47 -> "Toys"
-        48 -> "Gift"
-        49 -> "Marketplace"
-        50 -> "Station"
-        else -> "Place"
-    }
+    fun label(type: Int): String = LABELS.getOrElse(type) { "Place" }
 
 
     /**
@@ -89,32 +97,48 @@ object PoiCategories {
      * matching type 50. Mapping the kind back to a number keeps those working unchanged
      * rather than making every consumer learn a second vocabulary.
      */
-    fun typeOfKind(kind: String): Int? = when (kind) {
-        "restaurant" -> 0
-        "cafe" -> 1
-        "fast_food" -> 2
-        "bar" -> 3
+    fun typeOfKind(kind: String): Int? =
+        foodTypeOfKind(kind) ?: shopTypeOfKind(kind)
+            ?: leisureTypeOfKind(kind) ?: civicTypeOfKind(kind)
+
+    private fun foodTypeOfKind(kind: String): Int? = when (kind) {
+        "restaurant" -> TYPE_RESTAURANT
+        "cafe" -> TYPE_CAFE
+        "fast_food" -> TYPE_FAST_FOOD
+        "bar" -> TYPE_BAR
+        else -> null
+    }
+
+    private fun shopTypeOfKind(kind: String): Int? = when (kind) {
         // The archive draws no separate grocery kind; a corner shop is the closest thing.
-        "supermarket", "convenience" -> 5
-        "fuel" -> 6
-        "hotel" -> 8
+        "supermarket", "convenience" -> TYPE_GROCERY
+        "fuel" -> TYPE_FUEL
+        "hotel" -> TYPE_HOTEL
         // An ATM is nearly always a bank's, and this enum has no separate number for one.
-        "bank", "atm" -> 9
+        "bank", "atm" -> TYPE_BANK
+        "clothes" -> TYPE_CLOTHING
+        "electronics" -> TYPE_ELECTRONICS
+        "beauty" -> TYPE_BEAUTY
+        "books" -> TYPE_BOOKS
+        else -> null
+    }
+
+    private fun leisureTypeOfKind(kind: String): Int? = when (kind) {
         // `university` folds into school: the enum has one education bucket.
-        "school", "university" -> 11
-        "park", "garden" -> 12
-        "attraction", "zoo" -> 15
-        "theatre" -> 18
-        "library" -> 19
-        "post_office" -> 20
-        "townhall" -> 23
-        "clothes" -> 24
-        "electronics" -> 25
-        "beauty" -> 27
-        "books" -> 30
-        "stadium" -> 32
-        "animal" -> 36
-        "museum" -> 38
+        "school", "university" -> TYPE_SCHOOL
+        "park", "garden" -> TYPE_PARK
+        "attraction", "zoo" -> TYPE_ATTRACTION
+        "stadium" -> TYPE_SPORTS
+        "animal" -> TYPE_VETERINARY
+        "museum" -> TYPE_MUSEUM
+        else -> null
+    }
+
+    private fun civicTypeOfKind(kind: String): Int? = when (kind) {
+        "theatre" -> TYPE_THEATRE
+        "library" -> TYPE_LIBRARY
+        "post_office" -> TYPE_POST_OFFICE
+        "townhall" -> TYPE_TOWN_HALL
         // The one mapping with behaviour attached: a tapped station opens the departure
         // board. `bus_stop` and `ferry_terminal` have no number here — this table is
         // `osm_ingest`'s, and it treats a bus pole or a ferry pier as street furniture
@@ -123,6 +147,29 @@ object PoiCategories {
         "station" -> STATION_TYPE
         else -> null
     }
+
+    private const val TYPE_RESTAURANT = 0
+    private const val TYPE_CAFE = 1
+    private const val TYPE_FAST_FOOD = 2
+    private const val TYPE_BAR = 3
+    private const val TYPE_GROCERY = 5
+    private const val TYPE_FUEL = 6
+    private const val TYPE_HOTEL = 8
+    private const val TYPE_BANK = 9
+    private const val TYPE_SCHOOL = 11
+    private const val TYPE_PARK = 12
+    private const val TYPE_ATTRACTION = 15
+    private const val TYPE_THEATRE = 18
+    private const val TYPE_LIBRARY = 19
+    private const val TYPE_POST_OFFICE = 20
+    private const val TYPE_TOWN_HALL = 23
+    private const val TYPE_CLOTHING = 24
+    private const val TYPE_ELECTRONICS = 25
+    private const val TYPE_BEAUTY = 27
+    private const val TYPE_BOOKS = 30
+    private const val TYPE_SPORTS = 32
+    private const val TYPE_VETERINARY = 36
+    private const val TYPE_MUSEUM = 38
 
     /**
      * The station type, whose taps open a departure board rather than a place sheet.

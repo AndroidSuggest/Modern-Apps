@@ -111,20 +111,7 @@ object DailyLevelGenerator {
         var tries = 0
         while (placed < blockCount && tries < PLACEMENT_TRIES) {
             tries++
-            val horizontal = random.nextBoolean()
-            val size = if (random.nextInt(3) == 0) 3 else 2
-            val dim = if (horizontal) Dimension(size, 1) else Dimension(1, size)
-            val position = Coord(
-                random.nextInt(BOARD_SIZE - dim.width + 1),
-                random.nextInt(BOARD_SIZE - dim.height + 1)
-            )
-            val block = Block(position, dim, fixed = false)
-            if (overlapsAny(block, blocks)) continue
-            // A horizontal block on the exit row can never be got out of the way, so the board
-            // would be unsolvable for reasons that have nothing to do with the puzzle.
-            if (horizontal && position.y == exitRow) continue
-            blocks.add(block)
-            placed++
+            if (tryPlaceBlock(random, blocks, exitRow)) placed++
         }
         if (placed < blockCount) return null
 
@@ -143,6 +130,28 @@ object DailyLevelGenerator {
             block.position.y < other.position.y + other.dimension.height &&
             block.position.y + block.dimension.height > other.position.y
     }
+
+    /** One placement attempt: false when the candidate overlaps or sits on the exit row. */
+    private fun tryPlaceBlock(random: Random, blocks: MutableList<Block>, exitRow: Int): Boolean {
+        val horizontal = random.nextBoolean()
+        val size = if (random.nextInt(LONG_BLOCK_ODDS) == 0) LONG_BLOCK_SIZE else SHORT_BLOCK_SIZE
+        val dim = if (horizontal) Dimension(size, 1) else Dimension(1, size)
+        val position = Coord(
+            random.nextInt(BOARD_SIZE - dim.width + 1),
+            random.nextInt(BOARD_SIZE - dim.height + 1)
+        )
+        val block = Block(position, dim, fixed = false)
+        if (overlapsAny(block, blocks)) return false
+        // A horizontal block on the exit row can never be got out of the way, so the board
+        // would be unsolvable for reasons that have nothing to do with the puzzle.
+        if (horizontal && position.y == exitRow) return false
+        blocks.add(block)
+        return true
+    }
+
+    private const val LONG_BLOCK_ODDS = 3
+    private const val LONG_BLOCK_SIZE = 3
+    private const val SHORT_BLOCK_SIZE = 2
 
     private const val SEED_OFFSET = 900_000_000L
     private const val SEED_BUMP = 1_000_000L

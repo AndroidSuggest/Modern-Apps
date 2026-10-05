@@ -13,6 +13,20 @@ import androidx.core.graphics.createBitmap
 import kotlin.math.pow
 import kotlin.random.Random
 
+private const val ALPHA_SHIFT = 24
+private const val RED_SHIFT = 16
+private const val GREEN_SHIFT = 8
+private const val CHANNEL_MAX = 255
+private const val PERCENT_DIVISOR = 100f
+private const val VIGNETTE_ALPHA_SCALE = 200
+private const val VIGNETTE_MID_STOP = 0.5f
+private const val HIGHLIGHTS_SCALE = 0.3f
+private const val HIGHLIGHTS_OFFSET = 40f
+private const val TINT_SCALE = 25f
+private const val TINT_HALF_MIX = 0.5f
+private const val SHARPEN_GAIN = 1.5f
+private const val SHARPEN_CENTER_WEIGHT = 4f
+
 data class ImageAdjustments(
     val brightness: Float = 0f,
     val contrast: Float = 0f,
@@ -40,8 +54,14 @@ object PhotoFilters {
         PhotoFilter("Vivid Warm", ImageAdjustments(contrast = 25f, saturation = 40f, warmth = 30f)),
         PhotoFilter("Vivid Cool", ImageAdjustments(contrast = 25f, saturation = 40f, warmth = -30f)),
         PhotoFilter("Dramatic", ImageAdjustments(contrast = 50f, brightness = -15f, saturation = -10f)),
-        PhotoFilter("Dramatic Warm", ImageAdjustments(contrast = 50f, brightness = -15f, saturation = -10f, warmth = 25f)),
-        PhotoFilter("Dramatic Cool", ImageAdjustments(contrast = 50f, brightness = -15f, saturation = -10f, warmth = -25f)),
+        PhotoFilter(
+            "Dramatic Warm",
+            ImageAdjustments(contrast = 50f, brightness = -15f, saturation = -10f, warmth = 25f),
+        ),
+        PhotoFilter(
+            "Dramatic Cool",
+            ImageAdjustments(contrast = 50f, brightness = -15f, saturation = -10f, warmth = -25f),
+        ),
         PhotoFilter("Mono", ImageAdjustments(saturation = -100f)),
         PhotoFilter("Silvertone", ImageAdjustments(saturation = -100f, warmth = 15f, contrast = 10f)),
         PhotoFilter("Noir", ImageAdjustments(saturation = -100f, contrast = 40f, brightness = -20f)),
@@ -52,111 +72,131 @@ object PhotoFilters {
         PhotoFilter("Warm Sunset", ImageAdjustments(warmth = 50f, saturation = 15f, brightness = 5f)),
         PhotoFilter("Cool Ocean", ImageAdjustments(warmth = -40f, tint = -15f, saturation = 10f)),
         PhotoFilter("Film Grain", ImageAdjustments(warmth = 15f, grain = 30f, fade = 15f, contrast = 10f)),
-        PhotoFilter("Cinematic", ImageAdjustments(contrast = 35f, warmth = 10f, tint = -20f, saturation = -15f, shadows = 15f)),
+        PhotoFilter(
+            "Cinematic",
+            ImageAdjustments(
+                contrast = 35f,
+                warmth = 10f,
+                tint = -20f,
+                saturation = -15f,
+                shadows = 15f,
+            ),
+        ),
     )
 }
 
 fun ImageAdjustments.toColorMatrix(): ColorMatrix {
     val result = ColorMatrix()
-
-    if (brightness != 0f) {
-        val v = brightness / 100f * 128f
-        val m = ColorMatrix(floatArrayOf(
-            1f, 0f, 0f, 0f, v,
-            0f, 1f, 0f, 0f, v,
-            0f, 0f, 1f, 0f, v,
-            0f, 0f, 0f, 1f, 0f,
-        ))
-        result.postConcat(m)
-    }
-
-    if (contrast != 0f) {
-        val s = 1f + contrast / 100f
-        val t = (-0.5f * s + 0.5f) * 255f
-        val m = ColorMatrix(floatArrayOf(
-            s, 0f, 0f, 0f, t,
-            0f, s, 0f, 0f, t,
-            0f, 0f, s, 0f, t,
-            0f, 0f, 0f, 1f, 0f,
-        ))
-        result.postConcat(m)
-    }
-
-    if (saturation != 0f) {
-        val m = ColorMatrix()
-        m.setSaturation((1f + saturation / 100f).coerceAtLeast(0f))
-        result.postConcat(m)
-    }
-
-    if (warmth != 0f) {
-        val w = warmth / 100f * 30f
-        val m = ColorMatrix(floatArrayOf(
-            1f, 0f, 0f, 0f, w,
-            0f, 1f, 0f, 0f, 0f,
-            0f, 0f, 1f, 0f, -w,
-            0f, 0f, 0f, 1f, 0f,
-        ))
-        result.postConcat(m)
-    }
-
-    if (exposure != 0f) {
-        val e = 2f.pow(exposure / 100f)
-        val m = ColorMatrix(floatArrayOf(
-            e, 0f, 0f, 0f, 0f,
-            0f, e, 0f, 0f, 0f,
-            0f, 0f, e, 0f, 0f,
-            0f, 0f, 0f, 1f, 0f,
-        ))
-        result.postConcat(m)
-    }
-
-    if (highlights != 0f) {
-        val h = highlights / 100f * 0.3f
-        val m = ColorMatrix(floatArrayOf(
-            1f + h, 0f, 0f, 0f, h * 40f,
-            0f, 1f + h, 0f, 0f, h * 40f,
-            0f, 0f, 1f + h, 0f, h * 40f,
-            0f, 0f, 0f, 1f, 0f,
-        ))
-        result.postConcat(m)
-    }
-
-    if (shadows != 0f) {
-        val s = shadows / 100f * 40f
-        val m = ColorMatrix(floatArrayOf(
-            1f, 0f, 0f, 0f, s,
-            0f, 1f, 0f, 0f, s,
-            0f, 0f, 1f, 0f, s,
-            0f, 0f, 0f, 1f, 0f,
-        ))
-        result.postConcat(m)
-    }
-
-    if (fade != 0f) {
-        val f = fade / 100f
-        val scale = 1f - f * 0.4f
-        val offset = f * 0.4f * 128f
-        val m = ColorMatrix(floatArrayOf(
-            scale, 0f, 0f, 0f, offset,
-            0f, scale, 0f, 0f, offset,
-            0f, 0f, scale, 0f, offset,
-            0f, 0f, 0f, 1f, 0f,
-        ))
-        result.postConcat(m)
-    }
-
-    if (tint != 0f) {
-        val t = tint / 100f * 25f
-        val m = ColorMatrix(floatArrayOf(
-            1f, 0f, 0f, 0f, -t * 0.5f,
-            0f, 1f, 0f, 0f, t,
-            0f, 0f, 1f, 0f, -t * 0.5f,
-            0f, 0f, 0f, 1f, 0f,
-        ))
-        result.postConcat(m)
-    }
-
+    brightnessMatrix()?.let { result.postConcat(it) }
+    contrastMatrix()?.let { result.postConcat(it) }
+    saturationMatrix()?.let { result.postConcat(it) }
+    warmthMatrix()?.let { result.postConcat(it) }
+    exposureMatrix()?.let { result.postConcat(it) }
+    highlightsMatrix()?.let { result.postConcat(it) }
+    shadowsMatrix()?.let { result.postConcat(it) }
+    fadeMatrix()?.let { result.postConcat(it) }
+    tintMatrix()?.let { result.postConcat(it) }
     return result
+}
+
+private fun ImageAdjustments.brightnessMatrix(): ColorMatrix? {
+    if (brightness == 0f) return null
+    val v = brightness / 100f * 128f
+    return ColorMatrix(floatArrayOf(
+        1f, 0f, 0f, 0f, v,
+        0f, 1f, 0f, 0f, v,
+        0f, 0f, 1f, 0f, v,
+        0f, 0f, 0f, 1f, 0f,
+    ))
+}
+
+private fun ImageAdjustments.contrastMatrix(): ColorMatrix? {
+    if (contrast == 0f) return null
+    val s = 1f + contrast / 100f
+    val t = (-0.5f * s + 0.5f) * 255f
+    return ColorMatrix(floatArrayOf(
+        s, 0f, 0f, 0f, t,
+        0f, s, 0f, 0f, t,
+        0f, 0f, s, 0f, t,
+        0f, 0f, 0f, 1f, 0f,
+    ))
+}
+
+private fun ImageAdjustments.saturationMatrix(): ColorMatrix? {
+    if (saturation == 0f) return null
+    return ColorMatrix().apply {
+        setSaturation((1f + saturation / PERCENT_DIVISOR).coerceAtLeast(0f))
+    }
+}
+
+private fun ImageAdjustments.warmthMatrix(): ColorMatrix? {
+    if (warmth == 0f) return null
+    val w = warmth / 100f * 30f
+    return ColorMatrix(floatArrayOf(
+        1f, 0f, 0f, 0f, w,
+        0f, 1f, 0f, 0f, 0f,
+        0f, 0f, 1f, 0f, -w,
+        0f, 0f, 0f, 1f, 0f,
+    ))
+}
+
+private fun ImageAdjustments.exposureMatrix(): ColorMatrix? {
+    if (exposure == 0f) return null
+    val e = 2f.pow(exposure / 100f)
+    return ColorMatrix(floatArrayOf(
+        e, 0f, 0f, 0f, 0f,
+        0f, e, 0f, 0f, 0f,
+        0f, 0f, e, 0f, 0f,
+        0f, 0f, 0f, 1f, 0f,
+    ))
+}
+
+private fun ImageAdjustments.highlightsMatrix(): ColorMatrix? {
+    if (highlights == 0f) return null
+    val h = highlights / 100f * HIGHLIGHTS_SCALE
+    val offset = h * HIGHLIGHTS_OFFSET
+    return ColorMatrix(floatArrayOf(
+        1f + h, 0f, 0f, 0f, offset,
+        0f, 1f + h, 0f, 0f, offset,
+        0f, 0f, 1f + h, 0f, offset,
+        0f, 0f, 0f, 1f, 0f,
+    ))
+}
+
+private fun ImageAdjustments.shadowsMatrix(): ColorMatrix? {
+    if (shadows == 0f) return null
+    val s = shadows / 100f * 40f
+    return ColorMatrix(floatArrayOf(
+        1f, 0f, 0f, 0f, s,
+        0f, 1f, 0f, 0f, s,
+        0f, 0f, 1f, 0f, s,
+        0f, 0f, 0f, 1f, 0f,
+    ))
+}
+
+private fun ImageAdjustments.fadeMatrix(): ColorMatrix? {
+    if (fade == 0f) return null
+    val f = fade / 100f
+    val scale = 1f - f * 0.4f
+    val offset = f * 0.4f * 128f
+    return ColorMatrix(floatArrayOf(
+        scale, 0f, 0f, 0f, offset,
+        0f, scale, 0f, 0f, offset,
+        0f, 0f, scale, 0f, offset,
+        0f, 0f, 0f, 1f, 0f,
+    ))
+}
+
+private fun ImageAdjustments.tintMatrix(): ColorMatrix? {
+    if (tint == 0f) return null
+    val t = tint / 100f * TINT_SCALE
+    val halfT = t * TINT_HALF_MIX
+    return ColorMatrix(floatArrayOf(
+        1f, 0f, 0f, 0f, -halfT,
+        0f, 1f, 0f, 0f, t,
+        0f, 0f, 1f, 0f, -halfT,
+        0f, 0f, 0f, 1f, 0f,
+    ))
 }
 
 fun ImageAdjustments.applyToBitmap(bitmap: Bitmap): Bitmap {
@@ -185,15 +225,17 @@ fun ImageAdjustments.applyPixelEffects(bitmap: Bitmap): Bitmap {
     if (!hasPixelEffects()) return bitmap
     var result = bitmap
     if (sharpness > 0f) {
-        result = applySharpen(if (result === bitmap) bitmap.copy(Bitmap.Config.ARGB_8888, true) else result, sharpness / 100f)
+        val sharpenSrc =
+            if (result === bitmap) bitmap.copy(Bitmap.Config.ARGB_8888, true) else result
+        result = applySharpen(sharpenSrc, sharpness / PERCENT_DIVISOR)
     }
     if (vignette > 0f) {
         if (result === bitmap) result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        applyVignette(result, vignette / 100f)
+        applyVignette(result, vignette / PERCENT_DIVISOR)
     }
     if (grain > 0f) {
         if (result === bitmap) result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        applyGrain(result, grain / 100f)
+        applyGrain(result, grain / PERCENT_DIVISOR)
     }
     return result
 }
@@ -205,8 +247,8 @@ private fun applySharpen(src: Bitmap, amount: Float): Bitmap {
     src.getPixels(pixels, 0, w, 0, 0, w, h)
 
     val out = IntArray(w * h)
-    val strength = amount * 1.5f
-    val center = 1f + 4f * strength
+    val strength = amount * SHARPEN_GAIN
+    val center = 1f + SHARPEN_CENTER_WEIGHT * strength
     val side = -strength
 
     for (y in 1 until h - 1) {
@@ -225,11 +267,12 @@ private fun applySharpen(src: Bitmap, amount: Float): Bitmap {
                 val lv = ((l shr shift) and 0xFF).toFloat()
                 val rv = ((r shr shift) and 0xFF).toFloat()
                 return (cv * center + tv * side + bv * side + lv * side + rv * side)
-                    .toInt().coerceIn(0, 255)
+                    .toInt().coerceIn(0, CHANNEL_MAX)
             }
 
             val a = (c shr 24) and 0xFF
-            out[idx] = (a shl 24) or (ch(c, 16) shl 16) or (ch(c, 8) shl 8) or ch(c, 0)
+            out[idx] = (a shl ALPHA_SHIFT) or (ch(c, RED_SHIFT) shl RED_SHIFT) or
+                (ch(c, GREEN_SHIFT) shl GREEN_SHIFT) or ch(c, 0)
         }
     }
 
@@ -258,8 +301,12 @@ private fun applyVignette(bitmap: Bitmap, amount: Float) {
 
     val gradient = RadialGradient(
         cx, cy, radius,
-        intArrayOf(0x00000000.toInt(), 0x00000000.toInt(), (((amount * 200).toInt().coerceAtMost(255)) shl 24)),
-        floatArrayOf(0f, 0.5f, 1f),
+        intArrayOf(
+            0x00000000.toInt(),
+            0x00000000.toInt(),
+            (((amount * VIGNETTE_ALPHA_SCALE).toInt().coerceAtMost(CHANNEL_MAX)) shl ALPHA_SHIFT),
+        ),
+        floatArrayOf(0f, VIGNETTE_MID_STOP, 1f),
         Shader.TileMode.CLAMP,
     )
     val paint = Paint().apply {
@@ -278,6 +325,6 @@ private fun applyGrain(bitmap: Bitmap, amount: Float) {
         val r = (((pixel shr 16) and 0xFF) + noise).coerceIn(0, 255)
         val g = (((pixel shr 8) and 0xFF) + noise).coerceIn(0, 255)
         val b = ((pixel and 0xFF) + noise).coerceIn(0, 255)
-        (a shl 24) or (r shl 16) or (g shl 8) or b
+        (a shl ALPHA_SHIFT) or (r shl RED_SHIFT) or (g shl GREEN_SHIFT) or b
     }
 }

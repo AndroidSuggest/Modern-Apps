@@ -27,6 +27,7 @@ import com.vayunmathur.web.platform.shields.ShieldsEngine
 import com.vayunmathur.web.platform.shields.ShieldsServiceWorkerClient
 import com.vayunmathur.web.platform.WebViewModel
 import com.vayunmathur.web.platform.WebViewModelFactory
+import com.vayunmathur.web.platform.externalIntentUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -65,7 +66,7 @@ class MainActivity : ComponentActivity() {
                 context = applicationContext,
                 windowId = windowId,
                 incognito = incognito,
-                initialShieldSettings = repository.allShieldSettings(),
+                initialShieldSettings = repository.shields.all(),
             )
             withContext(Dispatchers.Main) {
                 factoryState = factory
@@ -144,8 +145,8 @@ class MainActivity : ComponentActivity() {
         val savedTabsPrefix = "web_saved_tabs_"
         val activeTabPrefix = "web_active_tab_id_"
         lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val am = getSystemService(ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return@launch
+            runCatching {
+                val am = getSystemService(ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return@runCatching
                 val liveWindowIds = am.appTasks.mapNotNull { task ->
                     val base = runCatching { task.taskInfo?.baseIntent }.getOrNull()
                     base?.getStringExtra(EXTRA_WINDOW_ID)
@@ -183,7 +184,7 @@ class MainActivity : ComponentActivity() {
                     }
                     .toSet()
                 TabThumbnailStore.retainOnly(liveTabIds)
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 android.util.Log.e("MainActivity", "pruneClosedWindowTabs failed", e)
             }
         }

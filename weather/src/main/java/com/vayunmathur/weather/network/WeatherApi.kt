@@ -18,6 +18,57 @@ object WeatherApi {
     /** Days of historical data prepended to the forecast response. */
     private const val PAST_DAYS = 7
 
+    private val CURRENT_FIELDS = listOf(
+        "temperature_2m",
+        "apparent_temperature",
+        "relative_humidity_2m",
+        "dew_point_2m",
+        "weather_code",
+        "wind_speed_10m",
+        "wind_direction_10m",
+        "pressure_msl",
+        "visibility",
+        "cloud_cover",
+        "wind_gusts_10m",
+        "is_day",
+    )
+
+    private val HOURLY_FIELDS = listOf(
+        "temperature_2m",
+        "apparent_temperature",
+        "relative_humidity_2m",
+        "dew_point_2m",
+        "weather_code",
+        "precipitation_probability",
+        "precipitation",
+        "wind_speed_10m",
+        "wind_direction_10m",
+        "pressure_msl",
+        "visibility",
+        "uv_index",
+        "cloud_cover",
+        "wind_gusts_10m",
+        "is_day",
+    )
+
+    private val DAILY_FIELDS = listOf(
+        "weather_code",
+        "temperature_2m_max",
+        "temperature_2m_min",
+        "apparent_temperature_max",
+        "apparent_temperature_min",
+        "sunrise",
+        "sunset",
+        "daylight_duration",
+        "sunshine_duration",
+        "uv_index_max",
+        "precipitation_probability_max",
+        "precipitation_sum",
+        "moon_phase",
+        "moonrise",
+        "moonset",
+    )
+
     /**
      * Fetch the current conditions + 24h hourly + 7-day daily forecast for a
      * single coordinate. Throws on network / parse failure — callers wrap in
@@ -28,60 +79,9 @@ object WeatherApi {
             append(FORECAST_BASE)
             append("?latitude=").append(latitude)
             append("&longitude=").append(longitude)
-            append("&current=").append(
-                listOf(
-                    "temperature_2m",
-                    "apparent_temperature",
-                    "relative_humidity_2m",
-                    "dew_point_2m",
-                    "weather_code",
-                    "wind_speed_10m",
-                    "wind_direction_10m",
-                    "pressure_msl",
-                    "visibility",
-                    "cloud_cover",
-                    "wind_gusts_10m",
-                    "is_day",
-                ).joinToString(",")
-            )
-            append("&hourly=").append(
-                listOf(
-                    "temperature_2m",
-                    "apparent_temperature",
-                    "relative_humidity_2m",
-                    "dew_point_2m",
-                    "weather_code",
-                    "precipitation_probability",
-                    "precipitation",
-                    "wind_speed_10m",
-                    "wind_direction_10m",
-                    "pressure_msl",
-                    "visibility",
-                    "uv_index",
-                    "cloud_cover",
-                    "wind_gusts_10m",
-                    "is_day",
-                ).joinToString(",")
-            )
-            append("&daily=").append(
-                listOf(
-                    "weather_code",
-                    "temperature_2m_max",
-                    "temperature_2m_min",
-                    "apparent_temperature_max",
-                    "apparent_temperature_min",
-                    "sunrise",
-                    "sunset",
-                    "daylight_duration",
-                    "sunshine_duration",
-                    "uv_index_max",
-                    "precipitation_probability_max",
-                    "precipitation_sum",
-                    "moon_phase",
-                    "moonrise",
-                    "moonset",
-                ).joinToString(",")
-            )
+            append("&current=").append(CURRENT_FIELDS.joinToString(","))
+            append("&hourly=").append(HOURLY_FIELDS.joinToString(","))
+            append("&daily=").append(DAILY_FIELDS.joinToString(","))
             append("&minutely_15=precipitation")
             append("&timezone=auto")
             append("&past_days=").append(PAST_DAYS)

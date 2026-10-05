@@ -1,5 +1,6 @@
 package com.vayunmathur.networklocation
 
+import android.content.Context
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -37,13 +38,7 @@ fun OfflineDatabaseSection(modifier: Modifier = Modifier) {
 
     // Presence is read once per composition rather than observed: the files only appear when a
     // download finishes, and the progress rows below already track that.
-    val databases = remember {
-        listOf(
-            Triple(OfflineDatabases.GEOCODER, "Offline geocoder", "addresses and place lookup"),
-            Triple(OfflineDatabases.WIFI, "Wi-Fi beacon store", "offline Wi-Fi positioning"),
-            Triple(OfflineDatabases.CELL, "Cell beacon store", "offline cell positioning"),
-        )
-    }
+    val databases = remember { offlineDatabaseEntries() }
     var requested by remember { mutableStateOf(false) }
     val allPresent = remember(requested) { OfflineDatabases.allPresent(context) }
 
@@ -60,52 +55,86 @@ fun OfflineDatabaseSection(modifier: Modifier = Modifier) {
             return@Column
         }
 
-        Text(
-            "The offline databases are large and are downloaded separately to keep the system " +
-                "image small. Until they are installed, positioning and geocoding are " +
-                "unavailable - nothing is looked up over the network. Downloads only run on " +
-                "Wi-Fi and resume if interrupted.",
-            modifier = Modifier.padding(top = 8.dp),
-            style = MaterialTheme.typography.bodyMedium,
+        OfflineDatabaseBlurb()
+        DatabaseProgressRows(context, ds, databases)
+        DownloadDatabasesButton(
+            context = context,
+            databases = databases,
+            requested = requested,
+            onRequested = { requested = true },
         )
-
-        for ((name, label, _) in databases) {
-            val progress by ds.doubleFlow("progress_$name").collectAsState(0.0)
-            val speedMbps by ds.doubleFlow("speed_$name").collectAsState(0.0)
-            FileProgressItem(
-                label = label,
-                progress = progress,
-                speedMbps = speedMbps,
-                isDone = OfflineDatabases.isPresent(context, name),
-            )
-        }
-
-        Button(
-            onClick = {
-                // Databases in a superseded format are dead weight - several gigabytes no reader
-                // will open again - so reclaim the space before pulling their replacements down.
-                OfflineDatabases.pruneStale(context)
-                ModelDownloadWorker.enqueueTo(
-                    context = context,
-                    models = databases.map { (name, label, purpose) ->
-                        ModelDownloadItem(
-                            url = OfflineDatabases.urlFor(name),
-                            fileName = name,
-                            description = "$label — $purpose",
-                            sha256 = OfflineDatabases.sha256For(name),
-                        )
-                    },
-                    targetDir = OfflineDatabases.dir(context),
-                    requireUnmetered = true,
-                )
-                requested = true
-            },
-            enabled = !requested,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
-        ) {
-            Text(if (requested) "Downloading over Wi-Fi…" else "Download offline databases")
-        }
     }
 }
+
+private fun offlineDatabaseEntries() = listOf(
+    Triple(OfflineDatabases.GEOCODER, "Offline geocoder", "addresses and place lookup"),
+    Triple(OfflineDatabases.WIFI, "Wi-Fi beacon store", "offline Wi-Fi positioning"),
+    Triple(OfflineDatabases.CELL, "Cell beacon store", "offline cell positioning"),
+)
+
+@Composable
+private fun OfflineDatabaseBlurb() {
+    Text(
+        "The offline databases are large and are downloaded separately to keep the system " +
+            "image small. Until they are installed, positioning and geocoding are " +
+            "unavailable - nothing is looked up over the network. Downloads only run on " +
+            "Wi-Fi and resume if interrupted.",
+        modifier = Modifier.padding(top = 8.dp),
+        style = MaterialTheme.typography.bodyMedium,
+    )
+}
+
+@Composable
+private fun DatabaseProgressRows(
+    context: Context,
+    ds: DataStoreUtils,
+    databases: List<Triple<String, String, String>>,
+) {
+    for ((name, label, _) in databases) {
+        val progress by ds.doubleFlow("progress_$name").collectAsState(0.0)
+        val speedMbps by ds.doubleFlow("speed_$name").collectAsState(0.0)
+        FileProgressItem(
+            label = label,
+            progress = progress,
+            speedMbps = speedMbps,
+            isDone = OfflineDatabases.isPresent(context, name),
+        )
+    }
+}
+
+@Composable
+private fun DownloadDatabasesButton(
+    context: Context,
+    databases: List<Triple<String, String, String>>,
+    requested: Boolean,
+    onRequested: () -> Unit,
+) {
+    Button(
+        onClick = {
+            // Databases in a superseded format are dead weight - several gigabytes no reader
+            // will open again - so reclaim the space before pulling their replacements down.
+            OfflineDatabases.pruneStale(context)
+            ModelDownloadWorker.enqueueTo(
+                context = context,
+                models = databases.map { (name, label, purpose) ->
+                    ModelDownloadItem(
+                        url = OfflineDatabases.urlFor(name),
+                        fileName = name,
+                        description = "$label — $purpose",
+                        sha256 = OfflineDatabases.sha256For(name),
+                    )
+                },
+                targetDir = OfflineDatabases.dir(context),
+                requireUnmetered = true,
+            )
+            onRequested()
+        },
+        enabled = !requested,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp),
+    ) {
+        Text(if (requested) "Downloading over Wi-Fi…" else "Download offline databases")
+    }
+}
+

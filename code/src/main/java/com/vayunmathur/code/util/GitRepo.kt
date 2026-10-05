@@ -34,6 +34,9 @@ data class GitCommitInfo(
  */
 object GitRepo {
 
+    /** Abbreviated commit id length shown in the log. */
+    const val SHORT_ID_LENGTH = 7
+
     /** True if [dir] (or JGit's discovery from it) contains a git repository. */
     fun isRepo(dir: File): Boolean = File(dir, Constants.DOT_GIT).exists()
 
@@ -77,14 +80,14 @@ object GitRepo {
             .setAuthor(name, email)
             .setCommitter(name, email)
             .call()
-        commit.abbreviate(7).name()
+        commit.abbreviate(SHORT_ID_LENGTH).name()
     }
 
     fun log(dir: File, max: Int = 50): List<GitCommitInfo> = withRepo(dir) { git ->
         if (git.repository.resolve(Constants.HEAD) == null) return@withRepo emptyList()
         git.log().setMaxCount(max).call().map { commit ->
             GitCommitInfo(
-                shortId = commit.abbreviate(7).name(),
+                shortId = commit.abbreviate(SHORT_ID_LENGTH).name(),
                 message = commit.shortMessage,
                 author = commit.authorIdent.name,
                 timeSeconds = commit.commitTime.toLong(),

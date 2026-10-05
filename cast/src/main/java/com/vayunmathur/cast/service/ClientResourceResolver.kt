@@ -238,8 +238,12 @@ class ClientResourceResolver(
     ) : InputStream() {
 
         override fun read(): Int {
-            val one = ByteArray(1)
-            return if (read(one, 0, 1) == 1) one[0].toInt() and 0xff else -1
+            val one = ByteArray(SINGLE_BYTE_SIZE)
+            return if (read(one, 0, SINGLE_BYTE_SIZE) == SINGLE_BYTE_SIZE) {
+                one[0].toInt() and BYTE_MASK
+            } else {
+                END_OF_STREAM
+            }
         }
 
         override fun read(b: ByteArray, off: Int, len: Int): Int {
@@ -276,8 +280,12 @@ class ClientResourceResolver(
     ) : InputStream() {
 
         override fun read(): Int {
-            val one = ByteArray(1)
-            return if (read(one, 0, 1) == 1) one[0].toInt() and 0xff else -1
+            val one = ByteArray(SINGLE_BYTE_SIZE)
+            return if (read(one, 0, SINGLE_BYTE_SIZE) == SINGLE_BYTE_SIZE) {
+                one[0].toInt() and BYTE_MASK
+            } else {
+                END_OF_STREAM
+            }
         }
 
         override fun read(b: ByteArray, off: Int, len: Int): Int {
@@ -291,31 +299,63 @@ class ClientResourceResolver(
                 }
 
                 // At the current end of file, so the producer's own state decides what that means.
-                if (resource.hasFailed) throw IOException("the app failed to produce this resource")
-                if (resource.hasKnownLength) {
-                    // Read once more before believing it: the last bytes and the completion travel
-                    // by different routes, so they can land in either order, and trusting the flag
-                    // alone would drop whatever arrived in between.
-                    val last = channel.read(ByteBuffer.wrap(b, off, len), position)
-                    if (last > 0) {
-                        position += last
-                        return last
-                    }
-                    return -1
-                }
-                if (System.currentTimeMillis() >= deadline) {
-                    throw IOException("no new bytes for ${GROWING_READ_TIMEOUT_MS}ms at $position")
-                }
+                val terminal = terminalRead(position, b, off, len, deadline)
+                if (terminal != null) return terminal
                 try {
                     Thread.sleep(GROWING_POLL_MS)
                 } catch (e: InterruptedException) {
                     Thread.currentThread().interrupt()
-                    throw IOException("interrupted waiting for more of this resource", e)
+                    throw growingFailure("interrupted waiting for more of this resource", e)
                 }
             }
         }
 
+        /**
+         * What a read parked at end of file should do: more bytes, the real end, or a failure.
+         *
+         * Null means "keep waiting" - the producer is still behind but alive and the deadline
+         * has not passed. A value ends the read. The three failures funnel through
+         * [growingFailure], so a dead producer, a stalled one, and an interrupted wait all
+         * surface the same way: the proxy closes the connection and the player sees a short
+         * body rather than a stall.
+         */
+        private fun terminalRead(
+            readPosition: Long,
+            b: ByteArray,
+            off: Int,
+            len: Int,
+            deadline: Long,
+        ): Int? {
+            if (resource.hasFailed) throw growingFailure("the app failed to produce this resource")
+            if (resource.hasKnownLength) return finishKnownLength(b, off, len)
+            if (System.currentTimeMillis() >= deadline) {
+                throw growingFailure("no new bytes for ${GROWING_READ_TIMEOUT_MS}ms at $readPosition")
+            }
+            return null
+        }
+
+        private fun finishKnownLength(b: ByteArray, off: Int, len: Int): Int {
+            // Read once more before believing it: the last bytes and the completion travel
+            // by different routes, so they can land in either order, and trusting the flag
+            // alone would drop whatever arrived in between.
+            val last = channel.read(ByteBuffer.wrap(b, off, len), position)
+            if (last > 0) {
+                position += last
+                return last
+            }
+            return END_OF_STREAM
+        }
+
+        private fun growingFailure(message: String, cause: Throwable? = null): IOException =
+            if (cause == null) IOException(message) else IOException(message, cause)
+
         /** The channel is the resource's, exactly as in [PositionalStream]. */
         override fun close() = Unit
+    }
+
+    private companion object {
+        const val SINGLE_BYTE_SIZE = 1
+        const val BYTE_MASK = 0xff
+        const val END_OF_STREAM = -1
     }
 }

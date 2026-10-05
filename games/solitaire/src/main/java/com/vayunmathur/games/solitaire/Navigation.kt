@@ -32,7 +32,11 @@ fun Navigation(viewModel: SolitaireViewModel) {
                 entry<Route.Home> { HomeScreen(backStack, viewModel) }
                 entry<Route.Game>(metadata = FullscreenPage()) { GameScreen(backStack, viewModel, it.mode) }
                 entry<Route.GameCenter> {
-                    GameCenterScreen(backupAgent = AppBackupAgent(), manager = viewModel.achievementsManager, onBack = { backStack.pop() })
+                    GameCenterScreen(
+                        backupAgent = AppBackupAgent(),
+                        manager = viewModel.achievementsManager,
+                        onBack = { backStack.pop() },
+                    )
                 }
                 entry<Route.Settings> {
                     SettingsScreen(

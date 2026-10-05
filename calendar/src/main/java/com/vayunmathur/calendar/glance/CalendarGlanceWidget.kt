@@ -62,8 +62,12 @@ class CalendarGlanceWidget : GlanceAppWidget() {
         val nextMonth = today + DatePeriod(months = 1)
         val days = today..<nextMonth
 
-        val instances = Instance.getVisibleInstances(context, today.atStartOfDayIn(TimeZone.currentSystemDefault()), nextMonth.atEndOfDayIn(
-            TimeZone.currentSystemDefault()))
+        val zone = TimeZone.currentSystemDefault()
+        val instances = Instance.getVisibleInstances(
+            context,
+            today.atStartOfDayIn(zone),
+            nextMonth.atEndOfDayIn(zone),
+        )
         val (allDay, notAllDay) = instances.partition { it.allDay }
 
         // Grouped straight off spanDays: the widget list needs no day-view columns,
@@ -88,8 +92,8 @@ class CalendarGlanceWidget : GlanceAppWidget() {
                     CalendarPreviewContent()
                 }
             }
-        } catch (e: Throwable) {
-            Log.e("CalendarWidget", "providePreview failed", e)
+        } catch (expected: Throwable) {
+            Log.e("CalendarWidget", "providePreview failed", expected)
             try {
                 provideContent {
                     DynamicThemeGlance(context) {
@@ -156,7 +160,11 @@ fun Content(context: Context, positionedEvents: Map<LocalDate, List<Instance>>) 
 
     Scaffold(
         titleBar = {
-            TitleBar(ImageProvider(R.drawable.calendar_today_24px), DateString.dateWeekdayNoYear(today), modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()))
+            TitleBar(
+                ImageProvider(R.drawable.calendar_today_24px),
+                DateString.dateWeekdayNoYear(today),
+                modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()),
+            )
         },
         horizontalPadding = 0.dp
     ) {
@@ -234,7 +242,11 @@ private fun CalendarEventRow(
         Column(GlanceModifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
                 title,
-                style = TextStyle(fontWeight = FontWeight.Normal, fontSize = 14.sp, color = GlanceTheme.colors.onSurface),
+                style = TextStyle(
+                    fontWeight = FontWeight.Normal,
+                    fontSize = 14.sp,
+                    color = GlanceTheme.colors.onSurface,
+                ),
                 maxLines = 1
             )
             Text(

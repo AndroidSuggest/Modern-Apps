@@ -135,46 +135,95 @@ class NumberlinkSolverTest {
     private fun countByEnumeration(rows: Int, cols: Int, endpoints: List<EndpointPair>): Int {
         val colorOf = HashMap<CellPos, Int>()
         endpoints.forEachIndexed { i, ep -> ep.cells.forEach { colorOf[it] = i } }
-        val edges = mutableListOf<Pair<CellPos, CellPos>>()
-        for (r in 0 until rows) for (c in 0 until cols) {
-            if (c + 1 < cols) edges += CellPos(r, c) to CellPos(r, c + 1)
-            if (r + 1 < rows) edges += CellPos(r, c) to CellPos(r + 1, c)
-        }
+        val edges = gridEdges(rows, cols)
         var count = 0
         for (mask in 0 until (1 shl edges.size)) {
-            val adjacent = HashMap<CellPos, MutableList<CellPos>>()
-            for (i in edges.indices) {
-                if (mask shr i and 1 == 0) continue
-                val (a, b) = edges[i]
-                adjacent.getOrPut(a) { mutableListOf() } += b
-                adjacent.getOrPut(b) { mutableListOf() } += a
+            val adjacent = adjacencyForMask(edges, mask)
+            if (hasLegalDegrees(rows, cols, colorOf, adjacent) && walksAllEndpoints(endpoints, adjacent)) {
+                count++
             }
-            var legal = true
-            for (r in 0 until rows) for (c in 0 until cols) {
-                val cell = CellPos(r, c)
-                val degree = adjacent[cell]?.size ?: 0
-                val isEndpoint = cell in colorOf
-                if (degree > 2 || (isEndpoint && degree != 1) || (!isEndpoint && degree == 1)) {
-                    legal = false
-                }
-            }
-            if (!legal) continue
-            val walked = HashSet<CellPos>()
-            for (ep in endpoints) {
-                var previous: CellPos? = null
-                var current = ep.cells[0]
-                if (!walked.add(current)) { legal = false; break }
-                while (true) {
-                    val next = adjacent[current]?.firstOrNull { it != previous } ?: break
-                    previous = current
-                    current = next
-                    if (!walked.add(current)) { legal = false; break }
-                }
-                if (!legal || current != ep.cells[1]) { legal = false; break }
-            }
-            // Anything used but not walked is a loop of blanks, which is not a solution.
-            if (legal && walked.size == adjacent.keys.size) count++
         }
         return count
+    }
+
+    private fun gridEdges(rows: Int, cols: Int): List<Pair<CellPos, CellPos>> {
+        val edges = mutableListOf<Pair<CellPos, CellPos>>()
+        for (r in 0 until rows) {
+            for (c in 0 until cols) {
+                if (c + 1 < cols) edges += CellPos(r, c) to CellPos(r, c + 1)
+                if (r + 1 < rows) edges += CellPos(r, c) to CellPos(r + 1, c)
+            }
+        }
+        return edges
+    }
+
+    private fun adjacencyForMask(
+        edges: List<Pair<CellPos, CellPos>>,
+        mask: Int,
+    ): Map<CellPos, List<CellPos>> {
+        val adjacent = HashMap<CellPos, MutableList<CellPos>>()
+        for (i in edges.indices) {
+            if (mask shr i and 1 == 0) continue
+            val (a, b) = edges[i]
+            adjacent.getOrPut(a) { mutableListOf() } += b
+            adjacent.getOrPut(b) { mutableListOf() } += a
+        }
+        return adjacent
+    }
+
+    private fun hasLegalDegrees(
+        rows: Int,
+        cols: Int,
+        colorOf: Map<CellPos, Int>,
+        adjacent: Map<CellPos, List<CellPos>>,
+    ): Boolean {
+        for (r in 0 until rows) {
+            for (c in 0 until cols) {
+                val cell = CellPos(r, c)
+                if (!isLegalDegree(cell in colorOf, adjacent[cell]?.size ?: 0)) return false
+            }
+        }
+        return true
+    }
+
+    private fun isLegalDegree(isEndpoint: Boolean, degree: Int): Boolean {
+        if (degree > MAX_PATH_DEGREE) return false
+        if (isEndpoint) return degree == ENDPOINT_DEGREE
+        return degree != DANGLING_DEGREE
+    }
+
+    private fun walksAllEndpoints(
+        endpoints: List<EndpointPair>,
+        adjacent: Map<CellPos, List<CellPos>>,
+    ): Boolean {
+        val walked = HashSet<CellPos>()
+        for (ep in endpoints) {
+            if (!walkEndpoints(ep, adjacent, walked)) return false
+        }
+        // Anything used but not walked is a loop of blanks, which is not a solution.
+        return walked.size == adjacent.keys.size
+    }
+
+    private fun walkEndpoints(
+        ep: EndpointPair,
+        adjacent: Map<CellPos, List<CellPos>>,
+        walked: MutableSet<CellPos>,
+    ): Boolean {
+        var previous: CellPos? = null
+        var current = ep.cells[0]
+        if (!walked.add(current)) return false
+        while (true) {
+            val next = adjacent[current]?.firstOrNull { it != previous } ?: break
+            previous = current
+            current = next
+            if (!walked.add(current)) return false
+        }
+        return current == ep.cells[1]
+    }
+
+    private companion object {
+        private const val MAX_PATH_DEGREE = 2
+        private const val ENDPOINT_DEGREE = 1
+        private const val DANGLING_DEGREE = 1
     }
 }

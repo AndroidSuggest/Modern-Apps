@@ -3,8 +3,10 @@ package com.vayunmathur.games.solitaire.platform
 import androidx.compose.ui.geometry.Rect
 import com.vayunmathur.games.solitaire.data.Card
 import com.vayunmathur.games.solitaire.data.DrawMode
+import com.vayunmathur.games.solitaire.data.FOUNDATION_COUNT
 import com.vayunmathur.games.solitaire.data.GameConfig
 import com.vayunmathur.games.solitaire.data.GameMode
+import com.vayunmathur.games.solitaire.data.KLONDIKE_TABLEAU_COUNT
 import com.vayunmathur.games.solitaire.data.KlondikeState
 import com.vayunmathur.games.solitaire.data.Rank
 import com.vayunmathur.games.solitaire.data.SolitaireUiState
@@ -19,11 +21,31 @@ import kotlinx.coroutines.flow.update
 // ---- Klondike ----
 // Moved from SolitaireViewModel.kt (FileLength split); behavior identical.
 
+fun SolitaireViewModel.newKlondikeGame(config: GameConfig) = newKlondikeGameImpl(config)
+
+fun SolitaireViewModel.klondikeMoveWasteToTableau(columnIndex: Int) =
+    klondikeMoveWasteToTableauImpl(columnIndex)
+
+fun SolitaireViewModel.klondikeMoveWasteToFoundation(foundationIndex: Int) =
+    klondikeMoveWasteToFoundationImpl(foundationIndex)
+
+fun SolitaireViewModel.klondikeMoveTableauToFoundation(fromColumn: Int, foundationIndex: Int) =
+    klondikeMoveTableauToFoundationImpl(fromColumn, foundationIndex)
+
+fun SolitaireViewModel.klondikeMoveTableauToTableau(fromColumn: Int, cardIndex: Int, toColumn: Int) =
+    klondikeMoveTableauToTableauImpl(fromColumn, cardIndex, toColumn)
+
+fun SolitaireViewModel.tryMoveByDrag(
+    sourceId: String,
+    dropOffset: androidx.compose.ui.geometry.Offset,
+    cardSize: androidx.compose.ui.unit.IntSize = androidx.compose.ui.unit.IntSize.Zero,
+) = tryMoveByDragImpl(sourceId, dropOffset, cardSize)
+
 internal fun SolitaireViewModel.newKlondikeGameImpl(config: GameConfig) {
     val deck = createShuffledDeck()
     val tableauPiles = mutableListOf<TableauPile>()
     var index = 0
-    for (i in 0 until 7) {
+    for (i in 0 until KLONDIKE_TABLEAU_COUNT) {
         val faceDown = deck.subList(index, index + i)
         index += i
         val faceUp = listOf(deck[index])
@@ -32,13 +54,13 @@ internal fun SolitaireViewModel.newKlondikeGameImpl(config: GameConfig) {
     }
     val stock = deck.subList(index, deck.size)
     val variant = "${config.drawMode.name}_${config.klondikeDifficulty.name}"
-    _uiState.value = SolitaireUiState(
+    uiStateInternal.value = SolitaireUiState(
         gameMode = GameMode.KLONDIKE,
         klondike = KlondikeState(
             stock = stock,
             waste = emptyList(),
             tableauPiles = tableauPiles,
-            foundations = List(4) { emptyList() },
+            foundations = List(FOUNDATION_COUNT) { emptyList() },
             drawMode = config.drawMode,
             difficulty = config.klondikeDifficulty,
             redealsRemaining = config.klondikeDifficulty.redeals(),
@@ -50,7 +72,7 @@ internal fun SolitaireViewModel.newKlondikeGameImpl(config: GameConfig) {
 }
 
 internal fun SolitaireViewModel.drawFromStockImpl() {
-    val state = _uiState.value.klondike ?: return
+    val state = uiStateInternal.value.klondike ?: return
     if (state.isWon) return
     if (state.stock.isEmpty() && state.waste.isEmpty()) return
     if (state.stock.isEmpty()) {
@@ -58,11 +80,11 @@ internal fun SolitaireViewModel.drawFromStockImpl() {
         // (Hard = 0, Regular = 2, Relaxed = unlimited).
         if (state.redealsRemaining <= 0) return
         saveHistory()
-        _uiState.update {
+        uiStateInternal.update {
             it.copy(klondike = state.copy(
                 stock = state.waste.reversed(),
                 waste = emptyList(),
-                redealsRemaining = if (state.redealsRemaining == Int.MAX_VALUE) Int.MAX_VALUE else state.redealsRemaining - 1,
+                redealsRemaining = remainingAfterRecycle(state.redealsRemaining),
                 moveCount = state.moveCount + 1
             ))
         }
@@ -70,7 +92,7 @@ internal fun SolitaireViewModel.drawFromStockImpl() {
         saveHistory()
     val drawCount = if (state.drawMode == DrawMode.DRAW_THREE) 3 else 1
         val drawn = state.stock.takeLast(drawCount).reversed()
-        _uiState.update {
+        uiStateInternal.update {
             it.copy(klondike = state.copy(
                 stock = state.stock.dropLast(drawCount),
                 waste = state.waste + drawn,
@@ -81,7 +103,7 @@ internal fun SolitaireViewModel.drawFromStockImpl() {
 }
 
 internal fun SolitaireViewModel.klondikeMoveWasteToTableauImpl(columnIndex: Int) {
-    val state = _uiState.value.klondike ?: return
+    val state = uiStateInternal.value.klondike ?: return
     if (state.isWon || state.waste.isEmpty()) return
     val card = state.waste.last()
     val pile = state.tableauPiles[columnIndex]
@@ -89,7 +111,7 @@ internal fun SolitaireViewModel.klondikeMoveWasteToTableauImpl(columnIndex: Int)
     saveHistory()
     val newPiles = state.tableauPiles.toMutableList()
     newPiles[columnIndex] = pile.copy(faceUp = pile.faceUp + card)
-    _uiState.update {
+    uiStateInternal.update {
         it.copy(klondike = state.copy(
             waste = state.waste.dropLast(1),
             tableauPiles = newPiles,
@@ -100,14 +122,14 @@ internal fun SolitaireViewModel.klondikeMoveWasteToTableauImpl(columnIndex: Int)
 }
 
 internal fun SolitaireViewModel.klondikeMoveWasteToFoundationImpl(foundationIndex: Int) {
-    val state = _uiState.value.klondike ?: return
+    val state = uiStateInternal.value.klondike ?: return
     if (state.isWon || state.waste.isEmpty()) return
     val card = state.waste.last()
     if (!canPlaceOnFoundation(card, state.foundations[foundationIndex], foundationIndex)) return
     saveHistory()
     val newFoundations = state.foundations.toMutableList()
     newFoundations[foundationIndex] = newFoundations[foundationIndex] + card
-    _uiState.update {
+    uiStateInternal.update {
         it.copy(klondike = state.copy(
             waste = state.waste.dropLast(1),
             foundations = newFoundations,
@@ -118,7 +140,7 @@ internal fun SolitaireViewModel.klondikeMoveWasteToFoundationImpl(foundationInde
 }
 
 internal fun SolitaireViewModel.klondikeMoveTableauToFoundationImpl(fromColumn: Int, foundationIndex: Int) {
-    val state = _uiState.value.klondike ?: return
+    val state = uiStateInternal.value.klondike ?: return
     if (state.isWon) return
     val pile = state.tableauPiles[fromColumn]
     if (pile.faceUp.isEmpty()) return
@@ -130,7 +152,7 @@ internal fun SolitaireViewModel.klondikeMoveTableauToFoundationImpl(fromColumn: 
     newPiles[fromColumn] = autoFlip(pile.copy(faceUp = newFaceUp))
     val newFoundations = state.foundations.toMutableList()
     newFoundations[foundationIndex] = newFoundations[foundationIndex] + card
-    _uiState.update {
+    uiStateInternal.update {
         it.copy(klondike = state.copy(
             tableauPiles = newPiles,
             foundations = newFoundations,
@@ -141,7 +163,7 @@ internal fun SolitaireViewModel.klondikeMoveTableauToFoundationImpl(fromColumn: 
 }
 
 internal fun SolitaireViewModel.klondikeMoveTableauToTableauImpl(fromColumn: Int, cardIndex: Int, toColumn: Int) {
-    val state = _uiState.value.klondike ?: return
+    val state = uiStateInternal.value.klondike ?: return
     if (state.isWon) return
     val fromPile = state.tableauPiles[fromColumn]
     if (cardIndex < 0 || cardIndex >= fromPile.faceUp.size) return
@@ -153,7 +175,7 @@ internal fun SolitaireViewModel.klondikeMoveTableauToTableauImpl(fromColumn: Int
     val newPiles = state.tableauPiles.toMutableList()
     newPiles[fromColumn] = autoFlip(fromPile.copy(faceUp = fromPile.faceUp.subList(0, cardIndex)))
     newPiles[toColumn] = toPile.copy(faceUp = toPile.faceUp + movingCards)
-    _uiState.update {
+    uiStateInternal.update {
         it.copy(klondike = state.copy(
             tableauPiles = newPiles,
             moveCount = state.moveCount + 1
@@ -162,7 +184,7 @@ internal fun SolitaireViewModel.klondikeMoveTableauToTableauImpl(fromColumn: Int
 }
 
 internal fun SolitaireViewModel.klondikeAutoCompleteImpl() {
-    val state = _uiState.value.klondike ?: return
+    val state = uiStateInternal.value.klondike ?: return
     if (state.isWon) return
     if (state.tableauPiles.any { it.faceDown.isNotEmpty() }) return
     saveHistory()
@@ -170,52 +192,7 @@ internal fun SolitaireViewModel.klondikeAutoCompleteImpl() {
     var madeProgress = true
     while (madeProgress) {
         madeProgress = false
-        // Move as many waste/tableau cards to foundations as possible
-        var moved = true
-        while (moved) {
-            moved = false
-            if (current.waste.isNotEmpty()) {
-                val card = current.waste.last()
-                for (fi in current.foundations.indices) {
-                    if (canPlaceOnFoundation(card, current.foundations[fi], fi)) {
-                        val newFoundations = current.foundations.toMutableList()
-                        newFoundations[fi] = newFoundations[fi] + card
-                        current = current.copy(
-                            waste = current.waste.dropLast(1),
-                            foundations = newFoundations,
-                            moveCount = current.moveCount + 1
-                        )
-                        moved = true
-                        madeProgress = true
-                        break
-                    }
-                }
-                if (moved) continue
-            }
-            for (i in current.tableauPiles.indices) {
-                val pile = current.tableauPiles[i]
-                if (pile.faceUp.isNotEmpty()) {
-                    val card = pile.faceUp.last()
-                    for (fi in current.foundations.indices) {
-                        if (canPlaceOnFoundation(card, current.foundations[fi], fi)) {
-                            val newFoundations = current.foundations.toMutableList()
-                            newFoundations[fi] = newFoundations[fi] + card
-                            val newPiles = current.tableauPiles.toMutableList()
-                            newPiles[i] = autoFlip(pile.copy(faceUp = pile.faceUp.dropLast(1)))
-                            current = current.copy(
-                                tableauPiles = newPiles,
-                                foundations = newFoundations,
-                                moveCount = current.moveCount + 1
-                            )
-                            moved = true
-                            madeProgress = true
-                            break
-                        }
-                    }
-                    if (moved) break
-                }
-            }
-        }
+        current = drainToFoundations(current) { current = it; madeProgress = true }
         // Draw one stock card and try again
         if (current.stock.isNotEmpty()) {
             current = current.copy(
@@ -225,9 +202,75 @@ internal fun SolitaireViewModel.klondikeAutoCompleteImpl() {
             madeProgress = true
         }
     }
-    _uiState.update { it.copy(klondike = current) }
+    uiStateInternal.update { it.copy(klondike = current) }
     checkKlondikeWin()
 }
+
+private fun SolitaireViewModel.drainToFoundations(
+    start: KlondikeState,
+    onMove: (KlondikeState) -> Unit,
+): KlondikeState {
+    var current = start
+    var moved = true
+    while (moved) {
+        moved = false
+        val afterWaste = moveWasteToFoundation(current)
+        if (afterWaste != null) {
+            current = afterWaste
+            moved = true
+            onMove(current)
+            continue
+        }
+        val afterTableau = moveTableauToFoundation(current)
+        if (afterTableau != null) {
+            current = afterTableau
+            moved = true
+            onMove(current)
+        }
+    }
+    return current
+}
+
+private fun SolitaireViewModel.moveWasteToFoundation(current: KlondikeState): KlondikeState? {
+    if (current.waste.isEmpty()) return null
+    val card = current.waste.last()
+    for (fi in current.foundations.indices) {
+        if (!canPlaceOnFoundation(card, current.foundations[fi], fi)) continue
+        val newFoundations = current.foundations.toMutableList()
+        newFoundations[fi] = newFoundations[fi] + card
+        return current.copy(
+            waste = current.waste.dropLast(1),
+            foundations = newFoundations,
+            moveCount = current.moveCount + 1
+        )
+    }
+    return null
+}
+
+private fun SolitaireViewModel.moveTableauToFoundation(current: KlondikeState): KlondikeState? {
+    for (i in current.tableauPiles.indices) {
+        val pile = current.tableauPiles[i]
+        if (pile.faceUp.isEmpty()) continue
+        val card = pile.faceUp.last()
+        for (fi in current.foundations.indices) {
+            if (!canPlaceOnFoundation(card, current.foundations[fi], fi)) continue
+            val newFoundations = current.foundations.toMutableList()
+            newFoundations[fi] = newFoundations[fi] + card
+            val newPiles = current.tableauPiles.toMutableList()
+            newPiles[i] = autoFlip(pile.copy(faceUp = pile.faceUp.dropLast(1)))
+            return current.copy(
+                tableauPiles = newPiles,
+                foundations = newFoundations,
+                moveCount = current.moveCount + 1
+            )
+        }
+    }
+    return null
+}
+
+/** One fewer recycle left; unlimited (RELAXED) stays unlimited. */
+private fun remainingAfterRecycle(redealsRemaining: Int): Int =
+    if (redealsRemaining == Int.MAX_VALUE) Int.MAX_VALUE else redealsRemaining - 1
 
 internal fun SolitaireViewModel.canPlaceOnKlondikeTableau(card: Card, pile: TableauPile): Boolean = when {
     pile.faceUp.isEmpty() && pile.faceDown.isEmpty() -> card.rank == Rank.KING
@@ -235,7 +278,11 @@ internal fun SolitaireViewModel.canPlaceOnKlondikeTableau(card: Card, pile: Tabl
     else -> pile.faceUp.last().isOneHigherThan(card) && card.alternatesColorWith(pile.faceUp.last())
 }
 
-internal fun SolitaireViewModel.canPlaceOnFoundation(card: Card, foundation: List<Card>, foundationIndex: Int): Boolean =
+internal fun SolitaireViewModel.canPlaceOnFoundation(
+    card: Card,
+    foundation: List<Card>,
+    foundationIndex: Int,
+): Boolean =
     if (foundation.isEmpty()) card.rank == Rank.ACE && card.suit == Suit.entries[foundationIndex]
     else card.suit == foundation.last().suit && card.isOneHigherThan(foundation.last())
 
@@ -245,10 +292,10 @@ internal fun SolitaireViewModel.autoFlip(pile: TableauPile): TableauPile =
     else pile
 
 internal fun SolitaireViewModel.checkKlondikeWin() {
-    val state = _uiState.value.klondike ?: return
-    if (state.foundations.all { it.size == 13 }) {
-        _uiState.update { it.copy(klondike = state.copy(isWon = true)) }
-        onGameWon(GameMode.KLONDIKE, state.elapsedSeconds, state.moveCount, state.usedUndo)
+    val state = uiStateInternal.value.klondike ?: return
+    if (state.foundations.all { it.size == Rank.KING.value }) {
+        uiStateInternal.update { it.copy(klondike = state.copy(isWon = true)) }
+        onGameWon(GameMode.KLONDIKE, state.elapsedSeconds, state.usedUndo)
     }
 }
 
@@ -282,46 +329,84 @@ internal fun SolitaireViewModel.handleKlondikeDropImpl(sourceId: String, targetI
 }
 
 internal fun SolitaireViewModel.klondikeAutoMoveImpl(sourceId: String) {
-    val state = _uiState.value.klondike ?: return
+    val state = uiStateInternal.value.klondike ?: return
     if (state.isWon) return
     val cards = draggedCards(sourceId)
     if (cards.isEmpty()) return
-    val topCard = cards.first()
+    val origin = klondikeMoveOrigin(sourceId) ?: return
+    if (tryKlondikeFoundation(state, cards, sourceId, origin)) return
+    tryKlondikeTableau(state, cards, sourceId, origin)
+}
 
-    val fromCol = if (sourceId.startsWith("tableau_"))
-        sourceId.removePrefix("tableau_").substringBefore("_").toIntOrNull() else null
-    val fromIdx = if (sourceId.startsWith("tableau_"))
-        sourceId.removePrefix("tableau_").split("_").getOrNull(1)?.toIntOrNull() ?: 0 else 0
+private data class KlondikeMoveOrigin(val fromCol: Int?, val fromIdx: Int)
 
-    // 1) Foundation — only a single top card can go up, and it is the preferred move.
-    if (cards.size == 1) {
-        for (fi in state.foundations.indices) {
-            if (canPlaceOnFoundation(topCard, state.foundations[fi], fi)) {
-                when {
-                    sourceId == "waste" -> klondikeMoveWasteToFoundation(fi)
-                    fromCol != null -> klondikeMoveTableauToFoundation(fromCol, fi)
-                    else -> return
-                }
-                return
-            }
-        }
-    }
+private fun klondikeMoveOrigin(sourceId: String): KlondikeMoveOrigin? {
+    if (sourceId == "waste") return KlondikeMoveOrigin(fromCol = null, fromIdx = 0)
+    if (!sourceId.startsWith("tableau_")) return null
+    val parts = sourceId.removePrefix("tableau_").split("_")
+    return KlondikeMoveOrigin(
+        fromCol = parts.getOrNull(0)?.toIntOrNull() ?: return null,
+        fromIdx = parts.getOrNull(1)?.toIntOrNull() ?: 0,
+    )
+}
 
-    // 2) Tableau — first column that legally accepts the run.
-    for (toCol in state.tableauPiles.indices) {
-        if (toCol == fromCol) continue
-        val toPile = state.tableauPiles[toCol]
-        if (!canPlaceOnKlondikeTableau(topCard, toPile)) continue
-        // Skip shuffling a lone King between empty columns — it accomplishes nothing.
-        val toEmpty = toPile.faceUp.isEmpty() && toPile.faceDown.isEmpty()
-        if (toEmpty && fromCol != null && fromIdx == 0 && state.tableauPiles[fromCol].faceDown.isEmpty()) continue
+private fun SolitaireViewModel.tryKlondikeFoundation(
+    state: KlondikeState,
+    cards: List<Card>,
+    sourceId: String,
+    origin: KlondikeMoveOrigin,
+): Boolean {
+    // Only a single top card can go up, and it is the preferred move.
+    if (cards.size != SINGLE_CARD) return false
+    for (fi in state.foundations.indices) {
+        if (!canPlaceOnFoundation(cards.first(), state.foundations[fi], fi)) continue
         when {
-            sourceId == "waste" -> klondikeMoveWasteToTableau(toCol)
-            fromCol != null -> klondikeMoveTableauToTableau(fromCol, fromIdx, toCol)
-            else -> return
+            sourceId == "waste" -> klondikeMoveWasteToFoundation(fi)
+            origin.fromCol != null -> klondikeMoveTableauToFoundation(origin.fromCol, fi)
+            else -> return false
         }
-        return
+        return true
     }
+    return false
+}
+
+private fun SolitaireViewModel.tryKlondikeTableau(
+    state: KlondikeState,
+    cards: List<Card>,
+    sourceId: String,
+    origin: KlondikeMoveOrigin,
+) {
+    val target = state.tableauPiles.indices.firstOrNull { toCol ->
+        toCol != origin.fromCol && isViableKlondikeTarget(state, cards, origin, toCol)
+    } ?: return
+    when {
+        sourceId == "waste" -> klondikeMoveWasteToTableau(target)
+        origin.fromCol != null ->
+            klondikeMoveTableauToTableau(origin.fromCol, origin.fromIdx, target)
+        else -> return
+    }
+}
+
+private fun isLoneKingShuffle(
+    state: KlondikeState,
+    origin: KlondikeMoveOrigin,
+    toPile: TableauPile,
+): Boolean {
+    if (toPile.faceUp.isNotEmpty() || toPile.faceDown.isNotEmpty()) return false
+    if (origin.fromCol == null || origin.fromIdx != 0) return false
+    return state.tableauPiles[origin.fromCol].faceDown.isEmpty()
+}
+
+private fun SolitaireViewModel.isViableKlondikeTarget(
+    state: KlondikeState,
+    cards: List<Card>,
+    origin: KlondikeMoveOrigin,
+    toCol: Int,
+): Boolean {
+    val toPile = state.tableauPiles[toCol]
+    if (!canPlaceOnKlondikeTableau(cards.first(), toPile)) return false
+    // Skip shuffling a lone King between empty columns — it accomplishes nothing.
+    return !isLoneKingShuffle(state, origin, toPile)
 }
 
 internal fun overlapArea(a: Rect, b: Rect): Float {

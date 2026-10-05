@@ -1,6 +1,7 @@
 package com.vayunmathur.photos.ui
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.MediaStore
 import android.provider.Settings
@@ -113,7 +114,12 @@ fun GalleryPage(
                                 mediaResultLauncher.launch(
                                     IntentSenderRequest.Builder(pendingIntent.intentSender).build()
                                 )
-                            } catch (e: Exception) {
+                            } catch (e: SecurityException) {
+                                android.util.Log.e("GalleryPage", "MediaStore delete request failed", e)
+                                // Fallback: clear selection and refresh anyway
+                                galleryViewModel.clearSelection()
+                                galleryViewModel.runSync()
+                            } catch (e: ActivityNotFoundException) {
                                 android.util.Log.e("GalleryPage", "MediaStore delete request failed", e)
                                 // Fallback: clear selection and refresh anyway
                                 galleryViewModel.clearSelection()

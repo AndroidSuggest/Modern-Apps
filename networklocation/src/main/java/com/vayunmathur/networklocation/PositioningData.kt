@@ -14,11 +14,24 @@ package com.vayunmathur.networklocation
  * The wire values are baked into the `cells-v2.wpsdb` key and MUST match `wps_harvest`'s
  * `RadioType`. Append only.
  */
+@Suppress("MagicNumber") // Wire values are the protocol spec; see doc above.
+/**
+ * Wire values are baked into the `cells-v2.wpsdb` key and MUST match `wps_harvest`'s
+ * `RadioType`. File level (not in the companion): enum entries are initialised
+ * before the companion object, so entries cannot read companion constants —
+ * but file-level `const` is inlined at compile time and has no init order.
+ */
+private const val WIRE_GSM = 1
+private const val WIRE_UMTS = 2
+private const val WIRE_LTE = 3
+private const val WIRE_NR = 4
+
 enum class RadioType(val wire: Int) {
-    GSM(1),
-    UMTS(2),
-    LTE(3),
-    NR(4),
+    GSM(WIRE_GSM),
+    UMTS(WIRE_UMTS),
+    LTE(WIRE_LTE),
+    NR(WIRE_NR),
+    ;
 }
 
 /** A radio beacon we can resolve to a location: a WiFi access point or a cell tower. */

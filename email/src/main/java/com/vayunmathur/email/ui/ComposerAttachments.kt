@@ -19,7 +19,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.email.R
 import com.vayunmathur.email.ui.composer.EmailHtmlEditorController
-import com.vayunmathur.library.ui.*
+import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.IconAttachment
+import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconClose
+import com.vayunmathur.library.ui.IconImage
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Text
 
 /**
  * Inline-image thumbnails and attachment rows for the composer, extracted from

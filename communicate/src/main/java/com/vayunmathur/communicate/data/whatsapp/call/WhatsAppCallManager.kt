@@ -197,7 +197,11 @@ object WhatsAppCallManager {
             // Busy — auto-reject a second call.
             scope.launch {
                 runCatching {
-                    b.sendCallStanza(WhatsAppCallSignaling.buildReject(inbound.from, inbound.callId, inbound.creator, b.newId()))
+                    b.sendCallStanza(WhatsAppCallSignaling.buildReject(
+                        inbound.from,
+                        inbound.callId,
+                        inbound.creator,
+                        b.newId()))
                 }
             }
             return

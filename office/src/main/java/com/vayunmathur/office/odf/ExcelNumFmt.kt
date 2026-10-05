@@ -10,6 +10,16 @@ import com.vayunmathur.library.ui.odf.OdfNumberToken
  */
 internal object ExcelNumFmt {
 
+    private val DATE_BUILTINS = 14..22
+    private val TIME_BUILTINS = 45..47
+    private val LOCALE_DATE_BUILTINS = 27..36
+    private val CJK_BUILTINS = 50..58
+    private const val LONG_RUN = 4
+    private const val MEDIUM_RUN = 3
+    private const val SHORT_RUN = 2
+    private const val AMPM_LENGTH = 5
+    private const val AP_LENGTH = 3
+
     /** Builtin numFmtId -> format code (the standard subset; ids without an entry are "General"). */
     private val BUILTINS: Map<Int, String> = mapOf(
         0 to "General", 1 to "0", 2 to "0.00", 3 to "#,##0", 4 to "#,##0.00",
@@ -24,53 +34,99 @@ internal object ExcelNumFmt {
     fun forBuiltin(id: Int): OdfNumberFormat? {
         // 27-36 and 50-58 are locale/CJK date-time builtins; use a sensible default date pattern
         // (the literal "date" is not a valid format code and yields garbage tokens).
-        val code = BUILTINS[id] ?: if (id in 27..36 || id in 50..58) return parse("yyyy-mm-dd") else return null
+        val code = BUILTINS[id] ?: if (id in LOCALE_DATE_BUILTINS || id in CJK_BUILTINS) {
+            return parse("yyyy-mm-dd")
+        } else {
+            return null
+        }
         if (code == "General") return null
         return parse(code)
     }
 
     /** True if a builtin id is a date/time format (used to tag value-type without a full parse). */
     fun isDateTimeBuiltin(id: Int): Boolean =
-        id in 14..22 || id in 45..47 || id in 27..36 || id in 50..58
+        id in DATE_BUILTINS || id in TIME_BUILTINS || id in LOCALE_DATE_BUILTINS || id in CJK_BUILTINS
 
     /**
      * Parses a custom format code (uses only the first ';' section for positive numbers). Returns
      * null for "General" / empty.
      */
     fun parse(codeRaw: String): OdfNumberFormat? {
+        val section = firstSection(codeRaw) ?: return null
+        val parts = splitCodeParts(section)
+        if (isDateCode(parts)) return parseDateTime(stripBracketsKeepQuotes(section))
+        if (parts.cleaned.contains("@")) return null
+        return numericFormat(parts)
+    }
+
+    /** First ';' section, or null for "General" / empty. */
+    private fun firstSection(codeRaw: String): String? {
         val full = codeRaw.trim()
         if (full.isEmpty() || full.equals("General", true)) return null
-        val section = full.split(';').first().trim()
+        return full.split(';').first().trim()
+    }
+
+    /** Cleaned code variants used by kind detection + numeric parsing. */
+    private class CodeParts(
+        val currency: String?,
+        val cleaned: String,
+        val dateProbe: String,
+    )
+
+    /** Currency + bracket/literal-stripped variants of a section. */
+    private fun splitCodeParts(section: String): CodeParts {
         // Strip color / condition brackets like [Red], [$-409], [>100] but keep [$...] currency payloads.
         val currency = extractCurrency(section)
         val cleaned = stripBrackets(section)
         // Date detection must ignore quoted literals: 0" days" is a number, not a date.
         val dateProbe = stripLiterals(section)
+        return CodeParts(currency, cleaned, dateProbe)
+    }
 
-        val isText = cleaned.contains("@")
-        val isScientific = cleaned.contains("E+", true) || cleaned.contains("E-", true)
-        val hasDate = !isScientific && containsDateToken(dateProbe)
-        val isFraction = cleaned.contains("/") && Regex("[?#0]\\s*/\\s*[?#0]").containsMatchIn(cleaned)
+    /** True when the code is a date/time code (and not scientific/text). */
+    private fun isDateCode(parts: CodeParts): Boolean {
+        if (isScientificCode(parts.cleaned)) return false
+        return containsDateToken(parts.dateProbe)
+    }
 
-        // Keep quotes for the token parser so literal segments aren't parsed as date letters.
-        if (hasDate) return parseDateTime(stripBracketsKeepQuotes(section))
+    /** True for scientific notation codes. */
+    private fun isScientificCode(cleaned: String): Boolean =
+        cleaned.contains("E+", true) || cleaned.contains("E-", true)
 
-        if (isText) return null
+    /** True for fraction codes like "# ?/?". */
+    private fun isFractionCode(cleaned: String): Boolean =
+        cleaned.contains("/") && Regex("[?#0]\\s*/\\s*[?#0]").containsMatchIn(cleaned)
 
+    /** Numeric (non-date) format from cleaned code parts. */
+    private fun numericFormat(parts: CodeParts): OdfNumberFormat {
+        val cleaned = parts.cleaned
+        val isScientific = isScientificCode(cleaned)
+        val isFraction = isFractionCode(cleaned)
         val percent = cleaned.contains("%")
         val grouping = cleaned.contains(",") && Regex("#,##0|0,0").containsMatchIn(cleaned)
-        val decimals = cleaned.substringAfter('.', "").takeWhile { it == '0' || it == '#' }.count { it == '0' || it == '#' }
-        val fracDigits = if (isFraction) cleaned.substringAfterLast('/').takeWhile { it == '?' || it == '#' || it == '0' }.length.coerceAtLeast(1) else 1
-
         return OdfNumberFormat(
-            decimals = if (cleaned.contains('.') || isScientific) decimals else if (percent) 0 else 0,
+            decimals = decimalsOf(cleaned, isScientific, percent),
             percent = percent,
-            currencySymbol = currency,
+            currencySymbol = parts.currency,
             grouping = grouping,
             isScientific = isScientific,
             isFraction = isFraction,
-            fractionDenominatorDigits = fracDigits
+            fractionDenominatorDigits = fracDigitsOf(cleaned, isFraction)
         )
+    }
+
+    /** Decimals after the '.' (only meaningful with '.' / scientific / percent). */
+    private fun decimalsOf(cleaned: String, isScientific: Boolean, percent: Boolean): Int {
+        if (!cleaned.contains('.') && !isScientific && !percent) return 0
+        return cleaned.substringAfter('.', "").takeWhile { it == '0' || it == '#' }
+            .count { it == '0' || it == '#' }
+    }
+
+    /** Denominator digits for fraction codes (1 otherwise). */
+    private fun fracDigitsOf(cleaned: String, isFraction: Boolean): Int {
+        if (!isFraction) return 1
+        return cleaned.substringAfterLast('/').takeWhile { it == '?' || it == '#' || it == '0' }.length
+            .coerceAtLeast(1)
     }
 
     private fun containsDateToken(code: String): Boolean {
@@ -80,56 +136,138 @@ internal object ExcelNumFmt {
             (Regex("[mM]").containsMatchIn(c) && !c.contains("E", true))
     }
 
+    /** Date/time tokenize state. */
+    private class DateTimeAcc(
+        var i: Int = 0,
+        var seenHour: Boolean = false,
+        var seenTime: Boolean = false,
+        val tokens: MutableList<OdfNumberToken> = mutableListOf(),
+    )
+
     private fun parseDateTime(codeIn: String): OdfNumberFormat {
         val code = codeIn
-        val tokens = mutableListOf<OdfNumberToken>()
-        var i = 0
-        var seenHour = false
-        var seenTime = false
+        val acc = DateTimeAcc()
         val ampm = code.contains("AM/PM", true) || code.contains("A/P", true)
-        while (i < code.length) {
-            val c = code[i]
-            when (c.lowercaseChar()) {
-                'y' -> { val run = runLen(code, i, 'y'); tokens.add(OdfNumberToken("year", style = if (run >= 4) "long" else "short")); i += run }
-                'm' -> {
-                    val run = runLen(code, i, 'm')
-                    // 'm' after an hour token (or before seconds) is minutes; else month.
-                    val isMinute = seenHour || nextNonSpaceIsSeconds(code, i + run)
-                    if (isMinute) { tokens.add(OdfNumberToken("minutes", style = if (run >= 2) "long" else "short")); seenTime = true }
-                    else tokens.add(OdfNumberToken("month", style = if (run >= 4) "long" else "short", textual = run >= 3))
-                    i += run
-                }
-                'd' -> { val run = runLen(code, i, 'd'); tokens.add(OdfNumberToken(if (run >= 3) "day-of-week" else "day", style = if (run == 4 || run == 2) "long" else "short", textual = run >= 3)); i += run }
-                'h' -> { val run = runLen(code, i, 'h'); tokens.add(OdfNumberToken("hours", style = if (run >= 2) "long" else "short")); seenHour = true; seenTime = true; i += run }
-                's' -> { val run = runLen(code, i, 's'); tokens.add(OdfNumberToken("seconds", style = if (run >= 2) "long" else "short")); seenTime = true; i += run }
-                '"' -> {
-                    // Quoted literal segment.
-                    val end = code.indexOf('"', i + 1)
-                    val lit = if (end >= 0) code.substring(i + 1, end) else code.substring(i + 1)
-                    if (lit.isNotEmpty()) tokens.add(OdfNumberToken("text", text = lit))
-                    i = if (end >= 0) end + 1 else code.length
-                }
-                '\\' -> {
-                    // Backslash-escaped single literal char.
-                    if (i + 1 < code.length) { tokens.add(OdfNumberToken("text", text = code[i + 1].toString())); i += 2 } else i++
-                }
-                else -> {
-                    if (code.startsWith("AM/PM", i, true)) { tokens.add(OdfNumberToken("am-pm")); i += 5 }
-                    else if (code.startsWith("A/P", i, true)) { tokens.add(OdfNumberToken("am-pm")); i += 3 }
-                    else {
-                        // literal text run until next token char / quote / escape
-                        val start = i
-                        while (i < code.length && code[i].lowercaseChar() !in "ymdhs" && code[i] != '"' && code[i] != '\\' && !code.startsWith("AM/PM", i, true)) i++
-                        val lit = code.substring(start, i)
-                        if (lit.isNotEmpty()) tokens.add(OdfNumberToken("text", text = lit))
-                    }
-                }
-            }
+        while (acc.i < code.length) {
+            stepDateTimeChar(code, acc)
         }
+        return buildDateTimeFormat(acc, ampm)
+    }
+
+    /** Final format from accumulated tokens. */
+    private fun buildDateTimeFormat(acc: DateTimeAcc, ampm: Boolean): OdfNumberFormat {
+        val tokens = acc.tokens
         if (ampm && tokens.none { it.kind == "am-pm" }) tokens.add(OdfNumberToken("am-pm"))
-        return OdfNumberFormat(isDate = !seenTime || tokens.any { it.kind in setOf("year", "month", "day", "day-of-week") },
-            isTime = seenTime && tokens.none { it.kind in setOf("year", "month", "day", "day-of-week") },
+        return OdfNumberFormat(
+            isDate = !acc.seenTime || tokens.any { it.kind in DATE_KINDS },
+            isTime = acc.seenTime && tokens.none { it.kind in DATE_KINDS },
             dateTimeTokens = tokens)
+    }
+
+    private val DATE_KINDS = setOf("year", "month", "day", "day-of-week")
+
+    /** Consumes one date/time token or literal at [acc.i]. */
+    private fun stepDateTimeChar(code: String, acc: DateTimeAcc) {
+        when (code[acc.i].lowercaseChar()) {
+            'y' -> addYearToken(code, acc)
+            'm' -> addMonthMinuteToken(code, acc)
+            'd' -> addDayToken(code, acc)
+            'h' -> addHourToken(code, acc)
+            's' -> addSecondToken(code, acc)
+            '"' -> addQuotedLiteral(code, acc)
+            '\\' -> addEscapedChar(code, acc)
+            else -> addAmpmOrLiteral(code, acc)
+        }
+    }
+
+    /** Year run (yyyy = long). */
+    private fun addYearToken(code: String, acc: DateTimeAcc) {
+        val run = runLen(code, acc.i, 'y')
+        acc.tokens.add(OdfNumberToken("year", style = if (run >= LONG_RUN) "long" else "short"))
+        acc.i += run
+    }
+
+    /** Month vs minutes: 'm' after an hour (or before seconds) is minutes. */
+    private fun addMonthMinuteToken(code: String, acc: DateTimeAcc) {
+        val run = runLen(code, acc.i, 'm')
+        val isMinute = acc.seenHour || nextNonSpaceIsSeconds(code, acc.i + run)
+        if (isMinute) {
+            acc.tokens.add(OdfNumberToken(
+                "minutes",
+                style = if (run >= SHORT_RUN) "long" else "short"))
+            acc.seenTime = true
+        } else {
+            acc.tokens.add(OdfNumberToken(
+                "month",
+                style = if (run >= LONG_RUN) "long" else "short",
+                textual = run >= MEDIUM_RUN))
+        }
+        acc.i += run
+    }
+
+    /** Day / day-of-week run. */
+    private fun addDayToken(code: String, acc: DateTimeAcc) {
+        val run = runLen(code, acc.i, 'd')
+        val kind = if (run >= MEDIUM_RUN) "day-of-week" else "day"
+        val style = if (run == LONG_RUN || run == SHORT_RUN) "long" else "short"
+        acc.tokens.add(OdfNumberToken(kind, style = style, textual = run >= MEDIUM_RUN))
+        acc.i += run
+    }
+
+    /** Hour run. */
+    private fun addHourToken(code: String, acc: DateTimeAcc) {
+        val run = runLen(code, acc.i, 'h')
+        val style = if (run >= SHORT_RUN) "long" else "short"
+        acc.tokens.add(OdfNumberToken("hours", style = style))
+        acc.seenHour = true
+        acc.seenTime = true
+        acc.i += run
+    }
+
+    /** Second run. */
+    private fun addSecondToken(code: String, acc: DateTimeAcc) {
+        val run = runLen(code, acc.i, 's')
+        val style = if (run >= SHORT_RUN) "long" else "short"
+        acc.tokens.add(OdfNumberToken("seconds", style = style))
+        acc.seenTime = true
+        acc.i += run
+    }
+
+    /** Quoted literal segment. */
+    private fun addQuotedLiteral(code: String, acc: DateTimeAcc) {
+        val end = code.indexOf('"', acc.i + 1)
+        val lit = if (end >= 0) code.substring(acc.i + 1, end) else code.substring(acc.i + 1)
+        if (lit.isNotEmpty()) acc.tokens.add(OdfNumberToken("text", text = lit))
+        acc.i = if (end >= 0) end + 1 else code.length
+    }
+
+    /** Backslash-escaped single literal char. */
+    private fun addEscapedChar(code: String, acc: DateTimeAcc) {
+        if (acc.i + 1 < code.length) {
+            acc.tokens.add(OdfNumberToken("text", text = code[acc.i + 1].toString()))
+            acc.i += 2
+        } else {
+            acc.i++
+        }
+    }
+
+    /** AM/PM marker or a literal text run. */
+    private fun addAmpmOrLiteral(code: String, acc: DateTimeAcc) {
+        if (code.startsWith("AM/PM", acc.i, true)) {
+            acc.tokens.add(OdfNumberToken("am-pm"))
+            acc.i += AMPM_LENGTH
+            return
+        }
+        if (code.startsWith("A/P", acc.i, true)) {
+            acc.tokens.add(OdfNumberToken("am-pm"))
+            acc.i += AP_LENGTH
+            return
+        }
+        // literal text run until next token char / quote / escape
+        val start = acc.i
+        while (acc.i < code.length && isLiteralChar(code, acc.i)) acc.i++
+        val lit = code.substring(start, acc.i)
+        if (lit.isNotEmpty()) acc.tokens.add(OdfNumberToken("text", text = lit))
     }
 
     private fun nextNonSpaceIsSeconds(code: String, from: Int): Boolean {
@@ -143,6 +281,13 @@ internal object ExcelNumFmt {
         while (i < s.length && s[i].lowercaseChar() == ch.lowercaseChar()) i++
         return i - start
     }
+
+    /** True while [code] at [i] is literal text (not a token char/quote/escape). */
+    private fun isLiteralChar(code: String, i: Int): Boolean =
+        code[i].lowercaseChar() !in "ymdhs" &&
+            code[i] != '"' &&
+            code[i] != '\\' &&
+            !code.startsWith("AM/PM", i, true)
 
     private fun extractCurrency(code: String): String? {
         Regex("\\[\\$([^\\]-]*)").find(code)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }?.let { return it }

@@ -57,20 +57,30 @@ object SignedJarIndex {
             // and its digest checked, so this read *is* the verification step, not just IO.
             jarFile.getInputStream(entry).use(consume)
 
-            val certificates = entry.certificates
-                ?: throw VerificationException("$entryName is not covered by the JAR signature")
-            val signer = certificates.filterIsInstance<X509Certificate>().firstOrNull()
-                ?: throw VerificationException("$entryName has no X.509 signer")
-
+            val signer = signerOf(entry, entryName)
             val fingerprint = ApkCertificates.sha256(signer.encoded)
-            if (!fingerprint.equals(pinnedFingerprint, true)) {
-                throw VerificationException(
-                    "Repository signing key changed: pinned " +
-                        "${ApkCertificates.abbreviate(pinnedFingerprint)}, " +
-                        "got ${ApkCertificates.abbreviate(fingerprint)}"
-                )
-            }
+            checkPinned(fingerprint, pinnedFingerprint)
             return fingerprint
+        }
+    }
+
+    private fun signerOf(
+        entry: java.util.jar.JarEntry,
+        entryName: String,
+    ): X509Certificate {
+        val certificates = entry.certificates
+            ?: throw VerificationException("$entryName is not covered by the JAR signature")
+        return certificates.filterIsInstance<X509Certificate>().firstOrNull()
+            ?: throw VerificationException("$entryName has no X.509 signer")
+    }
+
+    private fun checkPinned(fingerprint: String, pinnedFingerprint: String) {
+        if (!fingerprint.equals(pinnedFingerprint, true)) {
+            throw VerificationException(
+                "Repository signing key changed: pinned " +
+                    "${ApkCertificates.abbreviate(pinnedFingerprint)}, " +
+                    "got ${ApkCertificates.abbreviate(fingerprint)}"
+            )
         }
     }
 }

@@ -122,19 +122,21 @@ class Quantity(
         if (instant || other.instant) {
             // Both operands are TIME here (the dimension check above passed). Dates are absolute
             // points; they combine with durations, and subtract from each other to give a span.
-            return when {
-                instant && other.instant -> {
-                    if (sign > 0) throw ExpressionError("Cannot add two dates together")
-                    Quantity(value - other.value, Dimension.TIME) // date − date = duration
-                }
-                instant -> Quantity(value + sign * other.value, Dimension.TIME, instant = true) // date ± duration
-                else -> {
-                    if (sign < 0) throw ExpressionError("Cannot subtract a date from a duration")
-                    Quantity(value + other.value, Dimension.TIME, instant = true) // duration + date
-                }
-            }
+            return addOrSubInstant(other, sign)
         }
         return Quantity(value + sign * other.value, dimension, null)
+    }
+
+    private fun addOrSubInstant(other: Quantity, sign: Double): Quantity {
+        if (instant && other.instant) {
+            if (sign > 0) throw ExpressionError("Cannot add two dates together")
+            return Quantity(value - other.value, Dimension.TIME) // date − date = duration
+        }
+        if (instant) {
+            return Quantity(value + sign * other.value, Dimension.TIME, instant = true) // date ± duration
+        }
+        if (sign < 0) throw ExpressionError("Cannot subtract a date from a duration")
+        return Quantity(value + other.value, Dimension.TIME, instant = true) // duration + date
     }
 
     operator fun times(other: Quantity): Quantity {
@@ -169,11 +171,16 @@ class Quantity(
 
     fun pow(other: Quantity): Quantity {
         if (instant || other.instant) throw ExpressionError("A date only supports + or − with a duration")
+        val n = checkPowExponent(other)
+        if (isDimensionless) return Quantity(value.pow(n), Dimension.NONE)
+        return Quantity(value.pow(n), dimension.pow(n.toInt()))
+    }
+
+    private fun checkPowExponent(other: Quantity): Double {
         if (!other.isDimensionless) throw ExpressionError("Exponent must be dimensionless")
-        if (isDimensionless) return Quantity(value.pow(other.value), Dimension.NONE)
         val n = other.value
         if (n != floor(n)) throw ExpressionError("Cannot raise a unit to a non-integer power")
-        return Quantity(value.pow(n), dimension.pow(n.toInt()))
+        return n
     }
 
     fun abs(): Quantity = Quantity(kotlin.math.abs(value), dimension, tempOffsetK)
@@ -224,7 +231,164 @@ object UnitRegistry {
     // Names the engine reserves for variables/constants/ans; a unit token must never shadow one.
     private val RESERVED = setOf("e", "t", "x", "theta", "pi", "tau", "phi", "ans")
 
-    private val FAHRENHEIT_OFFSET_K = 273.15 - 32.0 * 5.0 / 9.0
+    private const val FAHRENHEIT_OFFSET_K = 273.15 - 32.0 * 5.0 / 9.0
+
+    // ---- Conversion factors to coherent base units (one per unit, named for detekt). ----
+    // Length (metres).
+    private const val METRES_PER_KM = 1000.0
+    private const val METRES_PER_CM = 0.01
+    private const val METRES_PER_MM = 0.001
+    private const val METRES_PER_MICROMETRE = 1e-6
+    private const val METRES_PER_NM = 1e-9
+    private const val METRES_PER_MILE = 1609.344
+    private const val METRES_PER_YARD = 0.9144
+    private const val METRES_PER_FOOT = 0.3048
+    private const val METRES_PER_INCH = 0.0254
+    private const val METRES_PER_NAUTICAL_MILE = 1852.0
+
+    // Mass (kilograms).
+    private const val KG_PER_TONNE = 1000.0
+    private const val KG_PER_GRAM = 0.001
+    private const val KG_PER_MILLIGRAM = 1e-6
+    private const val KG_PER_MICROGRAM = 1e-9
+    private const val KG_PER_POUND = 0.45359237
+    private const val KG_PER_OUNCE = 0.028349523125
+    private const val KG_PER_STONE = 6.35029318
+
+    // Time (seconds).
+    private const val SECONDS_PER_NANOSECOND = 1e-9
+    private const val SECONDS_PER_MICROSECOND = 1e-6
+    private const val SECONDS_PER_MILLISECOND = 0.001
+    private const val SECONDS_PER_MINUTE = 60.0
+    private const val SECONDS_PER_HOUR = 3600.0
+    private const val SECONDS_PER_DAY = 86400.0
+    private const val SECONDS_PER_WEEK = 604800.0
+    private const val SECONDS_PER_YEAR = 31557600.0
+
+    // Temperature.
+    private const val KELVIN_OFFSET_OF_CELSIUS = 273.15
+    private const val KELVIN_PER_FAHRENHEIT_DEGREE = 5.0 / 9.0
+
+    // Area (square metres).
+    private const val SQM_PER_SQUARE_KM = 1e6
+    private const val SQM_PER_SQUARE_CM = 1e-4
+    private const val SQM_PER_SQUARE_MM = 1e-6
+    private const val SQM_PER_HECTARE = 10000.0
+    private const val SQM_PER_ACRE = 4046.8564224
+    private const val SQM_PER_SQUARE_FOOT = 0.09290304
+    private const val SQM_PER_SQUARE_INCH = 0.00064516
+    private const val SQM_PER_SQUARE_MILE = 2589988.110336
+
+    // Volume (cubic metres).
+    private const val CUBM_PER_CUBIC_CM = 1e-6
+    private const val CUBM_PER_LITRE = 0.001
+    private const val CUBM_PER_MILLILITRE = 1e-6
+    private const val CUBM_PER_GALLON = 0.003785411784
+    private const val CUBM_PER_QUART = 9.46352946e-4
+    private const val CUBM_PER_PINT = 4.73176473e-4
+    private const val CUBM_PER_CUP = 2.365882365e-4
+    private const val CUBM_PER_FLUID_OUNCE = 2.95735295625e-5
+    private const val CUBM_PER_CUBIC_FOOT = 0.028316846592
+    private const val CUBM_PER_CUBIC_INCH = 1.6387064e-5
+
+    // Speed (metres per second).
+    private const val MPS_PER_KMH = 1.0 / 3.6
+    private const val MPS_PER_MPH = 0.44704
+    private const val MPS_PER_KNOT = 0.514444
+
+    // Data (bits).
+    private const val BITS_PER_BYTE = 8.0
+    private const val BITS_PER_KILOBYTE = 8e3
+    private const val BITS_PER_MEGABYTE = 8e6
+    private const val BITS_PER_GIGABYTE = 8e9
+    private const val BITS_PER_TERABYTE = 8e12
+    private const val BITS_PER_KIBIBYTE = 8.0 * 1024.0
+    private const val BITS_PER_MEBIBYTE = 8.0 * 1024.0 * 1024.0
+    private const val BITS_PER_GIBIBYTE = 8.0 * 1024.0 * 1024.0 * 1024.0
+    private const val BITS_PER_TEBIBYTE = 8.0 * 1024.0 * 1024.0 * 1024.0 * 1024.0
+    private const val BITS_PER_KILOBIT = 1e3
+    private const val BITS_PER_MEGABIT = 1e6
+    private const val BITS_PER_GIGABIT = 1e9
+
+    // Energy (joules).
+    private const val JOULES_PER_KILOJOULE = 1000.0
+    private const val JOULES_PER_MEGAJOULE = 1e6
+    private const val JOULES_PER_CALORIE = 4.184
+    private const val JOULES_PER_KILOCALORIE = 4184.0
+    private const val JOULES_PER_WATT_HOUR = 3600.0
+    private const val JOULES_PER_KILOWATT_HOUR = 3.6e6
+    private const val JOULES_PER_ELECTRONVOLT = 1.602176634e-19
+    private const val JOULES_PER_BTU = 1055.05585262
+    private const val JOULES_PER_ERG = 1e-7
+
+    // Power (watts).
+    private const val WATTS_PER_MILLIWATT = 0.001
+    private const val WATTS_PER_KILOWATT = 1000.0
+    private const val WATTS_PER_MEGAWATT = 1e6
+    private const val WATTS_PER_GIGAWATT = 1e9
+    private const val WATTS_PER_HORSEPOWER = 745.6998715823
+
+    // Pressure (pascals).
+    private const val PA_PER_HECTOPASCAL = 100.0
+    private const val PA_PER_KILOPASCAL = 1000.0
+    private const val PA_PER_MEGAPASCAL = 1e6
+    private const val PA_PER_BAR = 1e5
+    private const val PA_PER_MILLIBAR = 100.0
+    private const val PA_PER_ATMOSPHERE = 101325.0
+    private const val PA_PER_PSI = 6894.757293168
+    private const val PA_PER_MMHG = 133.322387415
+    private const val PA_PER_TORR = 133.32236842105263
+
+    // Force (newtons).
+    private const val NEWTONS_PER_KILONEWTON = 1000.0
+    private const val NEWTONS_PER_MILLINEWTON = 0.001
+    private const val NEWTONS_PER_POUND_FORCE = 4.4482216152605
+    private const val NEWTONS_PER_KG_FORCE = 9.80665
+    private const val NEWTONS_PER_DYNE = 1e-5
+
+    // Frequency (hertz).
+    private const val HZ_PER_KILOHERTZ = 1000.0
+    private const val HZ_PER_MEGAHERTZ = 1e6
+    private const val HZ_PER_GIGAHERTZ = 1e9
+
+    // Current (amperes).
+    private const val AMPS_PER_MICROAMP = 1e-6
+    private const val AMPS_PER_MILLIAMP = 0.001
+    private const val AMPS_PER_KILOAMP = 1000.0
+
+    // Voltage (volts).
+    private const val VOLTS_PER_MICROVOLT = 1e-6
+    private const val VOLTS_PER_MILLIVOLT = 0.001
+    private const val VOLTS_PER_KILOVOLT = 1000.0
+
+    // Resistance (ohms).
+    private const val OHMS_PER_MILLIOHM = 0.001
+    private const val OHMS_PER_KILOOHM = 1000.0
+    private const val OHMS_PER_MEGAOHM = 1e6
+
+    // Charge (coulombs).
+    private const val COULOMBS_PER_MICROCOULOMB = 1e-6
+    private const val COULOMBS_PER_MILLICOULOMB = 0.001
+    private const val COULOMBS_PER_MILLIAMP_HOUR = 3.6
+    private const val COULOMBS_PER_AMP_HOUR = 3600.0
+
+    // Capacitance (farads).
+    private const val FARADS_PER_PICOFARAD = 1e-12
+    private const val FARADS_PER_NANOFARAD = 1e-9
+    private const val FARADS_PER_MICROFARAD = 1e-6
+    private const val FARADS_PER_MILLIFARAD = 0.001
+
+    // Amount (moles).
+    private const val MOLES_PER_MICROMOLE = 1e-6
+    private const val MOLES_PER_MILLIMOLE = 0.001
+    private const val MOLES_PER_KILOMOLE = 1000.0
+
+    // Angle (radians) — derived from PI, so plain vals rather than consts.
+    private val RADIANS_PER_DEGREE = PI / 180.0
+    private val RADIANS_PER_GRADIAN = PI / 200.0
+    private val RADIANS_PER_ARCMINUTE = PI / 10800.0
+    private val RADIANS_PER_ARCSECOND = PI / 648000.0
+    private val RADIANS_PER_REVOLUTION = 2 * PI
 
     val categories: List<UnitCategory> = buildCategories()
 
@@ -342,247 +506,367 @@ object UnitRegistry {
     }
 
     private fun buildCategories(): List<UnitCategory> {
-        val d = Dimension
         return listOf(
-            UnitCategory(
-                "Length",
-                listOf(
-                    UnitDef("km", "km", "Kilometre", d.LENGTH, 1000.0),
-                    UnitDef("m", "m", "Metre", d.LENGTH, 1.0),
-                    UnitDef("cm", "cm", "Centimetre", d.LENGTH, 0.01),
-                    UnitDef("mm", "mm", "Millimetre", d.LENGTH, 0.001),
-                    UnitDef("um", "µm", "Micrometre", d.LENGTH, 1e-6),
-                    UnitDef("nm", "nm", "Nanometre", d.LENGTH, 1e-9),
-                    UnitDef("mi", "mi", "Mile", d.LENGTH, 1609.344),
-                    UnitDef("yd", "yd", "Yard", d.LENGTH, 0.9144),
-                    UnitDef("ft", "ft", "Foot", d.LENGTH, 0.3048),
-                    UnitDef("in", "in", "Inch", d.LENGTH, 0.0254),
-                    UnitDef("nmi", "nmi", "Nautical mile", d.LENGTH, 1852.0),
+            lengthCategory(),
+            massCategory(),
+            timeCategory(),
+            temperatureCategory(),
+            areaCategory(),
+            volumeCategory(),
+            speedCategory(),
+            dataCategory(),
+            energyCategory(),
+            powerCategory(),
+            pressureCategory(),
+            forceCategory(),
+            frequencyCategory(),
+            currentCategory(),
+            voltageCategory(),
+            resistanceCategory(),
+            chargeCategory(),
+            capacitanceCategory(),
+            amountCategory(),
+            angleCategory(),
+        )
+    }
+
+    private fun lengthCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Length",
+            listOf(
+                UnitDef("km", "km", "Kilometre", d.LENGTH, METRES_PER_KM),
+                UnitDef("m", "m", "Metre", d.LENGTH, 1.0),
+                UnitDef("cm", "cm", "Centimetre", d.LENGTH, METRES_PER_CM),
+                UnitDef("mm", "mm", "Millimetre", d.LENGTH, METRES_PER_MM),
+                UnitDef("um", "µm", "Micrometre", d.LENGTH, METRES_PER_MICROMETRE),
+                UnitDef("nm", "nm", "Nanometre", d.LENGTH, METRES_PER_NM),
+                UnitDef("mi", "mi", "Mile", d.LENGTH, METRES_PER_MILE),
+                UnitDef("yd", "yd", "Yard", d.LENGTH, METRES_PER_YARD),
+                UnitDef("ft", "ft", "Foot", d.LENGTH, METRES_PER_FOOT),
+                UnitDef("in", "in", "Inch", d.LENGTH, METRES_PER_INCH),
+                UnitDef("nmi", "nmi", "Nautical mile", d.LENGTH, METRES_PER_NAUTICAL_MILE),
+            ),
+        )
+    }
+
+    private fun massCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Mass",
+            listOf(
+                UnitDef("tonne", "t", "Tonne", d.MASS, KG_PER_TONNE),
+                UnitDef("kg", "kg", "Kilogram", d.MASS, 1.0),
+                UnitDef("g", "g", "Gram", d.MASS, KG_PER_GRAM),
+                UnitDef("mg", "mg", "Milligram", d.MASS, KG_PER_MILLIGRAM),
+                UnitDef("ug", "µg", "Microgram", d.MASS, KG_PER_MICROGRAM),
+                UnitDef("lb", "lb", "Pound", d.MASS, KG_PER_POUND),
+                UnitDef("oz", "oz", "Ounce", d.MASS, KG_PER_OUNCE),
+                UnitDef("st", "st", "Stone", d.MASS, KG_PER_STONE),
+            ),
+        )
+    }
+
+    private fun timeCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Time",
+            listOf(
+                UnitDef("ns", "ns", "Nanosecond", d.TIME, SECONDS_PER_NANOSECOND),
+                UnitDef("us", "µs", "Microsecond", d.TIME, SECONDS_PER_MICROSECOND),
+                UnitDef("ms", "ms", "Millisecond", d.TIME, SECONDS_PER_MILLISECOND),
+                UnitDef("s", "s", "Second", d.TIME, 1.0),
+                UnitDef("min", "min", "Minute", d.TIME, SECONDS_PER_MINUTE),
+                UnitDef("h", "h", "Hour", d.TIME, SECONDS_PER_HOUR),
+                UnitDef("day", "day", "Day", d.TIME, SECONDS_PER_DAY),
+                UnitDef("wk", "wk", "Week", d.TIME, SECONDS_PER_WEEK),
+                UnitDef("yr", "yr", "Year", d.TIME, SECONDS_PER_YEAR),
+            ),
+        )
+    }
+
+    private fun temperatureCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Temperature",
+            listOf(
+                UnitDef("K", "K", "Kelvin", d.TEMPERATURE, 1.0, offsetK = 0.0, aliases = listOf("k")),
+                UnitDef(
+                    "degC",
+                    "°C",
+                    "Celsius",
+                    d.TEMPERATURE,
+                    1.0,
+                    offsetK = KELVIN_OFFSET_OF_CELSIUS,
+                    aliases = listOf("c"),
+                ),
+                UnitDef(
+                    "degF",
+                    "°F",
+                    "Fahrenheit",
+                    d.TEMPERATURE,
+                    KELVIN_PER_FAHRENHEIT_DEGREE,
+                    offsetK = FAHRENHEIT_OFFSET_K,
+                ),
+                UnitDef(
+                    "degR",
+                    "°R",
+                    "Rankine",
+                    d.TEMPERATURE,
+                    KELVIN_PER_FAHRENHEIT_DEGREE,
+                    offsetK = 0.0,
                 ),
             ),
-            UnitCategory(
-                "Mass",
-                listOf(
-                    UnitDef("tonne", "t", "Tonne", d.MASS, 1000.0),
-                    UnitDef("kg", "kg", "Kilogram", d.MASS, 1.0),
-                    UnitDef("g", "g", "Gram", d.MASS, 0.001),
-                    UnitDef("mg", "mg", "Milligram", d.MASS, 1e-6),
-                    UnitDef("ug", "µg", "Microgram", d.MASS, 1e-9),
-                    UnitDef("lb", "lb", "Pound", d.MASS, 0.45359237),
-                    UnitDef("oz", "oz", "Ounce", d.MASS, 0.028349523125),
-                    UnitDef("st", "st", "Stone", d.MASS, 6.35029318),
-                ),
+        )
+    }
+
+    private fun areaCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Area",
+            listOf(
+                UnitDef("km2", "km²", "Square kilometre", d.AREA, SQM_PER_SQUARE_KM),
+                UnitDef("m2", "m²", "Square metre", d.AREA, 1.0),
+                UnitDef("cm2", "cm²", "Square centimetre", d.AREA, SQM_PER_SQUARE_CM),
+                UnitDef("mm2", "mm²", "Square millimetre", d.AREA, SQM_PER_SQUARE_MM),
+                UnitDef("ha", "ha", "Hectare", d.AREA, SQM_PER_HECTARE),
+                UnitDef("acre", "acre", "Acre", d.AREA, SQM_PER_ACRE),
+                UnitDef("ft2", "ft²", "Square foot", d.AREA, SQM_PER_SQUARE_FOOT),
+                UnitDef("in2", "in²", "Square inch", d.AREA, SQM_PER_SQUARE_INCH),
+                UnitDef("mi2", "mi²", "Square mile", d.AREA, SQM_PER_SQUARE_MILE),
             ),
-            UnitCategory(
-                "Time",
-                listOf(
-                    UnitDef("ns", "ns", "Nanosecond", d.TIME, 1e-9),
-                    UnitDef("us", "µs", "Microsecond", d.TIME, 1e-6),
-                    UnitDef("ms", "ms", "Millisecond", d.TIME, 0.001),
-                    UnitDef("s", "s", "Second", d.TIME, 1.0),
-                    UnitDef("min", "min", "Minute", d.TIME, 60.0),
-                    UnitDef("h", "h", "Hour", d.TIME, 3600.0),
-                    UnitDef("day", "day", "Day", d.TIME, 86400.0),
-                    UnitDef("wk", "wk", "Week", d.TIME, 604800.0),
-                    UnitDef("yr", "yr", "Year", d.TIME, 31557600.0),
-                ),
+        )
+    }
+
+    private fun volumeCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Volume",
+            listOf(
+                UnitDef("m3", "m³", "Cubic metre", d.VOLUME, 1.0),
+                UnitDef("cm3", "cm³", "Cubic centimetre", d.VOLUME, CUBM_PER_CUBIC_CM),
+                UnitDef("L", "L", "Litre", d.VOLUME, CUBM_PER_LITRE, aliases = listOf("l")),
+                UnitDef("mL", "mL", "Millilitre", d.VOLUME, CUBM_PER_MILLILITRE, aliases = listOf("ml")),
+                UnitDef("gal", "gal", "Gallon (US)", d.VOLUME, CUBM_PER_GALLON),
+                UnitDef("qt", "qt", "Quart (US)", d.VOLUME, CUBM_PER_QUART),
+                UnitDef("pt", "pt", "Pint (US)", d.VOLUME, CUBM_PER_PINT),
+                UnitDef("cup", "cup", "Cup (US)", d.VOLUME, CUBM_PER_CUP),
+                UnitDef("floz", "fl oz", "Fluid ounce (US)", d.VOLUME, CUBM_PER_FLUID_OUNCE),
+                UnitDef("ft3", "ft³", "Cubic foot", d.VOLUME, CUBM_PER_CUBIC_FOOT),
+                UnitDef("in3", "in³", "Cubic inch", d.VOLUME, CUBM_PER_CUBIC_INCH),
             ),
-            UnitCategory(
-                "Temperature",
-                listOf(
-                    UnitDef("K", "K", "Kelvin", d.TEMPERATURE, 1.0, offsetK = 0.0, aliases = listOf("k")),
-                    UnitDef("degC", "°C", "Celsius", d.TEMPERATURE, 1.0, offsetK = 273.15, aliases = listOf("c")),
-                    UnitDef("degF", "°F", "Fahrenheit", d.TEMPERATURE, 5.0 / 9.0, offsetK = FAHRENHEIT_OFFSET_K),
-                    UnitDef("degR", "°R", "Rankine", d.TEMPERATURE, 5.0 / 9.0, offsetK = 0.0),
-                ),
+        )
+    }
+
+    private fun speedCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Speed",
+            listOf(
+                UnitDef("mps", "m/s", "Metres per second", d.SPEED, 1.0),
+                UnitDef("kmh", "km/h", "Kilometres per hour", d.SPEED, MPS_PER_KMH),
+                UnitDef("mph", "mph", "Miles per hour", d.SPEED, MPS_PER_MPH),
+                UnitDef("fps", "ft/s", "Feet per second", d.SPEED, METRES_PER_FOOT),
+                UnitDef("kn", "kn", "Knot", d.SPEED, MPS_PER_KNOT),
             ),
-            UnitCategory(
-                "Area",
-                listOf(
-                    UnitDef("km2", "km²", "Square kilometre", d.AREA, 1e6),
-                    UnitDef("m2", "m²", "Square metre", d.AREA, 1.0),
-                    UnitDef("cm2", "cm²", "Square centimetre", d.AREA, 1e-4),
-                    UnitDef("mm2", "mm²", "Square millimetre", d.AREA, 1e-6),
-                    UnitDef("ha", "ha", "Hectare", d.AREA, 10000.0),
-                    UnitDef("acre", "acre", "Acre", d.AREA, 4046.8564224),
-                    UnitDef("ft2", "ft²", "Square foot", d.AREA, 0.09290304),
-                    UnitDef("in2", "in²", "Square inch", d.AREA, 0.00064516),
-                    UnitDef("mi2", "mi²", "Square mile", d.AREA, 2589988.110336),
-                ),
+        )
+    }
+
+    private fun dataCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Data",
+            listOf(
+                UnitDef("bit", "bit", "Bit", d.INFORMATION, 1.0),
+                UnitDef("B", "B", "Byte", d.INFORMATION, BITS_PER_BYTE),
+                UnitDef("kB", "kB", "Kilobyte", d.INFORMATION, BITS_PER_KILOBYTE),
+                UnitDef("MB", "MB", "Megabyte", d.INFORMATION, BITS_PER_MEGABYTE),
+                UnitDef("GB", "GB", "Gigabyte", d.INFORMATION, BITS_PER_GIGABYTE),
+                UnitDef("TB", "TB", "Terabyte", d.INFORMATION, BITS_PER_TERABYTE),
+                UnitDef("KiB", "KiB", "Kibibyte", d.INFORMATION, BITS_PER_KIBIBYTE),
+                UnitDef("MiB", "MiB", "Mebibyte", d.INFORMATION, BITS_PER_MEBIBYTE),
+                UnitDef("GiB", "GiB", "Gibibyte", d.INFORMATION, BITS_PER_GIBIBYTE),
+                UnitDef("TiB", "TiB", "Tebibyte", d.INFORMATION, BITS_PER_TEBIBYTE),
+                UnitDef("kbit", "kbit", "Kilobit", d.INFORMATION, BITS_PER_KILOBIT),
+                UnitDef("Mbit", "Mbit", "Megabit", d.INFORMATION, BITS_PER_MEGABIT),
+                UnitDef("Gbit", "Gbit", "Gigabit", d.INFORMATION, BITS_PER_GIGABIT),
             ),
-            UnitCategory(
-                "Volume",
-                listOf(
-                    UnitDef("m3", "m³", "Cubic metre", d.VOLUME, 1.0),
-                    UnitDef("cm3", "cm³", "Cubic centimetre", d.VOLUME, 1e-6),
-                    UnitDef("L", "L", "Litre", d.VOLUME, 0.001, aliases = listOf("l")),
-                    UnitDef("mL", "mL", "Millilitre", d.VOLUME, 1e-6, aliases = listOf("ml")),
-                    UnitDef("gal", "gal", "Gallon (US)", d.VOLUME, 0.003785411784),
-                    UnitDef("qt", "qt", "Quart (US)", d.VOLUME, 9.46352946e-4),
-                    UnitDef("pt", "pt", "Pint (US)", d.VOLUME, 4.73176473e-4),
-                    UnitDef("cup", "cup", "Cup (US)", d.VOLUME, 2.365882365e-4),
-                    UnitDef("floz", "fl oz", "Fluid ounce (US)", d.VOLUME, 2.95735295625e-5),
-                    UnitDef("ft3", "ft³", "Cubic foot", d.VOLUME, 0.028316846592),
-                    UnitDef("in3", "in³", "Cubic inch", d.VOLUME, 1.6387064e-5),
-                ),
+        )
+    }
+
+    private fun energyCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Energy",
+            listOf(
+                UnitDef("J", "J", "Joule", d.ENERGY, 1.0),
+                UnitDef("kJ", "kJ", "Kilojoule", d.ENERGY, JOULES_PER_KILOJOULE),
+                UnitDef("MJ", "MJ", "Megajoule", d.ENERGY, JOULES_PER_MEGAJOULE),
+                UnitDef("cal", "cal", "Calorie", d.ENERGY, JOULES_PER_CALORIE),
+                UnitDef("kcal", "kcal", "Kilocalorie", d.ENERGY, JOULES_PER_KILOCALORIE),
+                UnitDef("Wh", "Wh", "Watt-hour", d.ENERGY, JOULES_PER_WATT_HOUR),
+                UnitDef("kWh", "kWh", "Kilowatt-hour", d.ENERGY, JOULES_PER_KILOWATT_HOUR),
+                UnitDef("eV", "eV", "Electronvolt", d.ENERGY, JOULES_PER_ELECTRONVOLT),
+                UnitDef("BTU", "BTU", "British thermal unit", d.ENERGY, JOULES_PER_BTU),
+                UnitDef("erg", "erg", "Erg", d.ENERGY, JOULES_PER_ERG),
             ),
-            UnitCategory(
-                "Speed",
-                listOf(
-                    UnitDef("mps", "m/s", "Metres per second", d.SPEED, 1.0),
-                    UnitDef("kmh", "km/h", "Kilometres per hour", d.SPEED, 1.0 / 3.6),
-                    UnitDef("mph", "mph", "Miles per hour", d.SPEED, 0.44704),
-                    UnitDef("fps", "ft/s", "Feet per second", d.SPEED, 0.3048),
-                    UnitDef("kn", "kn", "Knot", d.SPEED, 0.514444),
-                ),
+        )
+    }
+
+    private fun powerCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Power",
+            listOf(
+                UnitDef("mW", "mW", "Milliwatt", d.POWER, WATTS_PER_MILLIWATT),
+                UnitDef("W", "W", "Watt", d.POWER, 1.0),
+                UnitDef("kW", "kW", "Kilowatt", d.POWER, WATTS_PER_KILOWATT),
+                UnitDef("MW", "MW", "Megawatt", d.POWER, WATTS_PER_MEGAWATT),
+                UnitDef("GW", "GW", "Gigawatt", d.POWER, WATTS_PER_GIGAWATT),
+                UnitDef("hp", "hp", "Horsepower", d.POWER, WATTS_PER_HORSEPOWER),
             ),
-            UnitCategory(
-                "Data",
-                listOf(
-                    UnitDef("bit", "bit", "Bit", d.INFORMATION, 1.0),
-                    UnitDef("B", "B", "Byte", d.INFORMATION, 8.0),
-                    UnitDef("kB", "kB", "Kilobyte", d.INFORMATION, 8e3),
-                    UnitDef("MB", "MB", "Megabyte", d.INFORMATION, 8e6),
-                    UnitDef("GB", "GB", "Gigabyte", d.INFORMATION, 8e9),
-                    UnitDef("TB", "TB", "Terabyte", d.INFORMATION, 8e12),
-                    UnitDef("KiB", "KiB", "Kibibyte", d.INFORMATION, 8.0 * 1024),
-                    UnitDef("MiB", "MiB", "Mebibyte", d.INFORMATION, 8.0 * 1024 * 1024),
-                    UnitDef("GiB", "GiB", "Gibibyte", d.INFORMATION, 8.0 * 1024 * 1024 * 1024),
-                    UnitDef("TiB", "TiB", "Tebibyte", d.INFORMATION, 8.0 * 1024 * 1024 * 1024 * 1024),
-                    UnitDef("kbit", "kbit", "Kilobit", d.INFORMATION, 1e3),
-                    UnitDef("Mbit", "Mbit", "Megabit", d.INFORMATION, 1e6),
-                    UnitDef("Gbit", "Gbit", "Gigabit", d.INFORMATION, 1e9),
-                ),
+        )
+    }
+
+    private fun pressureCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Pressure",
+            listOf(
+                UnitDef("Pa", "Pa", "Pascal", d.PRESSURE, 1.0),
+                UnitDef("hPa", "hPa", "Hectopascal", d.PRESSURE, PA_PER_HECTOPASCAL),
+                UnitDef("kPa", "kPa", "Kilopascal", d.PRESSURE, PA_PER_KILOPASCAL),
+                UnitDef("MPa", "MPa", "Megapascal", d.PRESSURE, PA_PER_MEGAPASCAL),
+                UnitDef("bar", "bar", "Bar", d.PRESSURE, PA_PER_BAR),
+                UnitDef("mbar", "mbar", "Millibar", d.PRESSURE, PA_PER_MILLIBAR),
+                UnitDef("atm", "atm", "Atmosphere", d.PRESSURE, PA_PER_ATMOSPHERE),
+                UnitDef("psi", "psi", "Pound per square inch", d.PRESSURE, PA_PER_PSI),
+                UnitDef("mmHg", "mmHg", "Millimetre of mercury", d.PRESSURE, PA_PER_MMHG),
+                UnitDef("torr", "torr", "Torr", d.PRESSURE, PA_PER_TORR),
             ),
-            UnitCategory(
-                "Energy",
-                listOf(
-                    UnitDef("J", "J", "Joule", d.ENERGY, 1.0),
-                    UnitDef("kJ", "kJ", "Kilojoule", d.ENERGY, 1000.0),
-                    UnitDef("MJ", "MJ", "Megajoule", d.ENERGY, 1e6),
-                    UnitDef("cal", "cal", "Calorie", d.ENERGY, 4.184),
-                    UnitDef("kcal", "kcal", "Kilocalorie", d.ENERGY, 4184.0),
-                    UnitDef("Wh", "Wh", "Watt-hour", d.ENERGY, 3600.0),
-                    UnitDef("kWh", "kWh", "Kilowatt-hour", d.ENERGY, 3.6e6),
-                    UnitDef("eV", "eV", "Electronvolt", d.ENERGY, 1.602176634e-19),
-                    UnitDef("BTU", "BTU", "British thermal unit", d.ENERGY, 1055.05585262),
-                    UnitDef("erg", "erg", "Erg", d.ENERGY, 1e-7),
-                ),
+        )
+    }
+
+    private fun forceCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Force",
+            listOf(
+                UnitDef("N", "N", "Newton", d.FORCE, 1.0),
+                UnitDef("kN", "kN", "Kilonewton", d.FORCE, NEWTONS_PER_KILONEWTON),
+                UnitDef("mN", "mN", "Millinewton", d.FORCE, NEWTONS_PER_MILLINEWTON),
+                UnitDef("lbf", "lbf", "Pound-force", d.FORCE, NEWTONS_PER_POUND_FORCE),
+                UnitDef("kgf", "kgf", "Kilogram-force", d.FORCE, NEWTONS_PER_KG_FORCE),
+                UnitDef("dyn", "dyn", "Dyne", d.FORCE, NEWTONS_PER_DYNE),
             ),
-            UnitCategory(
-                "Power",
-                listOf(
-                    UnitDef("mW", "mW", "Milliwatt", d.POWER, 0.001),
-                    UnitDef("W", "W", "Watt", d.POWER, 1.0),
-                    UnitDef("kW", "kW", "Kilowatt", d.POWER, 1000.0),
-                    UnitDef("MW", "MW", "Megawatt", d.POWER, 1e6),
-                    UnitDef("GW", "GW", "Gigawatt", d.POWER, 1e9),
-                    UnitDef("hp", "hp", "Horsepower", d.POWER, 745.6998715823),
-                ),
+        )
+    }
+
+    private fun frequencyCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Frequency",
+            listOf(
+                UnitDef("Hz", "Hz", "Hertz", d.FREQUENCY, 1.0),
+                UnitDef("kHz", "kHz", "Kilohertz", d.FREQUENCY, HZ_PER_KILOHERTZ),
+                UnitDef("MHz", "MHz", "Megahertz", d.FREQUENCY, HZ_PER_MEGAHERTZ),
+                UnitDef("GHz", "GHz", "Gigahertz", d.FREQUENCY, HZ_PER_GIGAHERTZ),
             ),
-            UnitCategory(
-                "Pressure",
-                listOf(
-                    UnitDef("Pa", "Pa", "Pascal", d.PRESSURE, 1.0),
-                    UnitDef("hPa", "hPa", "Hectopascal", d.PRESSURE, 100.0),
-                    UnitDef("kPa", "kPa", "Kilopascal", d.PRESSURE, 1000.0),
-                    UnitDef("MPa", "MPa", "Megapascal", d.PRESSURE, 1e6),
-                    UnitDef("bar", "bar", "Bar", d.PRESSURE, 1e5),
-                    UnitDef("mbar", "mbar", "Millibar", d.PRESSURE, 100.0),
-                    UnitDef("atm", "atm", "Atmosphere", d.PRESSURE, 101325.0),
-                    UnitDef("psi", "psi", "Pound per square inch", d.PRESSURE, 6894.757293168),
-                    UnitDef("mmHg", "mmHg", "Millimetre of mercury", d.PRESSURE, 133.322387415),
-                    UnitDef("torr", "torr", "Torr", d.PRESSURE, 133.32236842105263),
-                ),
+        )
+    }
+
+    private fun currentCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Current",
+            listOf(
+                UnitDef("uA", "µA", "Microampere", d.CURRENT, AMPS_PER_MICROAMP),
+                UnitDef("mA", "mA", "Milliampere", d.CURRENT, AMPS_PER_MILLIAMP),
+                UnitDef("A", "A", "Ampere", d.CURRENT, 1.0),
+                UnitDef("kA", "kA", "Kiloampere", d.CURRENT, AMPS_PER_KILOAMP),
             ),
-            UnitCategory(
-                "Force",
-                listOf(
-                    UnitDef("N", "N", "Newton", d.FORCE, 1.0),
-                    UnitDef("kN", "kN", "Kilonewton", d.FORCE, 1000.0),
-                    UnitDef("mN", "mN", "Millinewton", d.FORCE, 0.001),
-                    UnitDef("lbf", "lbf", "Pound-force", d.FORCE, 4.4482216152605),
-                    UnitDef("kgf", "kgf", "Kilogram-force", d.FORCE, 9.80665),
-                    UnitDef("dyn", "dyn", "Dyne", d.FORCE, 1e-5),
-                ),
+        )
+    }
+
+    private fun voltageCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Voltage",
+            listOf(
+                UnitDef("uV", "µV", "Microvolt", d.VOLTAGE, VOLTS_PER_MICROVOLT),
+                UnitDef("mV", "mV", "Millivolt", d.VOLTAGE, VOLTS_PER_MILLIVOLT),
+                UnitDef("V", "V", "Volt", d.VOLTAGE, 1.0),
+                UnitDef("kV", "kV", "Kilovolt", d.VOLTAGE, VOLTS_PER_KILOVOLT),
             ),
-            UnitCategory(
-                "Frequency",
-                listOf(
-                    UnitDef("Hz", "Hz", "Hertz", d.FREQUENCY, 1.0),
-                    UnitDef("kHz", "kHz", "Kilohertz", d.FREQUENCY, 1000.0),
-                    UnitDef("MHz", "MHz", "Megahertz", d.FREQUENCY, 1e6),
-                    UnitDef("GHz", "GHz", "Gigahertz", d.FREQUENCY, 1e9),
-                ),
+        )
+    }
+
+    private fun resistanceCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Resistance",
+            listOf(
+                UnitDef("mohm", "mΩ", "Milliohm", d.RESISTANCE, OHMS_PER_MILLIOHM),
+                UnitDef("ohm", "Ω", "Ohm", d.RESISTANCE, 1.0),
+                UnitDef("kohm", "kΩ", "Kiloohm", d.RESISTANCE, OHMS_PER_KILOOHM),
+                UnitDef("Mohm", "MΩ", "Megaohm", d.RESISTANCE, OHMS_PER_MEGAOHM),
             ),
-            UnitCategory(
-                "Current",
-                listOf(
-                    UnitDef("uA", "µA", "Microampere", d.CURRENT, 1e-6),
-                    UnitDef("mA", "mA", "Milliampere", d.CURRENT, 0.001),
-                    UnitDef("A", "A", "Ampere", d.CURRENT, 1.0),
-                    UnitDef("kA", "kA", "Kiloampere", d.CURRENT, 1000.0),
-                ),
+        )
+    }
+
+    private fun chargeCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Charge",
+            listOf(
+                UnitDef("uC", "µC", "Microcoulomb", d.CHARGE, COULOMBS_PER_MICROCOULOMB),
+                UnitDef("mC", "mC", "Millicoulomb", d.CHARGE, COULOMBS_PER_MILLICOULOMB),
+                UnitDef("C", "C", "Coulomb", d.CHARGE, 1.0),
+                UnitDef("mAh", "mAh", "Milliamp-hour", d.CHARGE, COULOMBS_PER_MILLIAMP_HOUR),
+                UnitDef("Ah", "Ah", "Amp-hour", d.CHARGE, COULOMBS_PER_AMP_HOUR),
             ),
-            UnitCategory(
-                "Voltage",
-                listOf(
-                    UnitDef("uV", "µV", "Microvolt", d.VOLTAGE, 1e-6),
-                    UnitDef("mV", "mV", "Millivolt", d.VOLTAGE, 0.001),
-                    UnitDef("V", "V", "Volt", d.VOLTAGE, 1.0),
-                    UnitDef("kV", "kV", "Kilovolt", d.VOLTAGE, 1000.0),
-                ),
+        )
+    }
+
+    private fun capacitanceCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Capacitance",
+            listOf(
+                UnitDef("pF", "pF", "Picofarad", d.CAPACITANCE, FARADS_PER_PICOFARAD),
+                UnitDef("nF", "nF", "Nanofarad", d.CAPACITANCE, FARADS_PER_NANOFARAD),
+                UnitDef("uF", "µF", "Microfarad", d.CAPACITANCE, FARADS_PER_MICROFARAD),
+                UnitDef("mF", "mF", "Millifarad", d.CAPACITANCE, FARADS_PER_MILLIFARAD),
+                UnitDef("F", "F", "Farad", d.CAPACITANCE, 1.0),
             ),
-            UnitCategory(
-                "Resistance",
-                listOf(
-                    UnitDef("mohm", "mΩ", "Milliohm", d.RESISTANCE, 0.001),
-                    UnitDef("ohm", "Ω", "Ohm", d.RESISTANCE, 1.0),
-                    UnitDef("kohm", "kΩ", "Kiloohm", d.RESISTANCE, 1000.0),
-                    UnitDef("Mohm", "MΩ", "Megaohm", d.RESISTANCE, 1e6),
-                ),
+        )
+    }
+
+    private fun amountCategory(): UnitCategory {
+        val d = Dimension
+        return UnitCategory(
+            "Amount",
+            listOf(
+                UnitDef("umol", "µmol", "Micromole", d.AMOUNT, MOLES_PER_MICROMOLE),
+                UnitDef("mmol", "mmol", "Millimole", d.AMOUNT, MOLES_PER_MILLIMOLE),
+                UnitDef("mol", "mol", "Mole", d.AMOUNT, 1.0),
+                UnitDef("kmol", "kmol", "Kilomole", d.AMOUNT, MOLES_PER_KILOMOLE),
             ),
-            UnitCategory(
-                "Charge",
-                listOf(
-                    UnitDef("uC", "µC", "Microcoulomb", d.CHARGE, 1e-6),
-                    UnitDef("mC", "mC", "Millicoulomb", d.CHARGE, 0.001),
-                    UnitDef("C", "C", "Coulomb", d.CHARGE, 1.0),
-                    UnitDef("mAh", "mAh", "Milliamp-hour", d.CHARGE, 3.6),
-                    UnitDef("Ah", "Ah", "Amp-hour", d.CHARGE, 3600.0),
-                ),
+        )
+    }
+
+    private fun angleCategory(): UnitCategory {
+        return UnitCategory(
+            "Angle",
+            listOf(
+                UnitDef("rad", "rad", "Radian", Dimension.NONE, 1.0),
+                UnitDef("deg", "°", "Degree", Dimension.NONE, RADIANS_PER_DEGREE),
+                UnitDef("grad", "grad", "Gradian", Dimension.NONE, RADIANS_PER_GRADIAN),
+                UnitDef("arcmin", "′", "Arcminute", Dimension.NONE, RADIANS_PER_ARCMINUTE),
+                UnitDef("arcsec", "″", "Arcsecond", Dimension.NONE, RADIANS_PER_ARCSECOND),
+                UnitDef("rev", "rev", "Revolution", Dimension.NONE, RADIANS_PER_REVOLUTION),
             ),
-            UnitCategory(
-                "Capacitance",
-                listOf(
-                    UnitDef("pF", "pF", "Picofarad", d.CAPACITANCE, 1e-12),
-                    UnitDef("nF", "nF", "Nanofarad", d.CAPACITANCE, 1e-9),
-                    UnitDef("uF", "µF", "Microfarad", d.CAPACITANCE, 1e-6),
-                    UnitDef("mF", "mF", "Millifarad", d.CAPACITANCE, 0.001),
-                    UnitDef("F", "F", "Farad", d.CAPACITANCE, 1.0),
-                ),
-            ),
-            UnitCategory(
-                "Amount",
-                listOf(
-                    UnitDef("umol", "µmol", "Micromole", d.AMOUNT, 1e-6),
-                    UnitDef("mmol", "mmol", "Millimole", d.AMOUNT, 0.001),
-                    UnitDef("mol", "mol", "Mole", d.AMOUNT, 1.0),
-                    UnitDef("kmol", "kmol", "Kilomole", d.AMOUNT, 1000.0),
-                ),
-            ),
-            UnitCategory(
-                "Angle",
-                listOf(
-                    UnitDef("rad", "rad", "Radian", Dimension.NONE, 1.0),
-                    UnitDef("deg", "°", "Degree", Dimension.NONE, PI / 180.0),
-                    UnitDef("grad", "grad", "Gradian", Dimension.NONE, PI / 200.0),
-                    UnitDef("arcmin", "′", "Arcminute", Dimension.NONE, PI / 10800.0),
-                    UnitDef("arcsec", "″", "Arcsecond", Dimension.NONE, PI / 648000.0),
-                    UnitDef("rev", "rev", "Revolution", Dimension.NONE, 2 * PI),
-                ),
-                inEquations = false,
-            ),
+            inEquations = false,
         )
     }
 }

@@ -122,8 +122,8 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
             } else {
                 try {
                     create(assets, path, special, languages, suppress, suppressAtBegin)
-                } catch (e: Throwable) {
-                    Log.e(TAG, "cannot open $path", e)
+                } catch (expected: Exception) {
+                    Log.e(TAG, "cannot open $path", expected)
                     0L
                 }
             }

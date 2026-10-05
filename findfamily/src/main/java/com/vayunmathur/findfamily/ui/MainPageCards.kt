@@ -55,7 +55,6 @@ internal val SheetMinContentMargin = 48.dp
 fun BoxScope.HistoryScrubber(
     backStack: NavBackStack<Route>,
     ffViewModel: FindFamilyViewModel,
-    userid: Long,
     setHistoricalPosition: (GeoPoint) -> Unit
 ) {
     val state = rememberHistoryScrubberState(

@@ -34,24 +34,55 @@ data class WgQuickImport(
 
 object WgConfigParser {
     fun parse(confText: String): Result<WgQuickImport> = runCatching {
+        buildImport(splitSections(confText))
+    }
+
+    private fun splitSections(confText: String): Map<String, Map<String, String>> {
         val sections = mutableMapOf<String, MutableMap<String, String>>()
         var cur = ""
         confText.lineSequence().forEach { raw ->
-            val line = raw.trim()
-            if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) return@forEach
-            if (line.startsWith("[") && line.endsWith("]")) {
-                cur = line.removeSurrounding("[", "]").trim()
-                sections.getOrPut(cur) { mutableMapOf() }
-            } else {
-                val idx = line.indexOf('=')
-                if (idx > 0 && cur.isNotEmpty()) {
-                    sections[cur]?.set(line.substring(0, idx).trim().lowercase(), line.substring(idx + 1).trim())
-                }
-            }
+            cur = consumeLine(raw, cur, sections)
         }
+        return sections
+    }
+
+    private fun consumeLine(
+        raw: String,
+        cur: String,
+        sections: MutableMap<String, MutableMap<String, String>>,
+    ): String {
+        val line = raw.trim()
+        if (isComment(line)) return cur
+        if (isSectionHeader(line)) {
+            val name = line.removeSurrounding("[", "]").trim()
+            sections.getOrPut(name) { mutableMapOf() }
+            return name
+        }
+        storeEntry(line, cur, sections)
+        return cur
+    }
+
+    private fun isComment(line: String): Boolean =
+        line.isEmpty() || line.startsWith("#") || line.startsWith(";")
+
+    private fun isSectionHeader(line: String): Boolean =
+        line.startsWith("[") && line.endsWith("]")
+
+    private fun storeEntry(
+        line: String,
+        cur: String,
+        sections: MutableMap<String, MutableMap<String, String>>,
+    ) {
+        val idx = line.indexOf('=')
+        if (idx <= 0 || cur.isEmpty()) return
+        val key = line.substring(0, idx).trim().lowercase()
+        sections[cur]?.set(key, line.substring(idx + 1).trim())
+    }
+
+    private fun buildImport(sections: Map<String, Map<String, String>>): WgQuickImport {
         val iface = sections["Interface"] ?: error("Missing [Interface]")
         val peer = sections["Peer"] ?: error("Missing [Peer]")
-        WgQuickImport(
+        return WgQuickImport(
             privateKey = iface["privatekey"] ?: error("Missing PrivateKey"),
             address = iface["address"] ?: "",
             dns = iface["dns"] ?: "",
@@ -81,7 +112,9 @@ object WgConfigParser {
 }
 
 fun VpnConfig.endpointHost(): String = peerEndpoint.substringBefore(':').trim()
-fun VpnConfig.endpointPort(): Int = peerEndpoint.substringAfterLast(':').toIntOrNull() ?: 51820
+fun VpnConfig.endpointPort(): Int = peerEndpoint.substringAfterLast(':').toIntOrNull() ?: DEFAULT_WG_PORT
+
+private const val DEFAULT_WG_PORT = 51820
 
 data class VpnStats(
     val handshakeAgoMs: Long = 0,

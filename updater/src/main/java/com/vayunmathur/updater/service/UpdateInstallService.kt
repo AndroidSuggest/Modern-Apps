@@ -119,38 +119,51 @@ class UpdateInstallService : Service() {
 
     private suspend fun run(build: String, buildDate: Long) {
         UpdateNotifications.clearResult(this)
-
         val current = SystemBuild.current()
         val device = SystemBuild.device()
         if (current == null || device.isEmpty()) {
             fail(getString(R.string.error_unknown_build))
             return
         }
+        val downloaded = downloadArtifact(build, current.build, device) ?: return
+        installArtifact(build, buildDate, device, current.build, downloaded)
+    }
 
+    private suspend fun downloadArtifact(
+        build: String,
+        currentBuild: String,
+        device: String,
+    ): Boolean? {
         UpdateNotifications.updateProgress(this, getString(R.string.notify_downloading), 0)
         val downloaded = OtaDownloader.download(
             context = this,
             device = device,
-            currentBuild = current.build,
+            currentBuild = currentBuild,
             targetBuild = build,
         ) { bytes, total ->
             val percent = if (total > 0) ((bytes * 100) / total).toInt() else -1
             UpdateNotifications.updateProgress(this, getString(R.string.notify_downloading), percent)
         }
-
-        val incremental = when (downloaded) {
+        return when (downloaded) {
             is OtaDownloader.Result.Downloaded -> downloaded.incremental
             OtaDownloader.Result.NotFound -> {
                 fail(getString(R.string.error_no_package))
-                return
+                null
             }
-
             is OtaDownloader.Result.Failed -> {
                 fail(downloaded.reason)
-                return
+                null
             }
         }
+    }
 
+    private suspend fun installArtifact(
+        build: String,
+        buildDate: Long,
+        device: String,
+        currentBuild: String,
+        incremental: Boolean,
+    ) {
         UpdateNotifications.updateProgress(this, getString(R.string.notify_verifying), 0)
         val result = OtaInstaller.install(
             packageFile = OtaDownloader.UPDATE_PATH,
@@ -158,7 +171,7 @@ class UpdateInstallService : Service() {
                 buildDateUtcSeconds = buildDate,
                 targetBuild = build,
                 device = device,
-                currentBuild = current.build,
+                currentBuild = currentBuild,
                 currentFingerprint = SystemBuild.fingerprint(),
             ),
             onVerifyProgress = { percent ->
@@ -185,7 +198,7 @@ class UpdateInstallService : Service() {
                 // every time. Remember it so the next run goes straight to the full package
                 // instead of looping on a download that can never install.
                 if (incremental && result.initializationFailure) {
-                    val artifacts = OtaDownloadPlan.artifacts(device, current.build, build)
+                    val artifacts = OtaDownloadPlan.artifacts(device, currentBuild, build)
                     artifacts.incremental?.let {
                         DataStoreUtils.getInstance(this)
                             .setString(UpdaterPreferences.FAILED_INCREMENTAL, it)
@@ -202,6 +215,9 @@ class UpdateInstallService : Service() {
         UpdateNotifications.failed(this, reason)
     }
 
+    // Broad catch is deliberate: startForeground throws undocumented RuntimeExceptions
+    // (not just SecurityException) when the platform refuses a background start.
+    @Suppress("TooGenericExceptionCaught")
     private fun enterForeground(): Boolean = try {
         acquireWakeLock()
         ServiceCompat.startForeground(

@@ -14,58 +14,73 @@ import com.vayunmathur.everysync.data.TypedValue
 object VCard {
 
     fun parse(text: String, fallbackUid: String? = null): RemoteContact {
-        val lines = unfold(text)
-        var uid = fallbackUid ?: ""
-        var fn = ""
-        var prefix = ""
-        var first = ""
-        var middle = ""
-        var last = ""
-        var suffix = ""
-        var org = ""
-        var note = ""
-        var bday: String? = null
-        val phones = mutableListOf<TypedValue>()
-        val emails = mutableListOf<TypedValue>()
-        val addresses = mutableListOf<TypedValue>()
+        val builder = VCardBuilder(fallbackUid ?: "")
+        for (line in unfold(text)) {
+            val prop = splitProperty(line) ?: continue
+            builder.apply(prop)
+        }
+        return builder.build()
+    }
 
-        for (line in lines) {
-            val (name, params, value) = splitProperty(line) ?: continue
-            when (name.uppercase()) {
-                "UID" -> uid = value.ifBlank { uid }
-                "FN" -> fn = unescape(value)
-                "N" -> {
-                    val parts = value.split(";")
-                    last = unescape(parts.getOrElse(0) { "" })
-                    first = unescape(parts.getOrElse(1) { "" })
-                    middle = unescape(parts.getOrElse(2) { "" })
-                    prefix = unescape(parts.getOrElse(3) { "" })
-                    suffix = unescape(parts.getOrElse(4) { "" })
-                }
-                "ORG" -> org = unescape(value.split(";").firstOrNull() ?: value)
-                "NOTE" -> note = unescape(value)
-                "BDAY" -> bday = normalizeDate(value)
-                "TEL" -> phones += TypedValue(unescape(value), phoneType(params))
-                "EMAIL" -> emails += TypedValue(unescape(value), emailType(params))
-                "ADR" -> addresses += TypedValue(formatAddress(value), addressType(params))
+    private class VCardBuilder(private var uid: String) {
+        private var fn = ""
+        private var prefix = ""
+        private var first = ""
+        private var middle = ""
+        private var last = ""
+        private var suffix = ""
+        private var org = ""
+        private var note = ""
+        private var bday: String? = null
+        private val phones = mutableListOf<TypedValue>()
+        private val emails = mutableListOf<TypedValue>()
+        private val addresses = mutableListOf<TypedValue>()
+
+        fun apply(prop: Prop) {
+            when (prop.name.uppercase()) {
+                "UID" -> uid = prop.value.ifBlank { uid }
+                "FN" -> fn = unescape(prop.value)
+                "N" -> readName(prop.value)
+                "ORG" -> org = unescape(prop.value.split(";").firstOrNull() ?: prop.value)
+                "NOTE" -> note = unescape(prop.value)
+                "BDAY" -> bday = normalizeDate(prop.value)
+                "TEL" -> phones += TypedValue(unescape(prop.value), phoneType(prop.params))
+                "EMAIL" -> emails += TypedValue(unescape(prop.value), emailType(prop.params))
+                "ADR" -> addresses += TypedValue(formatAddress(prop.value), addressType(prop.params))
             }
         }
-        if (fn.isBlank()) fn = listOf(prefix, first, middle, last, suffix).filter { it.isNotBlank() }.joinToString(" ")
-        return RemoteContact(
-            uid = uid,
-            displayName = fn,
-            prefix = prefix,
-            firstName = first,
-            middleName = middle,
-            lastName = last,
-            suffix = suffix,
-            organization = org,
-            note = note,
-            phones = phones,
-            emails = emails,
-            addresses = addresses,
-            birthday = bday,
-        )
+
+        private fun readName(value: String) {
+            val parts = value.split(";")
+            last = unescape(parts.getOrElse(0) { "" })
+            first = unescape(parts.getOrElse(1) { "" })
+            middle = unescape(parts.getOrElse(2) { "" })
+            prefix = unescape(parts.getOrElse(3) { "" })
+            suffix = unescape(parts.getOrElse(4) { "" })
+        }
+
+        fun build(): RemoteContact {
+            val display = fn.ifBlank {
+                listOf(prefix, first, middle, last, suffix)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" ")
+            }
+            return RemoteContact(
+                uid = uid,
+                displayName = display,
+                prefix = prefix,
+                firstName = first,
+                middleName = middle,
+                lastName = last,
+                suffix = suffix,
+                organization = org,
+                note = note,
+                phones = phones,
+                emails = emails,
+                addresses = addresses,
+                birthday = bday,
+            )
+        }
     }
 
     fun serialize(c: RemoteContact): String = buildString {

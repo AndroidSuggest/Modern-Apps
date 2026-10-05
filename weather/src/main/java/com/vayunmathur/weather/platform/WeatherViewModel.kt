@@ -61,12 +61,19 @@ class WeatherViewModel(
 
     override fun toggleTime(isoTime: String) {
         val current = _selected.value
-        _selected.value = if (current is SelectedDateOrTime.Time && current.isoTime == isoTime) null else SelectedDateOrTime.Time(isoTime)
+        _selected.value = if (current is SelectedDateOrTime.Time && current.isoTime == isoTime) {
+            null
+        } else {
+            SelectedDateOrTime.Time(isoTime)
+        }
     }
-
     override fun toggleDay(isoDate: String) {
         val current = _selected.value
-        _selected.value = if (current is SelectedDateOrTime.Day && current.isoDate == isoDate) null else SelectedDateOrTime.Day(isoDate)
+        _selected.value = if (current is SelectedDateOrTime.Day && current.isoDate == isoDate) {
+            null
+        } else {
+            SelectedDateOrTime.Day(isoDate)
+        }
     }
 
     init {
@@ -85,80 +92,114 @@ class WeatherViewModel(
 
         viewModelScope.launch {
             try {
-                var haveFreshCache = false
-                if (_forecasts.value[location.id]?.forecast == null) {
-                    val cache = repository.getCache(roundCoord(location.latitude), roundCoord(location.longitude))
-                    if (cache != null) {
-                        runCatching { weatherJson.decodeFromString<ForecastResponse>(cache.forecastJson) }
-                            .onSuccess { decoded ->
-                                val cachedAir = cache.airQualityJson?.let { json ->
-                                    runCatching { weatherJson.decodeFromString<AirQualityResponse>(json) }.getOrNull()
-                                }
-                                _forecasts.update { current ->
-                                    current + (location.id to ForecastUiState(
-                                        forecast = decoded,
-                                        airQuality = cachedAir,
-                                        refreshing = false,
-                                        fetchedAtEpochMs = cache.fetchedAtEpochMs,
-                                    ))
-                                }
-                                haveFreshCache = (System.currentTimeMillis() - cache.fetchedAtEpochMs) < STALE_THRESHOLD_MS
-                            }
-                    }
-                }
-
+                val haveFreshCache = hydrateFromCache(location)
                 if (!force && haveFreshCache) return@launch
-
-                val target = if (location.isCurrent) refreshDeviceLocationFix(location) else location
-
-                _forecasts.update { current ->
-                    val prev = current[location.id]
-                    current + (location.id to (prev?.copy(refreshing = true) ?: ForecastUiState(refreshing = true)))
-                }
-
-                data class FetchResult(val forecast: kotlin.Result<ForecastResponse>, val air: AirQualityResponse?)
-                val fetched: FetchResult = coroutineScope {
-                    val forecastDeferred = async { runCatching { WeatherApi.forecast(target.latitude, target.longitude) } }
-                    val airQualityDeferred = async { runCatching { WeatherApi.airQuality(target.latitude, target.longitude) }.getOrNull() }
-                    FetchResult(forecastDeferred.await(), airQualityDeferred.await())
-                }
-                val forecastResult = fetched.forecast
-                val airQuality = fetched.air
-
-                forecastResult
-                    .onSuccess { fresh ->
-                        val now = System.currentTimeMillis()
-                        val resolvedAir = airQuality ?: _forecasts.value[location.id]?.airQuality
-                        repository.writeForecastCache(target.latitude, target.longitude, fresh, resolvedAir, now)
-                        _forecasts.update { current ->
-                            current + (location.id to ForecastUiState(
-                                forecast = fresh,
-                                airQuality = resolvedAir,
-                                refreshing = false,
-                                error = null,
-                                fetchedAtEpochMs = now,
-                            ))
-                        }
-                        runCatching { WeatherGlanceWidget().updateAll(getApplication<Application>()) }
-                    }
-                    .onFailure { e ->
-                        _forecasts.update { current ->
-                            val prev = current[location.id]
-                            current + (location.id to (prev?.copy(
-                                airQuality = airQuality ?: prev.airQuality,
-                                refreshing = false,
-                                error = e.message ?: "Failed to load forecast",
-                            ) ?: ForecastUiState(
-                                airQuality = airQuality,
-                                refreshing = false,
-                                error = e.message,
-                            )))
-                        }
-                    }
+                fetchFresh(location)
             } finally {
                 synchronized(inFlight) { inFlight.remove(location.id) }
             }
         }
+    }
+
+    private suspend fun hydrateFromCache(location: SavedLocation): Boolean {
+        if (_forecasts.value[location.id]?.forecast != null) return false
+        val cache = repository.getCache(
+            roundCoord(location.latitude),
+            roundCoord(location.longitude),
+        ) ?: return false
+        var fresh = false
+        runCatching { weatherJson.decodeFromString<ForecastResponse>(cache.forecastJson) }
+            .onSuccess { decoded ->
+                val cachedAir = cache.airQualityJson?.let { json ->
+                    runCatching {
+                        weatherJson.decodeFromString<AirQualityResponse>(json)
+                    }.getOrNull()
+                }
+                _forecasts.update { current ->
+                    current + (location.id to ForecastUiState(
+                        forecast = decoded,
+                        airQuality = cachedAir,
+                        refreshing = false,
+                        fetchedAtEpochMs = cache.fetchedAtEpochMs,
+                    ))
+                }
+                fresh = (System.currentTimeMillis() - cache.fetchedAtEpochMs) < STALE_THRESHOLD_MS
+            }
+        return fresh
+    }
+
+    private data class FetchResult(
+        val forecast: kotlin.Result<ForecastResponse>,
+        val air: AirQualityResponse?,
+    )
+
+    private suspend fun fetchFresh(location: SavedLocation) {
+        val target = if (location.isCurrent) {
+            refreshDeviceLocationFix(location)
+        } else {
+            location
+        }
+        _forecasts.update { current ->
+            val prev = current[location.id]
+            val refreshing = prev?.copy(refreshing = true) ?: ForecastUiState(refreshing = true)
+            current + (location.id to refreshing)
+        }
+        val fetched: FetchResult = coroutineScope {
+            val forecastDeferred = async {
+                runCatching { WeatherApi.forecast(target.latitude, target.longitude) }
+            }
+            val airQualityDeferred = async {
+                runCatching {
+                    WeatherApi.airQuality(target.latitude, target.longitude)
+                }.getOrNull()
+            }
+            FetchResult(forecastDeferred.await(), airQualityDeferred.await())
+        }
+        applyFetched(location, target, fetched)
+    }
+
+    private suspend fun applyFetched(
+        location: SavedLocation,
+        target: SavedLocation,
+        fetched: FetchResult,
+    ) {
+        val airQuality = fetched.air
+        fetched.forecast
+            .onSuccess { fresh ->
+                val now = System.currentTimeMillis()
+                val resolvedAir = airQuality ?: _forecasts.value[location.id]?.airQuality
+                repository.writeForecastCache(
+                    target.latitude,
+                    target.longitude,
+                    fresh,
+                    resolvedAir,
+                    now,
+                )
+                _forecasts.update { current ->
+                    current + (location.id to ForecastUiState(
+                        forecast = fresh,
+                        airQuality = resolvedAir,
+                        refreshing = false,
+                        error = null,
+                        fetchedAtEpochMs = now,
+                    ))
+                }
+                runCatching { WeatherGlanceWidget().updateAll(getApplication<Application>()) }
+            }
+            .onFailure { e ->
+                _forecasts.update { current ->
+                    val prev = current[location.id]
+                    current + (location.id to (prev?.copy(
+                        airQuality = airQuality ?: prev.airQuality,
+                        refreshing = false,
+                        error = e.message ?: "Failed to load forecast",
+                    ) ?: ForecastUiState(
+                        airQuality = airQuality,
+                        refreshing = false,
+                        error = e.message,
+                    )))
+                }
+            }
     }
 
     override fun refreshAll(force: Boolean) {
@@ -219,9 +260,17 @@ class WeatherViewModel(
     private suspend fun refreshDeviceLocationFix(location: SavedLocation): SavedLocation {
         val context = getApplication<Application>()
         if (!LocationProvider.hasPermission(context)) return location
-        val fix = withTimeoutOrNull(LOCATION_FIX_TIMEOUT_MS) { LocationProvider.currentLocation(context) } ?: return location
+        val fix = withTimeoutOrNull(LOCATION_FIX_TIMEOUT_MS) {
+            LocationProvider.currentLocation(context)
+        } ?: return location
         val distance = FloatArray(1)
-        android.location.Location.distanceBetween(location.latitude, location.longitude, fix.latitude, fix.longitude, distance)
+        android.location.Location.distanceBetween(
+            location.latitude,
+            location.longitude,
+            fix.latitude,
+            fix.longitude,
+            distance,
+        )
         if (distance[0] < MIN_LOCATION_MOVE_METERS) return location
         val resolved = reverseGeocodeName(context, fix.latitude, fix.longitude)
         if (resolved != null) repository.updateName(location.id, resolved.first, resolved.second)

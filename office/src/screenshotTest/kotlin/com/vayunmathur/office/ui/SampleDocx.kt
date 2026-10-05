@@ -52,7 +52,11 @@ internal val SampleDocxBlocks: List<OdfContentBlock> = listOf(
         paragraph = OdfParagraph(
             spans = listOf(
                 OdfSpan(
-                    text = "This document demonstrates the ability of the calibre DOCX Input plugin to convert the various typographic features in a Microsoft Word (2007 and newer) document. Convert this document to a modern ebook format, such as AZW3 for Kindles or EPUB for other ebook readers, to see it in action.",
+                    text =
+                        "This document demonstrates the ability of the calibre DOCX Input plugin" +
+                            "to convert the various typographic features in a Microsoft Word (2007 and" +
+                            "newer) document. Convert this document to a modern ebook format, such as" +
+                                "AZW3 for Kindles or EPUB for other ebook readers, to see it in action.",
                     fontSize = 12f,
                 ),
             ),
@@ -106,7 +110,9 @@ internal val SampleDocxBlocks: List<OdfContentBlock> = listOf(
                     fontSize = 12f,
                 ),
                 OdfSpan(
-                    text = " Set the output format in the top right corner of the conversion dialog to EPUB or AZW3 and click ",
+                    text =
+                        " Set the output format in the top right corner of" +
+                            "the conversion dialog to EPUB or AZW3 and click ",
                     fontSize = 12f,
                 ),
                 OdfSpan(
@@ -169,7 +175,8 @@ internal val SampleDocxBlocks: List<OdfContentBlock> = listOf(
         paragraph = OdfParagraph(
             spans = listOf(
                 OdfSpan(
-                    text = "Here, we demonstrate various types of inline text formatting and the use of embedded fonts.",
+                    text =
+                        "Here, we demonstrate various types of inline text formatting and the use of embedded fonts.",
                     fontSize = 12f,
                 ),
             ),
@@ -356,7 +363,9 @@ internal val SampleDocxBlocks: List<OdfContentBlock> = listOf(
                     fontSize = 12f,
                 ),
                 OdfSpan(
-                    text = " This paragraph uses document wide styles for styling rather than inline text properties as demonstrated in the previous paragraph",
+                    text =
+                        " This paragraph uses document wide styles for styling rather than" +
+                            "inline text properties as demonstrated in the previous paragraph",
                     fontSize = 12f,
                 ),
                 OdfSpan(
@@ -391,7 +400,9 @@ internal val SampleDocxBlocks: List<OdfContentBlock> = listOf(
         paragraph = OdfParagraph(
             spans = listOf(
                 OdfSpan(
-                    text = "This document has embedded the Ubuntu font family. The body text is in the Ubuntu typeface, here is ",
+                    text =
+                        "This document has embedded the Ubuntu font family." +
+                            "The body text is in the Ubuntu typeface, here is ",
                     fontSize = 12f,
                 ),
                 OdfSpan(
@@ -403,7 +414,8 @@ internal val SampleDocxBlocks: List<OdfContentBlock> = listOf(
                     fontSize = 12f,
                 ),
                 OdfSpan(
-                    text = ". Every embedded font will automatically be embedded in the output ebook during conversion.",
+                    text =
+                        ". Every embedded font will automatically be embedded in the output ebook during conversion.",
                     fontSize = 12f,
                 ),
                 OdfSpan(
@@ -434,7 +446,10 @@ internal val SampleDocxBlocks: List<OdfContentBlock> = listOf(
         paragraph = OdfParagraph(
             spans = listOf(
                 OdfSpan(
-                    text = "You can do crazy things with paragraphs, if the urge strikes you. For instance this paragraph is right aligned and has a right border. It has also been given a light gray background.",
+                    text =
+                        "You can do crazy things with paragraphs, if the" +
+                            "urge strikes you. For instance this paragraph" +
+                            "is right aligned and has a right border. It has also been given a light gray background.",
                     fontSize = 12f,
                 ),
             ),

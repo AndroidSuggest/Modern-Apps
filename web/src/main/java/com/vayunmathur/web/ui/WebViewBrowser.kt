@@ -33,6 +33,7 @@ import com.vayunmathur.web.platform.shields.ShieldsWebViewClient
 import com.vayunmathur.web.platform.WebViewModel
 import com.vayunmathur.web.platform.addDownload
 import com.vayunmathur.web.platform.denyGeolocation
+import com.vayunmathur.web.platform.getCurrentUrl
 import com.vayunmathur.web.platform.grantGeolocation
 
 /**
@@ -108,8 +109,8 @@ fun WebViewBrowser(
             result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted) {
             // grant via stored geolocation callback in ViewModel
-            viewModel.pendingGeolocationPrompt?.let { (origin, _, _) ->
-                viewModel.grantGeolocation(origin)
+            viewModel.pendingGeolocationPrompt?.let {
+                viewModel.grantGeolocation()
             }
         } else {
             viewModel.denyGeolocation()
@@ -185,26 +186,35 @@ fun WebViewBrowser(
 
                 setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
                     val fileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
-                    Log.d(WebViewBrowserTag, "Download: $fileName $url")
+                    Log.d(WEB_VIEW_BROWSER_TAG, "Download: $fileName $url")
                     viewModel.addDownload(url, fileName, mimeType, contentLength)
-                    try {
+                    runCatching {
                         val dm = ctx.getSystemService(android.app.DownloadManager::class.java)
                         val request = android.app.DownloadManager.Request(Uri.parse(url)).apply {
                             setMimeType(mimeType)
                             addRequestHeader("User-Agent", userAgent)
                             setDescription("Downloading $fileName")
                             setTitle(fileName)
-                            setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                            setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, fileName)
+                            setNotificationVisibility(
+                                android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED,
+                            )
+                            setDestinationInExternalPublicDir(
+                                android.os.Environment.DIRECTORY_DOWNLOADS,
+                                fileName,
+                            )
                         }
                         dm.enqueue(request)
-                    } catch (e: Exception) {
-                        Log.e(WebViewBrowserTag, "Download enqueue failed", e)
-                        try {
-                            ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    }.onFailure { e ->
+                        Log.e(WEB_VIEW_BROWSER_TAG, "Download enqueue failed", e)
+                        runCatching {
+                            val fallback = android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                Uri.parse(url),
+                            ).apply {
                                 addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                            })
-                        } catch (_: Exception) {}
+                            }
+                            ctx.startActivity(fallback)
+                        }
                     }
                 })
 

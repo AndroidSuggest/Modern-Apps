@@ -32,7 +32,10 @@ import com.vayunmathur.office.R
 @Composable
 fun ChartEditorDialog(initial: OdfChart?, onConfirm: (OdfChart) -> Unit, onDismiss: () -> Unit) {
     var type by remember { mutableStateOf(initial?.type ?: ChartType.BAR) }
-    var categories by remember { mutableStateOf((initial?.categories ?: listOf("Category 1", "Category 2", "Category 3")).joinToString(", ")) }
+    var categories by remember { mutableStateOf((initial?.categories ?: listOf(
+        "Category 1",
+        "Category 2",
+        "Category 3")).joinToString(", ")) }
     var seriesText by remember {
         mutableStateOf(
             (initial?.series ?: listOf(OdfChartSeries("Series 1", listOf(3f, 5f, 2f))))
@@ -52,9 +55,17 @@ fun ChartEditorDialog(initial: OdfChart?, onConfirm: (OdfChart) -> Unit, onDismi
                         }
                     }
                 }
-                TextField(value = categories, onValueChange = { categories = it }, label = { Text(stringResource(R.string.categories_comma_separated)) }, modifier = Modifier.fillMaxWidth())
+                TextField(
+                    value = categories,
+                    onValueChange = { categories = it },
+                    label = { Text(stringResource(R.string.categories_comma_separated)) },
+                    modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                TextField(value = seriesText, onValueChange = { seriesText = it }, label = { Text(stringResource(R.string.series_name_v1_v2)) }, modifier = Modifier.fillMaxWidth())
+                TextField(
+                    value = seriesText,
+                    onValueChange = { seriesText = it },
+                    label = { Text(stringResource(R.string.series_name_v1_v2)) },
+                    modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
@@ -62,7 +73,8 @@ fun ChartEditorDialog(initial: OdfChart?, onConfirm: (OdfChart) -> Unit, onDismi
                 val cats = categories.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                 val series = seriesText.lines().mapNotNull { line ->
                     if (line.isBlank()) return@mapNotNull null
-                    val name = (if (line.contains(":")) line.substringBefore(":") else "Series").trim().ifEmpty { "Series" }
+                    val name =
+                        (if (line.contains(":")) line.substringBefore(":") else "Series").trim().ifEmpty { "Series" }
                     val valsPart = if (line.contains(":")) line.substringAfter(":") else line
                     val vals = valsPart.split(",").mapNotNull { it.trim().toFloatOrNull() }
                     if (vals.isEmpty()) null else OdfChartSeries(name, vals)

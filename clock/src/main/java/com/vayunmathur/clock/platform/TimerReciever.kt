@@ -3,15 +3,22 @@ import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.vayunmathur.clock.data.ClockRepository
 import com.vayunmathur.clock.data.Timer
 import com.vayunmathur.clock.R
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlin.time.Clock
 import kotlin.time.Duration
 
 class TimerReceiver : BroadcastReceiver() {
+    // Broad catch is deliberate: onReceive must not throw, and Room throws
+    // undocumented RuntimeExceptions (not just SQLiteException).
+    @Suppress("TooGenericExceptionCaught")
     override fun onReceive(context: Context, intent: Intent) {
         val name = intent.getStringExtra("timer_name") ?: context.getString(R.string.label_timer)
         val id = intent.getLongExtra("timer_id", 0L)
@@ -43,7 +50,8 @@ class TimerReceiver : BroadcastReceiver() {
                         remainingStartTime = Clock.System.now(),
                     )
                     repository.upsertTimer(completed)
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    Log.w(TAG, "could not load timer $id; writing minimal completed row", e)
                     // Fallback: upsert a minimal completed timer if get fails
                     val completedFallback = Timer(
                         isRunning = false,
@@ -56,14 +64,19 @@ class TimerReceiver : BroadcastReceiver() {
                     // Try to preserve totalLength from name-based heuristic: keep ZERO if unknown
                     try {
                         repository.upsertTimer(completedFallback)
-                    } catch (_: Exception) {
+                    } catch (ignored: Exception) {
                         // Best-effort: if even fallback fails, keep original delete behavior skipped
                     }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "could not complete timer $id", e)
             } finally {
                 pendingResult.finish()
             }
         }
+    }
+
+    private companion object {
+        const val TAG = "TimerReceiver"
     }
 }

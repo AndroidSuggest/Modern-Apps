@@ -15,19 +15,36 @@ import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.MediaKeys
 // (Primitive helpers x25519 / hkdfSha256 / sha256 / hmacSha256 stay in
 // WhatsAppProtocol.kt: NoiseHandshake depends on them as object members.)
 
+private const val APP_STATE_KEY_SIZE = 32
+private const val APP_STATE_EXPANDED_SIZE = 160
+private const val KEY_OFFSET_0 = 0
+private const val KEY_OFFSET_1 = APP_STATE_KEY_SIZE
+private const val KEY_OFFSET_2 = APP_STATE_KEY_SIZE * 2
+private const val KEY_OFFSET_3 = APP_STATE_KEY_SIZE * 3
+private const val KEY_OFFSET_4 = APP_STATE_KEY_SIZE * 4
+private const val IV_SIZE = 16
+private const val VALUE_MAC_SIZE = 32
+private const val MEDIA_EXPANDED_SIZE = 112
+private const val CIPHER_KEY_SIZE = 32
+private const val MAC_KEY_SIZE = 32
+private const val REF_KEY_SIZE = 32
+private const val GCM_TAG_BITS = 128
+private const val PAD_BLOCK_SIZE = 16
+private const val TIMESTAMP_GRANULARITY_MS = 1000L
+
 /**
  * Expand a 32-byte app-state sync key into the 5 sub-keys via HKDF-SHA256 with info
  * "WhatsApp Mutation Keys" (160 bytes). Order: index, valueEncryption, valueMac,
  * snapshotMac, patchMac. Ref whatsmeow appstate/keys.go expandAppStateKeys.
  */
 fun WhatsAppProtocol.expandAppStateKeys(keyData: ByteArray): Array<ByteArray> {
-    val out = hkdfSha256(keyData, null, "WhatsApp Mutation Keys".toByteArray(Charsets.UTF_8), 160)
+    val out = hkdfSha256(keyData, null, "WhatsApp Mutation Keys".toByteArray(Charsets.UTF_8), APP_STATE_EXPANDED_SIZE)
     return arrayOf(
-        out.copyOfRange(0, 32),
-        out.copyOfRange(32, 64),
-        out.copyOfRange(64, 96),
-        out.copyOfRange(96, 128),
-        out.copyOfRange(128, 160),
+        out.copyOfRange(KEY_OFFSET_0, KEY_OFFSET_1),
+        out.copyOfRange(KEY_OFFSET_1, KEY_OFFSET_2),
+        out.copyOfRange(KEY_OFFSET_2, KEY_OFFSET_3),
+        out.copyOfRange(KEY_OFFSET_3, KEY_OFFSET_4),
+        out.copyOfRange(KEY_OFFSET_4, APP_STATE_EXPANDED_SIZE),
     )
 }
 
@@ -36,15 +53,15 @@ fun WhatsAppProtocol.expandAppStateKeys(keyData: ByteArray): Array<ByteArray> {
  * the valueEncryption sub-key (AES-256-CBC). MAC is not verified. Ref whatsmeow decodeMutation.
  */
 fun WhatsAppProtocol.decryptAppStateValue(valueBlob: ByteArray, valueEncryptionKey: ByteArray): ByteArray? {
-    if (valueBlob.size < 16 + 32) return null
-    val content = valueBlob.copyOfRange(0, valueBlob.size - 32) // strip 32-byte valueMac
-    val iv = content.copyOfRange(0, 16)
-    val ciphertext = content.copyOfRange(16, content.size)
+    if (valueBlob.size < IV_SIZE + VALUE_MAC_SIZE) return null
+    val content = valueBlob.copyOfRange(0, valueBlob.size - VALUE_MAC_SIZE) // strip 32-byte valueMac
+    val iv = content.copyOfRange(0, IV_SIZE)
+    val ciphertext = content.copyOfRange(IV_SIZE, content.size)
     return try {
         val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(valueEncryptionKey, "AES"), IvParameterSpec(iv))
         cipher.doFinal(ciphertext)
-    } catch (e: Exception) {
+    } catch (ignored: Exception) {
         null
     }
 }
@@ -55,12 +72,14 @@ fun WhatsAppProtocol.decryptAppStateValue(valueBlob: ByteArray, valueEncryptionK
  * From whatsmeow/download.go getMediaKeys()
  */
 fun WhatsAppProtocol.getMediaKeys(mediaKey: ByteArray, mediaType: String): MediaKeys {
-    val expanded = hkdfSha256(mediaKey, null, mediaType.toByteArray(Charsets.UTF_8), 112)
+    val expanded = hkdfSha256(mediaKey, null, mediaType.toByteArray(Charsets.UTF_8), MEDIA_EXPANDED_SIZE)
     return MediaKeys(
-        iv = expanded.copyOfRange(0, 16),
-        cipherKey = expanded.copyOfRange(16, 48),
-        macKey = expanded.copyOfRange(48, 80),
-        refKey = expanded.copyOfRange(80, 112)
+        iv = expanded.copyOfRange(0, IV_SIZE),
+        cipherKey = expanded.copyOfRange(IV_SIZE, IV_SIZE + CIPHER_KEY_SIZE),
+        macKey = expanded.copyOfRange(IV_SIZE + CIPHER_KEY_SIZE, IV_SIZE + CIPHER_KEY_SIZE + MAC_KEY_SIZE),
+        refKey = expanded.copyOfRange(
+            IV_SIZE + CIPHER_KEY_SIZE + MAC_KEY_SIZE,
+            IV_SIZE + CIPHER_KEY_SIZE + MAC_KEY_SIZE + REF_KEY_SIZE)
     )
 }
 
@@ -70,7 +89,7 @@ fun WhatsAppProtocol.getMediaKeys(mediaKey: ByteArray, mediaType: String): Media
  */
 fun WhatsAppProtocol.encryptMedia(plaintext: ByteArray, mediaType: String): MediaEncryptResult {
     val random = SecureRandom()
-    val mediaKey = ByteArray(32).also { random.nextBytes(it) }
+    val mediaKey = ByteArray(APP_STATE_KEY_SIZE).also { random.nextBytes(it) }
     val keys = getMediaKeys(mediaKey, mediaType)
 
     val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
@@ -135,7 +154,7 @@ fun WhatsAppProtocol.decryptMedia(ciphertextWithMac: ByteArray, mediaKey: ByteAr
 fun WhatsAppProtocol.generateMessageId(ownJid: String?): String {
     val buf = java.io.ByteArrayOutputStream()
     val ts = ByteArray(8)
-    ByteBuffer.wrap(ts).putLong(System.currentTimeMillis() / 1000L)
+    ByteBuffer.wrap(ts).putLong(System.currentTimeMillis() / TIMESTAMP_GRANULARITY_MS)
     buf.write(ts)
     if (!ownJid.isNullOrEmpty()) {
         val user = ownJid.substringBefore('@').substringBefore(':')
@@ -157,8 +176,8 @@ fun WhatsAppProtocol.generateMessageId(ownJid: String?): String {
  * From whatsmeow/message.go padMessage(): random byte masked to 0x0f, 0 -> 15.
  */
 fun WhatsAppProtocol.padMessage(plaintext: ByteArray): ByteArray {
-    var padSize = SecureRandom().nextInt(16)
-    if (padSize == 0) padSize = 15
+    var padSize = SecureRandom().nextInt(PAD_BLOCK_SIZE)
+    if (padSize == 0) padSize = PAD_BLOCK_SIZE - 1
     val padded = ByteArray(plaintext.size + padSize)
     System.arraycopy(plaintext, 0, padded, 0, plaintext.size)
     for (i in plaintext.size until padded.size) {
@@ -240,8 +259,8 @@ fun WhatsAppProtocol.decryptPollVote(
             .parseFrom(plaintext)
             .selectedOptionsList
             .map { it.toByteArray() }
-    } catch (e: Exception) {
-        Log.w(TAG, "Poll vote decrypt failed", e)
+    } catch (expected: Exception) {
+        Log.w(TAG, "Poll vote decrypt failed", expected)
         null
     }
 }
@@ -278,9 +297,14 @@ private fun WhatsAppProtocol.normalizeJidForSecret(jid: String): String {
     return "$user@$server"
 }
 
-private fun WhatsAppProtocol.aesGcm(mode: Int, key: ByteArray, iv: ByteArray, data: ByteArray, aad: ByteArray): ByteArray {
+private fun WhatsAppProtocol.aesGcm(
+    mode: Int,
+    key: ByteArray,
+    iv: ByteArray,
+    data: ByteArray,
+    aad: ByteArray): ByteArray {
     val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-    cipher.init(mode, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+    cipher.init(mode, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
     cipher.updateAAD(aad)
     return cipher.doFinal(data)
 }

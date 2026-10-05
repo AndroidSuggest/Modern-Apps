@@ -33,62 +33,130 @@ data class PwaInfo(
 object PwaHelper {
     private const val TAG = "PwaHelper"
 
+    /** Display titles are truncated so shortcut labels and dialog rows stay on one line. */
+    private const val MAX_DISPLAY_TITLE_LENGTH = 48
+
+    /** Icon bitmap edge length requested from the image loader. */
+    private const val ICON_BITMAP_SIZE = 192
+
+    /** Shortcut short labels are truncated so launchers do not ellipsize them. */
+    private const val SHORT_LABEL_LENGTH = 10
+
     // JS probe - intentionally avoids Kotlin ${} templates by using string concatenation only.
     const val MANIFEST_PROBE_JS = "(function(){" +
             "try{" +
             "var origin=location.origin;" +
             "var title='';" +
-            "try{var og=document.querySelector('meta[property=\"og:title\"]');title=(og&&og.content)?og.content.trim():(document.title||'').trim();}catch(e){title=document.title||'';}" +
-            "var iconUrl=null,faviconUrl=null,themeColor=null,bgColor=null,displayMode='browser',startUrl=location.href,manifestUrl=null,hasManifest=false;" +
-            "try{var tm=document.querySelector('meta[name=\"theme-color\"]');if(tm)themeColor=tm.content||null;}catch(e){}" +
-            "try{var ms=document.querySelector('meta[name=\"msapplication-TileColor\"]');if(ms)bgColor=ms.content||null;}catch(e){}" +
-            "try{var ml=document.querySelector('link[rel=\"manifest\"]');if(ml){manifestUrl=ml.href;hasManifest=!!manifestUrl;}}catch(e){}" +
+            "try{var og=document.querySelector('meta[property=\"og:title\"]');" +
+            "title=(og&&og.content)?og.content.trim():(document.title||'').trim();}" +
+            "catch(e){title=document.title||'';}" +
+            "var iconUrl=null,faviconUrl=null,themeColor=null,bgColor=null," +
+            "displayMode='browser',startUrl=location.href,manifestUrl=null,hasManifest=false;" +
+            "try{var tm=document.querySelector('meta[name=\"theme-color\"]');" +
+            "if(tm)themeColor=tm.content||null;}catch(e){}" +
+            "try{var ms=document.querySelector('meta[name=\"msapplication-TileColor\"]');" +
+            "if(ms)bgColor=ms.content||null;}catch(e){}" +
+            "try{var ml=document.querySelector('link[rel=\"manifest\"]');" +
+            "if(ml){manifestUrl=ml.href;hasManifest=!!manifestUrl;}}catch(e){}" +
             "function bestIcon(){" +
             "try{" +
             "var cands=[];var ls=document.querySelectorAll('link[rel*=\"icon\"]');" +
-            "for(var i=0;i<ls.length;i++){var l=ls[i];var href=l.href;if(!href)continue;var rel=(l.rel||'').toLowerCase();var sizes=(l.getAttribute('sizes')||'').toLowerCase();var score=0;" +
-            "if(rel.indexOf('apple-touch-icon')>=0)score=90;if(rel==='icon'||rel.indexOf('icon')>=0)score=Math.max(score,70);" +
-            "if(sizes.indexOf('192')>=0||sizes.indexOf('512')>=0)score+=40;if(sizes.indexOf('180')>=0)score+=20;" +
-            "if(href.indexOf('192')>=0||href.indexOf('512')>=0)score+=25;if(href.endsWith('.png'))score+=10;" +
+            "for(var i=0;i<ls.length;i++){var l=ls[i];var href=l.href;if(!href)continue;" +
+            "var rel=(l.rel||'').toLowerCase();" +
+            "var sizes=(l.getAttribute('sizes')||'').toLowerCase();var score=0;" +
+            "if(rel.indexOf('apple-touch-icon')>=0)score=90;" +
+            "if(rel==='icon'||rel.indexOf('icon')>=0)score=Math.max(score,70);" +
+            "if(sizes.indexOf('192')>=0||sizes.indexOf('512')>=0)score+=40;" +
+            "if(sizes.indexOf('180')>=0)score+=20;" +
+            "if(href.indexOf('192')>=0||href.indexOf('512')>=0)score+=25;" +
+            "if(href.endsWith('.png'))score+=10;" +
             "cands.push({href:href,score:score});}" +
-            "if(cands.length===0)return null;cands.sort(function(a,b){return b.score-a.score;});return cands[0].href;" +
+            "if(cands.length===0)return null;" +
+            "cands.sort(function(a,b){return b.score-a.score;});return cands[0].href;" +
             "}catch(e){return null;}}" +
-            "try{var il=document.querySelector('link[rel=\"icon\"], link[rel=\"shortcut icon\"]');if(il)faviconUrl=il.href||null;}catch(e){}" +
+            "try{var il=document.querySelector('link[rel=\"icon\"], link[rel=\"shortcut icon\"]');" +
+            "if(il)faviconUrl=il.href||null;}catch(e){}" +
             "var best=bestIcon();if(best)iconUrl=best;if(!iconUrl&&faviconUrl)iconUrl=faviconUrl;" +
-            "return JSON.stringify({title:title,name:'',shortName:'',iconUrl:iconUrl,faviconUrl:faviconUrl,themeColor:themeColor,bgColor:bgColor,displayMode:displayMode,startUrl:startUrl,manifestUrl:manifestUrl,hasManifest:hasManifest,origin:origin});" +
-            "}catch(e){try{return JSON.stringify({title:document.title||'',origin:location.origin||''});}catch(e2){return null;}}})();"
+            "return JSON.stringify({title:title,name:'',shortName:'',iconUrl:iconUrl," +
+            "faviconUrl:faviconUrl,themeColor:themeColor,bgColor:bgColor," +
+            "displayMode:displayMode,startUrl:startUrl,manifestUrl:manifestUrl," +
+            "hasManifest:hasManifest,origin:origin});" +
+            "}catch(e){try{return JSON.stringify({title:document.title||''," +
+            "origin:location.origin||''});}catch(e2){return null;}}})();"
 
     fun parseProbeJson(escapedJson: String?): PwaInfo? {
+        val s = unescapeProbeJson(escapedJson) ?: return null
+        val fields = ProbeFields(
+            title = s.strField("title") ?: "",
+            name = s.strField("name"),
+            shortName = s.strField("shortName") ?: "",
+            iconUrl = s.strField("iconUrl"),
+            faviconUrl = s.strField("faviconUrl"),
+            themeColor = s.strField("themeColor"),
+            backgroundColor = s.strField("bgColor"),
+            displayMode = s.strField("displayMode") ?: "browser",
+            startUrl = s.strField("startUrl"),
+            manifestUrl = s.strField("manifestUrl"),
+            origin = s.strField("origin") ?: "",
+            hasManifest = s.hasTrueFlag("hasManifest"),
+        )
+        if (!fields.hasIdentity) return null
+        return fields.toPwaInfo()
+    }
+
+    /** Raw probe payload with WebView's JS-string escaping removed, or null when empty. */
+    private fun unescapeProbeJson(escapedJson: String?): String? {
         if (escapedJson.isNullOrBlank()) return null
         var s = escapedJson.trim()
-        if (s.startsWith("\"") && s.endsWith("\"")) {
-            s = s.substring(1, s.length - 1).replace("\\\"", "\"").replace("\\\\", "\\").replace("\\/", "/")
+        if (s.startsWith("\"") && s.endsWith("\"") && s.length >= 2) {
+            s = s.substring(1, s.length - 1).unescapeJson()
         }
-        if (s.isBlank() || s == "null") return null
-        fun strField(key: String): String? {
-            val m = Regex("\"" + key + "\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"").find(s) ?: return null
-            return m.groupValues[1].replace("\\\"", "\"").replace("\\\\", "\\").replace("\\/", "/")
-        }
-        val title = strField("title") ?: ""
-        val name = strField("name")?.ifBlank { null } ?: title
-        val shortName = strField("shortName") ?: ""
-        val iconUrl = strField("iconUrl")
-        val faviconUrl = strField("faviconUrl")
-        val themeColor = strField("themeColor")
-        val bgColor = strField("bgColor")
-        val displayMode = strField("displayMode") ?: "browser"
-        val startUrl = strField("startUrl")
-        val manifestUrl = strField("manifestUrl")
-        val origin = strField("origin") ?: ""
-        val hasManifest = Regex("\"hasManifest\"\\s*:\\s*(true|false)").find(s)?.groupValues?.get(1) == "true"
-        if (origin.isBlank() && name.isBlank() && title.isBlank() && iconUrl == null) return null
-        return PwaInfo(
+        return s.takeIf { it.isNotBlank() && it != "null" }
+    }
+
+    private fun String.unescapeJson(): String =
+        replace("\\\"", "\"").replace("\\\\", "\\").replace("\\/", "/")
+
+    private fun String.strField(key: String): String? {
+        val pattern = "\"" + key + "\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\""
+        val match = Regex(pattern).find(this) ?: return null
+        return match.groupValues[1].unescapeJson()
+    }
+
+    private fun String.hasTrueFlag(key: String): Boolean =
+        Regex("\"" + key + "\"\\s*:\\s*(true|false)").find(this)?.groupValues?.get(1) == "true"
+
+    /**
+     * The probe fields that identify a page as installable. Kept together so the
+     * emptiness check stays in one place.
+     */
+    private class ProbeFields(
+        val title: String,
+        name: String?,
+        val shortName: String,
+        val iconUrl: String?,
+        val faviconUrl: String?,
+        val themeColor: String?,
+        val backgroundColor: String?,
+        val displayMode: String,
+        val startUrl: String?,
+        val manifestUrl: String?,
+        val origin: String,
+        val hasManifest: Boolean,
+    ) {
+        val name: String = name?.ifBlank { null } ?: title
+
+        /** False when the probe carried nothing usable — title, name, origin and icon all missing. */
+        val hasIdentity: Boolean
+            get() = origin.isNotBlank() || name.isNotBlank() || title.isNotBlank() || iconUrl != null
+
+        fun toPwaInfo(): PwaInfo = PwaInfo(
             name = name.ifBlank { title },
             shortName = shortName,
             iconUrl = iconUrl,
             faviconUrl = faviconUrl,
             themeColor = themeColor,
-            backgroundColor = bgColor,
+            backgroundColor = backgroundColor,
             displayMode = displayMode,
             startUrl = startUrl,
             origin = origin.ifBlank { startUrl ?: "" },
@@ -100,18 +168,18 @@ object PwaHelper {
     fun displayTitle(info: PwaInfo?, fallbackTitle: String, fallbackUrl: String): String {
         val n = info?.name?.ifBlank { null } ?: info?.shortName?.ifBlank { null }
         val t = fallbackTitle.ifBlank { null }
-        val host = runCatching { BrowserUtils.hostFromUrl(fallbackUrl) }.getOrNull()?.takeIf { it.isNotBlank() }
-        return (n ?: t ?: host ?: "Site").take(48)
+        val host = runCatching { BrowserUtils.hostFromUrl(fallbackUrl) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+        return (n ?: t ?: host ?: "Site").take(MAX_DISPLAY_TITLE_LENGTH)
     }
 
     fun isPinSupported(context: Context): Boolean =
         ShortcutManagerCompat.isRequestPinShortcutSupported(context)
 
-    fun shortcutId(url: String): String = try {
+    fun shortcutId(url: String): String {
         val origin = BrowserUtils.originFromUrl(url)
-        "pwa_" + origin.hashCode() + "_" + url.hashCode()
-    } catch (_: Exception) {
-        "pwa_" + url.hashCode()
+        return "pwa_" + origin.hashCode() + "_" + url.hashCode()
     }
 
     fun createPwaIntent(context: Context, url: String, title: String?): Intent {
@@ -127,24 +195,23 @@ object PwaHelper {
     suspend fun loadIconBitmap(context: Context, iconUrl: String?): Bitmap? {
         if (iconUrl.isNullOrBlank()) return null
         return withContext(Dispatchers.IO) {
-            try {
+            runCatching {
                 val loader = ImageLoader.get(context)
                 val req = ImageRequest.Builder(context)
                     .data(iconUrl)
                     .allowHardware(false)
-                    .size(192)
+                    .size(ICON_BITMAP_SIZE)
                     .build()
                 val result = loader.execute(req)
-                val bitmap = (result as? ImageResult.Success)?.bitmap ?: return@withContext null
+                val bitmap = (result as? ImageResult.Success)?.bitmap ?: return@runCatching null
                 bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: bitmap
-            } catch (e: Exception) {
-                Log.w(TAG, "loadIconBitmap failed " + iconUrl, e)
-                null
-            }
+            }.onFailure { e ->
+                Log.w(TAG, "loadIconBitmap failed $iconUrl", e)
+            }.getOrNull()
         }
     }
 
-    fun textIconBitmap(title: String, sizePx: Int = 192): Bitmap {
+    fun textIconBitmap(title: String, sizePx: Int = ICON_BITMAP_SIZE): Bitmap {
         val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         val hash = title.hashCode()
@@ -178,19 +245,20 @@ object PwaHelper {
     ): Boolean {
         if (!isPinSupported(context)) return false
         return withContext(Dispatchers.Main) {
-            try {
+            runCatching {
                 val id = shortcutId(url)
                 val intent = createPwaIntent(context, url, title)
-                val shortLabel = title.takeIf { it.isNotBlank() }?.take(10) ?: BrowserUtils.hostFromUrl(url).take(10)
-                val longLabel = title.ifBlank { url }.take(48)
+                val shortLabel = title.takeIf { it.isNotBlank() }?.take(SHORT_LABEL_LENGTH)
+                    ?: BrowserUtils.hostFromUrl(url).take(SHORT_LABEL_LENGTH)
+                val longLabel = title.ifBlank { url }.take(MAX_DISPLAY_TITLE_LENGTH)
 
                 var bmp = loadIconBitmap(context, iconUrl)
-                if (bmp == null && !faviconUrl.isNullOrBlank()) bmp = loadIconBitmap(context, faviconUrl)
+                if (bmp == null && !faviconUrl.isNullOrBlank()) {
+                    bmp = loadIconBitmap(context, faviconUrl)
+                }
                 if (bmp == null) {
-                    try {
-                        val origin = BrowserUtils.originFromUrl(url)
-                        bmp = loadIconBitmap(context, origin + "/favicon.ico")
-                    } catch (_: Exception) {}
+                    val origin = BrowserUtils.originFromUrl(url)
+                    bmp = loadIconBitmap(context, origin + "/favicon.ico")
                 }
                 val finalBmp = bmp ?: textIconBitmap(title)
                 val icon = IconCompat.createWithAdaptiveBitmap(finalBmp)
@@ -203,10 +271,9 @@ object PwaHelper {
                     .build()
 
                 ShortcutManagerCompat.requestPinShortcut(context, info, null)
-            } catch (e: Exception) {
+            }.onFailure { e ->
                 Log.e(TAG, "requestPinShortcut failed", e)
-                false
-            }
+            }.getOrDefault(false)
         }
     }
 }

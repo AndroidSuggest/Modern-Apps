@@ -142,7 +142,7 @@ class ShareTransferService : Service() {
         if (!stopping.compareAndSet(false, true)) return
         try {
             if (ShareReceiveController.isServiceWanted(this)) return
-            ShareReceiveController.stop(this)
+            ShareReceiveController.stop()
             if (ShareReceiveController.hasActiveTransfers(this)) {
                 Log.i(TAG, "deferring stop: a transfer is still in flight")
                 ShareReceiveController.awaitIdle(this)
@@ -156,10 +156,13 @@ class ShareTransferService : Service() {
         }
     }
 
+    // Broad catch is deliberate: startForeground throws undocumented RuntimeExceptions
+    // (not just SecurityException) when the platform refuses a background start.
+    @Suppress("TooGenericExceptionCaught")
     private fun enterForeground(isSending: Boolean) {
         val notif = buildNotification(isSending)
         try {
-            if (Build.VERSION.SDK_INT >= 34) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(
                     NOTIF_ID,
                     notif,
@@ -185,7 +188,7 @@ class ShareTransferService : Service() {
     override fun onTimeout(startId: Int, fgsType: Int) {
         Log.w(TAG, "foreground service timed out (type $fgsType)")
         scope.launch {
-            ShareReceiveController.stop(this@ShareTransferService)
+            ShareReceiveController.stop()
             withContext(Dispatchers.Main) {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()

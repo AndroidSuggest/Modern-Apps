@@ -162,7 +162,10 @@ class ReceiverAdvertiser(context: Context) {
             Log.e(TAG, "mDNS blocked - ACCESS_LOCAL_NETWORK not granted, so this TV is invisible", e)
             localNetworkBlocked = true
             listener = null
-        } catch (e: Exception) {
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "registerService threw", e)
+            listener = null
+        } catch (e: IllegalStateException) {
             Log.w(TAG, "registerService threw", e)
             listener = null
         }
@@ -174,7 +177,10 @@ class ReceiverAdvertiser(context: Context) {
         val active = listener ?: return
         try {
             manager.unregisterService(active)
-        } catch (_: Exception) {
+        } catch (_: IllegalArgumentException) {
+            // Already unregistered or never registered; the fields below are cleared either way.
+        } catch (_: IllegalStateException) {
+            // Manager torn down; the fields below are cleared either way.
         }
         listener = null
         registeredName = null

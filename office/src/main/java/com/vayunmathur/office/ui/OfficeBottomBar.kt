@@ -99,13 +99,25 @@ fun OfficeBottomBar(
 ) {
     Surface(tonalElevation = 3.dp) {
         Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).navigationBarsPadding().padding(
+                horizontal = 4.dp,
+                vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             when (document) {
-                is OdfDocument.TextDocument -> TextFormatControls(document, target as? FormatTarget.TextRun, viewModel, activeTableBlock, activeTableRow, activeTableCol, actions)
+                is OdfDocument.TextDocument -> TextFormatControls(
+                    document,
+                    target as? FormatTarget.TextRun,
+                    viewModel,
+                    activeTableBlock,
+                    activeTableRow,
+                    activeTableCol,
+                    actions)
                 is OdfDocument.Spreadsheet -> CellFormatControls(target as? FormatTarget.Cell, viewModel, actions)
-                is OdfDocument.Presentation -> ElementFormatControls(target as? FormatTarget.Element, viewModel, actions)
+                is OdfDocument.Presentation -> ElementFormatControls(
+                    target as? FormatTarget.Element,
+                    viewModel,
+                    actions)
                 else -> {}
             }
             InsertControl(caps, actions)
@@ -121,15 +133,30 @@ private fun InsertControl(caps: DocCaps, actions: BottomBarActions) {
     Box {
         FmtIcon(false, true, { IconAdd() }) { menu = true }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            if (caps.insertImage) DropdownMenuItem(text = { Text(stringResource(R.string.image_1)) }, onClick = { menu = false; actions.onInsertImage() })
-            if (caps.insertShape) DropdownMenuItem(text = { Text(stringResource(R.string.shape)) }, trailingIcon = { IconArrowDropDown() }, onClick = { shapeMenu = true })
-            if (caps.insertChart) DropdownMenuItem(text = { Text(stringResource(R.string.chart_1)) }, onClick = { menu = false; actions.onInsertChart() })
-            if (caps.insertTable) DropdownMenuItem(text = { Text(stringResource(R.string.table_1)) }, onClick = { menu = false; actions.onInsertTable() })
+            if (caps.insertImage) DropdownMenuItem(
+                text = { Text(stringResource(R.string.image_1)) },
+                onClick = { menu = false; actions.onInsertImage() })
+            if (caps.insertShape) DropdownMenuItem(
+                text = { Text(stringResource(R.string.shape)) },
+                trailingIcon = { IconArrowDropDown() },
+                onClick = { shapeMenu = true })
+            if (caps.insertChart) DropdownMenuItem(
+                text = { Text(stringResource(R.string.chart_1)) },
+                onClick = { menu = false; actions.onInsertChart() })
+            if (caps.insertTable) DropdownMenuItem(
+                text = { Text(stringResource(R.string.table_1)) },
+                onClick = { menu = false; actions.onInsertTable() })
         }
         DropdownMenu(expanded = shapeMenu, onDismissRequest = { shapeMenu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.rectangle)) }, onClick = { shapeMenu = false; menu = false; actions.onInsertShape(ShapeKind.RECT) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.ellipse)) }, onClick = { shapeMenu = false; menu = false; actions.onInsertShape(ShapeKind.ELLIPSE) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.line)) }, onClick = { shapeMenu = false; menu = false; actions.onInsertShape(ShapeKind.LINE) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.rectangle)) },
+                onClick = { shapeMenu = false; menu = false; actions.onInsertShape(ShapeKind.RECT) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.ellipse)) },
+                onClick = { shapeMenu = false; menu = false; actions.onInsertShape(ShapeKind.ELLIPSE) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.line)) },
+                onClick = { shapeMenu = false; menu = false; actions.onInsertShape(ShapeKind.LINE) })
         }
     }
 }

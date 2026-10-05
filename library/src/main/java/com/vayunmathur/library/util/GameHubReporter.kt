@@ -22,12 +22,21 @@ import kotlinx.coroutines.launch
  */
 object GameHubReporter {
 
+    private const val XP_MASTER = 100
+    private const val XP_MAJOR = 50
+    private const val XP_BASE = 25
+
     fun bind(
-        context: Context,
+        ignored: Context,
         gameId: String,
         legacyManager: AchievementsManager,
         hubClient: GameHubClient,
-        gameMetadata: GameMetadata = GameMetadata(gameId, displayName = gameId.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() })
+        gameMetadata: GameMetadata = GameMetadata(
+            gameId,
+            displayName = gameId.replaceFirstChar {
+                if (it.isLowerCase()) it.titlecase() else it.toString()
+            }
+        )
     ): ReporterHandle {
         val job = SupervisorJob()
         val scope = CoroutineScope(job + Dispatchers.IO)
@@ -96,10 +105,10 @@ object GameHubReporter {
     }
 
     private fun xpForAchievement(id: String): Int = when {
-        "win_50" in id || "master" in id -> 100
-        "win_10" in id || "enthusiast" in id || "100" in id || "500" in id -> 50
-        "first_win" in id || "first_mate" in id || "level_1_done" in id -> 50
-        else -> 25
+        "win_50" in id || "master" in id -> XP_MASTER
+        "win_10" in id || "enthusiast" in id || "100" in id || "500" in id -> XP_MAJOR
+        "first_win" in id || "first_mate" in id || "level_1_done" in id -> XP_MAJOR
+        else -> XP_BASE
     }
 
     private fun tierForAchievement(id: String): AchievementTier = when {

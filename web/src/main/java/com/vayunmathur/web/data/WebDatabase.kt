@@ -20,7 +20,10 @@ interface HistoryDao {
     @Query("SELECT * FROM HistoryEntry ORDER BY visitedAt DESC")
     fun allFlow(): Flow<List<HistoryEntry>>
 
-    @Query("SELECT * FROM HistoryEntry WHERE url LIKE '%' || :query || '%' OR title LIKE '%' || :query || '%' ORDER BY visitedAt DESC")
+    @Query(
+        "SELECT * FROM HistoryEntry WHERE url LIKE '%' || :query || '%' " +
+            "OR title LIKE '%' || :query || '%' ORDER BY visitedAt DESC"
+    )
     fun searchFlow(query: String): Flow<List<HistoryEntry>>
 
     @Upsert

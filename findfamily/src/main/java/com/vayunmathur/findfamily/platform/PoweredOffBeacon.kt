@@ -332,6 +332,9 @@ object PoweredOffBeacon {
      * invocations over a 14-byte message — negligible beside the ~22 vendor HCI commands the
      * framework then issues to move the result into the controller.
      */
+    // Broad trailing catch is deliberate: the controller call crosses into the vendor
+    // Bluetooth stack, whose failures surface as undocumented runtime exceptions.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun armForShutdown(context: Context): Int? {
         if (!isEnabled(context)) return null
 
@@ -380,21 +383,23 @@ object PoweredOffBeacon {
         } catch (e: UnsupportedOperationException) {
             // Neither ro. nor persist.bluetooth.finder.supported is set. There is no public
             // predicate to ask first, so catching this is the supported way to feature-detect.
-            Log.i(TAG, "powered-off finding unsupported on this device")
+            Log.i(TAG, "powered-off finding unsupported on this device", e)
             null
         } catch (e: SecurityException) {
             // BLUETOOTH_PRIVILEGED is signature|privileged. findfamily only holds it when it is
             // installed as a MAOS priv-app with a privapp-permissions entry, which as of today it
             // is not — vendor/modern-apps/Android.bp declares it an ordinary user app.
-            Log.i(TAG, "BLUETOOTH_PRIVILEGED not held, beacon not armed")
+            Log.i(TAG, "BLUETOOTH_PRIVILEGED not held, beacon not armed", e)
             null
         } catch (e: IllegalStateException) {
             // setPoweredOffFindingMode(ENABLED) requires Bluetooth and location both on. The EIDs
             // are already in the controller but will not be advertised, which is correct: the
             // user turned a radio off.
-            Log.i(TAG, "Bluetooth or location is off, beacon not armed")
+            Log.i(TAG, "Bluetooth or location is off, beacon not armed", e)
             null
         } catch (e: Exception) {
+            // Vendor HAL boundary: the controller call above crosses into the Bluetooth
+            // stack, whose failures surface as undocumented runtime exceptions.
             Log.w(TAG, "arming failed", e)
             null
         }

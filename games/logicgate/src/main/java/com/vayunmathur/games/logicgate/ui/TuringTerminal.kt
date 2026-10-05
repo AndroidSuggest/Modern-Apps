@@ -25,7 +25,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,10 +34,8 @@ import com.vayunmathur.games.logicgate.data.WireEnd
 internal fun TuringBigTerminal(
     box: TerminalBox,
     isInput: Boolean,
-    inputWidth: Int,
     canvasSize: Size,
     wiringFrom: WireEnd?,
-    ghostEnd: Offset?,
     onMoveFinished: (Int, Float, Float) -> Unit,
     onMove: (Int, Float, Float) -> Unit,
     onStartWiring: (WireEnd) -> Unit,
@@ -47,11 +44,9 @@ internal fun TuringBigTerminal(
     onCancel: () -> Unit,
     resolveTargetAt: (Offset, String?) -> WireEnd?,
     density: androidx.compose.ui.unit.Density,
-    pinHitR: Float,
     termWireDotR: Float,
     isCompact: Boolean = false,
     onToggleInput: (Int) -> Unit = {},
-    pinOutsideDp: Dp,
     termMinWpx: Float,
     termMaxWpx: Float,
     pinOutsidePx: Float,
@@ -106,7 +101,7 @@ internal fun TuringBigTerminal(
                                 dragTotal += delta
                                 if (dragTotal.getDistance() > 8f) {
                                     ch.consume()
-                                    center = clampTerm(center + delta, visualW, canvasSize, pinOutsidePx, density)
+                                    center = clampTerm(center + delta, canvasSize)
                                     moveState(box.idx, center.x, center.y) // keep connected wires attached live
                                 }
                             }

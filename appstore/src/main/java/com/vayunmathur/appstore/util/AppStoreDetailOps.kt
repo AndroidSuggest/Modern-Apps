@@ -10,14 +10,14 @@ import kotlinx.coroutines.launch
 
 fun AppStoreViewModel.selectApp(app: UnifiedApp) {
     detailJob?.cancel()
-    _selectedApp.value = app
+    selectedAppFlow.value = app
     detailJob = viewModelScope.launch {
         // Play lists the Sandboxed Google Play components too, so a search hit for one can
         // arrive carrying AppSource.PLAYSTORE. Describe it from GrapheneOS regardless: that
         // is the row an install would actually use, and the Play build is the wrong
         // artifact for the device even though Play would happily deliver it.
         sandboxedGooglePlayRow(app.packageName)?.let { sandboxed ->
-            _selectedApp.value = sandboxed
+            selectedAppFlow.value = sandboxed
             return@launch
         }
         // The catalogue row wins whenever there is one, even if the user tapped a Play
@@ -28,16 +28,16 @@ fun AppStoreViewModel.selectApp(app: UnifiedApp) {
         // replaces one Play listing with another.
         val cached = catalog.byPackage(app.packageName)
         if (cached != null) {
-            _selectedApp.value = cached
+            selectedAppFlow.value = cached
             return@launch
         }
         // Accrescent listings from the home carousel are shells (no version code, no signer
         // yet); fetch the full listing + package info + trust anchor before the page settles.
         if (app.source == AppSource.ACCRESCENT) {
-            _isLoadingDetails.value = true
+            isLoadingDetailsFlow.value = true
             val details = accrescent.details(app.packageName)
-            if (details != null) _selectedApp.value = details
-            _isLoadingDetails.value = false
+            if (details != null) selectedAppFlow.value = details
+            isLoadingDetailsFlow.value = false
             return@launch
         }
         // Play listings from a cluster are shells: no description, no
@@ -45,10 +45,10 @@ fun AppStoreViewModel.selectApp(app: UnifiedApp) {
         if (app.source == AppSource.PLAYSTORE && app.screenshots.isEmpty() &&
             AppSource.PLAYSTORE in enabledSources.value
         ) {
-            _isLoadingDetails.value = true
+            isLoadingDetailsFlow.value = true
             val details = play.details(app.packageName)
-            if (details != null) _selectedApp.value = details
-            _isLoadingDetails.value = false
+            if (details != null) selectedAppFlow.value = details
+            isLoadingDetailsFlow.value = false
         }
     }
 }
@@ -65,23 +65,23 @@ fun AppStoreViewModel.selectPackage(packageName: String) {
             selectApp(known)
             return@launch
         }
-        _isLoadingDetails.value = true
-        _selectedApp.value = UnifiedApp(
+        isLoadingDetailsFlow.value = true
+        selectedAppFlow.value = UnifiedApp(
             packageName = packageName,
             source = AppSource.PLAYSTORE,
             name = packageName.substringAfterLast('.'),
         )
         if (AppSource.PLAYSTORE in enabledSources.value) {
             val details = play.details(packageName)
-            if (details != null) _selectedApp.value = details
+            if (details != null) selectedAppFlow.value = details
         }
-        _isLoadingDetails.value = false
+        isLoadingDetailsFlow.value = false
     }
 }
 
 fun AppStoreViewModel.clearSelection() {
     detailJob?.cancel()
-    _selectedApp.value = null
+    selectedAppFlow.value = null
 }
 
 /**
@@ -91,4 +91,4 @@ fun AppStoreViewModel.clearSelection() {
  * holds for GSF, GMS or Vending.
  */
 internal fun AppStoreViewModel.sandboxedGooglePlayRow(packageName: String): UnifiedApp? =
-    _sandboxedGooglePlay.value.firstOrNull { it.packageName == packageName }
+    sandboxedGooglePlayFlow.value.firstOrNull { it.packageName == packageName }

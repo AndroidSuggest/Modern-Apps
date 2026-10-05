@@ -62,7 +62,6 @@ fun WeatherMapPage(
     backStack: NavBackStack<Route>,
     latitude: Double,
     longitude: Double,
-    name: String,
     isoTime: String?,
     metric: String,
 ) {

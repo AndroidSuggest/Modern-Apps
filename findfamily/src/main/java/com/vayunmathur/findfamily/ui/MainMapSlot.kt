@@ -170,7 +170,7 @@ internal fun MainMapSlot(
     val selectedWaypointObj = if (selectedWaypointId != null) {
         val waypoint by ffViewModel.waypointByIdState(selectedWaypointId) { Waypoint.NEW_WAYPOINT }
         waypoint?.let { wp -> SelectedWaypoint(wp, waypointRange.toDoubleOrNull() ?: 0.0) {
-            ffViewModel.setWaypointCoord(it)
+            ffViewModel.mapState.setWaypointCoord(it)
         } }
     } else null
 
@@ -181,7 +181,7 @@ internal fun MainMapSlot(
             ffViewModel.selectUser(it)
         },
         onMapClick = {
-            ffViewModel.clearSelection()
+            ffViewModel.mapState.clearSelection()
         },
         selectedUser = selectedUserObj,
         selectedWaypoint = selectedWaypointObj

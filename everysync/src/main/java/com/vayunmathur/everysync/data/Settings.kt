@@ -13,16 +13,18 @@ object Settings {
     private const val KEY_INTERVAL = "global_interval_minutes"
     private const val KEY_WIFI_ONLY = "wifi_only"
     private const val KEY_CONFLICT = "conflict_policy"
+    private const val DEFAULT_INTERVAL_MINUTES = 60L
+    private const val MIN_INTERVAL_MINUTES = 15L
 
     fun intervalMinutes(context: Context): Long =
-        DataStoreUtils.getInstance(context).getLong(KEY_INTERVAL) ?: 60L
+        DataStoreUtils.getInstance(context).getLong(KEY_INTERVAL) ?: DEFAULT_INTERVAL_MINUTES
 
     suspend fun setIntervalMinutes(context: Context, minutes: Long) {
-        DataStoreUtils.getInstance(context).setLong(KEY_INTERVAL, minutes.coerceAtLeast(15))
+        DataStoreUtils.getInstance(context).setLong(KEY_INTERVAL, minutes.coerceAtLeast(MIN_INTERVAL_MINUTES))
     }
 
     fun intervalFlow(context: Context): Flow<Long> =
-        DataStoreUtils.getInstance(context).longFlow(KEY_INTERVAL, 60L)
+        DataStoreUtils.getInstance(context).longFlow(KEY_INTERVAL, DEFAULT_INTERVAL_MINUTES)
 
     fun wifiOnly(context: Context): Boolean =
         DataStoreUtils.getInstance(context).getBoolean(KEY_WIFI_ONLY, false)

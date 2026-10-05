@@ -34,7 +34,10 @@ class ImapIdleRetryWorker(appContext: Context, params: WorkerParameters) : Corou
                 Log.w(TAG, "ImapIdleRetryWorker: start returned false, retrying")
                 Result.retry()
             }
-        } catch (t: Throwable) {
+        } catch (t: SecurityException) {
+            Log.w(TAG, "ImapIdleRetryWorker failed: ${t.message}", t)
+            Result.retry()
+        } catch (t: IllegalStateException) {
             Log.w(TAG, "ImapIdleRetryWorker failed: ${t.message}", t)
             Result.retry()
         }

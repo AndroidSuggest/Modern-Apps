@@ -45,6 +45,7 @@ object DailyPuzzleReminder {
 
     private const val KEY_PREFIX = "key_prefix"
     private const val KEY_NOTIFICATION_ID = "notification_id"
+    private const val DEFAULT_NOTIFICATION_ID = 5100
 
     fun update(
         context: Context,
@@ -74,7 +75,8 @@ object DailyPuzzleReminder {
 
     internal fun keyPrefixOf(data: androidx.work.Data): String? = data.getString(KEY_PREFIX)
 
-    internal fun notificationIdOf(data: androidx.work.Data): Int = data.getInt(KEY_NOTIFICATION_ID, 5100)
+    internal fun notificationIdOf(data: androidx.work.Data): Int =
+        data.getInt(KEY_NOTIFICATION_ID, DEFAULT_NOTIFICATION_ID)
 
     private fun workName(keyPrefix: String) = "${keyPrefix}_reminder"
 
@@ -88,8 +90,10 @@ object DailyPuzzleReminder {
             set(Calendar.MILLISECOND, 0)
             if (before(now)) add(Calendar.DAY_OF_MONTH, 1)
         }
-        return ((next.timeInMillis - now.timeInMillis) / 60_000L).coerceAtLeast(1)
+        return ((next.timeInMillis - now.timeInMillis) / MILLIS_PER_MINUTE).coerceAtLeast(1)
     }
+
+    private const val MILLIS_PER_MINUTE = 60_000L
 }
 
 /**

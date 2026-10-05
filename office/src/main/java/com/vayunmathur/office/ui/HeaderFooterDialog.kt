@@ -20,17 +20,31 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.office.R
 
 @Composable
-fun HeaderFooterDialog(initialHeader: String, initialFooter: String, onSave: (header: String, footer: String) -> Unit, onDismiss: () -> Unit) {
+fun HeaderFooterDialog(
+    initialHeader: String,
+    initialFooter: String,
+    onSave: (header: String, footer: String) -> Unit,
+    onDismiss: () -> Unit) {
     var header by remember { mutableStateOf(initialHeader) }
     var footer by remember { mutableStateOf(initialFooter) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.header_footer_1)) },
         text = {
             Column {
-                TextField(value = header, onValueChange = { header = it }, label = { Text(stringResource(R.string.header)) }, modifier = Modifier.fillMaxWidth())
+                TextField(
+                    value = header,
+                    onValueChange = { header = it },
+                    label = { Text(stringResource(R.string.header)) },
+                    modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                TextField(value = footer, onValueChange = { footer = it }, label = { Text(stringResource(R.string.footer)) }, modifier = Modifier.fillMaxWidth())
+                TextField(
+                    value = footer,
+                    onValueChange = { footer = it },
+                    label = { Text(stringResource(R.string.footer)) },
+                    modifier = Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(header, footer); onDismiss() }) { Text(stringResource(UiR.string.save)) } },
+        confirmButton = { TextButton(onClick = { onSave(
+            header,
+            footer); onDismiss() }) { Text(stringResource(UiR.string.save)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } })
 }

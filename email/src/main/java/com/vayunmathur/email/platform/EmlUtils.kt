@@ -20,6 +20,9 @@ data class ParsedEml(
 
 object EmlUtils {
 
+    private const val EML_EXTENSION_LEN = 4
+    private const val MAX_BASENAME_LEN = 60
+
     /**
      * Parse EML file via raw [MimeParser] (no Jakarta dependency).
      * Returns [ParsedEml] expected by EmlViewerScreen.
@@ -33,8 +36,8 @@ object EmlUtils {
 
     fun sanitizeFileName(input: String, fallback: String = "email"): String {
         var base = input.ifBlank { fallback }.trim()
-        if (base.endsWith(".eml", ignoreCase = true)) base = base.dropLast(4)
-        base = base.take(60).trim()
+        if (base.endsWith(".eml", ignoreCase = true)) base = base.dropLast(EML_EXTENSION_LEN)
+        base = base.take(MAX_BASENAME_LEN).trim()
         base = base.replace(Regex("[^a-zA-Z0-9._-]"), "_")
         base = base.replace(Regex("_+"), "_")
         base = base.trim('_', '.', ' ')

@@ -15,11 +15,10 @@ import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.vpn.R
 import com.vayunmathur.vpn.Route
-import com.vayunmathur.vpn.platform.VpnViewModel
 import com.vayunmathur.vpn.ui.components.openVpnSettings
 
 @Composable
-fun SettingsPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
+fun SettingsPage(backStack: NavBackStack<Route>) {
     val context = LocalContext.current
     AppScaffold(
         title = stringResource(R.string.settings_about),

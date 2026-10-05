@@ -17,25 +17,27 @@ internal class ProtoMessage(private val buf: ByteArray, start: Int, private val 
         loop@ while (p < end) {
             val (tag, afterTag) = readVarint(buf, p)
             p = afterTag
-            val field = (tag ushr 3).toInt()
-            when ((tag and 7).toInt()) {
-                0 -> {
+            val field = (tag ushr TAG_FIELD_SHIFT).toInt()
+            when ((tag and WIRE_TYPE_MASK).toInt()) {
+                WIRE_VARINT -> {
                     val (v, np) = readVarint(buf, p); p = np
                     varints.getOrPut(field) { mutableListOf() }.add(v)
                 }
-                1 -> {
+                WIRE_FIXED64 -> {
                     var v = 0L
-                    for (i in 0 until 8) v = v or ((buf[p + i].toLong() and 0xff) shl (8 * i))
-                    p += 8
+                    for (i in 0 until FIXED64_BYTES) {
+                        v = v or ((buf[p + i].toLong() and BYTE_MASK) shl (BITS_PER_BYTE * i))
+                    }
+                    p += FIXED64_BYTES
                     fixed64.getOrPut(field) { mutableListOf() }.add(v)
                 }
-                2 -> {
+                WIRE_LENGTH_DELIMITED -> {
                     val (len, np) = readVarint(buf, p); p = np
                     val s = p; val e = p + len.toInt()
                     ranges.getOrPut(field) { mutableListOf() }.add(intArrayOf(s, e))
                     p = e
                 }
-                5 -> p += 4
+                WIRE_FIXED32 -> p += FIXED32_BYTES
                 else -> break@loop // unknown/invalid wire type: stop rather than misread
             }
         }
@@ -69,15 +71,31 @@ internal class ProtoMessage(private val buf: ByteArray, start: Int, private val 
     fun wrappedDouble(field: Int): Double? = message(field)?.double(1)
 
     private companion object {
+        // Protobuf wire types and tag layout.
+        private const val WIRE_VARINT = 0
+        private const val WIRE_FIXED64 = 1
+        private const val WIRE_LENGTH_DELIMITED = 2
+        private const val WIRE_FIXED32 = 5
+        private const val TAG_FIELD_SHIFT = 3
+        private const val WIRE_TYPE_MASK = 7L
+        private const val FIXED64_BYTES = 8
+        private const val FIXED32_BYTES = 4
+        private const val BYTE_MASK = 0xffL
+        private const val BITS_PER_BYTE = 8
+        // Varint decoding.
+        private const val VARINT_PAYLOAD_BITS = 7
+        private const val VARINT_PAYLOAD_MASK = 0x7f
+        private const val VARINT_CONTINUATION = 0x80
+
         fun readVarint(buf: ByteArray, from: Int): Pair<Long, Int> {
             var p = from
             var shift = 0
             var result = 0L
             while (true) {
-                val b = buf[p++].toInt() and 0xff
-                result = result or ((b and 0x7f).toLong() shl shift)
-                if (b < 0x80) break
-                shift += 7
+                val b = buf[p++].toInt() and BYTE_MASK.toInt()
+                result = result or ((b and VARINT_PAYLOAD_MASK).toLong() shl shift)
+                if (b < VARINT_CONTINUATION) break
+                shift += VARINT_PAYLOAD_BITS
             }
             return result to p
         }

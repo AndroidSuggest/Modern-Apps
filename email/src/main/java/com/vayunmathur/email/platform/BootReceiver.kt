@@ -46,7 +46,9 @@ class BootReceiver : BroadcastReceiver() {
                         appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                             .edit { putBoolean(KEY_PENDING, true) }
                         Log.d(TAG, "Boot: deferred IDLE start, set $KEY_PENDING=true")
-                    } catch (t: Throwable) {
+                    } catch (t: SecurityException) {
+                        Log.w(TAG, "BootReceiver failed: ${t.message}", t)
+                    } catch (t: IllegalStateException) {
                         Log.w(TAG, "BootReceiver failed: ${t.message}", t)
                     } finally {
                         pending.finish()

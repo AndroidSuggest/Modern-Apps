@@ -125,7 +125,10 @@ val LocalHostScaffoldInfo = staticCompositionLocalOf { false }
 class EntryProviderScope<T: NavKey>(val obj: T) {
     var result: NavEntry<T>? = null
 
-    inline fun <reified E: T> entry(metadata: Map<String, Any> = emptyMap(), crossinline content: @Composable (E) -> Unit) {
+    inline fun <reified E : T> entry(
+        metadata: Map<String, Any> = emptyMap(),
+        crossinline content: @Composable (E) -> Unit
+    ) {
         if(obj is E) {
             result = NavEntry(obj, metadata = metadata) {
                 // Republished as a nullable local so screens can ask for a shared element without
@@ -147,7 +150,7 @@ class EntryProviderScope<T: NavKey>(val obj: T) {
  * Which screen edge the back gesture started from, mirroring `BackEventCompat.EDGE_LEFT`. A plain
  * Int because androidx.activity is not a dependency of this module.
  */
-private const val EdgeLeft = 0
+private const val EDGE_LEFT = 0
 
 /**
  * The transitions, built from [MaterialTheme]'s expressive motion scheme.
@@ -189,18 +192,19 @@ private class NavTransitions(
         // A morph has to stay a crossfade even under the gesture, or the element is chasing a target
         // that the predictive scale is still moving.
         if (motion == NavMotion.Sibling || motion == NavMotion.Morph) return crossFade()
-        val towardsFinger = if (swipeEdge == EdgeLeft) 1 else -1
+        val towardsFinger = if (swipeEdge == EDGE_LEFT) 1 else -1
         return (fadeIn(alpha) + scaleIn(scale, initialScale = 0.96f)).togetherWith(
             fadeOut(alpha) +
                 scaleOut(scale, targetScale = 0.90f) +
-                slideOutHorizontally(offset) { towardsFinger * it / 8 }
+                slideOutHorizontally(offset) { towardsFinger * it / PREDICTIVE_SLIDE_DIVISOR }
         )
     }
 
     private fun slide(enterFrom: Int, exitTo: Int): ContentTransform =
-        (fadeIn(alpha) + slideInHorizontally(offset) { enterFrom * it / 12 }).togetherWith(
-            fadeOut(alpha) + slideOutHorizontally(offset) { exitTo * it / 12 }
-        )
+        (fadeIn(alpha) + slideInHorizontally(offset) { enterFrom * it / PUSH_SLIDE_DIVISOR })
+            .togetherWith(
+                fadeOut(alpha) + slideOutHorizontally(offset) { exitTo * it / PUSH_SLIDE_DIVISOR }
+            )
 
     private fun zoom(enterFrom: Float, exitTo: Float): ContentTransform =
         (fadeIn(alpha) + scaleIn(scale, initialScale = enterFrom)).togetherWith(
@@ -242,13 +246,13 @@ private fun rememberNavTransitions(): NavTransitions {
  * default, 0.6 for fast). An overshoot on a bounds morph means the element visibly flies past its
  * target and rubber-bands back, which is far more obvious across a long travel than on a short slide.
  */
-internal const val NavMorphMillis = 220
+internal const val NAV_MORPH_MILLIS = 220
 
 /** M3's emphasized curve: slow start, quick middle, gentle settle. */
 private val NavMorphEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
 private val NavMorphBounds: FiniteAnimationSpec<Rect> =
-    tween(NavMorphMillis, easing = NavMorphEasing)
+    tween(NAV_MORPH_MILLIS, easing = NavMorphEasing)
 
 private val NavMorphBoundsTransform = BoundsTransform { _, _ -> NavMorphBounds }
 
@@ -268,7 +272,7 @@ private val NavTextResize = SharedTransitionScope.ResizeMode.scaleToBounds()
  * and duration-based for the same seekability reason as the bounds above.
  */
 private val NavMorphContentFade: FiniteAnimationSpec<Float> =
-    tween(NavMorphMillis / 2, easing = LinearEasing)
+    tween(NAV_MORPH_MILLIS / 2, easing = LinearEasing)
 
 /**
  * The scopes [sharedContainer] and [sharedContent] need to morph a component across a destination
@@ -391,7 +395,7 @@ fun Modifier.sharedContent(key: Any): Modifier {
  */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
-fun <T: NavKey> MainNavigation(
+fun <T : NavKey> MainNavigation(
     backStack: NavBackStack<T>,
     bottomBar: @Composable () -> Unit = {},
     containerColor: Color = Color.Unspecified,
@@ -417,30 +421,9 @@ fun <T: NavKey> MainNavigation(
         }
     )
 
-    // Resolved rather than left to Scaffold's own default, which is `contentColorFor(container)`.
-    // That has no answer for a colour outside the scheme and falls back to LocalContentColor -
-    // which is plain black unless something upstream set it. A transparent container is exactly
-    // that case, so the launcher's icons and text were coming out black on the wallpaper.
-    val resolvedContentColor = MaterialTheme.colorScheme
-        .contentColorFor(resolvedContainerColor)
-        .takeOrElse { MaterialTheme.colorScheme.onBackground }
+    val resolvedContentColor = resolveNavContentColor(resolvedContainerColor)
 
-    // Drain messages posted from outside composition - ViewModels, workers,
-    // anything without a Context. See AppMessages.
-    LaunchedEffect(snackbarHostState) {
-        AppMessages.messages.collect { message ->
-            val result = snackbarHostState.showSnackbar(
-                message = message.text,
-                actionLabel = message.actionLabel,
-                duration = when (message.duration) {
-                    AppMessages.Duration.Short -> androidx.compose.material3.SnackbarDuration.Short
-                    AppMessages.Duration.Long -> androidx.compose.material3.SnackbarDuration.Long
-                    AppMessages.Duration.Indefinite -> androidx.compose.material3.SnackbarDuration.Indefinite
-                },
-            )
-            if (result == SnackbarResult.ActionPerformed) message.onAction?.invoke()
-        }
-    }
+    NavMessageDrain(snackbarHostState)
 
     // No outer Scaffold by design: it used to own the IME inset here while every
     // screen's inner Scaffold consumed insets again, double-lifting bottom bars by
@@ -450,6 +433,68 @@ fun <T: NavKey> MainNavigation(
     // consumes — exactly once, never padded outside a Scaffold.
     // The snackbar renderer lives there too (default host when the screen supplies
     // none); this function keeps only the producer (state + AppMessages drain).
+    NavHostChrome(
+        resultRegistry = resultRegistry,
+        snackbarHostState = snackbarHostState,
+        resolvedContainerColor = resolvedContainerColor,
+        resolvedContentColor = resolvedContentColor,
+        multiPane = multiPane,
+        topMotion = topMotion,
+        backStack = backStack,
+        sceneStrategy = sceneStrategy,
+        transitions = transitions,
+        entryProvider = entryProvider,
+        bottomBar = bottomBar
+    )
+}
+
+// Resolved rather than left to Scaffold's own default, which is `contentColorFor(container)`.
+// That has no answer for a colour outside the scheme and falls back to LocalContentColor -
+// which is plain black unless something upstream set it. A transparent container is exactly
+// that case, so the launcher's icons and text were coming out black on the wallpaper.
+@Composable
+private fun resolveNavContentColor(resolvedContainerColor: Color): Color {
+    return MaterialTheme.colorScheme
+        .contentColorFor(resolvedContainerColor)
+        .takeOrElse { MaterialTheme.colorScheme.onBackground }
+}
+
+// Drain messages posted from outside composition - ViewModels, workers,
+// anything without a Context. See AppMessages.
+@Composable
+private fun NavMessageDrain(snackbarHostState: SnackbarHostState) {
+    LaunchedEffect(snackbarHostState) {
+        AppMessages.messages.collect { message ->
+            val result = snackbarHostState.showSnackbar(
+                message = message.text,
+                actionLabel = message.actionLabel,
+                duration = when (message.duration) {
+                    AppMessages.Duration.Short -> androidx.compose.material3.SnackbarDuration.Short
+                    AppMessages.Duration.Long -> androidx.compose.material3.SnackbarDuration.Long
+                    AppMessages.Duration.Indefinite ->
+                        androidx.compose.material3.SnackbarDuration.Indefinite
+                },
+            )
+            if (result == SnackbarResult.ActionPerformed) message.onAction?.invoke()
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalSharedTransitionApi::class)
+@Composable
+private fun <T : NavKey> NavHostChrome(
+    resultRegistry: NavResultRegistry,
+    snackbarHostState: SnackbarHostState,
+    resolvedContainerColor: Color,
+    resolvedContentColor: Color,
+    multiPane: Boolean,
+    topMotion: NavMotion,
+    backStack: NavBackStack<T>,
+    sceneStrategy: ListDetailSceneStrategy<T>,
+    transitions: NavTransitions,
+    entryProvider: EntryProviderScope<T>.() -> Unit,
+    bottomBar: @Composable () -> Unit,
+) {
     Box(
         Modifier
             .fillMaxSize()
@@ -486,11 +531,13 @@ fun <T: NavKey> MainNavigation(
                             predictivePopTransitionSpec = { swipeEdge ->
                                 transitions.predictivePop(initialState.navMotion(), swipeEdge)
                             },
-                            backStack = backStack.backStack, entryProvider = {
+                            backStack = backStack.backStack,
+                            entryProvider = {
                                 EntryProviderScope(it).apply {
                                     entryProvider()
                                 }.result!!
-                            })
+                            }
+                        )
                         bottomBar()
                     }
                 }
@@ -643,12 +690,12 @@ fun Modifier.expandFromLine(): Modifier {
     return with(scope) {
         this@expandFromLine.animateEnterExit(
             enter = expandVertically(
-                animationSpec = tween(NavMorphMillis, easing = NavMorphEasing),
+                animationSpec = tween(NAV_MORPH_MILLIS, easing = NavMorphEasing),
                 expandFrom = Alignment.CenterVertically,
                 initialHeight = { 0 },
             ) + fadeIn(NavMorphContentFade),
             exit = shrinkVertically(
-                animationSpec = tween(NavMorphMillis, easing = NavMorphEasing),
+                animationSpec = tween(NAV_MORPH_MILLIS, easing = NavMorphEasing),
                 shrinkTowards = Alignment.CenterVertically,
                 targetHeight = { 0 },
             ) + fadeOut(NavMorphContentFade),
@@ -675,10 +722,14 @@ private fun NavMotion.leavesTheScreenStill(): Boolean =
  * gesture fraction, and a spring has no notion of being 40% through. Under the finger it would sit
  * still and then snap on release.
  */
-private val NavExitScale: FiniteAnimationSpec<Float> = tween(NavMorphMillis, easing = NavMorphEasing)
+private const val PUSH_SLIDE_DIVISOR = 12
+private const val PREDICTIVE_SLIDE_DIVISOR = 8
+
+private val NavExitScale: FiniteAnimationSpec<Float> =
+    tween(NAV_MORPH_MILLIS, easing = NavMorphEasing)
 
 private val NavExitOffset: FiniteAnimationSpec<IntOffset> =
-    tween(NavMorphMillis, easing = NavMorphEasing)
+    tween(NAV_MORPH_MILLIS, easing = NavMorphEasing)
 
 /**
  * Leaves by shrinking into its own centre rather than ghosting out at full size in the spot it
@@ -769,11 +820,17 @@ fun isNavLeaving(): Boolean {
     return animated.transition.targetState == EnterExitState.PostExit
 }
 
+// Public navigation-DSL entry points keep their PascalCase names to match the call sites
+// across ~20 app modules; renaming them would break out-of-scope callers.
+@Suppress("FunctionNaming")
 fun DialogPage() = DialogSceneStrategy.dialog()
 
+@Suppress("FunctionNaming")
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
-fun ListPage(detailPlaceholder: @Composable () -> Unit = {}) = ListDetailSceneStrategy.listPane(Unit) {detailPlaceholder()}
+fun ListPage(detailPlaceholder: @Composable () -> Unit = {}) =
+    ListDetailSceneStrategy.listPane(Unit) { detailPlaceholder() }
 
+@Suppress("FunctionNaming")
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 fun ListDetailPage() = ListDetailSceneStrategy.detailPane()
 

@@ -26,6 +26,15 @@ import javax.crypto.spec.SecretKeySpec
 object RegistrationAttestation {
 
     private const val TAG = "WARegAttestation"
+    private const val INT_BYTES = 4
+    private const val SHIFT_BYTE3 = 24
+    private const val SHIFT_BYTE2 = 16
+    private const val SHIFT_BYTE1 = 8
+    private const val GCM_TAG_BITS = 128
+    private const val GCM_IV_BYTES = 12
+    private const val HEX_RADIX = 16
+    private const val HEX_NIBBLE_BITS = 4
+    private const val BITS_PER_BYTE = 8
 
     // ---------------------------------------------------------------------------------------------
     // token  (C34029EuU.A01)
@@ -57,7 +66,7 @@ object RegistrationAttestation {
             password = password,
             salt = salt,
             iterations = WhatsAppRegistrationConstants.TOKEN_PBKDF2_ITERATIONS,
-            dkLenBytes = WhatsAppRegistrationConstants.TOKEN_PBKDF2_KEYLEN_BITS / 8,
+            dkLenBytes = WhatsAppRegistrationConstants.TOKEN_PBKDF2_KEYLEN_BITS / BITS_PER_BYTE,
         )
 
         val mac = Mac.getInstance("HmacSHA1")
@@ -89,12 +98,12 @@ object RegistrationAttestation {
         val hLen = mac.macLength // 20
         val blocks = (dkLenBytes + hLen - 1) / hLen
         val out = ByteArray(blocks * hLen)
-        val intBuf = ByteArray(4)
+        val intBuf = ByteArray(INT_BYTES)
         for (i in 1..blocks) {
-            intBuf[0] = (i ushr 24).toByte()
-            intBuf[1] = (i ushr 16).toByte()
-            intBuf[2] = (i ushr 8).toByte()
-            intBuf[3] = i.toByte()
+            intBuf[0] = (i ushr SHIFT_BYTE3).toByte()
+            intBuf[1] = (i ushr SHIFT_BYTE2).toByte()
+            intBuf[2] = (i ushr SHIFT_BYTE1).toByte()
+            intBuf[INT_BYTES - 1] = i.toByte()
             mac.reset()
             mac.update(salt)
             mac.update(intBuf)
@@ -130,12 +139,12 @@ object RegistrationAttestation {
             cipher.init(
                 Cipher.ENCRYPT_MODE,
                 SecretKeySpec(shared, "AES"),
-                GCMParameterSpec(128, ByteArray(12)),
+                GCMParameterSpec(GCM_TAG_BITS, ByteArray(GCM_IV_BYTES)),
             )
             val ct = cipher.doFinal(queryString.toByteArray(Charsets.UTF_8))
             Base64.encodeToString(eph.publicKey + ct, Base64.NO_WRAP)
-        } catch (t: Throwable) {
-            Log.w(TAG, "encryptQueryString failed; falling back to plain", t)
+        } catch (expected: Throwable) {
+            Log.w(TAG, "encryptQueryString failed; falling back to plain", expected)
             null
         }
     }
@@ -174,7 +183,8 @@ object RegistrationAttestation {
     private fun hexToBytes(hex: String): ByteArray {
         val out = ByteArray(hex.length / 2)
         for (i in out.indices) {
-            out[i] = ((hex[i * 2].digitToInt(16) shl 4) or hex[i * 2 + 1].digitToInt(16)).toByte()
+            out[i] = ((hex[i * 2].digitToInt(HEX_RADIX) shl HEX_NIBBLE_BITS) or
+                hex[i * 2 + 1].digitToInt(HEX_RADIX)).toByte()
         }
         return out
     }

@@ -13,21 +13,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
+/** Shutter-timer countdown tick (1s). */
+internal const val TIMER_TICK_MS = 1000L
+
 fun CameraViewModel.takePhoto() {
     // Second tap cancels an armed timer, mirroring toggleRecording().
-    if (_timerCountdown.value > 0) {
+    if (timerCountdownMutable.value > 0) {
         cancelTimerCountdown()
         return
     }
-    if (_isCapturing.value || _burstActive.value) return
-    val timer = _timerDuration.value
+    if (isCapturingMutable.value || burstActiveMutable.value) return
+    val timer = timerDurationMutable.value
     if (timer.seconds > 0) {
         timerCountdownJob = viewModelScope.launch {
             for (i in timer.seconds downTo 1) {
-                _timerCountdown.value = i
-                kotlinx.coroutines.delay(1000)
+                timerCountdownMutable.value = i
+                kotlinx.coroutines.delay(TIMER_TICK_MS)
             }
-            _timerCountdown.value = 0
+            timerCountdownMutable.value = 0
             timerCountdownJob = null
             capturePhoto()
         }
@@ -37,24 +40,24 @@ fun CameraViewModel.takePhoto() {
 }
 
 internal fun CameraViewModel.capturePhoto() {
-    if (imageCapture == null || _isCapturing.value || _burstActive.value) return
+    if (imageCapture == null || isCapturingMutable.value || burstActiveMutable.value) return
     // Claim in-flight synchronously so a second shutter tap (or a stacked timer firing)
     // can't start a concurrent capture; every path below clears it on completion.
-    _isCapturing.value = true
+    isCapturingMutable.value = true
     when {
         // Night Sight mode (or auto-engaged night): the preview is bound with the vendor NIGHT
         // extension, so a plain single capture through that ImageCapture lets the vendor pipeline
         // produce the multi-frame night image.
-        _nightPreviewActive.value -> captureSinglePhoto()
+        nightPreviewActiveMutable.value -> captureSinglePhoto()
         // Multi-frame night capture only when night mode is active and exposure is fully auto.
         nightModeActive.value && isExposureAuto() -> captureNightPhoto()
         // Motion Photo for plain PHOTO captures (no warmth/shadows bake, not capturing for a
         // caller). Only at the native 4:3 ratio: the motion still is saved as raw JPEG bytes
         // (to preserve the Ultra HDR gain map + motion trailer), which can't carry CameraX's
         // crop. For other ratios fall through to the single-shot path, which saves a cropped JPEG.
-        _cameraMode.value == CameraMode.PHOTO && !captureForResult &&
-            _warmth.value == 0f && _shadows.value == 0f &&
-            _aspectRatio.value == AspectRatioOption.RATIO_4_3 -> captureMotionPhoto()
+        cameraModeMutable.value == CameraMode.PHOTO && !captureForResult &&
+            warmthMutable.value == 0f && shadowsMutable.value == 0f &&
+            aspectRatioMutable.value == AspectRatioOption.RATIO_4_3 -> captureMotionPhoto()
         else -> captureSinglePhoto()
     }
 }
@@ -65,24 +68,24 @@ internal fun CameraViewModel.capturePhoto() {
  * is reached. Uses the plain capture path (no night/manual special-casing).
  */
 fun CameraViewModel.startBurst() {
-    if (_burstActive.value || _isCapturing.value) return
+    if (burstActiveMutable.value || isCapturingMutable.value) return
     // A burst is immediate: an armed shutter timer no longer applies.
     cancelTimerCountdown()
     val capture = imageCapture ?: return
     // Mark both in-flight: a single capture must not start mid-burst and a burst must not
     // start mid-capture. Releasing the shutter always goes through finishBurst().
-    _isCapturing.value = true
-    _burstActive.value = true
-    _burstCount.value = 0
+    isCapturingMutable.value = true
+    burstActiveMutable.value = true
+    burstCountMutable.value = 0
     val ts = MediaStoreSaver.timestamp()
 
     fun finishBurst() {
-        _burstActive.value = false
-        _isCapturing.value = false
+        burstActiveMutable.value = false
+        isCapturingMutable.value = false
     }
 
     fun shootNext(n: Int) {
-        if (!_burstActive.value || n > CameraViewModel.BURST_MAX) {
+        if (!burstActiveMutable.value || n > CameraViewModel.BURST_MAX) {
             finishBurst()
             return
         }
@@ -100,7 +103,7 @@ fun CameraViewModel.startBurst() {
             ContextCompat.getMainExecutor(app),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                    _burstCount.value = n
+                    burstCountMutable.value = n
                     pending.closeStream()
                     pending.resolveUri(outputFileResults)?.let { setLastCaptureUri(it) }
                     shootNext(n + 1)
@@ -120,7 +123,7 @@ fun CameraViewModel.stopBurst() {
     // Release path for the press-and-hold gesture: only clears the loop flag. The in-flight
     // frame's save callback finishes the sequence (finishBurst) so a release between frames
     // still lands the shot already exposing.
-    _burstActive.value = false
+    burstActiveMutable.value = false
 }
 
 /** Appends an analysis frame to the Motion-Photo ring buffer, trimming by age then count. */
@@ -156,7 +159,7 @@ internal fun CameraViewModel.clearMotionFrames() = synchronized(motionLock) {
  */
 internal fun CameraViewModel.captureMotionPhoto() {
     val capture = imageCapture ?: return
-    _isCapturing.value = true
+    isCapturingMutable.value = true
     capture.takePicture(
         ContextCompat.getMainExecutor(app),
         object : ImageCapture.OnImageCapturedCallback() {
@@ -175,13 +178,13 @@ internal fun CameraViewModel.captureMotionPhoto() {
                         assembleAndSaveMotionPhoto(jpegBytes, frames, degrees)
                     }
                     frames.forEach { it.bitmap.recycle() }
-                    _isCapturing.value = false
+                    isCapturingMutable.value = false
                     if (uri != null) setLastCaptureUri(uri)
                 }
             }
             override fun onError(exception: ImageCaptureException) {
                 Log.e("CameraViewModel", "Motion Photo capture failed; falling back to still", exception)
-                _isCapturing.value = false
+                isCapturingMutable.value = false
                 captureSinglePhoto()
             }
         }
@@ -234,7 +237,7 @@ internal fun CameraViewModel.assembleAndSaveMotionPhoto(
  */
 internal fun CameraViewModel.captureNightPhoto() {
     viewModelScope.launch {
-        if (_nightExtensionUsable.value) {
+        if (nightExtensionUsableMutable.value) {
             captureNightPhotoExtension()
         } else {
             captureNightPhotoCustom()

@@ -177,7 +177,7 @@ class MusicCapture(
             AudioRecord.Builder()
                 .setAudioPlaybackCaptureConfig(config)
                 .setAudioFormat(format)
-                .setBufferSizeInBytes((minBytes * 4).coerceAtLeast(CHUNK_BYTES * 2))
+                .setBufferSizeInBytes((minBytes * BUFFER_SIZE_MULTIPLIER).coerceAtLeast(CHUNK_BYTES * 2))
                 .build()
         }.getOrElse {
             Log.w(TAG, "music capture AudioRecord build failed", it)
@@ -212,5 +212,8 @@ class MusicCapture(
 
         /** ~46ms of 16-bit mono at the capture rate per read. */
         const val CHUNK_BYTES = 4_096
+
+        /** Minimum-buffer multiplier; keeps the record ahead of the read loop. */
+        const val BUFFER_SIZE_MULTIPLIER = 4
     }
 }

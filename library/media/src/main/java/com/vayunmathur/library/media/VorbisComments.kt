@@ -19,6 +19,11 @@ internal object VorbisComments {
 
     const val VENDOR = "ModernApps"
 
+    private const val PICTURE_TYPE_FRONT_COVER = 3
+    private const val BYTE_SHIFT_1 = 8
+    private const val BYTE_SHIFT_2 = 16
+    private const val BYTE_SHIFT_3 = 24
+
     /**
      * Builds the comment list: vendor string, a count, then each `KEY=value` entry, all with
      * little-endian length prefixes. This is the body of an Opus comment packet, after its
@@ -72,7 +77,7 @@ internal object VorbisComments {
     private fun buildPictureBlock(image: ByteArray, isPng: Boolean): ByteArray {
         val mime = (if (isPng) "image/png" else "image/jpeg").toByteArray(Charsets.ISO_8859_1)
         val block = ByteArrayOutputStream()
-        block.write(intBe(3)) // picture type: front cover
+        block.write(intBe(PICTURE_TYPE_FRONT_COVER)) // picture type: front cover
         block.write(intBe(mime.size))
         block.write(mime)
         block.write(intBe(0)) // description length
@@ -87,15 +92,15 @@ internal object VorbisComments {
 
     fun intLe(value: Int): ByteArray = byteArrayOf(
         value.toByte(),
-        (value ushr 8).toByte(),
-        (value ushr 16).toByte(),
-        (value ushr 24).toByte(),
+        (value ushr BYTE_SHIFT_1).toByte(),
+        (value ushr BYTE_SHIFT_2).toByte(),
+        (value ushr BYTE_SHIFT_3).toByte(),
     )
 
     private fun intBe(value: Int): ByteArray = byteArrayOf(
-        (value ushr 24).toByte(),
-        (value ushr 16).toByte(),
-        (value ushr 8).toByte(),
+        (value ushr BYTE_SHIFT_3).toByte(),
+        (value ushr BYTE_SHIFT_2).toByte(),
+        (value ushr BYTE_SHIFT_1).toByte(),
         value.toByte(),
     )
 }

@@ -11,13 +11,24 @@ import org.signal.storageservice.storage.protos.groups.GroupChange
  * Extension functions on [SignalClient]; behavior identical, call sites unchanged.
  */
 
+private const val MS_PER_SECOND = 1000L
+
 suspend fun SignalClient.createGroup(subject: String, contacts: List<String>): String? {
     val (masterKey, _) = SignalGroups.generateMasterKeyAndSecretParams()
     val groupId = SignalProtocol.toConversationId("", masterKey)
     val requestBody = SignalGroups.buildCreateGroupRequest(masterKey, subject, contacts, revision = 0)
     val auth = authData ?: return null
     val ok = SignalGroups.putNewGroup(authData = auth, requestBody = requestBody, sslSocketFactory = signalTls())
-    _events.emit(SignalEvent.ConversationUpdate(conversationId = groupId, peerName = subject, peerPhone = null, avatarUrl = null, lastPreview = null, lastTimestamp = System.currentTimeMillis(), unreadCount = 0, isGroup = true, participantCount = contacts.size))
+    eventsMutable.emit(SignalEvent.ConversationUpdate(
+        conversationId = groupId,
+        peerName = subject,
+        peerPhone = null,
+        avatarUrl = null,
+        lastPreview = null,
+        lastTimestamp = System.currentTimeMillis(),
+        unreadCount = 0,
+        isGroup = true,
+        participantCount = contacts.size))
     try {
         // The master key must be kept: without it we cannot address the group again.
         db?.conversationDao()?.upsert(
@@ -54,7 +65,7 @@ suspend fun SignalClient.setGroupName(conversationId: String, name: String): Boo
         Log.w(TAG, "the server rejected renaming $conversationId")
         return false
     }
-    _events.emit(SignalEvent.ConversationNameChanged(conversationId = conversationId, newName = name))
+    eventsMutable.emit(SignalEvent.ConversationNameChanged(conversationId = conversationId, newName = name))
     try {
         db?.conversationDao()?.upsert(existing.copy(name = name, groupRevision = revision))
     } catch (_: Exception) {}
@@ -78,17 +89,20 @@ private suspend fun SignalClient.groupChange(
         val actions = build(secretParams) ?: return false
         val credential = SignalGroupsApi
             .fetchCredentials(basicAuthHeader(), signalTls())
-            .minByOrNull { kotlin.math.abs(it.redemptionTimeSeconds - System.currentTimeMillis() / 1000) }
+            .minByOrNull { kotlin.math.abs(it.redemptionTimeSeconds - System.currentTimeMillis() / MS_PER_SECOND) }
             ?: return false
         val authorization = SignalGroupsApi.authorizationFor(auth, secretParams, credential) ?: return false
         SignalGroupsApi.patchGroup(authorization, actions, signalTls())
-    } catch (t: Throwable) {
-        Log.w(TAG, "could not submit a group change", t)
+    } catch (expected: Throwable) {
+        Log.w(TAG, "could not submit a group change", expected)
         false
     }
 }
 
-suspend fun SignalClient.updateGroupParticipants(conversationId: String, participantIds: List<String>, action: String): Boolean {
+suspend fun SignalClient.updateGroupParticipants(
+    conversationId: String,
+    participantIds: List<String>,
+    action: String): Boolean {
     val existing = try { db?.conversationDao()?.getConversation(conversationId) } catch (_: Exception) { null }
     val masterKey = existing?.groupMasterKey
     if (masterKey == null) {
@@ -111,8 +125,10 @@ suspend fun SignalClient.updateGroupParticipants(conversationId: String, partici
         return false
     }
     for (pid in participantIds) {
-        if (action == "add") _events.emit(SignalEvent.ParticipantAdded(conversationId = conversationId, participantId = pid))
-        else _events.emit(SignalEvent.ParticipantRemoved(conversationId = conversationId, participantId = pid))
+        if (action == "add") eventsMutable.emit(SignalEvent.ParticipantAdded(
+            conversationId = conversationId,
+            participantId = pid))
+        else eventsMutable.emit(SignalEvent.ParticipantRemoved(conversationId = conversationId, participantId = pid))
     }
     return true
 }
@@ -130,17 +146,7 @@ suspend fun SignalClient.refreshGroup(conversationId: String): Boolean {
     val existing = try { dao.getConversation(conversationId) } catch (_: Exception) { null } ?: return false
     val masterKey = existing.groupMasterKey ?: return false
     return try {
-        val secretParams = org.signal.libsignal.zkgroup.groups.GroupSecretParams.deriveFromMasterKey(
-            org.signal.libsignal.zkgroup.groups.GroupMasterKey(masterKey),
-        )
-        val credential = SignalGroupsApi
-            .fetchCredentials(basicAuthHeader(), signalTls())
-            // Credentials come a week at a time; the one for today is the only one the server accepts now.
-            .minByOrNull { kotlin.math.abs(it.redemptionTimeSeconds - System.currentTimeMillis() / 1000) }
-            ?: return false
-        val authorization = SignalGroupsApi.authorizationFor(auth, secretParams, credential) ?: return false
-        val group = SignalGroupsApi.fetchGroup(authorization, signalTls()) ?: return false
-        val state = SignalGroupsApi.decryptGroup(secretParams, group) ?: return false
+        val state = fetchGroupState(auth, masterKey) ?: return false
         dao.upsert(
             existing.copy(
                 isGroup = true,
@@ -155,10 +161,28 @@ suspend fun SignalClient.refreshGroup(conversationId: String): Boolean {
                 "members=${state.memberAcis.size} pending=${state.pendingCount}",
         )
         true
-    } catch (t: Throwable) {
-        Log.w(TAG, "could not refresh the group $conversationId", t)
+    } catch (expected: Throwable) {
+        Log.w(TAG, "could not refresh the group $conversationId", expected)
         false
     }
+}
+
+/** Decrypted group state for [masterKey], or null when unfetchable. */
+private suspend fun SignalClient.fetchGroupState(
+    auth: SignalAuthData,
+    masterKey: ByteArray,
+): SignalGroupsApi.GroupState? {
+    val secretParams = org.signal.libsignal.zkgroup.groups.GroupSecretParams.deriveFromMasterKey(
+        org.signal.libsignal.zkgroup.groups.GroupMasterKey(masterKey),
+    )
+    val credential = SignalGroupsApi
+        .fetchCredentials(basicAuthHeader(), signalTls())
+        // Credentials come a week at a time; the one for today is the only one the server accepts now.
+        .minByOrNull { kotlin.math.abs(it.redemptionTimeSeconds - System.currentTimeMillis() / MS_PER_SECOND) }
+        ?: return null
+    val authorization = SignalGroupsApi.authorizationFor(auth, secretParams, credential) ?: return null
+    val group = SignalGroupsApi.fetchGroup(authorization, signalTls()) ?: return null
+    return SignalGroupsApi.decryptGroup(secretParams, group)
 }
 
 /** The group authorization a calling request needs, derived from the group behind [groupId]. */
@@ -171,7 +195,7 @@ internal suspend fun SignalClient.groupAuthorization(groupId: ByteArray): String
     )
     val credential = SignalGroupsApi
         .fetchCredentials(basicAuthHeader(), signalTls())
-        .minByOrNull { kotlin.math.abs(it.redemptionTimeSeconds - System.currentTimeMillis() / 1000) }
+        .minByOrNull { kotlin.math.abs(it.redemptionTimeSeconds - System.currentTimeMillis() / MS_PER_SECOND) }
         ?: return null
     return SignalGroupsApi.authorizationFor(auth, secretParams, credential)
 }
@@ -190,7 +214,10 @@ internal suspend fun SignalClient.conversationForGroupId(groupId: ByteArray) = t
  * have heard from rather than everyone in the group — which is a real limitation, but strictly better than
  * refusing to send at all.
  */
-internal suspend fun SignalClient.rememberInboundGroup(conversationId: String, masterKey: ByteArray, senderAci: String) {
+internal suspend fun SignalClient.rememberInboundGroup(
+    conversationId: String,
+    masterKey: ByteArray,
+    senderAci: String) {
     val dao = db?.conversationDao() ?: return
     try {
         val existing = dao.getConversation(conversationId)
@@ -212,7 +239,7 @@ internal suspend fun SignalClient.rememberInboundGroup(conversationId: String, m
         // Now that the master key is known, ask the server for the real membership. Best-effort: the
         // message is already usable with what we learned from the envelope.
         scope.launch { refreshGroup(conversationId) }
-    } catch (t: Throwable) {
-        Log.w(TAG, "could not record the group behind $conversationId", t)
+    } catch (expected: Throwable) {
+        Log.w(TAG, "could not record the group behind $conversationId", expected)
     }
 }

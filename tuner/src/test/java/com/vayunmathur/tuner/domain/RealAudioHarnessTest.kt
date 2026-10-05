@@ -39,6 +39,30 @@ class RealAudioHarnessTest {
 
         val fraction = RealAudioHarness.tuningOffsetCents(pcm)
         val report = StringBuilder()
+        appendHeader(report, pcm, fraction)
+
+        var best = ""
+        var bestCorrect = -1
+        for (semitone in RealAudioHarness.SEMITONE_CANDIDATES) {
+            val result = scoreCompensatedGrid(pcm, report, fraction, semitone)
+            if (result.second > bestCorrect) {
+                bestCorrect = result.second
+                best = result.first
+            }
+        }
+        report.appendLine("best by frames-named-correctly, oracle-compensated grid: $best ($bestCorrect)")
+        report.appendLine()
+
+        appendProductionSection(report, pcm)
+        appendPolyphonySweep(report, pcm)
+        appendFlatnessSweep(report, pcm)
+
+        File("build").mkdirs()
+        File("build/real-audio-report.txt").writeText(report.toString())
+        println(report)
+    }
+
+    private fun appendHeader(report: StringBuilder, pcm: DoubleArray, fraction: Double) {
         report.appendLine("Record-3.m4a, real ukulele, C/Am/F")
         report.appendLine("  samples            ${pcm.size} (${"%.2f".format(pcm.size / RealAudioHarness.RATE)} s @ ${RealAudioHarness.RATE.toInt()} Hz)")
         report.appendLine("  AudioCapture rate  ${AudioCapture.SAMPLE_RATE}")
@@ -47,28 +71,34 @@ class RealAudioHarnessTest {
         report.appendLine("  uke partials       ${ukulele.partials}  (measured)")
         report.appendLine("  fallback partials  ${DEFAULT_PARTIALS.take(3).map { "%.2f".format(it) }}...  (1/n, what shipped)")
         report.appendLine()
+    }
 
+    private fun scoreCompensatedGrid(
+        pcm: DoubleArray,
+        report: StringBuilder,
+        fraction: Double,
+        semitone: Int,
+    ): Pair<String, Int> {
+        val cents = fraction + 100.0 * semitone
+        val constantQ = RealAudioHarness.compensated(cents)
+        val frames = RealAudioHarness.hops(pcm, constantQ.requiredSamples, RealAudioHarness.HOP)
+        report.appendLine("=== tuning ${"%.1f".format(cents)} cents, ${frames.size} frames of ${constantQ.requiredSamples} samples, hop ${RealAudioHarness.HOP}")
+
+        val before = nnls(constantQ, frames, DEFAULT_PARTIALS, "NNLS, 1/n dictionary (before)")
+        val after = nnls(constantQ, frames, ukulele.partials, "NNLS, measured dictionary (after)")
         var best = ""
         var bestCorrect = -1
-        for (semitone in RealAudioHarness.SEMITONE_CANDIDATES) {
-            val cents = fraction + 100.0 * semitone
-            val constantQ = RealAudioHarness.compensated(cents)
-            val frames = RealAudioHarness.hops(pcm, constantQ.requiredSamples, RealAudioHarness.HOP)
-            report.appendLine("=== tuning ${"%.1f".format(cents)} cents, ${frames.size} frames of ${constantQ.requiredSamples} samples, hop ${RealAudioHarness.HOP}")
-
-            val before = nnls(constantQ, frames, DEFAULT_PARTIALS, "NNLS, 1/n dictionary (before)")
-            val after = nnls(constantQ, frames, ukulele.partials, "NNLS, measured dictionary (after)")
-            for (score in listOf(before, after)) {
-                report.appendLine(score.report())
-                if (score.correct > bestCorrect) {
-                    bestCorrect = score.correct
-                    best = "${score.label} at ${"%.1f".format(cents)} cents"
-                }
+        for (score in listOf(before, after)) {
+            report.appendLine(score.report())
+            if (score.correct > bestCorrect) {
+                bestCorrect = score.correct
+                best = "${score.label} at ${"%.1f".format(cents)} cents"
             }
         }
-        report.appendLine("best by frames-named-correctly, oracle-compensated grid: $best ($bestCorrect)")
-        report.appendLine()
+        return best to bestCorrect
+    }
 
+    private fun appendProductionSection(report: StringBuilder, pcm: DoubleArray) {
         // Everything above hands the pipeline the answer: `compensated` slides the CQT grid onto
         // the recording using an offset chosen by sweeping. Nothing on the phone can do that, so
         // none of it is a number the app can be expected to reproduce. This section is - it runs
@@ -91,7 +121,9 @@ class RealAudioHarnessTest {
             report.appendLine("  tuning self-estimated  ${"%.1f".format(cents)} cents")
             report.appendLine()
         }
+    }
 
+    private fun appendPolyphonySweep(report: StringBuilder, pcm: DoubleArray) {
         // The two failures are at opposite ends of the pipeline: 21 tonal frames never reach the
         // scorer because they carry fewer than three pitch classes, and 13 carry five or six,
         // which four ukulele strings cannot produce. A single relative floor cannot move both,
@@ -100,24 +132,30 @@ class RealAudioHarnessTest {
         report.appendLine("=== polyphony x relative floor, SIEVE, production path")
         report.appendLine("  picks  floor   tonal  named  CORRECT   pitch classes")
         for (picks in POLYPHONY_SWEEP) {
-            for (floor in FLOOR_SWEEP) {
-                val (score, _) = production(
-                    pcm,
-                    ChordExtractor.SIEVE,
-                    polyphony = picks,
-                    relativeFloor = floor,
-                )
-                val histogram = score.pitchClassHistogram.toSortedMap()
-                    .entries.joinToString(" ") { "${it.key}pc x${it.value}" }
-                report.appendLine(
-                    "  %5d %6.2f %7d %6d %8d   %s".format(
-                        picks, floor, score.tonal, score.named, score.correct, histogram,
-                    ),
-                )
-            }
+            appendPolyphonyRow(report, pcm, picks)
         }
         report.appendLine()
+    }
 
+    private fun appendPolyphonyRow(report: StringBuilder, pcm: DoubleArray, picks: Int) {
+        for (floor in FLOOR_SWEEP) {
+            val (score, _) = production(
+                pcm,
+                ChordExtractor.SIEVE,
+                polyphony = picks,
+                relativeFloor = floor,
+            )
+            val histogram = score.pitchClassHistogram.toSortedMap()
+                .entries.joinToString(" ") { "${it.key}pc x${it.value}" }
+            report.appendLine(
+                "  %5d %6.2f %7d %6d %8d   %s".format(
+                    picks, floor, score.tonal, score.named, score.correct, histogram,
+                ),
+            )
+        }
+    }
+
+    private fun appendFlatnessSweep(report: StringBuilder, pcm: DoubleArray) {
         // Priority 3: the gate, not the extractor, is now what most frames die on. It was placed
         // to protect an extractor finding 1.89 notes on a tonal frame, where passing a marginal
         // frame bought a note or two and no name. The sieve finds 3.39, so frames that were not
@@ -135,10 +173,6 @@ class RealAudioHarnessTest {
             )
         }
         report.appendLine()
-
-        File("build").mkdirs()
-        File("build/real-audio-report.txt").writeText(report.toString())
-        println(report)
     }
 
     /**

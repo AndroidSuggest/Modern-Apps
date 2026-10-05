@@ -74,16 +74,23 @@ class PinyinDictionary private constructor(
                 runCatching {
                     context.assets.open("dict/$asset.txt").bufferedReader().useLines { lines ->
                         for (raw in lines) {
-                            if (raw.isEmpty() || raw.startsWith("#")) continue
-                            val tab = raw.indexOf('\t')
-                            if (tab <= 0) continue
-                            syllables.add(raw.substring(0, tab))
-                            characters.add(raw.substring(tab + 1))
+                            parseSyllableLine(raw)?.let { (syllable, chars) ->
+                                syllables.add(syllable)
+                                characters.add(chars)
+                            }
                         }
                     }
                 }
                 PinyinDictionary(syllables, characters)
             }
+
+        /** Split one `syllable<TAB>chars` line, or null for blanks/comments/malformed rows. */
+        private fun parseSyllableLine(raw: String): Pair<String, String>? {
+            if (raw.isEmpty() || raw.startsWith("#")) return null
+            val tab = raw.indexOf('\t')
+            if (tab <= 0) return null
+            return raw.substring(0, tab) to raw.substring(tab + 1)
+        }
 
         /** Reads `dict/bopomofo.txt`: 注音 spelling → the pinyin syllable it stands for. */
         suspend fun loadBopomofo(context: Context): Map<String, String> =

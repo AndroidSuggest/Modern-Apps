@@ -58,8 +58,8 @@ class ImuRecorder(context: Context) : SensorEventListener {
 
     /** Effective sample rate since the first sample, for the diagnostics screen. */
     fun rateHz(): Double {
-        val span = (lastSampleNs - firstSampleNs) * 1e-9
-        return if (span > 0.1) sampleCount / span else 0.0
+        val span = (lastSampleNs - firstSampleNs) * NS_TO_SECONDS
+        return if (span > MIN_SPAN_SECONDS) sampleCount / span else 0.0
     }
 
     fun lastTimestampNs(): Long = lastSampleNs
@@ -115,5 +115,9 @@ class ImuRecorder(context: Context) : SensorEventListener {
         const val VALUES_PER_SAMPLE = 7
         /** ~20 s of headroom at 400 Hz. */
         const val MAX_PENDING_VALUES = VALUES_PER_SAMPLE * 8000
+        /** Nanoseconds to seconds. */
+        const val NS_TO_SECONDS = 1e-9
+        /** Minimum span before the rate estimate is meaningful. */
+        const val MIN_SPAN_SECONDS = 0.1
     }
 }

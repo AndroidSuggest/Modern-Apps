@@ -94,31 +94,31 @@ class ScaleBleManager {
     /** Address we are passively watching for, if any. */
     internal var watchAddress: String? = null
 
-    internal var weightRatio = 10.0
+    internal var weightRatio = DEFAULT_WEIGHT_RATIO
     /** VA scales scale the weight up by this instead of dividing by [weightRatio]. */
-    private var kgWeightRatio = 0.1
+    internal var kgWeightRatio = KG_RATIO_KG
     internal var isVaScale = false
     /**
      * Set once the scale has accepted us into one of its eight slots. Null means we are running
      * as the transient visitor, either before the first registration or because all slots were
      * taken.
      */
-    private var vaUserIndex: Int? = null
+    internal var vaUserIndex: Int? = null
     /** 0x12 byte[16] bit 5: whether the scale accepts an app-supplied reference weight. */
-    private var supportsIdentifyWeight = false
+    internal var supportsIdentifyWeight = false
     internal var scaleType = 0
     private var notifyChar: UUID = CHAR_FFE1
     private var indicateChar: UUID? = null
     /** Config frames and per-measurement acks (FFE3, or FFF2 on Holtek). */
-    private var configChar: UUID = CHAR_FFE3
+    internal var configChar: UUID = CHAR_FFE3
     /** Time and start frames (FFE4, falling back to [configChar] when absent). */
-    private var bleWriteChar: UUID = CHAR_FFE3
+    internal var bleWriteChar: UUID = CHAR_FFE3
     private var serviceUuid: UUID = SERVICE_FFE0
     /**
      * Holtek firmware exposes the FFF0 family, collapses every write onto FFF2, and waits for its
      * 0x14 hardware-version packet before it will accept the time frame.
      */
-    private var isHoltek = false
+    internal var isHoltek = false
 
     // One outstanding GATT write at a time, drained on onCharacteristicWrite.
     private class Command(val char: UUID, val bytes: ByteArray)
@@ -136,19 +136,19 @@ class ScaleBleManager {
     // For 8-electrode burst reassembly (count/cur at b[6]). burstStarted guards against emitting
     // a reading built from stale channels when the burst's first packet is dropped — BLE
     // notifications are unacknowledged, and a silently wrong body-fat number is worse than none.
-    private var burstStarted = false
-    private var lf20k = 0.0; private var lf100k = 0.0
-    private var rf20k = 0.0; private var rf100k = 0.0
-    private var lh20k = 0.0; private var lh100k = 0.0
-    private var rh20k = 0.0; private var rh100k = 0.0
-    private var t20k = 0.0; private var t100k = 0.0
+    internal var burstStarted = false
+    internal var lf20k = 0.0; internal var lf100k = 0.0
+    internal var rf20k = 0.0; internal var rf100k = 0.0
+    internal var lh20k = 0.0; internal var lh100k = 0.0
+    internal var rh20k = 0.0; internal var rh100k = 0.0
+    internal var t20k = 0.0; internal var t100k = 0.0
 
     internal val handler = Handler(Looper.getMainLooper())
 
     internal val scanTimeout = Runnable {
         stopScan()
-        if (DeviceController.scaleConnectionState.value == SCALE_SCANNING_STATE) {
-            DeviceController.scaleConnectionState.value = "Disconnected"
+            supportsIdentifyWeight =
+                ((v[SCALE_INFO_IDENTIFY_INDEX].toInt() shr IDENTIFY_WEIGHT_BIT) and 1) == 1
         }
     }
 
@@ -212,14 +212,14 @@ class ScaleBleManager {
         writing = false
         timeRetries = 0
         scaleType = 0
-        weightRatio = 10.0
+        weightRatio = DEFAULT_WEIGHT_RATIO
         // Re-established from the 0x12 info frame and the user handshake on every connection.
         supportsIdentifyWeight = false
         vaUserIndex = null
         resetBurst()
     }
 
-    private fun resetBurst() {
+    internal fun resetBurst() {
         burstStarted = false
         lf20k = 0.0; lf100k = 0.0; rf20k = 0.0; rf100k = 0.0
         lh20k = 0.0; lh100k = 0.0; rh20k = 0.0; rh100k = 0.0; t20k = 0.0; t100k = 0.0
@@ -284,7 +284,11 @@ class ScaleBleManager {
                 notifyChar = ch.uuid
                 configChar = if (holtek) CHAR_FFF2 else CHAR_FFE3
                 bleWriteChar = if (!holtek && svc.getCharacteristic(CHAR_FFE4) != null) CHAR_FFE4 else configChar
-                Log.d(TAG, "service=$serviceUuid holtek=$holtek notify=$notifyChar config=$configChar bleWrite=$bleWriteChar")
+                Log.d(
+                    TAG,
+                    "service=$serviceUuid holtek=$holtek notify=$notifyChar " +
+                        "config=$configChar bleWrite=$bleWriteChar",
+                )
 
                 descriptorQueue.clear()
                 g.setCharacteristicNotification(ch, true)
@@ -363,7 +367,7 @@ class ScaleBleManager {
         }
     }
 
-    private fun enqueue(char: UUID, bytes: ByteArray) {
+    internal fun enqueue(char: UUID, bytes: ByteArray) {
         commandQueue.addLast(Command(char, bytes))
         if (!writing) writeNext()
     }
@@ -404,355 +408,21 @@ class ScaleBleManager {
             Log.d(TAG, "svc ${svc.uuid.short()}")
             for (c in svc.characteristics) {
                 val descriptors = c.descriptors.joinToString(",") { it.uuid.short() }
-                Log.d(TAG, "  chr ${c.uuid.short()} props=0x${c.properties.toString(16)} desc=[$descriptors]")
+                Log.d(TAG, "  chr ${c.uuid.short()} props=0x${c.properties.toString(HEX_RADIX)} desc=[$descriptors]")
             }
         }
     }
 
-    private fun UUID.short(): String = toString().substring(4, 8)
+    private fun UUID.short(): String = toString().substring(UUID_SHORT_START, UUID_SHORT_END)
 
-    internal fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+    internal fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
 
     /** CmdBuilder.buildCmd with this connection's scale type; see ScaleBleProtocol.kt. */
-    private fun buildCmd(cmd: Int, vararg payload: Int): ByteArray =
+    internal fun buildCmd(cmd: Int, vararg payload: Int): ByteArray =
         buildCmd(cmd, scaleType, *payload)
 
-    private fun dispatch(value: ByteArray) {
-        when (value[0].toInt() and 0xFF) {
-            16 -> if (isVaScale) handleVaMeasure(value) else handleMeasure(value)
-            18 -> handleScaleInfo(value)
-            20 -> {
-                // Holtek firmware withholds its readiness until this hardware-version packet, and
-                // only then accepts the time frame.
-                if (isHoltek) sendTimeSync()
-            }
-            33 -> {
-                handler.removeCallbacks(timeRetry)
-                if (isVaScale) {
-                    // A VA scale reports nothing until it has a user slot to attribute it to.
-                    // A pending wipe has to go first, since it invalidates any slot we hold.
-                    if (DeviceController.scaleResetPending()) sendDeleteAllUsers() else syncUser()
-                } else {
-                    Log.d(TAG, "time frame acknowledged; starting measurement")
-                    handler.removeCallbacks(sendStart)
-                    handler.postDelayed(sendStart, ACK_TO_START_MS)
-                }
-            }
-            // Stored-record replay: the VA layout differs from the classic one.
-            35 -> if (isVaScale) handleVaStored(value) else handleStored(value)
-            0xA1 -> handleUserSyncResult(value)
-        }
-    }
-
-    /**
-     * Claim our slot on the scale: visit the one we already hold, or register for a new one.
-     *
-     * Registering is what makes offline weigh-ins attributable — the scale stamps each stored
-     * record with the slot it matched, so a dedicated slot is the only way to tell our readings
-     * apart from the rest of the household's.
-     */
-    private fun syncUser() {
-        val index = DeviceController.scaleUserIndex()
-        if (index == null) {
-            sendUserFrame(VA_SUB_REGISTER, index = 0, key = DeviceController.scaleUserKey())
-        } else {
-            sendUserFrame(VA_SUB_VISIT, index = index, key = DeviceController.scaleUserKey())
-        }
-    }
-
-    /**
-     * The transient slot, used only when the scale has no room left for us. Measurements still
-     * work; they just cannot be told apart from anyone else's when taken offline.
-     */
-    private fun sendVisitorUser() {
-        vaUserIndex = null
-        sendUserFrame(VA_SUB_VISIT, VA_VISITOR_INDEX, keyHi = VA_VISITOR_KEY_HI, keyLo = VA_VISITOR_KEY_LO)
-    }
-
-    private fun sendUserFrame(
-        sub: Int,
-        index: Int,
-        key: Int? = null,
-        keyHi: Int = (key ?: 0) shr 8 and 0xFF,
-        keyLo: Int = (key ?: 0) and 0xFF,
-    ) {
-        val profile = DeviceController.scaleProfile.value
-        // The wire encoding is the inverse of the SDK's own BleUser convention.
-        val gender = if (profile.sex == Sex.Male) 0 else 1
-        val age = profile.age.coerceIn(6, 80)
-        val heightMm = (profile.heightCm.coerceIn(40.0, 240.0) * 10).toInt()
-        Log.d(TAG, "user sync sub=$sub index=$index gender=$gender age=$age heightMm=$heightMm")
-        enqueue(
-            bleWriteChar,
-            buildFrame(
-                CMD_USER_SYNC, sub,
-                index, keyHi, keyLo,
-                gender, age, (heightMm shr 8) and 0xFF, heightMm and 0xFF,
-                VA_ALGORITHM, VA_FAT_GRADE,
-            ),
-        )
-    }
-
-    /** Frees all eight slots. Ten trailing zero bytes pad it to the length the scale expects. */
-    private fun sendDeleteAllUsers() {
-        Log.d(TAG, "resetting all scale user slots")
-        enqueue(
-            bleWriteChar,
-            buildFrame(CMD_USER_SYNC, VA_SUB_DELETE, VA_DELETE_ALL_MASK, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-        )
-    }
-
-    private fun handleUserSyncResult(v: ByteArray) {
-        if (v.size < 5) return
-        val sub = v[2].toInt() and 0xFF
-        val index = v[3].toInt() and 0xFF
-        val ok = (v[4].toInt() and 0xFF) == 1
-        Log.d(TAG, "user sync result sub=$sub index=$index ok=$ok")
-        when (sub) {
-            VA_SUB_REGISTER -> {
-                if (!ok) {
-                    // The scale only fails this when all eight slots are occupied.
-                    Log.w(TAG, "no free scale slots; falling back to visitor")
-                    sendVisitorUser()
-                    return
-                }
-                DeviceController.saveScaleUserIndex(index)
-                // Registering does not make us the active user; a visit still has to follow.
-                sendUserFrame(VA_SUB_VISIT, index, key = DeviceController.scaleUserKey())
-            }
-            VA_SUB_VISIT -> {
-                if (!ok) return
-                vaUserIndex = if (index == VA_VISITOR_INDEX) null else index
-                requestStoredRecords()
-            }
-            VA_SUB_DELETE -> {
-                DeviceController.onScaleResetDone()
-                if (ok) syncUser() else Log.w(TAG, "scale reset rejected")
-            }
-        }
-    }
-
-    /**
-     * Ask for buffered records. The mask selects slots by bit(n); bit 0 is the unattributed
-     * bucket, which we deliberately leave out — a weigh-in the scale could not match is more
-     * likely to be someone else's than ours.
-     */
-    private fun requestStoredRecords() {
-        val mask = vaUserIndex?.let { 1 shl it } ?: 1
-        enqueue(bleWriteChar, buildCmd(CMD_START, (mask shr 8) and 0xFF, mask and 0xFF))
-    }
-
-    /**
-     * A measurement the scale buffered while no phone was connected. Draining these is how a
-     * weigh-in done without your phone still reaches Health Connect.
-     */
-    private fun handleVaStored(v: ByteArray) {
-        if (v.size < 18) return
-        val total = v[3].toInt() and 0xFF
-        if (total == 0) {
-            Log.d(TAG, "no stored records")
-            return
-        }
-        val index = v[4].toInt() and 0xFF
-        val recordUser = v[5].toInt() and 0xFF
-        // The mask should already have filtered these scale-side; re-check rather than risk
-        // filing someone else's weigh-in, or an unattributed one (0xF0), as ours.
-        val ours = vaUserIndex
-        if (ours != null && recordUser != ours) {
-            Log.d(TAG, "stored record $index/$total belongs to user $recordUser; skipped")
-            return
-        }
-        // Timestamp is little-endian here while weight and impedance below are big-endian; that
-        // asymmetry is in the reference decoder, not a mistake.
-        var seconds = 0L
-        for (i in 0 until 4) seconds = seconds or ((v[i + 6].toLong() and 0xFF) shl (i * 8))
-        val measuredAt = (BASE_TIME_2000_SECONDS + seconds) * 1000L
-        val now = System.currentTimeMillis()
-        if (now < measuredAt || now - measuredAt > 365L * 24 * 60 * 60 * 1000) {
-            Log.d(TAG, "stored record $index/$total timestamp implausible; dropped")
-            return
-        }
-        val weight = decodeWeightByMultiplication(twoByteInt(v[10], v[11]), kgWeightRatio)
-        if (weight <= 0) return
-        Log.d(TAG, "stored record $index/$total user=$recordUser weight=$weight")
-        DeviceController.onScaleHistory(
-            weightKg = weight,
-            r50 = fourResTwoByte2Int(v[12], v[13]),
-            r500 = fourResTwoByte2Int(v[14], v[15]),
-            measuredAtMillis = measuredAt,
-        )
-    }
-
-    /** VA 0x10 frame: user index at 3, state at 4, weight at 5..6, impedance at 7..10. */
-    private fun handleVaMeasure(v: ByteArray) {
-        if (v.size < 7) return
-        val state = v[4].toInt() and 0xFF
-        val weight = decodeWeightByMultiplication(twoByteInt(v[5], v[6]), kgWeightRatio)
-        when (state) {
-            // 0 = settling, 1 = weight locked, 18 = reading heart rate.
-            0, 1, 18 -> if (weight > 0) DeviceController.onScaleRealtimeWeight(weight)
-            2 -> {
-                enqueue(configChar, buildCmd(CMD_OVER, 0x10))
-                sendIdentifyWeight(weight)
-                if (v.size < 11) {
-                    DeviceController.onScaleMeasurement(weight, 0, 0)
-                    return
-                }
-                DeviceController.onScaleMeasurement(
-                    weightKg = weight,
-                    r50 = fourResTwoByte2Int(v[7], v[8]),
-                    r500 = fourResTwoByte2Int(v[9], v[10]),
-                )
-            }
-        }
-    }
-
-    /**
-     * Tell the scale what our slot weighs. This is the reference the firmware matches against
-     * when someone weighs in with no phone around, so keeping it current is what makes offline
-     * attribution — and therefore the stored-record filter — work.
-     */
-    private fun sendIdentifyWeight(weightKg: Double) {
-        val index = vaUserIndex ?: return
-        if (!supportsIdentifyWeight || weightKg <= 0) return
-        val raw = Math.round(weightKg * 100).toInt()
-        enqueue(bleWriteChar, buildFrame(CMD_IDENTIFY_WEIGHT, index, (raw shr 8) and 0xFF, raw and 0xFF))
-    }
-
-    private fun handleScaleInfo(v: ByteArray) {
-        // scaleType is echoed back in every command we send, so read it before the length check.
-        if (v.size >= 3) scaleType = v[2].toInt() and 0xFF
-        // The reference decoder discards anything shorter than this before reading its own
-        // version/precision bytes, so a truncated info packet is not trusted for the ratio either.
-        if (v.size < 15) return
-        weightRatio = if ((v[10].toInt() and 0x01) == 1) 100.0 else 10.0
-        kgWeightRatio = if ((v[10].toInt() and 0x01) == 1) 0.01 else 0.1
-        if (v.size > 16) supportsIdentifyWeight = ((v[16].toInt() shr 5) and 1) == 1
-        // Units etc. available at v[10] bits, v[16] lbPrecision, v[17] unit mask.
-        // We keep ratio for weight decode; other bytes inform display only.
-        DeviceController.scaleConnectionState.value = "Connected — step on scale"
-        startHandshake()
-    }
-
-    /**
-     * Drive the scale into streaming mode: config frame, then a time frame repeated until it
-     * answers 0x21, then the start command. Until this runs the scale reports nothing at all.
-     */
-    private fun startHandshake() {
-        val profile = DeviceController.scaleProfile.value
-        val height = profile.heightCm.toInt().coerceIn(60, 220)
-        val age = profile.age.coerceIn(6, 80)
-        // The config frame inverts the sex encoding used everywhere else in the SDK.
-        val gender = if (profile.sex == Sex.Male) 0 else 1
-        Log.d(TAG, "handshake: scaleType=$scaleType h=$height age=$age gender=$gender holtek=$isHoltek va=$isVaScale")
-        if (isVaScale) {
-            // The VA config frame carries display settings only; the profile goes in 0xA0 instead.
-            enqueue(configChar, buildCmd(CMD_CONFIG, UNIT_KG, LIGHT_INTERVAL, 0, 0, 0))
-        } else {
-            enqueue(configChar, buildCmd(CMD_CONFIG, UNIT_KG, LIGHT_INTERVAL, height, age, gender))
-        }
-        timeRetries = 0
-        handler.removeCallbacks(timeRetry)
-        // Holtek waits for its own 0x14 packet before it will take the time frame.
-        if (!isHoltek) handler.postDelayed(timeRetry, CONFIG_TO_TIME_MS)
-    }
-
-    private fun sendTimeSync() {
-        timeRetries = 0
-        handler.removeCallbacks(timeRetry)
-        handler.post(timeRetry)
-    }
-
-    private fun handleMeasure(v: ByteArray) {
-        if (v.size < 6) return
-        val c2 = v[5].toInt() and 0xFF
-        val weight = decodeWeight(twoByteInt(v[3], v[4]), weightRatio)
-
-        when {
-            // Streaming weight while the user is still settling.
-            c2 == 0 || c2 == 17 || c2 == 18 ->
-                if (weight > 0) DeviceController.onScaleRealtimeWeight(weight)
-
-            // Eight-electrode scales stream ten channels across two of these packets instead.
-            c2 == 1 && scaleCategory == CATEGORY_EIGHT_ELECTRODE -> handleEightElectrode(v, weight)
-
-            // Stable weight plus the four-electrode dual-frequency impedance pair. Byte 10 also
-            // carries heart rate on c2 == 2, which this app has nowhere to put.
-            c2 == 1 || c2 == 2 -> {
-                if (v.size < 10) return
-                enqueue(configChar, buildCmd(CMD_OVER, 0x10))
-                DeviceController.onScaleMeasurement(
-                    weightKg = weight,
-                    r50 = fourResTwoByte2Int(v[6], v[7]),
-                    r500 = fourResTwoByte2Int(v[8], v[9]),
-                )
-            }
-        }
-    }
-
-    /** Ten impedance channels arrive across a two-packet burst; byte 6 is count:current. */
-    private fun handleEightElectrode(v: ByteArray, weight: Double) {
-        if (v.size < 17) return
-        val b6 = v[6].toInt() and 0xFF
-        val count = (b6 shr 4) and 0x0F
-        val current = b6 and 0x0F
-        enqueue(configChar, buildCmd(CMD_OVER, 0x10, b6))
-        if (count != current) {
-            lf20k = eightDouble(v[7], v[8])
-            lf100k = eightDouble(v[9], v[10])
-            rf20k = eightDouble(v[11], v[12])
-            rf100k = eightDouble(v[13], v[14])
-            lh20k = eightDouble(v[15], v[16])
-            burstStarted = true
-            return
-        }
-        if (!burstStarted) return
-        lh100k = eightDouble(v[7], v[8])
-        rh20k = eightDouble(v[9], v[10])
-        rh100k = eightDouble(v[11], v[12])
-        t20k = eightDouble(v[13], v[14])
-        t100k = eightDouble(v[15], v[16])
-        DeviceController.onScaleMeasurement(
-            weightKg = weight,
-            r50 = (lh20k + rh20k).toInt(),
-            r500 = (lh100k + rh100k).toInt(),
-            segmental = SegmentalImpedance(
-                rh20 = rh20k, lh20 = lh20k, t20 = t20k, rf20 = rf20k, lf20 = lf20k,
-                rh100 = rh100k, lh100 = lh100k, t100 = t100k, rf100 = rf100k, lf100 = lf100k,
-            ),
-        )
-        resetBurst()
-    }
-
-    /** Measurements the scale buffered while the phone was away, replayed on connect. */
-    private fun handleStored(v: ByteArray) {
-        // Eight-electrode scales replay across a paired-packet format we don't reassemble.
-        if (scaleCategory == CATEGORY_EIGHT_ELECTRODE || v.size < 15) return
-        val weight = decodeWeight(twoByteInt(v[9], v[10]), weightRatio)
-        if (weight <= 0) return
-        // The timestamp is little-endian even though weight and impedance in the same packet are
-        // big-endian; that asymmetry is in the reference decoder, not a mistake here.
-        var seconds = 0L
-        for (i in 0 until 4) seconds = seconds or ((v[i + 5].toLong() and 0xFF) shl (i * 8))
-        val measuredAt = (BASE_TIME_2000_SECONDS + seconds) * 1000L
-        val now = System.currentTimeMillis()
-        // The scale's clock free-runs, so drop replays dated in the future or over a year back.
-        if (now < measuredAt || now - measuredAt > 365L * 24 * 60 * 60 * 1000) return
-        DeviceController.onScaleHistory(
-            weightKg = weight,
-            r50 = fourResTwoByte2Int(v[11], v[12]),
-            r500 = fourResTwoByte2Int(v[13], v[14]),
-            measuredAtMillis = measuredAt,
-        )
-    }
-
-    // Advertisement parsing and MeasureDecoder math live in ScaleBleProtocol.kt. The
-    // impedance helpers take the connection's encryption flag explicitly.
-    private fun fourResTwoByte2Int(b1: Byte, b2: Byte): Int =
-        fourResTwoByte2Int(b1, b2, useResistanceEncrypt)
-
-    private fun eightDouble(b1: Byte, b2: Byte): Double =
-        eightDouble(b1, b2, useResistanceEncrypt)
+    // Packet dispatch and measurement decoding live in ScaleBleMeasurement.kt as
+    // `internal` members of the manager, so this file stays under the function-count limit.
 
     internal fun refreshCache(g: BluetoothGatt) {
         runCatching { g.javaClass.getMethod("refresh").invoke(g) }

@@ -4,6 +4,13 @@ import android.graphics.Bitmap
 import kotlin.math.max
 import kotlin.math.min
 
+private const val ALPHA_SHIFT = 24
+private const val RED_SHIFT = 16
+private const val GREEN_SHIFT = 8
+private const val CHANNEL_MAX = 255
+private const val CHANNEL_MAX_F = 255f
+private const val FULL_CIRCLE_DEGREES = 360f
+
 data class BlackAndWhiteAdjustment(
     val enabled: Boolean = false,
     val reds: Float = 40f,
@@ -43,16 +50,16 @@ fun BlackAndWhiteAdjustment.applyToBitmap(bitmap: Bitmap): Bitmap {
             val ng: Int
             val nb: Int
             if (tint != 0) {
-                nr = (gray * (tintR / 255f)).toInt().coerceIn(0, 255)
-                ng = (gray * (tintG / 255f)).toInt().coerceIn(0, 255)
-                nb = (gray * (tintB / 255f)).toInt().coerceIn(0, 255)
+                nr = (gray * (tintR / CHANNEL_MAX_F)).toInt().coerceIn(0, CHANNEL_MAX)
+                ng = (gray * (tintG / CHANNEL_MAX_F)).toInt().coerceIn(0, CHANNEL_MAX)
+                nb = (gray * (tintB / CHANNEL_MAX_F)).toInt().coerceIn(0, CHANNEL_MAX)
             } else {
                 nr = gray
                 ng = gray
                 nb = gray
             }
 
-            (a shl 24) or (nr shl 16) or (ng shl 8) or nb
+            (a shl ALPHA_SHIFT) or (nr shl RED_SHIFT) or (ng shl GREEN_SHIFT) or nb
         }
     }
 }
@@ -70,7 +77,7 @@ private fun rgbToHue(r: Int, g: Int, b: Int): Float {
         gf -> 60f * (((bf - rf) / delta) + 2f)
         else -> 60f * (((rf - gf) / delta) + 4f)
     }
-    if (hue < 0f) hue += 360f
+    if (hue < 0f) hue += FULL_CIRCLE_DEGREES
     return hue
 }
 

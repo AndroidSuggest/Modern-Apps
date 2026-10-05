@@ -9,6 +9,10 @@ package com.vayunmathur.pdf.util
  * All entry points are blocking and must be called off the main thread. Handles
  * returned by [openDocument] are opaque; pass 0 to mean "no document".
  */
+@Suppress("TooManyFunctions")
+// The 47 externs must stay on this one object: the Rust side binds them by
+// mangled name (`Java_com_vayunmathur_pdf_util_PdfNative_*` in jni_bindings*),
+// so moving any declaration to another class breaks its native binding.
 object PdfNative {
 
     val isAvailable: Boolean =
@@ -16,8 +20,8 @@ object PdfNative {
             System.loadLibrary("pdf_render")
             android.util.Log.i("PdfNative", "libpdf_render loaded")
             true
-        } catch (t: Throwable) {
-            android.util.Log.e("PdfNative", "System.loadLibrary(pdf_render) failed", t)
+        } catch (expected: UnsatisfiedLinkError) {
+            android.util.Log.e("PdfNative", "System.loadLibrary(pdf_render) failed", expected)
             false
         }
 
@@ -193,5 +197,9 @@ object PdfNative {
     /** Prebuild the search text index (call off the main thread). */
     external fun buildSearchIndex(handle: Long)
 
-    /** Validate native lib size <2MB guard per security plan (Phase 0). Checks .so file size indicator via dummy render? Rust-side size guard is via build task; here we just expose isAvailable. */
+    /**
+     * Validate native lib size <2MB guard per security plan (Phase 0). Checks .so file size
+     * indicator via dummy render? Rust-side size guard is via build task; here we just
+     * expose isAvailable.
+     */
 }

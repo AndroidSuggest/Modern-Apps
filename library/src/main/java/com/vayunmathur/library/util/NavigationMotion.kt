@@ -38,30 +38,36 @@ enum class NavMotion {
     Morph,
 }
 
-internal const val NavMotionKey = "com.vayunmathur.library.util.navMotion"
+internal const val NAV_MOTION_KEY = "com.vayunmathur.library.util.navMotion"
 
+// Public navigation-DSL entry points keep their PascalCase names to match the call sites
+// across ~20 app modules; renaming them would break out-of-scope callers.
 /** [NavMotion.Detail], the default, so this only needs stating for contrast with its siblings. */
-fun DetailPage(): Map<String, Any> = mapOf(NavMotionKey to NavMotion.Detail)
+@Suppress("FunctionNaming")
+fun DetailPage(): Map<String, Any> = mapOf(NAV_MOTION_KEY to NavMotion.Detail)
 
 /**
  * [NavMotion.Zoom]: grows out of the tapped item rather than sliding in from the side, which would
  * imply the destination was always over to the right instead of somewhere the user just pointed at.
  */
-fun ZoomPage(): Map<String, Any> = mapOf(NavMotionKey to NavMotion.Zoom)
+@Suppress("FunctionNaming")
+fun ZoomPage(): Map<String, Any> = mapOf(NAV_MOTION_KEY to NavMotion.Zoom)
 
 /**
  * [NavMotion.Fullscreen]: no horizontal travel at all. Sliding a full-bleed media surface in from
  * the side draws attention to the edges of a frame meant to be the whole screen, and on a dark
  * viewer it reads as a flicker.
  */
-fun FullscreenPage(): Map<String, Any> = mapOf(NavMotionKey to NavMotion.Fullscreen)
+@Suppress("FunctionNaming")
+fun FullscreenPage(): Map<String, Any> = mapOf(NAV_MOTION_KEY to NavMotion.Fullscreen)
 
 /**
  * [NavMotion.Sibling]: deliberately directionless. Peers have no hierarchy, and apps here switch
  * tabs with `backStack.reset(...)`, which nav3 sees as a forward push - so the hierarchical slide
  * would send a tab in from the right even when the user moved *left* along the bar.
  */
-fun SiblingPage(): Map<String, Any> = mapOf(NavMotionKey to NavMotion.Sibling)
+@Suppress("FunctionNaming")
+fun SiblingPage(): Map<String, Any> = mapOf(NAV_MOTION_KEY to NavMotion.Sibling)
 
 /**
  * [NavMotion.Morph]: crossfades the screen so that a [sharedContainer], [sharedCrop], [sharedText]
@@ -69,11 +75,12 @@ fun SiblingPage(): Map<String, Any> = mapOf(NavMotionKey to NavMotion.Sibling)
  *
  * Use this, never [ZoomPage], on a destination that morphs a component out of the previous screen.
  */
-fun MorphPage(): Map<String, Any> = mapOf(NavMotionKey to NavMotion.Morph)
+@Suppress("FunctionNaming")
+fun MorphPage(): Map<String, Any> = mapOf(NAV_MOTION_KEY to NavMotion.Morph)
 
 /** The motion the destination asked for, defaulting to [NavMotion.Detail]. */
 internal fun Scene<*>.navMotion(): NavMotion = navMotionIn(entries.lastOrNull()?.metadata)
 
 /** The motion declared in a destination's metadata, defaulting to [NavMotion.Detail]. */
 internal fun navMotionIn(metadata: Map<String, Any>?): NavMotion =
-    metadata?.get(NavMotionKey) as? NavMotion ?: NavMotion.Detail
+    metadata?.get(NAV_MOTION_KEY) as? NavMotion ?: NavMotion.Detail

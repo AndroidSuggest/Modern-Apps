@@ -1,9 +1,19 @@
 package com.vayunmathur.astronomy.domain.engine
 
-import kotlin.math.*
+import kotlin.math.PI
+import kotlin.math.asin
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 
 object SolarCalculator {
-    data class SolarResult(val raDec: RaDec, val distanceAu: Double, val declinationRad: Double, val eclipticLonRad: Double, val equationOfTimeMinutes: Double)
+    data class SolarResult(
+        val raDec: RaDec,
+        val distanceAu: Double,
+        val declinationRad: Double,
+        val eclipticLonRad: Double,
+        val equationOfTimeMinutes: Double,
+    )
 
     fun calc(jd: Double): SolarResult {
         val n = jd - TimeEngine.J2000

@@ -88,8 +88,13 @@ internal const val BOKEH_SHADER = """
     }
 """
 
+/** Blur-strength mapping: base scale plus range over the 0..1 slider. */
+private const val BOKEH_BLUR_BASE = 0.4f
+private const val BOKEH_BLUR_RANGE = 1.4f
+
 /** Maps the 0..1 "blur strength" slider onto the shader's tap-spacing multiplier. */
-internal fun bokehBlurScale(strength: Float): Float = 0.4f + strength.coerceIn(0f, 1f) * 1.4f
+internal fun bokehBlurScale(strength: Float): Float =
+    BOKEH_BLUR_BASE + strength.coerceIn(0f, 1f) * BOKEH_BLUR_RANGE
 
 /**
  * Two-pass separable Gaussian blur (radius 3, sigma ~1.5) of a row-major foreground-probability
@@ -97,71 +102,89 @@ internal fun bokehBlurScale(strength: Float): Float = 0.4f + strength.coerceIn(0
  * the caller so the per-frame preview path can reuse them across frames; the result is [dst].
  */
 internal fun blurMask(src: FloatArray, w: Int, h: Int, temp: FloatArray, dst: FloatArray): FloatArray {
+    blurHorizontal(src, w, h, temp)
+    blurVertical(temp, w, h, dst)
+    return dst
+}
+
+/** Horizontal Gaussian pass of [src] into [temp]; clamps taps at the row edges. */
+private fun blurHorizontal(src: FloatArray, w: Int, h: Int, temp: FloatArray) {
     // Horizontal pass – manual clamp instead of coerceIn in inner loop
     for (y in 0 until h) {
         val row = y * w
         for (x in 0 until w) {
-            var sum = 0f
-            var sx: Int
-            // k = -3
-            sx = x - 3
-            if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
-            sum += src[row + sx] * 0.06f
-            // k = -2
-            sx = x - 2
-            if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
-            sum += src[row + sx] * 0.12f
-            // k = -1
-            sx = x - 1
-            if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
-            sum += src[row + sx] * 0.18f
-            // k = 0
-            sum += src[row + x] * 0.28f
-            // k = 1
-            sx = x + 1
-            if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
-            sum += src[row + sx] * 0.18f
-            // k = 2
-            sx = x + 2
-            if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
-            sum += src[row + sx] * 0.12f
-            // k = 3
-            sx = x + 3
-            if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
-            sum += src[row + sx] * 0.06f
-
-            temp[row + x] = sum
+            temp[row + x] = blurTapRow(src, row, x, w)
         }
     }
+}
+
+/** One horizontal kernel evaluation centered at ([row], x). */
+private fun blurTapRow(src: FloatArray, row: Int, x: Int, w: Int): Float {
+    var sum = 0f
+    var sx: Int
+    // k = -3
+    sx = x - BLUR_RADIUS
+    if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
+    sum += src[row + sx] * GAUSS_EDGE
+    // k = -2
+    sx = x - 2
+    if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
+    sum += src[row + sx] * GAUSS_MID
+    // k = -1
+    sx = x - 1
+    if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
+    sum += src[row + sx] * GAUSS_NEAR
+    // k = 0
+    sum += src[row + x] * GAUSS_CENTER
+    // k = 1
+    sx = x + 1
+    if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
+    sum += src[row + sx] * GAUSS_NEAR
+    // k = 2
+    sx = x + 2
+    if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
+    sum += src[row + sx] * GAUSS_MID
+    // k = 3
+    sx = x + BLUR_RADIUS
+    if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
+    sum += src[row + sx] * GAUSS_EDGE
+    return sum
+}
+
+/** Vertical Gaussian pass of [temp] into [dst]; clamps taps at the column edges. */
+private fun blurVertical(temp: FloatArray, w: Int, h: Int, dst: FloatArray) {
     // Vertical pass
     for (x in 0 until w) {
         for (y in 0 until h) {
-            var sum = 0f
-            var sy: Int
-            sy = y - 3
-            if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
-            sum += temp[sy * w + x] * 0.06f
-            sy = y - 2
-            if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
-            sum += temp[sy * w + x] * 0.12f
-            sy = y - 1
-            if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
-            sum += temp[sy * w + x] * 0.18f
-            sum += temp[y * w + x] * 0.28f
-            sy = y + 1
-            if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
-            sum += temp[sy * w + x] * 0.18f
-            sy = y + 2
-            if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
-            sum += temp[sy * w + x] * 0.12f
-            sy = y + 3
-            if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
-            sum += temp[sy * w + x] * 0.06f
-
-            dst[y * w + x] = sum
+            dst[y * w + x] = blurTapColumn(temp, x, y, w, h)
         }
     }
-    return dst
+}
+
+/** One vertical kernel evaluation centered at column x, row y. */
+private fun blurTapColumn(temp: FloatArray, x: Int, y: Int, w: Int, h: Int): Float {
+    var sum = 0f
+    var sy: Int
+    sy = y - BLUR_RADIUS
+    if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
+    sum += temp[sy * w + x] * GAUSS_EDGE
+    sy = y - 2
+    if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
+    sum += temp[sy * w + x] * GAUSS_MID
+    sy = y - 1
+    if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
+    sum += temp[sy * w + x] * GAUSS_NEAR
+    sum += temp[y * w + x] * GAUSS_CENTER
+    sy = y + 1
+    if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
+    sum += temp[sy * w + x] * GAUSS_NEAR
+    sy = y + 2
+    if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
+    sum += temp[sy * w + x] * GAUSS_MID
+    sy = y + BLUR_RADIUS
+    if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
+    sum += temp[sy * w + x] * GAUSS_EDGE
+    return sum
 }
 
 /**
@@ -177,10 +200,27 @@ internal fun maskToBitmap(mask: FloatArray, w: Int, h: Int, pixels: IntArray): B
             v > 1f -> 1f
             else -> v
         }
-        pixels[i] = Color.argb((clamped * 255f).toInt(), 255, 255, 255)
+        pixels[i] = Color.argb(
+            (clamped * CHANNEL_MAX).toInt(),
+            CHANNEL_MAX_INT,
+            CHANNEL_MAX_INT,
+            CHANNEL_MAX_INT
+        )
     }
     return Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888)
 }
+
+/** Separable Gaussian kernel (radius 3): edge/mid/near/center tap weights. */
+private const val BLUR_RADIUS = 3
+private const val GAUSS_EDGE = 0.06f
+private const val GAUSS_MID = 0.12f
+private const val GAUSS_NEAR = 0.18f
+private const val GAUSS_CENTER = 0.28f
+
+/** Mask alpha channel scale; full-circle degrees for rotation checks. */
+private const val CHANNEL_MAX = 255f
+private const val CHANNEL_MAX_INT = 255
+private const val FULL_CIRCLE_DEGREES = 360f
 
 // Segmentation input: the model runs at 256x256 internally, so there is nothing to gain from
 // feeding it the full-resolution still. Matches the preview analyzer's cap. The downscale and
@@ -230,49 +270,91 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
         // The blur pass is AGSL, which needs RuntimeShader (API 33+). Below that
         // there is no bokeh; the caller keeps the sharp frame.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
-        val mask = (
-            try {
-                buildMask(src, rotationDegrees)
-            } catch (e: Throwable) {
-                Log.e("StillBokeh", "segmentation failed", e)
-                null
-            }
-            ) ?: return null
+        val mask = segmentQuietly(src, rotationDegrees) ?: return null
 
         // Blurred background, viewfinder-sized: alpha is punched out where the subject is so it can
         // be laid straight over the sharp frame.
-        val background = try {
-            blurBackground(src, mask, strength)
-        } catch (e: Throwable) {
-            Log.e("StillBokeh", "blur pass failed", e)
-            null
-        }
+        val background = blurQuietly(src, mask, strength)
         mask.recycle()
         if (background == null) return null
 
-        return try {
-            val out = createBitmap(src.width, src.height)
-            val canvas = Canvas(out)
-            if (mirror) canvas.scale(-1f, 1f, src.width / 2f, src.height / 2f)
-            canvas.drawBitmap(src, 0f, 0f, Paint().apply {
-                colorFilter = ColorMatrixColorFilter(buildColorAdjustmentMatrix(warmth, shadows))
-            })
-            // Upscaling the blurred background costs no detail – it has none left – and bilinear
-            // filtering also smooths the 256px mask's alpha edge in the process.
-            canvas.drawBitmap(
-                background,
-                null,
-                Rect(0, 0, src.width, src.height),
-                Paint().apply { isFilterBitmap = true }
-            )
-            src.recycle()
-            out
-        } catch (e: Throwable) {
-            Log.e("StillBokeh", "composite failed", e)
-            null
-        } finally {
+        return compositeQuietly(src, background, warmth, shadows, mirror).also {
             background.recycle()
         }
+    }
+
+    /** Segments [src]; null (logged) on failure. */
+    private fun segmentQuietly(src: Bitmap, rotationDegrees: Int): Bitmap? {
+        return try {
+            buildMask(src, rotationDegrees)
+        } catch (e: IllegalStateException) {
+            Log.e("StillBokeh", "segmentation failed", e)
+            null
+        } catch (e: IllegalArgumentException) {
+            Log.e("StillBokeh", "segmentation failed", e)
+            null
+        }
+    }
+
+    /** Blurs [src] behind the subject mask; null (logged) on failure. */
+    private fun blurQuietly(src: Bitmap, mask: Bitmap, strength: Float): Bitmap? {
+        return try {
+            blurBackground(src, mask, strength)
+        } catch (e: IllegalStateException) {
+            Log.e("StillBokeh", "blur pass failed", e)
+            null
+        } catch (e: IllegalArgumentException) {
+            Log.e("StillBokeh", "blur pass failed", e)
+            null
+        }
+    }
+
+    /** Composites the blurred background over the color-adjusted sharp frame. */
+    private fun compositeQuietly(
+        src: Bitmap,
+        background: Bitmap,
+        warmth: Float,
+        shadows: Float,
+        mirror: Boolean
+    ): Bitmap? {
+        return try {
+            compositeFrame(src, background, warmth, shadows, mirror)
+        } catch (e: IllegalStateException) {
+            Log.e("StillBokeh", "composite failed", e)
+            null
+        } catch (e: IllegalArgumentException) {
+            Log.e("StillBokeh", "composite failed", e)
+            null
+        }
+    }
+
+    /** Draws the sharp color-adjusted frame with the blurred background over it. */
+    private fun compositeFrame(
+        src: Bitmap,
+        background: Bitmap,
+        warmth: Float,
+        shadows: Float,
+        mirror: Boolean
+    ): Bitmap {
+        val out = createBitmap(src.width, src.height)
+        val canvas = Canvas(out)
+        if (mirror) canvas.scale(-1f, 1f, src.width / 2f, src.height / 2f)
+        canvas.drawBitmap(
+            src, 0f, 0f,
+            Paint().apply {
+                colorFilter = ColorMatrixColorFilter(buildColorAdjustmentMatrix(warmth, shadows))
+            }
+        )
+        // Upscaling the blurred background costs no detail – it has none left – and bilinear
+        // filtering also smooths the 256px mask's alpha edge in the process.
+        canvas.drawBitmap(
+            background,
+            null,
+            Rect(0, 0, src.width, src.height),
+            Paint().apply { isFilterBitmap = true }
+        )
+        src.recycle()
+        return out
     }
 
     @Synchronized
@@ -380,7 +462,10 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
             )
             // Background-only pass: a fully transparent mask makes the shader's mix() return the
             // blur everywhere. The subject is restored by compositing this over the sharp frame.
-            shader.setInputShader("alphaMask", BitmapShader(TRANSPARENT_1X1, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP))
+            shader.setInputShader(
+            "alphaMask",
+            BitmapShader(TRANSPARENT_1X1, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        )
             shader.setFloatUniform("blurScale", blurScale)
 
             val canvas = node.beginRecording()
@@ -414,7 +499,7 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
     }
 
     private fun rotate(src: Bitmap, degrees: Float): Bitmap {
-        if (degrees % 360f == 0f) return src
+        if (degrees % FULL_CIRCLE_DEGREES == 0f) return src
         val matrix = Matrix().apply { postRotate(degrees) }
         return Bitmap.createBitmap(src, 0, 0, src.width, src.height, matrix, true)
     }

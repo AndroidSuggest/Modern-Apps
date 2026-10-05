@@ -27,15 +27,23 @@ object RcsOutbox {
     const val DEFAULT_EXPIRY_MS = 7L * 24 * 3600 * 1000
 
     private const val MAX_ATTEMPTS = 12
+    private const val MINUTE_MS = 60_000L
+    private const val HOUR_MS = 3600_000L
+    private const val BACKOFF_5_MIN = 5 * MINUTE_MS
+    private const val BACKOFF_15_MIN = 15 * MINUTE_MS
+    private const val BACKOFF_4_HOURS = 4 * HOUR_MS
+    private const val BACKOFF_12_HOURS = 12 * HOUR_MS
+    private const val BACKOFF_HOUR_ATTEMPT = 3
+    private const val BACKOFF_4H_ATTEMPT = 4
 
     /** Backoff schedule: 1m, 5m, 15m, 1h, 4h, then 12h. */
     private fun backoffMs(attempts: Int): Long = when {
-        attempts <= 0 -> 60_000L
-        attempts == 1 -> 5 * 60_000L
-        attempts == 2 -> 15 * 60_000L
-        attempts == 3 -> 3600_000L
-        attempts == 4 -> 4 * 3600_000L
-        else -> 12 * 3600_000L
+        attempts <= 0 -> MINUTE_MS
+        attempts == 1 -> BACKOFF_5_MIN
+        attempts == 2 -> BACKOFF_15_MIN
+        attempts == BACKOFF_HOUR_ATTEMPT -> HOUR_MS
+        attempts == BACKOFF_4H_ATTEMPT -> BACKOFF_4_HOURS
+        else -> BACKOFF_12_HOURS
     }
 
     /**

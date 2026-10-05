@@ -78,6 +78,9 @@ object LyftAuth {
      */
     private const val APP_VERSION = "2026.29.3.1785309574"
 
+    /** How much of a failure body goes to logcat — enough to identify the error, never tokens. */
+    private const val LOG_BODY_PREVIEW_MAX = 600
+
     /**
      * The subset of `defpackage/tmi.b()` we can reproduce without the app's internals.
      *
@@ -166,7 +169,7 @@ object LyftAuth {
         return if (resp.isSuccess) {
             LyftAuthResult.Success(LyftToken(accessToken = ""))
         } else {
-            Log.w(TAG, "phoneauth failed ${resp.status}: ${resp.body.take(600)}")
+            Log.w(TAG, "phoneauth failed ${resp.status}: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
             failure(resp.status, resp.body)
         }
     }
@@ -241,7 +244,7 @@ object LyftAuth {
         Log.d(TAG, "POST /oauth2/access_token -> ${resp.status}")
         if (!resp.isSuccess) {
             // Body only on failure — a success body carries the tokens.
-            Log.w(TAG, "token failed ${resp.status}: ${resp.body.take(600)}")
+            Log.w(TAG, "token failed ${resp.status}: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
             return failure(resp.status, resp.body)
         }
         val token = runCatching { json.decodeFromString(LyftToken.serializer(), resp.body) }

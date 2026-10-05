@@ -23,6 +23,28 @@ import java.security.SecureRandom
 object MimeBuilder {
 
     private const val TAG = "MimeBuilder"
+    private const val MESSAGE_ID_RANDOM_BOUND = 1_000_000
+    private const val BOUNDARY_ENTROPY_CHARS = 24
+    private const val BOUNDARY_TIME_SUFFIX_LEN = 6
+    private const val BASE64_LINE_LEN = 76
+    private const val QP_MAX_LINE_LEN = 73
+    private const val BYTE_MASK = 0xFF
+    private const val ASCII_LF = 10
+    private const val ASCII_CR = 13
+    private const val ASCII_PRINTABLE_MIN = 32
+    private const val ASCII_PRINTABLE_MAX = 126
+    private const val QP_SAFE_MIN = 33
+    private const val QP_EQUALS = 61
+    private const val RFC_2822_DATE_PATTERN = "EEE, dd MMM yyyy HH:mm:ss Z"
+    private const val BOUNDARY_RANDOM_BYTES = 18
+    private const val BOUNDARY_PREFIX = "----=_Part_"
+    private const val BOUNDARY_SEPARATOR = "_"
+
+    private fun buildMessageId(from: String): String {
+        val random = SecureRandom().nextInt(MESSAGE_ID_RANDOM_BOUND)
+        val domain = from.substringAfter('@').ifBlank { "email.local" }
+        return "${System.currentTimeMillis()}.$random@$domain"
+    }
 
     data class BuildResult(val rawMessage: String)
 
@@ -40,11 +62,38 @@ object MimeBuilder {
         inReplyTo: String? = null,
         references: String? = null,
     ): String {
-        val mixedBoundary = randomBoundary()
-        val relatedBoundary = randomBoundary()
-
         val sb = StringBuilder()
+        appendHeaders(sb, from, to, subject, cc, bcc, inReplyTo, references)
 
+        if (inlineImages.isEmpty() && attachments.isEmpty()) {
+            appendSingleTextPart(sb, body, asHtml)
+            return sb.toString()
+        }
+
+        val mixedBoundary = randomBoundary()
+        sb.append("Content-Type: multipart/mixed; boundary=\"$mixedBoundary\"\r\n")
+        sb.append("\r\n")
+        sb.append("This is a multi-part message in MIME format.\r\n")
+
+        if (inlineImages.isEmpty()) {
+            appendMixedTextAndAttachments(sb, context, mixedBoundary, body, asHtml, attachments)
+        } else {
+            appendMixedRelated(sb, context, mixedBoundary, body, asHtml, attachments, inlineImages)
+        }
+
+        return sb.toString()
+    }
+
+    private fun appendHeaders(
+        sb: StringBuilder,
+        from: String,
+        to: String,
+        subject: String,
+        cc: String?,
+        bcc: String?,
+        inReplyTo: String?,
+        references: String?,
+    ) {
         // Standard headers
         sb.append("From: $from\r\n")
         val toList = splitAddresses(to)
@@ -56,69 +105,84 @@ object MimeBuilder {
             sb.append("Bcc: ${splitAddresses(it).joinToString(", ")}\r\n")
         }
         sb.append("Subject: ${encodeHeaderIfNeeded(subject)}\r\n")
-        sb.append("Date: ${java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", java.util.Locale.US).format(java.util.Date())}\r\n")
+        val dateFormat = java.text.SimpleDateFormat(RFC_2822_DATE_PATTERN, java.util.Locale.US)
+        sb.append("Date: ${dateFormat.format(java.util.Date())}\r\n")
         sb.append("MIME-Version: 1.0\r\n")
         if (!inReplyTo.isNullOrBlank()) sb.append("In-Reply-To: $inReplyTo\r\n")
         if (!references.isNullOrBlank()) sb.append("References: $references\r\n")
         // Message-ID
-        sb.append("Message-ID: <${System.currentTimeMillis()}.${SecureRandom().nextInt(1_000_000)}@${from.substringAfter('@').ifBlank { "email.local" }}>\r\n")
+        val messageId = buildMessageId(from)
+        sb.append("Message-ID: <$messageId>\r\n")
+    }
 
-        if (inlineImages.isEmpty() && attachments.isEmpty()) {
-            // Single part text
-            if (asHtml) {
-                sb.append("Content-Type: text/html; charset=utf-8\r\n")
-                sb.append("Content-Transfer-Encoding: quoted-printable\r\n")
-                sb.append("\r\n")
-                sb.append(encodeQuotedPrintableForText(body))
-                sb.append("\r\n")
-            } else {
-                sb.append("Content-Type: text/plain; charset=utf-8\r\n")
-                sb.append("Content-Transfer-Encoding: quoted-printable\r\n")
-                sb.append("\r\n")
-                sb.append(encodeQuotedPrintableForText(body))
-                sb.append("\r\n")
-            }
-            return sb.toString()
-        }
-
-        sb.append("Content-Type: multipart/mixed; boundary=\"$mixedBoundary\"\r\n")
-        sb.append("\r\n")
-        sb.append("This is a multi-part message in MIME format.\r\n")
-
-        if (inlineImages.isEmpty()) {
-            // Text part inside mixed
-            sb.append("--$mixedBoundary\r\n")
-            appendTextPart(sb, body, asHtml)
-            // Attachments
-            for (uri in attachments) {
-                sb.append("--$mixedBoundary\r\n")
-                appendAttachmentPart(sb, context, uri)
-            }
-            sb.append("--$mixedBoundary--\r\n")
+    private fun appendSingleTextPart(sb: StringBuilder, body: String, asHtml: Boolean) {
+        // Single part text
+        if (asHtml) {
+            sb.append("Content-Type: text/html; charset=utf-8\r\n")
         } else {
-            // Related part wrapper inside mixed
-            sb.append("--$mixedBoundary\r\n")
-            sb.append("Content-Type: multipart/related; boundary=\"$relatedBoundary\"\r\n")
-            sb.append("\r\n")
-
-            sb.append("--$relatedBoundary\r\n")
-            appendTextPart(sb, body, asHtml)
-
-            for (inline in inlineImages) {
-                sb.append("--$relatedBoundary\r\n")
-                appendInlinePart(sb, context, inline)
-            }
-            sb.append("--$relatedBoundary--\r\n")
-
-            // Regular attachments after related wrapper
-            for (uri in attachments) {
-                sb.append("--$mixedBoundary\r\n")
-                appendAttachmentPart(sb, context, uri)
-            }
-            sb.append("--$mixedBoundary--\r\n")
+            sb.append("Content-Type: text/plain; charset=utf-8\r\n")
         }
+        sb.append("Content-Transfer-Encoding: quoted-printable\r\n")
+        sb.append("\r\n")
+        sb.append(encodeQuotedPrintableForText(body))
+        sb.append("\r\n")
+    }
 
-        return sb.toString()
+    private fun appendMixedTextAndAttachments(
+        sb: StringBuilder,
+        context: Context,
+        mixedBoundary: String,
+        body: String,
+        asHtml: Boolean,
+        attachments: List<Uri>,
+    ) {
+        // Text part inside mixed
+        sb.append("--$mixedBoundary\r\n")
+        appendTextPart(sb, body, asHtml)
+        // Attachments
+        appendAttachmentParts(sb, context, mixedBoundary, attachments)
+        sb.append("--$mixedBoundary--\r\n")
+    }
+
+    private fun appendMixedRelated(
+        sb: StringBuilder,
+        context: Context,
+        mixedBoundary: String,
+        body: String,
+        asHtml: Boolean,
+        attachments: List<Uri>,
+        inlineImages: List<InlineAttachment>,
+    ) {
+        val relatedBoundary = randomBoundary()
+        // Related part wrapper inside mixed
+        sb.append("--$mixedBoundary\r\n")
+        sb.append("Content-Type: multipart/related; boundary=\"$relatedBoundary\"\r\n")
+        sb.append("\r\n")
+
+        sb.append("--$relatedBoundary\r\n")
+        appendTextPart(sb, body, asHtml)
+
+        for (inline in inlineImages) {
+            sb.append("--$relatedBoundary\r\n")
+            appendInlinePart(sb, context, inline)
+        }
+        sb.append("--$relatedBoundary--\r\n")
+
+        // Regular attachments after related wrapper
+        appendAttachmentParts(sb, context, mixedBoundary, attachments)
+        sb.append("--$mixedBoundary--\r\n")
+    }
+
+    private fun appendAttachmentParts(
+        sb: StringBuilder,
+        context: Context,
+        mixedBoundary: String,
+        attachments: List<Uri>,
+    ) {
+        for (uri in attachments) {
+            sb.append("--$mixedBoundary\r\n")
+            appendAttachmentPart(sb, context, uri)
+        }
     }
 
     private fun appendTextPart(sb: StringBuilder, body: String, asHtml: Boolean) {
@@ -164,24 +228,31 @@ object MimeBuilder {
         return try {
             context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 ?: File(uri.path ?: "").readBytes()
-        } catch (e: Exception) {
-            Log.w(TAG, "readBytes failed for $uri: ${e.message}")
+        } catch (ignored: Exception) {
+            Log.w(TAG, "readBytes failed for $uri: ${ignored.message}")
             try { File(uri.path ?: "").readBytes() } catch (_: Exception) { ByteArray(0) }
         }
     }
 
     private fun queryFilename(context: Context, uri: Uri): String? {
         if (uri.scheme == "content") {
-            return try {
-                context.contentResolver.query(uri, null, null, null, null)?.use { c ->
-                    if (c.moveToFirst()) {
-                        val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                        if (idx != -1) c.getString(idx) else c.getString(0)
-                    } else null
-                }
-            } catch (_: Exception) { null }
+            return queryContentFilename(context, uri)
         }
         return uri.path?.let { File(it).name }
+    }
+
+    private fun queryContentFilename(context: Context, uri: Uri): String? {
+        return try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                readDisplayName(c)
+            }
+        } catch (_: Exception) { null }
+    }
+
+    private fun readDisplayName(c: android.database.Cursor): String? {
+        if (!c.moveToFirst()) return null
+        val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+        return if (idx != -1) c.getString(idx) else c.getString(0)
     }
 
     private fun guessMimeFromName(name: String): String {
@@ -198,9 +269,14 @@ object MimeBuilder {
     }
 
     private fun randomBoundary(): String {
-        val bytes = ByteArray(18)
+        val bytes = ByteArray(BOUNDARY_RANDOM_BYTES)
         SecureRandom().nextBytes(bytes)
-        return "----=_Part_" + Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_WRAP).take(24).replace("-", "").replace("_", "") + "_" + System.currentTimeMillis().toString().takeLast(6)
+        val entropy = Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_WRAP)
+            .take(BOUNDARY_ENTROPY_CHARS)
+            .replace("-", "")
+            .replace("_", "")
+        val suffix = System.currentTimeMillis().toString().takeLast(BOUNDARY_TIME_SUFFIX_LEN)
+        return BOUNDARY_PREFIX + entropy + BOUNDARY_SEPARATOR + suffix
     }
 
     fun encodeBase64Chunked(bytes: ByteArray): String {
@@ -209,7 +285,7 @@ object MimeBuilder {
         val sb = StringBuilder()
         var i = 0
         while (i < b64.length) {
-            val end = minOf(i + 76, b64.length)
+            val end = minOf(i + BASE64_LINE_LEN, b64.length)
             sb.append(b64, i, end).append("\r\n")
             i = end
         }
@@ -223,40 +299,51 @@ object MimeBuilder {
         val sb = StringBuilder()
         var lineLen = 0
         for (b in bytes) {
-            val ub = b.toInt() and 0xFF
-            // Safe chars: 33-60,62-126 except = (61) ; also tab/space special at line end. Encode everything outside 33-126 except for some
-            val needsEncode = ub < 33 || ub > 126 || ub == 61 || ub == 61 // always encode '='
-            // Space and tab need encoding if at end of line, but we simplify: encode if needed or space? We'll leave space as is but encode at line wrap
-            val encoded: String
-            if (needsEncode) {
-                if (ub == 10 || ub == 13) {
-                    // preserve newline? Actually body line breaks should remain.
-                    // We'll encode \r\n separately: we already split on \n earlier? For simplicity keep \r\n as literal line break in QP: text lines are terminated by \r\n outside encoding. So we must handle \r\n sequences.
-                    // Our loop is over utf-8 bytes including newlines from body string which may be \n. We'll handle line breaks manually: if \n, emit \r\n and reset.
-                    // But to keep structure simple, we detect \n here and emit \r\n newline.
-                    if (ub == 10) { // \n -> soft? Actually in QP body, \n should be represented as \r\n line break (preserve)
-                        sb.append("\r\n")
-                        lineLen = 0
-                        continue
-                    }
-                    if (ub == 13) continue // \r skip, \n will emit
-                    encoded = "=" + "%02X".format(ub)
-                } else {
-                    encoded = "=" + "%02X".format(ub)
-                }
-            } else {
-                // printable ascii
-                encoded = ub.toChar().toString()
-            }
-            if (lineLen + encoded.length > 73) {
-                sb.append("=\r\n")
+            val step = encodeQpByte(b.toInt() and BYTE_MASK)
+            if (step.emitNewline) {
+                sb.append("\r\n")
                 lineLen = 0
+            } else if (step.skip) {
+                // \r skip, \n will emit
+            } else {
+                if (lineLen + step.encoded.length > QP_MAX_LINE_LEN) {
+                    sb.append("=\r\n")
+                    lineLen = 0
+                }
+                sb.append(step.encoded)
+                lineLen += step.encoded.length
             }
-            sb.append(encoded)
-            lineLen += encoded.length
         }
         sb.append("\r\n")
         return sb.toString()
+    }
+
+    private data class QpStep(val encoded: String, val emitNewline: Boolean = false, val skip: Boolean = false)
+
+    private fun encodeQpByte(ub: Int): QpStep {
+        // Safe chars: 33-60,62-126 except = (61); tab/space special at line end.
+        // Encode everything outside 33-126.
+        val needsEncode = ub < QP_SAFE_MIN || ub > ASCII_PRINTABLE_MAX || ub == QP_EQUALS
+        // Space and tab need encoding at end of line, but we simplify:
+        // leave space as is, encode at line wrap.
+        if (!needsEncode) {
+            // printable ascii
+            return QpStep(ub.toChar().toString())
+        }
+        if (ub == ASCII_LF || ub == ASCII_CR) {
+            // Preserve newline: body line breaks remain. We split on \n earlier,
+            // so keep \r\n as a literal line break outside the encoding.
+            // The loop is over utf-8 bytes including newlines from the body
+            // string which may be \n. Handle line breaks manually: on \n,
+            // emit \r\n and reset.
+            // To keep structure simple, detect \n here and emit a newline.
+            if (ub == ASCII_LF) {
+                // \n in QP body is a \r\n line break (preserve).
+                return QpStep("", emitNewline = true)
+            }
+            return QpStep("", skip = true)
+        }
+        return QpStep("=" + "%02X".format(ub))
     }
 
     private fun splitAddresses(input: String): List<String> {
@@ -265,7 +352,7 @@ object MimeBuilder {
 
     private fun encodeHeaderIfNeeded(value: String): String {
         // If ascii-only, return as-is; else encode as RFC2047
-        if (value.all { it.code in 32..126 }) return value
+        if (value.all { it.code in ASCII_PRINTABLE_MIN..ASCII_PRINTABLE_MAX }) return value
         // Encode subject via =?UTF-8?B?...
         val b64 = Base64.encodeToString(value.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
         // Split into multiple encoded-words if too long (max 75 - "=?UTF-8?B??=" ~ 59 char b64 payload ~ 44 bytes)

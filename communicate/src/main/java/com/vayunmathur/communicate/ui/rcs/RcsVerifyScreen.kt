@@ -55,8 +55,8 @@ fun RcsVerifyScreen(
     val state by produceState<Triple<String?, String?, Boolean>?>(initialValue = null, peerE164, refresh) {
         value = withContext(Dispatchers.IO) {
             val local = RcsE2E.localE164(context) ?: return@withContext null
-            val mine = RcsE2E.mySafetyFingerprint(context, local)
-            val theirs = RcsE2E.safetyFingerprint(context, peerE164)
+            val mine = RcsE2E.mySafetyFingerprint(local)
+            val theirs = RcsE2E.safetyFingerprint(peerE164)
             val verified = RcsE2E.isVerified(context, peerE164)
             Triple(mine, theirs, verified)
         }

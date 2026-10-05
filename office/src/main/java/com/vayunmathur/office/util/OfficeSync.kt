@@ -4,6 +4,7 @@ package com.vayunmathur.office.util
 
 import kotlin.uuid.Uuid
 import android.content.Context
+import android.util.Log
 import com.vayunmathur.e2ee.E2ee
 import com.vayunmathur.e2ee.E2eeKeyStore
 import com.vayunmathur.e2ee.Pqc
@@ -28,9 +29,14 @@ import kotlin.io.encoding.Base64
 
 object OfficeSync {
     private const val URL = "https://findfamily.cc/office"
-    private val json = Json { ignoreUnknownKeys = true }
+    private const val TAG = "OfficeSync"
+    private const val HTTP_OK = 200
+    private val HTTP_SUCCESS = 200..299
+    private const val MAX_BACKOFF_MS = 15_000L
+    private const val INITIAL_BACKOFF_MS = 1000L
+    internal val json = Json { ignoreUnknownKeys = true }
 
-    private lateinit var identity: PqcIdentity
+    internal lateinit var identity: PqcIdentity
     var deviceId: String = ""
         private set
     private var initialized = false
@@ -66,7 +72,7 @@ object OfficeSync {
 
     suspend fun getKey(id: String): ByteArray? {
         val r = raw("/getkey", IdReq(id)) ?: return null
-        return if (r.status == 200) Base64.decode(r.body) else null
+        return if (r.status == HTTP_OK) Base64.decode(r.body) else null
     }
 
     fun newDocumentKey(): ByteArray = E2ee.newContentKey()
@@ -80,14 +86,25 @@ object OfficeSync {
     suspend fun pullDocActions(docId: String, key: ByteArray, since: Int): DocActionsResult {
         val p = pull(docId, since) ?: return DocActionsResult(emptyList(), since)
         val items = p.actions.mapNotNull { b ->
-            runCatching { E2ee.aesDecrypt(key, Base64.decode(b)).decodeToString() }.getOrNull()
+            runCatching { E2ee.aesDecrypt(key, Base64.decode(b)).decodeToString() }
+                .getOrNull()
         }
         return DocActionsResult(items, p.seq)
     }
 
-    suspend fun sendInvite(recipientId: String, docId: String, key: ByteArray, title: String, charMode: Boolean, role: String, ownerKeyB64: String, charKind: String): Boolean {
+    suspend fun sendInvite(
+        recipientId: String,
+        docId: String,
+        key: ByteArray,
+        title: String,
+        charMode: Boolean,
+        role: String,
+        ownerKeyB64: String,
+        charKind: String,
+    ): Boolean {
         val peerBundle = getKey(recipientId) ?: return false
-        val invite = json.encodeToString(Invite(docId, Base64.encode(key), title, charMode, role, ownerKeyB64, charKind))
+        val invite = json.encodeToString(
+            Invite(docId, Base64.encode(key), title, charMode, role, ownerKeyB64, charKind))
         val blob = Base64.encode(Pqc.encryptTo(peerBundle, invite.encodeToByteArray()))
         return append("inbox:$recipientId", listOf(blob)) != null
     }
@@ -132,17 +149,7 @@ object OfficeSync {
         return InboxResult(invites, requests, p.seq)
     }
 
-    suspend fun securityCode(peerBundle: ByteArray): String? =
-        runCatching { Pqc.securityCode(identity.publicBundle, peerBundle) }.getOrNull()
-
     val publicBundle: ByteArray get() = identity.publicBundle
-    suspend fun sign(data: ByteArray): ByteArray = identity.sign(data)
-    suspend fun verify(publicBundle: ByteArray, data: ByteArray, signature: ByteArray): Boolean =
-        Pqc.verify(publicBundle, data, signature)
-    suspend fun seal(bundle: ByteArray, data: ByteArray): ByteArray = Pqc.encryptTo(bundle, data)
-    suspend fun unseal(data: ByteArray): ByteArray = identity.decrypt(data)
-    suspend fun appendRaw(channel: String, items: List<String>): Int? = append(channel, items)
-    suspend fun pullRaw(channel: String, since: Int): List<String> = pull(channel, since)?.actions ?: emptyList()
 
     // --- Live sync + presence over WebSocket (Android-only WebSocketClient) ---
 
@@ -161,13 +168,13 @@ object OfficeSync {
         stopLive()
         liveChannel = channel
         liveJob = scope.launch(Dispatchers.IO) {
-            var backoff = 1000L
+            var backoff = INITIAL_BACKOFF_MS
             while (isActive) {
                 runCatching {
                     webSocket(WS_URL) {
                         wsSession = this
                         send(json.encodeToString(SubMsg("sub", channel)))
-                        backoff = 1000L
+                        backoff = INITIAL_BACKOFF_MS
                         runCatching { onConnected() }
                         incoming.collect { frame ->
                             when (frame) {
@@ -180,7 +187,7 @@ object OfficeSync {
                 wsSession = null
                 if (!isActive) break
                 delay(backoff)
-                backoff = (backoff * 2).coerceAtMost(15_000)
+                backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF_MS)
             }
         }
     }
@@ -203,25 +210,21 @@ object OfficeSync {
         }.getOrDefault(false)
     }
 
-    fun parseLive(raw: String): LiveMsg? = runCatching { json.decodeFromString<LiveMsg>(raw) }.getOrNull()
-    fun decrypt(key: ByteArray, b64: String): String? =
-        runCatching { E2ee.aesDecrypt(key, Base64.decode(b64)).decodeToString() }.getOrNull()
-
-    private suspend fun append(channel: String, blobs: List<String>): Int? {
+    internal suspend fun append(channel: String, blobs: List<String>): Int? {
         val r = raw("/append", AppendReq(channel, blobs)) ?: return null
-        if (r.status != 200) return null
+        if (r.status != HTTP_OK) return null
         return runCatching { json.decodeFromString<SeqResp>(r.body).seq }.getOrNull()
     }
 
-    private suspend fun pull(channel: String, since: Int): PullResp? {
+    internal suspend fun pull(channel: String, since: Int): PullResp? {
         val r = raw("/pull", PullReq(channel, since)) ?: return null
-        if (r.status != 200) return null
+        if (r.status != HTTP_OK) return null
         return runCatching { json.decodeFromString<PullResp>(r.body) }.getOrNull()
     }
 
     private suspend inline fun <reified T> post(path: String, body: T): Boolean {
         val r = raw(path, body) ?: return false
-        return r.status in 200..299
+        return r.status in HTTP_SUCCESS
     }
 
     private suspend inline fun <reified T> raw(path: String, body: T) =
@@ -234,7 +237,8 @@ object OfficeSync {
             )
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (expected: Exception) {
+            Log.w(TAG, "request failed: ${expected.message}")
             null
         }
 
@@ -243,7 +247,7 @@ object OfficeSync {
     @Serializable private data class AppendReq(val channel: String, val actions: List<String>)
     @Serializable private data class PullReq(val channel: String, val since: Int)
     @Serializable private data class SeqResp(val seq: Int = 0)
-    @Serializable private data class PullResp(val actions: List<String> = emptyList(), val seq: Int = 0)
+    @Serializable internal data class PullResp(val actions: List<String> = emptyList(), val seq: Int = 0)
 
     @Serializable data class DocAction(val type: String = "snapshot", val flat: String = "")
     @Serializable data class Invite(
@@ -275,11 +279,14 @@ object OfficeSync {
     @Serializable private data class PresenceMsg(val t: String, val channel: String, val data: String)
     @Serializable private data class AppendMsg(val t: String, val channel: String, val actions: List<String>)
 
-    @Serializable data class LiveMsg(
+    @Serializable internal data class LiveMsg(
         val t: String = "",
         val channel: String = "",
         val actions: List<String> = emptyList(),
         val seq: Int = 0,
         val data: String = "",
     )
+
+    /** Parses an incoming live-channel message, or null when malformed. */
+    internal fun parseLive(raw: String): LiveMsg? = runCatching { json.decodeFromString<LiveMsg>(raw) }.getOrNull()
 }

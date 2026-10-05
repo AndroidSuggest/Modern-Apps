@@ -42,67 +42,99 @@ data class LensCapabilities(
  */
 @OptIn(ExperimentalCamera2Interop::class)
 suspend fun CameraViewModel.refreshCapabilities(bound: Camera, lensId: String?) {
-    val zs = try {
-        bound.cameraInfo.zoomState.value
-    } catch (e: Exception) {
-        Log.w("LensSelector", "Could not read zoom state", e)
-        null
-    }
-    val minZoom = zs?.minZoomRatio ?: 1f
-    val maxZoom = zs?.maxZoomRatio ?: 1f
+    val (minZoom, maxZoom) = readZoomBounds(bound)
     updateZoomLevels(minZoom, maxZoom)
     restoreZoom(minZoom, maxZoom)
 
     readManualControlRanges()
+    reapplyCaptureControls()
 
-    // Re-assert manual shutter/ISO and exposure compensation onto the fresh bind: the
-    // session effect only pushes them on value change, so without this a rebind silently
-    // drops them (video mode never applied them at all).
-    try {
-        applyManualControls()
-    } catch (e: Exception) {
-        Log.w("LensSelector", "Could not re-apply manual controls", e)
-    }
-    try {
-        applyExposureCompensation(_exposureCompensation.value)
-    } catch (e: Exception) {
-        Log.w("LensSelector", "Could not re-apply exposure compensation", e)
-    }
+    val hasFlash = readFlashUnit(bound)
+    hasFlashUnitMutable.value = hasFlash
 
-    val hasFlash = try {
-        bound.cameraInfo.hasFlashUnit()
-    } catch (e: Exception) {
-        Log.w("LensSelector", "Could not query flash unit", e)
-        _hasFlashUnit.value
-    }
-    _hasFlashUnit.value = hasFlash
-
-    val expRange = try {
-        val r = bound.cameraInfo.exposureState.exposureCompensationRange
-        r.lower.toFloat()..r.upper.toFloat()
-    } catch (e: Exception) {
-        Log.w("LensSelector", "Could not query exposure-compensation range", e)
-        null
-    }
-    if (expRange != null) _exposureCompRange.value = expRange
+    val expRange = readExposureRange(bound)
+    if (expRange != null) exposureCompRangeMutable.value = expRange
 
     // Skip the night indicator here: the setup paths own that observation, and
     // re-observing the *extension* camera reports UNKNOWN/NOT_RECOMMENDED, which
     // fights the normal session's RECOMMENDED reading (engage/disengage loop —
     // see the note in setupNightPreviewSession).
     withContext(Dispatchers.Default) {
-        refreshNightExtensionUsable(_cameraMode.value)
+        refreshNightExtensionUsable(cameraModeMutable.value)
     }
 
-    _lensCapabilities.value = LensCapabilities(
+    lensCapabilitiesMutable.value = LensCapabilities(
         lensId = lensId,
         minZoom = minZoom,
         maxZoom = maxZoom,
         zoomLevels = LensSelectionLogic.buildZoomLevels(minZoom, maxZoom),
         hasFlashUnit = hasFlash,
-        isoStops = _isoStops.value,
-        exposureCompRange = expRange ?: _lensCapabilities.value?.exposureCompRange,
-        nightExtensionUsable = _nightExtensionUsable.value,
+        isoStops = isoStopsMutable.value,
+        exposureCompRange = expRange ?: lensCapabilitiesMutable.value?.exposureCompRange,
+        nightExtensionUsable = nightExtensionUsableMutable.value,
     )
     Log.d("LensSelector", "Refreshed capabilities lens=$lensId zoom=[$minZoom,$maxZoom] flash=$hasFlash")
+}
+
+/** Zoom bounds off the bound camera; unity defaults when unreadable. */
+private fun CameraViewModel.readZoomBounds(bound: Camera): Pair<Float, Float> {
+    val zs = try {
+        bound.cameraInfo.zoomState.value
+    } catch (e: IllegalStateException) {
+        Log.w("LensSelector", "Could not read zoom state", e)
+        null
+    } catch (e: IllegalArgumentException) {
+        Log.w("LensSelector", "Could not read zoom state", e)
+        null
+    }
+    return (zs?.minZoomRatio ?: 1f) to (zs?.maxZoomRatio ?: 1f)
+}
+
+/**
+ * Re-asserts manual shutter/ISO and exposure compensation onto the fresh bind: the
+ * session effect only pushes them on value change, so without this a rebind silently
+ * drops them (video mode never applied them at all).
+ */
+private fun CameraViewModel.reapplyCaptureControls() {
+    try {
+        applyManualControls()
+    } catch (e: IllegalStateException) {
+        Log.w("LensSelector", "Could not re-apply manual controls", e)
+    } catch (e: IllegalArgumentException) {
+        Log.w("LensSelector", "Could not re-apply manual controls", e)
+    }
+    try {
+        applyExposureCompensation(exposureCompensationMutable.value)
+    } catch (e: IllegalStateException) {
+        Log.w("LensSelector", "Could not re-apply exposure compensation", e)
+    } catch (e: IllegalArgumentException) {
+        Log.w("LensSelector", "Could not re-apply exposure compensation", e)
+    }
+}
+
+/** Flash-unit availability; keeps the previous value when unreadable. */
+private fun CameraViewModel.readFlashUnit(bound: Camera): Boolean {
+    return try {
+        bound.cameraInfo.hasFlashUnit()
+    } catch (e: IllegalStateException) {
+        Log.w("LensSelector", "Could not query flash unit", e)
+        hasFlashUnitMutable.value
+    } catch (e: IllegalArgumentException) {
+        Log.w("LensSelector", "Could not query flash unit", e)
+        hasFlashUnitMutable.value
+    }
+}
+
+/** Exposure-compensation range; null when unreadable. */
+private fun CameraViewModel.readExposureRange(bound: Camera): ClosedRange<Float>? {
+    return try {
+        val r = bound.cameraInfo.exposureState.exposureCompensationRange
+        r.lower.toFloat()..r.upper.toFloat()
+    } catch (e: IllegalStateException) {
+        Log.w("LensSelector", "Could not query exposure-compensation range", e)
+        null
+    } catch (e: IllegalArgumentException) {
+        Log.w("LensSelector", "Could not query exposure-compensation range", e)
+        null
+    }
 }

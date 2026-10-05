@@ -6,7 +6,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -25,7 +31,14 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vayunmathur.games.logicgate.data.*
+import com.vayunmathur.games.logicgate.data.ChipDef
+import com.vayunmathur.games.logicgate.data.ChipLibrary
+import com.vayunmathur.games.logicgate.data.IoPos
+import com.vayunmathur.games.logicgate.data.LevelDef
+import com.vayunmathur.games.logicgate.data.OutputMapping
+import com.vayunmathur.games.logicgate.data.PlacedChip
+import com.vayunmathur.games.logicgate.data.Wire
+import com.vayunmathur.games.logicgate.data.WireEnd
 import kotlin.math.max
 
 internal object Turing {
@@ -82,7 +95,6 @@ fun CircuitCanvas(
     onOutputMapDelete: (Int) -> Unit,
     dragGhostLineEnd: Offset?,
     onGhostLine: (Offset?) -> Unit,
-    inputValues: Map<Int, Int> = emptyMap(),
     desiredOutputValues: Map<Int, Int> = emptyMap(),
     outputValues: Map<Int, Int> = emptyMap(),
     isCompact: Boolean = false,
@@ -266,8 +278,7 @@ fun CircuitCanvas(
         inputLayouts.forEach { t ->
             TuringBigTerminal(
                 box = t, isInput = true,
-                inputWidth = try { level.inputWidth(t.idx) } catch (_: Exception) { 1 },
-                canvasSize = canvasSizePx, wiringFrom = wiringFrom, ghostEnd = dragGhostLineEnd,
+                canvasSize = canvasSizePx, wiringFrom = wiringFrom,
                 onMoveFinished = onInputTermMoveFinished,
                 onMove = onInputTermMove,
                 onStartWiring = { end -> onStartWiring(end); wiringAnchor = dotForInput(t); onGhostLine(dotForInput(t)) },
@@ -275,17 +286,16 @@ fun CircuitCanvas(
                 onGhost = onGhostLine,
                 onCancel = { onCancelWiring(); onGhostLine(null) },
                 resolveTargetAt = { pos, excl -> resolveTargetAt(pos, excl) },
-                density = density, pinHitR = pinHitR, termWireDotR = termWireDotR, isCompact = isCompact,
+                density = density, termWireDotR = termWireDotR, isCompact = isCompact,
                 onToggleInput = onToggleInput,
-                pinOutsideDp = pinOutsideDp, termMinWpx = termMinWpx, termMaxWpx = termMaxWpx, pinOutsidePx = pinOutsidePx,
+                termMinWpx = termMinWpx, termMaxWpx = termMaxWpx, pinOutsidePx = pinOutsidePx,
                 isOn = inputOnMap[t.idx] ?: (inputBitSlices[t.idx]?.firstOrNull() == true)
             )
         }
         outputLayouts.forEach { t ->
             TuringBigTerminal(
                 box = t, isInput = false,
-                inputWidth = try { level.outputWidth(t.idx) } catch (_: Exception) { 1 },
-                canvasSize = canvasSizePx, wiringFrom = wiringFrom, ghostEnd = dragGhostLineEnd,
+                canvasSize = canvasSizePx, wiringFrom = wiringFrom,
                 onMoveFinished = onOutputTermMoveFinished,
                 onMove = onOutputTermMove,
                 onStartWiring = { end -> onStartWiring(end); wiringAnchor = dotForOutput(t); onGhostLine(dotForOutput(t)) },
@@ -293,8 +303,8 @@ fun CircuitCanvas(
                 onGhost = onGhostLine,
                 onCancel = { onCancelWiring(); onGhostLine(null) },
                 resolveTargetAt = { pos, excl -> resolveTargetAt(pos, excl) },
-                density = density, pinHitR = pinHitR, termWireDotR = termWireDotR, isCompact = isCompact,
-                pinOutsideDp = pinOutsideDp, termMinWpx = termMinWpx, termMaxWpx = termMaxWpx, pinOutsidePx = pinOutsidePx,
+                density = density, termWireDotR = termWireDotR, isCompact = isCompact,
+                termMinWpx = termMinWpx, termMaxWpx = termMaxWpx, pinOutsidePx = pinOutsidePx,
                 isOn = outputValues[t.idx]?.let { it != 0 } ?: (desiredOutputValues[t.idx]?.let { it != 0 } ?: outputBitSlicesActual[t.idx]?.firstOrNull() == true)
             )
         }
@@ -316,7 +326,7 @@ fun CircuitCanvas(
                 onAnchor = { pos -> wiringAnchor = pos },
                 inDeleteZone = { y -> inDeleteZone(y) },
                 onDragZone = { active, armed -> gateDragActive = active; gateDragArmed = armed },
-                density = density, pinHitR = pinHitR, isCompact = isCompact
+                density = density, pinHitR = pinHitR
             )
         }
       }

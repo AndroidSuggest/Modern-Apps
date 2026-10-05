@@ -34,19 +34,29 @@ class Crypter(private val readKey: ByteArray, private val writeKey: ByteArray) {
 
     private fun gcm(mode: Int, key: ByteArray, nonce: ByteArray): Cipher =
         Cipher.getInstance("AES/GCM/NoPadding").apply {
-            init(mode, SecretKeySpec(key, "AES"), GCMParameterSpec(128, nonce))
+            init(mode, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, nonce))
         }
 
     companion object {
         private const val PADDING_GRANULARITY = 32
+        private const val NONCE_BYTES = 12
+        private const val NONCE_SEQ_OFFSET_0 = 8
+        private const val NONCE_SEQ_OFFSET_1 = 9
+        private const val NONCE_SEQ_OFFSET_2 = 10
+        private const val NONCE_SEQ_OFFSET_3 = 11
+        private const val BYTE_MASK = 0xFF
+        private const val BYTE_SHIFT_HIGH = 24
+        private const val BYTE_SHIFT_MID_HIGH = 16
+        private const val BYTE_SHIFT_MID_LOW = 8
+        private const val GCM_TAG_BITS = 128
 
         /** `8 zero bytes || big-endian uint32(sequence)`. */
         fun nonce(sequence: Int): ByteArray {
-            val n = ByteArray(12)
-            n[8] = ((sequence ushr 24) and 0xFF).toByte()
-            n[9] = ((sequence ushr 16) and 0xFF).toByte()
-            n[10] = ((sequence ushr 8) and 0xFF).toByte()
-            n[11] = (sequence and 0xFF).toByte()
+            val n = ByteArray(NONCE_BYTES)
+            n[NONCE_SEQ_OFFSET_0] = ((sequence ushr BYTE_SHIFT_HIGH) and BYTE_MASK).toByte()
+            n[NONCE_SEQ_OFFSET_1] = ((sequence ushr BYTE_SHIFT_MID_HIGH) and BYTE_MASK).toByte()
+            n[NONCE_SEQ_OFFSET_2] = ((sequence ushr BYTE_SHIFT_MID_LOW) and BYTE_MASK).toByte()
+            n[NONCE_SEQ_OFFSET_3] = (sequence and BYTE_MASK).toByte()
             return n
         }
 

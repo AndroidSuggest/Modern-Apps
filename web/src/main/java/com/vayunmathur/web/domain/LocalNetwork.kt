@@ -32,6 +32,11 @@ object LocalNetwork {
     /** Hosts that only a numeric interpretation could explain, e.g. `10.1` or `2130706433`. */
     private val NUMERIC_ONLY = Regex("^[0-9.]+$")
 
+    private const val IPV6_SLOTS = 8
+    private const val IPV6_MAPPED_SLOTS = 6
+    private const val IPV6_BYTE_LENGTH = 16
+    private const val IPV4_TAIL_OFFSET = 12
+
     /**
      * The host of [url], lowercased and without port, userinfo, brackets or IPv6 zone id.
      *
@@ -119,41 +124,74 @@ object LocalNetwork {
 
     /** The 16 bytes of [text], or null when it is not a valid address. */
     private fun parseIpv6(text: String): ByteArray? {
+        if (hasDoubleElision(text)) return null
         val elision = text.indexOf("::")
-        if (elision >= 0 && text.indexOf("::", elision + 2) >= 0) return null
+        val parts = splitHeadTail(text, elision) ?: return null
+        val (mapped, head, tail) = extractMappedTail(parts.first, parts.second) ?: return null
+        val slots = if (mapped != null) IPV6_MAPPED_SLOTS else IPV6_SLOTS
+        if (!groupCountsFit(head.size, tail.size, slots, elision >= 0)) return null
+        return assembleIpv6(head, tail, mapped, slots)
+    }
 
-        var head = splitGroups(if (elision >= 0) text.substring(0, elision) else text) ?: return null
-        var tail = splitGroups(if (elision >= 0) text.substring(elision + 2) else "") ?: return null
+    /** True when `::` appears twice, which can never be a valid address. */
+    private fun hasDoubleElision(text: String): Boolean {
+        val first = text.indexOf("::")
+        return first >= 0 && text.indexOf("::", first + 2) >= 0
+    }
 
-        // An `::ffff:a.b.c.d` tail occupies the final two hextets.
+    /** The groups on each side of the `::` elision, or null when either side is malformed. */
+    private fun splitHeadTail(text: String, elision: Int): Pair<List<String>, List<String>>? {
+        val head = splitGroups(if (elision >= 0) text.substring(0, elision) else text) ?: return null
+        val tail = splitGroups(if (elision >= 0) text.substring(elision + 2) else "") ?: return null
+        return head to tail
+    }
+
+    /**
+     * Pulls an `::ffff:a.b.c.d` IPv4 tail off the group lists.
+     * Returns the mapped octets (or null) plus the remaining head and tail.
+     */
+    private fun extractMappedTail(
+        head: List<String>,
+        tail: List<String>,
+    ): Triple<IntArray?, List<String>, List<String>>? {
         val last = tail.lastOrNull() ?: head.lastOrNull()
-        var mapped: IntArray? = null
-        if (last != null && last.contains('.')) {
-            mapped = parseIpv4(last) ?: return null
-            if (tail.isNotEmpty()) tail = tail.dropLast(1) else head = head.dropLast(1)
-        }
-
-        val slots = if (mapped != null) 6 else 8
-        if (elision >= 0) {
-            if (head.size + tail.size > slots - 1) return null
+        if (last == null || !last.contains('.')) return Triple(null, head, tail)
+        val mapped = parseIpv4(last) ?: return null
+        // An `::ffff:a.b.c.d` tail occupies the final two hextets.
+        return if (tail.isNotEmpty()) {
+            Triple(mapped, head, tail.dropLast(1))
         } else {
-            if (head.size != slots || tail.isNotEmpty()) return null
+            Triple(mapped, head.dropLast(1), tail)
         }
+    }
 
-        val bytes = ByteArray(16)
+    /** True when the group counts can fill [slots] hextets, with or without an elision. */
+    private fun groupCountsFit(head: Int, tail: Int, slots: Int, elided: Boolean): Boolean =
+        if (elided) head + tail <= slots - 1 else head == slots && tail == 0
+
+    /** Writes the parsed groups into the 16 address bytes, or null on a bad hextet. */
+    private fun assembleIpv6(
+        head: List<String>,
+        tail: List<String>,
+        mapped: IntArray?,
+        slots: Int,
+    ): ByteArray? {
+        val bytes = ByteArray(IPV6_BYTE_LENGTH)
         head.forEachIndexed { i, group ->
             val value = parseHextet(group) ?: return null
-            bytes[i * 2] = (value shr 8).toByte()
-            bytes[i * 2 + 1] = value.toByte()
+            writeHextet(bytes, i, value)
         }
         tail.forEachIndexed { i, group ->
             val value = parseHextet(group) ?: return null
-            val slot = slots - tail.size + i
-            bytes[slot * 2] = (value shr 8).toByte()
-            bytes[slot * 2 + 1] = value.toByte()
+            writeHextet(bytes, slots - tail.size + i, value)
         }
-        mapped?.forEachIndexed { i, octet -> bytes[12 + i] = octet.toByte() }
+        mapped?.forEachIndexed { i, octet -> bytes[IPV4_TAIL_OFFSET + i] = octet.toByte() }
         return bytes
+    }
+
+    private fun writeHextet(bytes: ByteArray, slot: Int, value: Int) {
+        bytes[slot * 2] = (value shr 8).toByte()
+        bytes[slot * 2 + 1] = value.toByte()
     }
 
     /** Colon-separated groups, or null if any is empty (which means a malformed address). */

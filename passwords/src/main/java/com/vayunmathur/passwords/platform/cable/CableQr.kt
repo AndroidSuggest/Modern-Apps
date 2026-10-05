@@ -34,6 +34,10 @@ data class CableQrData(
         private val PARTIAL_CHUNK_DIGITS = intArrayOf(0, 3, 5, 8, 10, 13, 15, 0)
         private const val CHUNK_BYTES = 7
         private const val CHUNK_DIGITS = 17
+        private const val MIN_PARTIAL_BYTES = 1
+        private const val MAX_PARTIAL_BYTES = 6
+        private const val BYTE_MASK = 0xFF
+        private const val BYTE_SHIFT = 8
 
         /** Parses a full `FIDO:/…` URI. */
         fun parse(uri: String): CableQrData {
@@ -58,7 +62,9 @@ data class CableQrData(
             val remainingDigits = digits.length - i
             if (remainingDigits > 0) {
                 val byteCount = PARTIAL_CHUNK_DIGITS.indexOf(remainingDigits)
-                require(byteCount in 1..6) { "Invalid trailing digit count: $remainingDigits" }
+                require(byteCount in MIN_PARTIAL_BYTES..MAX_PARTIAL_BYTES) {
+                    "Invalid trailing digit count: $remainingDigits"
+                }
                 appendLittleEndian(out, digits.substring(i).toLong(), byteCount)
             }
             return out.toByteArray()
@@ -67,8 +73,8 @@ data class CableQrData(
         private fun appendLittleEndian(out: MutableList<Byte>, value: Long, byteCount: Int) {
             var v = value
             repeat(byteCount) {
-                out.add((v and 0xFF).toByte())
-                v = v ushr 8
+                out.add((v and BYTE_MASK).toByte())
+                v = v ushr BYTE_SHIFT
             }
         }
 
@@ -77,8 +83,12 @@ data class CableQrData(
             val map = CborReader(cbor).readValue() as? Map<*, *> ?: error("caBLE QR: not a CBOR map")
             val peerKey = map[0L] as? ByteArray ?: error("caBLE QR: missing peer public key (0)")
             val secret = map[1L] as? ByteArray ?: error("caBLE QR: missing QR secret (1)")
-            require(peerKey.size == PEER_KEY_SIZE) { "caBLE QR: peer key must be $PEER_KEY_SIZE bytes, got ${peerKey.size}" }
-            require(secret.size == QR_SECRET_SIZE) { "caBLE QR: secret must be $QR_SECRET_SIZE bytes, got ${secret.size}" }
+            require(peerKey.size == PEER_KEY_SIZE) {
+                "caBLE QR: peer key must be $PEER_KEY_SIZE bytes, got ${peerKey.size}"
+            }
+            require(secret.size == QR_SECRET_SIZE) {
+                "caBLE QR: secret must be $QR_SECRET_SIZE bytes, got ${secret.size}"
+            }
             return CableQrData(
                 peerPublicKey = peerKey,
                 qrSecret = secret,

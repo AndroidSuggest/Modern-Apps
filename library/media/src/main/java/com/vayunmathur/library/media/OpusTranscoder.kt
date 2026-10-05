@@ -125,8 +125,8 @@ object OpusTranscoder {
             }
             Log.i(TAG, "transcode $mime: in=${source.size} $outcome")
             return if (completed) counted.count else null
-        } catch (e: Exception) {
-            Log.w(TAG, "transcode threw: ${e.javaClass.simpleName}: ${e.message}", e)
+        } catch (expected: IllegalStateException) {
+            Log.w(TAG, "transcode threw: ${expected.javaClass.simpleName}: ${expected.message}", expected)
             return null
         } finally {
             runCatching { extractor?.release() }
@@ -173,6 +173,9 @@ object OpusTranscoder {
 
     /** A megabyte, which covers a few minutes of 256 kbps Opus without regrowing. */
     private const val INITIAL_CAPACITY = 1 * 1024 * 1024
+
+    /** microseconds per second, for presenting 48 kHz frame counts as stream timestamps. */
+    private const val US_PER_SECOND = 1_000_000L
 }
 
 /**
@@ -271,33 +274,7 @@ private class OpusPump(
             // A hi-res transcode runs for many seconds, so a cancelled download has to be
             // able to stop part-way rather than only between tracks.
             if (isStopped()) return false
-
-            var moved = false
-            while (!extractorDone && feedDecoder(POLL_US)) moved = true
-            while (!decoderDone && queue.size < MAX_QUEUED_PCM && drainDecoder(POLL_US)) moved = true
-
-            val active = encoder
-            if (active == null) {
-                // The decoder finished without ever producing PCM, so there is nothing to
-                // encode and no format to configure an encoder from.
-                if (decoderDone) return false
-                if (!moved) drainDecoder(TIMEOUT_US)
-                continue
-            }
-
-            while (!encoderClosed && queue.size >= frameBytes && feedEncoder(active, POLL_US)) {
-                moved = true
-            }
-            if (!encoderClosed && decoderDone && queue.size < frameBytes) {
-                encoderClosed = signalEndOfStream(active, POLL_US)
-                if (encoderClosed) moved = true
-            }
-            while (drainEncoder(active, POLL_US)) moved = true
-
-            // Nothing could be moved anywhere, so wait for a codec rather than spinning on
-            // it. The encoder is the stage everything else queues up behind, so a packet
-            // coming back from it is what frees the chain.
-            if (!moved && !encoderDone) drainEncoder(active, TIMEOUT_US)
+            if (!pumpOnce()) return false
             reportProgress()
         }
         // An encoder that reported end of stream without ever emitting a packet leaves a
@@ -305,6 +282,50 @@ private class OpusPump(
         if (encoded == 0L) return false
         writer.finish(preSkip + frames)
         return true
+    }
+
+    private fun pumpOnce(): Boolean {
+        var moved = drainDecodeSide()
+        val active = encoder
+        if (active == null) {
+            // The decoder finished without ever producing PCM, so there is nothing to
+            // encode and no format to configure an encoder from.
+            if (decoderDone) return false
+            if (!moved) drainDecoder(TIMEOUT_US)
+            return true
+        }
+        moved = feedEncodeSide(active) || moved
+        moved = drainEncodeSide(active) || moved
+        // Nothing could be moved anywhere, so wait for a codec rather than spinning on
+        // it. The encoder is the stage everything else queues up behind, so a packet
+        // coming back from it is what frees the chain.
+        if (!moved && !encoderDone) drainEncoder(active, TIMEOUT_US)
+        return true
+    }
+
+    private fun drainDecodeSide(): Boolean {
+        var moved = false
+        while (!extractorDone && feedDecoder(POLL_US)) moved = true
+        while (!decoderDone && queue.size < MAX_QUEUED_PCM && drainDecoder(POLL_US)) moved = true
+        return moved
+    }
+
+    private fun drainDecodeSide(): Boolean {
+        var moved = false
+        while (!encoderClosed && queue.size >= frameBytes && feedEncoder(active, POLL_US)) {
+            moved = true
+        }
+        if (!encoderClosed && decoderDone && queue.size < frameBytes) {
+            encoderClosed = signalEndOfStream(active, POLL_US)
+            if (encoderClosed) moved = true
+        }
+        return moved
+    }
+
+    private fun drainEncodeSide(active: MediaCodec): Boolean {
+        var moved = false
+        while (drainEncoder(active, POLL_US)) moved = true
+        return moved
     }
 
     /**
@@ -487,7 +508,7 @@ private class OpusPump(
      * Timestamps from the post-resample frame counter, never from the extractor: this is a
      * 48 kHz stream now, and a container timestamp would describe the source's rate.
      */
-    private fun presentationTimeUs(): Long = frames * 1_000_000L / OpusHead.SAMPLE_RATE
+    private fun presentationTimeUs(): Long = frames * US_PER_SECOND / OpusHead.SAMPLE_RATE
 
     /** Collects one encoded packet. Returns true while this stage is still worth servicing. */
     private fun drainEncoder(encoder: MediaCodec, timeoutUs: Long): Boolean {

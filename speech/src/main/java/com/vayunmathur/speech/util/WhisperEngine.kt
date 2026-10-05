@@ -95,24 +95,8 @@ class WhisperEngine(context: Context) {
         whisper?.let { return true }
         if (loadFailed) return false
         loadFailed = true
-        val cfg = try {
-            GenerationConfig(
-                JSONObject(
-                    app.assets.open("${WhisperModel.DIR}/$GEN_CONFIG").use {
-                        it.bufferedReader().readText()
-                    },
-                ),
-            )
-        } catch (t: Throwable) {
-            Log.e(TAG, "cannot read $GEN_CONFIG", t)
-            return false
-        }
-        val tok = try {
-            app.assets.open("${WhisperModel.DIR}/$VOCAB").use { WhisperTokenizer.load(it) }
-        } catch (t: Throwable) {
-            Log.e(TAG, "cannot read $VOCAB", t)
-            return false
-        }
+        val cfg = loadConfig() ?: return false
+        val tok = loadTokenizer() ?: return false
         // Construction never throws: an absent, compressed or malformed asset, a missing
         // `libmodelrunner.so`, ids that do not describe this model, and a device without fp16
         // compute all come back unavailable.
@@ -136,10 +120,38 @@ class WhisperEngine(context: Context) {
         return true
     }
 
+    // Broad catches are deliberate: asset reads and JSON parsing throw undocumented
+    // RuntimeExceptions (not just IOException), and a bad bundle must read as
+    // "model unavailable" rather than a crash.
+    @Suppress("TooGenericExceptionCaught")
+    private fun loadConfig(): GenerationConfig? = try {
+        GenerationConfig(
+            JSONObject(
+                app.assets.open("${WhisperModel.DIR}/$GEN_CONFIG").use {
+                    it.bufferedReader().readText()
+                },
+            ),
+        )
+    } catch (e: Exception) {
+        Log.e(TAG, "cannot read $GEN_CONFIG", e)
+        null
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun loadTokenizer(): WhisperTokenizer? = try {
+        app.assets.open("${WhisperModel.DIR}/$VOCAB").use { WhisperTokenizer.load(it) }
+    } catch (e: Exception) {
+        Log.e(TAG, "cannot read $VOCAB", e)
+        null
+    }
+
     /**
      * Transcribe [pcm16k] (16 kHz mono). [language] is ISO-639-1 or null/"auto" for automatic
      * detection. Returns the text, or null if the model isn't ready or inference failed.
      */
+    // Broad catch is deliberate: native inference throws undocumented
+    // RuntimeExceptions on bad input, which must read as "no transcription".
+    @Suppress("TooGenericExceptionCaught")
     fun transcribe(pcm16k: ShortArray, language: String?): String? {
         if (!ensure()) return null
         val cfg = config ?: return null
@@ -149,8 +161,8 @@ class WhisperEngine(context: Context) {
             val ids = synchronized(lock) { whisper?.transcribe(mel, languageToken(cfg, language)) }
                 ?: return null
             tok.decode(ids.toList())
-        } catch (t: Throwable) {
-            Log.e(TAG, "transcribe failed", t)
+        } catch (e: Exception) {
+            Log.e(TAG, "transcribe failed", e)
             null
         }
     }

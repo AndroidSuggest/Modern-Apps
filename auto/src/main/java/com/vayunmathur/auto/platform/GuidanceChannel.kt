@@ -70,7 +70,7 @@ class GuidanceChannel(
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(16)} for channel $channelId")
+            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         when (val inbound = AudioCodec.decodeSinkInbound(type, payload)) {
@@ -86,7 +86,7 @@ class GuidanceChannel(
             }
             is InboundAudio.Ack -> Log.d(TAG, "guidance ack (no stream running)")
             is InboundAudio.Sync -> Log.d(TAG, "guidance sync pulse")
-            is InboundAudio.Observed -> Log.d(TAG, "unhandled guidance message 0x${type.toString(16)}")
+            is InboundAudio.Observed -> Log.d(TAG, "unhandled guidance message 0x${type.toString(HEX_RADIX)}")
         }
     }
 
@@ -131,5 +131,8 @@ class GuidanceChannel(
 
     private companion object {
         const val TAG = "MaAuto.Guidance"
+
+        /** Radix for hex message-id logging. */
+        const val HEX_RADIX = 16
     }
 }

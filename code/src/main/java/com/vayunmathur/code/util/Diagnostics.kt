@@ -24,6 +24,8 @@ data class Diagnostic(
 )
 
 private const val MAX_DIAGNOSTICS = 200
+private const val XML_SNIFF_LENGTH = 64
+private val JSON_OFFSET_PATTERN = Regex("character (\\d+)")
 
 /**
  * In-process, offline diagnostics — a lightweight stand-in for a language server (which cannot run
@@ -37,12 +39,7 @@ fun computeDiagnostics(text: String, language: Language): List<Diagnostic> {
     val out = ArrayList<Diagnostic>()
 
     out += mergeMarkerDiagnostics(text)
-    when (language) {
-        Language.JSON -> out += jsonDiagnostics(text)
-        Language.XML -> out += xmlDiagnostics(text)
-        Language.YAML -> out += yamlDiagnostics(text)
-        else -> {}
-    }
+    structuredDiagnostics(text, language)?.let { out += it }
     if (language in BRACE_LANGUAGES) out += bracketDiagnostics(text, language)
     out += todoDiagnostics(text)
 
@@ -53,6 +50,13 @@ fun computeDiagnostics(text: String, language: Language): List<Diagnostic> {
 }
 
 // ---- Merge markers ----
+
+private fun structuredDiagnostics(text: String, language: Language): List<Diagnostic>? = when (language) {
+    Language.JSON -> jsonDiagnostics(text)
+    Language.XML -> xmlDiagnostics(text)
+    Language.YAML -> yamlDiagnostics(text)
+    else -> null
+}
 
 private fun mergeMarkerDiagnostics(text: String): List<Diagnostic> =
     parseConflicts(text).map { conflict ->
@@ -78,15 +82,16 @@ private fun jsonDiagnostics(text: String): List<Diagnostic> {
     val error = result.exceptionOrNull() ?: return emptyList()
     val message = error.message ?: "Invalid JSON"
     // org.json reports the failing offset as "... at character N ...".
-    val offset = Regex("character (\\d+)").find(message)?.groupValues?.get(1)?.toIntOrNull()
+    val offset = JSON_OFFSET_PATTERN.find(message)?.groupValues?.get(1)?.toIntOrNull()
     val (line, col) = if (offset != null) offsetToLineCol(text, offset) else 0 to 0
-    return listOf(Diagnostic(line, col, col, DiagnosticSeverity.ERROR, message.substringBefore(" at ").ifBlank { "Invalid JSON" }))
+    val short = message.substringBefore(" at ").ifBlank { "Invalid JSON" }
+    return listOf(Diagnostic(line, col, col, DiagnosticSeverity.ERROR, short))
 }
 
 // ---- XML ----
 
 private fun xmlDiagnostics(text: String): List<Diagnostic> {
-    val head = text.trimStart().take(64).lowercase()
+    val head = text.trimStart().take(XML_SNIFF_LENGTH).lowercase()
     // HTML isn't required to be well-formed XML; don't flag it.
     if (head.startsWith("<!doctype html") || head.startsWith("<html")) return emptyList()
     if (text.isBlank()) return emptyList()
@@ -133,79 +138,141 @@ private val BRACE_LANGUAGES = setOf(
 
 private val OPEN_TO_CLOSE = mapOf('(' to ')', '[' to ']', '{' to '}')
 
-private class OpenBracket(val ch: Char, val line: Int, val col: Int)
-
 /**
  * String/comment-aware bracket balance for brace languages. Skips `//` line comments (except CSS),
  * `/* */` blocks, and `"`, `'`, `` ` `` and `"""` string forms so brackets inside them don't count.
  */
-private fun bracketDiagnostics(text: String, language: Language): List<Diagnostic> {
-    val allowLineComment = language != Language.CSS
+private fun bracketDiagnostics(text: String, language: Language): List<Diagnostic> =
+    BracketScanner(text, language != Language.CSS).scan()
+
+private class OpenBracket(val ch: Char, val line: Int, val col: Int)
+
+private const val MAX_UNCLOSED_REPORTED = 5
+private const val TRIPLE_QUOTE_LOOKAHEAD = 2
+private const val BLOCK_COMMENT_TAIL = 2
+
+private class BracketScanner(val text: String, val allowLineComment: Boolean) {
     val out = ArrayList<Diagnostic>()
     val stack = ArrayDeque<OpenBracket>()
-
     var line = 0
     var lineStart = 0
     var i = 0
     val n = text.length
-    while (i < n) {
+
+    fun scan(): List<Diagnostic> {
+        while (i < n) consumeChar()
+        for (open in stack.take(MAX_UNCLOSED_REPORTED)) {
+            out.add(
+                Diagnostic(
+                    open.line,
+                    open.col,
+                    open.col + 1,
+                    DiagnosticSeverity.WARNING,
+                    "Unclosed '${open.ch}'",
+                ),
+            )
+        }
+        return out
+    }
+
+    private fun consumeChar() {
         val c = text[i]
         if (c == '\n') {
-            line++
-            lineStart = i + 1
-            i++
-            continue
+            advanceLine()
+            return
         }
-        val col = i - lineStart
-
-        // Comments.
-        if (allowLineComment && c == '/' && i + 1 < n && text[i + 1] == '/') {
-            val nl = text.indexOf('\n', i)
-            i = if (nl < 0) n else nl
-            continue
-        }
-        if (c == '/' && i + 1 < n && text[i + 1] == '*') {
-            val close = text.indexOf("*/", i + 2)
-            if (close < 0) { i = n } else {
-                // advance line/lineStart across the block comment
-                var k = i
-                while (k < close + 2) { if (text[k] == '\n') { line++; lineStart = k + 1 }; k++ }
-                i = close + 2
-            }
-            continue
-        }
-
-        // Strings.
-        when (c) {
-            '"' -> {
-                if (i + 2 < n && text[i + 1] == '"' && text[i + 2] == '"') {
-                    i = skipTriple(text, i + 3) { if (text[it] == '\n') { line++; lineStart = it + 1 } }
-                } else {
-                    i = skipString(text, i + 1, '"') { if (text[it] == '\n') { line++; lineStart = it + 1 } }
-                }
-                continue
-            }
-            '\'' -> { i = skipString(text, i + 1, '\'') { if (text[it] == '\n') { line++; lineStart = it + 1 } }; continue }
-            '`' -> { i = skipString(text, i + 1, '`') { if (text[it] == '\n') { line++; lineStart = it + 1 } }; continue }
-        }
-
-        // Brackets.
-        if (c in OPEN_TO_CLOSE) {
-            stack.addLast(OpenBracket(c, line, col))
-        } else if (c == ')' || c == ']' || c == '}') {
-            val top = stack.lastOrNull()
-            if (top == null || OPEN_TO_CLOSE[top.ch] != c) {
-                out.add(Diagnostic(line, col, col + 1, DiagnosticSeverity.ERROR, "Unmatched '$c'"))
-            } else {
-                stack.removeLast()
-            }
-        }
+        if (tryLineComment(c)) return
+        if (tryBlockComment(c)) return
+        if (tryString(c)) return
+        consumeBracket(c, i - lineStart)
         i++
     }
-    for (open in stack.take(5)) {
-        out.add(Diagnostic(open.line, open.col, open.col + 1, DiagnosticSeverity.WARNING, "Unclosed '${open.ch}'"))
+
+    private fun advanceLine() {
+        line++
+        lineStart = i + 1
+        i++
     }
-    return out
+
+    private fun isLineCommentAt(c: Char): Boolean =
+        allowLineComment && c == '/' && peek(1) == '/'
+
+    private fun isBlockCommentAt(c: Char): Boolean =
+        c == '/' && peek(1) == '*'
+
+    private fun peek(offset: Int): Char? =
+        if (i + offset < n) text[i + offset] else null
+
+    private fun tryLineComment(c: Char): Boolean {
+        if (!isLineCommentAt(c)) return false
+        val nl = text.indexOf('\n', i)
+        i = if (nl < 0) n else nl
+        return true
+    }
+
+    private fun tryBlockComment(c: Char): Boolean {
+        if (!isBlockCommentAt(c)) return false
+        val close = text.indexOf("*/", i + BLOCK_COMMENT_TAIL)
+        if (close < 0) {
+            i = n
+        } else {
+            advanceAcross(i, close + BLOCK_COMMENT_TAIL)
+            i = close + BLOCK_COMMENT_TAIL
+        }
+        return true
+    }
+
+    private fun advanceAcross(from: Int, to: Int) {
+        var k = from
+        while (k < to) {
+            if (text[k] == '\n') {
+                line++
+                lineStart = k + 1
+            }
+            k++
+        }
+    }
+
+    private fun tryString(c: Char): Boolean {
+        when (c) {
+            '"' -> {
+                i = if (isTripleQuote()) {
+                    skipTriple(text, i + TRIPLE_QUOTE_LOOKAHEAD + 1) { onNewlineInSkip(it) }
+                } else {
+                    skipString(text, i + 1, '"') { onNewlineInSkip(it) }
+                }
+                return true
+            }
+            '\'', '`' -> {
+                i = skipString(text, i + 1, c) { onNewlineInSkip(it) }
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun isTripleQuote(): Boolean =
+        peek(1) == '"' && peek(TRIPLE_QUOTE_LOOKAHEAD) == '"'
+
+    private fun onNewlineInSkip(at: Int) {
+        line++
+        lineStart = at + 1
+    }
+
+    private fun consumeBracket(c: Char, col: Int) {
+        if (c in OPEN_TO_CLOSE) {
+            stack.addLast(OpenBracket(c, line, col))
+            return
+        }
+        if (c != ')' && c != ']' && c != '}') return
+        val top = stack.lastOrNull()
+        if (top == null || OPEN_TO_CLOSE[top.ch] != c) {
+            out.add(Diagnostic(line, col, col + 1, DiagnosticSeverity.ERROR, "Unmatched '$c'"))
+        } else {
+            stack.removeLast()
+        }
+    }
+}
 }
 
 /** Advances past a `"..."`/`'...'`/`` `...` `` string starting at [from]; returns the index after it. */
@@ -227,12 +294,20 @@ private inline fun skipTriple(text: String, from: Int, onNewline: (Int) -> Unit)
     var i = from
     val n = text.length
     while (i < n) {
-        if (text[i] == '"' && i + 2 < n && text[i + 1] == '"' && text[i + 2] == '"') return i + 3
+        if (isTripleEnd(text, i, n)) return i + TRIPLE_QUOTE_LENGTH
         if (text[i] == '\n') onNewline(i)
         i++
     }
     return n
 }
+
+private const val TRIPLE_QUOTE_LENGTH = 3
+
+private fun isTripleEnd(text: String, i: Int, n: Int): Boolean =
+    text[i] == '"' && i + TRIPLE_QUOTE_LOOKAHEAD < n && isTripleTail(text, i)
+
+private fun isTripleTail(text: String, i: Int): Boolean =
+    text[i + 1] == '"' && text[i + TRIPLE_QUOTE_LOOKAHEAD] == '"'
 
 // ---- TODO / FIXME ----
 

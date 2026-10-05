@@ -55,6 +55,7 @@ class SignalSocket(
 ) {
     companion object {
         private const val TAG = "SignalSocket"
+        private const val ACI_PREFIX_LENGTH = 8
 
         /**
          * The HTTP/1.1 chat host. Note libsignal's `env.rs` names `grpc.chat.signal.org`, but that host is
@@ -134,15 +135,24 @@ class SignalSocket(
                 try {
                     _connectionState.emit(ConnectionState.Connecting)
                     val url = wsUrl()
-                    Log.i(TAG, "connecting $url as ${if (authenticated) "${authData.aci.take(8)}.${authData.deviceId}" else "unauthenticated"} host=$host")
+                    Log.i(TAG, "connecting $url as" +
+                        buildString {
+                            append(if (authenticated) {
+                                "${authData.aci.take(ACI_PREFIX_LENGTH)}.${authData.deviceId}"
+                            } else {
+                                "unauthenticated"
+                            })
+                        } + " host=$host")
                     doConnectOnce()
                     attempt = 0
-                } catch (e: Exception) {
-                    val reason = e.message ?: e.javaClass.simpleName
+                } catch (expected: Exception) {
+                    val reason = expected.message ?: expected.javaClass.simpleName
                     Log.w(TAG, "connect failed: $reason")
                     try { _connectionState.emit(ConnectionState.Disconnected(reason)) } catch (_: Exception) {}
                     if (reason.contains("4401")) {
-                        Log.e(TAG, "4401 invalid auth — stopping reconnect until credentials refreshed (needs live server)")
+                        Log.e(
+                            TAG,
+                            "4401 invalid auth — stopping reconnect until credentials refreshed (needs live server)")
                         break
                     }
                 }
@@ -152,6 +162,13 @@ class SignalSocket(
                 Log.i(TAG, "reconnect attempt $attempt in ${backoff}ms")
             }
         }
+    }
+
+    /** Map a WS close code to its error. */
+    private fun closeError(code: Int): IllegalStateException = when (code) {
+        CLOSE_INVALID_AUTH -> IllegalStateException("ws close 4401 invalid auth")
+        CLOSE_CONNECTED_ELSEWHERE -> IllegalStateException("ws close 4409 connected elsewhere")
+        else -> IllegalStateException("ws close $code")
     }
 
     private suspend fun doConnectOnce() {
@@ -186,11 +203,7 @@ class SignalSocket(
                         }
                         is WebSocketClient.WsFrame.Close -> {
                             Log.i(TAG, "ws close ${frame.code} ${frame.reason}")
-                            when (frame.code) {
-                                CLOSE_INVALID_AUTH -> throw RuntimeException("ws close 4401 invalid auth")
-                                CLOSE_CONNECTED_ELSEWHERE -> throw RuntimeException("ws close 4409 connected elsewhere")
-                                else -> throw RuntimeException("ws close ${frame.code}")
-                            }
+                            throw closeError(frame.code)
                         }
                         else -> {}
                     }
@@ -224,8 +237,8 @@ class SignalSocket(
         return try {
             s.send(data)
             true
-        } catch (e: Exception) {
-            Log.e(TAG, "send failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "send failed", expected)
             false
         }
     }
@@ -293,8 +306,8 @@ class SignalSocket(
         return try {
             s.send(text.toByteArray(Charsets.UTF_8))
             true
-        } catch (e: Exception) {
-            Log.e(TAG, "sendText failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "sendText failed", expected)
             false
         }
     }
@@ -302,30 +315,32 @@ class SignalSocket(
     private fun startKeepalive() {
         keepaliveJob?.cancel()
         keepaliveJob = scope.launch {
-            while (true) {
+            while (sendKeepalive()) {
                 delay(KEEPALIVE_INTERVAL_MS)
-                try {
-                    val keepaliveRequest = WebSocketRequestMessage.newBuilder()
-                        .setVerb("PUT")
-                        .setPath("/v1/keepalive")
-                        .setId(nextRequestId())
-                        .build()
-                    val msg = WebSocketMessage.newBuilder()
-                        .setType(WebSocketMessage.Type.REQUEST)
-                        .setRequest(keepaliveRequest)
-                        .build()
-                    val ok = session?.let {
-                        try { it.send(msg.toByteArray()); true } catch (_: Exception) { false }
-                    } ?: false
-                    if (!ok) {
-                        Log.w(TAG, "keepalive send failed")
-                        break
-                    }
-                } catch (_: Exception) {
-                    Log.w(TAG, "keepalive failed")
-                    break
-                }
             }
+        }
+    }
+
+    /** One keepalive round; false stops the loop. */
+    private suspend fun sendKeepalive(): Boolean {
+        return try {
+            val keepaliveRequest = WebSocketRequestMessage.newBuilder()
+                .setVerb("PUT")
+                .setPath("/v1/keepalive")
+                .setId(nextRequestId())
+                .build()
+            val msg = WebSocketMessage.newBuilder()
+                .setType(WebSocketMessage.Type.REQUEST)
+                .setRequest(keepaliveRequest)
+                .build()
+            val ok = session?.let {
+                try { it.send(msg.toByteArray()); true } catch (_: Exception) { false }
+            } ?: false
+            if (!ok) Log.w(TAG, "keepalive send failed")
+            ok
+        } catch (_: Exception) {
+            Log.w(TAG, "keepalive failed")
+            false
         }
     }
 

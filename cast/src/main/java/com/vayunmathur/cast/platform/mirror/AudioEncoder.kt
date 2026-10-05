@@ -87,11 +87,21 @@ class AudioEncoder(private val projection: MediaProjection?) : AudioStream {
             created.startRecording()
             record = created
             true
-        } catch (e: Exception) {
-            Log.w(TAG, "could not start audio capture", e)
-            release()
-            false
+        } catch (e: IllegalStateException) {
+            failStart(e)
+        } catch (e: IllegalArgumentException) {
+            failStart(e)
+        } catch (e: SecurityException) {
+            failStart(e)
+        } catch (e: UnsupportedOperationException) {
+            failStart(e)
         }
+    }
+
+    private fun failStart(e: Exception): Boolean {
+        Log.w(TAG, "could not start audio capture", e)
+        release()
+        return false
     }
 
     /** Read one 20 ms buffer of PCM, feed it in, and return whatever came out. */
@@ -100,7 +110,10 @@ class AudioEncoder(private val projection: MediaProjection?) : AudioStream {
         val pcm = ByteArray(OpusEncoder.FRAME_BYTES)
         val read = try {
             active.read(pcm, 0, pcm.size)
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "audio read failed", e)
+            return emptyList()
+        } catch (e: IllegalArgumentException) {
             Log.w(TAG, "audio read failed", e)
             return emptyList()
         }

@@ -66,7 +66,10 @@ interface LauncherItemDao {
     @Query("UPDATE launcher_items SET hidden = :hidden WHERE id = :id")
     suspend fun setHidden(id: Long, hidden: Boolean)
 
-    @Query("UPDATE launcher_items SET containerId = :containerId, screen = :screen, cellX = :cellX, cellY = :cellY, rank = :rank WHERE id = :id")
+    @Query(
+        "UPDATE launcher_items SET containerId = :containerId, screen = :screen, " +
+            "cellX = :cellX, cellY = :cellY, rank = :rank WHERE id = :id"
+    )
     suspend fun move(id: Long, containerId: Long, screen: Int, cellX: Int, cellY: Int, rank: Int)
 
     @Query("UPDATE launcher_items SET cellX = :cellX, cellY = :cellY, spanX = :spanX, spanY = :spanY WHERE id = :id")

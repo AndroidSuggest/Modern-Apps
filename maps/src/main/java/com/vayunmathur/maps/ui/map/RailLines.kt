@@ -16,7 +16,7 @@ import com.vayunmathur.library.map.RouteSegment
 import com.vayunmathur.library.map.RouteStyle
 import com.vayunmathur.maps.data.transit.TransitStop
 import com.vayunmathur.maps.ui.theme.MapTokens
-import com.vayunmathur.maps.util.OfflineRouter
+import com.vayunmathur.maps.util.OfflineRouterTransit
 import com.vayunmathur.maps.util.visibleBoundsOrWorld
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.collectLatest
@@ -310,7 +310,7 @@ fun rememberRailLines(
                 // resolves its routes through nearest_stop, consistent with the
                 // departure board for the same stop.
                 val lines = try {
-                    OfflineRouter.stopLines(
+                    OfflineRouterTransit.stopLines(
                         context,
                         lat = stop.lat,
                         lon = stop.lon,

@@ -49,7 +49,11 @@ class RideTrackingService : Service() {
         // poll replaces it with real data a moment later.
         try {
             startForegroundCompat(RideLiveUpdate.build(this, placeholder(rideId)))
-        } catch (e: Exception) {
+        } catch (e: SecurityException) {
+            Log.e(TAG, "startForeground failed", e)
+            stopSelf()
+            return START_NOT_STICKY
+        } catch (e: IllegalStateException) {
             Log.e(TAG, "startForeground failed", e)
             stopSelf()
             return START_NOT_STICKY

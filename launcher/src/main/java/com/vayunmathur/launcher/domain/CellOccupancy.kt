@@ -16,7 +16,7 @@ class CellOccupancy(val columns: Int, val rows: Int) {
     constructor(spec: GridSpec) : this(spec.columns, spec.rows)
 
     fun isFree(rect: CellRect): Boolean {
-        if (rect.cellX < 0 || rect.cellY < 0 || rect.right > columns || rect.bottom > rows) {
+        if (isOutOfBounds(rect)) {
             return false
         }
         for (y in rect.cellY until rect.bottom) {
@@ -26,6 +26,9 @@ class CellOccupancy(val columns: Int, val rows: Int) {
         }
         return true
     }
+
+    private fun isOutOfBounds(rect: CellRect): Boolean =
+        rect.cellX < 0 || rect.cellY < 0 || rect.right > columns || rect.bottom > rows
 
     fun mark(rect: CellRect, occupied: Boolean = true) {
         for (y in rect.cellY.coerceAtLeast(0) until rect.bottom.coerceAtMost(rows)) {

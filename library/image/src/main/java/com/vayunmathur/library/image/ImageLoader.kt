@@ -23,12 +23,15 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import java.io.File
 
+private const val DATA_KEY_SAMPLE_BYTES = 16
+
 /**
  * Replacement for `coil.ImageLoader`. Uses:
  * - [MemoryCache] (LruCache<String, Bitmap>)
  * - [DiskCache] (file LRU raw bytes)
  * - Fetcher registry (http/content/file/asset/bytearray/bitmap)
- * - Decoders: SVG via internal Android stdlib renderer (Canvas/Path), Video via MediaMetadataRetriever, Bitmap via BitmapFactory/ImageDecoder
+ * - Decoders: SVG via internal Android stdlib renderer (Canvas/Path), Video via
+ *   MediaMetadataRetriever, Bitmap via BitmapFactory/ImageDecoder
  */
 class ImageLoader private constructor(
     private val appContext: Context,
@@ -67,7 +70,7 @@ class ImageLoader private constructor(
     private fun dataKey(request: ImageRequest): String = when (val d = request.data) {
         null -> "null"
         is String -> d
-        is ByteArray -> "bytes_${d.size}_${d.take(16).hashCode()}"
+        is ByteArray -> "bytes_${d.size}_${d.take(DATA_KEY_SAMPLE_BYTES).hashCode()}"
         is Bitmap -> "bitmap_${d.width}x${d.height}_${d.hashCode()}"
         else -> d.toString()
     }
@@ -124,13 +127,21 @@ class ImageLoader private constructor(
             val bmp = request.data
             return withContext(Dispatchers.IO) {
                 val transformed = applyTransformations(bmp, request)
-                ImageResult.Success(transformed, isFromMemory = false, dataSource = ImageResult.DataSource.MEMORY)
+                ImageResult.Success(
+                    transformed,
+                    isFromMemory = false,
+                    dataSource = ImageResult.DataSource.MEMORY,
+                )
             }
         }
 
         val cacheKey = computeCacheKey(request)
         peekMemoryCache(request)?.let {
-            return ImageResult.Success(it, isFromMemory = true, dataSource = ImageResult.DataSource.MEMORY)
+            return ImageResult.Success(
+                it,
+                isFromMemory = true,
+                dataSource = ImageResult.DataSource.MEMORY,
+            )
         }
 
         val deferred = synchronized(inFlight) {
@@ -159,121 +170,160 @@ class ImageLoader private constructor(
         return deferred.await()
     }
 
-    private suspend fun load(request: ImageRequest, cacheKey: String): ImageResult = withContext(Dispatchers.IO) {
-        val context = request.context ?: appContext
-        val diskKey = request.diskCacheKey ?: cacheKey
-        val isLocal = isLocalData(request.data)
-
-        // Another coalesced request may have filled the cache while this one waited.
-        try {
-            memoryCache?.get(cacheKey)?.let { cached ->
-                return@withContext ImageResult.Success(cached, isFromMemory = true, dataSource = ImageResult.DataSource.MEMORY)
-            }
-        } catch (_: Exception) {}
-
-        var diskBytes: ByteArray? = null
-        if (diskCache != null && !isLocal) {
-            try {
-                diskBytes = diskCache.get(diskKey)
-                if (diskBytes != null) {
-                    val decodedFromDisk = decodeBytes(diskBytes, request, context)
-                    if (decodedFromDisk != null) {
-                        val transformed = applyTransformations(decodedFromDisk, request)
-                        try { memoryCache?.put(cacheKey, transformed) } catch (_: Exception) {}
-                        return@withContext ImageResult.Success(transformed, isFromMemory = false, dataSource = ImageResult.DataSource.DISK)
-                    }
-                }
-            } catch (_: Exception) {}
+    private suspend fun load(request: ImageRequest, cacheKey: String): ImageResult =
+        withContext(Dispatchers.IO) {
+            val scope = LoadScope(
+                request = request,
+                cacheKey = cacheKey,
+                context = request.context ?: appContext,
+                diskKey = request.diskCacheKey ?: cacheKey,
+                isLocal = isLocalData(request.data),
+            )
+            // Another coalesced request may have filled the cache while this one waited.
+            memoryHit(scope)
+                ?: diskHit(scope)
+                ?: videoHit(scope)
+                ?: resolveFromFetchers(scope)
+                ?: decodeFresh(scope)
         }
 
-        if (request.videoFrameMillis != null) {
-            try {
-                val videoBmp = VideoFrameDecoder.decode(request, context)
-                if (videoBmp != null) {
-                    val transformed = applyTransformations(videoBmp, request)
-                    try { memoryCache?.put(cacheKey, transformed) } catch (_: Exception) {}
-                    return@withContext ImageResult.Success(transformed, isFromMemory = false, dataSource = ImageResult.DataSource.MEMORY)
-                }
-            } catch (_: Exception) {}
-        }
-
-        var fetchedBytes: ByteArray? = null
-        try {
-            for (fetcher in fetchers) {
-                val result = try { fetcher.fetch(request.data, context) } catch (_: Exception) { null }
-                if (result != null) {
-                    when (result) {
-                        is FetchResult.BitmapResult -> {
-                            val transformed = applyTransformations(result.bitmap, request)
-                            try { memoryCache?.put(cacheKey, transformed) } catch (_: Exception) {}
-                            return@withContext ImageResult.Success(transformed, isFromMemory = false, dataSource = ImageResult.DataSource.MEMORY)
-                        }
-                        is FetchResult.Bytes -> {
-                            fetchedBytes = result.bytes
-                            break
-                        }
-                        is FetchResult.Source -> {
-                            // Fast path: decode (and downsample) straight from the file.
-                            val decodedFromSource =
-                                BitmapDecoder.decode(result.decoderSource, request, request.allowHardware)
-                            if (decodedFromSource != null) {
-                                val transformed = applyTransformations(decodedFromSource, request)
-                                try { memoryCache?.put(cacheKey, transformed) } catch (_: Exception) {}
-                                return@withContext ImageResult.Success(transformed, isFromMemory = false, dataSource = ImageResult.DataSource.DISK)
-                            }
-                            // ImageDecoder can't read it (an SVG, or a video whose frame
-                            // decoder needs the bytes): fall back to the byte path.
-                            fetchedBytes = try {
-                                result.openStream()?.use { it.readBytes() }
-                            } catch (_: Exception) {
-                                null
-                            }
-                            break
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            return@withContext ImageResult.Error(e)
-        }
-
-        if (fetchedBytes == null) {
-            fetchedBytes = diskBytes
-            if (fetchedBytes == null) {
-                return@withContext ImageResult.Error(IllegalArgumentException("Unable to fetch data: ${request.data}"))
-            }
-        }
-
-        val decoded = try {
-            decodeBytes(fetchedBytes, request, context) ?: if (request.videoFrameMillis != null) {
-                VideoFrameDecoder.decode(request, context)
-            } else null
-        } catch (e: Exception) {
-            return@withContext ImageResult.Error(e)
-        }
-
-        if (decoded == null) {
-            return@withContext ImageResult.Error(IllegalArgumentException("Failed to decode image bytes (${fetchedBytes.size} bytes)"))
-        }
-
-        val transformed = applyTransformations(decoded, request)
-
-        try { memoryCache?.put(cacheKey, transformed) } catch (_: Exception) {}
-        try {
-            if (diskCache != null && !isLocal) {
-                diskCache.put(diskKey, fetchedBytes)
-            }
-        } catch (_: Exception) {}
-
-        return@withContext ImageResult.Success(transformed, isFromMemory = false, dataSource = ImageResult.DataSource.NETWORK)
+    private fun memoryHit(scope: LoadScope): ImageResult? {
+        val cached = runCatching { memoryCache?.get(scope.cacheKey) }.getOrNull() ?: return null
+        return ImageResult.Success(
+            cached,
+            isFromMemory = true,
+            dataSource = ImageResult.DataSource.MEMORY,
+        )
     }
 
-    private suspend fun decodeBytes(bytes: ByteArray, request: ImageRequest, context: Context): Bitmap? {
+    private suspend fun diskHit(scope: LoadScope): ImageResult? {
+        val cache = diskCache
+        if (cache == null || scope.isLocal) return null
+        val diskBytes = runCatching { cache.get(scope.diskKey) }.getOrNull() ?: return null
+        scope.diskBytes = diskBytes
+        val decoded = decodeBytes(diskBytes, scope.request) ?: return null
+        return bitmapResult(decoded, scope, ImageResult.DataSource.DISK)
+    }
+
+    private suspend fun videoHit(scope: LoadScope): ImageResult? {
+        if (scope.request.videoFrameMillis == null) return null
+        val videoBmp = runCatching {
+            VideoFrameDecoder.decode(scope.request, scope.context)
+        }.getOrNull() ?: return null
+        return bitmapResult(videoBmp, scope, ImageResult.DataSource.MEMORY)
+    }
+
+    private suspend fun resolveFromFetchers(scope: LoadScope): ImageResult? =
+        runCatching { resolveFromFetchersOrNull(scope) }.getOrElse { ImageResult.Error(it) }
+
+    private suspend fun resolveFromFetchersOrNull(scope: LoadScope): ImageResult? =
+        when (val outcome = collectFetchOutcome(scope)) {
+            is FetchOutcome.Resolved -> outcome.result
+            FetchOutcome.PendingBytes -> null
+        }
+
+    private suspend fun collectFetchOutcome(scope: LoadScope): FetchOutcome {
+        for (fetcher in fetchers) {
+            val result = runCatching {
+                fetcher.fetch(scope.request.data, scope.context)
+            }.getOrNull() ?: continue
+            return classifyFetchResult(result, scope)
+        }
+        return FetchOutcome.PendingBytes
+    }
+
+    private suspend fun classifyFetchResult(result: FetchResult, scope: LoadScope): FetchOutcome =
+        when (result) {
+            is FetchResult.BitmapResult -> FetchOutcome.Resolved(
+                bitmapResult(result.bitmap, scope, ImageResult.DataSource.MEMORY),
+            )
+            is FetchResult.Bytes -> {
+                scope.fetchedBytes = result.bytes
+                FetchOutcome.PendingBytes
+            }
+            is FetchResult.Source -> sourceOutcome(result, scope)
+        }
+
+    private suspend fun sourceOutcome(result: FetchResult.Source, scope: LoadScope): FetchOutcome {
+        // Fast path: decode (and downsample) straight from the file.
+        val decodedFromSource = BitmapDecoder.decode(
+            result.decoderSource,
+            scope.request,
+            scope.request.allowHardware,
+        )
+        if (decodedFromSource != null) {
+            return FetchOutcome.Resolved(
+                bitmapResult(decodedFromSource, scope, ImageResult.DataSource.DISK),
+            )
+        }
+        // ImageDecoder can't read it (an SVG, or a video whose frame
+        // decoder needs the bytes): fall back to the byte path.
+        scope.fetchedBytes = runCatching {
+            result.openStream()?.use { it.readBytes() }
+        }.getOrNull()
+        return FetchOutcome.PendingBytes
+    }
+
+    private suspend fun decodeFresh(scope: LoadScope): ImageResult {
+        val bytes = scope.fetchedBytes ?: scope.diskBytes
+            ?: return ImageResult.Error(
+                IllegalArgumentException("Unable to fetch data: ${scope.request.data}"),
+            )
+        val decoded = runCatching {
+            decodeBytes(bytes, scope.request)
+                ?: scope.request.videoFrameMillis?.let {
+                    VideoFrameDecoder.decode(scope.request, scope.context)
+                }
+        }.getOrElse { return ImageResult.Error(it) }
+            ?: return ImageResult.Error(
+                IllegalArgumentException("Failed to decode image bytes (${bytes.size} bytes)"),
+            )
+
+        val transformed = applyTransformations(decoded, scope.request)
+        putMemory(scope.cacheKey, transformed)
+        putDisk(scope, bytes)
+        return ImageResult.Success(
+            transformed,
+            isFromMemory = false,
+            dataSource = ImageResult.DataSource.NETWORK,
+        )
+    }
+
+    private suspend fun decodeBytes(bytes: ByteArray, request: ImageRequest): Bitmap? {
         if (SvgDecoder.canDecode(bytes, request.data)) {
             val svgBmp = SvgDecoder.decode(bytes, request)
             if (svgBmp != null) return svgBmp
         }
         return BitmapDecoder.decode(bytes, request, request.allowHardware)
+    }
+
+    private suspend fun bitmapResult(
+        bitmap: Bitmap,
+        scope: LoadScope,
+        source: ImageResult.DataSource,
+    ): ImageResult {
+        val transformed = applyTransformations(bitmap, scope.request)
+        putMemory(scope.cacheKey, transformed)
+        return ImageResult.Success(
+            transformed,
+            isFromMemory = false,
+            dataSource = source,
+        )
+    }
+
+    private fun putMemory(cacheKey: String, bitmap: Bitmap) {
+        try {
+            memoryCache?.put(cacheKey, bitmap)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun putDisk(scope: LoadScope, bytes: ByteArray) {
+        if (diskCache == null || scope.isLocal) return
+        try {
+            diskCache.put(scope.diskKey, bytes)
+        } catch (_: Exception) {
+        }
     }
 
     private suspend fun applyTransformations(bitmap: Bitmap, request: ImageRequest): Bitmap {
@@ -286,6 +336,21 @@ class ImageLoader private constructor(
         return current
     }
 
+    private class LoadScope(
+        val request: ImageRequest,
+        val cacheKey: String,
+        val context: Context,
+        val diskKey: String,
+        val isLocal: Boolean,
+        var fetchedBytes: ByteArray? = null,
+        var diskBytes: ByteArray? = null,
+    )
+
+    private sealed interface FetchOutcome {
+        data class Resolved(val result: ImageResult) : FetchOutcome
+        data object PendingBytes : FetchOutcome
+    }
+
     class Builder(private val context: Context) {
         private var memoryCacheInstance: MemoryCache? = null
         private var diskCacheInstance: DiskCache? = null
@@ -293,7 +358,10 @@ class ImageLoader private constructor(
         private val extraFetchers: MutableList<Fetcher> = mutableListOf()
 
         inner class ComponentsBuilder {
-            fun add(factory: Any): ComponentsBuilder = this
+            fun add(factory: Any): ComponentsBuilder {
+                if (factory is Fetcher) extraFetchers += factory
+                return this
+            }
         }
 
         fun components(block: ComponentsBuilder.() -> Unit): Builder {

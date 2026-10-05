@@ -244,8 +244,7 @@ fun CropOverlay(
                 normalizedCorners = corners,
                 activeCorner = cornerIdx,
                 handleScreenPos = screenCorners[cornerIdx],
-                overlayWidth = width,
-                overlayHeight = height
+                overlayWidth = width
             )
         }
     }
@@ -257,8 +256,7 @@ fun MagnifierWindow(
     normalizedCorners: List<Offset>,
     activeCorner: Int,
     handleScreenPos: Offset,
-    overlayWidth: Float,
-    overlayHeight: Float
+    overlayWidth: Float
 ) {
     if (bitmap == null) return
 

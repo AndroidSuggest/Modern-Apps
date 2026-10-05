@@ -40,7 +40,7 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.util.sharedText
 import com.vayunmathur.fooddelivery.R
-import com.vayunmathur.fooddelivery.api.BitesApi
+import com.vayunmathur.fooddelivery.api.BitesDeals
 import com.vayunmathur.fooddelivery.data.Deal
 import com.vayunmathur.fooddelivery.data.DealProgress
 import com.vayunmathur.fooddelivery.platform.AppInit
@@ -65,14 +65,14 @@ fun DealsScreen(onMerchantClick: (Int) -> Unit) {
 
     LaunchedEffect(Unit) {
         AppInit.awaitReady()
-        deals = BitesApi.getAllDeals().filter { it.isActive }
+        deals = BitesDeals.getAllDeals().filter { it.isActive }
         loading = false
         // Progress is per-deal; fetch after the list so the deals render immediately, and
         // fan the round trips out rather than paying for them one after another.
         val gate = Semaphore(MAX_PARALLEL_PROGRESS)
         progress = coroutineScope {
             deals.map { d ->
-                async { gate.withPermit { BitesApi.getDealProgress(d.id)?.let { d.id to it } } }
+                async { gate.withPermit { BitesDeals.getDealProgress(d.id)?.let { d.id to it } } }
             }.awaitAll().filterNotNull().toMap()
         }
     }

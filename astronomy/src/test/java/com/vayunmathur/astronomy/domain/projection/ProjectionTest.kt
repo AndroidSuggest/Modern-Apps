@@ -2,7 +2,9 @@ package com.vayunmathur.astronomy.domain.projection
 
 import com.vayunmathur.astronomy.domain.engine.AltAz
 import com.vayunmathur.astronomy.domain.engine.toRad
-import kotlin.math.*
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue

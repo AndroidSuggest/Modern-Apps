@@ -47,8 +47,8 @@ class GenericWidgetWorker(
             widget.updateAll(context)
             Log.d(TAG, "Successfully updated widget: $className")
             Result.success()
-        } catch (t: Throwable) {
-            Log.e(TAG, "Failed to update widget: $className", t)
+        } catch (reflect: ReflectiveOperationException) {
+            Log.e(TAG, "Failed to update widget: $className", reflect)
             Result.failure()
         }
     }
@@ -132,8 +132,8 @@ class WidgetPreviewWorker(
                     Result.success()
                 }
             }
-        } catch (t: Throwable) {
-            Log.e(TAG, "Failed to set widget previews for $className", t)
+        } catch (reflect: ReflectiveOperationException) {
+            Log.e(TAG, "Failed to set widget previews for $className", reflect)
             Result.failure()
         }
     }
@@ -229,9 +229,21 @@ inline fun <reified V> readWidgetState(
 ): V? {
     val prefsKey = stringPreferencesKey(key)
     val json = prefs[prefsKey] ?: return null
+    return decodeWidgetState(serializer, json, key)
+}
+
+/**
+ * Decoded by [readWidgetState]. Published (not private) because a public inline
+ * function calls it — Kotlin forbids non-public-API access from public inline code.
+ */
+@PublishedApi
+internal fun <V> decodeWidgetState(serializer: KSerializer<V>, json: String, key: String): V? {
     return try {
         Json.decodeFromString(serializer, json)
-    } catch (e: Exception) {
+    } catch (expected: IllegalArgumentException) {
+        Log.w(TAG, "Failed to decode widget state for key $key", expected)
         null
     }
 }
+
+private const val TAG = "Widgets"

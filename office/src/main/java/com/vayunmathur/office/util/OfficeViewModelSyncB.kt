@@ -8,26 +8,26 @@ import android.net.Uri
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.office.R
+import com.vayunmathur.office.odf.DocumentImporter
+import com.vayunmathur.office.util.OfficeViewModel.ViewState
 import kotlin.io.encoding.Base64
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import com.vayunmathur.office.odf.*
-import com.vayunmathur.library.ui.odf.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import com.vayunmathur.office.R
-import com.vayunmathur.office.util.OfficeViewModel.ViewState
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 // --- Sync B: device/index/inbox/join-requests/trees/share/open (split from OfficeViewModel.kt for file length) ---
 
@@ -41,12 +41,12 @@ fun OfficeViewModel.initSync() {
         // enabled-state flow hasn't loaded yet: an already-provisioned device (keys+id present)
         // counts as enabled even if the flow still reads false. New/un-opted-in devices no-op.
         if (!onlineEnabled.value && !hasOnlineIdentity()) return@launch
-        if (!onlineEnabled.value) _onlineEnabled.value = true
+        if (!onlineEnabled.value) onlineEnabledMutable.value = true
         runCatching {
             OfficeSync.init(getApplication())
             val ds = DataStoreUtils.getInstance(getApplication())
-            _onlineDocs.value = loadIndex(ds)
-            _pendingRequests.value = loadRequests(ds)
+            onlineDocsMutable.value = loadIndex(ds)
+            pendingRequestsMutable.value = loadRequests(ds)
         }
         refreshOnline()
     }
@@ -59,7 +59,7 @@ internal suspend fun OfficeViewModel.loadIndex(ds: DataStoreUtils): List<OfficeD
 
 internal suspend fun OfficeViewModel.saveIndex(ds: DataStoreUtils, list: List<OfficeDocMeta>) {
     ds.setString("officeDocsIndex", syncJson.encodeToString(list))
-    _onlineDocs.value = list
+    onlineDocsMutable.value = list
 }
 
 internal suspend fun OfficeViewModel.loadRequests(ds: DataStoreUtils): List<OfficeSync.JoinRequest> =
@@ -69,7 +69,7 @@ internal suspend fun OfficeViewModel.loadRequests(ds: DataStoreUtils): List<Offi
 
 internal suspend fun OfficeViewModel.saveRequests(ds: DataStoreUtils, list: List<OfficeSync.JoinRequest>) {
     ds.setString("officePendingRequests", syncJson.encodeToString(list))
-    _pendingRequests.value = list
+    pendingRequestsMutable.value = list
 }
 
 internal suspend fun OfficeViewModel.removePendingRequest(docId: String, requesterId: String) {
@@ -92,7 +92,7 @@ fun OfficeViewModel.shareLinkFor(docId: String): String =
 fun OfficeViewModel.requestToJoin(docId: String, ownerId: String, onResult: (Boolean) -> Unit = {}) {
     viewModelScope.launch(Dispatchers.IO) {
         val ok = runCatching {
-            if (!_onlineEnabled.value) _onlineEnabled.value = true
+            if (!onlineEnabledMutable.value) onlineEnabledMutable.value = true
             OfficeSync.init(getApplication())
             OfficeSync.sendJoinRequest(ownerId, docId, OfficeSync.deviceId, myName())
         }.getOrDefault(false)
@@ -104,7 +104,11 @@ fun OfficeViewModel.requestToJoin(docId: String, ownerId: String, onResult: (Boo
  * Approves a pending join request by sealing the existing invite to the requester (reusing the
  * stored [OfficeDocMeta], so the document need not be open) and recording them on the roster.
  */
-fun OfficeViewModel.approveJoinRequest(docId: String, requesterId: String, name: String = "", onResult: (Boolean) -> Unit = {}) {
+fun OfficeViewModel.approveJoinRequest(
+    docId: String,
+    requesterId: String,
+    name: String = "",
+    onResult: (Boolean) -> Unit = {}) {
     viewModelScope.launch(Dispatchers.IO) {
         val ok = runCatching {
             OfficeSync.init(getApplication())
@@ -114,7 +118,15 @@ fun OfficeViewModel.approveJoinRequest(docId: String, requesterId: String, name:
             val key = Base64.decode(meta.keyB64)
             // Record the new member on the owner-signed roster, then seal the invite to them.
             writeMembers(docId, key, listOf(OfficeMember(requesterId, name, OfficeRoles.EDITOR)))
-            OfficeSync.sendInvite(requesterId, docId, key, meta.title, meta.charMode, OfficeRoles.EDITOR, meta.ownerKeyB64, meta.charKind)
+            OfficeSync.sendInvite(
+                requesterId,
+                docId,
+                key,
+                meta.title,
+                meta.charMode,
+                OfficeRoles.EDITOR,
+                meta.ownerKeyB64,
+                meta.charKind)
         }.getOrDefault(false)
         if (ok) removePendingRequest(docId, requesterId)
         withContext(Dispatchers.Main) { onResult(ok) }
@@ -128,51 +140,68 @@ fun OfficeViewModel.denyRequest(docId: String, requesterId: String) {
 
 /** Pulls new invites from this device's inbox and merges them into the online list; refreshes titles. */
 fun OfficeViewModel.refreshOnline() {
-    if (!_onlineEnabled.value && !hasOnlineIdentity()) return
+    if (!onlineEnabledMutable.value && !hasOnlineIdentity()) return
     viewModelScope.launch(Dispatchers.IO) {
         runCatching {
             OfficeSync.init(getApplication())
             val ds = DataStoreUtils.getInstance(getApplication())
-            val cursor = ds.getLong("officeInboxCursor")?.toInt() ?: 0
-            val res = OfficeSync.pullInbox(cursor)
-            if (res.invites.isNotEmpty()) {
-                indexMutex.withLock {
-                    val index = loadIndex(ds).associateBy { it.docId }.toMutableMap()
-                    for (inv in res.invites) {
-                        if (!index.containsKey(inv.docId)) index[inv.docId] = officeDocMetaFromInvite(inv)
-                    }
-                    saveIndex(ds, index.values.toList())
-                }
-            }
-            if (res.requests.isNotEmpty()) {
-                // Only surface requests for docs this device owns; dedup by (docId, requesterId).
-                val owned = indexMutex.withLock { loadIndex(ds) }.filter { it.owner }.map { it.docId }.toSet()
-                requestsMutex.withLock {
-                    val existing = loadRequests(ds).toMutableList()
-                    for (r in res.requests) {
-                        if (r.docId in owned && existing.none { it.docId == r.docId && it.requesterId == r.requesterId }) {
-                            existing.add(r)
-                        }
-                    }
-                    saveRequests(ds, existing)
-                }
-            }
+            val res = pullInboxInvites(ds) ?: return@runCatching
+            mergeRequests(ds, res)
             ds.setLong("officeInboxCursor", res.seq.toLong())
             // Pick up any owner rename for docs we already have (network done outside the lock).
-            val current = indexMutex.withLock { loadIndex(ds) }
-            val updates = HashMap<String, String>()
-            for (meta in current) {
-                val k = runCatching { Base64.decode(meta.keyB64) }.getOrNull() ?: continue
-                val ok = meta.ownerKeyB64.takeIf { it.isNotBlank() }?.let { runCatching { Base64.decode(it) }.getOrNull() }
-                val t = runCatching { fetchTitle(meta.docId, k, ok) }.getOrNull()
-                if (t != null && t != meta.title) updates[meta.docId] = t
-            }
-            if (updates.isNotEmpty()) indexMutex.withLock {
-                val index = loadIndex(ds).associateBy { it.docId }.toMutableMap()
-                for ((id, t) in updates) index[id]?.let { index[id] = it.copy(title = t) }
-                saveIndex(ds, index.values.toList())
+            refreshTitles(ds)
+        }
+    }
+}
+
+/** Pulls the inbox and folds new invites into the local index. Returns the inbox result. */
+internal suspend fun OfficeViewModel.pullInboxInvites(ds: DataStoreUtils): OfficeSync.InboxResult? {
+    val cursor = ds.getLong("officeInboxCursor")?.toInt() ?: 0
+    val res = OfficeSync.pullInbox(cursor)
+    if (res.invites.isEmpty()) return res
+    indexMutex.withLock {
+        val index = loadIndex(ds).associateBy { it.docId }.toMutableMap()
+        for (inv in res.invites) {
+            if (!index.containsKey(inv.docId)) index[inv.docId] = officeDocMetaFromInvite(inv)
+        }
+        saveIndex(ds, index.values.toList())
+    }
+    return res
+}
+
+/** Merges inbox join requests for docs this device owns, deduped by (docId, requesterId). */
+internal suspend fun OfficeViewModel.mergeRequests(ds: DataStoreUtils, res: OfficeSync.InboxResult) {
+    if (res.requests.isEmpty()) return
+    // Only surface requests for docs this device owns; dedup by (docId, requesterId).
+    val owned = indexMutex.withLock { loadIndex(ds) }.filter { it.owner }.map { it.docId }.toSet()
+    requestsMutex.withLock {
+        val existing = loadRequests(ds).toMutableList()
+        for (r in res.requests) {
+            val known = existing.none { it.docId == r.docId && it.requesterId == r.requesterId }
+            if (r.docId in owned && known) {
+                existing.add(r)
             }
         }
+        saveRequests(ds, existing)
+    }
+}
+
+/** Refreshes stored titles from any owner rename (network done outside the lock). */
+internal suspend fun OfficeViewModel.refreshTitles(ds: DataStoreUtils) {
+    val current = indexMutex.withLock { loadIndex(ds) }
+    val updates = HashMap<String, String>()
+    for (meta in current) {
+        val k = runCatching { Base64.decode(meta.keyB64) }.getOrNull() ?: continue
+        val ok =
+            meta.ownerKeyB64.takeIf { it.isNotBlank() }?.let { runCatching { Base64.decode(it) }.getOrNull() }
+        val t = runCatching { fetchTitle(meta.docId, k, ok) }.getOrNull()
+        if (t != null && t != meta.title) updates[meta.docId] = t
+    }
+    if (updates.isEmpty()) return
+    indexMutex.withLock {
+        val index = loadIndex(ds).associateBy { it.docId }.toMutableMap()
+        for ((id, t) in updates) index[id]?.let { index[id] = it.copy(title = t) }
+        saveIndex(ds, index.values.toList())
     }
 }
 
@@ -234,68 +263,124 @@ internal suspend fun OfficeViewModel.syncDoc(docId: String, key: ByteArray) = sy
  * into the online folder (new doc id + content key + CRDT upload), then the invite is sent.
  */
 /** Shares with a recipient. onResult receives null on success, or a human-readable error reason. */
-fun OfficeViewModel.shareCurrentDocument(recipientId: String, role: String = OfficeRoles.EDITOR, docName: String = "", onResult: (String?) -> Unit = {}) {
+fun OfficeViewModel.shareCurrentDocument(
+    recipientId: String,
+    role: String = OfficeRoles.EDITOR,
+    docName: String = "",
+    onResult: (String?) -> Unit = {}) {
     viewModelScope.launch(Dispatchers.IO) {
         val error: String? = try {
-            // Registration (key upload) must complete before we share, so peers can find us and
-            // decrypt what we send. If it fails, bail out before mutating ownership or sending.
-            if (!OfficeSync.init(getApplication())) "Couldn't register your device — check your connection and try again."
-            else {
-            val ds = DataStoreUtils.getInstance(getApplication())
-            val doc = (state.value as? OfficeViewModel.ViewState.Loaded)?.document
-            val firstShare = currentDocId == null
-            // The owner names the document when it first goes online; later shares keep that name.
-            val title = if (firstShare) docName.trim().ifBlank { doc?.title ?: "Document" }
-                else (currentOnlineTitle() ?: doc?.title ?: "Document")
-            // The tree CRDT is universal, so there's no per-type "char kind" any more.
-            val charKind = ""
-            val charMode = true
-            val docId = currentDocId ?: OfficeSync.newDocumentId()
-            val key = currentDocKey ?: OfficeSync.newDocumentKey()
-            if (firstShare) {
-                currentRole = OfficeRoles.OWNER
-                currentOwnerKey = OfficeSync.publicBundle
-                currentMembers[OfficeSync.deviceId] = OfficeRoles.OWNER
-                currentEpoch = 0
-                currentBaseKey = key
-                // Reflect the chosen name in the open editor so its title matches the online doc.
-                if (doc != null) withContext(Dispatchers.Main) {
-                    (state.value as? OfficeViewModel.ViewState.Loaded)?.document?.let { _state.value = ViewState.Loaded(withTitle(it, title)) }
-                }
-            }
-            when {
-                currentRole != OfficeRoles.OWNER -> "Only the owner can share this document."
-                OfficeSync.getKey(recipientId) == null ->
-                    "That device id isn't registered yet. Ask them to open Office once (Online tab), then try again."
-                else -> {
-                    currentDocId = docId
-                    currentDocKey = key
-                    currentCharKind = charKind
-                    _isOnline.value = true
-                    val ownerKeyB64 = Base64.encode(OfficeSync.publicBundle)
-                    syncDoc(docId, key)
-                    indexMutex.withLock {
-                        val index = loadIndex(ds).associateBy { it.docId }.toMutableMap()
-                        if (!index.containsKey(docId)) {
-                            index[docId] = OfficeDocMeta(docId, title, Base64.encode(key), owner = true, charMode = charMode, role = OfficeRoles.OWNER, ownerKeyB64 = ownerKeyB64, charKind = charKind)
-                            saveIndex(ds, index.values.toList())
-                        }
+            ensureShareRegistration() ?: run {
+                val ds = DataStoreUtils.getInstance(getApplication())
+                val doc = (state.value as? OfficeViewModel.ViewState.Loaded)?.document
+                val firstShare = currentDocId == null
+                val title = resolveShareTitle(docName, doc?.title)
+                val docId = currentDocId ?: OfficeSync.newDocumentId()
+                val key = currentDocKey ?: OfficeSync.newDocumentKey()
+                if (firstShare) initShareOwnership(title, key, doc != null)
+                when {
+                    currentRole != OfficeRoles.OWNER -> "Only the owner can share this document."
+                    OfficeSync.getKey(recipientId) == null ->
+                        "That device id isn't registered yet. Ask them to open Office once (Online tab), then try again."
+                    else -> {
+                        val ownerKeyB64 = prepareShareTarget(ds, docId, key, title)
+                        pushShareInvite(docId, key, title, recipientId, role, ownerKeyB64)
                     }
-                    startLive(docId, key)
-                    recordMembers(docId, key, listOf(
-                        OfficeMember(OfficeSync.deviceId, myName(), OfficeRoles.OWNER),
-                        OfficeMember(recipientId, "", role),
-                    ))
-                    if (OfficeSync.sendInvite(recipientId, docId, key, title, charMode, role, ownerKeyB64, charKind)) null
-                    else "Couldn't deliver the invite — check your connection."
                 }
             }
-            }
-        } catch (e: Exception) {
-            "Error: ${e.message ?: e.javaClass.simpleName}"
+        } catch (expected: Exception) {
+            "Error: ${expected.message ?: expected.javaClass.simpleName}"
         }
         withContext(Dispatchers.Main) { onResult(error) }
     }
+}
+
+/** Registers this device before sharing; returns an error message or null when ready. */
+internal suspend fun OfficeViewModel.ensureShareRegistration(): String? {
+    // Registration (key upload) must complete before we share, so peers can find us and
+    // decrypt what we send. If it fails, bail out before mutating ownership or sending.
+    if (!OfficeSync.init(getApplication())) return "Couldn't register your device —" +
+        "check your connection and try again."
+    return null
+}
+
+/** Resolves the online title: owner names it on first share, later shares keep the stored name. */
+internal fun OfficeViewModel.resolveShareTitle(docName: String, docTitle: String?): String {
+    val firstShare = currentDocId == null
+    // The owner names the document when it first goes online; later shares keep that name.
+    return if (firstShare) docName.trim().ifBlank { docTitle ?: "Document" }
+    else (currentOnlineTitle() ?: docTitle ?: "Document")
+}
+
+/** Claims ownership on first share and mirrors the chosen name into the open editor. */
+internal suspend fun OfficeViewModel.initShareOwnership(title: String, key: ByteArray, hasDoc: Boolean) {
+    currentRole = OfficeRoles.OWNER
+    currentOwnerKey = OfficeSync.publicBundle
+    currentMembers[OfficeSync.deviceId] = OfficeRoles.OWNER
+    currentEpoch = 0
+    currentBaseKey = key
+    // Reflect the chosen name in the open editor so its title matches the online doc.
+    if (hasDoc) withContext(Dispatchers.Main) {
+        setLoadedTitle(title)
+    }
+}
+
+/** Points session state at the shared doc, syncs it, records it in the index, starts live. */
+internal suspend fun OfficeViewModel.prepareShareTarget(
+    ds: DataStoreUtils,
+    docId: String,
+    key: ByteArray,
+    title: String,
+): String {
+    // The tree CRDT is universal, so there's no per-type "char kind" any more.
+    currentDocId = docId
+    currentDocKey = key
+    currentCharKind = ""
+    isOnlineMutable.value = true
+    val ownerKeyB64 = Base64.encode(OfficeSync.publicBundle)
+    syncDoc(docId, key)
+    indexMutex.withLock {
+        val index = loadIndex(ds).associateBy { it.docId }.toMutableMap()
+        if (!index.containsKey(docId)) {
+            index[docId] = OfficeDocMeta(
+                docId,
+                title,
+                Base64.encode(key),
+                owner = true,
+                charMode = true,
+                role = OfficeRoles.OWNER,
+                ownerKeyB64 = ownerKeyB64,
+                charKind = "")
+            saveIndex(ds, index.values.toList())
+        }
+    }
+    startLive(docId, key)
+    return ownerKeyB64
+}
+
+/** Records the roster and delivers the invite; null on success, error message otherwise. */
+internal suspend fun OfficeViewModel.pushShareInvite(
+    docId: String,
+    key: ByteArray,
+    title: String,
+    recipientId: String,
+    role: String,
+    ownerKeyB64: String,
+): String? {
+    recordMembers(docId, key, listOf(
+        OfficeMember(OfficeSync.deviceId, myName(), OfficeRoles.OWNER),
+        OfficeMember(recipientId, "", role),
+    ))
+    if (OfficeSync.sendInvite(
+        recipientId,
+        docId,
+        key,
+        title,
+        true,
+        role,
+        ownerKeyB64,
+        "")) return null
+    return "Couldn't deliver the invite — check your connection."
 }
 
 /** Pushes local edits and merges remote ones for the open online document (no-op if offline). */
@@ -333,7 +418,9 @@ fun OfficeViewModel.openOnlineDocument(meta: OfficeDocMeta) {
             val title = runCatching { fetchTitle(meta.docId, key, currentOwnerKey) }.getOrNull() ?: meta.title
             if (title != meta.title) indexMutex.withLock {
                 val index = loadIndex(ds).associateBy { it.docId }.toMutableMap()
-                index[meta.docId]?.let { index[meta.docId] = it.copy(title = title); saveIndex(ds, index.values.toList()) }
+                index[meta.docId]?.let { index[meta.docId] = it.copy(title = title); saveIndex(
+                    ds,
+                    index.values.toList()) }
             }
             val cursor = ds.getLong("crdtCursor:${meta.docId}")?.toInt() ?: 0
             val pulled = OfficeSync.pullDocActions(meta.docId, key, cursor)
@@ -347,7 +434,9 @@ fun OfficeViewModel.openOnlineDocument(meta: OfficeDocMeta) {
                 // No accepted content — usually ops from an older version that no longer verify.
                 crdt.close() // never adopted as currentTree; free its native handle
                 withContext(Dispatchers.Main) {
-                    _state.value = ViewState.Error("This shared document has no readable content. It was likely created with an older version — ask the owner to re-share a new copy.")
+                    stateMutable.value =
+                        ViewState.Error("This shared document has no readable content. It was likely created" +
+                            "with an older version — ask the owner to re-share a new copy.")
                 }
                 return@runCatching
             }
@@ -357,7 +446,7 @@ fun OfficeViewModel.openOnlineDocument(meta: OfficeDocMeta) {
             file.writeText(mergedXml)
             withContext(Dispatchers.Main) {
                 loadDocument(Uri.fromFile(file), "$safeTitle.fodt", meta.docId, key)
-                _isEditMode.value = OfficeRoles.canEdit(meta.role) // viewers are read-only
+                isEditModeMutable.value = OfficeRoles.canEdit(meta.role) // viewers are read-only
             }
             // loadDocument() above already closed+nulled any prior tree; guard defensively.
             if (currentTree !== crdt) currentTree?.close()

@@ -111,30 +111,45 @@ fun LearnHomeScreen(onOpenStage: (String, String) -> Unit) {
                     )
                 }
                 items(cat.stages, key = { "stage_${it.key}" }) { stage ->
-                    val done = LearnProgress.completedCount(context, stage)
-                    Card(Modifier.fillMaxWidth().clickable { onOpenStage(cat.key, stage.key) }) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(stage.title, fontWeight = FontWeight.Bold)
-                                Text(
-                                    stage.subtitle,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Text(
-                                stringResource(R.string.learn_progress, done, stage.levels.size),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = if (done == stage.levels.size) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    StageRow(
+                        context = context,
+                        catKey = cat.key,
+                        stage = stage,
+                        onOpenStage = onOpenStage
+                    )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun StageRow(
+    context: android.content.Context,
+    catKey: String,
+    stage: com.vayunmathur.games.chess.data.LearnStage,
+    onOpenStage: (String, String) -> Unit,
+) {
+    val done = LearnProgress.completedCount(context, stage)
+    Card(Modifier.fillMaxWidth().clickable { onOpenStage(catKey, stage.key) }) {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(stage.title, fontWeight = FontWeight.Bold)
+                Text(
+                    stage.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                stringResource(R.string.learn_progress, done, stage.levels.size),
+                style = MaterialTheme.typography.labelLarge,
+                color = if (done == stage.levels.size) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -162,61 +177,13 @@ fun LearnStageScreen(
             Box(Modifier.fillMaxSize().padding(pad), Alignment.Center) { CircularProgressIndicator() }
             return@AppScaffold
         }
-        val isLast = ui.levelIndex + 1 >= stage.levels.size
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(pad)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                stage.subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                level.goal,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(12.dp))
-            LearnBoard(ui, viewModel::onSquareClick)
-            Spacer(Modifier.height(12.dp))
-            LevelStepper(
-                count = stage.levels.size,
-                current = ui.levelIndex,
-                stars = ui.stageStars,
-                onSelect = { viewModel.goToLevel(it) }
-            )
-            Spacer(Modifier.height(12.dp))
-
-            // Fixed-height status/action area so the board never shifts.
-            Box(Modifier.height(112.dp), contentAlignment = Alignment.TopCenter) {
-                when (ui.status) {
-                    LearnStatus.Completed -> if (!isLast) Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        StarRow(ui.starsEarned)
-                        Text(stringResource(R.string.learn_completed), fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(8.dp))
-                        Button(onClick = { viewModel.nextLevel() }) {
-                            Text(stringResource(R.string.learn_next))
-                        }
-                    }
-                    LearnStatus.Failed -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(stringResource(R.string.learn_failed), fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(8.dp))
-                        Button(onClick = { viewModel.retryLevel() }) {
-                            Text(stringResource(R.string.learn_retry))
-                        }
-                    }
-                    LearnStatus.Playing -> {}
-                }
-            }
-        }
+        LearnStageContent(
+            ui = ui,
+            stage = stage,
+            level = level,
+            viewModel = viewModel,
+            pad = pad,
+        )
 
         if (showIntro) StageIntroDialog(stage, onStart = { showIntro = false })
 
@@ -226,6 +193,7 @@ fun LearnStageScreen(
         }
 
         // Stage-complete overlay after the final level (Lichess "Stage N complete").
+        val isLast = ui.levelIndex + 1 >= stage.levels.size
         if (ui.status == LearnStatus.Completed && isLast) {
             val next = com.vayunmathur.games.chess.data.LearnRepository.nextStage(stage.key)
             StageCompleteDialog(
@@ -236,6 +204,81 @@ fun LearnStageScreen(
                 onNext = { next?.let { onOpenStage(it.first, it.second.key) } },
                 onBackToMenu = onBack
             )
+        }
+    }
+}
+
+@Composable
+private fun LearnStageContent(
+    ui: LearnUiState,
+    stage: com.vayunmathur.games.chess.data.LearnStage,
+    level: com.vayunmathur.games.chess.data.LearnLevel,
+    viewModel: LearnViewModel,
+    pad: PaddingValues,
+) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(pad)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            stage.subtitle,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            level.goal,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(12.dp))
+        LearnBoard(ui, viewModel::onSquareClick)
+        Spacer(Modifier.height(12.dp))
+        LevelStepper(
+            count = stage.levels.size,
+            current = ui.levelIndex,
+            stars = ui.stageStars,
+            onSelect = { viewModel.goToLevel(it) }
+        )
+        Spacer(Modifier.height(12.dp))
+
+        // Fixed-height status/action area so the board never shifts.
+        LearnStatusArea(ui = ui, isLast = ui.levelIndex + 1 >= stage.levels.size, viewModel = viewModel)
+    }
+}
+
+@Composable
+private fun LearnStatusArea(
+    ui: LearnUiState,
+    isLast: Boolean,
+    viewModel: LearnViewModel,
+) {
+    Box(Modifier.height(112.dp), contentAlignment = Alignment.TopCenter) {
+        when (ui.status) {
+            LearnStatus.Completed -> if (!isLast) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    StarRow(ui.starsEarned)
+                    Text(stringResource(R.string.learn_completed), fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = { viewModel.nextLevel() }) {
+                        Text(stringResource(R.string.learn_next))
+                    }
+                }
+            }
+            LearnStatus.Failed -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(stringResource(R.string.learn_failed), fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = { viewModel.retryLevel() }) {
+                    Text(stringResource(R.string.learn_retry))
+                }
+            }
+            LearnStatus.Playing -> {}
         }
     }
 }
@@ -377,25 +420,46 @@ fun LevelStepper(count: Int, current: Int, stars: List<Int>, onSelect: (Int) -> 
 @Composable
 internal fun StarRow(stars: Int) {
     Row {
-        for (i in 1..3) {
+        for (i in 1..MAX_LEARN_STARS) {
             Text(
                 if (i <= stars) "★" else "☆",
                 fontSize = 28.sp,
                 color = if (i <= stars) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
             )
         }
     }
 }
 
 private fun brushColor(brush: String): Color = when (brush) {
-    "red" -> Color(0xCCE04040)
-    "yellow" -> Color(0xCCE0B020)
-    "blue" -> Color(0xCC4070E0)
-    else -> Color(0xCC2F9E52) // green / paleGreen
+    "red" -> Color(BRUSH_RED)
+    "yellow" -> Color(BRUSH_YELLOW)
+    "blue" -> Color(BRUSH_BLUE)
+    else -> Color(BRUSH_GREEN) // green / paleGreen
 }
 
-private fun DrawScope.drawLearnArrow(from: com.vayunmathur.games.chess.data.Position, to: com.vayunmathur.games.chess.data.Position, cell: Float, color: Color) {
+private const val BRUSH_RED = 0xCCE04040
+private const val BRUSH_YELLOW = 0xCCE0B020
+private const val BRUSH_BLUE = 0xCC4070E0
+private const val BRUSH_GREEN = 0xCC2F9E52
+private const val STAR_YELLOW = 0xF0FFC107
+private const val MAX_LEARN_STARS = 3
+private const val BOARD_SQUARES = 8
+private const val FLIPPED_ROTATION = 180f
+private const val ARROW_HEAD_WIDTH_FRACTION = 0.9f
+private const val ARROW_HEAD_LEN_FRACTION = 0.8f
+private const val ARROW_STROKE_FRACTION = 0.18f
+private const val RING_RADIUS_FRACTION = 0.42f
+private const val RING_STROKE_FRACTION = 0.08f
+private const val STAR_OUTER_FRACTION = 0.36f
+private const val STAR_INNER_FRACTION = 0.15f
+
+private fun DrawScope.drawLearnArrow(
+    from: com.vayunmathur.games.chess.data.Position,
+    to: com.vayunmathur.games.chess.data.Position,
+    cell: Float,
+    color: Color,
+) {
     val start = Offset(from.col * cell + cell / 2, from.row * cell + cell / 2)
     val end = Offset(to.col * cell + cell / 2, to.row * cell + cell / 2)
     val dx = end.x - start.x
@@ -405,15 +469,21 @@ private fun DrawScope.drawLearnArrow(from: com.vayunmathur.games.chess.data.Posi
     val ux = dx / dist
     val uy = dy / dist
     // Arrowhead spanning ~90% of a square, matching Lichess's chunky learn arrows.
-    val headWidth = cell * 0.9f
-    val headLen = cell * 0.8f
+    val headWidth = cell * ARROW_HEAD_WIDTH_FRACTION
+    val headLen = cell * ARROW_HEAD_LEN_FRACTION
     val baseX = end.x - ux * headLen
     val baseY = end.y - uy * headLen
     val perpX = -uy
     val perpY = ux
     val p1 = Offset(baseX + perpX * headWidth / 2, baseY + perpY * headWidth / 2)
     val p2 = Offset(baseX - perpX * headWidth / 2, baseY - perpY * headWidth / 2)
-    drawLine(color, start, Offset(baseX, baseY), strokeWidth = cell * 0.18f, cap = StrokeCap.Round)
+    drawLine(
+        color,
+        start,
+        Offset(baseX, baseY),
+        strokeWidth = cell * ARROW_STROKE_FRACTION,
+        cap = StrokeCap.Round
+    )
     val path = Path().apply {
         moveTo(end.x, end.y); lineTo(p1.x, p1.y); lineTo(p2.x, p2.y); close()
     }
@@ -422,9 +492,9 @@ private fun DrawScope.drawLearnArrow(from: com.vayunmathur.games.chess.data.Posi
 
 private fun DrawScope.drawStar(center: Offset, outerR: Float, innerR: Float, color: Color) {
     val path = Path()
-    for (i in 0 until 10) {
+    for (i in 0 until STAR_POINTS) {
         val r = if (i % 2 == 0) outerR else innerR
-        val a = -Math.PI / 2 + i * Math.PI / 5
+        val a = -Math.PI / STAR_HALF_DIVISOR + i * Math.PI / STAR_STEP_DIVISOR
         val x = (center.x + cos(a) * r).toFloat()
         val y = (center.y + sin(a) * r).toFloat()
         if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
@@ -432,6 +502,10 @@ private fun DrawScope.drawStar(center: Offset, outerR: Float, innerR: Float, col
     path.close()
     drawPath(path, color)
 }
+
+private const val STAR_POINTS = 10
+private const val STAR_HALF_DIVISOR = 2
+private const val STAR_STEP_DIVISOR = 5
 
 @Composable
 fun LearnBoard(ui: LearnUiState, onSquareClick: (com.vayunmathur.games.chess.data.Position) -> Unit) {
@@ -447,28 +521,41 @@ fun LearnBoard(ui: LearnUiState, onSquareClick: (com.vayunmathur.games.chess.dat
         Canvas(
             Modifier
                 .matchParentSize()
-                .graphicsLayer { if (ui.isFlipped) rotationZ = 180f }
+                .graphicsLayer { if (ui.isFlipped) rotationZ = FLIPPED_ROTATION }
         ) {
-            val cell = size.width / 8f
-            ui.shapes.forEach { s ->
-                val color = brushColor(s.brush)
-                val o = square(s.orig)
-                val dest = s.dest
-                if (dest != null) {
-                    drawLearnArrow(o, square(dest), cell, color)
-                } else {
-                    drawCircle(
-                        color,
-                        radius = cell * 0.42f,
-                        center = Offset(o.col * cell + cell / 2, o.row * cell + cell / 2),
-                        style = Stroke(width = cell * 0.08f)
-                    )
-                }
-            }
-            ui.apples.forEach { a ->
-                val center = Offset(a.col * cell + cell / 2, a.row * cell + cell / 2)
-                drawStar(center, cell * 0.36f, cell * 0.15f, Color(0xF0FFC107))
-            }
+            val cell = size.width / BOARD_SQUARES
+            ui.shapes.forEach { drawLearnShape(it, cell) }
+            ui.apples.forEach { drawApple(it, cell) }
         }
     }
 }
+
+private fun DrawScope.drawLearnShape(s: com.vayunmathur.games.chess.data.LearnShape, cell: Float) {
+    val color = brushColor(s.brush)
+    val o = square(s.orig)
+    val dest = s.dest
+    if (dest != null) {
+        drawLearnArrow(o, square(dest), cell, color)
+    } else {
+        drawCircle(
+            color,
+            radius = cell * RING_RADIUS_FRACTION,
+            center = cellCenter(o, cell),
+            style = Stroke(width = cell * RING_STROKE_FRACTION)
+        )
+    }
+}
+
+private fun DrawScope.drawApple(a: com.vayunmathur.games.chess.data.Position, cell: Float) {
+    drawStar(
+        cellCenter(a, cell),
+        cell * STAR_OUTER_FRACTION,
+        cell * STAR_INNER_FRACTION,
+        Color(STAR_YELLOW)
+    )
+}
+
+private fun cellCenter(p: com.vayunmathur.games.chess.data.Position, cell: Float): Offset =
+    Offset(p.col * cell + cell / CELL_HALF_DIVISOR, p.row * cell + cell / CELL_HALF_DIVISOR)
+
+private const val CELL_HALF_DIVISOR = 2

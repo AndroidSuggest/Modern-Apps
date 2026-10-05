@@ -43,6 +43,18 @@ object GpuStitcher {
     // Coverage threshold: accumulated weight above this counts as "has data".
     private const val COVERAGE_EPS = 1e-2f
 
+    /** GL defaults: min texture cap, texture unit 0, bytes per RGBA pixel, opaque alpha. */
+    private const val GL_MIN_TEXTURE_CAP = 2048
+    private const val GL_TEXTURE_UNIT_ZERO = 0
+    private const val RGBA_BYTES_PER_PIXEL = 4
+    private const val ALPHA_OPAQUE = 255
+    /** Interleaved vertex stride (4 floats); mesh floats/indices sizes in bytes. */
+    private const val VERTEX_STRIDE_BYTES = 4 * 4
+    private const val FLOAT_BYTES = 4
+    private const val SHORT_BYTES = 2
+    /** Fullscreen-triangle vertex count for the normalization pass. */
+    private const val FULLSCREEN_TRIANGLE_VERTICES = 3
+
     private const val EGL_OPENGL_ES3_BIT = 0x0040
 
     /** One kept frame's camera solution. [r] is the 3×3 rotation, row-major. */
@@ -101,7 +113,10 @@ object GpuStitcher {
                 cams.add(FrameCam(idx, focal, ppx, ppy, r, gain))
             }
             Estimate(canvasW, canvasH, u0, v0, scale, cams)
-        } catch (t: Throwable) {
+        } catch (t: java.nio.BufferUnderflowException) {
+            Log.e(TAG, "parseEstimate failed", t)
+            null
+        } catch (t: IllegalArgumentException) {
             Log.e(TAG, "parseEstimate failed", t)
             null
         }
@@ -122,7 +137,10 @@ object GpuStitcher {
                 return null
             }
             gl.render(estimate, frames)
-        } catch (t: Throwable) {
+        } catch (t: IllegalStateException) {
+            Log.e(TAG, "composite failed", t)
+            null
+        } catch (t: IllegalArgumentException) {
             Log.e(TAG, "composite failed", t)
             null
         } finally {
@@ -161,14 +179,43 @@ object GpuStitcher {
         private var outFbo = 0
 
         fun render(est: Estimate, frames: List<ByteArray>): CompositeResult? {
+            val cap = textureCap(est) ?: return null
+            if (!setupAccumulation(est)) return null
+            if (!setupPrograms()) return null
+            val drawn = accumulateAndDisableBlend(est, frames, cap)
+            if (drawn == 0) return null
+            if (!setupNormalization(est)) return null
+            return readbackCropped(est)
+        }
+
+        /** Builds the warp + normalization shader programs. */
+        private fun setupPrograms(): Boolean {
+            warpProgram = buildProgram(WARP_VS, WARP_FS) ?: return false
+            normProgram = buildProgram(NORM_VS, NORM_FS) ?: return false
+            return true
+        }
+
+        /** Accumulates frames, then disables blending and returns the drawn count. */
+        private fun accumulateAndDisableBlend(est: Estimate, frames: List<ByteArray>, cap: Int): Int {
+            val drawn = accumulateFrames(est, frames, cap)
+            GLES20.glDisable(GLES20.GL_BLEND)
+            return drawn
+        }
+
+        /** Queries GL_MAX_TEXTURE_SIZE and rejects canvases that exceed it. */
+        private fun textureCap(est: Estimate): Int? {
             val maxTex = IntArray(1)
             GLES30.glGetIntegerv(GLES30.GL_MAX_TEXTURE_SIZE, maxTex, 0)
-            val cap = maxTex[0].coerceAtLeast(2048)
+            val cap = maxTex[0].coerceAtLeast(GL_MIN_TEXTURE_CAP)
             if (est.canvasW > cap || est.canvasH > cap) {
                 Log.w(TAG, "canvas ${est.canvasW}x${est.canvasH} exceeds GL_MAX_TEXTURE_SIZE $cap")
                 return null
             }
+            return cap
+        }
 
+        /** Creates the RGBA16F accumulation FBO (needs GL_EXT_color_buffer_float). */
+        private fun setupAccumulation(est: Estimate): Boolean {
             // RGBA16F accumulation FBO — needs GL_EXT_color_buffer_float.
             accumTex = genTexture(GLES30.GL_NEAREST)
             GLES30.glTexImage2D(
@@ -178,11 +225,8 @@ object GpuStitcher {
             accumFbo = genFbo(accumTex)
             if (GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER) != GLES30.GL_FRAMEBUFFER_COMPLETE) {
                 Log.w(TAG, "RGBA16F FBO incomplete (no color-buffer-float support)")
-                return null
+                return false
             }
-
-            warpProgram = buildProgram(WARP_VS, WARP_FS) ?: return null
-            normProgram = buildProgram(NORM_VS, NORM_FS) ?: return null
 
             // --- accumulate all frames additively ---
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, accumFbo)
@@ -192,7 +236,14 @@ object GpuStitcher {
             GLES20.glEnable(GLES20.GL_BLEND)
             GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE)
             GLES20.glBlendEquation(GLES20.GL_FUNC_ADD)
+            return true
+        }
 
+        /**
+         * Draws every frame's warp mesh (at ±one full-circle X offset for seam
+         * handling) into the accumulation buffer. Returns the drawn frame count.
+         */
+        private fun accumulateFrames(est: Estimate, frames: List<ByteArray>, cap: Int): Int {
             val indices = buildIndexBuffer()
             val indexCount = GRID * GRID * 6
             GLES30.glUseProgram(warpProgram)
@@ -210,39 +261,81 @@ object GpuStitcher {
 
             var drawn = 0
             for (cam in est.cams) {
-                val jpeg = frames.getOrNull(cam.originalIndex) ?: continue
-                val tex = uploadFrame(jpeg, cap) ?: continue
-                try {
-                    val verts = buildFrameMesh(est, cam)
-                    GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
-                    GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex)
-                    GLES30.glUniform1i(uTex, 0)
-                    GLES30.glUniform1f(uGain, cam.gain)
-                    GLES30.glUniform1f(uFeather, FEATHER)
-
-                    verts.position(0)
-                    GLES30.glEnableVertexAttribArray(0)
-                    GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, 4 * 4, verts)
-                    verts.position(2)
-                    GLES30.glEnableVertexAttribArray(1)
-                    GLES30.glVertexAttribPointer(1, 2, GLES30.GL_FLOAT, false, 4 * 4, verts)
-
-                    for (off in xOffsets) {
-                        GLES30.glUniform1f(uXOffset, off)
-                        indices.position(0)
-                        GLES30.glDrawElements(GLES30.GL_TRIANGLES, indexCount, GLES30.GL_UNSIGNED_SHORT, indices)
-                    }
-                    GLES30.glDisableVertexAttribArray(0)
-                    GLES30.glDisableVertexAttribArray(1)
+                if (drawFrame(est, cam, frames, cap, indices, indexCount, uGain, uFeather, uTex, uXOffset, xOffsets)) {
                     drawn++
-                } finally {
-                    val t = intArrayOf(tex)
-                    GLES30.glDeleteTextures(1, t, 0)
                 }
             }
-            GLES20.glDisable(GLES20.GL_BLEND)
-            if (drawn == 0) return null
+            return drawn
+        }
 
+        /** Draws one frame's mesh; false when the frame is missing or undecodable. */
+        private fun drawFrame(
+            est: Estimate,
+            cam: FrameCam,
+            frames: List<ByteArray>,
+            cap: Int,
+            indices: ShortBuffer,
+            indexCount: Int,
+            uGain: Int,
+            uFeather: Int,
+            uTex: Int,
+            uXOffset: Int,
+            xOffsets: FloatArray
+        ): Boolean {
+            val jpeg = frames.getOrNull(cam.originalIndex) ?: return false
+            val tex = uploadFrame(jpeg, cap) ?: return false
+            try {
+                bindFrameTexture(tex, uTex, uGain, uFeather, cam)
+                drawMesh(est, cam, indices, indexCount, uXOffset, xOffsets)
+                return true
+            } finally {
+                val t = intArrayOf(tex)
+                GLES30.glDeleteTextures(1, t, 0)
+            }
+        }
+
+        /** Binds the frame texture and its gain/feather uniforms. */
+        private fun bindFrameTexture(tex: Int, uTex: Int, uGain: Int, uFeather: Int, cam: FrameCam) {
+            GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex)
+            GLES30.glUniform1i(uTex, GL_TEXTURE_UNIT_ZERO)
+            GLES30.glUniform1f(uGain, cam.gain)
+            GLES30.glUniform1f(uFeather, FEATHER)
+        }
+
+        /** Binds the interleaved [ndcX, ndcY, u, v] attribs (stride 4 floats). */
+        private fun bindPositionAttribs(verts: FloatBuffer) {
+            verts.position(0)
+            GLES30.glEnableVertexAttribArray(0)
+            GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, VERTEX_STRIDE_BYTES, verts)
+            verts.position(2)
+            GLES30.glEnableVertexAttribArray(1)
+            GLES30.glVertexAttribPointer(1, 2, GLES30.GL_FLOAT, false, VERTEX_STRIDE_BYTES, verts)
+        }
+
+        /** Emits the vertex attribs and draws the mesh at each seam offset. */
+        private fun drawMesh(
+            est: Estimate,
+            cam: FrameCam,
+            indices: ShortBuffer,
+            indexCount: Int,
+            uXOffset: Int,
+            xOffsets: FloatArray
+        ) {
+            val verts = buildFrameMesh(est, cam)
+            bindPositionAttribs(verts)
+
+            for (off in xOffsets) {
+                GLES30.glUniform1f(uXOffset, off)
+                indices.position(0)
+                GLES30.glDrawElements(GLES30.GL_TRIANGLES, indexCount, GLES30.GL_UNSIGNED_SHORT, indices)
+            }
+            GLES30.glDisableVertexAttribArray(0)
+            GLES30.glDisableVertexAttribArray(1)
+        }
+
+        /** Creates the RGBA8 normalization FBO and runs the normalize shader. */
+        private fun setupNormalization(est: Estimate): Boolean {
             // --- normalization pass into an RGBA8 output FBO ---
             outTex = genTexture(GLES30.GL_NEAREST)
             GLES30.glTexImage2D(
@@ -252,7 +345,7 @@ object GpuStitcher {
             outFbo = genFbo(outTex)
             if (GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER) != GLES30.GL_FRAMEBUFFER_COMPLETE) {
                 Log.w(TAG, "output FBO incomplete")
-                return null
+                return false
             }
             GLES30.glViewport(0, 0, est.canvasW, est.canvasH)
             GLES30.glClearColor(0f, 0f, 0f, 0f)
@@ -260,12 +353,21 @@ object GpuStitcher {
             GLES30.glUseProgram(normProgram)
             GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
             GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, accumTex)
-            GLES30.glUniform1i(GLES30.glGetUniformLocation(normProgram, "uAccum"), 0)
+            GLES30.glUniform1i(
+                GLES30.glGetUniformLocation(normProgram, "uAccum"),
+                GL_TEXTURE_UNIT_ZERO
+            )
             GLES30.glUniform1f(GLES30.glGetUniformLocation(normProgram, "uEps"), COVERAGE_EPS)
-            GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
+            GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, FULLSCREEN_TRIANGLE_VERTICES)
+            return true
+        }
 
+        /** Reads the normalized buffer back and crops to the content rect. */
+        private fun readbackCropped(est: Estimate): CompositeResult {
             // --- read back + crop to content ---
-            val pixels = ByteBuffer.allocateDirect(est.canvasW * est.canvasH * 4).order(ByteOrder.nativeOrder())
+            val pixels = ByteBuffer.allocateDirect(
+                est.canvasW * est.canvasH * RGBA_BYTES_PER_PIXEL
+            ).order(ByteOrder.nativeOrder())
             GLES30.glReadPixels(0, 0, est.canvasW, est.canvasH, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, pixels)
 
             val full = createBitmap(est.canvasW, est.canvasH)
@@ -334,7 +436,7 @@ object GpuStitcher {
                     data[p++] = b
                 }
             }
-            return ByteBuffer.allocateDirect(data.size * 4).order(ByteOrder.nativeOrder())
+            return ByteBuffer.allocateDirect(data.size * FLOAT_BYTES).order(ByteOrder.nativeOrder())
                 .asFloatBuffer().apply { put(data); position(0) }
         }
 
@@ -352,7 +454,7 @@ object GpuStitcher {
                     idx[p++] = bb; idx[p++] = c; idx[p++] = d
                 }
             }
-            return ByteBuffer.allocateDirect(idx.size * 2).order(ByteOrder.nativeOrder())
+            return ByteBuffer.allocateDirect(idx.size * SHORT_BYTES).order(ByteOrder.nativeOrder())
                 .asShortBuffer().apply { put(idx); position(0) }
         }
 
@@ -436,7 +538,28 @@ object GpuStitcher {
                     Log.w(TAG, "eglInitialize failed")
                     return null
                 }
+                return createOnDisplay(display)
+            }
 
+            /** Chooses an ES3 pbuffer config and creates the context + surface on it. */
+            private fun createOnDisplay(display: EGLDisplay): GlEnv? {
+                val config = chooseConfig(display) ?: return null
+                val context = createContext(display, config) ?: return null
+                val surface = createSurface(display, config, context) ?: return null
+                if (!makeCurrent(display, surface, context)) return null
+                // Require float color-buffer support up front (FBO completeness
+                // is re-checked at render time as a backstop).
+                if (!hasColorBufferFloat()) {
+                    Log.w(TAG, "no GL_EXT_color_buffer_float; falling back to CPU")
+                    val env = GlEnv(display, context, surface)
+                    env.release()
+                    return null
+                }
+                return GlEnv(display, context, surface)
+            }
+
+            /** Picks an ES3 pbuffer config; null (terminated display) on failure. */
+            private fun chooseConfig(display: EGLDisplay): EGLConfig? {
                 val cfgAttr = intArrayOf(
                     EGL14.EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
                     EGL14.EGL_SURFACE_TYPE, EGL14.EGL_PBUFFER_BIT,
@@ -455,8 +578,11 @@ object GpuStitcher {
                     EGL14.eglTerminate(display)
                     return null
                 }
-                val config = configs[0]!!
+                return configs[0]
+            }
 
+            /** Creates the ES3 context; null (terminated display) on failure. */
+            private fun createContext(display: EGLDisplay, config: EGLConfig): EGLContext? {
                 val ctxAttr = intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 3, EGL14.EGL_NONE)
                 val context = EGL14.eglCreateContext(display, config, EGL14.EGL_NO_CONTEXT, ctxAttr, 0)
                 if (context == EGL14.EGL_NO_CONTEXT) {
@@ -464,6 +590,15 @@ object GpuStitcher {
                     EGL14.eglTerminate(display)
                     return null
                 }
+                return context
+            }
+
+            /** Creates the pbuffer surface; null (destroyed context) on failure. */
+            private fun createSurface(
+                display: EGLDisplay,
+                config: EGLConfig,
+                context: EGLContext
+            ): EGLSurface? {
                 val surfAttr = intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE)
                 val surface = EGL14.eglCreatePbufferSurface(display, config, surfAttr, 0)
                 if (surface == EGL14.EGL_NO_SURFACE) {
@@ -472,22 +607,23 @@ object GpuStitcher {
                     EGL14.eglTerminate(display)
                     return null
                 }
+                return surface
+            }
+
+            /** Makes the context current; false (torn-down surface+context) on failure. */
+            private fun makeCurrent(
+                display: EGLDisplay,
+                surface: EGLSurface,
+                context: EGLContext
+            ): Boolean {
                 if (!EGL14.eglMakeCurrent(display, surface, surface, context)) {
                     Log.w(TAG, "eglMakeCurrent failed")
                     EGL14.eglDestroySurface(display, surface)
                     EGL14.eglDestroyContext(display, context)
                     EGL14.eglTerminate(display)
-                    return null
+                    return false
                 }
-                // Require float color-buffer support up front (FBO completeness
-                // is re-checked at render time as a backstop).
-                if (!hasColorBufferFloat()) {
-                    Log.w(TAG, "no GL_EXT_color_buffer_float; falling back to CPU")
-                    val env = GlEnv(display, context, surface)
-                    env.release()
-                    return null
-                }
-                return GlEnv(display, context, surface)
+                return true
             }
 
             /** ES3-safe extension query (the monolithic GL_EXTENSIONS string may be empty). */
@@ -525,10 +661,10 @@ object GpuStitcher {
         var bestArea = 0
         val stack = IntArray(w + 1)
         for (y in 0 until h) {
-            val rowBase = y * w * 4
+            val rowBase = y * w * RGBA_BYTES_PER_PIXEL
             for (x in 0 until w) {
-                val alpha = pixels.get(rowBase + x * 4 + 3).toInt() and 0xFF
-                heights[x] = if (alpha == 255) heights[x] + 1 else 0
+                val alpha = pixels.get(rowBase + x * RGBA_BYTES_PER_PIXEL + 3).toInt() and 0xFF
+                heights[x] = if (alpha == ALPHA_OPAQUE) heights[x] + 1 else 0
             }
             var sp = 0
             var x = 0

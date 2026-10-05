@@ -9,17 +9,24 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 
 internal fun CameraViewModel.loadSettings() {
+    loadCaptureSettings()
+    loadPreferenceToggles()
+    if (levelEnabledMutable.value) registerLevelSensor()
+}
+
+/** Flash/timer/aspect/codec/audio-source/save-target/last-capture restores. */
+private fun CameraViewModel.loadCaptureSettings() {
     ds.getString("camera_flash")?.let {
-        runCatching { _flashMode.value = FlashMode.valueOf(it) }
+        runCatching { flashModeMutable.value = FlashMode.valueOf(it) }
     }
     ds.getString("camera_timer")?.let {
-        runCatching { _timerDuration.value = TimerDuration.valueOf(it) }
+        runCatching { timerDurationMutable.value = TimerDuration.valueOf(it) }
     }
     ds.getString("camera_aspect_ratio")?.let {
-        runCatching { _aspectRatio.value = AspectRatioOption.valueOf(it) }
+        runCatching { aspectRatioMutable.value = AspectRatioOption.valueOf(it) }
     }
     ds.getString("camera_video_codec")?.let {
-        _videoCodec.value = try { VideoCodec.valueOf(it) } catch (_: Exception) {
+        videoCodecMutable.value = try { VideoCodec.valueOf(it) } catch (_: Exception) {
             when {
                 CodecSupport.isHardwareAv1EncoderAvailable -> VideoCodec.AV1
                 CodecSupport.isHevcEncoderAvailable -> VideoCodec.HEVC
@@ -27,23 +34,30 @@ internal fun CameraViewModel.loadSettings() {
             }
         }
     }
-    ds.getString("camera_location")?.let { _locationEnabled.value = it.toBoolean() }
     ds.getString("camera_audio_source")?.let {
-        _audioInputSource.value = try { AudioInputSource.valueOf(it) } catch (_: Exception) { AudioInputSource.CAMCORDER }
+        audioInputSourceMutable.value = try {
+            AudioInputSource.valueOf(it)
+        } catch (_: Exception) {
+            AudioInputSource.CAMCORDER
+        }
     }
     loadSaveTarget()
     // Guard against a blank persisted value: Uri.parse("") yields a non-null
-    ds.getString("camera_last_capture")?.takeIf { it.isNotBlank() }?.let { _lastCaptureUri.value = it.toUri() }
-    ds.getString("camera_grid")?.let { _gridEnabled.value = it.toBoolean() }
-    ds.getString("camera_level")?.let { _levelEnabled.value = it.toBoolean() }
-    ds.getString("camera_mic_muted")?.let { _micMuted.value = it.toBoolean() }
-    ds.getString("camera_zoom_ratio")?.toFloatOrNull()?.let { _zoomRatio.value = it }
-    ds.getString("camera_mirror_front")?.let { _mirrorFront.value = it.toBoolean() }
-    if (_levelEnabled.value) registerLevelSensor()
+    ds.getString("camera_last_capture")?.takeIf { it.isNotBlank() }?.let { lastCaptureUriMutable.value = it.toUri() }
+}
+
+/** Boolean/float preference restores (location, grid, level, mic, zoom, mirror). */
+private fun CameraViewModel.loadPreferenceToggles() {
+    ds.getString("camera_location")?.let { locationEnabledMutable.value = it.toBoolean() }
+    ds.getString("camera_grid")?.let { gridEnabledMutable.value = it.toBoolean() }
+    ds.getString("camera_level")?.let { levelEnabledMutable.value = it.toBoolean() }
+    ds.getString("camera_mic_muted")?.let { micMutedMutable.value = it.toBoolean() }
+    ds.getString("camera_zoom_ratio")?.toFloatOrNull()?.let { zoomRatioMutable.value = it }
+    ds.getString("camera_mirror_front")?.let { mirrorFrontMutable.value = it.toBoolean() }
 }
 
 fun CameraViewModel.setFlashMode(mode: FlashMode) {
-    _flashMode.value = mode
+    flashModeMutable.value = mode
     viewModelScope.launch { ds.setString("camera_flash", mode.name) }
 }
 
@@ -52,21 +66,21 @@ fun CameraViewModel.setFlashMode(mode: FlashMode) {
  * Takes effect on the next capture; the preview updates immediately via the UI layer.
  */
 fun CameraViewModel.setMirrorFront(enabled: Boolean) {
-    _mirrorFront.value = enabled
+    mirrorFrontMutable.value = enabled
     viewModelScope.launch { ds.setString("camera_mirror_front", enabled.toString()) }
 }
 
 fun CameraViewModel.toggleTorch() {
-    _torchEnabled.value = !_torchEnabled.value
+    torchEnabledMutable.value = !torchEnabledMutable.value
 }
 
 fun CameraViewModel.setTimerDuration(duration: TimerDuration) {
-    _timerDuration.value = duration
+    timerDurationMutable.value = duration
     viewModelScope.launch { ds.setString("camera_timer", duration.name) }
 }
 
 fun CameraViewModel.setAspectRatio(ratio: AspectRatioOption) {
-    _aspectRatio.value = ratio
+    aspectRatioMutable.value = ratio
     // Re-apply the crop to the live capture use case so the next shot (and
     // its preview cropRect) matches the newly selected ratio without a rebind.
     imageCapture?.setCropAspectRatio(currentCropAspectRatio())
@@ -81,66 +95,66 @@ fun CameraViewModel.cycleAspectRatio() {
         AspectRatioOption.RATIO_16_9,
         AspectRatioOption.RATIO_1_1
     )
-    val next = order[(order.indexOf(_aspectRatio.value) + 1) % order.size]
+    val next = order[(order.indexOf(aspectRatioMutable.value) + 1) % order.size]
     setAspectRatio(next)
 }
 
 fun CameraViewModel.setLocationEnabled(enabled: Boolean) {
-    _locationEnabled.value = enabled
+    locationEnabledMutable.value = enabled
     viewModelScope.launch { ds.setString("camera_location", enabled.toString()) }
 }
 
 fun CameraViewModel.setVideoCodec(codec: VideoCodec) {
-    _videoCodec.value = codec
+    videoCodecMutable.value = codec
     viewModelScope.launch { ds.setString("camera_video_codec", codec.name) }
 }
 
 fun CameraViewModel.setAudioInputSource(source: AudioInputSource) {
-    _audioInputSource.value = source
+    audioInputSourceMutable.value = source
     viewModelScope.launch { ds.setString("camera_audio_source", source.name) }
 }
 
 fun CameraViewModel.toggleGrid() {
-    _gridEnabled.value = !_gridEnabled.value
-    viewModelScope.launch { ds.setString("camera_grid", _gridEnabled.value.toString()) }
+    gridEnabledMutable.value = !gridEnabledMutable.value
+    viewModelScope.launch { ds.setString("camera_grid", gridEnabledMutable.value.toString()) }
 }
 
 fun CameraViewModel.toggleLevel() {
-    _levelEnabled.value = !_levelEnabled.value
-    if (_levelEnabled.value) registerLevelSensor() else unregisterLevelSensor()
-    viewModelScope.launch { ds.setString("camera_level", _levelEnabled.value.toString()) }
+    levelEnabledMutable.value = !levelEnabledMutable.value
+    if (levelEnabledMutable.value) registerLevelSensor() else unregisterLevelSensor()
+    viewModelScope.launch { ds.setString("camera_level", levelEnabledMutable.value.toString()) }
 }
 
 /** Maps the 0..1 blur-strength UI value to the bokeh shader's blurScale multiplier. */
 fun CameraViewModel.setBlurStrength(value: Float) {
-    _blurStrength.value = value.coerceIn(0f, 1f)
+    blurStrengthMutable.value = value.coerceIn(0f, 1f)
 }
 
 fun CameraViewModel.setExposureCompensation(value: Float) {
-    _exposureCompensation.value = value
+    exposureCompensationMutable.value = value
 }
 
 fun CameraViewModel.setWarmth(value: Float) {
-    _warmth.value = value
+    warmthMutable.value = value
 }
 
 fun CameraViewModel.setShadows(value: Float) {
-    _shadows.value = value
+    shadowsMutable.value = value
 }
 
 internal fun CameraViewModel.setLastCaptureUri(uri: Uri?) {
-    _lastCaptureUri.value = uri
+    lastCaptureUriMutable.value = uri
     viewModelScope.launch { ds.setString("camera_last_capture", uri?.toString() ?: "") }
 }
 
 @android.annotation.SuppressLint("MissingPermission")
 fun CameraViewModel.updateLocation() {
-    if (!_locationEnabled.value) return
+    if (!locationEnabledMutable.value) return
     try {
         val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         lastLocation = lm.getLastKnownLocation(LocationManager.FUSED_PROVIDER)
             ?: lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-    } catch (e: Exception) {
+    } catch (e: SecurityException) {
         Log.w("CameraViewModel", "Failed to read last known location", e)
     }
 }

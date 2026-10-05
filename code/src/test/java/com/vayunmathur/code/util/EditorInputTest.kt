@@ -270,13 +270,13 @@ class EditorInputTest {
     @Test
     fun pasteReindentsBlockOntoCaretIndent() {
         // Caret sits after 4 spaces of indentation; the pasted block is de-dented then re-based.
-        val result = reindentPaste("    ", 4, "if (x) {\n    y()\n}", "  ")
+        val result = reindentPaste("    ", 4, "if (x) {\n    y()\n}")
         assertEquals("    if (x) {\n        y()\n    }", result.text)
     }
 
     @Test
     fun pasteStripsCommonLeadingIndent() {
-        val result = reindentPaste("", 0, "    a\n      b", "  ")
+        val result = reindentPaste("", 0, "    a\n      b")
         assertEquals("a\n  b", result.text)
     }
 
@@ -291,7 +291,7 @@ class EditorInputTest {
 
     @Test
     fun pasteBlankLinesBecomeEmpty() {
-        val result = reindentPaste("", 0, "a\n\nb", "  ")
+        val result = reindentPaste("", 0, "a\n\nb")
         assertEquals("a\n\nb", result.text)
     }
 

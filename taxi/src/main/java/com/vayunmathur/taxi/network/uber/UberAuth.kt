@@ -35,6 +35,10 @@ object UberAuth {
     private const val APP_VERSION = "4.641.10000"
     private const val CLIENT_NAME = "client"
 
+    /** Logcat previews: enough to identify the screen/error without dumping the whole form. */
+    private const val LOG_BODY_PREVIEW_MAX = 800
+    private const val ERROR_BODY_PREVIEW_MAX = 300
+
     private val json = Json { ignoreUnknownKeys = true; isLenient = true; explicitNulls = false }
 
     private fun headers() = mapOf(
@@ -95,10 +99,10 @@ object UberAuth {
         )
         Log.d(TAG, "POST /rt/silk-screen/submit-form -> ${resp.status}")
         if (!resp.isSuccess) {
-            Log.w(TAG, "submit-form ${resp.status}: ${resp.body.take(800)}")
-            return UberAuthResult.Failed("HTTP ${resp.status}: ${resp.body.take(300)}")
+            Log.w(TAG, "submit-form ${resp.status}: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
+            return UberAuthResult.Failed("HTTP ${resp.status}: ${resp.body.take(ERROR_BODY_PREVIEW_MAX)}")
         }
-        Log.d(TAG, "submit-form ok: ${resp.body.take(800)}")
+        Log.d(TAG, "submit-form ok: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
         val container = runCatching {
             json.decodeFromString(FormContainer.serializer(), resp.body)
         }.getOrElse { return UberAuthResult.Failed("Unreadable silkscreen response") }

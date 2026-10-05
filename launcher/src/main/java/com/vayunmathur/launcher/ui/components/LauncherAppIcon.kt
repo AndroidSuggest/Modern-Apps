@@ -80,7 +80,6 @@ fun LauncherAppIcon(
     LauncherIconCell(
         label = label,
         modifier = modifier,
-        scale = scale,
         showLabel = showLabel,
         dimmed = dimmed,
     ) {
@@ -118,7 +117,6 @@ internal fun LauncherIconImage(bitmap: ImageBitmap?, label: String, scale: Float
 internal fun LauncherIconCell(
     label: String,
     modifier: Modifier,
-    scale: Float,
     showLabel: Boolean,
     dimmed: Boolean,
     icon: @Composable () -> Unit,

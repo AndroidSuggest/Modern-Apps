@@ -75,7 +75,6 @@ fun SubscriptionVideosPage(
     }
 
     SubscriptionVideosScreen(
-        backStack = backStack,
         state = SubscriptionFeedUiState(
             videos = rows,
             fetchProgress = fetchProgress,
@@ -90,15 +89,13 @@ fun SubscriptionVideosPage(
 }
 
 /**
- * Stateless subscription feed. [backStack] is here only for preview tooling; taps on the
- * list itself go through [actions].
+ * Stateless subscription feed. Taps on the list itself go through [actions].
  */
 // RAW SCAFFOLD EXCEPTION: the feed switches between a LazyColumn (compact) and a
 // LazyVerticalGrid of adaptiveGridCells (expanded) around the same skeleton/loading
 // content. No shared scaffold models a column/grid switch.
 @Composable
 fun SubscriptionVideosScreen(
-    backStack: NavBackStack<Route>,
     state: SubscriptionFeedUiState,
     actions: SubscriptionFeedActions,
 ) {

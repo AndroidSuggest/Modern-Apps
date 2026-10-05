@@ -55,23 +55,24 @@ object SimContactsDataSource {
     private const val TAG = "SimContacts"
     private const val BASE_URI = "content://icc/adn"
 
+    // Broad catch is deliberate: OEM ICC providers throw undocumented
+    // RuntimeExceptions (not just SecurityException) on emulators and
+    // devices without a physical SIM.
+    @Suppress("TooGenericExceptionCaught")
     fun getActiveSubscriptionIds(context: Context): List<Int> {
         return try {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            if (ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.READ_PHONE_STATE
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
                 // Still try — some devices allow reading without READ_PHONE_STATE
                 // but SubscriptionManager will throw SecurityException otherwise.
             }
             // Prefer SubscriptionManager
-            val subMgr = context.getSystemService(SubscriptionManager::class.java) ?: return emptyList()
-            val list = try {
-                subMgr.activeSubscriptionInfoList
-            } catch (e: SecurityException) {
-                Log.w(TAG, "No permission for activeSubscriptionInfoList", e)
-                null
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to get active subscriptions", e)
-                null
-            }
+            val subMgr =
+                context.getSystemService(SubscriptionManager::class.java) ?: return emptyList()
+            val list = querySubscriptionInfoList(subMgr)
             list?.mapNotNull { it.subscriptionId } ?: emptyList()
         } catch (e: Exception) {
             Log.w(TAG, "getActiveSubscriptionIds failed", e)
@@ -79,6 +80,28 @@ object SimContactsDataSource {
         }
     }
 
+    // Broad catch is deliberate: OEM ICC providers throw undocumented
+    // RuntimeExceptions (not just SecurityException) on emulators and
+    // devices without a physical SIM.
+    @Suppress("TooGenericExceptionCaught")
+    private fun querySubscriptionInfoList(
+        subMgr: SubscriptionManager
+    ): List<android.telephony.SubscriptionInfo>? {
+        return try {
+            subMgr.activeSubscriptionInfoList
+        } catch (e: SecurityException) {
+            Log.w(TAG, "No permission for activeSubscriptionInfoList", e)
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to get active subscriptions", e)
+            null
+        }
+    }
+
+    // Broad catch is deliberate: OEM ICC providers throw undocumented
+    // RuntimeExceptions (not just SecurityException) on emulators and
+    // devices without a physical SIM.
+    @Suppress("TooGenericExceptionCaught")
     fun listSimContacts(context: Context): List<SimContact> {
         val result = mutableListOf<SimContact>()
         try {
@@ -89,53 +112,7 @@ object SimContactsDataSource {
                 listOf(Uri.parse(BASE_URI) to null)
             }
             for ((uri, subId) in uris) {
-                try {
-                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                        if (cursor.count == 0) continue
-                        val nameIdx = when {
-                            cursor.getColumnIndex("name") != -1 -> cursor.getColumnIndex("name")
-                            cursor.getColumnIndex("tag") != -1 -> cursor.getColumnIndex("tag")
-                            else -> -1
-                        }
-                        val numberIdx = when {
-                            cursor.getColumnIndex("number") != -1 -> cursor.getColumnIndex("number")
-                            cursor.getColumnIndex("newNumber") != -1 -> cursor.getColumnIndex("newNumber")
-                            else -> -1
-                        }
-                        val emailsIdx = when {
-                            cursor.getColumnIndex("emails") != -1 -> cursor.getColumnIndex("emails")
-                            cursor.getColumnIndex("email") != -1 -> cursor.getColumnIndex("email")
-                            else -> -1
-                        }
-                        val idIdx = cursor.getColumnIndex("_id")
-                        while (cursor.moveToNext()) {
-                            try {
-                                val rawName = if (nameIdx != -1) cursor.getString(nameIdx) else null
-                                val rawNumber = if (numberIdx != -1) cursor.getString(numberIdx) else null
-                                val rawEmails = if (emailsIdx != -1) cursor.getString(emailsIdx) else null
-                                val name = rawName?.trim().orEmpty()
-                                val number = rawNumber?.trim().orEmpty()
-                                if (name.isEmpty() && number.isEmpty()) continue
-                                val id = if (idIdx != -1) try { cursor.getLong(idIdx) } catch (_: Exception) { -1L } else -1L
-                                result.add(
-                                    SimContact(
-                                        id = id,
-                                        name = name,
-                                        number = number,
-                                        emails = rawEmails?.trim()?.takeIf { it.isNotEmpty() },
-                                        subscriptionId = subId
-                                    )
-                                )
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Skipping SIM row", e)
-                            }
-                        }
-                    }
-                } catch (e: SecurityException) {
-                    Log.w(TAG, "SecurityException querying $uri", e)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed querying $uri", e)
-                }
+                collectSimContactsFromUri(context, uri, subId, result)
             }
         } catch (e: Exception) {
             Log.w(TAG, "listSimContacts failed", e)
@@ -144,6 +121,93 @@ object SimContactsDataSource {
         return result.distinctBy { "${it.subscriptionId}|${it.name}|${it.number}|${it.emails}" }
     }
 
+    // Broad catch is deliberate: OEM ICC providers throw undocumented
+    // RuntimeExceptions (not just SecurityException) on emulators and
+    // devices without a physical SIM.
+    @Suppress("TooGenericExceptionCaught")
+    private fun collectSimContactsFromUri(
+        context: Context,
+        uri: Uri,
+        subId: Int?,
+        result: MutableList<SimContact>,
+    ) {
+        try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.count == 0) return
+                val indexes = SimColumnIndexes(cursor)
+                while (cursor.moveToNext()) {
+                    readSimRow(cursor, indexes, subId)?.let { result.add(it) }
+                }
+            }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "SecurityException querying $uri", e)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed querying $uri", e)
+        }
+    }
+
+    private class SimColumnIndexes(cursor: android.database.Cursor) {
+        val nameIdx = pickColumn(cursor, "name", "tag")
+        val numberIdx = pickColumn(cursor, "number", "newNumber")
+        val emailsIdx = pickColumn(cursor, "emails", "email")
+        val idIdx = cursor.getColumnIndex("_id")
+
+        private fun pickColumn(
+            cursor: android.database.Cursor,
+            primary: String,
+            fallback: String,
+        ): Int = when {
+            cursor.getColumnIndex(primary) != -1 -> cursor.getColumnIndex(primary)
+            cursor.getColumnIndex(fallback) != -1 -> cursor.getColumnIndex(fallback)
+            else -> -1
+        }
+    }
+
+    // Broad catch is deliberate: OEM ICC providers throw undocumented
+    // RuntimeExceptions (not just SecurityException) on emulators and
+    // devices without a physical SIM.
+    @Suppress("TooGenericExceptionCaught")
+    private fun readSimRow(
+        cursor: android.database.Cursor,
+        indexes: SimColumnIndexes,
+        subId: Int?,
+    ): SimContact? {
+        return try {
+            val rawName = if (indexes.nameIdx != -1) cursor.getString(indexes.nameIdx) else null
+            val rawNumber =
+                if (indexes.numberIdx != -1) cursor.getString(indexes.numberIdx) else null
+            val rawEmails =
+                if (indexes.emailsIdx != -1) cursor.getString(indexes.emailsIdx) else null
+            val name = rawName?.trim().orEmpty()
+            val number = rawNumber?.trim().orEmpty()
+            if (name.isEmpty() && number.isEmpty()) return null
+            val id = readSimRowId(cursor, indexes.idIdx)
+            SimContact(
+                id = id,
+                name = name,
+                number = number,
+                emails = rawEmails?.trim()?.takeIf { it.isNotEmpty() },
+                subscriptionId = subId
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Skipping SIM row", e)
+            null
+        }
+    }
+
+    private fun readSimRowId(cursor: android.database.Cursor, idIdx: Int): Long {
+        if (idIdx == -1) return -1L
+        return try {
+            cursor.getLong(idIdx)
+        } catch (_: Exception) {
+            -1L
+        }
+    }
+
+    // Broad catch is deliberate: OEM ICC providers throw undocumented
+    // RuntimeExceptions (not just SecurityException) on emulators and
+    // devices without a physical SIM.
+    @Suppress("TooGenericExceptionCaught")
     fun insertSimContact(
         context: Context,
         name: String,
@@ -153,9 +217,17 @@ object SimContactsDataSource {
     ): Boolean {
         if (name.isBlank() && number.isBlank()) return false
         return try {
-            val subIds = if (subscriptionId != null) listOf(subscriptionId) else getActiveSubscriptionIds(context)
+            val subIds = if (subscriptionId != null) {
+                listOf(subscriptionId)
+            } else {
+                getActiveSubscriptionIds(context)
+            }
             val targetSubId = subIds.firstOrNull() ?: subscriptionId
-            val uri = if (targetSubId != null) Uri.parse("$BASE_URI/subId/$targetSubId") else Uri.parse(BASE_URI)
+            val uri = if (targetSubId != null) {
+                Uri.parse("$BASE_URI/subId/$targetSubId")
+            } else {
+                Uri.parse(BASE_URI)
+            }
             val values = ContentValues().apply {
                 // Most devices accept "tag" for name
                 put("tag", name)
@@ -185,6 +257,10 @@ object SimContactsDataSource {
      * Preferred over delete-then-insert, which cannot be made reliable: the ICC provider parses
      * the selection string itself and ignores selectionArgs (see [deleteSingle]).
      */
+    // Broad catch is deliberate: OEM ICC providers throw undocumented
+    // RuntimeExceptions (not just SecurityException) on emulators and
+    // devices without a physical SIM.
+    @Suppress("TooGenericExceptionCaught")
     fun updateSimContact(
         context: Context,
         old: SimContact,
@@ -196,7 +272,11 @@ object SimContactsDataSource {
         if (name.isBlank() && number.isBlank()) return false
         return try {
             val targetSubId = subscriptionId ?: old.subscriptionId
-            val uri = if (targetSubId != null) Uri.parse("$BASE_URI/subId/$targetSubId") else Uri.parse(BASE_URI)
+            val uri = if (targetSubId != null) {
+                Uri.parse("$BASE_URI/subId/$targetSubId")
+            } else {
+                Uri.parse(BASE_URI)
+            }
             val values = ContentValues().apply {
                 put("tag", old.name)
                 put("number", old.number)
@@ -216,8 +296,20 @@ object SimContactsDataSource {
         }
     }
 
+    // Broad catch is deliberate: OEM ICC providers throw undocumented
+    // RuntimeExceptions (not just SecurityException) on emulators and
+    // devices without a physical SIM.
+    @Suppress("TooGenericExceptionCaught")
     fun deleteSimContact(context: Context, simContact: SimContact): Boolean {
         return try {
+            deleteSimContactInternal(context, simContact)
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteSimContact failed", e)
+            false
+        }
+    }
+
+    private fun deleteSimContactInternal(context: Context, simContact: SimContact): Boolean {
             val uri = if (simContact.subscriptionId != null) {
                 Uri.parse("$BASE_URI/subId/${simContact.subscriptionId}")
             } else {
@@ -235,10 +327,6 @@ object SimContactsDataSource {
                 Uri.parse(BASE_URI)
             }
             deleteSingle(context, uri, simContact)
-        } catch (e: Exception) {
-            Log.e(TAG, "deleteSimContact failed", e)
-            false
-        }
     }
 
     private fun deleteSingle(context: Context, uri: Uri, simContact: SimContact): Boolean {
@@ -292,31 +380,20 @@ object SimContactsDataSource {
      * Falls back to [getActiveSubscriptionIds]-based entries when SubscriptionInfo
      * read needs unavailable permission.
      */
+    // Broad catch is deliberate: OEM ICC providers throw undocumented
+    // RuntimeExceptions (not just SecurityException) on emulators and
+    // devices without a physical SIM.
+    @Suppress("TooGenericExceptionCaught")
     fun getSimSubscriptionInfos(context: Context): List<SimSubscriptionInfo> {
         return try {
-            val subMgr = context.getSystemService(SubscriptionManager::class.java) ?: return emptyList()
-            val list = try {
-                subMgr.activeSubscriptionInfoList
-            } catch (e: SecurityException) {
-                Log.w(TAG, "No permission for activeSubscriptionInfoList", e)
-                null
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to get active subscriptions (infos)", e)
-                null
-            } ?: return getActiveSubscriptionIds(context).mapIndexed { idx, sid ->
-                SimSubscriptionInfo(sid, idx, null, null)
-            }
-            list.mapNotNull { info ->
-                try {
-                    SimSubscriptionInfo(
-                        subscriptionId = info.subscriptionId,
-                        slotIndex = info.simSlotIndex,
-                        displayName = info.displayName?.toString(),
-                        carrierName = info.carrierName
-                    )
-                } catch (_: Exception) {
-                    SimSubscriptionInfo(info.subscriptionId, 0, null, null)
+            val subMgr =
+                context.getSystemService(SubscriptionManager::class.java) ?: return emptyList()
+            val list = querySubscriptionInfoList(subMgr)
+                ?: return getActiveSubscriptionIds(context).mapIndexed { idx, sid ->
+                    SimSubscriptionInfo(sid, idx, null, null)
                 }
+            list.mapNotNull { info ->
+                readSubscriptionInfo(info)
             }
         } catch (e: Exception) {
             Log.w(TAG, "getSimSubscriptionInfos failed", e)
@@ -324,13 +401,30 @@ object SimContactsDataSource {
         }
     }
 
+    private fun readSubscriptionInfo(
+        info: android.telephony.SubscriptionInfo,
+    ): SimSubscriptionInfo {
+        return try {
+            SimSubscriptionInfo(
+                subscriptionId = info.subscriptionId,
+                slotIndex = info.simSlotIndex,
+                displayName = info.displayName?.toString(),
+                carrierName = info.carrierName
+            )
+        } catch (_: Exception) {
+            SimSubscriptionInfo(info.subscriptionId, 0, null, null)
+        }
+    }
+
     /** 1-based SIM slot number, for display. */
-    fun slotNumberFor(info: SimSubscriptionInfo): Int = if (info.slotIndex >= 0) info.slotIndex + 1 else 1
+    fun slotNumberFor(info: SimSubscriptionInfo): Int =
+        if (info.slotIndex >= 0) info.slotIndex + 1 else 1
 
     fun getSimAccountDisplayLabel(context: Context, info: SimSubscriptionInfo): String {
         val base = context.getString(R.string.sim_slot_label, slotNumberFor(info))
         val carrier = info.carrierName?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-            ?: info.displayName?.trim()?.takeIf { it.isNotEmpty() && !it.equals(base, ignoreCase = true) }
+            ?: info.displayName?.trim()
+                ?.takeIf { it.isNotEmpty() && !it.equals(base, ignoreCase = true) }
         return if (carrier != null) "$base — $carrier" else base
     }
 
@@ -349,6 +443,7 @@ object SimContactsDataSource {
     // ---- Projection into unified Contact model ----
 
     private const val SIM_SYNTHETIC_ID_BASE: Long = -1_000_000_000L
+    private const val ID_HASH_MASK: Long = 0xFFFFFFFFL
 
     /**
      * Deterministic stable negative id for a SIM-backed Contact so it never
@@ -358,7 +453,7 @@ object SimContactsDataSource {
     fun syntheticIdFor(sc: SimContact): Long {
         val h = "${sc.subscriptionId}|${sc.name}|${sc.number}|${sc.emails}".hashCode()
         // Map signed int hash into a negative Long away from -1..-N used by AutoIncrement edge.
-        return SIM_SYNTHETIC_ID_BASE - (h.toLong() and 0xFFFFFFFFL)
+        return SIM_SYNTHETIC_ID_BASE - (h.toLong() and ID_HASH_MASK)
     }
 
     /**
@@ -380,12 +475,18 @@ object SimContactsDataSource {
         val last = if (" " in display) display.substringAfter(" ") else ""
         // Even an unnamed SIM still has firstName/lastName split; Name.value is blank if both empty.
         val nameObj = com.vayunmathur.contacts.data.Name(0, "", first, "", last, "")
-        val phones = if (sc.number.isNotBlank())
-            listOf(com.vayunmathur.contacts.data.PhoneNumber(0, sc.number, android.provider.ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE))
-        else emptyList()
+        val phones = if (sc.number.isNotBlank()) {
+            val mobileType = android.provider.ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE
+            listOf(com.vayunmathur.contacts.data.PhoneNumber(0, sc.number, mobileType))
+        } else {
+            emptyList()
+        }
         val emails = sc.emails?.takeIf { it.isNotBlank() }?.let {
-            listOf(com.vayunmathur.contacts.data.Email(0, it, android.provider.ContactsContract.CommonDataKinds.Email.TYPE_HOME))
+            val homeType = android.provider.ContactsContract.CommonDataKinds.Email.TYPE_HOME
+            listOf(com.vayunmathur.contacts.data.Email(0, it, homeType))
         } ?: emptyList()
+        val defaultNicknameType =
+            android.provider.ContactsContract.CommonDataKinds.Nickname.TYPE_DEFAULT
         val details = com.vayunmathur.contacts.data.ContactDetails(
             phoneNumbers = phones,
             emails = emails,
@@ -395,7 +496,9 @@ object SimContactsDataSource {
             names = listOf(nameObj),
             orgs = listOf(com.vayunmathur.contacts.data.Organization(0, "")),
             notes = listOf(com.vayunmathur.contacts.data.Note(0, "")),
-            nicknames = listOf(com.vayunmathur.contacts.data.Nickname(0, "", android.provider.ContactsContract.CommonDataKinds.Nickname.TYPE_DEFAULT)),
+            nicknames = listOf(
+                com.vayunmathur.contacts.data.Nickname(0, "", defaultNicknameType)
+            ),
             groups = emptyList()
         )
         return com.vayunmathur.contacts.data.Contact(

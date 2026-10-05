@@ -23,6 +23,7 @@ import com.vayunmathur.measure.Route
 import com.vayunmathur.measure.domain.MeasureNative
 import com.vayunmathur.measure.platform.MeasureViewModel
 import com.vayunmathur.measure.platform.trackingQualityFrom
+import com.vayunmathur.measure.platform.updateDiagnosticsImpl
 import com.vayunmathur.measure.ui.components.MeasureBottomBar
 import com.vayunmathur.measure.ui.components.MeasureCamera
 import kotlinx.coroutines.delay
@@ -89,7 +90,7 @@ fun ArMeasurePage(backStack: NavBackStack<Route>, viewModel: MeasureViewModel) {
                     },
                     onSessionReady = { sessionHandle = it },
                     onDiagnostics = { fps, skew, imuHz, tracked, landmarks, confidence ->
-                        viewModel.updateDiagnostics {
+                        viewModel.updateDiagnosticsImpl {
                             copy(
                                 frameRateHz = fps,
                                 timestampSkewMs = skew,

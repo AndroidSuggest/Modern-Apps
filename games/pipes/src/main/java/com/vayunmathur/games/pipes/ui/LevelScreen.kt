@@ -21,6 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.pipes.R
 import com.vayunmathur.games.pipes.Route
+import com.vayunmathur.games.pipes.data.LevelData
 import com.vayunmathur.games.pipes.data.LevelPack
 import com.vayunmathur.games.pipes.platform.PipesViewModel
 import com.vayunmathur.games.pipes.ui.components.LevelThumbnail
@@ -32,6 +33,7 @@ import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconStar
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.util.LevelStats
 import com.vayunmathur.library.util.NavBackStack
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,9 +41,73 @@ import com.vayunmathur.library.util.NavBackStack
 fun LevelScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel, packIndex: Int) {
     val pack = LevelPack.PACKS[packIndex]
     val levelStats by viewModel.levelStats.collectAsState()
-    AppScaffold(title = stringResource(R.string.level_selector), backStack = backStack, scrollBehavior = appBarScrollBehavior()) { paddingValues ->
-        LazyVerticalGrid(GridCells.Adaptive(88.dp), Modifier.fillMaxSize(), contentPadding = paddingValues + PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 0.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            itemsIndexed(pack.levels) { index, levelData -> Card(Modifier.fillMaxWidth().clickable { backStack.add(Route.Game(packIndex, index)) }, colors = CardDefaults.cardColors(com.vayunmathur.library.ui.MaterialTheme.colorScheme.surface)) { Box(Modifier.fillMaxSize().padding(8.dp)) { if (levelData.cells.size < levelData.rows * levelData.cols) { LevelThumbnail(levelData, Modifier.size(24.dp).align(Alignment.CenterStart)) }; Text("${index + 1}", Modifier.align(Alignment.Center)); val levelStat = levelStats[levelData.id]; Box(Modifier.size(20.dp).align(Alignment.CenterEnd), Alignment.Center) { when { levelStat == null -> return@Box; levelStat.bestScore <= levelData.optimalMoves -> IconStar(); else -> IconCheck() } } } } }
+    AppScaffold(
+        title = stringResource(R.string.level_selector),
+        backStack = backStack,
+        scrollBehavior = appBarScrollBehavior(),
+    ) { paddingValues ->
+        LazyVerticalGrid(
+            GridCells.Adaptive(GRID_CELL_MIN_DP.dp),
+            Modifier.fillMaxSize(),
+            contentPadding = paddingValues + PaddingValues(
+                start = GRID_PADDING_DP.dp,
+                top = GRID_PADDING_DP.dp,
+                end = GRID_PADDING_DP.dp,
+                bottom = 0.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(GRID_SPACING_DP.dp),
+            horizontalArrangement = Arrangement.spacedBy(GRID_SPACING_DP.dp),
+        ) {
+            itemsIndexed(pack.levels) { index, levelData ->
+                LevelCell(
+                    levelData = levelData,
+                    index = index,
+                    stat = levelStats[levelData.id],
+                    onOpen = { backStack.add(Route.Game(packIndex, index)) },
+                )
+            }
         }
     }
 }
+
+@Composable
+private fun LevelCell(
+    levelData: LevelData,
+    index: Int,
+    stat: LevelStats?,
+    onOpen: () -> Unit,
+) {
+    Card(
+        Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        colors = CardDefaults.cardColors(
+            com.vayunmathur.library.ui.MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Box(Modifier.fillMaxSize().padding(CELL_PADDING_DP.dp)) {
+            if (levelData.cells.size < levelData.rows * levelData.cols) {
+                LevelThumbnail(
+                    levelData,
+                    Modifier.size(THUMBNAIL_DP.dp).align(Alignment.CenterStart),
+                )
+            }
+            Text("${index + 1}", Modifier.align(Alignment.Center))
+            Box(
+                Modifier.size(RESULT_BADGE_DP.dp).align(Alignment.CenterEnd),
+                Alignment.Center,
+            ) {
+                when {
+                    stat == null -> return@Box
+                    stat.bestScore <= levelData.optimalMoves -> IconStar()
+                    else -> IconCheck()
+                }
+            }
+        }
+    }
+}
+
+private const val GRID_CELL_MIN_DP = 88
+private const val GRID_PADDING_DP = 16
+private const val GRID_SPACING_DP = 12
+private const val CELL_PADDING_DP = 8
+private const val THUMBNAIL_DP = 24
+private const val RESULT_BADGE_DP = 20

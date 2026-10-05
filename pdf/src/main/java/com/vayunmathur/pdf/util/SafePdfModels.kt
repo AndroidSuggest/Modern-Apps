@@ -2,6 +2,9 @@ package com.vayunmathur.pdf.util
 
 import androidx.compose.ui.geometry.Offset
 
+/** Heuristic advance per glyph when the wire carries no device-space advance. */
+private const val ADVANCE_PER_GLYPH = 0.5f
+
 /**
  * A single drawing primitive decoded from the native renderer, in PDF page
  * space (origin bottom-left). [SafePdfViewerScreen] applies the Y-flip and the
@@ -14,10 +17,40 @@ import androidx.compose.ui.geometry.Offset
  * text advance for search alignment.
  */
 enum class BlendMode(val code: Int) {
-    Normal(0), Multiply(1), Screen(2), Overlay(3), Darken(4), Lighten(5),
-    ColorDodge(6), ColorBurn(7), HardLight(8), SoftLight(9), Difference(10),
-    Exclusion(11), Hue(12), Saturation(13), Color(14), Luminosity(15);
+    Normal(BLEND_NORMAL),
+    Multiply(BLEND_MULTIPLY),
+    Screen(BLEND_SCREEN),
+    Overlay(BLEND_OVERLAY),
+    Darken(BLEND_DARKEN),
+    Lighten(BLEND_LIGHTEN),
+    ColorDodge(BLEND_COLOR_DODGE),
+    ColorBurn(BLEND_COLOR_BURN),
+    HardLight(BLEND_HARD_LIGHT),
+    SoftLight(BLEND_SOFT_LIGHT),
+    Difference(BLEND_DIFFERENCE),
+    Exclusion(BLEND_EXCLUSION),
+    Hue(BLEND_HUE),
+    Saturation(BLEND_SATURATION),
+    Color(BLEND_COLOR),
+    Luminosity(BLEND_LUMINOSITY);
+
     companion object {
+        private const val BLEND_NORMAL = 0
+        private const val BLEND_MULTIPLY = 1
+        private const val BLEND_SCREEN = 2
+        private const val BLEND_OVERLAY = 3
+        private const val BLEND_DARKEN = 4
+        private const val BLEND_LIGHTEN = 5
+        private const val BLEND_COLOR_DODGE = 6
+        private const val BLEND_COLOR_BURN = 7
+        private const val BLEND_HARD_LIGHT = 8
+        private const val BLEND_SOFT_LIGHT = 9
+        private const val BLEND_DIFFERENCE = 10
+        private const val BLEND_EXCLUSION = 11
+        private const val BLEND_HUE = 12
+        private const val BLEND_SATURATION = 13
+        private const val BLEND_COLOR = 14
+        private const val BLEND_LUMINOSITY = 15
         private val CODE_MAP: Map<Int, BlendMode> = entries.associateBy { it.code }
         fun fromCode(c: Int): BlendMode = CODE_MAP[c] ?: Normal
     }
@@ -39,7 +72,7 @@ sealed interface PdfPrimitive {
         val text: String,
         val strokeColor: Int? = null,
         val strokeWidth: Float = 0f,
-        val advance: Float = size * 0.5f * text.length,
+        val advance: Float = size * ADVANCE_PER_GLYPH * text.length,
         val renderMode: Int = 0,
         val blend: BlendMode = BlendMode.Normal,
         val isBold: Boolean = false,

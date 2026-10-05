@@ -151,7 +151,7 @@ private fun CropControls(state: EditPhotoEditorState) {
 private fun FreeTransformControls(state: EditPhotoEditorState) {
     FreeTransformPanel(
         onApply = {
-            state.vm.transformActiveLayer(
+            state.vm.pixel.transformActiveLayer(
                 com.vayunmathur.photos.data.PerspectiveCorners(
                     topLeft = state.ftTL.x to state.ftTL.y,
                     topRight = state.ftTR.x to state.ftTR.y,
@@ -162,8 +162,8 @@ private fun FreeTransformControls(state: EditPhotoEditorState) {
             state.ftTL = androidx.compose.ui.geometry.Offset(0f, 0f); state.ftTR = androidx.compose.ui.geometry.Offset(1f, 0f); state.ftBL = androidx.compose.ui.geometry.Offset(0f, 1f); state.ftBR = androidx.compose.ui.geometry.Offset(1f, 1f)
         },
         onReset = { state.ftTL = androidx.compose.ui.geometry.Offset(0f, 0f); state.ftTR = androidx.compose.ui.geometry.Offset(1f, 0f); state.ftBL = androidx.compose.ui.geometry.Offset(0f, 1f); state.ftBR = androidx.compose.ui.geometry.Offset(1f, 1f) },
-        onFlipH = { state.vm.flipActiveLayer(true) },
-        onFlipV = { state.vm.flipActiveLayer(false) },
+        onFlipH = { state.vm.pixel.flipActiveLayer(true) },
+        onFlipV = { state.vm.pixel.flipActiveLayer(false) },
         onDone = { state.goHome() },
     )
 }
@@ -224,7 +224,7 @@ internal fun EditorPanelHost(state: EditPhotoEditorState) {
         },
         onSelectionClear = { state.clearSelection() },
         onSelectionDelete = {
-            state.vm.applyToActivePixelLayer { src ->
+            state.vm.pixel.applyToActivePixelLayer { src ->
                 androidx.core.graphics.createBitmap(src.width, src.height)
             }
         },
@@ -242,7 +242,7 @@ internal fun EditorPanelHost(state: EditPhotoEditorState) {
         onEditTextLayer = { idx ->
             (state.document.layers.getOrNull(idx) as? TextLayer)?.let { tl ->
                 state.texts.add(tl.textElement)
-                state.vm.removeLayer(idx)
+                state.vm.layers.removeLayer(idx)
                 state.textToEdit = tl.textElement
                 state.selectedTextId = tl.textElement.id
                 state.openCategory(ToolCategory.Draw)
@@ -251,7 +251,7 @@ internal fun EditorPanelHost(state: EditPhotoEditorState) {
         onResumeDrawingLayer = { idx ->
             (state.document.layers.getOrNull(idx) as? DrawingLayer)?.let { dl ->
                 dl.strokes.forEach { state.inkStrokes.add(it.deserialize()) }
-                state.vm.removeLayer(idx)
+                state.vm.layers.removeLayer(idx)
                 state.openCategory(ToolCategory.Draw)
             }
         },

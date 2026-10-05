@@ -68,6 +68,8 @@ import com.vayunmathur.office.util.updateTextTableCell
  * Hoisted verbatim from `DocumentScreen`'s local `DocumentPane` (split for file length);
  * captures became explicit parameters, behavior identical.
  */
+private const val NIGHT_SCRIM = 0x660E1116L
+
 @Composable
 fun OfficeDocumentPane(
     document: OdfDocument,
@@ -78,9 +80,7 @@ fun OfficeDocumentPane(
     fontSizeMultiplier: Float,
     listState: LazyListState,
     isEditMode: Boolean,
-    activeSlide: Int,
     activeSlideEl: Int,
-    onBack: () -> Unit,
     onRunSelectionChange: (Int, Int, Int, Int) -> Unit,
     onCellFocus: (Int, Int, Int) -> Unit,
     onCellSelected: (Int, Int, Int) -> Unit,
@@ -94,23 +94,7 @@ fun OfficeDocumentPane(
 ) {
     Box(modifier) {
         val presence by viewModel.remotePresence.collectAsState()
-        val remoteCarets = presence.mapNotNull { p ->
-            p.caret?.let { com.vayunmathur.library.ui.odf.RemoteCaret(it, 0xFF000000L or (p.id.hashCode().toLong() and 0xFFFFFFL), p.name) }
-        }
-        if (presence.isNotEmpty()) {
-            Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                modifier = Modifier.align(Alignment.TopCenter).zIndex(1f).fillMaxWidth()
-            ) {
-                val typingLabel = stringResource(R.string.typing)
-                Text(
-                    presence.joinToString(", ") { it.name + (it.loc?.let { l -> " · $l" } ?: "") + if (it.typing) typingLabel else "" }
-                        .let { stringResource(R.string.online_1, it) },
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                )
-            }
-        }
+        PresenceBanner(presence)
         OfficeLightTheme {
           Surface(
             Modifier
@@ -119,51 +103,147 @@ fun OfficeDocumentPane(
             color = MaterialTheme.colorScheme.background,
           ) {
         when (document) {
-            is OdfDocument.TextDocument -> TextDocumentView(doc = document, searchQuery = searchQuery, fontSizeMultiplier = fontSizeMultiplier, listState = listState,
-                remoteCarets = remoteCarets,
-                onRunSelectionChange = { rs, re, gs, ge -> onRunSelectionChange(rs, re, gs, ge) },
-                onRunTextChange = { rs, re, text -> viewModel.updateParagraphRun(rs, re, text) },
-                onRunEnter = { rs, re, gPos -> viewModel.handleListEnter(rs, re, gPos) },
-                onRunBackspace = { rs, re, gPos -> viewModel.handleListBackspace(rs, re, gPos) },
-                onToggleCheckbox = { idx ->
-                    val p = (document.content.getOrNull(idx) as? OdfContentBlock.Paragraph)?.paragraph
-                    if (p != null) viewModel.setCheckboxChecked(idx, !p.listChecked)
-                },
-                onDeletePrevBlock = { runStart -> viewModel.deleteBlockBefore(runStart) },
-                onCellTextChange = { bi, r, c, text -> viewModel.updateTextTableCell(bi, r, c, text) },
-                onCellFocus = { bi, r, c -> onCellFocus(bi, r, c) },
-                onChartClick = { bi -> onChartClick(bi) },
-                onCropImage = { bi -> onCropImage(bi) })
-            is OdfDocument.Spreadsheet -> SpreadsheetView(doc = document, searchQuery = searchQuery, fontSizeMultiplier = fontSizeMultiplier, isEditMode = isEditMode,
-                onCellTextChange = { s, r, c, t -> viewModel.updateCellText(s, r, c, t) }, onAddRow = { s, r -> viewModel.addRow(s, r) }, onAddColumn = { s -> viewModel.addColumn(s) },
-                onDeleteRow = { s, r -> viewModel.deleteRow(s, r) }, onDeleteColumn = { s, c -> viewModel.deleteColumn(s, c) },
-                onRenameSheet = { s, n -> viewModel.renameSheet(s, n) }, onAddSheet = { viewModel.addSheet() }, onDeleteSheet = { s -> viewModel.deleteSheet(s) },
-                onCellBold = { s, r, c -> viewModel.setCellBold(s, r, c) }, onCellItalic = { s, r, c -> viewModel.setCellItalic(s, r, c) },
-                onCellColor = { s, r, c, clr -> viewModel.setCellColor(s, r, c, clr) }, onCellBgColor = { s, r, c, clr -> viewModel.setCellBgColor(s, r, c, clr) },
-                onCellAlignment = { s, r, c, a -> viewModel.setCellAlignment(s, r, c, a) },
-                onMergeCells = { s, sr, sc, er, ec -> viewModel.mergeCells(s, sr, sc, er, ec) }, onUnmergeCells = { s, r, c -> viewModel.unmergeCells(s, r, c) },
-                onSort = { s, col, asc -> viewModel.sortRows(s, col, asc) },
-                onCellSelected = { s, r, c -> onCellSelected(s, r, c); viewModel.setLocalLocation("Sheet ${s + 1} · ${('A' + c)}${r + 1}") },
-                onFloatingBoundsChange = { s, e, x, y, w, h -> viewModel.setSheetElementBounds(s, e, x, y, w, h) },
-                onFloatingTextChange = { s, e, t -> viewModel.updateSheetElementText(s, e, t) },
-                onFloatingDelete = { s, e -> viewModel.deleteSheetElement(s, e) },
-                onFloatingCrop = { s, e -> onCropSheet(s, e) },
-                onSetFreeze = { s, r, c -> viewModel.setSheetFreeze(s, r, c) })
-            is OdfDocument.Presentation -> PresentationView(doc = document, isEditMode = isEditMode,
-                onAddSlide = { viewModel.addSlide(it) }, onDeleteSlide = { viewModel.deleteSlide(it) },
-                onDuplicateSlide = { viewModel.duplicateSlide(it) }, onMoveSlideUp = { viewModel.moveSlideUp(it) }, onMoveSlideDown = { viewModel.moveSlideDown(it) },
-                onElementTextChange = { s, e, t -> viewModel.updateSlideElementText(s, e, t) }, onAddTextBox = { viewModel.addTextBoxToSlide(it) },
-                onElementBoundsChange = { s, e, x, y, w, h -> viewModel.setSlideElementBounds(s, e, x, y, w, h) },
-                onDeleteElement = { s, e -> viewModel.deleteSlideElement(s, e) },
-                selectedElement = activeSlideEl,
-                onSlideChange = { onSlideChange(it); viewModel.setLocalLocation("Slide ${it + 1}") },
-                onElementSelected = { s, e -> onSlideElementSelected(s, e) },
-                onCropImage = { s, e -> onCropSlide(s, e) })
+            is OdfDocument.TextDocument -> TextPane(
+                document, viewModel, searchQuery, fontSizeMultiplier, listState,
+                presence, onRunSelectionChange, onCellFocus, onChartClick, onCropImage)
+            is OdfDocument.Spreadsheet -> SheetPane(
+                document, viewModel, searchQuery, fontSizeMultiplier, isEditMode,
+                onCellSelected, onCropSheet)
+            is OdfDocument.Presentation -> SlidePane(
+                document, viewModel, isEditMode, activeSlideEl,
+                onSlideChange, onSlideElementSelected, onCropSlide)
             is OdfDocument.Drawing -> DrawingView(document)
         }
           }
         }
         // Night reading mode: a view-only dimming scrim (does not modify or save the document). (C4)
-        if (nightMode) Box(Modifier.matchParentSize().background(Color(0x660E1116)))
+        if (nightMode) Box(Modifier.matchParentSize().background(Color(NIGHT_SCRIM)))
     }
+}
+
+/** Remote-presence banner. */
+@Composable
+private fun PresenceBanner(
+    presence: List<com.vayunmathur.office.util.OfficePresence>,
+) {
+    if (presence.isEmpty()) return
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.zIndex(1f).fillMaxWidth()
+    ) {
+        val typingLabel = stringResource(R.string.typing)
+        Text(
+            presence.joinToString(", ") { p ->
+                p.name + (p.loc?.let { l -> " · $l" } ?: "") + if (p.typing) typingLabel else ""
+            }
+                .let { stringResource(R.string.online_1, it) },
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+        )
+    }
+}
+
+/** Text-document pane. */
+@Composable
+private fun TextPane(
+    document: OdfDocument.TextDocument,
+    viewModel: OfficeViewModel,
+    searchQuery: String,
+    fontSizeMultiplier: Float,
+    listState: LazyListState,
+    presence: List<com.vayunmathur.office.util.OfficePresence>,
+    onRunSelectionChange: (Int, Int, Int, Int) -> Unit,
+    onCellFocus: (Int, Int, Int) -> Unit,
+    onChartClick: (Int) -> Unit,
+    onCropImage: (Int) -> Unit,
+) {
+    val remoteCarets = presence.mapNotNull { p ->
+        p.caret?.let { com.vayunmathur.library.ui.odf.RemoteCaret(
+            it,
+            0xFF000000L or (p.id.hashCode().toLong() and 0xFFFFFFL),
+            p.name) }
+    }
+    TextDocumentView(
+        doc = document,
+        searchQuery = searchQuery,
+        fontSizeMultiplier = fontSizeMultiplier,
+        listState = listState,
+        remoteCarets = remoteCarets,
+        onRunSelectionChange = { rs, re, gs, ge -> onRunSelectionChange(rs, re, gs, ge) },
+        onRunTextChange = { rs, re, text -> viewModel.updateParagraphRun(rs, re, text) },
+        onRunEnter = { rs, re, gPos -> viewModel.handleListEnter(rs, re, gPos) },
+        onRunBackspace = { rs, re, gPos -> viewModel.handleListBackspace(rs, re, gPos) },
+        onToggleCheckbox = { idx ->
+            val p = (document.content.getOrNull(idx) as? OdfContentBlock.Paragraph)?.paragraph
+            if (p != null) viewModel.setCheckboxChecked(idx, !p.listChecked)
+        },
+        onDeletePrevBlock = { runStart -> viewModel.deleteBlockBefore(runStart) },
+        onCellTextChange = { bi, r, c, text -> viewModel.updateTextTableCell(bi, r, c, text) },
+        onCellFocus = { bi, r, c -> onCellFocus(bi, r, c) },
+        onChartClick = { bi -> onChartClick(bi) },
+        onCropImage = { bi -> onCropImage(bi) })
+}
+
+/** Spreadsheet pane. */
+@Composable
+private fun SheetPane(
+    document: OdfDocument.Spreadsheet,
+    viewModel: OfficeViewModel,
+    searchQuery: String,
+    fontSizeMultiplier: Float,
+    isEditMode: Boolean,
+    onCellSelected: (Int, Int, Int) -> Unit,
+    onCropSheet: (Int, Int) -> Unit,
+) {
+    SpreadsheetView(
+        doc = document,
+        searchQuery = searchQuery,
+        fontSizeMultiplier = fontSizeMultiplier,
+        isEditMode = isEditMode,
+        onCellTextChange = { s, r, c, t -> viewModel.updateCellText(s, r, c, t) },
+        onAddRow = { s, r -> viewModel.addRow(s, r) },
+        onAddColumn = { s -> viewModel.addColumn(s) },
+        onDeleteRow = { s, r -> viewModel.deleteRow(s, r) },
+        onDeleteColumn = { s, c -> viewModel.deleteColumn(s, c) },
+        onRenameSheet = { s, n -> viewModel.renameSheet(s, n) },
+        onAddSheet = { viewModel.addSheet() },
+        onDeleteSheet = { s -> viewModel.deleteSheet(s) },
+        onSort = { s, col, asc -> viewModel.sortRows(s, col, asc) },
+        onCellSelected = { s, r, c ->
+            onCellSelected(s, r, c)
+            viewModel.setLocalLocation("Sheet ${s + 1} · ${('A' + c)}${r + 1}")
+        },
+        onFloatingBoundsChange = { s, e, x, y, w, h -> viewModel.setSheetElementBounds(s, e, x, y, w, h) },
+        onFloatingTextChange = { s, e, t -> viewModel.updateSheetElementText(s, e, t) },
+        onFloatingDelete = { s, e -> viewModel.deleteSheetElement(s, e) },
+        onFloatingCrop = { s, e -> onCropSheet(s, e) },
+        onSetFreeze = { s, r, c -> viewModel.setSheetFreeze(s, r, c) })
+}
+
+/** Presentation pane. */
+@Composable
+private fun SlidePane(
+    document: OdfDocument.Presentation,
+    viewModel: OfficeViewModel,
+    isEditMode: Boolean,
+    activeSlideEl: Int,
+    onSlideChange: (Int) -> Unit,
+    onSlideElementSelected: (Int, Int) -> Unit,
+    onCropSlide: (Int, Int) -> Unit,
+) {
+    PresentationView(
+        doc = document, isEditMode = isEditMode,
+        onAddSlide = { viewModel.addSlide(it) },
+        onDeleteSlide = { viewModel.deleteSlide(it) },
+        onDuplicateSlide = { viewModel.duplicateSlide(it) },
+        onMoveSlideUp = { viewModel.moveSlideUp(it) },
+        onMoveSlideDown = { viewModel.moveSlideDown(it) },
+        onElementTextChange = { s, e, t -> viewModel.updateSlideElementText(s, e, t) },
+        onAddTextBox = { viewModel.addTextBoxToSlide(it) },
+        onElementBoundsChange = { s, e, x, y, w, h -> viewModel.setSlideElementBounds(s, e, x, y, w, h) },
+        onDeleteElement = { s, e -> viewModel.deleteSlideElement(s, e) },
+        selectedElement = activeSlideEl,
+        onSlideChange = { onSlideChange(it); viewModel.setLocalLocation("Slide ${it + 1}") },
+        onElementSelected = { s, e -> onSlideElementSelected(s, e) },
+        onCropImage = { s, e -> onCropSlide(s, e) })
 }

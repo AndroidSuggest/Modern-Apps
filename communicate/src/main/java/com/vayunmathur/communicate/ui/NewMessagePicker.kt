@@ -215,7 +215,9 @@ internal fun NewMessagePicker(
                         items(filtered, key = { it.id }) { c ->
                             val isSel = if (groupMode) selectedContacts.any { it.first == c.phoneNumber } else null
                             ContactPickRow(title = c.name, subtitle = c.phoneNumber, selected = isSel) {
-                                if (groupMode) toggleContact(c.phoneNumber, c.name) else selected?.let { onCompose(it, c.phoneNumber) }
+                                if (groupMode) toggleContact(
+                                    c.phoneNumber,
+                                    c.name) else selected?.let { onCompose(it, c.phoneNumber) }
                             }
                         }
                     }

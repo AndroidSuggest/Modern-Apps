@@ -18,6 +18,12 @@ import com.vayunmathur.communicate.data.whatsapp.sendMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private const val MS_PER_SECOND = 1000L
+// MMS provider literals (PduHeaders): M-Send.req type, TO address type, UTF-8 charset.
+private const val MMS_MESSAGE_TYPE_SEND_REQ = 128
+private const val MMS_ADDR_TYPE_TO = 151
+private const val MMS_CHARSET_UTF8 = 106
+
 suspend fun CommunicateRepository.loadSmsThreadsMerged(context: Context): List<SmsThread> {
     val sim = loadSmsThreads(context)
     val gv = loadGoogleVoiceThreads(context)
@@ -83,97 +89,142 @@ suspend fun CommunicateRepository.sendMessage(
             sendSimMms(context, choice.subscriptionId, recipients, body, attachments)
         }
     }
-    LineChoice.GoogleVoice -> runCatching {
-        // The bot-defense token is minted invisibly in an offscreen WebView; the app then
-        // builds and sends the sendsms API call itself using that token. For MMS, let the
-        // real web composer upload media and build the media-bearing body, then replay it.
-        val activity = context as? android.app.Activity ?: return@runCatching false
-        val sendBody = if (attachments.isEmpty()) {
-            val token = GoogleVoiceWebSender.mintToken(activity, address, body) ?: return@runCatching false
-            com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser
-                .buildSendSmsBody(address, body, threadRemoteId, botToken = token)
-        } else {
-            GoogleVoiceWebSender.mintPreparedBody(activity, address, body, attachments) ?: return@runCatching false
-        }
-        GoogleVoiceClient.get(context).sendPreparedSms(sendBody)
-        true
-    }.getOrDefault(false)
+    LineChoice.GoogleVoice -> sendGoogleVoiceMessage(context, address, body, threadRemoteId, attachments)
     LineChoice.WhatsApp -> withContext(Dispatchers.IO) {
-        runCatching {
-            // For WhatsApp the conversation is addressed by JID: use the thread's remoteId when
-            // replying to an existing chat, else derive a 1:1 JID from the phone number.
-            val jid = threadRemoteId ?: toWhatsAppJid(context, address)
-            val sentId = with(WhatsAppClient) {
-                if (attachments.isEmpty()) {
-                    sendMessage(jid, body)
-                } else {
-                    // Attachments are sent here rather than left to a separate call: previously this branch
-                    // returned success while sending nothing, so picking a photo silently did nothing.
-                    val mediaOk = sendAttachments(context, attachments) { bytes, mime, name ->
-                        sendMedia(jid, bytes, mime, name)
-                    }
-                    val captionId = if (body.isNotBlank()) sendMessage(jid, body) else ""
-                    if (mediaOk) captionId else null
-                }
-            }
-            // Echo the outgoing message into the local cache so it shows in our own thread
-            // (a primary-only line gets no server echo of its own sends). Cache under the real
-            // WA message id so delivery/read receipts can advance its status ticks.
-            if (sentId != null && body.isNotBlank()) {
-                cacheOutgoingWhatsApp(context, jid, body, sentId.ifBlank { "local-${java.util.UUID.randomUUID()}" })
-            }
-            sentId != null
-        }.getOrDefault(false)
+        sendWhatsAppMessage(context, address, body, threadRemoteId, attachments)
     }
     LineChoice.Signal -> withContext(Dispatchers.IO) {
-        val signal = SignalClient.get(context)
-        runCatching {
-            val recipient = threadRemoteId ?: toSignalRecipient(context, address)
-            val sentId = with(signal) {
-                if (attachments.isEmpty()) {
-                    if (body.isBlank()) null else this@with.sendMessage(recipient, body)
-                } else {
-                    // As with WhatsApp: send the attachments here, rather than reporting success and
-                    // dropping them.
-                    val mediaOk = sendAttachments(context, attachments) { bytes, mime, name ->
-                        sendMedia(recipient, bytes, mime, name) != null
-                    }
-                    val captionId = if (body.isNotBlank()) {
-                        this@with.sendMessage(recipient, body)
-                    } else {
-                        ""
-                    }
-                    if (mediaOk) captionId else null
-                }
-            }
-            if (sentId != null && body.isNotBlank()) {
-                cacheOutgoingSignal(context, recipient, body, sentId.ifBlank { "local-${java.util.UUID.randomUUID()}" })
-            }
-            sentId != null
-        }.getOrDefault(false)
+        sendSignalMessage(context, address, body, threadRemoteId, attachments)
     }
     LineChoice.Rcs -> withContext(Dispatchers.IO) {
-        when (sendRcsMessage(context, address, body, threadRemoteId, attachments, participants)) {
-            RcsSendResult.Sent -> true
-            RcsSendResult.Failed -> false
-            RcsSendResult.FallbackSms -> {
-                // Not RCS-capable or transport unavailable: fall back to SMS on the
-                // default subscription and tell the user (never silently downgrade).
-                notifyRcsFallback(context)
-                val subId = SimManager.activeSims(context).firstOrNull()?.subscriptionId
-                    ?: SimManager.defaultSmsSubscriptionId()
-                val recipients = participants.map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf(address) }
-                if (recipients.size > 1 || attachments.isNotEmpty()) {
-                    sendSimMms(context, subId, recipients, body, attachments)
-                } else {
-                    sendSimSms(context, subId, address, body)
-                }
-            }
-        }
+        sendRcsWithSmsFallback(context, address, body, threadRemoteId, attachments, participants)
     }
 } }
 
-internal fun CommunicateRepository.sendSimSms(context: Context, subscriptionId: Int, address: String, body: String): Boolean {
+/** Google Voice send via bot-defense token + prepared API body. */
+private suspend fun CommunicateRepository.sendGoogleVoiceMessage(
+    context: Context,
+    address: String,
+    body: String,
+    threadRemoteId: String?,
+    attachments: List<CommunicateAttachment>,
+): Boolean = runCatching {
+    // The bot-defense token is minted invisibly in an offscreen WebView; the app then
+    // builds and sends the sendsms API call itself using that token. For MMS, let the
+    // real web composer upload media and build the media-bearing body, then replay it.
+    val activity = context as? android.app.Activity ?: return@runCatching false
+    val sendBody = if (attachments.isEmpty()) {
+        val token = GoogleVoiceWebSender.mintToken(activity, address, body) ?: return@runCatching false
+        com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser
+            .buildSendSmsBody(address, body, threadRemoteId, botToken = token)
+    } else {
+        GoogleVoiceWebSender.mintPreparedBody(activity, address, body, attachments) ?: return@runCatching false
+    }
+    GoogleVoiceClient.get(context).sendPreparedSms(sendBody)
+    true
+}.getOrDefault(false)
+
+/** WhatsApp send (text or media + caption), echoing to the local cache. */
+private suspend fun CommunicateRepository.sendWhatsAppMessage(
+    context: Context,
+    address: String,
+    body: String,
+    threadRemoteId: String?,
+    attachments: List<CommunicateAttachment>,
+): Boolean = runCatching {
+    // For WhatsApp the conversation is addressed by JID: use the thread's remoteId when
+    // replying to an existing chat, else derive a 1:1 JID from the phone number.
+    val jid = threadRemoteId ?: toWhatsAppJid(context, address)
+    val sentId = with(WhatsAppClient) {
+        if (attachments.isEmpty()) {
+            sendMessage(jid, body)
+        } else {
+            // Attachments are sent here rather than left to a separate call: previously this branch
+            // returned success while sending nothing, so picking a photo silently did nothing.
+            val mediaOk = sendAttachments(context, attachments) { bytes, mime, name ->
+                sendMedia(jid, bytes, mime, name)
+            }
+            val captionId = if (body.isNotBlank()) sendMessage(jid, body) else ""
+            if (mediaOk) captionId else null
+        }
+    }
+    // Echo the outgoing message into the local cache so it shows in our own thread
+    // (a primary-only line gets no server echo of its own sends). Cache under the real
+    // WA message id so delivery/read receipts can advance its status ticks.
+    if (sentId != null && body.isNotBlank()) {
+        cacheOutgoingWhatsApp(context, jid, body, sentId.ifBlank { "local-${java.util.UUID.randomUUID()}" })
+    }
+    sentId != null
+}.getOrDefault(false)
+
+/** Signal send (text or media + caption), echoing to the local cache. */
+private suspend fun CommunicateRepository.sendSignalMessage(
+    context: Context,
+    address: String,
+    body: String,
+    threadRemoteId: String?,
+    attachments: List<CommunicateAttachment>,
+): Boolean {
+    val signal = SignalClient.get(context)
+    return runCatching {
+        val recipient = threadRemoteId ?: toSignalRecipient(context, address)
+        val sentId = with(signal) {
+            if (attachments.isEmpty()) {
+                if (body.isBlank()) null else this@with.sendMessage(recipient, body)
+            } else {
+                // As with WhatsApp: send the attachments here, rather than reporting success and
+                // dropping them.
+                val mediaOk = sendAttachments(context, attachments) { bytes, mime, name ->
+                    sendMedia(recipient, bytes, mime, name) != null
+                }
+                val captionId = if (body.isNotBlank()) {
+                    this@with.sendMessage(recipient, body)
+                } else {
+                    ""
+                }
+                if (mediaOk) captionId else null
+            }
+        }
+        if (sentId != null && body.isNotBlank()) {
+            cacheOutgoingSignal(context, recipient, body, sentId.ifBlank { "local-${java.util.UUID.randomUUID()}" })
+        }
+        sentId != null
+    }.getOrDefault(false)
+}
+
+/** RCS send with SMS fallback when the contact/transport is not RCS-capable. */
+private suspend fun CommunicateRepository.sendRcsWithSmsFallback(
+    context: Context,
+    address: String,
+    body: String,
+    threadRemoteId: String?,
+    attachments: List<CommunicateAttachment>,
+    participants: List<String>,
+): Boolean {
+    when (sendRcsMessage(context, address, body, threadRemoteId, attachments, participants)) {
+        RcsSendResult.Sent -> return true
+        RcsSendResult.Failed -> return false
+        RcsSendResult.FallbackSms -> {
+            // Not RCS-capable or transport unavailable: fall back to SMS on the
+            // default subscription and tell the user (never silently downgrade).
+            notifyRcsFallback(context)
+            val subId = SimManager.activeSims(context).firstOrNull()?.subscriptionId
+                ?: SimManager.defaultSmsSubscriptionId()
+            val recipients = participants.map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf(address) }
+            return if (recipients.size > 1 || attachments.isNotEmpty()) {
+                sendSimMms(context, subId, recipients, body, attachments)
+            } else {
+                sendSimSms(context, subId, address, body)
+            }
+        }
+    }
+}
+
+internal fun CommunicateRepository.sendSimSms(
+    context: Context,
+    subscriptionId: Int,
+    address: String,
+    body: String): Boolean {
     if (address.isBlank() || body.isBlank()) return false
     if (!context.hasPermission(Manifest.permission.SEND_SMS)) {
         openSmsComposer(context, address, body)
@@ -251,11 +302,11 @@ internal fun CommunicateRepository.persistOutgoingMms(
         val threadId = getOrCreateSmsGroupThreadId(context, recipients)
         val values = android.content.ContentValues().apply {
             if (threadId != null) put(Telephony.Mms.THREAD_ID, threadId)
-            put(Telephony.Mms.DATE, System.currentTimeMillis() / 1000L)
+            put(Telephony.Mms.DATE, System.currentTimeMillis() / MS_PER_SECOND)
             put(Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_BOX_SENT)
             put(Telephony.Mms.READ, 1)
             put(Telephony.Mms.SEEN, 1)
-            put(Telephony.Mms.MESSAGE_TYPE, 128) // M-Send.req
+            put(Telephony.Mms.MESSAGE_TYPE, MMS_MESSAGE_TYPE_SEND_REQ) // M-Send.req
             if (subscriptionId >= 0) put(Telephony.Mms.SUBSCRIPTION_ID, subscriptionId)
         }
         val mmsUri = context.contentResolver.insert(Telephony.Mms.CONTENT_URI, values) ?: return
@@ -273,12 +324,16 @@ internal fun CommunicateRepository.persistOutgoingMms(
         for (r in recipients) {
             val addrValues = android.content.ContentValues().apply {
                 put("address", r)
-                put("type", 151)
-                put("charset", 106)
+                put("type", MMS_ADDR_TYPE_TO)
+                put("charset", MMS_CHARSET_UTF8)
             }
             context.contentResolver.insert(Uri.parse("content://mms/$mmsId/addr"), addrValues)
         }
     }
 }
 
-fun CommunicateRepository.stableThreadId(remoteId: String): Long = (remoteId.hashCode().toLong() and 0xFFFFFFFFL) or 0x1_0000_0000L
+fun CommunicateRepository.stableThreadId(remoteId: String): Long =
+    (remoteId.hashCode().toLong() and HASH_MASK) or THREAD_ID_FLAG
+
+private const val HASH_MASK = 0xFFFFFFFFL
+private const val THREAD_ID_FLAG = 0x1_0000_0000L

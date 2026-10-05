@@ -37,7 +37,7 @@ class CreateLinkIntent : AssistantIntent<CreateLinkData, String>(
             pqcPublicKey = linkKey.publicBundleB64,
             pqcSeed = linkKey.seedB64Url,
         )
-        FindFamilyRepository.get(this).upsertTemporaryLink(link)
+        FindFamilyRepository.get(this).temporaryLinkStore.upsert(link)
         // The id is generated with the link (newTemporaryLinkId), not handed back by the
         // insert, so read it off the entity — @Upsert returns -1 on the update path.
         // Must match the URL format produced by TemporaryLinkCard in MainPage.

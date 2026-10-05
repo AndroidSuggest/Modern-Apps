@@ -25,6 +25,13 @@ import kotlinx.coroutines.launch
  * they share its scope, notification channels, and MSRP connection map.
  */
 
+private const val SIP_OK = 200
+private const val SIP_ACCEPTED = 202
+private const val SIP_BAD_EVENT = 489
+private const val SIP_CALL_GONE = 481
+private const val SIP_NOT_ACCEPTABLE = 488
+private const val SIP_DECLINE = 603
+
 /**
  * Inbound INVITE: stash the offer in the session manager, then accept or
  * decline. Accept when the offer carries an SDP we can answer (any
@@ -39,23 +46,16 @@ internal suspend fun RcsSyncService.handleInboundInvite(message: SipMessage) {
     val from = headerValue(headers, "From:")?.substringAfter("<")?.substringBefore(">")
         ?.substringAfter("sip:")?.substringBefore("@")?.takeIf { it.isNotBlank() }
         ?: return
-    val fromTag = headerValue(headers, "From:")?.substringAfter("tag=", "")?.substringBefore(";")
-        ?.trim()?.takeIf { it.isNotBlank() }
     val callId = message.getCallIdParameter() ?: return
     val body = message.getContent().toString(Charsets.UTF_8)
     // Re-INVITE on a live dialog (§1.5): update media, answer 200 with
     // current SDP — do NOT create a new session entry.
     if (RcsSessionManager.isKnownDialog(callId)) {
-        RcsSessionManager.onReInvite(callId, body)
-        val entry = RcsSessionManager.sessions.value.entries
-            .firstOrNull { it.value.callId == callId } ?: return
-        val sdp = RcsSessionManager.currentSdpFor(entry.key) ?: run {
-            RcsSessionManager.declineIncoming(entry.key)
-            return
-        }
-        sendSessionResponse(message, 200, "OK", sdp, "application/sdp")
+        answerReInvite(message, callId, body)
         return
     }
+    val fromTag = headerValue(headers, "From:")?.substringAfter("tag=", "")?.substringBefore(";")
+        ?.trim()?.takeIf { it.isNotBlank() }
     val to = headerValue(headers, "To:")
     val stashed = RcsSessionManager.onSipRequest("INVITE", callId, from, "application/sdp", body, fromTag, to)
     // Focus join: route to the hosted group conversation, not the sender.
@@ -69,6 +69,18 @@ internal suspend fun RcsSyncService.handleInboundInvite(message: SipMessage) {
     if (RcsSessionManager.acceptIncoming(conversationId)) {
         showSessionInviteNotification(conversationId, from)
     }
+}
+
+/** Answer a re-INVITE with current SDP, declining when none is available. */
+private suspend fun RcsSyncService.answerReInvite(message: SipMessage, callId: String, body: String) {
+    RcsSessionManager.onReInvite(callId, body)
+    val entry = RcsSessionManager.sessionsMutable.value.entries
+        .firstOrNull { it.value.callId == callId } ?: return
+    val sdp = RcsSessionManager.currentSdpFor(entry.key) ?: run {
+        RcsSessionManager.declineIncoming(entry.key)
+        return
+    }
+    sendSessionResponse(message, SIP_OK, "OK", sdp, "application/sdp")
 }
 
 /** Inbound BYE: tear down the session + MSRP connection. */
@@ -136,7 +148,7 @@ internal suspend fun RcsSyncService.handleInboundRefer(message: SipMessage) {
     val referTo = headerValue(headers, "Refer-To:")?.substringAfter("<")?.substringBefore(">")
         ?.takeIf { it.isNotBlank() } ?: return
     // Accept the referral, then join.
-    sendReferResponse(message, 202, "Accepted")
+    sendReferResponse(message, SIP_ACCEPTED, "Accepted")
     val conversationId = "conf:${referTo.hashCode()}"
     val joined = RcsSessionManager.startGroupSession(referTo, "", conversationId) != null
     notifyReferStatus(message, joined)
@@ -161,7 +173,7 @@ internal suspend fun RcsSyncService.notifyReferStatus(message: SipMessage, ok: B
         // NOTIFYs for a REFER reuse the REFER's dialog identifiers with a
         // fresh CSeq; the subscription here is implicit (no SUBSCRIBE).
         val sipfrag = RcsConferenceEvents.buildSipfrag(
-            if (ok) 200 else 603,
+            if (ok) SIP_OK else SIP_DECLINE,
             if (ok) "OK" else "Decline",
         ).toByteArray(Charsets.UTF_8)
         val branch = RcsSipDialog.newBranch()
@@ -238,13 +250,13 @@ internal suspend fun RcsSyncService.handleInboundSubscribe(message: SipMessage) 
     val headers = message.getHeaderSection()
     val event = headerValue(headers, "Event:")?.substringBefore(";")?.trim().orEmpty()
     if (!event.equals("conference", ignoreCase = true)) {
-        sendSubscribeResponse(message, 489, "Bad Event")
+        sendSubscribeResponse(message, SIP_BAD_EVENT, "Bad Event")
         return
     }
     val to = headerValue(headers, "To:")?.substringAfter("<")?.substringBefore(">")
         ?.takeIf { it.isNotBlank() }.orEmpty()
     val callId = message.getCallIdParameter() ?: return
-    sendSubscribeResponse(message, 202, "Accepted")
+    sendSubscribeResponse(message, SIP_ACCEPTED, "Accepted")
     RcsSessionManager.noteFocusSubscriber(callId, to)
     // Find the hosted conversation for this focus and publish current state.
     val conversationId = RcsSessionManager.sessions.value.entries
@@ -286,15 +298,15 @@ internal suspend fun RcsSyncService.handleInboundUpdate(message: SipMessage) {
     val callId = message.getCallIdParameter() ?: return
     val session = RcsSessionManager.sessions.value.values.firstOrNull { it.callId == callId }
     if (session == null) {
-        sendSessionResponse(message, 481, "Call/Transaction Does Not Exist")
+        sendSessionResponse(message, SIP_CALL_GONE, "Call/Transaction Does Not Exist")
         return
     }
     // Echo our current SDP (no media change on refresh).
     val sdp = RcsSessionManager.currentSdpFor(session.conversationId) ?: run {
-        sendSessionResponse(message, 488, "Not Acceptable Here")
+        sendSessionResponse(message, SIP_NOT_ACCEPTABLE, "Not Acceptable Here")
         return
     }
-    sendSessionResponse(message, 200, "OK", sdp, "application/sdp")
+    sendSessionResponse(message, SIP_OK, "OK", sdp, "application/sdp")
 }
 
 /** Final response to UPDATE/re-INVITE with optional SDP body. */

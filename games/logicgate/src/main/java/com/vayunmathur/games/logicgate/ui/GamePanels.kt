@@ -148,7 +148,7 @@ internal fun MobileLeftPanel(tick: Int, simSpeed: Int, level: LevelDef, inputDec
 @Composable
 internal fun MobileMiddleToolbar(onClear: () -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, canUndo: Boolean, canRedo: Boolean, modifier: Modifier = Modifier) {
     Column(modifier = modifier.background(Turing.iconBarBg).padding(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        MobileToolbarBtn("⊕", onClick = {}); MobileToolbarBtn("⊖", onClick = {}); Spacer(modifier = Modifier.height(4.dp)); MobileToolbarBtn("▶", sub = "${20}kHz", onClick = {}); MobileToolbarBtn("↗", onClick = onRedo); MobileToolbarBtn("↩", onClick = { if (canUndo) onUndo() }); MobileToolbarBtn("■", onClick = onClear)
+        MobileToolbarBtn("⊕", onClick = {}); MobileToolbarBtn("⊖", onClick = {}); Spacer(modifier = Modifier.height(4.dp)); MobileToolbarBtn("▶", sub = "${20}kHz", onClick = {}); MobileToolbarBtn("↗", onClick = { if (canRedo) onRedo() }); MobileToolbarBtn("↩", onClick = { if (canUndo) onUndo() }); MobileToolbarBtn("■", onClick = onClear)
         Box(modifier = Modifier.height(1.dp).fillMaxWidth(0.6f).background(Color(0xFF2A3A50)))
         MobileToolbarBtn("⬚", onClick = {}); MobileToolbarBtn("🗑", onClick = onClear); MobileToolbarBtn("✎", onClick = {}); MobileToolbarBtn("◍", onClick = {}); Spacer(modifier = Modifier.weight(1f))
         Box(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(Turing.iconBg).border(0.8.dp, Color(0xFF2E425C), RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) { Text("8↔", fontSize = 13.sp, color = Color.White) }

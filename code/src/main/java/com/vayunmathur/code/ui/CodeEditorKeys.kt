@@ -34,68 +34,103 @@ internal fun handleEditorKey(
     toggleFoldAtCaret: (Int) -> Unit,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
+    val handler = KeyHandler(value, tabWidth, extraCarets, setExtraCarets, emit, move)
+    if (event.isCtrlPressed) return handler.handleCtrl(event, onSave, onComment, foldAll, unfoldAll, toggleFoldAtCaret)
+    return handler.handlePlain(event)
+}
+
+private class KeyHandler(
+    val value: TextFieldValue,
+    val tabWidth: Int,
+    val extraCarets: List<Int>,
+    val setExtraCarets: (List<Int>) -> Unit,
+    val emit: (TextFieldValue) -> Unit,
+    val move: (TextRange) -> Unit,
+) {
     val text = value.text
     val start = value.selection.min
     val end = value.selection.max
 
-    if (event.isCtrlPressed) {
+    fun handleCtrl(
+        event: KeyEvent,
+        onSave: () -> Unit,
+        onComment: () -> Unit,
+        foldAll: () -> Unit,
+        unfoldAll: () -> Unit,
+        toggleFoldAtCaret: (Int) -> Unit,
+    ): Boolean {
         when (event.key) {
-            Key.S -> { onSave(); return true }
-            Key.Slash -> { onComment(); return true }
-            Key.D -> {
-                val range = selectionOrWord(text, value.selection)
-                if (range != null) {
-                    val word = text.substring(range.first, range.second)
-                    val from = (extraCarets + end).max()
-                    val idx = text.indexOf(word, from)
-                    if (idx >= 0) setExtraCarets(extraCarets + (idx + word.length))
-                }
-                return true
-            }
+            Key.S -> runAction(onSave)
+            Key.Slash -> runAction(onComment)
+            Key.D -> addCaretBelow()
             Key.LeftBracket -> {
                 if (event.isShiftPressed) foldAll() else toggleFoldAtCaret(start)
-                return true
             }
             Key.RightBracket -> {
                 if (event.isShiftPressed) unfoldAll() else toggleFoldAtCaret(start)
-                return true
             }
+            else -> return false
         }
-        return false
+        return true
     }
 
-    when (event.key) {
-        Key.Escape -> {
-            if (extraCarets.isNotEmpty()) {
-                setExtraCarets(emptyList())
-                return true
-            }
-            return false
-        }
-        Key.Tab -> {
-            emit(if (event.isShiftPressed) dedentSelection(value, tabWidth) else indentSelection(value, " ".repeat(tabWidth)))
-            return true
-        }
-        Key.DirectionLeft -> { move(TextRange((start - 1).coerceAtLeast(0))); return true }
-        Key.DirectionRight -> { move(TextRange((end + 1).coerceAtMost(text.length))); return true }
-        Key.Backspace -> {
-            if (extraCarets.isNotEmpty()) {
-                applyMultiCaret(text, start, extraCarets, insert = null, emit, setExtraCarets)
-            } else if (start != end) {
-                emit(TextFieldValue(text.substring(0, start) + text.substring(end), TextRange(start)))
-            } else if (start > 0) {
-                emit(TextFieldValue(text.substring(0, start - 1) + text.substring(start), TextRange(start - 1)))
-            }
-            return true
-        }
-        Key.Enter, Key.NumPadEnter -> {
-            emit(TextFieldValue(text.substring(0, start) + "\n" + text.substring(end), TextRange(start + 1)))
-            return true
+    private fun runAction(action: () -> Unit): Boolean {
+        action()
+        return true
+    }
+
+    private fun addCaretBelow() {
+        val range = selectionOrWord(text, value.selection)
+        if (range != null) {
+            val word = text.substring(range.first, range.second)
+            val from = (extraCarets + end).max()
+            val idx = text.indexOf(word, from)
+            if (idx >= 0) setExtraCarets(extraCarets + (idx + word.length))
         }
     }
 
-    val codePoint = event.nativeKeyEvent.unicodeChar
-    if (codePoint != 0) {
+    fun handlePlain(event: KeyEvent): Boolean {
+        when (event.key) {
+            Key.Escape -> return dismissExtraCarets()
+            Key.Tab -> {
+                val indented = if (event.isShiftPressed) {
+                    dedentSelection(value, tabWidth)
+                } else {
+                    indentSelection(value, " ".repeat(tabWidth))
+                }
+                emit(indented)
+                return true
+            }
+            Key.DirectionLeft -> move(TextRange((start - 1).coerceAtLeast(0)))
+            Key.DirectionRight -> move(TextRange((end + 1).coerceAtMost(text.length)))
+            Key.Backspace -> handleBackspace()
+            Key.Enter, Key.NumPadEnter -> {
+                emit(TextFieldValue(text.substring(0, start) + "\n" + text.substring(end), TextRange(start + 1)))
+            }
+            else -> return handleChar(event)
+        }
+        return true
+    }
+
+    private fun dismissExtraCarets(): Boolean {
+        if (extraCarets.isEmpty()) return false
+        setExtraCarets(emptyList())
+        return true
+    }
+
+    private fun handleBackspace() {
+        if (extraCarets.isNotEmpty()) {
+            applyMultiCaret(text, start, extraCarets, insert = null, emit, setExtraCarets)
+        } else if (start != end) {
+            emit(TextFieldValue(text.substring(0, start) + text.substring(end), TextRange(start)))
+        } else if (start > 0) {
+            emit(TextFieldValue(text.substring(0, start - 1) + text.substring(start), TextRange(start - 1)))
+        }
+    }
+
+    private fun handleChar(event: KeyEvent): Boolean {
+        val codePoint = event.nativeKeyEvent.unicodeChar
+        if (codePoint == 0) return false
         val ch = codePoint.toChar().toString()
         if (extraCarets.isNotEmpty()) {
             applyMultiCaret(text, start, extraCarets, insert = ch, emit, setExtraCarets)
@@ -104,7 +139,6 @@ internal fun handleEditorKey(
         }
         return true
     }
-    return false
 }
 
 /**

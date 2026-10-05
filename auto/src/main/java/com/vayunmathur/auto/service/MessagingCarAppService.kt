@@ -61,14 +61,14 @@ class MessagingCarAppService(
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(16)} for channel $channelId")
+            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         // Only ACTION arrives here; anything else (a head unit echoing our own
         // posts, a future extension) is observed and ignored.
         val action = MessagingCodec.decodeInbound(type, payload)
         if (action == null) {
-            Log.d(TAG, "unhandled messaging message 0x${type.toString(16)}")
+            Log.d(TAG, "unhandled messaging message 0x${type.toString(HEX_RADIX)}")
             return
         }
         when (action) {
@@ -166,5 +166,8 @@ class MessagingCarAppService(
 
     private companion object {
         const val TAG = "MaAuto.Messaging"
+
+        /** Radix for hex message-id logging. */
+        const val HEX_RADIX = 16
     }
 }

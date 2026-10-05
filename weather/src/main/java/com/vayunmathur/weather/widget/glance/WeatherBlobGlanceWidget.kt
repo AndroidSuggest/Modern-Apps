@@ -59,6 +59,9 @@ class WeatherBlobGlanceWidget : GlanceAppWidget() {
         }
     }
 
+    // Broad catch is deliberate: a widget preview must never throw into the host,
+    // and Glance throws undocumented RuntimeExceptions.
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
         try {
             provideContent {
@@ -66,7 +69,7 @@ class WeatherBlobGlanceWidget : GlanceAppWidget() {
                     BlobPreviewContent()
                 }
             }
-        } catch (e: Throwable) {
+        } catch (e: Exception) {
             Log.e("WeatherBlobWidget", "providePreview failed", e)
         }
     }

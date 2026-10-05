@@ -13,6 +13,28 @@ import kotlin.time.Duration.Companion.seconds
  * `findTransitRouteNative` path (via [OfflineRouterTransit]).
  */
 internal object OfflineRouterRouteBuilder {
+    /** Millimetres per metre (native distance unit). */
+    private const val MM_PER_METER = 1000.0
+    /** Native durations are centiseconds (10 ms units). */
+    private const val CENTISEC_PER_SECOND = 100.0
+    /** Stride of one [lon, lat] pair in a native geometry array. */
+    private const val GEOMETRY_PAIR_STRIDE = 2
+    /** Bit 0 of a packed lane int: the lane leads onto the taken route. */
+    private const val LANE_ACTIVE_BIT = 1
+    /** Packed lane int holds `dirMask * 2 + valid`: shift to the mask. */
+    private const val LANE_MASK_SHIFT = 1
+    /** Mask for one unsigned RGB byte of a GTFS `route_color`. */
+    private const val RGB_MASK = 0xFFFFFF
+    /** Fallback line colour when neither the pack nor GTFS names one. */
+    private const val FALLBACK_ROUTE_COLOR = "#FF0000"
+    /** Native wait durations are centiseconds (10 ms units). */
+    private const val WAIT_CENTISEC_PER_SECOND = 100
+    /** Seconds per minute, for the wait-text split. */
+    private const val SECONDS_PER_MINUTE = 60
+    /** Metres per degree of latitude, for the elevation-profile distance. */
+    private const val METERS_PER_DEGREE = 111_320.0
+    /** Midpoint factor when averaging two latitudes. */
+    private const val LAT_MIDPOINT = 0.5
     /**
      * Convert native [OfflineRouter.RawStep]s into a [RouteService.Route]: decode geometry,
      * localize maneuver text, attach transit details, and coalesce consecutive
@@ -25,325 +47,255 @@ internal object OfflineRouterRouteBuilder {
             mode: RouteService.TravelMode
     ): RouteService.Route {
                 val fullPolyline = mutableListOf<GeoPoint>()
-                val processedSteps =
-                        rawSteps.map { raw ->
-                            val positions = mutableListOf<GeoPoint>()
-                            for (i in raw.geometry.indices step 2) {
-                                val pos = GeoPoint(raw.geometry[i], raw.geometry[i + 1])
-                                positions.add(pos)
-                                if (fullPolyline.isEmpty() || fullPolyline.last() != pos) {
-                                    fullPolyline.add(pos)
-                                }
-                            }
+                val processedSteps = rawSteps.map { raw -> buildStep(context, raw, mode, fullPolyline) }
+                return assembleRoute(context, rawSteps, mode, fullPolyline, processedSteps)
+    }
 
-                            val maneuver =
-                                    RouteService.API.Maneuver.entries.getOrElse(raw.maneuverId) {
-                                        RouteService.API.Maneuver.MANEUVER_UNSPECIFIED
-                                    }
-                            // Decode packed turn lanes into ordered left→right
-                            // lane guidance. Each int is `dirMask * 2 + valid`,
-                            // where dirMask is a bitmask of Maneuver ordinals the
-                            // lane offers (real OSM turn:lanes can allow several
-                            // turns, e.g. through+right) and bit0 is the active
-                            // flag (lane leads onto the taken route).
-                            val lanes = raw.lanePacked.map { code ->
-                                val active = (code and 1) == 1
-                                val mask = code ushr 1
-                                val directions =
-                                        RouteService.API.Maneuver.entries.filter { m ->
-                                            (mask and (1 shl m.ordinal)) != 0
-                                        }
-                                RouteService.API.Lane(
-                                        directions = directions.ifEmpty {
-                                            listOf(RouteService.API.Maneuver.STRAIGHT)
-                                        },
-                                        active = active,
-                                )
-                            }
-                            val hasName = raw.roadName.isNotBlank()
-                            val instructionText =
-                                    when (maneuver) {
-                                        RouteService.API.Maneuver.DEPART ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_depart,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string.maneuver_depart_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.STRAIGHT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_straight,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string.maneuver_straight_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.TURN_LEFT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_turn_left,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string.maneuver_turn_left_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.TURN_RIGHT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_turn_right,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string.maneuver_turn_right_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.TURN_SLIGHT_LEFT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_turn_slight_left,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string
-                                                                        .maneuver_turn_slight_left_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.TURN_SLIGHT_RIGHT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_turn_slight_right,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string
-                                                                        .maneuver_turn_slight_right_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.TURN_SHARP_LEFT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_turn_sharp_left,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string
-                                                                        .maneuver_turn_sharp_left_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.TURN_SHARP_RIGHT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_turn_sharp_right,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string
-                                                                        .maneuver_turn_sharp_right_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.UTURN_LEFT,
-                                        RouteService.API.Maneuver.UTURN_RIGHT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_uturn,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string.maneuver_uturn_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.MERGE ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_merge,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string.maneuver_merge_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.RAMP_LEFT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_ramp_left,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string.maneuver_ramp_left_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.RAMP_RIGHT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_ramp_right,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string.maneuver_ramp_right_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.FORK_LEFT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_fork_left,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string.maneuver_fork_left_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.FORK_RIGHT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_fork_right,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string.maneuver_fork_right_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.ROUNDABOUT_LEFT,
-                                        RouteService.API.Maneuver.ROUNDABOUT_RIGHT ->
-                                                if (hasName)
-                                                        context.getString(
-                                                                R.string.maneuver_roundabout,
-                                                                raw.roadName
-                                                        )
-                                                else
-                                                        context.getString(
-                                                                R.string.maneuver_roundabout_unnamed
-                                                        )
-                                        RouteService.API.Maneuver.WAIT -> {
-                                            val waitSeconds = raw.duration10ms / 100
-                                            val waitText = if (waitSeconds >= 60) "${waitSeconds / 60} min" else "$waitSeconds sec"
-                                            if (raw.stopCode != null && raw.stopCode.isNotBlank())
-                                                context.getString(R.string.maneuver_wait_at, waitText, raw.roadName, raw.stopCode)
-                                            else
-                                                context.getString(R.string.maneuver_wait, waitText, raw.roadName)
-                                        }
-                                        else ->
-                                            if (raw.isTransit && raw.stopCode != null && raw.endStopCode != null)
-                                                context.getString(R.string.maneuver_ride_transit, raw.roadName, raw.stopCode, raw.endStopCode, raw.stopCount)
-                                            else if (mode == RouteService.TravelMode.TRANSIT)
-                                                // A walk leg of an itinerary. The planner names
-                                                // every one of them "Walk", which the road-name
-                                                // templates below turn into "Continue onto Walk".
-                                                // Phrased for real after coalescing, from the
-                                                // merged duration; this placeholder only has to
-                                                // compare equal between adjacent walk legs so
-                                                // they still merge.
-                                                WALK_LEG_PLACEHOLDER
-                                            else if (hasName)
-                                                context.getString(
-                                                        R.string.maneuver_unspecified,
-                                                        raw.roadName
-                                                )
-                                            else
-                                                context.getString(
-                                                        R.string
-                                                                .maneuver_unspecified_unnamed
-                                                )
-                                    }
+    private fun buildStep(
+            context: Context,
+            raw: OfflineRouter.RawStep,
+            mode: RouteService.TravelMode,
+            fullPolyline: MutableList<GeoPoint>,
+    ): RouteService.Step {
+        val positions = mutableListOf<GeoPoint>()
+        for (i in raw.geometry.indices step GEOMETRY_PAIR_STRIDE) {
+            val pos = GeoPoint(raw.geometry[i], raw.geometry[i + 1])
+            positions.add(pos)
+            if (fullPolyline.isEmpty() || fullPolyline.last() != pos) {
+                fullPolyline.add(pos)
+            }
+        }
 
-                            RouteService.Step(
-                                    distanceMeters = raw.distanceMm / 1000.0,
-                                    staticDuration = (raw.duration10ms / 100.0).seconds,
-                                    polyline = positions,
-                                    navInstruction =
-                                            RouteService.API.NavInstruction(
-                                                    maneuver,
-                                                    instructionText
-                                            ),
-                                    travelMode = if (raw.isTransit) RouteService.TravelMode.TRANSIT
-                                    else if (mode == RouteService.TravelMode.TRANSIT) RouteService.TravelMode.WALK
-                                    else mode,
-                                    speedRatio = raw.speedRatio,
-                                    lanes = lanes,
-                                    transitDetails = if (raw.isTransit && raw.gtfsFeed != null && raw.stopCode != null) {
-                                        RouteService.API.TransitDetails(
-                                            headsign = raw.headsign ?: "",
-                                            stopCount = raw.stopCount,
-                                            transitLine = RouteService.API.TransitLine(
-                                                name = raw.roadName,
-                                                // The index carries route_color for
-                                                // every feed; GTFSProvider only sees
-                                                // the bundled APK asset feed, so it is
-                                                // just a fallback now.
-                                                color = raw.routeColor
-                                                    .takeIf { it != 0 }
-                                                    ?.let { "#%06X".format(it and 0xFFFFFF) }
-                                                    ?: GTFSProvider.getRouteColor(context, raw.gtfsFeed, raw.roadName)
-                                                    ?: "#FF0000"
-                                            ),
-                                            stopDetails = RouteService.API.StopDetails(
-                                                arrivalTime = formatServiceTime(raw.arrSecs),
-                                                departureTime = formatServiceTime(raw.depSecs),
-                                                arrivalStop = RouteService.API.Stop(raw.endStopCode ?: ""),
-                                                departureStop = RouteService.API.Stop(raw.stopCode)
-                                            ),
-                                            feedName = raw.gtfsFeed
-                                        )
-                                    } else null
-                            )
-                        }
+        val maneuver = maneuverOf(raw.maneuverId)
+        val lanes = raw.lanePacked.map { code -> decodeLane(code) }
+        val hasName = raw.roadName.isNotBlank()
+        val instructionText = instructionText(context, raw, mode, maneuver, hasName)
+        return RouteService.Step(
+            distanceMeters = raw.distanceMm / MM_PER_METER,
+            staticDuration = (raw.duration10ms / CENTISEC_PER_SECOND).seconds,
+            polyline = positions,
+            navInstruction = RouteService.API.NavInstruction(maneuver, instructionText),
+            travelMode = stepTravelMode(raw, mode),
+            speedRatio = raw.speedRatio,
+            lanes = lanes,
+            transitDetails = transitDetails(context, raw),
+        )
+    }
 
-                // Coalesce consecutive maneuvers that stay on the same road.
-                // The native router can emit a chain of small "slight left /
-                // slight right" entries along a curving stretch of road
-                // (e.g. El Camino Real bending through Palo Alto) where
-                // the road name never changes — visually that's "stay on
-                // the same road", not a series of turns. Merge those into
-                // a single step whose polyline + distance + duration is the
-                // sum of the merged steps.
-                val coalescedSteps = mutableListOf<RouteService.Step>()
-                for (step in processedSteps) {
-                    val prev = coalescedSteps.lastOrNull()
-                    // Smart-cast prev to non-null in the merge branch by
-                    // gating on prev != null first.
-                    if (prev != null &&
-                        prev.travelMode == step.travelMode &&
-                        step.travelMode != RouteService.TravelMode.TRANSIT &&
-                        step.navInstruction.maneuver in NON_TURNING_MANEUVERS &&
-                        // Road name unchanged (instruction text is
-                        // road-name-templated, so equal strings ⇒ same road).
-                        sameRoadName(prev.navInstruction.instructions, step.navInstruction.instructions)
-                    ) {
-                        coalescedSteps[coalescedSteps.lastIndex] = prev.copy(
-                            distanceMeters = prev.distanceMeters + step.distanceMeters,
-                            staticDuration = prev.staticDuration + step.staticDuration,
-                            polyline = mergePolylines(prev.polyline, step.polyline),
-                        )
-                    } else {
-                        coalescedSteps.add(step)
-                    }
-                }
+    private fun instructionText(
+        context: Context,
+        raw: OfflineRouter.RawStep,
+        mode: RouteService.TravelMode,
+        maneuver: RouteService.API.Maneuver,
+        hasName: Boolean,
+    ): String = namedInstruction(context, raw, maneuver, hasName)
+        ?: waitInstruction(context, raw)
+        ?: fallbackInstruction(context, raw, mode, hasName)
 
-                return RouteService.Route(
-                        duration =
-                                coalescedSteps.sumOf { it.staticDuration.inWholeSeconds }.seconds,
-                        distanceMeters = coalescedSteps.sumOf { it.distanceMeters },
-                        polyline = fullPolyline,
-                        step = phraseWalkLegs(coalescedSteps, mode) { minutes ->
-                            context.resources.getQuantityString(
-                                    R.plurals.maneuver_walk_minutes,
-                                    minutes,
-                                    minutes,
-                            )
-                        },
-                        departureTime = leaveAt(rawSteps),
-                        arrivalTime = arriveAt(rawSteps),
-                        elevationProfile = elevationProfile(rawSteps),
-                        // The whole-route total is carried on every RawStep (0 on transit legs),
-                        // so the first one is enough.
-                        ascentMeters = rawSteps.firstOrNull()?.ascentM ?: 0.0,
-                        descentMeters = rawSteps.firstOrNull()?.descentM ?: 0.0,
+    /** Named/unnamed template for the plain road maneuvers, or null when [maneuver] is special. */
+    private fun namedInstruction(
+        context: Context,
+        raw: OfflineRouter.RawStep,
+        maneuver: RouteService.API.Maneuver,
+        hasName: Boolean,
+    ): String? {
+        val templates = MANEUVER_TEMPLATES[maneuver] ?: return null
+        val res = if (hasName) templates.first else templates.second
+        return context.getString(res, raw.roadName)
+    }
+
+    /** Road maneuver → (named template, unnamed template). */
+    private val MANEUVER_TEMPLATES: Map<RouteService.API.Maneuver, Pair<Int, Int>> = mapOf(
+        RouteService.API.Maneuver.DEPART to
+            (R.string.maneuver_depart to R.string.maneuver_depart_unnamed),
+        RouteService.API.Maneuver.STRAIGHT to
+            (R.string.maneuver_straight to R.string.maneuver_straight_unnamed),
+        RouteService.API.Maneuver.TURN_LEFT to
+            (R.string.maneuver_turn_left to R.string.maneuver_turn_left_unnamed),
+        RouteService.API.Maneuver.TURN_RIGHT to
+            (R.string.maneuver_turn_right to R.string.maneuver_turn_right_unnamed),
+        RouteService.API.Maneuver.TURN_SLIGHT_LEFT to
+            (R.string.maneuver_turn_slight_left to
+                R.string.maneuver_turn_slight_left_unnamed),
+        RouteService.API.Maneuver.TURN_SLIGHT_RIGHT to
+            (R.string.maneuver_turn_slight_right to
+                R.string.maneuver_turn_slight_right_unnamed),
+        RouteService.API.Maneuver.TURN_SHARP_LEFT to
+            (R.string.maneuver_turn_sharp_left to
+                R.string.maneuver_turn_sharp_left_unnamed),
+        RouteService.API.Maneuver.TURN_SHARP_RIGHT to
+            (R.string.maneuver_turn_sharp_right to
+                R.string.maneuver_turn_sharp_right_unnamed),
+        RouteService.API.Maneuver.UTURN_LEFT to
+            (R.string.maneuver_uturn to R.string.maneuver_uturn_unnamed),
+        RouteService.API.Maneuver.UTURN_RIGHT to
+            (R.string.maneuver_uturn to R.string.maneuver_uturn_unnamed),
+        RouteService.API.Maneuver.MERGE to
+            (R.string.maneuver_merge to R.string.maneuver_merge_unnamed),
+        RouteService.API.Maneuver.RAMP_LEFT to
+            (R.string.maneuver_ramp_left to R.string.maneuver_ramp_left_unnamed),
+        RouteService.API.Maneuver.RAMP_RIGHT to
+            (R.string.maneuver_ramp_right to R.string.maneuver_ramp_right_unnamed),
+        RouteService.API.Maneuver.FORK_LEFT to
+            (R.string.maneuver_fork_left to R.string.maneuver_fork_left_unnamed),
+        RouteService.API.Maneuver.FORK_RIGHT to
+            (R.string.maneuver_fork_right to R.string.maneuver_fork_right_unnamed),
+        RouteService.API.Maneuver.ROUNDABOUT_LEFT to
+            (R.string.maneuver_roundabout to R.string.maneuver_roundabout_unnamed),
+        RouteService.API.Maneuver.ROUNDABOUT_RIGHT to
+            (R.string.maneuver_roundabout to R.string.maneuver_roundabout_unnamed),
+    )
+
+    private fun waitInstruction(
+        context: Context,
+        raw: OfflineRouter.RawStep,
+    ): String? {
+        if (maneuverOf(raw.maneuverId) != RouteService.API.Maneuver.WAIT) return null
+        val waitSeconds = raw.duration10ms / WAIT_CENTISEC_PER_SECOND
+        val waitText = if (waitSeconds >= SECONDS_PER_MINUTE) {
+            "${waitSeconds / SECONDS_PER_MINUTE} min"
+        } else {
+            "$waitSeconds sec"
+        }
+        return if (raw.stopCode != null && raw.stopCode.isNotBlank()) {
+            context.getString(R.string.maneuver_wait_at, waitText, raw.roadName, raw.stopCode)
+        } else {
+            context.getString(R.string.maneuver_wait, waitText, raw.roadName)
+        }
+    }
+
+    private fun fallbackInstruction(
+        context: Context,
+        raw: OfflineRouter.RawStep,
+        mode: RouteService.TravelMode,
+        hasName: Boolean,
+    ): String {
+        if (raw.isTransit && raw.stopCode != null && raw.endStopCode != null) {
+            return context.getString(
+                R.string.maneuver_ride_transit,
+                raw.roadName, raw.stopCode, raw.endStopCode, raw.stopCount,
+            )
+        }
+        if (mode == RouteService.TravelMode.TRANSIT) {
+            // A walk leg of an itinerary. The planner names
+            // every one of them "Walk", which the road-name
+            // templates below turn into "Continue onto Walk".
+            // Phrased for real after coalescing, from the
+            // merged duration; this placeholder only has to
+            // compare equal between adjacent walk legs so
+            // they still merge.
+            return WALK_LEG_PLACEHOLDER
+        }
+        return namedOrUnnamed(
+            context, hasName, raw.roadName,
+            R.string.maneuver_unspecified, R.string.maneuver_unspecified_unnamed,
+        )
+    }
+
+    private fun namedOrUnnamed(
+        context: Context,
+        hasName: Boolean,
+        roadName: String,
+        named: Int,
+        unnamed: Int,
+    ): String = if (hasName) {
+        context.getString(named, roadName)
+    } else {
+        context.getString(unnamed)
+    }
+
+    private fun maneuverOf(maneuverId: Int): RouteService.API.Maneuver =
+        RouteService.API.Maneuver.entries.getOrElse(maneuverId) {
+            RouteService.API.Maneuver.MANEUVER_UNSPECIFIED
+        }
+
+    /**
+     * Decode packed turn lanes into ordered left→right lane guidance. Each int
+     * is `dirMask * 2 + valid`, where dirMask is a bitmask of Maneuver ordinals
+     * the lane offers (real OSM turn:lanes can allow several turns, e.g.
+     * through+right) and bit0 is the active flag (lane leads onto the taken
+     * route).
+     */
+    private fun decodeLane(code: Int): RouteService.API.Lane {
+        val active = (code and LANE_ACTIVE_BIT) == 1
+        val mask = code ushr LANE_MASK_SHIFT
+        val directions = RouteService.API.Maneuver.entries.filter { m ->
+            (mask and (1 shl m.ordinal)) != 0
+        }
+        return RouteService.API.Lane(
+            directions = directions.ifEmpty {
+                listOf(RouteService.API.Maneuver.STRAIGHT)
+            },
+            active = active,
+        )
+    }
+
+    private fun stepTravelMode(
+        raw: OfflineRouter.RawStep,
+        mode: RouteService.TravelMode,
+    ): RouteService.TravelMode = when {
+        raw.isTransit -> RouteService.TravelMode.TRANSIT
+        mode == RouteService.TravelMode.TRANSIT -> RouteService.TravelMode.WALK
+        else -> mode
+    }
+
+    private fun transitDetails(
+        context: Context,
+        raw: OfflineRouter.RawStep,
+    ): RouteService.API.TransitDetails? {
+        if (!raw.isTransit || raw.gtfsFeed == null || raw.stopCode == null) return null
+        return RouteService.API.TransitDetails(
+            headsign = raw.headsign ?: "",
+            stopCount = raw.stopCount,
+            transitLine = RouteService.API.TransitLine(
+                name = raw.roadName,
+                // The index carries route_color for
+                // every feed; GTFSProvider only sees
+                // the bundled APK asset feed, so it is
+                // just a fallback now.
+                color = raw.routeColor
+                    .takeIf { it != 0 }
+                    ?.let { "#%06X".format(it and RGB_MASK) }
+                    ?: GTFSProvider.getRouteColor(context, raw.gtfsFeed, raw.roadName)
+                    ?: FALLBACK_ROUTE_COLOR
+            ),
+            stopDetails = RouteService.API.StopDetails(
+                arrivalTime = formatServiceTime(raw.arrSecs),
+                departureTime = formatServiceTime(raw.depSecs),
+                arrivalStop = RouteService.API.Stop(raw.endStopCode ?: ""),
+                departureStop = RouteService.API.Stop(raw.stopCode)
+            ),
+            feedName = raw.gtfsFeed
+        )
+    }
+
+    private fun assembleRoute(
+        context: Context,
+        rawSteps: Array<OfflineRouter.RawStep>,
+        mode: RouteService.TravelMode,
+        fullPolyline: List<GeoPoint>,
+        processedSteps: List<RouteService.Step>,
+    ): RouteService.Route {
+        val coalescedSteps = coalesceSteps(processedSteps)
+        return RouteService.Route(
+            duration = coalescedSteps.sumOf { it.staticDuration.inWholeSeconds }.seconds,
+            distanceMeters = coalescedSteps.sumOf { it.distanceMeters },
+            polyline = fullPolyline,
+            step = phraseWalkLegs(coalescedSteps, mode) { minutes ->
+                context.resources.getQuantityString(
+                    R.plurals.maneuver_walk_minutes,
+                    minutes,
+                    minutes,
                 )
+            },
+            departureTime = leaveAt(rawSteps),
+            arrivalTime = arriveAt(rawSteps),
+            elevationProfile = elevationProfile(rawSteps),
+            // The whole-route total is carried on every RawStep (0 on transit legs),
+            // so the first one is enough.
+            ascentMeters = rawSteps.firstOrNull()?.ascentM ?: 0.0,
+            descentMeters = rawSteps.firstOrNull()?.descentM ?: 0.0,
+        )
     }
 
     /**
@@ -381,10 +333,46 @@ internal object OfflineRouterRouteBuilder {
 
     /** Approximate ground distance in metres between two lat/lon points (equirectangular). */
     private fun crowMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val dlat = (lat2 - lat1) * 111_320.0
-        val dlon = (lon2 - lon1) * 111_320.0 * Math.cos(Math.toRadians((lat1 + lat2) * 0.5))
+        val dlat = (lat2 - lat1) * METERS_PER_DEGREE
+        val dlon = (lon2 - lon1) * METERS_PER_DEGREE *
+            Math.cos(Math.toRadians((lat1 + lat2) * LAT_MIDPOINT))
         return Math.hypot(dlat, dlon)
     }
+
+    // Coalesce consecutive maneuvers that stay on the same road.
+    // The native router can emit a chain of small "slight left /
+    // slight right" entries along a curving stretch of road
+    // (e.g. El Camino Real bending through Palo Alto) where
+    // the road name never changes — visually that's "stay on
+    // the same road", not a series of turns. Merge those into
+    // a single step whose polyline + distance + duration is the
+    // sum of the merged steps.
+    private fun coalesceSteps(processedSteps: List<RouteService.Step>): List<RouteService.Step> {
+        val coalescedSteps = mutableListOf<RouteService.Step>()
+        for (step in processedSteps) {
+            val prev = coalescedSteps.lastOrNull()
+            // Smart-cast prev to non-null in the merge branch by
+            // gating on prev != null first.
+            if (prev != null && mergesWith(prev, step)) {
+                coalescedSteps[coalescedSteps.lastIndex] = prev.copy(
+                    distanceMeters = prev.distanceMeters + step.distanceMeters,
+                    staticDuration = prev.staticDuration + step.staticDuration,
+                    polyline = mergePolylines(prev.polyline, step.polyline),
+                )
+            } else {
+                coalescedSteps.add(step)
+            }
+        }
+        return coalescedSteps
+    }
+
+    private fun mergesWith(prev: RouteService.Step, step: RouteService.Step): Boolean =
+        prev.travelMode == step.travelMode &&
+            step.travelMode != RouteService.TravelMode.TRANSIT &&
+            step.navInstruction.maneuver in NON_TURNING_MANEUVERS &&
+            // Road name unchanged (instruction text is
+            // road-name-templated, so equal strings ⇒ same road).
+            sameRoadName(prev.navInstruction.instructions, step.navInstruction.instructions)
 
     /**
      * Maneuvers that we treat as "still on the same road" when their

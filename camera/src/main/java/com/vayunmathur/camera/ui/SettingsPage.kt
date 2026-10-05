@@ -98,7 +98,7 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                 )
                 viewModel.setSaveTreeUri(treeUri)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 messenger.show(saveLocationError)
             }
         }

@@ -13,6 +13,7 @@ import com.vayunmathur.findfamily.domain.NoShowPolicy
 import java.util.concurrent.TimeUnit
 import kotlin.time.Clock
 import kotlin.time.Duration
+import kotlin.time.Instant
 
 /**
  * Scheduler + worker for no-show alerts (issue 702).
@@ -88,27 +89,41 @@ object NoShowCheckScheduler {
     suspend fun sweepNow(context: Context): List<NoShowAlert> {
         val repository = FindFamilyRepository.get(context.applicationContext)
         val now = Clock.System.now()
-        val due = repository.getDueNoShowAlerts(now.epochSeconds)
+        val due = repository.noShowAlertStore.getDue(now.epochSeconds)
         if (due.isEmpty()) return emptyList()
         val latestByUser = repository.latestLocationsOnce().associateBy { it.userid }
         val fired = mutableListOf<NoShowAlert>()
         for (alert in due) {
-            val fix = latestByUser[alert.watchedUserId]
-            val arrived = isArrived(repository, alert, fix)
-            if (!NoShowPolicy.shouldFire(
-                    fired = alert.fired,
-                    expectedAt = alert.expectedAt,
-                    grace = alert.grace,
-                    now = now,
-                    arrived = arrived,
-                )
-            ) continue
-            // Claim first: only the sweep whose UPDATE matches notifies.
-            if (repository.markNoShowAlertFired(alert.id) != 1) continue
-            if (alert.oneShot) runCatching { repository.deleteNoShowAlert(alert) }
-            fired.add(alert.copy(fired = true))
+            val claimed = tryClaimAlert(repository, alert, latestByUser, now)
+            if (claimed != null) fired.add(claimed)
         }
         return fired
+    }
+
+    /**
+     * Evaluate one due alert and claim it if it should fire. Returns the claimed
+     * (fired = true) copy, or null when this alert must not notify this sweep.
+     */
+    private suspend fun tryClaimAlert(
+        repository: FindFamilyRepository,
+        alert: NoShowAlert,
+        latestByUser: Map<Long, com.vayunmathur.findfamily.data.LocationValue>,
+        now: Instant,
+    ): NoShowAlert? {
+        val fix = latestByUser[alert.watchedUserId]
+        val arrived = isArrived(repository, alert, fix)
+        if (!NoShowPolicy.shouldFire(
+                fired = alert.fired,
+                expectedAt = alert.expectedAt,
+                grace = alert.grace,
+                now = now,
+                arrived = arrived,
+            )
+        ) return null
+        // Claim first: only the sweep whose UPDATE matches notifies.
+        if (repository.noShowAlertStore.markFired(alert.id) != 1) return null
+        if (alert.oneShot) runCatching { repository.noShowAlertStore.delete(alert) }
+        return alert.copy(fired = true)
     }
 
     private suspend fun isArrived(
@@ -146,7 +161,7 @@ object NoShowCheckScheduler {
      */
     suspend fun rescheduleAll(context: Context) {
         val repository = FindFamilyRepository.get(context.applicationContext)
-        val pending = repository.getAllNoShowAlerts().filter { !it.fired }
+        val pending = repository.noShowAlertStore.getAll().filter { !it.fired }
         for (alert in pending) {
             runCatching { schedule(context, alert) }
                 .onFailure { e -> Log.w(TAG, "reschedule alert ${alert.id} failed", e) }

@@ -59,15 +59,17 @@ internal fun EditorViewModel.saveTab(tab: OpenTab) {
 fun EditorViewModel.checkExternalChanges() {
     if (tabs.isEmpty()) return
     viewModelScope.launch {
-        for (tab in tabs) {
-            val file = tab.file ?: continue
-            val snapshot = withContext(Dispatchers.IO) {
-                if (file.exists()) file.lastModified() to file.length() else null
-            } ?: continue
-            if (snapshot.first == tab.diskModified && snapshot.second == tab.diskLength) continue
-            if (tab.isDirty) tab.changedOnDisk = true else applyReload(tab)
-        }
+        for (tab in tabs.toList()) checkTab(tab)
     }
+}
+
+private suspend fun EditorViewModel.checkTab(tab: OpenTab) {
+    val file = tab.file ?: return
+    val snapshot = withContext(Dispatchers.IO) {
+        if (file.exists()) file.lastModified() to file.length() else null
+    } ?: return
+    if (snapshot.first == tab.diskModified && snapshot.second == tab.diskLength) return
+    if (tab.isDirty) tab.changedOnDisk = true else applyReload(tab)
 }
 
 /** Replaces [tab]'s buffer with the current disk contents and refreshes its snapshot. */

@@ -22,6 +22,9 @@ import java.net.URLEncoder
 object MusicBrainzApi {
 
     private const val BASE = "https://musicbrainz.org/ws/2"
+    private const val HTTP_SUCCESS_MIN = 200
+    private const val HTTP_SUCCESS_MAX = 299
+    private const val ERROR_BODY_LIMIT = 500
     private const val USER_AGENT =
         "ModernAppsMusicBrainz/1.0 ( https://ma.vayunmathur.com/apps/musicbrainz )"
 
@@ -65,7 +68,11 @@ object MusicBrainzApi {
      * about it.
      */
     internal fun failureFor(status: Int, body: String): IOException? =
-        if (status in 200..299) null else IOException("HTTP $status: ${body.take(500)}")
+        if (status in HTTP_SUCCESS_MIN..HTTP_SUCCESS_MAX) {
+            null
+        } else {
+            IOException("HTTP $status: ${body.take(ERROR_BODY_LIMIT)}")
+        }
 
     /**
      * How long to wait before sending, given when the last request was SENT.

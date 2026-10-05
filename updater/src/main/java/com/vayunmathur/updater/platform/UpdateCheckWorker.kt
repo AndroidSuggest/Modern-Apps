@@ -34,7 +34,9 @@ private val CHECK_INTERVAL = 6.hours
  */
 class UpdateCheckWorker(context: Context, params: WorkerParameters) :
     CoroutineWorker(context, params) {
-
+    // Broad catch is deliberate: a worker must return Result, never throw, and the
+    // service start plus checker throw undocumented RuntimeExceptions.
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun doWork(): WorkResult {
         val context = applicationContext
         val store = DataStoreUtils.getInstance(context)

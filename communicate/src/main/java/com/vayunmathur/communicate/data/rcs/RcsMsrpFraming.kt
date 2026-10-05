@@ -10,6 +10,7 @@ import java.util.UUID
  * no Android. The socket object owns I/O; everything byte-shaping lives here.
  */
 object RcsMsrpFraming {
+    private const val MIN_RESPONSE_PARTS = 3
     /** Default SEND chunk size for outgoing chunked transfers. */
     const val CHUNK_SIZE = 2048
 
@@ -141,13 +142,13 @@ object RcsMsrpFraming {
     fun parseResponseStart(line: String): Triple<String, Int, String>? {
         if (!line.startsWith("MSRP ")) return null
         val parts = line.split(" ")
-        if (parts.size < 3) return null
+        if (parts.size < MIN_RESPONSE_PARTS) return null
         // MSRP <txid> SEND/REPORT (request) vs MSRP <txid> <code> (response):
         // requests have an all-alpha method token.
         val third = parts[2]
         if (third.all { it.isLetter() }) return null
         val code = third.toIntOrNull() ?: return null
-        return Triple(parts[1], code, parts.drop(3).joinToString(" "))
+        return Triple(parts[1], code, parts.drop(MIN_RESPONSE_PARTS).joinToString(" "))
     }
 
     /** True when [line] is an MSRP request (SEND/REPORT/AUTH/…). */

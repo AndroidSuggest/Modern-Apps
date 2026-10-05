@@ -69,69 +69,122 @@ class SessionInstaller(
             // second session for the same package makes PackageManager reject it with
             // INSTALL_FAILED_DUPLICATE_PACKAGE ("Duplicate package ... in pending install
             // requests"). Multi-split installs (e.g. Accrescent) hit this most, being slower.
-            runCatching {
-                installer.mySessions
-                    .filter { it.appPackageName == packageName }
-                    .forEach { runCatching { installer.abandonSession(it.sessionId) } }
-            }
+            abandonPendingSessions(installer, packageName)
 
-            val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
-                if (computedSize > 0) setSize(computedSize)
-                setAppPackageName(packageName)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    // API 34+. Below that the system fills the installer package
-                    // in from the calling UID anyway.
-                    setInstallerPackageName(context.packageName)
-                    setRequestUpdateOwnership(true)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    setPackageSource(PackageInstaller.PACKAGE_SOURCE_STORE)
-                }
-                // Silent install is only offered for updates: the OS honours
-                // USER_ACTION_NOT_REQUIRED when this app is the target's update owner, and
-                // a first-time install of a package owned by someone else would prompt
-                // anyway. First installs keep the confirmation dialog unconditionally.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && isInstalled(packageName)) {
-                    setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
-                }
-                setInstallLocation(android.content.pm.PackageInfo.INSTALL_LOCATION_AUTO)
-                setOriginatingUid(Process.myUid())
-            }
+            val params = sessionParams(computedSize, packageName)
 
             val sessionId = installer.createSession(params)
             val session = installer.openSession(sessionId)
 
             try {
-                for (file in files) {
-                    val name = file.name
-                    session.openWrite(name, 0, file.length()).use { out ->
-                        file.inputStream().use { input ->
-                            input.copyTo(out)
-                        }
-                        session.fsync(out)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Write failed for $packageName: ${e.message}", e)
-                try { session.abandon() } catch (_: Exception) {}
+                writeFiles(session, files)
+            } catch (expected: java.io.IOException) {
+                Log.e(TAG, "Write failed for $packageName: ${expected.message}", expected)
+                abandonQuietly(session)
                 return false
             }
 
-            val intent = Intent(context, InstallStatusReceiver::class.java).apply {
-                action = InstallStatusReceiver.ACTION_INSTALL_STATUS
-            }
-            val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-            val pendingIntent = PendingIntent.getBroadcast(
-                context, sessionId, intent, pendingFlags
-            )
-            session.commit(pendingIntent.intentSender)
-            session.close()
-
+            commitSession(session, sessionId, packageName)
             Log.i(TAG, "Commit started for $packageName sessionId=$sessionId")
             true
-        } catch (e: Exception) {
-            Log.e(TAG, "Install failed for $packageName: ${e.message}", e)
+        } catch (expected: SecurityException) {
+            Log.e(TAG, "Install failed for $packageName: ${expected.message}", expected)
             false
+        } catch (expected: java.io.IOException) {
+            Log.e(TAG, "Install failed for $packageName: ${expected.message}", expected)
+            false
+        } catch (expected: IllegalStateException) {
+            Log.e(TAG, "Install failed for $packageName: ${expected.message}", expected)
+            false
+        }
+    }
+
+    private fun abandonPendingSessions(
+        installer: android.content.pm.PackageInstaller,
+        packageName: String,
+    ) {
+        try {
+            installer.mySessions
+                .filter { it.appPackageName == packageName }
+                .forEach {
+                    try {
+                        installer.abandonSession(it.sessionId)
+                    } catch (expected: SecurityException) {
+                        Log.w(TAG, "abandon ${it.sessionId}", expected)
+                    }
+                }
+        } catch (expected: SecurityException) {
+            Log.w(TAG, "list sessions", expected)
+        }
+    }
+
+    private fun sessionParams(
+        computedSize: Long,
+        packageName: String,
+    ): PackageInstaller.SessionParams {
+        return PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+            if (computedSize > 0) setSize(computedSize)
+            setAppPackageName(packageName)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // API 34+. Below that the system fills the installer package
+                // in from the calling UID anyway.
+                setInstallerPackageName(context.packageName)
+                setRequestUpdateOwnership(true)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                setPackageSource(PackageInstaller.PACKAGE_SOURCE_STORE)
+            }
+            // Silent install is only offered for updates: the OS honours
+            // USER_ACTION_NOT_REQUIRED when this app is the target's update owner, and
+            // a first-time install of a package owned by someone else would prompt
+            // anyway. First installs keep the confirmation dialog unconditionally.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && isInstalled(packageName)) {
+                setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+            }
+            setInstallLocation(android.content.pm.PackageInfo.INSTALL_LOCATION_AUTO)
+            setOriginatingUid(Process.myUid())
+        }
+    }
+
+    private fun writeFiles(session: PackageInstaller.Session, files: List<File>) {
+        for (file in files) {
+            val name = file.name
+            session.openWrite(name, 0, file.length()).use { out ->
+                file.inputStream().use { input ->
+                    input.copyTo(out)
+                }
+                session.fsync(out)
+            }
+        }
+    }
+
+    private fun abandonQuietly(session: PackageInstaller.Session) {
+        try {
+            session.abandon()
+        } catch (expected: SecurityException) {
+            Log.w(TAG, "abandon session", expected)
+        }
+    }
+
+    private fun commitSession(
+        session: PackageInstaller.Session,
+        sessionId: Int,
+        packageName: String,
+    ) {
+        val intent = Intent(context, InstallStatusReceiver::class.java).apply {
+            action = InstallStatusReceiver.ACTION_INSTALL_STATUS
+        }
+        val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, sessionId, intent, pendingFlags
+        )
+        try {
+            session.commit(pendingIntent.intentSender)
+            session.close()
+        } catch (expected: SecurityException) {
+            Log.e(TAG, "commit failed for $packageName", expected)
+            abandonQuietly(session)
+            throw expected
         }
     }
 

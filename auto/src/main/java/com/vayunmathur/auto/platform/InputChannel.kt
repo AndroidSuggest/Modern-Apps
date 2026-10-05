@@ -4,6 +4,7 @@ import android.util.Log
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalMessage
 import com.vayunmathur.auto.protocol.InputCodec
+import com.vayunmathur.auto.protocol.InputEvents
 import com.vayunmathur.auto.protocol.InputKey
 import com.vayunmathur.auto.protocol.InputPointer
 import com.vayunmathur.auto.protocol.gal.Service
@@ -117,7 +118,7 @@ class InputChannel(
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(16)} for channel $channelId")
+            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         if (!bound) {
@@ -125,19 +126,17 @@ class InputChannel(
             // talking on a channel we never bound (or the grant path never
             // ran). Log, don't crash -- the binding goes out on the grant and
             // on the focus flap back to input-allowed.
-            Log.w(TAG, "ch8 traffic before binding (0x${type.toString(16)}); dropping")
+            Log.w(TAG, "ch8 traffic before binding (0x${type.toString(HEX_RADIX)}); dropping")
             onEvent(InputEvent.DroppedNoFocus)
             return
         }
         if (type == GalMessage.Input.KEY_BINDING_RESPONSE) {
-            val status = runCatching { InputCodec.decodeKeyBindingResponse(payload) }.getOrNull()
-            Log.i(TAG, "key binding response: ${status?.status}")
-            onEvent(InputEvent.BindingAnswered(status?.status ?: -1))
+            onBindingResponse(payload)
             return
         }
         val events = InputCodec.decodeInbound(type, payload)
         if (events == null) {
-            Log.d(TAG, "unhandled input message 0x${type.toString(16)}")
+            Log.d(TAG, "unhandled input message 0x${type.toString(HEX_RADIX)}")
             return
         }
         if (!isInputAllowed()) {
@@ -151,7 +150,31 @@ class InputChannel(
             onEvent(InputEvent.DroppedNoFocus)
             return
         }
-        val (displayWidth, displayHeight) = display
+        injectAll(events, display.first, display.second)
+    }
+
+    private fun onBindingResponse(payload: ByteArray) {
+        val status = runCatching { InputCodec.decodeKeyBindingResponse(payload) }.getOrNull()
+        Log.i(TAG, "key binding response: ${status?.status}")
+        onEvent(InputEvent.BindingAnswered(status?.status ?: BINDING_UNKNOWN_STATUS))
+    }
+
+    private fun injectAll(
+        events: InputEvents,
+        displayWidth: Int,
+        displayHeight: Int,
+    ) {
+        injectTouches(events, displayWidth, displayHeight)
+        injectKeys(events)
+        injectAbsolutes(events)
+        injectScrolls(events)
+    }
+
+    private fun injectTouches(
+        events: InputEvents,
+        displayWidth: Int,
+        displayHeight: Int,
+    ) {
         events.touches.forEach { touch ->
             val scaled = ScaledTouch(
                 action = touch.action.number,
@@ -171,6 +194,9 @@ class InputChannel(
                 sendInjectFeedback()
             }
         }
+    }
+
+    private fun injectKeys(events: InputEvents) {
         events.keys.forEach { key ->
             // Volume keys are consumed, never injected: gearhead's car home
             // swallows KEYCODE_VOLUME_UP/DOWN (its dispatchKeyEvent returns
@@ -183,11 +209,14 @@ class InputChannel(
                 sendInjectFeedback()
             }
         }
+    }
+
+    private fun injectAbsolutes(events: InputEvents) {
         // Tap-as-select rides the absolute section: keycode 65541, value 1
         // presses DPAD_CENTER and anything else releases it (`jar.java`).
         events.absolutes.forEach { (keycode, value) ->
             if (keycode == InputCodec.TAP_SELECT_KEYCODE) {
-                val key = InputKey(InputCodec.KEYCODE_DPAD_CENTER, value == 1)
+                val key = InputKey(InputCodec.KEYCODE_DPAD_CENTER, value == TAP_PRESS_VALUE)
                 if (keySink(key)) {
                     onEvent(InputEvent.Key(key.keycode, key.down))
                     sendInjectFeedback()
@@ -196,6 +225,9 @@ class InputChannel(
                 Log.d(TAG, "ignoring absolute event keycode=$keycode value=$value")
             }
         }
+    }
+
+    private fun injectScrolls(events: InputEvents) {
         events.scrolls.forEach { (_, delta) ->
             if (scrollSink(delta)) {
                 onEvent(InputEvent.Scroll(delta))
@@ -207,11 +239,20 @@ class InputChannel(
     private companion object {
         const val TAG = "MaAuto.Input"
 
+        /** Radix for hex message-id logging. */
+        const val HEX_RADIX = 16
+
         /** Consumed, never injected: the head unit owns its speaker volume. */
         const val VOLUME_UP = 24
         const val VOLUME_DOWN = 25
 
-        private fun com.vayunmathur.auto.protocol.InputEvents.describe(): String =
+        /** Tap-as-select press value; anything else releases DPAD_CENTER. */
+        const val TAP_PRESS_VALUE = 1
+
+        /** Binding status when the head unit's answer fails to parse. */
+        const val BINDING_UNKNOWN_STATUS = -1
+
+        private fun InputEvents.describe(): String =
             "input report (${touches.size} touch, ${keys.size} keys, " +
                 "${scrolls.size} scroll, ${absolutes.size} abs)"
     }

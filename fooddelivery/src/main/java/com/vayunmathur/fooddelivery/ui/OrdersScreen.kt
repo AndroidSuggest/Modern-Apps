@@ -50,7 +50,8 @@ import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.util.sharedText
-import com.vayunmathur.fooddelivery.api.BitesApi
+import com.vayunmathur.fooddelivery.api.BitesAuth
+import com.vayunmathur.fooddelivery.api.BitesOrders
 import com.vayunmathur.fooddelivery.data.FeedbackRequest
 import com.vayunmathur.fooddelivery.data.Order
 import com.vayunmathur.fooddelivery.platform.AppInit
@@ -74,12 +75,11 @@ fun OrdersScreen(onTrackOrder: (Int) -> Unit = {}) {
 
     ratingOrder?.let { target ->
         FeedbackDialog(
-            order = target,
             onDismiss = { ratingOrder = null },
             onSubmit = { rating, note, extraTipCents ->
                 scope.launch {
                     target.uuid?.let {
-                        BitesApi.submitFeedback(
+                        BitesOrders.submitFeedback(
                             it,
                             FeedbackRequest(
                                 orderId = target.id,
@@ -99,9 +99,9 @@ fun OrdersScreen(onTrackOrder: (Int) -> Unit = {}) {
         // The saved token is restored by the background warm-up, so wait for it before
         // deciding whether this is a signed-in session.
         AppInit.awaitReady()
-        isLoggedIn = BitesApi.isLoggedIn()
+        isLoggedIn = BitesAuth.isLoggedIn()
         if (isLoggedIn) {
-            orders = BitesApi.getOrders()
+            orders = BitesOrders.getOrders()
         }
         loading = false
     }
@@ -174,7 +174,7 @@ fun OrdersScreen(onTrackOrder: (Int) -> Unit = {}) {
                         onPickUp = if (!order.isDone && !order.isDelivery && order.uuid != null) {
                             {
                                 scope.launch {
-                                    if (BitesApi.pickUpOrder(order.uuid)) orders = BitesApi.getOrders()
+                                    if (BitesOrders.pickUpOrder(order.uuid)) orders = BitesOrders.getOrders()
                                 }
                             }
                         } else null,
@@ -284,7 +284,6 @@ private fun OrderCard(
 /** Rate a completed order: 1-5 stars, an optional note, and an optional extra tip. */
 @Composable
 private fun FeedbackDialog(
-    order: Order,
     onDismiss: () -> Unit,
     onSubmit: (rating: Int, note: String, extraTipCents: Int) -> Unit,
 ) {
@@ -298,7 +297,7 @@ private fun FeedbackDialog(
         text = {
             Column {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    (1..5).forEach { star ->
+                    for (star in 1..5) {
                         IconButton(onClick = { rating = star }) {
                             IconStar(
                                 modifier = Modifier.size(28.dp),

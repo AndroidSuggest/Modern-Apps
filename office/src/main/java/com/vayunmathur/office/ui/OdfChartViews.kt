@@ -1,7 +1,6 @@
 package com.vayunmathur.office.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -16,18 +15,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
-import com.vayunmathur.office.odf.*
-import com.vayunmathur.library.ui.odf.*
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.odf.ChartType
+import com.vayunmathur.library.ui.odf.OdfChart
 
 private val chartPalette = listOf(
     Color(0xFF1F6FC0), Color(0xFFE8551E), Color(0xFFF2B600),
@@ -43,9 +43,15 @@ internal fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val surfaceColor = MaterialTheme.colorScheme.surface
     Column(Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 12.dp)) {
-        chart.title?.let { Text(it, style = MaterialTheme.typography.titleSmall, color = onSurface, modifier = Modifier.padding(bottom = 4.dp)) }
+        chart.title?.let { Text(
+            it,
+            style = MaterialTheme.typography.titleSmall,
+            color = onSurface,
+            modifier = Modifier.padding(bottom = 4.dp)) }
         // Legend
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             chart.series.forEachIndexed { i, s ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(12.dp).background(chartPalette[i % chartPalette.size]))
@@ -96,7 +102,11 @@ internal fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
                     }
                     for (ci in 0 until catCount) {
                         val x = leftPad + (if (catCount > 1) plotW / (catCount - 1) else plotW) * ci
-                        drawContext.canvas.nativeCanvas.drawText(chart.categories.getOrElse(ci) { "" }, x, topPad + plotH + 34f, centerPaint)
+                        drawContext.canvas.nativeCanvas.drawText(
+                            chart.categories.getOrElse(ci) { "" },
+                            x,
+                            topPad + plotH + 34f,
+                            centerPaint)
                     }
                 }
                 ChartType.SCATTER -> {
@@ -110,7 +120,11 @@ internal fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
                     }
                     for (ci in 0 until catCount) {
                         val x = leftPad + (if (catCount > 1) plotW / (catCount - 1) else plotW) * ci
-                        drawContext.canvas.nativeCanvas.drawText(chart.categories.getOrElse(ci) { "" }, x, topPad + plotH + 34f, centerPaint)
+                        drawContext.canvas.nativeCanvas.drawText(
+                            chart.categories.getOrElse(ci) { "" },
+                            x,
+                            topPad + plotH + 34f,
+                            centerPaint)
                     }
                 }
                 ChartType.PIE, ChartType.DONUT -> {
@@ -126,7 +140,13 @@ internal fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
                     }
                     if (chart.type == ChartType.DONUT) {
                         val hole = d * 0.5f
-                        drawArc(surfaceColor, 0f, 360f, true, Offset(topLeft.x + (d - hole) / 2, topLeft.y + (d - hole) / 2), Size(hole, hole))
+                        drawArc(
+                            surfaceColor,
+                            0f,
+                            360f,
+                            true,
+                            Offset(topLeft.x + (d - hole) / 2, topLeft.y + (d - hole) / 2),
+                            Size(hole, hole))
                     }
                 }
                 ChartType.STACKED_BAR -> {
@@ -139,10 +159,17 @@ internal fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
                         chart.series.forEachIndexed { si, ser ->
                             val v = ser.values.getOrNull(ci) ?: 0f
                             val h = plotH * (v / stackMax)
-                            drawRect(chartPalette[si % chartPalette.size], Offset(leftPad + groupW * ci + pad, yCursor - h), Size(barW, h))
+                            drawRect(
+                                chartPalette[si % chartPalette.size],
+                                Offset(leftPad + groupW * ci + pad, yCursor - h),
+                                Size(barW, h))
                             yCursor -= h
                         }
-                        drawContext.canvas.nativeCanvas.drawText(chart.categories.getOrElse(ci) { "" }, leftPad + groupW * ci + groupW / 2, topPad + plotH + 34f, centerPaint)
+                        drawContext.canvas.nativeCanvas.drawText(
+                            chart.categories.getOrElse(ci) { "" },
+                            leftPad + groupW * ci + groupW / 2,
+                            topPad + plotH + 34f,
+                            centerPaint)
                     }
                 }
                 else -> { // BAR / AREA -> grouped bars
@@ -157,9 +184,16 @@ internal fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
                             val yv = yFor(v)
                             val top = minOf(yv, baselineY)
                             val h = kotlin.math.abs(yv - baselineY)
-                            drawRect(chartPalette[si % chartPalette.size], Offset(gx + barW * si, top), Size(barW * 0.92f, h))
+                            drawRect(
+                                chartPalette[si % chartPalette.size],
+                                Offset(gx + barW * si, top),
+                                Size(barW * 0.92f, h))
                         }
-                        drawContext.canvas.nativeCanvas.drawText(chart.categories.getOrElse(ci) { "" }, leftPad + groupW * ci + groupW / 2, topPad + plotH + 34f, centerPaint)
+                        drawContext.canvas.nativeCanvas.drawText(
+                            chart.categories.getOrElse(ci) { "" },
+                            leftPad + groupW * ci + groupW / 2,
+                            topPad + plotH + 34f,
+                            centerPaint)
                     }
                 }
             }

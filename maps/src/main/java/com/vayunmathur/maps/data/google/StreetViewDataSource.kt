@@ -89,6 +89,21 @@ object StreetViewDataSource {
     private const val SAME_SPOT_M = 4.0
     private const val MAX_WALK_M = 45.0
     private const val BUCKET_DEG = 30.0
+    /** Fallback tile grid when the pano carries no level dims (modern 512·2^z shape). */
+    private const val DEFAULT_TILE_W = 512
+    private const val DEFAULT_TILE_H = 256
+    private const val DEFAULT_TILE_SIZE = 512
+    private const val DEFAULT_LEVEL_COUNT = 6
+    /** XSSI guard prefixing photometa/v1 responses. */
+    private const val XSSI_GUARD = ")]}'"
+    private const val XSSI_GUARD_LEN = 4
+    /** Success range for the tile fetch. */
+    private const val HTTP_OK_MIN = 200
+    private const val HTTP_OK_MAX = 299
+    /** Mean Earth radius (m) for the neighbour-distance haversine. */
+    private const val EARTH_RADIUS_M = 6_371_000.0
+    private const val FULL_CIRCLE_DEG = 360.0
+    private const val HALF_CIRCLE_DEG = 180.0
 
     // Bounded LRU (access-ordered) of resolved metadata, keyed by pano id and by a
     // rounded lat/lng probe. Stores null too (negative cache) so a spot with no
@@ -151,7 +166,9 @@ object StreetViewDataSource {
      * isn't over-requested into black bands.
      */
     suspend fun loadPanorama(pano: StreetViewPano): Bitmap? = withContext(Dispatchers.IO) {
-        val dims = pano.levelDims.ifEmpty { List(6) { 512 * (1 shl it) to 256 * (1 shl it) } }
+        val dims = pano.levelDims.ifEmpty {
+            List(DEFAULT_LEVEL_COUNT) { DEFAULT_TILE_W * (1 shl it) to DEFAULT_TILE_H * (1 shl it) }
+        }
         val z = dims.indexOfLast { it.first in 1..MAX_TILE_WIDTH }.coerceAtLeast(0)
         val (w, h) = dims[z]
         val ts = pano.tileSize.coerceAtLeast(1)
@@ -202,7 +219,7 @@ object StreetViewDataSource {
         val (status, bytes) = runCatching {
             NetworkClient.performRequestBytes(url = url, headers = REQUEST_HEADERS, useSystemTrust = true)
         }.getOrNull() ?: return null
-        return if (status in 200..299 && bytes.isNotEmpty()) bytes else null
+        return if (status in HTTP_OK_MIN..HTTP_OK_MAX && bytes.isNotEmpty()) bytes else null
     }
 
     // --- HTTP + parsing ------------------------------------------------------
@@ -223,21 +240,15 @@ object StreetViewDataSource {
      */
     private fun parsePano(raw: String, lat: Double, lng: Double): StreetViewPano? {
         val root = runCatching { json.parseToJsonElement(unwrap(raw)) }.getOrNull() ?: return null
-        // Two nestings: SingleImageSearch puts the pano node at root[1]; photometa/v1
-        // wraps it one deeper at root[1][0]. Pick whichever carries the [1][1] id.
-        val panoNode = root.at(1).takeIf { it.at(1, 1).str()?.let(PANO_ID::matches) == true }
-            ?: root.at(1, 0)
-        val panoId = panoNode.at(1, 1).str()?.takeIf { PANO_ID.matches(it) }
-            ?: firstMatchingString(panoNode) { PANO_ID.matches(it) }
-            ?: return null
+        val panoNode = panoNode(root) ?: return null
+        val panoId = panoId(panoNode) ?: return null
 
-        val tileSize = panoNode.at(2, 3, 1, 0).int() ?: panoNode.at(2, 3, 1, 1).int() ?: 512
-        val levels = panoNode.at(2, 3, 0).arr()?.size ?: 6
+        val tileSize = panoNode.at(2, 3, 1, 0).int()
+            ?: panoNode.at(2, 3, 1, 1).int() ?: DEFAULT_TILE_SIZE
+        val levels = panoNode.at(2, 3, 0).arr()?.size ?: DEFAULT_LEVEL_COUNT
         // Per-level [h, w] (nested one deeper) → (w, h). Old captures are 416·2^z.
         val levelDims = panoNode.at(2, 3, 0).arr()?.mapNotNull { lvl ->
-            val h = lvl.at(0, 0).int()
-            val w = lvl.at(0, 1).int()
-            if (w != null && h != null && w > 0 && h > 0) w to h else null
+            levelDim(lvl)
         }.orEmpty()
 
         val posNode = panoNode.at(5, 0, 1)
@@ -249,7 +260,48 @@ object StreetViewDataSource {
         val copyright = panoNode.at(4, 0, 0, 0, 0).str()
         val year = panoNode.at(6, 7, 0).int()
         val month = panoNode.at(6, 7, 1).int()
+        val neighbors = panoLinks(panoNode, panoId, pLat, pLng)
 
+        return StreetViewPano(
+            panoId = panoId, lat = pLat, lng = pLng, headingDeg = heading,
+            tileSize = tileSize, maxZoom = levels, levelDims = levelDims,
+            addressLabel = address, copyright = copyright,
+            captureYear = year, captureMonth = month, neighbors = neighbors,
+        )
+    }
+
+    /** Pano node: root[1], or root[1][0] when photometa wraps one deeper. */
+    private fun panoNode(root: JsonElement): JsonElement? {
+        // Two nestings: SingleImageSearch puts the pano node at root[1]; photometa/v1
+        // wraps it one deeper at root[1][0]. Pick whichever carries the [1][1] id.
+        val direct = root.at(1)
+        if (direct.at(1, 1).str()?.let(PANO_ID::matches) == true) return direct
+        return root.at(1, 0)
+    }
+
+    private fun panoId(panoNode: JsonElement): String? =
+        panoNode.at(1, 1).str()?.takeIf { PANO_ID.matches(it) }
+            ?: firstMatchingString(panoNode) { PANO_ID.matches(it) }
+
+    /** Per-level [h, w] (nested one deeper) → (w, h), or null when unusable. */
+    private fun levelDim(lvl: JsonElement): Pair<Int, Int>? {
+        val h = lvl.at(0, 0).int()
+        val w = lvl.at(0, 1).int()
+        if (hasSize(w, h)) return w!! to h!!
+        return null
+    }
+
+    /** Whether [w]/[h] are both present and positive. */
+    private fun hasSize(w: Int?, h: Int?): Boolean =
+        w != null && h != null && w > 0 && h > 0
+
+    /** Local-graph neighbours: nearest pano per direction bucket. */
+    private fun panoLinks(
+        panoNode: JsonElement,
+        panoId: String,
+        pLat: Double,
+        pLng: Double,
+    ): List<StreetViewLink> {
         // Local graph: [ [2,id], _, [ [_,_,lat,lng], … ] ]. Index 0 is this pano.
         val graph = panoNode.at(5, 0, 3, 0).arr().orEmpty()
         val raws = graph.mapNotNull { g ->
@@ -259,7 +311,7 @@ object StreetViewDataSource {
             Triple(id, gLa, gLn)
         }
 
-        val walk = raws.asSequence()
+        return raws.asSequence()
             .filter { it.first != panoId }
             .map { r ->
                 val dm = haversine(pLat, pLng, r.second, r.third)
@@ -269,24 +321,18 @@ object StreetViewDataSource {
             .filter { it.distanceM in SAME_SPOT_M..MAX_WALK_M }
             .sortedBy { it.distanceM }
             .fold(mutableListOf<StreetViewLink>()) { keep, link ->
-                if (keep.none { abs(angleDelta(it.bearingDeg, link.bearingDeg)) < BUCKET_DEG }) keep.add(link)
+                val crowded = keep.any { abs(angleDelta(it.bearingDeg, link.bearingDeg)) < BUCKET_DEG }
+                if (!crowded) keep.add(link)
                 keep
             }
             .sortedBy { it.bearingDeg }
-
-        return StreetViewPano(
-            panoId = panoId, lat = pLat, lng = pLng, headingDeg = heading,
-            tileSize = tileSize, maxZoom = levels, levelDims = levelDims,
-            addressLabel = address, copyright = copyright,
-            captureYear = year, captureMonth = month, neighbors = walk,
-        )
     }
 
     /** Strip the response envelope: photometa/v1's `)]}'` XSSI guard, or
      *  SingleImageSearch's `/**/cb && cb( … )` callback wrapper. */
     private fun unwrap(raw: String): String {
         val t = raw.trim()
-        if (t.startsWith(")]}'")) return t.substring(4).trimStart('\n', '\r', ' ')
+        if (t.startsWith(XSSI_GUARD)) return t.substring(XSSI_GUARD_LEN).trimStart('\n', '\r', ' ')
         val open = t.indexOf('(')
         val close = t.lastIndexOf(')')
         return if (open in 0 until close) t.substring(open + 1, close).trim() else t
@@ -301,7 +347,7 @@ object StreetViewDataSource {
     }
 
     private fun haversine(aLat: Double, aLng: Double, bLat: Double, bLng: Double): Double {
-        val r = 6_371_000.0
+        val r = EARTH_RADIUS_M
         val dLat = Math.toRadians(bLat - aLat)
         val dLng = Math.toRadians(bLng - aLng)
         val h = sin(dLat / 2) * sin(dLat / 2) +
@@ -314,13 +360,13 @@ object StreetViewDataSource {
         val y = sin(dLng) * cos(Math.toRadians(bLat))
         val x = cos(Math.toRadians(aLat)) * sin(Math.toRadians(bLat)) -
             sin(Math.toRadians(aLat)) * cos(Math.toRadians(bLat)) * cos(dLng)
-        return (Math.toDegrees(atan2(y, x)) + 360) % 360
+        return (Math.toDegrees(atan2(y, x)) + FULL_CIRCLE_DEG) % FULL_CIRCLE_DEG
     }
 
     /** Signed smallest difference a→b in degrees, in [-180, 180]. */
     private fun angleDelta(a: Double, b: Double): Double {
-        var d = (b - a + 540) % 360 - 180
-        if (d < -180) d += 360
+        var d = (b - a + HALF_CIRCLE_DEG * 3) % FULL_CIRCLE_DEG - HALF_CIRCLE_DEG
+        if (d < -HALF_CIRCLE_DEG) d += FULL_CIRCLE_DEG
         return d
     }
 }

@@ -140,6 +140,12 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
     var onSweepComplete: (() -> Unit)? = null
 
     companion object {
+        /** Sweep-direction detection threshold; angle wrap half/full circle. */
+        private const val SWEEP_DIRECTION_MIN_ANGLE = 10f
+        private const val HALF_CIRCLE_DEGREES = 180f
+        private const val FULL_CIRCLE_DEGREES = 360f
+        private const val FULL_CIRCLE_DEGREES_INT = 360
+
         // Frames are captured at full analysis resolution and stored
         // JPEG-compressed (decoded one at a time by the native stitcher).
         private const val JPEG_QUALITY = 92
@@ -179,7 +185,14 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
             for ((pitch, yawStep) in rows) {
                 val count = (360f / yawStep).toInt()
                 for (i in 0 until count) {
-                    result.add(GuideDot(idx, i * yawStep, pitch, if (idx == 0) GuideDotState.CAPTURING else GuideDotState.PENDING))
+                    result.add(
+                        GuideDot(
+                            idx,
+                            i * yawStep,
+                            pitch,
+                            if (idx == 0) GuideDotState.CAPTURING else GuideDotState.PENDING
+                        )
+                    )
                     idx++
                 }
             }
@@ -228,29 +241,8 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
             // (instead of the old hardcoded 90° that sideways-stitched landscape sensors), then
             // JPEG-compress for storage: frames are decoded on demand by the native stitcher,
             // one at a time, so a long high-resolution sweep stays memory-bounded.
-            val normalized = ((rotation % 360) + 360) % 360
-            val rotated = if (normalized == 0) {
-                frame
-            } else {
-                val rotMatrix = Matrix().apply { postRotate(normalized.toFloat()) }
-                try {
-                    Bitmap.createBitmap(frame, 0, 0, frame.width, frame.height, rotMatrix, true)
-                } catch (_: Exception) {
-                    return
-                }
-            }
-            val baos = ByteArrayOutputStream()
-            val ok = try {
-                rotated.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, baos)
-            } catch (_: Exception) {
-                false
-            }
-            if (rotated !== frame) {
-                try { rotated.recycle() } catch (_: Exception) {}
-            }
-            if (!ok) return
-            val jpeg = baos.toByteArray()
-            if (jpeg.isEmpty()) return
+            val rotated = uprightFrame(frame, rotation) ?: return
+            val jpeg = compressFrame(frame, rotated) ?: return
             // Keep the same JPEG bytes the native registrar receives, so the GPU
             // compositor can decode kept frames into textures by capture index.
             capturedFrames.add(jpeg)
@@ -261,6 +253,36 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
             // bytes or nothing does — the source bitmap is always consumed here.
             try { frame.recycle() } catch (_: Exception) {}
         }
+    }
+
+    /** Rotates the sensor-oriented frame upright; null when rotation fails. */
+    private fun uprightFrame(frame: Bitmap, rotation: Int): Bitmap? {
+        val normalized = ((rotation % FULL_CIRCLE_DEGREES_INT) + FULL_CIRCLE_DEGREES_INT) %
+            FULL_CIRCLE_DEGREES_INT
+        if (normalized == 0) return frame
+        val rotMatrix = Matrix().apply { postRotate(normalized.toFloat()) }
+        return try {
+            Bitmap.createBitmap(frame, 0, 0, frame.width, frame.height, rotMatrix, true)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** JPEG-compresses the upright frame; null when compression fails or is empty. */
+    private fun compressFrame(frame: Bitmap, rotated: Bitmap): ByteArray? {
+        val baos = ByteArrayOutputStream()
+        val ok = try {
+            rotated.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, baos)
+        } catch (_: Exception) {
+            false
+        }
+        if (rotated !== frame) {
+            try { rotated.recycle() } catch (_: Exception) {}
+        }
+        if (!ok) return null
+        val jpeg = baos.toByteArray()
+        if (jpeg.isEmpty()) return null
+        return jpeg
     }
 
     override fun onSensorChanged(event: SensorEvent) {
@@ -283,7 +305,7 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
             _sweepAngle.value = Math.abs(accumulatedAngle)
 
             // Mirror the dot ring to match the sweep direction (flat pano only).
-            if (_sweepDirection.value == 0 && Math.abs(accumulatedAngle) > 10f) {
+            if (_sweepDirection.value == 0 && Math.abs(accumulatedAngle) > SWEEP_DIRECTION_MIN_ANGLE) {
                 val dir = if (accumulatedAngle > 0) 1 else -1
                 _sweepDirection.value = dir
                 if (dir == -1 && !sphereMode) {
@@ -317,7 +339,8 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
             val pitchDiff = Math.abs(accumulatedPitch - dot.targetPitch)
             val withinCapture = angleDiff < ALIGNMENT_THRESHOLD_DEGREES && pitchDiff < PITCH_THRESHOLD_DEGREES
             val withinAligning = angleDiff < ALIGNMENT_THRESHOLD_DEGREES * 2 && pitchDiff < PITCH_THRESHOLD_DEGREES * 2
-            val steadyEnough = Math.abs(angularVelocity) < MAX_VELOCITY_DPS && Math.abs(pitchVelocity) < MAX_VELOCITY_DPS
+            val steadyEnough = Math.abs(angularVelocity) < MAX_VELOCITY_DPS &&
+                Math.abs(pitchVelocity) < MAX_VELOCITY_DPS
 
             when {
                 withinCapture && steadyEnough && !captured -> {
@@ -341,9 +364,9 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
 
     /** Smallest signed difference of an angle in degrees, normalized to (-180, 180]. */
     private fun wrapDegrees(deg: Float): Float {
-        var d = deg % 360f
-        if (d > 180f) d -= 360f
-        if (d < -180f) d += 360f
+        var d = deg % FULL_CIRCLE_DEGREES
+        if (d > HALF_CIRCLE_DEGREES) d -= FULL_CIRCLE_DEGREES
+        if (d < -HALF_CIRCLE_DEGREES) d += FULL_CIRCLE_DEGREES
         return d
     }
 
@@ -370,11 +393,25 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
                     android.util.Log.w("PanoramaEngine", "GPU path failed; falling back to CPU stitch")
                     cpuStitch(handle)
                 }
-            } catch (e: Exception) {
+            } catch (e: IllegalStateException) {
                 android.util.Log.e("PanoramaEngine", "GPU stitch threw; falling back to CPU", e)
                 try {
                     cpuStitch(handle)
-                } catch (e2: Exception) {
+                } catch (e2: IllegalStateException) {
+                    android.util.Log.e("PanoramaEngine", "CPU stitch also failed", e2)
+                    null
+                } catch (e2: IllegalArgumentException) {
+                    android.util.Log.e("PanoramaEngine", "CPU stitch also failed", e2)
+                    null
+                }
+            } catch (e: IllegalArgumentException) {
+                android.util.Log.e("PanoramaEngine", "GPU stitch threw; falling back to CPU", e)
+                try {
+                    cpuStitch(handle)
+                } catch (e2: IllegalStateException) {
+                    android.util.Log.e("PanoramaEngine", "CPU stitch also failed", e2)
+                    null
+                } catch (e2: IllegalArgumentException) {
                     android.util.Log.e("PanoramaEngine", "CPU stitch also failed", e2)
                     null
                 }
@@ -400,7 +437,9 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
         val tReg = System.currentTimeMillis()
         android.util.Log.i(
             "PanoramaEngine",
-            "estimate ok in ${tReg - t0}ms: canvas=${estimate.canvasW}x${estimate.canvasH} cams=${estimate.cams.size} frames=${capturedFrames.size}"
+            "estimate ok in ${tReg - t0}ms: " +
+                "canvas=${estimate.canvasW}x${estimate.canvasH} " +
+                "cams=${estimate.cams.size} frames=${capturedFrames.size}"
         )
         val result = GpuStitcher.composite(estimate, capturedFrames)
         if (result == null) {

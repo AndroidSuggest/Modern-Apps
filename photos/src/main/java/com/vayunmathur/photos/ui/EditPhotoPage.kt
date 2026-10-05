@@ -99,8 +99,8 @@ fun EditPhotoPage(
     val writePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult(),
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) vm.onWritePermissionGranted()
-        else vm.onWritePermissionDenied()
+        if (result.resultCode == Activity.RESULT_OK) vm.saver.onWritePermissionGranted()
+        else vm.saver.onWritePermissionDenied()
     }
     val writePermissionRequest by vm.writePermissionRequest.collectAsState()
     LaunchedEffect(writePermissionRequest) {
@@ -175,7 +175,7 @@ fun EditPhotoPage(
                     val sx = state.healingSourceX; val sy = state.healingSourceY
                     if (sx != null && sy != null && state.currentHealingPoints.isNotEmpty()) {
                         val stroke = HealingStroke(sx, sy, state.currentHealingPoints, state.healingBrushSize, HealMode.Heal)
-                        vm.applyToActivePixelLayer { HealingStrokes(listOf(stroke)).applyHealingToBitmap(it) }
+                        vm.pixel.applyToActivePixelLayer { HealingStrokes(listOf(stroke)).applyHealingToBitmap(it) }
                         state.currentHealingPoints = emptyList()
                     }
                 }
@@ -190,11 +190,11 @@ fun EditPhotoPage(
                         when (state.editorMode) {
                             EditorMode.DodgeBurn -> {
                                 val s = DodgeBurnStroke(pts, state.dodgeBurnMode, exposure = 0.5f, brushSize = state.brushSize)
-                                vm.applyToActivePixelLayer { DodgeBurnStrokes(listOf(s)).applyToBitmap(it) }
+                                vm.pixel.applyToActivePixelLayer { DodgeBurnStrokes(listOf(s)).applyToBitmap(it) }
                             }
                             EditorMode.Smudge -> {
                                 val s = SmudgeStroke(pts, strength = 0.5f, brushSize = state.brushSize)
-                                vm.applyToActivePixelLayer { SmudgeStrokes(listOf(s)).applyToBitmap(it) }
+                                vm.pixel.applyToActivePixelLayer { SmudgeStrokes(listOf(s)).applyToBitmap(it) }
                             }
                             else -> {}
                         }

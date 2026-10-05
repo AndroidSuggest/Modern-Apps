@@ -38,45 +38,98 @@ internal fun Gemma4Handle.runBenchmark() {
  * A mismatch is not an error: it falls back to prefilling, which is slow and correct.
  */
 internal fun Gemma4Handle.loadBakedPrefix(prefix: String): Boolean {
-    if (handle == 0L) return false
-    val file = java.io.File(directory, Gemma4Handle.PREFIX_CACHE)
-    if (!file.isFile) return false
+    val tokens = readPrefixTokens(prefix)
+    val blob = readPrefixBlob()
+    if (tokens == null || blob == null) return false
+    return installValidatedPrefix(blob, tokens)
+}
+
+/** Validates the cached blob against [tokens] and installs it, or false (with logs) on mismatch. */
+private fun Gemma4Handle.installValidatedPrefix(blob: ByteArray, tokens: IntArray): Boolean {
+    if (!isBakedCache(blob)) return false
+    val positions = Gemma4Handle.readInt(blob, PREFIX_POSITIONS_OFFSET)
+    if (!positionsMatch(tokens, positions)) return false
+    if (!digestMatches(tokens, blob)) return false
+    if (!ensurePrefixCapacity(positions)) return false
+    return installPrefix(blob, tokens, positions)
+}
+
+private fun Gemma4Handle.readPrefixTokens(prefix: String): IntArray? {
+    if (handle == 0L) return null
     val tokens = encodePrompt(prefix)
-    if (tokens.isEmpty()) return false
-    val blob = runCatching { file.readBytes() }.getOrNull() ?: return false
-    if (blob.size < Gemma4Handle.HEADER || String(blob, 0, 4, Charsets.US_ASCII) != "GKV1") {
+    if (tokens.isEmpty()) return null
+    return tokens
+}
+
+private fun Gemma4Handle.readPrefixBlob(): ByteArray? {
+    val file = java.io.File(directory, Gemma4Handle.PREFIX_CACHE)
+    if (!file.isFile) return null
+    return runCatching { file.readBytes() }.getOrNull()
+}
+
+private fun isBakedCache(blob: ByteArray): Boolean {
+    if (blob.size < Gemma4Handle.HEADER ||
+        String(blob, 0, PREFIX_MAGIC_BYTES, Charsets.US_ASCII) != PREFIX_MAGIC
+    ) {
         Log.w(Gemma4Handle.TAG, "${Gemma4Handle.PREFIX_CACHE} is not a baked cache")
         return false
     }
-    val positions = Gemma4Handle.readInt(blob, 4)
+    return true
+}
+
+private fun Gemma4Handle.positionsMatch(tokens: IntArray, positions: Int): Boolean {
     // The size check stays enforced even though the digest does not: `positions` decides
     // where the next token goes and how many ids are recorded as cached, so a wrong count
     // corrupts the bookkeeping rather than merely the contents.
     if (positions != tokens.size) {
-        Log.i(Gemma4Handle.TAG, "${Gemma4Handle.PREFIX_CACHE} is $positions positions, this prefix is ${tokens.size}")
+        Log.i(
+            Gemma4Handle.TAG,
+            "${Gemma4Handle.PREFIX_CACHE} is $positions positions, this prefix is ${tokens.size}"
+        )
         return false
     }
+    return true
+}
+
+private fun Gemma4Handle.digestMatches(tokens: IntArray, blob: ByteArray): Boolean {
     // The digest IS enforced: it says whether these keys and values were computed from
     // *these* tokens, and a mismatch means the model is about to attend over a prompt it was
     // not given. That failure is silent - a fluent reply to a conversation that never happened -
     // so a stale cache falls back to prefilling: slow and correct. The loud log stays either
     // way, because a mismatch means the baked asset and the declared prompt have drifted apart
     // and someone needs to re-run `bake_gemma4_prefix`.
-    if (!Gemma4Handle.digest(tokens).contentEquals(blob.copyOfRange(12, 12 + 32))) {
+    val digest = blob.copyOfRange(PREFIX_DIGEST_OFFSET, PREFIX_DIGEST_OFFSET + PREFIX_DIGEST_BYTES)
+    if (!Gemma4Handle.digest(tokens).contentEquals(digest)) {
         Log.w(Gemma4Handle.TAG, "${Gemma4Handle.PREFIX_CACHE} DIGEST MISMATCH - prefilling instead")
         return false
     }
+    return true
+}
+
+private fun Gemma4Handle.ensurePrefixCapacity(positions: Int): Boolean {
     // The cache starts at the smallest tier and this prefix is larger than it. Growing first
     // is not optional: `loadPrefixGemma4` refuses a prefix bigger than the cache rather than
     // truncating it, because half a prefix is keys for a prompt nobody sent.
     if (MlNative.capacityGemma4(handle) < positions) {
-        val grown = MlNative.growGemma4(handle, positions + 2)
+        val grown = MlNative.growGemma4(handle, positions + PREFIX_SLACK_POSITIONS)
         if (grown < positions) {
-            Log.i(Gemma4Handle.TAG, "a $positions-position prefix does not fit this device; prefilling")
+            Log.i(
+                Gemma4Handle.TAG,
+                "a $positions-position prefix does not fit this device; prefilling"
+            )
             return false
         }
     }
-    val loaded = MlNative.loadPrefixGemma4(handle, positions, blob.copyOfRange(Gemma4Handle.HEADER, blob.size))
+    return true
+}
+
+private fun Gemma4Handle.installPrefix(
+    blob: ByteArray,
+    tokens: IntArray,
+    positions: Int
+): Boolean {
+    val payload = blob.copyOfRange(Gemma4Handle.HEADER, blob.size)
+    val loaded = MlNative.loadPrefixGemma4(handle, positions, payload)
     if (loaded != positions) return false
     // The cache now holds exactly these tokens, so the next turn matches against them and
     // feeds only what follows.
@@ -84,6 +137,13 @@ internal fun Gemma4Handle.loadBakedPrefix(prefix: String): Boolean {
     Log.i(Gemma4Handle.TAG, "loaded a $positions-position prefix cache, skipping its prefill")
     return true
 }
+
+private const val PREFIX_MAGIC = "GKV1"
+private const val PREFIX_MAGIC_BYTES = 4
+private const val PREFIX_POSITIONS_OFFSET = 4
+private const val PREFIX_DIGEST_OFFSET = 12
+private const val PREFIX_DIGEST_BYTES = 32
+private const val PREFIX_SLACK_POSITIONS = 2
 
 /**
  * Open both graphs, read the tokenizer, and hand the descriptors over.
@@ -106,46 +166,24 @@ internal fun createGemma4Handle(directory: File): Long {
     // Optional GPU head (third file). Absent on old downloads — native falls
     // back to the host head, so this stays warning-free by design.
     val head = File(directory, Gemma4Handle.HEAD)
-    val headFd: Int
-    val headLen: Long
-    if (head.isFile) {
-        headFd = runCatching {
-            ParcelFileDescriptor.open(head, ParcelFileDescriptor.MODE_READ_ONLY)
-                .use { it.detachFd() }
-        }.getOrElse {
-            Log.w(Gemma4Handle.TAG, "cannot open ${Gemma4Handle.HEAD}: $it")
-            return 0L
-        }
-        headLen = head.length()
-    } else {
-        headFd = -1
-        headLen = 0L
-    }
+    val headLease = openHeadLease(head) ?: return 0L
     val table = runCatching { tokenizer.readBytes() }.getOrElse {
+        headLease.close()
         Log.w(Gemma4Handle.TAG, "cannot read ${Gemma4Handle.TOKENIZER}: $it")
         return 0L
     }
-    val textFd = runCatching {
-        ParcelFileDescriptor.open(text, ParcelFileDescriptor.MODE_READ_ONLY)
-            .use { it.detachFd() }
-    }.getOrElse {
-        Log.w(Gemma4Handle.TAG, "cannot open ${Gemma4Handle.TEXT}: $it")
-        return 0L
-    }
-    val embedFd = runCatching {
-        ParcelFileDescriptor.open(embed, ParcelFileDescriptor.MODE_READ_ONLY)
-            .use { it.detachFd() }
-    }.getOrElse {
+    val textFd = openModelFd(text, Gemma4Handle.TEXT, onFailure = { headLease.close() })
+        ?: return 0L
+    val embedFd = openModelFd(embed, Gemma4Handle.EMBED, onFailure = {
         closeGemma4Fd(textFd)
-        Log.w(Gemma4Handle.TAG, "cannot open ${Gemma4Handle.EMBED}: $it")
-        return 0L
-    }
+        headLease.close()
+    }) ?: return 0L
     var handed = false
     try {
         val live = MlNative.createGemma4(
             textFd, 0L, text.length(),
             embedFd, 0L, embed.length(),
-            headFd, 0L, headLen,
+            headLease.fd, 0L, headLease.length,
             table,
             gemma4CacheBudget(),
         )
@@ -155,8 +193,41 @@ internal fun createGemma4Handle(directory: File): Long {
         if (!handed) {
             closeGemma4Fd(textFd)
             closeGemma4Fd(embedFd)
-            if (headFd >= 0) closeGemma4Fd(headFd)
+            headLease.close()
         }
+    }
+}
+
+/** Open file descriptor lease for the optional GPU head, or null (with a log) on failure. */
+private class HeadLease(val fd: Int, val length: Long) : AutoCloseable {
+    override fun close() {
+        if (fd >= 0) closeGemma4Fd(fd)
+    }
+}
+
+private fun openHeadLease(head: File): HeadLease? {
+    if (!head.isFile) return HeadLease(NO_FD, 0L)
+    val fd = runCatching {
+        ParcelFileDescriptor.open(head, ParcelFileDescriptor.MODE_READ_ONLY)
+            .use { it.detachFd() }
+    }.getOrElse {
+        Log.w(Gemma4Handle.TAG, "cannot open ${Gemma4Handle.HEAD}: $it")
+        return null
+    }
+    return HeadLease(fd, head.length())
+}
+
+private const val NO_FD = -1
+
+/** Opens a model file descriptor, running [onFailure] and returning null (with a log) on error. */
+private fun openModelFd(file: File, name: String, onFailure: () -> Unit): Int? {
+    return runCatching {
+        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+            .use { it.detachFd() }
+    }.getOrElse {
+        onFailure()
+        Log.w(Gemma4Handle.TAG, "cannot open $name: $it")
+        null
     }
 }
 
@@ -197,11 +268,14 @@ private fun gemma4CacheBudget(): Long {
             lines.firstOrNull { it.startsWith("MemTotal:") }
                 ?.filter(Char::isDigit)
                 ?.toLongOrNull()
-                ?.times(1024) ?: 0L
+                ?.times(BYTES_PER_KB) ?: 0L
         }
     }.getOrDefault(0L)
     // A device that will not say gets the smallest tier, which always fits, rather than
     // an optimistic guess that fails to allocate and leaves the assistant dead.
     if (total <= 0L) return 0L
-    return total / 20
+    return total / CACHE_FRACTION
 }
+
+private const val CACHE_FRACTION = 20
+private const val BYTES_PER_KB = 1024

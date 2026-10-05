@@ -48,20 +48,16 @@ object HealthAPI {
         preferences = context.getSharedPreferences("sync", Context.MODE_PRIVATE)
     }
 
-    /** Legacy overload — callers that still have a DB handle. */
-    fun init(healthConnectClient: HealthConnectClient, context: Context, db: com.vayunmathur.health.data.HealthDatabase) {
-        this.healthConnectClient = healthConnectClient
-        // Wrap via HealthRepository so callers that still pass a DB stay working until fully cut over.
-        this.repository = HealthRepository.get(context)
-        preferences = context.getSharedPreferences("sync", Context.MODE_PRIVATE)
-    }
-
     private fun repo(): HealthRepository = repository!!
 
     suspend fun lastRecord(recordType: RecordType): Record? {
         return repo().getLastRecord(recordType)
     }
 
+    // Broad catch is deliberate: the delete is best-effort — the local row is already gone
+    // and a failed Health Connect mirror must not crash the caller. The SDK throws
+    // undocumented RuntimeExceptions (not just declared ones) when the service is missing.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun deleteRecord(record: Record) {
         // Delete from local Room DB
         repo().deleteByIds(listOf(record.id))
@@ -98,113 +94,23 @@ object HealthAPI {
     private fun systemOffsetAt(instant: java.time.Instant) =
         java.time.ZoneId.systemDefault().rules.getOffset(instant)
 
+    // Broad catch is deliberate: a failed Health Connect mirror must not lose the local
+    // record — the row is already saved by the caller and stays as the source of truth.
+    // The SDK throws undocumented RuntimeExceptions, not just declared ones.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun writeHealthRecord(record: Record) {
         Log.d("HealthAPI", "writeHealthRecord: type=${record.type}, metadata=${record.metadata}")
-        val startInstant = record.startTime
-        val endInstant = record.endTime
-
-        val hcRecord: androidx.health.connect.client.records.Record =
-                when (record.type) {
-                    RecordType.Nutrition -> {
-                        val nd = record.nutritionData ?: return
-                        NutritionRecord(
-                                startTime = startInstant,
-                                startZoneOffset = systemOffsetAt(startInstant),
-                                endTime = endInstant,
-                                endZoneOffset = systemOffsetAt(endInstant),
-                                name = record.metadata,
-                                energy = Energy.kilocalories(nd.calories),
-                                protein = Mass.grams(nd.protein),
-                                totalCarbohydrate = Mass.grams(nd.carbohydrates),
-                                totalFat = Mass.grams(nd.fat),
-                                dietaryFiber = Mass.grams(nd.fiber),
-                                sugar = Mass.grams(nd.sugar),
-                                sodium = Mass.milligrams(nd.sodium),
-                                biotin = Mass.micrograms(nd.biotin),
-                                caffeine = Mass.milligrams(nd.caffeine),
-                                calcium = Mass.milligrams(nd.calcium),
-                                chloride = Mass.milligrams(nd.chloride),
-                                cholesterol = Mass.milligrams(nd.cholesterol),
-                                chromium = Mass.micrograms(nd.chromium),
-                                copper = Mass.milligrams(nd.copper),
-                                folate = Mass.micrograms(nd.folate),
-                                folicAcid = Mass.micrograms(nd.folicAcid),
-                                iodine = Mass.micrograms(nd.iodine),
-                                iron = Mass.milligrams(nd.iron),
-                                magnesium = Mass.milligrams(nd.magnesium),
-                                manganese = Mass.milligrams(nd.manganese),
-                                molybdenum = Mass.micrograms(nd.molybdenum),
-                                monounsaturatedFat = Mass.grams(nd.monounsaturatedFat),
-                                niacin = Mass.milligrams(nd.niacin),
-                                pantothenicAcid = Mass.milligrams(nd.pantothenicAcid),
-                                phosphorus = Mass.milligrams(nd.phosphorus),
-                                polyunsaturatedFat = Mass.grams(nd.polyunsaturatedFat),
-                                potassium = Mass.milligrams(nd.potassium),
-                                riboflavin = Mass.milligrams(nd.riboflavin),
-                                saturatedFat = Mass.grams(nd.saturatedFat),
-                                selenium = Mass.micrograms(nd.selenium),
-                                thiamin = Mass.milligrams(nd.thiamin),
-                                transFat = Mass.grams(nd.transFat),
-                                unsaturatedFat = Mass.grams(nd.unsaturatedFat),
-                                vitaminA = Mass.micrograms(nd.vitaminA),
-                                vitaminB12 = Mass.micrograms(nd.vitaminB12),
-                                vitaminB6 = Mass.milligrams(nd.vitaminB6),
-                                vitaminC = Mass.milligrams(nd.vitaminC),
-                                vitaminD = Mass.micrograms(nd.vitaminD),
-                                vitaminE = Mass.milligrams(nd.vitaminE),
-                                vitaminK = Mass.micrograms(nd.vitaminK),
-                                zinc = Mass.milligrams(nd.zinc),
-                                metadata = Metadata.manualEntry(clientRecordId = record.id)
-                        )
-                    }
-                    RecordType.Hydration -> {
-                        HydrationRecord(
-                                startTime = startInstant,
-                                startZoneOffset = systemOffsetAt(startInstant),
-                                endTime = endInstant,
-                                endZoneOffset = systemOffsetAt(endInstant),
-                                volume = Volume.liters(record.value),
-                                metadata = Metadata.manualEntry(clientRecordId = record.id)
-                        )
-                    }
-                    RecordType.Weight -> WeightRecord(
-                            time = startInstant,
-                            zoneOffset = systemOffsetAt(startInstant),
-                            weight = Mass.kilograms(record.value),
-                            metadata = Metadata.manualEntry(clientRecordId = record.id)
-                    )
-                    RecordType.Height -> HeightRecord(
-                            time = startInstant,
-                            zoneOffset = systemOffsetAt(startInstant),
-                            height = Length.meters(record.value),
-                            metadata = Metadata.manualEntry(clientRecordId = record.id)
-                    )
-                    RecordType.BodyFat -> BodyFatRecord(
-                            time = startInstant,
-                            zoneOffset = systemOffsetAt(startInstant),
-                            percentage = Percentage(record.value),
-                            metadata = Metadata.manualEntry(clientRecordId = record.id)
-                    )
-                    RecordType.LeanBodyMass -> LeanBodyMassRecord(
-                            time = startInstant,
-                            zoneOffset = systemOffsetAt(startInstant),
-                            mass = Mass.kilograms(record.value),
-                            metadata = Metadata.manualEntry(clientRecordId = record.id)
-                    )
-                    RecordType.BoneMass -> BoneMassRecord(
-                            time = startInstant,
-                            zoneOffset = systemOffsetAt(startInstant),
-                            mass = Mass.kilograms(record.value),
-                            metadata = Metadata.manualEntry(clientRecordId = record.id)
-                    )
-                    RecordType.BodyWaterMass -> BodyWaterMassRecord(
-                            time = startInstant,
-                            zoneOffset = systemOffsetAt(startInstant),
-                            mass = Mass.kilograms(record.value),
-                            metadata = Metadata.manualEntry(clientRecordId = record.id)
-                    )
-                    else -> return
-                }
+        val hcRecord: androidx.health.connect.client.records.Record = when (record.type) {
+            RecordType.Nutrition -> nutritionRecord(record) ?: return
+            RecordType.Hydration -> hydrationRecord(record)
+            RecordType.Weight -> weightRecord(record)
+            RecordType.Height -> heightRecord(record)
+            RecordType.BodyFat -> bodyFatRecord(record)
+            RecordType.LeanBodyMass -> leanBodyMassRecord(record)
+            RecordType.BoneMass -> boneMassRecord(record)
+            RecordType.BodyWaterMass -> bodyWaterMassRecord(record)
+            else -> return
+        }
 
         try {
             val response = healthConnectClient.insertRecords(listOf(hcRecord))
@@ -221,11 +127,127 @@ object HealthAPI {
         }
     }
 
+    private fun nutritionRecord(record: Record): NutritionRecord? {
+        val nd = record.nutritionData ?: return null
+        val startInstant = record.startTime
+        val endInstant = record.endTime
+        return NutritionRecord(
+            startTime = startInstant,
+            startZoneOffset = systemOffsetAt(startInstant),
+            endTime = endInstant,
+            endZoneOffset = systemOffsetAt(endInstant),
+            name = record.metadata,
+            energy = Energy.kilocalories(nd.calories),
+            protein = Mass.grams(nd.protein),
+            totalCarbohydrate = Mass.grams(nd.carbohydrates),
+            totalFat = Mass.grams(nd.fat),
+            dietaryFiber = Mass.grams(nd.fiber),
+            sugar = Mass.grams(nd.sugar),
+            sodium = Mass.milligrams(nd.sodium),
+            biotin = Mass.micrograms(nd.biotin),
+            caffeine = Mass.milligrams(nd.caffeine),
+            calcium = Mass.milligrams(nd.calcium),
+            chloride = Mass.milligrams(nd.chloride),
+            cholesterol = Mass.milligrams(nd.cholesterol),
+            chromium = Mass.micrograms(nd.chromium),
+            copper = Mass.milligrams(nd.copper),
+            folate = Mass.micrograms(nd.folate),
+            folicAcid = Mass.micrograms(nd.folicAcid),
+            iodine = Mass.micrograms(nd.iodine),
+            iron = Mass.milligrams(nd.iron),
+            magnesium = Mass.milligrams(nd.magnesium),
+            manganese = Mass.milligrams(nd.manganese),
+            molybdenum = Mass.micrograms(nd.molybdenum),
+            monounsaturatedFat = Mass.grams(nd.monounsaturatedFat),
+            niacin = Mass.milligrams(nd.niacin),
+            pantothenicAcid = Mass.milligrams(nd.pantothenicAcid),
+            phosphorus = Mass.milligrams(nd.phosphorus),
+            polyunsaturatedFat = Mass.grams(nd.polyunsaturatedFat),
+            potassium = Mass.milligrams(nd.potassium),
+            riboflavin = Mass.milligrams(nd.riboflavin),
+            saturatedFat = Mass.grams(nd.saturatedFat),
+            selenium = Mass.micrograms(nd.selenium),
+            thiamin = Mass.milligrams(nd.thiamin),
+            transFat = Mass.grams(nd.transFat),
+            unsaturatedFat = Mass.grams(nd.unsaturatedFat),
+            vitaminA = Mass.micrograms(nd.vitaminA),
+            vitaminB12 = Mass.micrograms(nd.vitaminB12),
+            vitaminB6 = Mass.milligrams(nd.vitaminB6),
+            vitaminC = Mass.milligrams(nd.vitaminC),
+            vitaminD = Mass.micrograms(nd.vitaminD),
+            vitaminE = Mass.milligrams(nd.vitaminE),
+            vitaminK = Mass.micrograms(nd.vitaminK),
+            zinc = Mass.milligrams(nd.zinc),
+            metadata = Metadata.manualEntry(clientRecordId = record.id),
+        )
+    }
+
+    private fun hydrationRecord(record: Record): HydrationRecord {
+        val startInstant = record.startTime
+        val endInstant = record.endTime
+        return HydrationRecord(
+            startTime = startInstant,
+            startZoneOffset = systemOffsetAt(startInstant),
+            endTime = endInstant,
+            endZoneOffset = systemOffsetAt(endInstant),
+            volume = Volume.liters(record.value),
+            metadata = Metadata.manualEntry(clientRecordId = record.id),
+        )
+    }
+
+    private fun weightRecord(record: Record): WeightRecord = WeightRecord(
+        time = record.startTime,
+        zoneOffset = systemOffsetAt(record.startTime),
+        weight = Mass.kilograms(record.value),
+        metadata = Metadata.manualEntry(clientRecordId = record.id),
+    )
+
+    private fun heightRecord(record: Record): HeightRecord = HeightRecord(
+        time = record.startTime,
+        zoneOffset = systemOffsetAt(record.startTime),
+        height = Length.meters(record.value),
+        metadata = Metadata.manualEntry(clientRecordId = record.id),
+    )
+
+    private fun bodyFatRecord(record: Record): BodyFatRecord = BodyFatRecord(
+        time = record.startTime,
+        zoneOffset = systemOffsetAt(record.startTime),
+        percentage = Percentage(record.value),
+        metadata = Metadata.manualEntry(clientRecordId = record.id),
+    )
+
+    private fun leanBodyMassRecord(record: Record): LeanBodyMassRecord = LeanBodyMassRecord(
+        time = record.startTime,
+        zoneOffset = systemOffsetAt(record.startTime),
+        mass = Mass.kilograms(record.value),
+        metadata = Metadata.manualEntry(clientRecordId = record.id),
+    )
+
+    private fun boneMassRecord(record: Record): BoneMassRecord = BoneMassRecord(
+        time = record.startTime,
+        zoneOffset = systemOffsetAt(record.startTime),
+        mass = Mass.kilograms(record.value),
+        metadata = Metadata.manualEntry(clientRecordId = record.id),
+    )
+
+    private fun bodyWaterMassRecord(record: Record): BodyWaterMassRecord =
+        BodyWaterMassRecord(
+            time = record.startTime,
+            zoneOffset = systemOffsetAt(record.startTime),
+            mass = Mass.kilograms(record.value),
+            metadata = Metadata.manualEntry(clientRecordId = record.id),
+        )
+
     enum class PeriodType {
         Hourly,
         Daily,
         Weekly,
         Monthly
+    }
+
+    companion object {
+        private const val DAYS_PER_WEEK = 7
+        private const val HOURS_PER_DAY = 24
     }
 
     private val hourlyFormat =
@@ -257,7 +279,7 @@ object HealthAPI {
         PeriodType.Weekly -> {
             dailyQuery(recordType, startTime, endTime).sortedBy { it.day }.groupBy {
                 val date = LocalDate.parse(it.day)
-                date.minus((date.dayOfWeek.ordinal + 1) % 7, DateTimeUnit.DAY).toEpochDays()
+                date.minus((date.dayOfWeek.ordinal + 1) % DAYS_PER_WEEK, DateTimeUnit.DAY).toEpochDays()
             }.map { (key, values) ->
                 Tuple3(key, values.map { it.totalValue }.average(), values.map { it.totalValue2 }.average())
             }
@@ -274,7 +296,11 @@ object HealthAPI {
             hourlyQuery(recordType, startTime.toEpochMilliseconds(), endTime.toEpochMilliseconds())
                 .sortedBy { it.hourBlock }.map {
                     val date = hourlyFormat.parse(it.hourBlock)
-                    Tuple3(date.date.toEpochDays() * 24 + date.hour, it.totalValue, it.totalValue2)
+                    Tuple3(
+                        date.date.toEpochDays() * HOURS_PER_DAY + date.hour,
+                        it.totalValue,
+                        it.totalValue2,
+                    )
                 }
         }
     }

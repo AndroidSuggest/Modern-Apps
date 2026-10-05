@@ -22,9 +22,17 @@ class PlayDownloader(
 ) {
     companion object {
         private const val TAG = "PlayDownloader"
+        private const val CONNECT_TIMEOUT_MS = 30_000
+        private const val READ_TIMEOUT_MS = 60_000
+        private const val COPY_BUFFER_SIZE = 8192
+        private const val HTTP_OK_MIN = 200
+        private const val HTTP_OK_MAX = 299
+        private const val HTTP_PARTIAL = 206
+        private const val HTTP_FORBIDDEN = 403
+        private const val HTTP_GONE = 410
     }
 
-    class ExpiredUrlException(message: String) : Exception(message)
+    class ExpiredUrlException(message: String) : java.io.IOException(message)
 
     /**
      * Download list of PlayFiles to cache dir, verify, and return local Files.
@@ -46,25 +54,21 @@ class PlayDownloader(
                 val destFile = File(baseDir, fileName)
                 val tmpFile = File(baseDir, "$fileName.tmp")
 
-                if (destFile.exists() && destFile.length() > 0) {
-                    if (gFile.size <= 0 || destFile.length() == gFile.size) {
-                        localFiles.add(destFile)
-                        totalDownloaded += destFile.length()
-                        continue
-                    }
+                if (isCachedComplete(destFile, gFile.size)) {
+                    localFiles.add(destFile)
+                    totalDownloaded += destFile.length()
+                    continue
                 }
 
                 val result = downloadSingleFile(gFile, destFile, tmpFile) { bytesDownloaded ->
-                    val overall = if (totalSize > 0) {
-                        (totalDownloaded + bytesDownloaded).toFloat() / totalSize
-                    } else {
-                        (index.toFloat() + (if (gFile.size > 0) bytesDownloaded.toFloat() / gFile.size else 0f)) / gplayFiles.size
-                    }
-                    progressCallback(overall.coerceIn(0f, 1f))
+                    progressCallback(
+                        overallProgress(index, gFile, bytesDownloaded, totalDownloaded, totalSize, gplayFiles.size)
+                    )
                 }
 
                 if (result.isFailure) {
-                    return Result.failure(result.exceptionOrNull() ?: Exception("Download failed for $fileName"))
+                    val cause = result.exceptionOrNull() ?: java.io.IOException("Download failed for $fileName")
+                    return Result.failure(cause)
                 }
 
                 val file = result.getOrNull()!!
@@ -73,10 +77,35 @@ class PlayDownloader(
             }
 
             Result.success(localFiles)
-        } catch (e: Exception) {
-            Log.e(TAG, "downloadFiles failed: ${e.message}", e)
-            Result.failure(e)
+        } catch (expected: java.io.IOException) {
+            Log.e(TAG, "downloadFiles failed: ${expected.message}", expected)
+            Result.failure(expected)
+        } catch (expected: SecurityException) {
+            Log.e(TAG, "downloadFiles failed: ${expected.message}", expected)
+            Result.failure(expected)
         }
+    }
+
+    private fun isCachedComplete(destFile: File, expectedSize: Long): Boolean {
+        if (!destFile.exists() || destFile.length() <= 0) return false
+        return expectedSize <= 0 || destFile.length() == expectedSize
+    }
+
+    private fun overallProgress(
+        index: Int,
+        gFile: PlayFile,
+        bytesDownloaded: Long,
+        totalDownloaded: Long,
+        totalSize: Long,
+        fileCount: Int,
+    ): Float {
+        val overall = if (totalSize > 0) {
+            (totalDownloaded + bytesDownloaded).toFloat() / totalSize
+        } else {
+            val fileFraction = if (gFile.size > 0) bytesDownloaded.toFloat() / gFile.size else 0f
+            (index.toFloat() + fileFraction) / fileCount
+        }
+        return overall.coerceIn(0f, 1f)
     }
 
     private fun downloadSingleFile(
@@ -85,73 +114,90 @@ class PlayDownloader(
         tmpFile: File,
         progressCallback: (Long) -> Unit
     ): Result<File> {
+        val urlString = gFile.url.takeIf { it.isNotBlank() }
+            ?: return Result.failure(java.io.IOException("Empty URL for ${gFile.name}"))
+        val existing = if (tmpFile.exists()) tmpFile.length() else 0L
+
+        val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            instanceFollowRedirects = true
+            useCaches = false
+            if (existing > 0) {
+                setRequestProperty("Range", "bytes=$existing-")
+            }
+        }
+
+        val code = openConnection(conn) ?: return Result.failure(java.io.IOException("No response"))
+        if (code !in HTTP_OK_MIN..HTTP_OK_MAX && code != HTTP_PARTIAL) {
+            conn.disconnect()
+            return expiredOrFailed(code)
+        }
+
+        val input = openInput(conn)
+            ?: return Result.failure(java.io.IOException("Empty body"))
         return try {
-            val urlString = gFile.url.takeIf { it.isNotBlank() } ?: return Result.failure(Exception("Empty URL for ${gFile.name}"))
-            val existing = if (tmpFile.exists()) tmpFile.length() else 0L
-
-            val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 30_000
-                readTimeout = 60_000
-                instanceFollowRedirects = true
-                useCaches = false
-                if (existing > 0) {
-                    setRequestProperty("Range", "bytes=$existing-")
-                }
-            }
-
-            val code = try { conn.responseCode } catch (e: Exception) {
-                conn.disconnect()
-                throw e
-            }
-
-            if (code !in 200..299 && code != 206) {
-                conn.disconnect()
-                if (code == 403 || code == 410) {
-                    return Result.failure(ExpiredUrlException("URL expired $code"))
-                }
-                return Result.failure(Exception("HTTP $code"))
-            }
-
-            val input = try {
-                conn.inputStream
-            } catch (_: Exception) {
-                conn.disconnect()
-                return Result.failure(Exception("Empty body"))
-            }
-
-            val output = if (existing > 0) {
-                java.io.FileOutputStream(tmpFile, true)
-            } else {
-                java.io.FileOutputStream(tmpFile, false)
-            }
-
-            var downloaded = existing
-            try {
-                output.use { out ->
-                    input.use { inp ->
-                        val buffer = ByteArray(8192)
-                        var read: Int
-                        while (inp.read(buffer).also { read = it } != -1) {
-                            out.write(buffer, 0, read)
-                            downloaded += read
-                            progressCallback(downloaded)
-                        }
-                    }
-                }
-            } finally {
-                conn.disconnect()
-            }
-
-            if (tmpFile.exists()) {
-                if (destFile.exists()) destFile.delete()
-                tmpFile.renameTo(destFile)
-            }
-
+            streamToTmp(input, tmpFile, existing, progressCallback)
+            promoteTmp(tmpFile, destFile)
             Result.success(destFile)
-        } catch (e: Exception) {
-            if (e is ExpiredUrlException) Result.failure(e)
-            else Result.failure(e)
+        } catch (expected: java.io.IOException) {
+            Result.failure(expected)
+        } finally {
+            conn.disconnect()
         }
     }
 
+    private fun openConnection(conn: HttpURLConnection): Int? {
+        return try {
+            conn.responseCode
+        } catch (expected: java.io.IOException) {
+            conn.disconnect()
+            null
+        }
+    }
+
+    private fun openInput(conn: HttpURLConnection): java.io.InputStream? {
+        return try {
+            conn.inputStream
+        } catch (_: java.io.IOException) {
+            conn.disconnect()
+            null
+        }
+    }
+
+    private fun expiredOrFailed(code: Int): Result<File> {
+        return if (code == HTTP_FORBIDDEN || code == HTTP_GONE) {
+            Result.failure(ExpiredUrlException("URL expired $code"))
+        } else {
+            Result.failure(java.io.IOException("HTTP $code"))
+        }
+    }
+
+    private fun streamToTmp(
+        input: java.io.InputStream,
+        tmpFile: File,
+        existing: Long,
+        progressCallback: (Long) -> Unit,
+    ) {
+        val output = java.io.FileOutputStream(tmpFile, existing > 0)
+        var downloaded = existing
+        output.use { out ->
+            input.use { inp ->
+                val buffer = ByteArray(COPY_BUFFER_SIZE)
+                var read: Int
+                while (inp.read(buffer).also { read = it } != -1) {
+                    out.write(buffer, 0, read)
+                    downloaded += read
+                    progressCallback(downloaded)
+                }
+            }
+        }
+    }
+
+    private fun promoteTmp(tmpFile: File, destFile: File) {
+        if (tmpFile.exists()) {
+            if (destFile.exists()) destFile.delete()
+            tmpFile.renameTo(destFile)
+        }
+    }
 }

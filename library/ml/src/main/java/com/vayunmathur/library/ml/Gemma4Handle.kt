@@ -149,21 +149,33 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
     ): String? {
         if (handle == 0L) return null
         val parts = fitted(conversation, system, tools, limit, continuation)
-        val length = parts.sumOf { it.positions }
-        val wanted = conversation.sumOf { turn -> turn.audio.sumOf { it.size / SOFT_TOKEN_WIDTH } }
-        val heard = parts.sumOf { if (it is Part.Audio) it.positions else 0 }
-        if (heard < wanted) {
-            Log.w(TAG, "audio lost ${wanted - heard} positions so the reply keeps its $limit")
-        }
+        val tail = validatePromptTail(parts) ?: return null
+        val prepared = prepareCache(parts, limit) ?: return null
+        val length = prepared.length
+        logPromptParts(parts, length, conversation, tools, limit)
+        val flat = flattenTextParts(parts, length)
+        val reused = reuseSharedCache(flat, length)
+        if (!feedPromptParts(parts, flat, reused)) return null
+        return generateTokens(tail, limit, sampling, onToken)
+    }
+
+    /** Last text part of the prompt, or null (with a log) when the prompt is empty. */
+    private fun validatePromptTail(parts: List<Part>): Part.Tokens? {
         // The last part is always the generation prompt, so it is text and it is not empty.
         val tail = parts.lastOrNull() as? Part.Tokens
         if (tail == null || tail.ids.isEmpty()) {
             Log.w(TAG, "an empty prompt")
             return null
         }
+        return tail
+    }
+
+    /** Cache capacity after growing, or null (with a log) when the prompt cannot fit. */
+    private fun prepareCache(parts: List<Part>, limit: Int): PreparedPrompt? {
+        val length = parts.sumOf { it.positions }
         // Grow the cache if this turn has outgrown it. Conversations start at the smallest
         // tier, so most never allocate more than 19 MB; the ones that keep going climb.
-        val wantedPositions = length + limit + 2
+        val wantedPositions = length + limit + PromptConstants.PROMPT_SLACK_POSITIONS
         var capacity = MlNative.capacityGemma4(handle)
         if (capacity in 1 until wantedPositions) {
             val grown = MlNative.growGemma4(handle, wantedPositions)
@@ -177,10 +189,22 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
                 capacity = grown
             }
         }
-        if (capacity in 1 until (length + 2)) {
+        if (capacity in 1 until (length + PromptConstants.PROMPT_SLACK_POSITIONS)) {
             Log.w(TAG, "a prompt of $length positions does not fit a $capacity cache")
             return null
         }
+        return PreparedPrompt(length, capacity)
+    }
+
+    private data class PreparedPrompt(val length: Int, val capacity: Int)
+
+    private fun logPromptParts(
+        parts: List<Part>,
+        length: Int,
+        conversation: List<Turn>,
+        tools: List<ToolDeclaration>,
+        limit: Int
+    ) {
         // What the model actually receives. A reply that reads as nonsense is either the model's
         // doing or the prompt's, and those are indistinguishable from the outside - so the
         // prompt is logged rather than guessed at. `fitted` truncates to make room for the
@@ -194,42 +218,55 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
         for ((index, part) in parts.withIndex()) {
             val what = when (part) {
                 is Part.Tokens -> "text ${part.ids.size}: " +
-                    decode(part.ids.take(40).toIntArray()).replace("\n", "\\n").take(160)
+                    decode(part.ids.take(PromptConstants.PROMPT_LOG_IDS).toIntArray())
+                        .replace("\n", "\\n").take(PromptConstants.PROMPT_LOG_CHARS)
                 is Part.Image -> "image ${part.positions}"
                 is Part.Audio -> "audio ${part.positions}"
                 // Untokenised text should never survive `fitted`, so seeing one here is itself
                 // the bug rather than a case to render nicely.
-                is Part.Text -> "UNTOKENISED ${part.text.take(80)}"
+                is Part.Text -> "UNTOKENISED ${part.text.take(PromptConstants.PROMPT_LOG_CHARS / 2)}"
             }
             Log.i(TAG, "  part $index  $what")
         }
+    }
 
-        // Reuse whatever of the cache this prompt shares with the last one.
-        //
-        // A turn's prompt is nearly all of the previous turn's: the same system block, the same
-        // tool declarations, the same history. Only the tail differs - the new user turn and the
-        // generation prompt. The KV cache for the shared part is still in the arena and still
-        // correct, because the tokens that produced it have not changed.
-        //
+    private object PromptConstants {
+        const val PROMPT_SLACK_POSITIONS = 2
+        const val PROMPT_LOG_IDS = 40
+        const val PROMPT_LOG_CHARS = 160
+    }
+
+    /** Flattened token ids for text-only prompts, or null when media forces re-feeding. */
+    private fun flattenTextParts(parts: List<Part>, length: Int): IntArray? {
         // Text-only prompts only. An image or audio part contributes soft tokens rather than
         // ids, so deciding whether two of them are "the same" means comparing megabytes of
         // floats - and getting that wrong does not fail, it answers a conversation that never
         // happened. The multimodal path re-feeds, exactly as it did before.
-        val flat = if (parts.all { it is Part.Tokens }) {
-            IntArray(length).also { out ->
-                var at = 0
-                for (part in parts) {
-                    val ids = (part as Part.Tokens).ids
-                    ids.copyInto(out, at)
-                    at += ids.size
-                }
+        if (parts.any { it !is Part.Tokens }) return null
+        return IntArray(length).also { out ->
+            var at = 0
+            for (part in parts) {
+                val ids = (part as Part.Tokens).ids
+                ids.copyInto(out, at)
+                at += ids.size
             }
-        } else {
-            null
         }
+    }
+
+    /**
+     * Reuse whatever of the cache this prompt shares with the last one, returning how many
+     * leading positions were kept.
+     *
+     * A turn's prompt is nearly all of the previous turn's: the same system block, the same
+     * tool declarations, the same history. Only the tail differs - the new user turn and the
+     * generation prompt. The KV cache for the shared part is still in the arena and still
+     * correct, because the tokens that produced it have not changed.
+     */
+    private fun reuseSharedCache(flat: IntArray?, length: Int): Int {
+        if (flat == null) return 0
         var reused = 0
         val prior = cachedIds
-        if (flat != null && prior != null) {
+        if (prior != null) {
             // Never reuse the final token: its logits are the prediction this turn needs, so it
             // has to be fed through `stepGemma4` rather than sat in the cache.
             val ceiling = minOf(prior.size, flat.size - 1)
@@ -242,15 +279,24 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
             reset()
         }
         cachedIds = null
+        return reused
+    }
 
+    /** Feeds every part but the final token into the cache; returns false on failure. */
+    private fun feedPromptParts(
+        parts: List<Part>,
+        flat: IntArray?,
+        reused: Int
+    ): Boolean {
         // Everything but the very last token only fills the cache; its logits would be discarded.
         if (flat != null) {
             val feed = flat.copyOfRange(reused, flat.size - 1)
-            if (feed.isNotEmpty() && MlNative.pushGemma4(handle, feed) < 0) return null
+            if (feed.isNotEmpty() && MlNative.pushGemma4(handle, feed) < 0) return false
             // What the cache holds now. The reply's own tokens are appended as they are
             // generated, so the next turn matches against the whole exchange.
             cachedIds = flat.copyOfRange(0, flat.size - 1)
-        } else {
+            return true
+        }
         for ((index, part) in parts.withIndex()) {
             val fed = when (part) {
                 is Part.Image -> MlNative.pushSoftGemma4(handle, part.soft)
@@ -262,31 +308,47 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
                 }
                 is Part.Text -> -1
             }
-            if (fed < 0) return null
+            if (fed < 0) return false
         }
-        }
+        return true
+    }
 
+    /** Generates up to [limit] tokens from the fed prompt, recording them in the cache. */
+    @Suppress("LoopWithTooManyJumpStatements")
+    private fun generateTokens(
+        tail: Part.Tokens,
+        limit: Int,
+        sampling: Sampling?,
+        onToken: (String) -> Boolean
+    ): String? {
         val produced = ArrayList<Int>(limit)
         var next = tail.ids.last()
         val room = minOf(limit, remaining - 1)
-        for (step in 0 until room) {
-            val token = if (sampling == null) {
-                MlNative.stepGemma4(handle, next)
-            } else {
-                val logits = MlNative.logitsGemma4(handle, next) ?: break
-                sampleGemma4Logits(logits, sampling, step)
-            }
-            if (token < 0) break
+        var step = 0
+        while (step < room) {
+            val token = nextToken(next, sampling, step) ?: break
             if (token in STOP) break
             produced.add(token)
             next = token
             if (!onToken(decode(produced.toIntArray()))) break
+            step++
         }
         // The fed token and everything generated after it are in the cache too, so record them
         // and the next turn starts from the end of this reply rather than the start of the
         // conversation.
         cachedIds = cachedIds?.let { it + tail.ids.last() + produced.toIntArray() }
         return decode(produced.toIntArray())
+    }
+
+    /** One generation step: greedy native step, or a sampled draw from fresh logits. */
+    private fun nextToken(next: Int, sampling: Sampling?, step: Int): Int? {
+        val token = if (sampling == null) {
+            MlNative.stepGemma4(handle, next)
+        } else {
+            val logits = MlNative.logitsGemma4(handle, next) ?: return null
+            sampleGemma4Logits(logits, sampling, step)
+        }
+        return if (token < 0) null else token
     }
 
     /**
@@ -361,23 +423,34 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
         tools: List<ToolDeclaration>,
         continuation: String = "",
     ): List<Part> {
-        val parts = ArrayList<Part>()
-        val text = StringBuilder()
-        fun flush() {
-            if (text.isNotEmpty()) {
-                parts.add(Part.Text(text.toString()))
-                text.clear()
+        val builder = PromptBuilder()
+        builder.appendHeader(system, declareTools(tools))
+        for (turn in conversation) {
+            builder.appendTurn(turn)
+        }
+        builder.appendModelOpen(continuation)
+        return builder.build()
+    }
+
+    /** Incrementally assembles the prompt's text/media parts in order. */
+    private class PromptBuilder {
+        private val parts = ArrayList<Part>()
+        private val text = StringBuilder()
+
+        init {
+            text.append("<bos>")
+        }
+
+        fun appendHeader(system: String?, declared: String) {
+            if (!system.isNullOrBlank() || declared.isNotEmpty()) {
+                text.append("<|turn>system\n")
+                if (!system.isNullOrBlank()) text.append(system)
+                text.append(declared)
+                text.append("<turn|>\n")
             }
         }
-        text.append("<bos>")
-        val declared = declareTools(tools)
-        if (!system.isNullOrBlank() || declared.isNotEmpty()) {
-            text.append("<|turn>system\n")
-            if (!system.isNullOrBlank()) text.append(system)
-            text.append(declared)
-            text.append("<turn|>\n")
-        }
-        for (turn in conversation) {
+
+        fun appendTurn(turn: Turn) {
             text.append("<|turn>").append(turn.role.marker).append('\n')
             for (image in turn.images) {
                 if (image.isEmpty() || image.size % SOFT_TOKEN_WIDTH != 0) continue
@@ -396,15 +469,24 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
             text.append(turn.text)
             text.append("<turn|>\n")
         }
-        text.append("<|turn>model\n")
-        // A tool call and its result belong **inside** the open model turn. Appending them as a
-        // finished turn instead - `<|turn>model ... <turn|>` then a fresh `<|turn>model` - made
-        // the model see its own turn ended and a new one begin, which reads as the start of a
-        // conversation: it greeted instead of answering. Only the first message showed it,
-        // because that is the one the system prompt forces a tool call on.
-        text.append(continuation)
-        flush()
-        return parts
+
+        fun appendModelOpen(continuation: String) {
+            text.append("<|turn>model\n")
+            // A tool call and its result belong **inside** the open model turn. Appending them
+            // as a finished turn instead - `<|turn>model ... <turn|>` then a fresh `<|turn>model`
+            // - made the model see its own turn ended and a new one begin, which reads as the
+            // start of a conversation: it greeted instead of answering. Only the first message
+            // showed it, because that is the one the system prompt forces a tool call on.
+            text.append(continuation)
+        }
+
+        fun build(): List<Part> {
+            if (text.isNotEmpty()) {
+                parts.add(Part.Text(text.toString()))
+                text.clear()
+            }
+            return parts
+        }
     }
 
     override fun close() {
@@ -524,7 +606,10 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
          * says that directly; subtracting both would give back one position fewer than the model
          * could have used, at every limit.
          */
-        fun promptCeiling(limit: Int = DEFAULT_REPLY): Int = MAX_CONTEXT - maxOf(limit, 3)
+        fun promptCeiling(limit: Int = DEFAULT_REPLY): Int =
+            MAX_CONTEXT - maxOf(limit, MIN_REPLY_RESERVE)
+
+        private const val MIN_REPLY_RESERVE = 3
 
         /**
          * [parts] with its audio trimmed to at most [budget] positions in total.
@@ -705,10 +790,16 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
         internal const val HEADER = 4 + 4 + 4 + 32
 
         internal fun readInt(bytes: ByteArray, at: Int): Int =
-            (bytes[at].toInt() and 0xFF) or
-                ((bytes[at + 1].toInt() and 0xFF) shl 8) or
-                ((bytes[at + 2].toInt() and 0xFF) shl 16) or
-                ((bytes[at + 3].toInt() and 0xFF) shl 24)
+            (bytes[at].toInt() and BYTE_MASK) or
+                ((bytes[at + 1].toInt() and BYTE_MASK) shl BYTE_SHIFT_1) or
+                ((bytes[at + 2].toInt() and BYTE_MASK) shl BYTE_SHIFT_2) or
+                ((bytes[at + BYTE_OFFSET_3].toInt() and BYTE_MASK) shl BYTE_SHIFT_3)
+
+        private const val BYTE_MASK = 0xFF
+        private const val BYTE_SHIFT_1 = 8
+        private const val BYTE_SHIFT_2 = 16
+        private const val BYTE_SHIFT_3 = 24
+        private const val BYTE_OFFSET_3 = 3
 
         /**
          * The digest `bake_gemma4_prefix` writes: FNV-1a over the token bytes, four times with
@@ -718,25 +809,37 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
          * someone edits the prompt, not against an adversary who could replace the weights too.
          */
         internal fun digest(tokens: IntArray): ByteArray {
-            val out = ByteArray(32)
-            for (lane in 0 until 4) {
+            val out = ByteArray(DIGEST_SIZE_BYTES)
+            for (lane in 0 until DIGEST_LANES) {
                 // `0x9e3779b9`, the **32-bit** golden ratio, because that is what
                 // `bake_gemma4_prefix` seeds with. The 64-bit one was here first and matched on
                 // lane 0 only - so the digest disagreed while the token count agreed, and a
                 // perfectly good cache was rejected as "baked for a different prompt".
-                var hash = -0x340d631b7bdddcdbL xor (lane.toLong() * 0x9e3779b9L)
+                var hash = GOLDEN_SEED xor (lane.toLong() * GOLDEN_RATIO_32)
                 for (token in tokens) {
-                    for (shift in 0 until 4) {
-                        hash = hash xor ((token ushr (shift * 8)).toLong() and 0xFF)
-                        hash *= 0x100000001b3L
+                    for (shift in 0 until BYTES_PER_INT) {
+                        hash = hash xor
+                            ((token ushr (shift * BYTE_SHIFT_1)).toLong() and BYTE_MASK_LONG)
+                        hash *= FNV_PRIME
                     }
                 }
-                for (byte in 0 until 8) {
-                    out[lane * 8 + byte] = (hash ushr (byte * 8)).toByte()
+                for (byte in 0 until BYTES_PER_LONG) {
+                    out[lane * BYTES_PER_LONG + byte] =
+                        (hash ushr (byte * BYTE_SHIFT_1)).toByte()
                 }
             }
             return out
         }
+
+        private const val DIGEST_SIZE_BYTES = 32
+        private const val DIGEST_LANES = 4
+        private const val BYTES_PER_INT = 4
+        private const val BYTES_PER_LONG = 8
+        private const val GOLDEN_SEED = -0x340d631b7bdddcdbL
+        private const val GOLDEN_RATIO_32 = 0x9e3779b9L
+        private const val FNV_PRIME = 0x100000001b3L
+
+        private const val BYTE_MASK_LONG = 0xFFL
 
     }
 }

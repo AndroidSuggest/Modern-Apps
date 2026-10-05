@@ -20,299 +20,281 @@ import com.vayunmathur.camera.platform.ensureLensesEnumerated
 import com.vayunmathur.camera.platform.lensSelector
 import com.vayunmathur.camera.platform.refreshCapabilities
 
-/**
- * Binds a manual Preview + ImageCapture + ImageAnalysis session for the photo modes
- * (PHOTO / PORTRAIT / PANORAMA / PHOTOSPHERE / QR). ImageCapture requests the sensor's
- * maximum resolution; if the 3-stream max-res combination exceeds a device's stream-config
- * limits, it falls back to a default ImageCapture resolution. ImageAnalysis is always
- * capped (~1.2 MP) — see the note in [CameraViewModel.bindSession].
- */
-@OptIn(ExperimentalCamera2Interop::class)
-suspend fun CameraViewModel.setupPhotoSession(): Boolean {
-    Log.d("NightPreview", "setupPhotoSession() ENTRY thread=${Thread.currentThread().name} lens=${_lensFacing.value} surfaceBefore=${_surfaceRequest.value?.resolution}")
+/** Capped analysis-stream resolutions (w x h) for photo/pano/portrait sessions. */
+internal const val PHOTO_ANALYSIS_WIDTH = 1280
+internal const val PHOTO_ANALYSIS_HEIGHT = 960
+internal const val PANO_ANALYSIS_WIDTH = 2016
+internal const val PANO_ANALYSIS_HEIGHT = 1512
+internal const val PORTRAIT_ANALYSIS_WIDTH = 1024
+internal const val PORTRAIT_ANALYSIS_HEIGHT = 768
+
+/** Bound lens id carried from ladders to finish steps. */
+internal var boundLensIdField: String? = null
+
+suspend fun CameraViewModel.setupNightPreviewSession(): Boolean {
+    Log.d(
+        "NightPreview",
+        "setupNightPreviewSession() ENTRY thread=${Thread.currentThread().name} " +
+            "lens=${lensFacingMutable.value} surfaceBefore=${surfaceRequestMutable.value?.resolution}"
+    )
     return try {
-        val provider = ProcessCameraProvider.awaitInstance(app)
-        cameraProvider = provider
-        Log.d("NightPreview", "setupPhotoSession() got providerHash=${provider.hashCode()}")
-        provider.unbindAll()
-
-        ensureLensesEnumerated(provider)
-        val requestedLens = _selectedLens.value
-        val lensFamily = currentLensFamily()
-
-        val previewBuilder = Preview.Builder()
-        // Snapshot auto-converged AE ISO/exposure off the repeating preview requests so a
-        // half-manual exposure can seed the un-set parameter.
-        try {
-            androidx.camera.camera2.interop.Camera2Interop.Extender(previewBuilder)
-                .setSessionCaptureCallback(aeSnapshotCallback)
-            Log.d("NightPreview", "setupPhotoSession() attached AE snapshot callback")
-        } catch (e: Exception) {
-            Log.e("NightPreview", "setupPhotoSession() Could not attach AE snapshot callback (was hidden as Warn)", e)
-        }
-        val preview = previewBuilder.build()
-        preview.setSurfaceProvider { request ->
-            Log.d("NightPreview", "setupPhotoSession() surfaceRequest emitted res=${request.resolution} format=${request.javaClass.simpleName} thread=${Thread.currentThread().name} nightActive=${nightModeActive.value}")
-            _surfaceRequest.value = request
-        }
-        Log.d("NightPreview", "setupPhotoSession() preview surfaceProvider attached")
-
-        val owner = ManualLifecycleOwner()
-        owner.start()
-        sessionLifecycleOwner = owner
-
-        // Ultra HDR (JPEG with a gain map) when the sensor/pipeline supports it. Queried once
-        // here; the bind ladder falls back to plain JPEG if the Ultra HDR combo can't bind.
-        // Probed on the requested lens; a facing-only selector is the fallback probe.
-        val ultraHdrSupported = try {
-            val probeSelector = lensSelector(_lensFacing.value, requestedLens)
-            val cameraInfo = provider.getCameraInfo(probeSelector)
-            val caps = ImageCapture.getImageCaptureCapabilities(cameraInfo).supportedOutputFormats.contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
-            Log.d("NightPreview", "setupPhotoSession() ultraHdrSupported=$caps lens=${requestedLens?.labelKey}")
-            caps
-        } catch (e: Exception) {
-            Log.e("NightPreview", "setupPhotoSession() Could not query Ultra HDR support (was hidden as Warn)", e)
-            false
-        }
-
-        fun bind(lensSelector: CameraSelector, maxRes: Boolean, ultraHdr: Boolean): Camera {
-            Log.d("NightPreview", "setupPhotoSession() bind(maxRes=$maxRes ultraHdr=$ultraHdr) START thread=${Thread.currentThread().name}")
-            return try {
-                val selectorBuilder = ResolutionSelector.Builder()
-                    .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
-                if (maxRes) {
-                    selectorBuilder.setAllowedResolutionMode(ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
-                }
-                val captureBuilder = ImageCapture.Builder()
-                    .setResolutionSelector(selectorBuilder.build())
-                    .setFlashMode(getImageCaptureFlashMode())
-                if (ultraHdr) {
-                    captureBuilder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
-                }
-                val capture = captureBuilder.build()
-                imageCapture = capture
-                // Crop stills to the selected aspect ratio (1:1 / 3:2 / 16:9 / 4:3). CameraX crops
-                // OutputFileOptions saves to this and exposes it as cropRect for in-memory shots.
-                capture.setCropAspectRatio(currentCropAspectRatio())
-                // Cap the analysis stream at ~1.2 MP, independently of [maxRes] (which stays
-                // about ImageCapture — stills are unaffected and still come off the sensor at
-                // full resolution). Nothing reading this stream benefits from sensor
-                // resolution: PhotoAnalyzer samples average luminance, runs a ZXing decode
-                // over the whole Y plane, and copies each frame via toBitmap() for the
-                // Motion-Photo ring buffer, whose frames MotionPhotoEncoder then converts to
-                // I420 in a per-pixel loop. All of that is paid per frame and scales with
-                // area, so an uncapped stream made QR scanning and motion capture far more
-                // expensive on high-end sensors for no quality gain. Night mode is unaffected:
-                // captureNightBurst() shoots full-resolution frames through ImageCapture.
-                val analysisBuilder = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .setResolutionSelector(
-                        ResolutionSelector.Builder()
-                            .setResolutionStrategy(
-                                ResolutionStrategy(
-                                    Size(1280, 960), // ~1.2 MP
-                                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
-                                )
-                            )
-                            .build()
-                    )
-                val analysis = analysisBuilder.build()
-                imageAnalysis = analysis
-                bindSession(provider, owner, lensSelector, preview, capture, analysis).also {
-                    Log.d("NightPreview", "setupPhotoSession() bind SUCCESS res=${it.cameraInfo} zoom min=${it.cameraInfo.zoomState.value?.minZoomRatio} max=${it.cameraInfo.zoomState.value?.maxZoomRatio}")
-                }
-            } catch (e: Exception) {
-                Log.e("NightPreview", "setupPhotoSession() bind(maxRes=$maxRes ultra=$ultraHdr) EXCEPTION – root cause of black preview when fallback also fails", e)
-                throw e
-            }
-        }
-
-        // Fallback ladder: UltraHDR+maxres → UltraHDR+default → JPEG+default,
-        // each rung tried across the lens ladder (requested → wide → any same-facing).
-        var boundLensId: String? = null
-        boundCamera = try {
-            val (lens, camera) = bindWithFallback(provider, requestedLens, lensFamily) { lensSel ->
-                bind(lensSel, maxRes = true, ultraHdr = ultraHdrSupported)
-            }
-            boundLensId = lens?.logicalCameraId
-            camera
-        } catch (e: Exception) {
-            Log.e("NightPreview", "setupPhotoSession() Max-res bind failed (was Warn, hidden); retrying at default resolution. This is where resolution becomes lower and cannot take full quality!", e)
-            try {
-                provider.unbindAll()
-            } catch (e2: Exception) {
-                Log.e("NightPreview", "setupPhotoSession() unbindAll on fallback failed (hidden)", e2)
-            }
-            try {
-                val (lens, camera) = bindWithFallback(provider, requestedLens, lensFamily) { lensSel ->
-                    bind(lensSel, maxRes = false, ultraHdr = ultraHdrSupported)
-                }
-                boundLensId = lens?.logicalCameraId
-                camera
-            } catch (e2: Exception) {
-                Log.e("NightPreview", "setupPhotoSession() default-res ultraHdr=$ultraHdrSupported bind FAILED (was hidden)", e2)
-                if (!ultraHdrSupported) throw e2
-                Log.e("NightPreview", "setupPhotoSession() Ultra HDR bind failed (was Warn), falling back to plain JPEG – lower quality path")
-                try {
-                    provider.unbindAll()
-                } catch (e3: Exception) {
-                    Log.e("NightPreview", "setupPhotoSession() unbindAll on second fallback failed", e3)
-                }
-                val (lens, camera) = bindWithFallback(provider, requestedLens, lensFamily) { lensSel ->
-                    bind(lensSel, maxRes = false, ultraHdr = false)
-                }
-                boundLensId = lens?.logicalCameraId
-                camera
-            }
-        }
-
-        val zs = boundCamera?.cameraInfo?.zoomState?.value
-        Log.d("NightPreview", "setupPhotoSession() bound zoomState min=${zs?.minZoomRatio} max=${zs?.maxZoomRatio} ratio=${zs?.zoomRatio} thread=${Thread.currentThread().name}")
-        applyManualControls()
-        boundCamera?.let { refreshCapabilities(it, boundLensId) }
-        boundCamera?.cameraInfo?.let { observeNightModeIndicator(it) }
-        onSessionBound()
-        _photoSessionActive.value = true
-        Log.d("NightPreview", "setupPhotoSession() SUCCESS photoActive=true surface=${_surfaceRequest.value?.resolution} nightIndicatorSupported=$nightIndicatorSupported")
+        val session = prepareNightPreview() ?: return setupPhotoSession()
+        bindNightPreview(session)
+        finishNightPreview(session)
         true
-    } catch (e: Exception) {
-        Log.e("NightPreview", "setupPhotoSession() OUTER CATCH – Failed to set up photo session – solid black root? ${e.javaClass.simpleName} ${e.message}", e)
-        false
+    } catch (e: IllegalStateException) {
+        Log.e(
+            "NightPreview",
+            "setupNightPreviewSession() OUTER CATCH – FAILED to set up night preview, " +
+                "falling back to normal photo session. " +
+                "Root cause of solid black: exception=${e.javaClass.simpleName} msg=${e.message}",
+            e
+        )
+        fallbackToPhotoSession()
+    } catch (e: IllegalArgumentException) {
+        Log.e(
+            "NightPreview",
+            "setupNightPreviewSession() OUTER CATCH – FAILED to set up night preview, " +
+                "falling back to normal photo session. " +
+                "Root cause of solid black: exception=${e.javaClass.simpleName} msg=${e.message}",
+            e
+        )
+        fallbackToPhotoSession()
     }
 }
 
+/** Night-preview scaffolding: provider, manager, lens, analysis support, use cases. */
+internal data class NightPreviewPrep(
+    val provider: ProcessCameraProvider,
+    val mgr: ExtensionsManager,
+    val requestedNightLens: com.vayunmathur.camera.domain.PhysicalLens?,
+    val baseSelector: CameraSelector,
+    val analysisSupported: Boolean,
+    val preview: Preview,
+    val owner: ManualLifecycleOwner,
+    val capture: ImageCapture
+)
+
 /**
- * Binds the CameraX NIGHT extension for the live PREVIEW (plain PHOTO mode):
- * Preview + ImageCapture, and — when the vendor extension reports it supports
- * concurrent analysis via [ExtensionsManager.isImageAnalysisSupported] — an
- * ImageAnalysis stream too, so [PhotoAnalyzer] keeps sampling luminance and
- * night mode can auto-disengage when the scene brightens (otherwise the moon
- * button is the manual exit). Falls back to the normal photo session if the
- * extension isn't available or can't be bound.
+ * Resolves provider/manager/lens and probes extension + analysis support.
+ * Null when the manager is missing (caller falls back to the normal photo session).
  */
-suspend fun CameraViewModel.setupNightPreviewSession(): Boolean {
-    Log.d("NightPreview", "setupNightPreviewSession() ENTRY thread=${Thread.currentThread().name} lens=${_lensFacing.value} surfaceBefore=${_surfaceRequest.value?.resolution}")
-    return try {
-        val provider = ProcessCameraProvider.awaitInstance(app)
-        cameraProvider = provider
-        Log.d("NightPreview", "setupNightPreviewSession() got cameraProvider=$provider")
-        val mgr = getExtensionsManager(provider)
-        Log.d("NightPreview", "setupNightPreviewSession() ExtensionsManager=${mgr != null} cacheExt=${extensionsManager != null}")
-        if (mgr == null) {
-            Log.w("NightPreview", "setupNightPreviewSession() manager NULL, falling back to normal photo session")
-            return setupPhotoSession()
-        }
-        // Night extension is wide-only on most vendors; pin to the selected lens so the
-        // availability probe reflects it, and fall back to normal photo when it can't bind.
-        ensureLensesEnumerated(provider)
-        val requestedNightLens = _selectedLens.value
-        val baseSelector = lensSelector(_lensFacing.value, requestedNightLens)
-        val extAvail = try {
-            mgr.isExtensionAvailable(baseSelector, ExtensionMode.NIGHT)
-        } catch (e: Exception) {
-            Log.e("NightPreview", "setupNightPreviewSession() isExtensionAvailable threw (was hidden)", e)
-            false
-        }
-        Log.d("NightPreview", "setupNightPreviewSession() isExtensionAvailable(NIGHT)=$extAvail lens=${_lensFacing.value}")
-        if (!extAvail) {
-            Log.w("NightPreview", "setupNightPreviewSession() extension NOT available on lens=${_lensFacing.value}, falling back")
-            return setupPhotoSession()
-        }
-        Log.d("NightPreview", "setupNightPreviewSession() unbinding all before night selector")
-        try {
-            provider.unbindAll()
-            Log.d("NightPreview", "setupNightPreviewSession() provider.unbindAll SUCCESS")
-        } catch (e: Exception) {
-            Log.e("NightPreview", "setupNightPreviewSession() unbindAll FAILED (was hidden)", e)
-            throw e
-        }
-        val analysisSupported = try {
-            mgr.isImageAnalysisSupported(baseSelector, ExtensionMode.NIGHT)
-        } catch (e: Exception) {
-            Log.e("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported query FAILED", e)
-            false
-        }
-        Log.d("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported=$analysisSupported")
-
-        // Proven-on-stock path: getExtensionEnabledCameraSelector + bindToLifecycle. It's
-        // deprecated in 1.7.0-alpha02, but it's what actually binds on devices where the vendor
-        // NIGHT extender works. On GrapheneOS/Pixel it throws "Framework size list map ...", but
-        // we never get here there: isNightExtensionAvailable() probes first and hides the mode.
-        val nightSelector = mgr.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.NIGHT)
-
-        val preview = Preview.Builder().build()
-        preview.setSurfaceProvider { request ->
-            Log.d("NightPreview", "setupNightPreviewSession() NEW surfaceRequest emitted res=${request.resolution}")
-            _surfaceRequest.value = request
-        }
-
-        val owner = ManualLifecycleOwner()
-        owner.start()
-        sessionLifecycleOwner = owner
-
-        val capture = ImageCapture.Builder()
-            .setFlashMode(getImageCaptureFlashMode())
-            .build()
-        imageCapture = capture
-
-        fun bind(withAnalysis: Boolean): Camera {
-            Log.d("NightPreview", "setupNightPreviewSession() bind(withAnalysis=$withAnalysis) START")
-            return if (withAnalysis) {
-                val analysis = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                imageAnalysis = analysis
-                bindSession(provider, owner, nightSelector, preview, capture, analysis)
-            } else {
-                Log.w("NightPreview", "setupNightPreviewSession() binding NIGHT without ImageAnalysis – QR scanning, luminance sampling and Motion Photo are off for this session")
-                imageAnalysis = null
-                bindSession(provider, owner, nightSelector, preview, capture)
-            }
-        }
-
-        boundCamera = try {
-            bind(withAnalysis = analysisSupported)
-        } catch (e: Exception) {
-            Log.w("NightPreview", "setupNightPreviewSession() bind FAILED withAnalysis=$analysisSupported: ${e.javaClass.simpleName} ${e.message}", e)
-            if (!analysisSupported) throw e
-            try { provider.unbindAll() } catch (_: Exception) {}
-            bind(withAnalysis = false)
-        }
-
-        val zs = boundCamera?.cameraInfo?.zoomState?.value
-        Log.d("NightPreview", "setupNightPreviewSession() boundCamera zoomState min=${zs?.minZoomRatio} max=${zs?.maxZoomRatio} current=${zs?.zoomRatio} – vendor NIGHT extension often reports 1x-only; this explains zoom bar disappearing (only 1x). Full-res capture is still max-res? No, extension uses default resolution, lower than max-res photo session, cannot take full quality while in extension preview")
-        // Do NOT observe getNightModeIndicator() on the extension camera: it reports
-        // UNKNOWN/NOT_RECOMMENDED there, which fights the normal session's RECOMMENDED reading
-        // and flips _lowLightDetected → an engage/disengage toggle loop. Night stays engaged
-        // (frozen at the value the normal session detected) until the moon button turns it off.
-        // We do watch the extension camera's state to catch async ExtensionCaptureSession
-        // failures, and its strength for the UI indicator.
-        boundCamera?.cameraInfo?.let {
-            observeExtensionStrength(it)
-            observeExtensionCameraState(it)
-        }
-        boundCamera?.let { refreshCapabilities(it, requestedNightLens?.logicalCameraId) }
-        onSessionBound()
-        _nightPreviewActive.value = true
-        _photoSessionActive.value = true
-        Log.d("NightPreview", "setupNightPreviewSession() SUCCESS – nightPreviewActive=true photoSessionActive=true surfaceRequest=${_surfaceRequest.value?.resolution}")
-        true
-    } catch (e: Exception) {
-        Log.e("NightPreview", "setupNightPreviewSession() OUTER CATCH – FAILED to set up night preview, falling back to normal photo session. Root cause of solid black: exception=${e.javaClass.simpleName} msg=${e.message}", e)
-        _nightPreviewActive.value = false
-        // The extension genuinely can't bind here (e.g. GrapheneOS/Pixel). Remember it so night
-        // isn't offered again for a week; flipping nightExtensionUsable false also makes the UI
-        // drop useNightPreview immediately, so we don't loop back into this failure.
-        recordNightExtensionFailure()
-        val fallback = try {
-            setupPhotoSession()
-        } catch (e2: Exception) {
-            Log.e("NightPreview", "setupNightPreviewSession() fallback setupPhotoSession() ALSO FAILED (double hidden)", e2)
-            false
-        }
-        Log.d("NightPreview", "setupNightPreviewSession() fallback result=$fallback")
-        fallback
+internal suspend fun CameraViewModel.prepareNightPreview(): NightPreviewPrep? {
+    val provider = ProcessCameraProvider.awaitInstance(app)
+    cameraProvider = provider
+    Log.d("NightPreview", "setupNightPreviewSession() got cameraProvider=$provider")
+    val mgr = getExtensionsManager(provider)
+    Log.d(
+        "NightPreview",
+        "setupNightPreviewSession() ExtensionsManager=${mgr != null} cacheExt=${extensionsManager != null}"
+    )
+    if (mgr == null) {
+        Log.w("NightPreview", "setupNightPreviewSession() manager NULL, falling back to normal photo session")
+        return null
     }
+    // Night extension is wide-only on most vendors; pin to the selected lens so the
+    // availability probe reflects it, and fall back to normal photo when it can't bind.
+    ensureLensesEnumerated(provider)
+    val requestedNightLens = selectedLensMutable.value
+    val baseSelector = lensSelector(lensFacingMutable.value, requestedNightLens)
+    if (!isNightExtensionSupported(mgr, baseSelector)) return null
+    Log.d("NightPreview", "setupNightPreviewSession() unbinding all before night selector")
+    try {
+        provider.unbindAll()
+        Log.d("NightPreview", "setupNightPreviewSession() provider.unbindAll SUCCESS")
+    } catch (e: IllegalStateException) {
+        Log.e("NightPreview", "setupNightPreviewSession() unbindAll FAILED (was hidden)", e)
+        throw e
+    } catch (e: IllegalArgumentException) {
+        Log.e("NightPreview", "setupNightPreviewSession() unbindAll FAILED (was hidden)", e)
+        throw e
+    }
+    val analysisSupported = isNightAnalysisSupported(mgr, baseSelector)
+
+    // Proven-on-stock path: getExtensionEnabledCameraSelector + bindToLifecycle. It's
+    // deprecated in 1.7.0-alpha02, but it's what actually binds on devices where the vendor
+    // NIGHT extender works. On GrapheneOS/Pixel it throws "Framework size list map ...", but
+    // we never get here there: isNightExtensionAvailable() probes first and hides the mode.
+    val nightSelector = mgr.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.NIGHT)
+
+    val preview = Preview.Builder().build()
+    preview.setSurfaceProvider { request ->
+        Log.d("NightPreview", "setupNightPreviewSession() NEW surfaceRequest emitted res=${request.resolution}")
+        surfaceRequestMutable.value = request
+    }
+
+    val owner = ManualLifecycleOwner()
+    owner.start()
+    sessionLifecycleOwner = owner
+
+    val capture = ImageCapture.Builder()
+        .setFlashMode(getImageCaptureFlashMode())
+        .build()
+    imageCapture = capture
+    return NightPreviewPrep(
+        provider,
+        mgr,
+        requestedNightLens,
+        nightSelector,
+        analysisSupported,
+        preview,
+        owner,
+        capture
+    )
+}
+
+/** Probes NIGHT extension availability; false (fall back) when unavailable or unreadable. */
+internal fun CameraViewModel.isNightExtensionSupported(
+    mgr: ExtensionsManager,
+    baseSelector: CameraSelector
+): Boolean {
+    val extAvail = try {
+        mgr.isExtensionAvailable(baseSelector, ExtensionMode.NIGHT)
+    } catch (e: IllegalStateException) {
+        Log.e("NightPreview", "setupNightPreviewSession() isExtensionAvailable threw (was hidden)", e)
+        false
+    } catch (e: IllegalArgumentException) {
+        Log.e("NightPreview", "setupNightPreviewSession() isExtensionAvailable threw (was hidden)", e)
+        false
+    }
+    Log.d(
+        "NightPreview",
+        "setupNightPreviewSession() isExtensionAvailable(NIGHT)=$extAvail lens=${lensFacingMutable.value}"
+    )
+    if (!extAvail) {
+        Log.w(
+            "NightPreview",
+            "setupNightPreviewSession() extension NOT available on lens=${lensFacingMutable.value}, " +
+                "falling back"
+        )
+        return false
+    }
+    return true
+}
+
+/** Probes concurrent-analysis support inside the NIGHT extension session. */
+internal fun CameraViewModel.isNightAnalysisSupported(
+    mgr: ExtensionsManager,
+    baseSelector: CameraSelector
+): Boolean {
+    val analysisSupported = try {
+        mgr.isImageAnalysisSupported(baseSelector, ExtensionMode.NIGHT)
+    } catch (e: IllegalStateException) {
+        Log.e("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported query FAILED", e)
+        false
+    } catch (e: IllegalArgumentException) {
+        Log.e("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported query FAILED", e)
+        false
+    }
+    Log.d("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported=$analysisSupported")
+    return analysisSupported
+}
+
+/** Binds the NIGHT extension session, retrying without analysis when supported. */
+internal fun CameraViewModel.bindNightPreview(session: NightPreviewPrep) {
+    boundCamera = try {
+        bindNightUseCases(session, withAnalysis = session.analysisSupported)
+    } catch (e: IllegalStateException) {
+        Log.w(
+            "NightPreview",
+            "setupNightPreviewSession() bind FAILED " +
+                "withAnalysis=${session.analysisSupported}: ${e.javaClass.simpleName} ${e.message}",
+            e
+        )
+        if (!session.analysisSupported) throw e
+        try { session.provider.unbindAll() } catch (_: Exception) {}
+        bindNightUseCases(session, withAnalysis = false)
+    } catch (e: IllegalArgumentException) {
+        Log.w(
+            "NightPreview",
+            "setupNightPreviewSession() bind FAILED " +
+                "withAnalysis=${session.analysisSupported}: ${e.javaClass.simpleName} ${e.message}",
+            e
+        )
+        if (!session.analysisSupported) throw e
+        try { session.provider.unbindAll() } catch (_: Exception) {}
+        bindNightUseCases(session, withAnalysis = false)
+    }
+}
+
+/** Binds the night extension use cases, with or without the analysis stream. */
+internal fun CameraViewModel.bindNightUseCases(session: NightPreviewPrep, withAnalysis: Boolean): Camera {
+    Log.d("NightPreview", "setupNightPreviewSession() bind(withAnalysis=$withAnalysis) START")
+    return if (withAnalysis) {
+        val analysis = ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+        imageAnalysis = analysis
+        bindSession(session.provider, session.owner, session.baseSelector, session.preview, session.capture, analysis)
+    } else {
+        Log.w(
+            "NightPreview",
+            "setupNightPreviewSession() binding NIGHT without ImageAnalysis – QR scanning, " +
+                "luminance sampling and Motion Photo are off for this session"
+        )
+        imageAnalysis = null
+        bindSession(session.provider, session.owner, session.baseSelector, session.preview, session.capture)
+    }
+}
+
+/** Marks the night preview active and wires extension observers. */
+internal suspend fun CameraViewModel.finishNightPreview(session: NightPreviewPrep) {
+    val zs = boundCamera?.cameraInfo?.zoomState?.value
+    Log.d(
+        "NightPreview",
+        "setupNightPreviewSession() boundCamera zoomState min=${zs?.minZoomRatio} " +
+            "max=${zs?.maxZoomRatio} current=${zs?.zoomRatio} – vendor NIGHT extension often reports " +
+            "1x-only; this explains zoom bar disappearing (only 1x). Full-res capture is still max-res? " +
+            "No, extension uses default resolution, lower than max-res photo session, " +
+            "cannot take full quality while in extension preview"
+    )
+    // Do NOT observe getNightModeIndicator() on the extension camera: it reports
+    // UNKNOWN/NOT_RECOMMENDED there, which fights the normal session's RECOMMENDED reading
+    // and flips lowLightDetectedMutable → an engage/disengage toggle loop. Night stays engaged
+    // (frozen at the value the normal session detected) until the moon button turns it off.
+    // We do watch the extension camera's state to catch async ExtensionCaptureSession
+    // failures, and its strength for the UI indicator.
+    boundCamera?.cameraInfo?.let {
+        observeExtensionStrength(it)
+        observeExtensionCameraState(it)
+    }
+    boundCamera?.let { refreshCapabilities(it, session.requestedNightLens?.logicalCameraId) }
+    onSessionBound()
+    nightPreviewActiveMutable.value = true
+    photoSessionActiveMutable.value = true
+    Log.d(
+        "NightPreview",
+        "setupNightPreviewSession() SUCCESS – nightPreviewActive=true photoSessionActive=true " +
+            "surfaceRequest=${surfaceRequestMutable.value?.resolution}"
+    )
+}
+
+/** Records the extension failure and falls back to the normal photo session. */
+internal suspend fun CameraViewModel.fallbackToPhotoSession(): Boolean {
+    nightPreviewActiveMutable.value = false
+    // The extension genuinely can't bind here (e.g. GrapheneOS/Pixel). Remember it so night
+    // isn't offered again for a week; flipping nightExtensionUsable false also makes the UI
+    // drop useNightPreview immediately, so we don't loop back into this failure.
+    recordNightExtensionFailure()
+    val fallback = try {
+        setupPhotoSession()
+    } catch (e2: IllegalStateException) {
+        Log.e(
+            "NightPreview",
+            "setupNightPreviewSession() fallback setupPhotoSession() ALSO FAILED (double hidden)",
+            e2
+        )
+        false
+    } catch (e2: IllegalArgumentException) {
+        Log.e(
+            "NightPreview",
+            "setupNightPreviewSession() fallback setupPhotoSession() ALSO FAILED (double hidden)",
+            e2
+        )
+        false
+    }
+    Log.d("NightPreview", "setupNightPreviewSession() fallback result=$fallback")
+    return fallback
 }
 
 /**
@@ -325,255 +307,176 @@ suspend fun CameraViewModel.setupNightPreviewSession(): Boolean {
  */
 suspend fun CameraViewModel.setupPanoramaSession(): Boolean {
     return try {
-        val provider = ProcessCameraProvider.awaitInstance(app)
-        cameraProvider = provider
-        provider.unbindAll()
-
-        ensureLensesEnumerated(provider)
-        val panoLens = _selectedLens.value
-        val panoFamily = currentLensFamily()
-
-        val previewBuilder = Preview.Builder()
-        val preview = previewBuilder.build()
-        preview.setSurfaceProvider { request -> _surfaceRequest.value = request }
-
-        val owner = ManualLifecycleOwner()
-        owner.start()
-        sessionLifecycleOwner = owner
-
-        // Cap the analysis stream at ~3 MP. The compose canvas is bounded to
-        // 8 MP, so per-frame resolution beyond a few MP adds little to the
-        // stitched output — but the analyzer converts every delivered frame to
-        // a Bitmap, so a max-res stream makes that conversion (and its GC
-        // churn) heavy enough to jank the preview during the sweep. ~3 MP keeps
-        // it smooth. Falls back to the device-default analysis resolution if
-        // this bound can't bind.
-        fun bind(lensSelector: CameraSelector, capped: Boolean): Camera {
-            val analysisBuilder = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            if (capped) {
-                analysisBuilder.setResolutionSelector(
-                    ResolutionSelector.Builder()
-                        .setResolutionStrategy(
-                            ResolutionStrategy(
-                                Size(2016, 1512), // ~3 MP
-                                ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
-                            )
-                        )
-                        .build()
-                )
-            }
-            val analysis = analysisBuilder.build()
-            imageAnalysis = analysis
-            imageCapture = null // No ImageCapture in this session.
-            return bindSession(provider, owner, lensSelector, preview, analysis)
-        }
-
-        var panoBoundLensId: String? = null
-        boundCamera = try {
-            Log.d("NightPreview", "setupPanoramaSession() bind capped=true START")
-            val (lens, camera) = bindWithFallback(provider, panoLens, panoFamily) { lensSel ->
-                bind(lensSel, capped = true)
-            }
-            panoBoundLensId = lens?.logicalCameraId
-            camera
-        } catch (e: Exception) {
-            Log.e("NightPreview", "setupPanoramaSession() Capped panorama bind FAILED (was hidden as Warn), retrying at default – resolution lower!", e)
-            try {
-                provider.unbindAll()
-                Log.d("NightPreview", "setupPanoramaSession() fallback unbindAll SUCCESS")
-            } catch (e2: Exception) {
-                Log.e("NightPreview", "setupPanoramaSession() fallback unbindAll FAILED (swallowed)", e2)
-            }
-            try {
-                val (lens, camera) = bindWithFallback(provider, panoLens, panoFamily) { lensSel ->
-                    bind(lensSel, capped = false)
-                }
-                panoBoundLensId = lens?.logicalCameraId
-                camera
-            } catch (e2: Exception) {
-                Log.e("NightPreview", "setupPanoramaSession() default bind ALSO FAILED – black root ${e2.javaClass.simpleName} ${e2.message}", e2)
-                throw e2
-            }
-        }
-
-        val zsP = boundCamera?.cameraInfo?.zoomState?.value
-        Log.d("NightPreview", "setupPanoramaSession() bound zoom min=${zsP?.minZoomRatio} max=${zsP?.maxZoomRatio} ratio=${zsP?.zoomRatio}")
-        boundCamera?.let { refreshCapabilities(it, panoBoundLensId) }
-        onSessionBound()
-        _photoSessionActive.value = true
-        Log.d("NightPreview", "setupPanoramaSession() SUCCESS photoActive=true surface=${_surfaceRequest.value?.resolution}")
+        val session = preparePanoramaSession()
+        bindPanoLadder(session)
+        finishPanoramaSession()
         true
-    } catch (e: Exception) {
-        Log.e("NightPreview", "setupPanoramaSession() OUTER CATCH – Failed solid black? ${e.javaClass.simpleName} ${e.message}", e)
+    } catch (e: IllegalStateException) {
+        Log.e(
+            "NightPreview",
+            "setupPanoramaSession() OUTER CATCH – Failed solid black? " +
+                "${e.javaClass.simpleName} ${e.message}",
+            e
+        )
+        false
+    } catch (e: IllegalArgumentException) {
+        Log.e(
+            "NightPreview",
+            "setupPanoramaSession() OUTER CATCH – Failed solid black? " +
+                "${e.javaClass.simpleName} ${e.message}",
+            e
+        )
         false
     }
 }
 
+/** Panorama session scaffolding: provider, lens, preview, owner. */
+internal data class PanoSessionPrep(
+    val provider: ProcessCameraProvider,
+    val panoLens: com.vayunmathur.camera.domain.PhysicalLens?,
+    val panoFamily: List<com.vayunmathur.camera.domain.PhysicalLens>,
+    val preview: Preview,
+    val owner: ManualLifecycleOwner
+)
+
+/** Binds provider/owner/preview for the panorama sweep session. */
+internal suspend fun CameraViewModel.preparePanoramaSession(): PanoSessionPrep {
+    val provider = ProcessCameraProvider.awaitInstance(app)
+    cameraProvider = provider
+    provider.unbindAll()
+
+    ensureLensesEnumerated(provider)
+    val panoLens = selectedLensMutable.value
+    val panoFamily = currentLensFamily()
+
+    val previewBuilder = Preview.Builder()
+    val preview = previewBuilder.build()
+    preview.setSurfaceProvider { request -> surfaceRequestMutable.value = request }
+
+    val owner = ManualLifecycleOwner()
+    owner.start()
+    sessionLifecycleOwner = owner
+    return PanoSessionPrep(provider, panoLens, panoFamily, preview, owner)
+}
+
 /**
- * Portrait session: full-resolution ImageCapture (final image stays max-res) but capped
- * ImageAnalysis (~0.8 MP, 1024x768) for smooth preview segmentation. This fixes the
- * "No supported surface combination" bind failures that happened when portrait reused
- * the then-uncapped 3-stream photo path (Preview + max ImageCapture + max ImageAnalysis) for a
- * model that only needs 256x256.
+ * Binds the capped-then-default analysis ladder for the panorama sweep.
  *
- * Fallback ladder prioritizes keeping max-res capture:
- * capped+max+UHD → capped+max+JPEG → capped+default+UHD → capped+default+JPEG → default+default
+ * Cap the analysis stream at ~3 MP. The compose canvas is bounded to
+ * 8 MP, so per-frame resolution beyond a few MP adds little to the
+ * stitched output — but the analyzer converts every delivered frame to
+ * a Bitmap, so a max-res stream makes that conversion (and its GC
+ * churn) heavy enough to jank the preview during the sweep. ~3 MP keeps
+ * it smooth. Falls back to the device-default analysis resolution if
+ * this bound can't bind.
  */
-@OptIn(ExperimentalCamera2Interop::class)
-suspend fun CameraViewModel.setupPortraitSession(): Boolean {
-    Log.d("NightPreview", "setupPortraitSession() ENTRY lens=${_lensFacing.value} thread=${Thread.currentThread().name}")
-    return try {
-        val provider = ProcessCameraProvider.awaitInstance(app)
-        cameraProvider = provider
-        Log.d("NightPreview", "setupPortraitSession() providerHash=${provider.hashCode()}")
-        provider.unbindAll()
-
-        ensureLensesEnumerated(provider)
-        val portraitLens = _selectedLens.value
-        val portraitFamily = currentLensFamily()
-
-        val previewBuilder = Preview.Builder()
-        try {
-            androidx.camera.camera2.interop.Camera2Interop.Extender(previewBuilder)
-                .setSessionCaptureCallback(aeSnapshotCallback)
-            Log.d("NightPreview", "setupPortraitSession() attached AE snapshot callback")
-        } catch (e: Exception) {
-            Log.e("NightPreview", "setupPortraitSession() Could not attach AE snapshot callback (was Warn)", e)
+internal fun CameraViewModel.bindPanoLadder(session: PanoSessionPrep) {
+    var panoBoundLensId: String? = null
+    boundCamera = try {
+        Log.d("NightPreview", "setupPanoramaSession() bind capped=true START")
+        val (lens, camera) = bindWithFallback(session.provider, session.panoLens, session.panoFamily) {
+            lensSel ->
+            bindPanoUseCases(session, lensSel, capped = true)
         }
-        val preview = previewBuilder.build()
-        preview.setSurfaceProvider { request ->
-            Log.d("NightPreview", "setupPortraitSession() surfaceRequest res=${request.resolution} thread=${Thread.currentThread().name}")
-            _surfaceRequest.value = request
+        panoBoundLensId = lens?.logicalCameraId
+        camera
+    } catch (e: IllegalStateException) {
+        Log.e(
+            "NightPreview",
+            "setupPanoramaSession() Capped panorama bind FAILED (was hidden as Warn), " +
+                "retrying at default – resolution lower!",
+            e
+        )
+        unbindQuietly(session.provider)
+        bindPanoDefault(session) { lens ->
+            panoBoundLensId = lens?.logicalCameraId
         }
-
-        val owner = ManualLifecycleOwner()
-        owner.start()
-        sessionLifecycleOwner = owner
-
-        val ultraHdrSupported = try {
-            val cameraInfo = provider.getCameraInfo(lensSelector(_lensFacing.value, portraitLens))
-            val sup = ImageCapture.getImageCaptureCapabilities(cameraInfo).supportedOutputFormats.contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
-            Log.d("NightPreview", "setupPortraitSession() ultraHdrSupported=$sup lens=${portraitLens?.labelKey}")
-            sup
-        } catch (e: Exception) {
-            Log.e("NightPreview", "setupPortraitSession() Could not query Ultra HDR support (hidden)", e)
-            false
+    } catch (e: IllegalArgumentException) {
+        Log.e(
+            "NightPreview",
+            "setupPanoramaSession() Capped panorama bind FAILED (was hidden as Warn), " +
+                "retrying at default – resolution lower!",
+            e
+        )
+        unbindQuietly(session.provider)
+        bindPanoDefault(session) { lens ->
+            panoBoundLensId = lens?.logicalCameraId
         }
-
-        fun bind(
-            lensSelector: CameraSelector,
-            cappedAnalysis: Boolean,
-            maxResCapture: Boolean,
-            ultraHdr: Boolean
-        ): Camera {
-            Log.d("NightPreview", "setupPortraitSession() bind(capped=$cappedAnalysis maxRes=$maxResCapture ultra=$ultraHdr) START")
-            return try {
-                // Capture: always try max-res first to keep final image full-res.
-                val captureSelectorBuilder = ResolutionSelector.Builder()
-                    .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
-                if (maxResCapture) {
-                    captureSelectorBuilder.setAllowedResolutionMode(ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
-                }
-                val captureBuilder = ImageCapture.Builder()
-                    .setResolutionSelector(captureSelectorBuilder.build())
-                    .setFlashMode(getImageCaptureFlashMode())
-                if (ultraHdr) {
-                    captureBuilder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
-                }
-                val capture = captureBuilder.build()
-                imageCapture = capture
-                // Crop stills to the selected aspect ratio (1:1 / 3:2 / 16:9 / 4:3). CameraX crops
-                // OutputFileOptions saves to this and exposes it as cropRect for in-memory shots.
-                capture.setCropAspectRatio(currentCropAspectRatio())
-
-                val analysisBuilder = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                if (cappedAnalysis) {
-                    analysisBuilder.setResolutionSelector(
-                        ResolutionSelector.Builder().setResolutionStrategy(
-                            ResolutionStrategy(Size(1024, 768), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER)
-                        ).build()
-                    )
-                } else if (maxResCapture) {
-                    analysisBuilder.setResolutionSelector(
-                        ResolutionSelector.Builder().setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY).build()
-                    )
-                }
-                val analysis = analysisBuilder.build()
-                imageAnalysis = analysis
-                bindSession(provider, owner, lensSelector, preview, capture, analysis).also {
-                    Log.d("NightPreview", "setupPortraitSession() bind SUCCESS capped=$cappedAnalysis maxRes=$maxResCapture ultra=$ultraHdr zoom min=${it.cameraInfo.zoomState.value?.minZoomRatio} max=${it.cameraInfo.zoomState.value?.maxZoomRatio}")
-                }
-            } catch (e: Exception) {
-                Log.e("NightPreview", "setupPortraitSession() bind(capped=$cappedAnalysis maxRes=$maxResCapture ultra=$ultraHdr) FAILED – swallowed before! ${e.javaClass.simpleName} ${e.message}", e)
-                throw e
-            }
-        }
-
-        // Build attempt ladder; keep max-res capture attempts first per user request.
-        data class Attempt(val capped: Boolean, val maxRes: Boolean, val ultra: Boolean)
-        val attempts = mutableListOf<Attempt>()
-        if (ultraHdrSupported) {
-            attempts.add(Attempt(true, true, true))
-            attempts.add(Attempt(true, true, false))
-            attempts.add(Attempt(true, false, true))
-            attempts.add(Attempt(true, false, false))
-            attempts.add(Attempt(false, false, true))
-            attempts.add(Attempt(false, false, false))
-        } else {
-            attempts.add(Attempt(true, true, false))
-            attempts.add(Attempt(true, false, false))
-            attempts.add(Attempt(false, false, false))
-        }
-
-        var bound: Camera? = null
-        var portraitBoundLensId: String? = null
-        var lastError: Exception? = null
-        for ((capped, maxRes, ultra) in attempts) {
-            // Each resolution rung is tried across the lens ladder (requested → wide → any).
-            val lensOrdered = buildList {
-                if (portraitLens != null) add(portraitLens)
-                portraitFamily.sortedBy { it.fallbackPriority }.forEach { if (it != portraitLens) add(it) }
-                if (portraitLens == null && portraitFamily.isEmpty()) add(null)
-            }
-            var rungBound = false
-            for (candidate in lensOrdered) {
-                try {
-                    provider.unbindAll()
-                    bound = bind(lensSelector(_lensFacing.value, candidate), capped, maxRes, ultra)
-                    portraitBoundLensId = candidate?.logicalCameraId
-                    if (candidate != portraitLens) {
-                        Log.w("LensSelector", "Portrait fell back to lens=${candidate?.labelKey}")
-                    }
-                    Log.d("NightPreview", "setupPortraitSession() bind ladder SUCCESS capped=$capped maxRes=$maxRes ultra=$ultra lens=${candidate?.labelKey} zoom min=${bound.cameraInfo.zoomState.value?.minZoomRatio} max=${bound.cameraInfo.zoomState.value?.maxZoomRatio}")
-                    rungBound = true
-                    break
-                } catch (e: Exception) {
-                    lastError = e
-                    Log.e("NightPreview", "setupPortraitSession() Portrait bind failed (capped=$capped maxRes=$maxRes ultra=$ultra lens=${candidate?.labelKey}) – was Warn with swallowed stack, root of black? ${e.javaClass.simpleName} msg=${e.message}", e)
-                    try {
-                        provider.unbindAll()
-                    } catch (e2: Exception) {
-                        Log.e("NightPreview", "setupPortraitSession() unbindAll in catch FAILED (hidden)", e2)
-                    }
-                }
-            }
-            if (rungBound) break
-        }
-        if (bound == null) Log.e("NightPreview", "setupPortraitSession() ALL attempts FAILED! lastError=${lastError?.javaClass?.simpleName} ${lastError?.message} – produces black preview?", lastError ?: Exception("none"))
-        boundCamera = bound ?: throw (lastError ?: IllegalStateException("Portrait session bind failed"))
-
-        val zsPor = boundCamera?.cameraInfo?.zoomState?.value
-        Log.d("NightPreview", "setupPortraitSession() final zoom min=${zsPor?.minZoomRatio} max=${zsPor?.maxZoomRatio} ratio=${zsPor?.zoomRatio} – if max=1, zoom bar will show only 1x")
-        applyManualControls()
-        boundCamera?.let { refreshCapabilities(it, portraitBoundLensId) }
-        onSessionBound()
-        _photoSessionActive.value = true
-        Log.d("NightPreview", "setupPortraitSession() SUCCESS photoActive=true surface=${_surfaceRequest.value?.resolution}")
-        true
-    } catch (e: Exception) {
-        Log.e("NightPreview", "setupPortraitSession() OUTER CATCH – Failed black root? ${e.javaClass.simpleName} ${e.message}", e)
-        false
     }
+    boundLensIdField = panoBoundLensId
+}
+
+/** Default-resolution leg of the panorama bind ladder. */
+internal fun CameraViewModel.bindPanoDefault(
+    session: PanoSessionPrep,
+    onLens: (com.vayunmathur.camera.domain.PhysicalLens?) -> Unit
+): Camera {
+    return try {
+        val (lens, camera) = bindWithFallback(session.provider, session.panoLens, session.panoFamily) {
+            lensSel ->
+            bindPanoUseCases(session, lensSel, capped = false)
+        }
+        onLens(lens)
+        camera
+    } catch (e2: IllegalStateException) {
+        Log.e(
+            "NightPreview",
+            "setupPanoramaSession() default bind ALSO FAILED – " +
+                "black root ${e2.javaClass.simpleName} ${e2.message}",
+            e2
+        )
+        throw e2
+    } catch (e2: IllegalArgumentException) {
+        Log.e(
+            "NightPreview",
+            "setupPanoramaSession() default bind ALSO FAILED – " +
+                "black root ${e2.javaClass.simpleName} ${e2.message}",
+            e2
+        )
+        throw e2
+    }
+}
+
+/** Binds Preview + capped/default ImageAnalysis for the panorama sweep. */
+internal fun CameraViewModel.bindPanoUseCases(
+    session: PanoSessionPrep,
+    lensSelector: CameraSelector,
+    capped: Boolean
+): Camera {
+    val analysisBuilder = ImageAnalysis.Builder()
+        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+    if (capped) {
+        analysisBuilder.setResolutionSelector(
+            ResolutionSelector.Builder()
+                .setResolutionStrategy(
+                    ResolutionStrategy(
+                        Size(PANO_ANALYSIS_WIDTH, PANO_ANALYSIS_HEIGHT), // ~3 MP
+                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
+                    )
+                )
+                .build()
+        )
+    }
+    val analysis = analysisBuilder.build()
+    imageAnalysis = analysis
+    imageCapture = null // No ImageCapture in this session.
+    return bindSession(session.provider, session.owner, lensSelector, session.preview, analysis)
+}
+
+/** Refreshes capabilities and marks the panorama session active. */
+internal suspend fun CameraViewModel.finishPanoramaSession() {
+    val zsP = boundCamera?.cameraInfo?.zoomState?.value
+    Log.d(
+        "NightPreview",
+        "setupPanoramaSession() bound zoom min=${zsP?.minZoomRatio} max=${zsP?.maxZoomRatio} " +
+            "ratio=${zsP?.zoomRatio}"
+    )
+    boundCamera?.let { refreshCapabilities(it, boundLensIdField) }
+    onSessionBound()
+    photoSessionActiveMutable.value = true
+    Log.d(
+        "NightPreview",
+        "setupPanoramaSession() SUCCESS photoActive=true " +
+            "surface=${surfaceRequestMutable.value?.resolution}"
+    )
 }

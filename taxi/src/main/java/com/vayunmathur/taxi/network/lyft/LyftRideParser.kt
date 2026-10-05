@@ -11,11 +11,13 @@ import com.vayunmathur.taxi.data.VehicleInfo
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 // ----------------------------------------------------------------------------------------
 // Active-ride / driver-location parsing (PassengerRide, ReadDriverLocationResponse).
@@ -76,35 +78,35 @@ internal class LyftRideParser(private val json: Json) {
             vehicle = vehicle,
             driverLocation = driverLocation,
             stops = stops,
-            raw = raw.take(2000),
+            raw = raw.take(RAW_PREVIEW_MAX),
         )
     }
 
     fun toActiveRideProto(bytes: ByteArray): ActiveRide {
         val m = ProtoMessage(bytes, 0, bytes.size)
-        val statusRaw = m.string(2)
-        val driver = m.message(6)?.let { d ->
+        val statusRaw = m.string(RideFields.STATUS)
+        val driver = m.message(RideFields.DRIVER)?.let { d ->
             DriverInfo(
-                firstName = d.string(5),
-                lastName = d.string(6),
-                imageUrl = d.string(7),
-                phoneNumber = d.string(8),
-                rating = d.double(9) ?: d.wrappedDouble(9),
+                firstName = d.string(DriverFields.FIRST_NAME),
+                lastName = d.string(DriverFields.LAST_NAME),
+                imageUrl = d.string(DriverFields.IMAGE_URL),
+                phoneNumber = d.string(DriverFields.PHONE_NUMBER),
+                rating = d.double(DriverFields.RATING) ?: d.wrappedDouble(DriverFields.RATING),
             )
         }
-        val vehicle = m.message(8)?.let { v ->
+        val vehicle = m.message(RideFields.VEHICLE)?.let { v ->
             VehicleInfo(
-                make = v.string(1),
-                model = v.string(2),
-                color = v.string(6),
-                licensePlate = v.string(3),
-                imageUrl = v.string(4),
+                make = v.string(VehicleFields.MAKE),
+                model = v.string(VehicleFields.MODEL),
+                color = v.string(VehicleFields.COLOR),
+                licensePlate = v.string(VehicleFields.LICENSE_PLATE),
+                imageUrl = v.string(VehicleFields.IMAGE_URL),
             )
         }
-        val driverLocation = m.message(11)?.let(::toDriverLocationProto)
-        val stops = m.messages(9).map(::toStopProto)
+        val driverLocation = m.message(RideFields.LOCATION)?.let(::toDriverLocationProto)
+        val stops = m.messages(RideFields.STOPS).map(::toStopProto)
         return ActiveRide(
-            rideId = m.string(1),
+            rideId = m.string(RideFields.RIDE_ID),
             status = RideStatus.fromWire(statusRaw),
             statusRaw = statusRaw,
             driver = driver,
@@ -139,9 +141,9 @@ internal class LyftRideParser(private val json: Json) {
     }
 
     fun toDriverLocationProto(m: ProtoMessage): DriverLocation? {
-        val lat = m.double(1) ?: return null
-        val lng = m.double(2) ?: return null
-        return DriverLocation(lat, lng, m.double(3))
+        val lat = m.double(LocationFields.LAT) ?: return null
+        val lng = m.double(LocationFields.LNG) ?: return null
+        return DriverLocation(lat, lng, m.double(LocationFields.BEARING))
     }
 
     fun toStopJson(o: JsonObject): RideStopInfo {
@@ -162,18 +164,18 @@ internal class LyftRideParser(private val json: Json) {
     }
 
     fun toStopProto(m: ProtoMessage): RideStopInfo {
-        val place = m.message(2) ?: m.message(7)
+        val place = m.message(StopFields.LOCATION) ?: m.message(StopFields.LOCATION_V2)
         val latLng = place?.let {
-            val lat = it.double(1)
-            val lng = it.double(2)
+            val lat = it.double(PlaceFields.LAT)
+            val lng = it.double(PlaceFields.LNG)
             if (lat != null && lng != null) LatLng(lat, lng) else null
         }
         return RideStopInfo(
             location = latLng,
-            name = place?.string(5) ?: place?.string(3),
-            kind = m.string(3),
-            etaSeconds = m.varint(6)?.toInt(),
-            completed = m.varint(4)?.let { it != 0L } ?: false,
+            name = place?.string(PlaceFields.NAME) ?: place?.string(PlaceFields.ADDRESS),
+            kind = m.string(StopFields.KIND),
+            etaSeconds = m.varint(StopFields.ETA_SECONDS)?.toInt(),
+            completed = m.varint(StopFields.COMPLETED)?.let { it != FALSE_VARINT } ?: false,
         )
     }
 
@@ -189,6 +191,64 @@ internal class LyftRideParser(private val json: Json) {
             ?: root["trip"]?.jsonObject
             ?: root["active_ride"]?.jsonObject
             ?: root
+    }
+
+    private companion object {
+        /** How much of the raw response is kept on the parsed ride for debugging. */
+        private const val RAW_PREVIEW_MAX = 2000
+        private const val FALSE_VARINT = 0L
+    }
+
+    /** PassengerRide field tags. */
+    private object RideFields {
+        const val RIDE_ID = 1
+        const val STATUS = 2
+        const val DRIVER = 6
+        const val VEHICLE = 8
+        const val STOPS = 9
+        const val LOCATION = 11
+    }
+
+    /** Driver field tags. */
+    private object DriverFields {
+        const val FIRST_NAME = 5
+        const val LAST_NAME = 6
+        const val IMAGE_URL = 7
+        const val PHONE_NUMBER = 8
+        const val RATING = 9
+    }
+
+    /** RideVehicle field tags. */
+    private object VehicleFields {
+        const val MAKE = 1
+        const val MODEL = 2
+        const val LICENSE_PLATE = 3
+        const val IMAGE_URL = 4
+        const val COLOR = 6
+    }
+
+    /** DriverLocation / PlaceDTO coordinate field tags. */
+    private object LocationFields {
+        const val LAT = 1
+        const val LNG = 2
+        const val BEARING = 3
+    }
+
+    /** RideStop field tags. */
+    private object StopFields {
+        const val LOCATION = 2
+        const val KIND = 3
+        const val COMPLETED = 4
+        const val ETA_SECONDS = 6
+        const val LOCATION_V2 = 7
+    }
+
+    /** PlaceDTO field tags. */
+    private object PlaceFields {
+        const val LAT = 1
+        const val LNG = 2
+        const val ADDRESS = 3
+        const val NAME = 5
     }
 }
 

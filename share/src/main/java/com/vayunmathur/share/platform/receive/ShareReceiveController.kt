@@ -16,6 +16,7 @@ import com.vayunmathur.share.platform.discovery.BleDiscoveryManager
 import com.vayunmathur.share.platform.discovery.NsdDiscoveryManager
 import com.vayunmathur.share.platform.transfer.ShareTransferService
 import com.vayunmathur.share.protocol.ShareNative
+import com.vayunmathur.share.protocol.ShareNativeDiscovery
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,6 +49,12 @@ object ShareReceiveController {
 
     /** Persisted on/off switch, owned by the Quick Settings tile (default off). */
     const val RECEIVE_ENABLED_KEY = "share_receive_enabled"
+
+    /** Nearby endpoint ids are four characters. */
+    private const val ENDPOINT_ID_LENGTH = 4
+
+    /** SDK that made POST_NOTIFICATIONS a runtime permission. */
+    private const val NOTIFICATION_RUNTIME_SDK = 33
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Any()
@@ -82,7 +89,7 @@ object ShareReceiveController {
      */
     private fun randomEndpointId(): String {
         val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-        return (1..4).map { alphabet.random() }.joinToString("")
+        return (1..ENDPOINT_ID_LENGTH).map { alphabet.random() }.joinToString("")
     }
 
     private fun ensure(context: Context): Parts = synchronized(lock) {
@@ -134,7 +141,7 @@ object ShareReceiveController {
      * PHONE is cosmetic — it picks the icon the peer renders next to our name.
      */
     fun endpointInfo(): ByteArray? = try {
-        ShareNative.nativeBuildEndpointInfo(localName, ShareNative.DEVICE_TYPE_PHONE)
+        ShareNativeDiscovery.nativeBuildEndpointInfo(localName, ShareNative.DEVICE_TYPE_PHONE)
     } catch (e: UnsatisfiedLinkError) {
         Log.e(TAG, "libshare_nearby unavailable — cannot build endpoint info", e)
         null
@@ -147,7 +154,7 @@ object ShareReceiveController {
         localName = trimmed
         // The name lives inside the endpoint-info blob, so renaming means re-advertising.
         if (advertising) {
-            stop(context)
+            stop()
             start(context)
         }
     }
@@ -165,7 +172,7 @@ object ShareReceiveController {
     }
 
     fun hasNotificationPermission(context: Context): Boolean =
-        Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(
+        Build.VERSION.SDK_INT < NOTIFICATION_RUNTIME_SDK || ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.POST_NOTIFICATIONS,
         ) == PackageManager.PERMISSION_GRANTED
@@ -257,7 +264,7 @@ object ShareReceiveController {
      * Deliberately leaves live sessions pumping: switching off means "no new transfers", not
      * "drop the one in progress".
      */
-    fun stop(context: Context) {
+    fun stop() {
         val p = parts ?: return
         synchronized(lock) {
             if (!advertising) return

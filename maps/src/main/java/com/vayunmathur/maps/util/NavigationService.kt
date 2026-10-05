@@ -111,38 +111,37 @@ class NavigationService : Service() {
 
     private fun handleState(state: NavigationSessionManager.NavState) {
         when (state) {
-            is NavigationSessionManager.NavState.Navigating -> {
-                val route = NavigationSessionManager.session.value.route
-                if (route != null && voiceGuidanceEnabled()) {
-                    NavigationTts.onProgressUpdate(state.progress, route.step)
-                }
-                maybeUpdateNotification(state)
-            }
-            NavigationSessionManager.NavState.Arrived -> {
-                updateNotificationNow(state)
-                // Tear down after a short delay so the UI / notification can
-                // settle on the Arrived state visibly.
-                serviceScope.launch {
-                    kotlinx.coroutines.delay(8_000)
-                    stopSelfAndSession()
-                }
-            }
-            is NavigationSessionManager.NavState.Failed -> {
-                updateNotificationNow(state)
-                // Auto-cleanup Failed too — the overlay shows the reason for
-                // a few seconds before the service tears itself down. Without
-                // this the user could be left with a dismissable notification
-                // that they tap (or swipe away) and the singleton stays
-                // "Failed" with no way to clear it short of force-stopping
-                // the app.
-                serviceScope.launch {
-                    kotlinx.coroutines.delay(8_000)
-                    stopSelfAndSession()
-                }
-            }
+            is NavigationSessionManager.NavState.Navigating -> handleNavigating(state)
+            // Tear down after a short delay so the UI / notification can
+            // settle on the Arrived state visibly.
+            NavigationSessionManager.NavState.Arrived -> handleTerminal(state, ARRIVAL_TEARDOWN_MS)
+            is NavigationSessionManager.NavState.Failed -> handleTerminal(state, FAILURE_TEARDOWN_MS)
             else -> {
                 updateNotificationNow(state)
             }
+        }
+    }
+
+    private fun handleNavigating(state: NavigationSessionManager.NavState.Navigating) {
+        val route = NavigationSessionManager.session.value.route
+        if (route != null && voiceGuidanceEnabled()) {
+            NavigationTts.onProgressUpdate(state.progress, route.step)
+        }
+        maybeUpdateNotification(state)
+    }
+
+    /** Settle on a terminal state visibly, then tear the service down. */
+    private fun handleTerminal(state: NavigationSessionManager.NavState, delayMs: Long) {
+        updateNotificationNow(state)
+        // Auto-cleanup Failed too — the overlay shows the reason for
+        // a few seconds before the service tears itself down. Without
+        // this the user could be left with a dismissable notification
+        // that they tap (or swipe away) and the singleton stays
+        // "Failed" with no way to clear it short of force-stopping
+        // the app.
+        serviceScope.launch {
+            kotlinx.coroutines.delay(delayMs)
+            stopSelfAndSession()
         }
     }
 
@@ -190,20 +189,21 @@ class NavigationService : Service() {
     private fun buildNotification(state: NavigationSessionManager.NavState): Notification {
         ensureChannel()
         val tapIntent = PendingIntent.getActivity(
-            this, 0,
+            this, TAP_REQUEST_CODE,
             Intent(this, MainActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         val stopIntent = PendingIntent.getService(
-            this, 1,
+            this, STOP_REQUEST_CODE,
             Intent(this, NavigationService::class.java).apply { action = ACTION_STOP },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
         val mode = NavigationSessionManager.session.value.travelMode
-        val destLabel = NavigationSessionManager.session.value.destinationName ?: getString(R.string.nav_default_destination)
+        val destLabel = NavigationSessionManager.session.value.destinationName
+            ?: getString(R.string.nav_default_destination)
 
         val (title, content, progressPercent, smallIcon) = describe(state, mode, destLabel)
 
@@ -217,11 +217,11 @@ class NavigationService : Service() {
             .setOnlyAlertOnce(true)
             .setContentIntent(tapIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(0, getString(R.string.nav_action_end), stopIntent)
+            .addAction(NO_ICON, getString(R.string.nav_action_end), stopIntent)
 
         builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
 
-        progressPercent?.let { p -> builder.setProgress(100, p, false) }
+        progressPercent?.let { p -> builder.setProgress(FULL_PROGRESS_PERCENT, p, false) }
         return builder.build()
     }
 
@@ -239,76 +239,122 @@ class NavigationService : Service() {
     ): NotificationInfo {
         val defaultIcon = R.drawable.location_on_24px
         return when (state) {
-            NavigationSessionManager.NavState.Idle -> NotificationInfo(
-                getString(R.string.nav_status_idle), "", null, defaultIcon
-            )
-            NavigationSessionManager.NavState.Starting -> NotificationInfo(
+            NavigationSessionManager.NavState.Idle -> idleInfo(defaultIcon)
+            NavigationSessionManager.NavState.Starting -> statusInfo(
                 getString(R.string.nav_status_starting),
                 getString(R.string.nav_destination_format, destLabel),
-                null, defaultIcon
+                null, defaultIcon,
             )
-            NavigationSessionManager.NavState.Recalculating -> NotificationInfo(
+            NavigationSessionManager.NavState.Recalculating -> statusInfo(
                 getString(R.string.nav_status_recalculating),
                 getString(R.string.nav_destination_format, destLabel),
-                null, defaultIcon
+                null, defaultIcon,
             )
-            NavigationSessionManager.NavState.Arrived -> NotificationInfo(
+            NavigationSessionManager.NavState.Arrived -> statusInfo(
                 getString(R.string.nav_status_arrived),
                 destLabel,
-                100, defaultIcon
+                FULL_PROGRESS_PERCENT, defaultIcon,
             )
-            is NavigationSessionManager.NavState.Failed -> NotificationInfo(
+            is NavigationSessionManager.NavState.Failed -> statusInfo(
                 getString(R.string.nav_status_failed),
                 state.reason,
-                null, defaultIcon
+                null, defaultIcon,
             )
-            is NavigationSessionManager.NavState.Navigating -> {
-                val p = state.progress
-                val percent = (p.fractionComplete * 100).roundToInt().coerceIn(0, 100)
-                val distRemaining = formatDistance(p.distanceRemaining)
-                val etaText = formatEta(p.etaEpochMs)
-                val route = NavigationSessionManager.session.value.route
-                val currentStep = route?.step?.getOrNull(p.currentStepIndex)
-                when (mode) {
-                    TravelMode.DRIVE -> {
-                        val title = currentStep?.navInstruction?.instructions?.takeIf { it.isNotBlank() }
-                            ?: getString(R.string.nav_destination_format, destLabel)
-                        val content = getString(
-                            R.string.nav_drive_content_format,
-                            formatDistance(p.distanceToNextManeuver),
-                            etaText,
-                        )
-                        NotificationInfo(title, content, percent, defaultIcon)
-                    }
-                    TravelMode.WALK -> NotificationInfo(
-                        getString(R.string.nav_walk_title_format, destLabel),
-                        getString(R.string.nav_progress_content_format, percent, distRemaining, etaText),
-                        percent, defaultIcon
-                    )
-                    TravelMode.BICYCLE -> NotificationInfo(
-                        getString(R.string.nav_bike_title_format, destLabel),
-                        getString(R.string.nav_progress_content_format, percent, distRemaining, etaText),
-                        percent, defaultIcon
-                    )
-                    TravelMode.TRANSIT -> {
-                        val transitTitle = currentStep?.transitDetails?.transitLine?.name
-                            ?.takeIf { it.isNotBlank() }
-                            ?: currentStep?.navInstruction?.instructions
-                            ?: getString(R.string.nav_transit_title_default, destLabel)
-                        NotificationInfo(
-                            transitTitle,
-                            getString(R.string.nav_progress_content_format, percent, distRemaining, etaText),
-                            percent, defaultIcon
-                        )
-                    }
-                    null -> NotificationInfo(
-                        getString(R.string.nav_destination_format, destLabel),
-                        getString(R.string.nav_progress_content_format, percent, distRemaining, etaText),
-                        percent, defaultIcon
-                    )
-                }
-            }
+            is NavigationSessionManager.NavState.Navigating ->
+                navigatingInfo(state, mode, destLabel, defaultIcon)
         }
+    }
+
+    private fun idleInfo(defaultIcon: Int) = NotificationInfo(
+        getString(R.string.nav_status_idle), "", null, defaultIcon,
+    )
+
+    private fun statusInfo(
+        title: String,
+        content: String,
+        progressPercent: Int?,
+        smallIcon: Int,
+    ) = NotificationInfo(title, content, progressPercent, smallIcon)
+
+    private fun navigatingInfo(
+        state: NavigationSessionManager.NavState.Navigating,
+        mode: TravelMode?,
+        destLabel: String,
+        defaultIcon: Int,
+    ): NotificationInfo {
+        val p = state.progress
+        val percent = (p.fractionComplete * PERCENT_SCALE).roundToInt().coerceIn(0, FULL_PROGRESS_PERCENT)
+        val distRemaining = formatDistance(p.distanceRemaining)
+        val etaText = formatEta(p.etaEpochMs)
+        val route = NavigationSessionManager.session.value.route
+        val currentStep = route?.step?.getOrNull(p.currentStepIndex)
+        return when (mode) {
+            TravelMode.DRIVE -> driveInfo(currentStep, destLabel, p, etaText, percent, defaultIcon)
+            TravelMode.WALK -> progressInfo(
+                getString(R.string.nav_walk_title_format, destLabel),
+                percent, distRemaining, etaText, defaultIcon,
+            )
+            TravelMode.BICYCLE -> progressInfo(
+                getString(R.string.nav_bike_title_format, destLabel),
+                percent, distRemaining, etaText, defaultIcon,
+            )
+            TravelMode.TRANSIT -> transitInfo(
+                currentStep, destLabel, percent, distRemaining, etaText, defaultIcon,
+            )
+            null -> progressInfo(
+                getString(R.string.nav_destination_format, destLabel),
+                percent, distRemaining, etaText, defaultIcon,
+            )
+        }
+    }
+
+    private fun driveInfo(
+        currentStep: RouteService.Step?,
+        destLabel: String,
+        p: NavigationProgress,
+        etaText: String,
+        percent: Int,
+        defaultIcon: Int,
+    ): NotificationInfo {
+        val title = currentStep?.navInstruction?.instructions?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.nav_destination_format, destLabel)
+        val content = getString(
+            R.string.nav_drive_content_format,
+            formatDistance(p.distanceToNextManeuver),
+            etaText,
+        )
+        return NotificationInfo(title, content, percent, defaultIcon)
+    }
+
+    private fun progressInfo(
+        title: String,
+        percent: Int,
+        distRemaining: String,
+        etaText: String,
+        defaultIcon: Int,
+    ): NotificationInfo = NotificationInfo(
+        title,
+        getString(R.string.nav_progress_content_format, percent, distRemaining, etaText),
+        percent, defaultIcon,
+    )
+
+    private fun transitInfo(
+        currentStep: RouteService.Step?,
+        destLabel: String,
+        percent: Int,
+        distRemaining: String,
+        etaText: String,
+        defaultIcon: Int,
+    ): NotificationInfo {
+        val transitTitle = currentStep?.transitDetails?.transitLine?.name
+            ?.takeIf { it.isNotBlank() }
+            ?: currentStep?.navInstruction?.instructions
+            ?: getString(R.string.nav_transit_title_default, destLabel)
+        return NotificationInfo(
+            transitTitle,
+            getString(R.string.nav_progress_content_format, percent, distRemaining, etaText),
+            percent, defaultIcon,
+        )
     }
 
     private fun stopSelfAndSession() {
@@ -323,6 +369,17 @@ class NavigationService : Service() {
         private const val NOTIFICATION_ID = 4242
         private const val NOTIFICATION_THROTTLE_MS = 2_000L
         const val ACTION_STOP = "com.vayunmathur.maps.navigation.STOP"
+        /** Scale for the fraction-complete progress percent. */
+        private const val PERCENT_SCALE = 100
+        private const val FULL_PROGRESS_PERCENT = 100
+        /** Settle delay (ms) before tearing down after arrival / failure. */
+        private const val ARRIVAL_TEARDOWN_MS = 8_000L
+        private const val FAILURE_TEARDOWN_MS = 8_000L
+        /** PendingIntent request codes for the tap / stop actions. */
+        private const val TAP_REQUEST_CODE = 0
+        private const val STOP_REQUEST_CODE = 1
+        /** No icon for the notification action. */
+        private const val NO_ICON = 0
     }
 }
 

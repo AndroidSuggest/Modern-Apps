@@ -99,7 +99,7 @@ class CarProjectionInCallService : InCallService() {
         return ActiveCallInfo(
             telecomState = state,
             number = number,
-            acceptedMs = if (state == Call.STATE_RINGING) 0L else lastAcceptedMs(call, state),
+            acceptedMs = if (state == Call.STATE_RINGING) 0L else lastAcceptedMs(state),
             held = held,
             muted = lastMuted,
         )
@@ -110,7 +110,7 @@ class CarProjectionInCallService : InCallService() {
 
     private var lastAcceptedMs = 0L
 
-    private fun lastAcceptedMs(call: Call, state: Int): Long {
+    private fun lastAcceptedMs(state: Int): Long {
         // First non-ringing sighting starts the duration ticker; later
         // states keep it (hold preserves, disconnect clears via remove).
         if (lastAcceptedMs == 0L && state != Call.STATE_RINGING) {

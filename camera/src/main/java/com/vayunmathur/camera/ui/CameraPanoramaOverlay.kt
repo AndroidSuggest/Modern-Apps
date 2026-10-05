@@ -39,7 +39,6 @@ internal fun PanoramaOverlay(
     isStitching: Boolean,
     guideDots: List<GuideDot>,
     currentAngle: Float,
-    sweepDirection: Int,
     currentPitch: Float,
     modifier: Modifier = Modifier
 ) {

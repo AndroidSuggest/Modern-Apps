@@ -302,15 +302,7 @@ class MirrorActivity : ComponentActivity(), SurfaceHolder.Callback {
         val playback = ReceiverController.state.value.playback
             ?: return super.dispatchKeyEvent(event)
 
-        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
-            // Pinned controls cannot be dismissed, so back means what it always means rather than
-            // needing two presses to leave a screen that never changes.
-            if (event.action == KeyEvent.ACTION_UP && overlayVisible && !overlayPinned) {
-                hideOverlay()
-                return true
-            }
-            return super.dispatchKeyEvent(event)
-        }
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) return handleBack(event)
 
         // Committing the scrub is the *release*, so it is handled before the reveal below - a release
         // must not be mistaken for a fresh press.
@@ -331,6 +323,26 @@ class MirrorActivity : ComponentActivity(), SurfaceHolder.Callback {
         // An audio-only session never reaches this, because its controls are pinned and never hidden.
         if (waking && isToggleKey(event.keyCode)) return true
 
+        return handleKeyDown(event, playback)
+    }
+
+    /**
+     * `BACK` dismisses the controls before it will leave the session, because a user who has just
+     * brought up a seek bar and presses back means "put that away", not "stop watching".
+     *
+     * Pinned controls cannot be dismissed, so back means what it always means rather than needing
+     * two presses to leave a screen that never changes.
+     */
+    private fun handleBack(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_UP && overlayVisible && !overlayPinned) {
+            hideOverlay()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /** One press while the controls are up: toggles, seeks, skips, tracks or volume. */
+    private fun handleKeyDown(event: KeyEvent, playback: PlaybackSnapshot): Boolean {
         when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER,
@@ -354,19 +366,27 @@ class MirrorActivity : ComponentActivity(), SurfaceHolder.Callback {
                 ReceiverController.send(PlaybackCommand(PlaybackAction.Previous))
 
             // The shared level, not this box's own volume: the phone owns it, so the press goes there
-            // and the gain follows on the next snapshot. Declining when there is no session lets the
-            // key fall through to the box's ordinary volume control.
+            // and the gain follows on the next snapshot.
             KeyEvent.KEYCODE_DPAD_UP,
             KeyEvent.KEYCODE_VOLUME_UP,
-            -> if (!ReceiverController.nudgeVolume(up = true)) return super.dispatchKeyEvent(event)
+            -> return pressVolume(event, up = true)
 
             KeyEvent.KEYCODE_DPAD_DOWN,
             KeyEvent.KEYCODE_VOLUME_DOWN,
-            -> if (!ReceiverController.nudgeVolume(up = false)) return super.dispatchKeyEvent(event)
+            -> return pressVolume(event, up = false)
 
             else -> return super.dispatchKeyEvent(event)
         }
         return true
+    }
+
+    /**
+     * Nudge the shared volume level, falling through to the box's own volume control when there
+     * is no session to own it.
+     */
+    private fun pressVolume(event: KeyEvent, up: Boolean): Boolean {
+        if (ReceiverController.nudgeVolume(up = up)) return true
+        return super.dispatchKeyEvent(event)
     }
 
     private fun isScrubKey(keyCode: Int): Boolean =

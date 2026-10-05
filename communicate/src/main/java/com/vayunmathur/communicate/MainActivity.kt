@@ -141,7 +141,7 @@ class MainActivity : ComponentActivity() {
         runCatching {
             enterPictureInPictureMode(
                 PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(9, 16))
+                    .setAspectRatio(Rational(PORTRAIT_WIDTH, PORTRAIT_HEIGHT))
                     .build(),
             )
         }
@@ -149,6 +149,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val REQUEST_POST_NOTIFICATIONS = 1001
+        private const val PORTRAIT_WIDTH = 9
+        private const val PORTRAIT_HEIGHT = 16
     }
 }
 
@@ -161,8 +163,170 @@ private fun CommunicateApp(initialDeepLink: DeepLink? = null) {
     val waSignedIn by waSession.signedInFlow.collectAsState(initial = false)
     val sigSession = remember { SignalLineSession.get(context) }
     val sigSignedIn by sigSession.signedInFlow.collectAsState(initial = false)
-    val inAppCallState by InAppCallRegistry.state.collectAsState()
 
+    AppSyncEffects(context, waSignedIn, sigSignedIn, gvSignedIn, session)
+    AppTelecomEffects(context, waSignedIn, sigSignedIn)
+
+    val backStack = rememberNavBackStack<Route>(Route.Main)
+
+    DeepLinkEffect(backStack, initialDeepLink)
+    CommunicateNavGraph(backStack)
+    InAppCallOverlay()
+}
+
+/** Deep links open the conversation they name, including links arriving at a running instance. */
+@Composable
+private fun DeepLinkEffect(
+    backStack: NavBackStack<Route>,
+    initialDeepLink: DeepLink?,
+) {
+    val context = LocalContext.current
+    // Keyed on the link so a second link to a running instance navigates again rather than ignored.
+    LaunchedEffect(initialDeepLink) {
+        when (val link = initialDeepLink) {
+            is DeepLink.Conversation -> backStack.add(
+                Route.Conversation(
+                    threadId = link.threadId,
+                    address = link.address,
+                    line = link.line,
+                    remoteId = link.remoteId,
+                    subscriptionId = link.subscriptionId,
+                    isGroup = link.isGroup,
+                    groupTitle = link.groupTitle,
+                ),
+            )
+            is DeepLink.UnsupportedGroupInvite ->
+                com.vayunmathur.library.util.AppMessages.show(
+                    context.getString(R.string.deep_link_group_unsupported),
+                )
+            null -> Unit
+        }
+    }
+}
+
+@Composable
+private fun CommunicateNavGraph(backStack: NavBackStack<Route>) {
+    MainNavigation(backStack) {
+        coreEntries(backStack)
+        registrationEntries(backStack)
+        conversationEntries(backStack)
+    }
+}
+
+private fun EntryProviderScope<Route>.coreEntries(backStack: NavBackStack<Route>) {
+    entry<Route.Main>(metadata = ListPage()) {
+        CommunicateTabs(backStack)
+    }
+    entry<Route.Accounts>(metadata = ListDetailPage()) {
+        AccountsScreen(
+            onBack = { backStack.pop() },
+            onSignIn = { backStack.add(Route.GoogleVoiceSignIn) },
+            onRegisterWhatsApp = {
+                if (com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) {
+                    backStack.add(Route.WhatsAppRegistration)
+                }
+            },
+            onImportBackup = {
+                if (com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) {
+                    backStack.add(Route.WhatsAppBackupImport)
+                }
+            },
+            onRegisterSignal = {
+                if (SignalFeature.enabled) {
+                    backStack.add(Route.SignalRegistration)
+                }
+            },
+            onShowRcsStatus = {
+                if (RcsFeature.enabled) {
+                    backStack.add(Route.RcsStatus)
+                }
+            },
+        )
+    }
+}
+
+private fun EntryProviderScope<Route>.registrationEntries(backStack: NavBackStack<Route>) {
+    entry<Route.GoogleVoiceSignIn>(metadata = ListDetailPage()) {
+        GoogleVoiceSignInScreen(
+            onBack = { backStack.pop() },
+            onSignedIn = { backStack.pop() },
+        )
+    }
+    entry<Route.WhatsAppRegistration>(metadata = ListDetailPage()) {
+        WhatsAppRegistrationScreen(
+            onBack = { backStack.pop() },
+            onRegistered = { backStack.pop() },
+        )
+    }
+    entry<Route.WhatsAppBackupImport>(metadata = ListDetailPage()) {
+        com.vayunmathur.communicate.ui.whatsapp.WhatsAppBackupImportScreen(
+            onBack = { backStack.pop() },
+        )
+    }
+    entry<Route.SignalRegistration>(metadata = ListDetailPage()) {
+        SignalRegistrationScreen(
+            onBack = { backStack.pop() },
+            onRegistered = { backStack.pop() },
+        )
+    }
+    entry<Route.RcsStatus>(metadata = ListDetailPage()) {
+        RcsRegistrationScreen(
+            onBack = { backStack.pop() },
+        )
+    }
+}
+
+private fun EntryProviderScope<Route>.conversationEntries(backStack: NavBackStack<Route>) {
+    entry<Route.RcsVerify>(metadata = ListDetailPage()) { route ->
+        com.vayunmathur.communicate.ui.rcs.RcsVerifyScreen(
+            peerE164 = route.peerE164,
+            onBack = { backStack.pop() },
+        )
+    }
+    entry<Route.RcsGroupMembers>(metadata = ListDetailPage()) { route ->
+        com.vayunmathur.communicate.ui.rcs.RcsGroupMembersScreen(
+            conversationId = route.conversationId,
+            onBack = { backStack.pop() },
+        )
+    }
+    entry<Route.Conversation>(metadata = ListDetailPage() + MorphPage()) { route ->
+        ConversationScreen(
+            threadId = route.threadId,
+            address = route.address,
+            line = route.line,
+            remoteId = route.remoteId,
+            subscriptionId = route.subscriptionId,
+            isGroup = route.isGroup,
+            participants = route.participants,
+            groupTitle = route.groupTitle,
+            onBack = { backStack.pop() },
+            onOpenRcsVerify = { peer -> backStack.add(Route.RcsVerify(peer)) },
+            onOpenRcsGroupMembers = { cid -> backStack.add(Route.RcsGroupMembers(cid)) },
+        )
+    }
+}
+
+/**
+ * One call screen for every in-app line. Google Voice, WhatsApp and Signal all publish into
+ * InAppCallRegistry, and the screen renders whatever the active line supports.
+ */
+@Composable
+private fun InAppCallOverlay() {
+    val inAppCallState by InAppCallRegistry.state.collectAsState()
+    if (inAppCallState.phase != InAppCallPhase.Idle) {
+        InAppCallScreen(onClose = { InAppCallRegistry.clearEnded() })
+    }
+}
+
+/** Sync-service effects for all lines. */
+@Composable
+private fun AppSyncEffects(
+    context: android.content.Context,
+    waSignedIn: Boolean,
+    sigSignedIn: Boolean,
+    gvSignedIn: Boolean,
+    session: GoogleVoiceSession,
+) {
     // Own the WhatsApp always-on receive state via its foreground sync service (dev-only).
     LaunchedEffect(waSignedIn) {
         if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@LaunchedEffect
@@ -198,7 +362,15 @@ private fun CommunicateApp(initialDeepLink: DeepLink? = null) {
             GoogleVoiceSyncService.stop(context)
         }
     }
+}
 
+/** Telecom registration effects for all lines. */
+@Composable
+private fun AppTelecomEffects(
+    context: android.content.Context,
+    waSignedIn: Boolean,
+    sigSignedIn: Boolean,
+) {
     // WhatsApp and Signal calls share one Telecom account and one call screen. Registered whenever either
     // line is usable, so the system owns ringing and audio routing rather than the app approximating it.
     LaunchedEffect(waSignedIn, sigSignedIn) {
@@ -212,124 +384,6 @@ private fun CommunicateApp(initialDeepLink: DeepLink? = null) {
         } else {
             InAppCallTelecom.unregisterPhoneAccount(context)
         }
-    }
-
-    val backStack = rememberNavBackStack<Route>(Route.Main)
-
-    // Deep links open the conversation they name. Keyed on the link so a second link to a running instance
-    // navigates again rather than being ignored.
-    LaunchedEffect(initialDeepLink) {
-        when (val link = initialDeepLink) {
-            is DeepLink.Conversation -> backStack.add(
-                Route.Conversation(
-                    threadId = link.threadId,
-                    address = link.address,
-                    line = link.line,
-                    remoteId = link.remoteId,
-                    subscriptionId = link.subscriptionId,
-                    isGroup = link.isGroup,
-                    groupTitle = link.groupTitle,
-                ),
-            )
-            is DeepLink.UnsupportedGroupInvite ->
-                com.vayunmathur.library.util.AppMessages.show(
-                    context.getString(R.string.deep_link_group_unsupported),
-                )
-            null -> Unit
-        }
-    }
-
-    MainNavigation(backStack) {
-        entry<Route.Main>(metadata = ListPage()) {
-            CommunicateTabs(backStack)
-        }
-        entry<Route.Accounts>(metadata = ListDetailPage()) {
-            AccountsScreen(
-                onBack = { backStack.pop() },
-                onSignIn = { backStack.add(Route.GoogleVoiceSignIn) },
-                onRegisterWhatsApp = {
-                    if (com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) {
-                        backStack.add(Route.WhatsAppRegistration)
-                    }
-                },
-                onImportBackup = {
-                    if (com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) {
-                        backStack.add(Route.WhatsAppBackupImport)
-                    }
-                },
-                onRegisterSignal = {
-                    if (SignalFeature.enabled) {
-                        backStack.add(Route.SignalRegistration)
-                    }
-                },
-                onShowRcsStatus = {
-                    if (RcsFeature.enabled) {
-                        backStack.add(Route.RcsStatus)
-                    }
-                },
-            )
-        }
-        entry<Route.GoogleVoiceSignIn>(metadata = ListDetailPage()) {
-            GoogleVoiceSignInScreen(
-                onBack = { backStack.pop() },
-                onSignedIn = { backStack.pop() },
-            )
-        }
-        entry<Route.WhatsAppRegistration>(metadata = ListDetailPage()) {
-            WhatsAppRegistrationScreen(
-                onBack = { backStack.pop() },
-                onRegistered = { backStack.pop() },
-            )
-        }
-        entry<Route.WhatsAppBackupImport>(metadata = ListDetailPage()) {
-            com.vayunmathur.communicate.ui.whatsapp.WhatsAppBackupImportScreen(
-                onBack = { backStack.pop() },
-            )
-        }
-        entry<Route.SignalRegistration>(metadata = ListDetailPage()) {
-            SignalRegistrationScreen(
-                onBack = { backStack.pop() },
-                onRegistered = { backStack.pop() },
-            )
-        }
-        entry<Route.RcsStatus>(metadata = ListDetailPage()) {
-            RcsRegistrationScreen(
-                onBack = { backStack.pop() },
-            )
-        }
-        entry<Route.RcsVerify>(metadata = ListDetailPage()) { route ->
-            com.vayunmathur.communicate.ui.rcs.RcsVerifyScreen(
-                peerE164 = route.peerE164,
-                onBack = { backStack.pop() },
-            )
-        }
-        entry<Route.RcsGroupMembers>(metadata = ListDetailPage()) { route ->
-            com.vayunmathur.communicate.ui.rcs.RcsGroupMembersScreen(
-                conversationId = route.conversationId,
-                onBack = { backStack.pop() },
-            )
-        }
-        entry<Route.Conversation>(metadata = ListDetailPage() + MorphPage()) { route ->
-            ConversationScreen(
-                threadId = route.threadId,
-                address = route.address,
-                line = route.line,
-                remoteId = route.remoteId,
-                subscriptionId = route.subscriptionId,
-                isGroup = route.isGroup,
-                participants = route.participants,
-                groupTitle = route.groupTitle,
-                onBack = { backStack.pop() },
-                onOpenRcsVerify = { peer -> backStack.add(Route.RcsVerify(peer)) },
-                onOpenRcsGroupMembers = { cid -> backStack.add(Route.RcsGroupMembers(cid)) },
-            )
-        }
-    }
-
-    // One call screen for every in-app line. Google Voice, WhatsApp and Signal all publish into
-    // InAppCallRegistry, and the screen renders whatever the active line supports.
-    if (inAppCallState.phase != InAppCallPhase.Idle) {
-        InAppCallScreen(onClose = { InAppCallRegistry.clearEnded() })
     }
 }
 

@@ -3,6 +3,8 @@ package com.vayunmathur.photos.data
 import android.graphics.Bitmap
 import android.graphics.Matrix
 
+private const val CORNER_POINT_COUNT = 4
+
 data class PerspectiveCorners(
     val topLeft: Pair<Float, Float> = 0f to 0f,
     val topRight: Pair<Float, Float> = 1f to 0f,
@@ -27,7 +29,7 @@ data class PerspectiveCorners(
             bottomRight.first * width, bottomRight.second * height,
         )
         val matrix = Matrix()
-        matrix.setPolyToPoly(src, 0, dst, 0, 4)
+        matrix.setPolyToPoly(src, 0, dst, 0, CORNER_POINT_COUNT)
         return matrix
     }
 }

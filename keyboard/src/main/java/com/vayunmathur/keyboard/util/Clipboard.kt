@@ -71,7 +71,10 @@ class ClipboardStore(private val imageDir: File) {
             .filter { it.imageFile?.exists() != false }
     }
 
-    /** Write the history to [stateFile]; sensitive clips are excluded by [encode]. Must be called off the main thread. */
+    /**
+     * Write the history to [stateFile]; sensitive clips are excluded by [encode].
+     * Must be called off the main thread.
+     */
     fun persistState() {
         runCatching {
             imageDir.mkdirs()
@@ -193,6 +196,18 @@ class ClipboardStore(private val imageDir: File) {
         /** Largest single image cached; bigger copies are refused rather than half-kept. */
         const val MAX_IMAGE_BYTES = 10_000_000L
 
+        /** Shortest digit run treated as a sensitive code (PIN/2FA length). */
+        const val MIN_SENSITIVE_DIGITS = 4
+
+        /** Longest digit run treated as a card number. */
+        const val MAX_SENSITIVE_DIGITS = 24
+
+        /** Shortest clip examined for mixed sensitive content. */
+        const val MIN_CLIP_LENGTH = 6
+
+        /** Longest clip examined for mixed sensitive content. */
+        const val MAX_CLIP_LENGTH = 64
+
         /** History file inside a clips dir; cache is excluded from backup rules. */
         fun stateFile(clipsDir: File): File = File(clipsDir, "clips.json")
 
@@ -252,8 +267,8 @@ class ClipboardStore(private val imageDir: File) {
             // shows a credential in the clear.
             val digits = text.count { it.isDigit() }
             val rest = text.filterNot { it.isDigit() || it.isWhitespace() || it == '-' || it == '+' }
-            if (rest.isEmpty() && digits in 4..24) return true
-            if (text.length !in 6..64) return false
+            if (rest.isEmpty() && digits in MIN_SENSITIVE_DIGITS..MAX_SENSITIVE_DIGITS) return true
+            if (text.length !in MIN_CLIP_LENGTH..MAX_CLIP_LENGTH) return false
             if (text.any { it.isWhitespace() }) return false
             if (text.contains("://") || EMAIL.matches(text)) return false
             if (text.none { it.isLetter() }) return false

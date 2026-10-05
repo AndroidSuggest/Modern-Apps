@@ -13,7 +13,11 @@ import com.google.common.util.concurrent.MoreExecutors
 import com.vayunmathur.music.data.Music
 import com.vayunmathur.music.data.MusicRepository
 import com.vayunmathur.music.service.PlaybackService
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -52,6 +56,10 @@ sealed interface PlaybackSource {
 }
 
 class PlaybackManager private constructor(context: Context) {
+
+    private companion object {
+        const val PROGRESS_UPDATE_MS = 1000L
+    }
 
     private var controller: MediaController? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -115,7 +123,9 @@ class PlaybackManager private constructor(context: Context) {
                 }
                 _player.value = controller
                 startProgressUpdateLoop()
-            } catch (e: Exception) {
+            } catch (e: IllegalStateException) {
+                android.util.Log.e("PlaybackManager", "Error initializing MediaController", e)
+            } catch (e: SecurityException) {
                 android.util.Log.e("PlaybackManager", "Error initializing MediaController", e)
             }
         }, MoreExecutors.directExecutor())
@@ -139,20 +149,29 @@ class PlaybackManager private constructor(context: Context) {
                         _currentPosition.value = it.currentPosition
                         _duration.value = it.duration.coerceAtLeast(0L)
                     }
-                    delay(1000)
+                    delay(PROGRESS_UPDATE_MS)
                 }
             }
         }
     }
 
-    fun playSong(songs: List<Music>, startWithIndex: Int, sourceId: String? = null, sourceName: String? = null) {
+    fun playSong(
+        songs: List<Music>,
+        startWithIndex: Int,
+        sourceId: String? = null,
+        sourceName: String? = null,
+    ) {
         if (songs.isEmpty() || startWithIndex !in songs.indices) return
         _currentSource.value = sourceId
         _currentSourceName.value = sourceName
         playSongsInternal(songs, startWithIndex, shuffle = false)
     }
 
-    fun playShuffled(songs: List<Music>, sourceId: String? = null, sourceName: String? = null) {
+    fun playShuffled(
+        songs: List<Music>,
+        sourceId: String? = null,
+        sourceName: String? = null,
+    ) {
         if (songs.isEmpty()) return
         _currentSource.value = sourceId
         _currentSourceName.value = sourceName

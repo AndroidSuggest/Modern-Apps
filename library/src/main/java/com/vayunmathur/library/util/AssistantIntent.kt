@@ -3,6 +3,7 @@ package com.vayunmathur.library.util
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.util.Log
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -23,10 +24,14 @@ import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.json.Json
+import java.util.concurrent.TimeoutException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-abstract class AssistantIntent<Input: Any, Output: Any>(val inputSerializer: KSerializer<Input>, val outputSerializer: KSerializer<Output>): ComponentActivity() {
+abstract class AssistantIntent<Input : Any, Output : Any>(
+    val inputSerializer: KSerializer<Input>,
+    val outputSerializer: KSerializer<Output>
+) : ComponentActivity() {
     @OptIn(InternalSerializationApi::class, kotlinx.serialization.ExperimentalSerializationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,8 +55,8 @@ abstract class AssistantIntent<Input: Any, Output: Any>(val inputSerializer: KSe
         // exception escaping onCreate would crash and tear that task down.
         val input = try {
             inputString?.let { Json.decodeFromString(inputSerializer, it) }
-        } catch (e: Throwable) {
-            Log.e(TAG, "Failed to decode input for ${javaClass.name}", e)
+        } catch (expected: IllegalArgumentException) {
+            Log.e(TAG, "Failed to decode input for ${javaClass.name}", expected)
             null
         }
 
@@ -67,8 +72,8 @@ abstract class AssistantIntent<Input: Any, Output: Any>(val inputSerializer: KSe
                 receiver?.send(Activity.RESULT_OK, Bundle().apply {
                     putString("RESPONSE_DATA", responseData)
                 })
-            } catch (e: Throwable) {
-                Log.e(TAG, "performCalculation failed for ${javaClass.name}", e)
+            } catch (expected: RuntimeException) {
+                Log.e(TAG, "performCalculation failed for ${javaClass.name}", expected)
                 receiver?.send(Activity.RESULT_CANCELED, Bundle())
             }
         }
@@ -159,9 +164,12 @@ class IntentLauncher(private val activity: ComponentActivity) {
                 activity.runOnUiThread {
                     try {
                         activity.startActivity(intent)
-                    } catch (e: Exception) {
-                        Log.e("IntentLauncher", "Failed to launch $className in $packageName", e)
-                        if (cont.isActive) cont.resumeWithException(e)
+                    } catch (security: SecurityException) {
+                        Log.e(INTENT_TAG, "Failed to launch $className in $packageName", security)
+                        if (cont.isActive) cont.resumeWithException(security)
+                    } catch (notFound: ActivityNotFoundException) {
+                        Log.e(INTENT_TAG, "Failed to launch $className in $packageName", notFound)
+                        if (cont.isActive) cont.resumeWithException(notFound)
                     }
                 }
             }
@@ -169,10 +177,11 @@ class IntentLauncher(private val activity: ComponentActivity) {
 
         // Timed out: surface a recoverable error instead of blocking the
         // inference loop forever.
-        result ?: throw Exception("Timed out waiting for a response from $packageName")
+        result ?: throw TimeoutException("Timed out waiting for a response from $packageName")
     }
 
     companion object {
         private const val INTENT_TIMEOUT_MS = 30_000L
+        private const val INTENT_TAG = "IntentLauncher"
     }
 }

@@ -70,7 +70,7 @@ object WhatsAppAttestationKeyStore {
 
     /** For diagnostics/tests: reads whether the generated key reports as inside secure hardware. */
     @Suppress("DEPRECATION")
-    fun describe(context: Context): String = runCatching {
+    fun describe(): String = runCatching {
         val ks = KeyStore.getInstance(KEYSTORE).apply { load(null) }
         val key = ks.getKey(KEY_ALIAS, null) ?: return "no-key"
         val factory = javax.crypto.SecretKeyFactory.getInstance(key.algorithm, KEYSTORE)

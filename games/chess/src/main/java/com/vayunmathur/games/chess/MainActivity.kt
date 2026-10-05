@@ -46,100 +46,126 @@ class MainActivity : ComponentActivity() {
                     Box(Modifier.fillMaxSize())
                     return@DynamicTheme
                 }
-                val newAchievement by achievementsManager.newAchievement.collectAsState()
+                ChessNavHost(backStack, achievementsManager)
+            }
+        }
+    }
 
-                LaunchedEffect(Unit) {
-                    achievementsManager.checkExistingAchievements()
+    @Composable
+    private fun ChessNavHost(
+        backStack: com.vayunmathur.library.util.NavBackStack<Route>,
+        achievementsManager: com.vayunmathur.library.util.AchievementsManager,
+    ) {
+        val newAchievement by achievementsManager.newAchievement.collectAsState()
+
+        LaunchedEffect(Unit) {
+            achievementsManager.checkExistingAchievements()
+        }
+
+        Box(Modifier.fillMaxSize()) {
+            val pages: List<BottomBarItem<out Route>> = bottomBarPages()
+            MainNavigation(
+                backStack,
+                bottomBar = {
+                    val cur = backStack.last()
+                    if (cur is Route.Game || cur is Route.Puzzles || cur is Route.Learn) {
+                        BottomNavBar(backStack, pages, cur)
+                    }
                 }
-
-                Box(Modifier.fillMaxSize()) {
-                    val pages: List<BottomBarItem<out Route>> = listOf(
-                        BottomBarItem(
-                            stringResource(R.string.tab_play),
-                            Route.Game,
-                        ) { IconPlay() },
-                        BottomBarItem(
-                            stringResource(R.string.tab_puzzles),
-                            Route.Puzzles,
-                        ) { Icon(painterResource(R.drawable.chess_knight_fill1_24px), null) },
-                        BottomBarItem(
-                            stringResource(R.string.tab_learn),
-                            Route.Learn,
-                        ) { Icon(painterResource(R.drawable.school_24px), null) }
+            ) {
+                entry<Route.Game>(metadata = SiblingPage()) {
+                    GameEntry(backStack, achievementsManager)
+                }
+                entry<Route.Puzzles>(metadata = SiblingPage()) {
+                    val puzzleViewModel: PuzzleViewModel = viewModel()
+                    PuzzleScreen(puzzleViewModel)
+                }
+                entry<Route.Learn>(metadata = SiblingPage()) {
+                    LearnHomeScreen(
+                        onOpenStage = { cat, stage ->
+                            backStack.add(Route.LearnStage(cat, stage))
+                        }
                     )
-                    MainNavigation(
-                        backStack,
-                        bottomBar = {
-                            val cur = backStack.last()
-                            if (cur is Route.Game || cur is Route.Puzzles || cur is Route.Learn) {
-                                BottomNavBar(backStack, pages, cur)
-                            }
-                        }
-                    ) {
-                        entry<Route.Game>(metadata = SiblingPage()) {
-                            val viewModel: ChessViewModel = viewModel()
-                            var showNewGameDialog by remember { mutableStateOf(false) }
-                            val aiAvailable by viewModel.aiAvailable.collectAsState()
+                }
+                entry<Route.LearnStage> { route ->
+                    LearnStageEntry(backStack, route)
+                }
+                entry<Route.GameCenter> {
+                    GameCenterScreen(
+                        backupAgent = AppBackupAgent(),
+                        manager = achievementsManager,
+                        onBack = { backStack.pop() }
+                    )
+                }
+            }
 
-                            ChessGame(
-                                viewModel = viewModel,
-                                onNewGame = { showNewGameDialog = true },
-                                onOpenGameCenter = { backStack.add(Route.GameCenter) },
-                                achievementsManager = achievementsManager
-                            )
-
-                            if (showNewGameDialog) {
-                                NewGameDialog(
-                                    onNewGame = {
-                                        viewModel.onNewGame(it)
-                                        showNewGameDialog = false
-                                    },
-                                    onDismiss = { showNewGameDialog = false },
-                                    aiAvailable = aiAvailable
-                                )
-                            }
-                        }
-                        entry<Route.Puzzles>(metadata = SiblingPage()) {
-                            val puzzleViewModel: PuzzleViewModel = viewModel()
-                            PuzzleScreen(puzzleViewModel)
-                        }
-                        entry<Route.Learn>(metadata = SiblingPage()) {
-                            LearnHomeScreen(
-                                onOpenStage = { cat, stage ->
-                                    backStack.add(Route.LearnStage(cat, stage))
-                                }
-                            )
-                        }
-                        entry<Route.LearnStage> { route ->
-                            val learnViewModel: LearnViewModel = viewModel()
-                            LaunchedEffect(route.categoryKey, route.stageKey) {
-                                learnViewModel.loadStage(route.categoryKey, route.stageKey)
-                            }
-                            LearnStageScreen(
-                                viewModel = learnViewModel,
-                                onBack = { backStack.pop() },
-                                onOpenStage = { cat, stage ->
-                                    backStack.setLast(Route.LearnStage(cat, stage))
-                                }
-                            )
-                        }
-                        entry<Route.GameCenter> {
-                            GameCenterScreen(
-                                backupAgent = AppBackupAgent(),
-                                manager = achievementsManager,
-                                onBack = { backStack.pop() }
-                            )
-                        }
-                    }
-
-                    newAchievement?.let {
-                        AchievementNotification(it) {
-                            achievementsManager.dismissNotification()
-                        }
-                    }
+            newAchievement?.let {
+                AchievementNotification(it) {
+                    achievementsManager.dismissNotification()
                 }
             }
         }
     }
 
+    @Composable
+    private fun bottomBarPages(): List<BottomBarItem<out Route>> = listOf(
+        BottomBarItem(
+            stringResource(R.string.tab_play),
+            Route.Game,
+        ) { IconPlay() },
+        BottomBarItem(
+            stringResource(R.string.tab_puzzles),
+            Route.Puzzles,
+        ) { Icon(painterResource(R.drawable.chess_knight_fill1_24px), null) },
+        BottomBarItem(
+            stringResource(R.string.tab_learn),
+            Route.Learn,
+        ) { Icon(painterResource(R.drawable.school_24px), null) }
+    )
+
+    @Composable
+    private fun GameEntry(
+        backStack: com.vayunmathur.library.util.NavBackStack<Route>,
+        achievementsManager: com.vayunmathur.library.util.AchievementsManager,
+    ) {
+        val viewModel: ChessViewModel = viewModel()
+        var showNewGameDialog by remember { mutableStateOf(false) }
+        val aiAvailable by viewModel.aiAvailable.collectAsState()
+
+        ChessGame(
+            viewModel = viewModel,
+            onNewGame = { showNewGameDialog = true },
+            onOpenGameCenter = { backStack.add(Route.GameCenter) },
+            achievementsManager = achievementsManager
+        )
+
+        if (showNewGameDialog) {
+            NewGameDialog(
+                onNewGame = {
+                    viewModel.onNewGame(it)
+                    showNewGameDialog = false
+                },
+                onDismiss = { showNewGameDialog = false },
+                aiAvailable = aiAvailable
+            )
+        }
+    }
+
+    @Composable
+    private fun LearnStageEntry(
+        backStack: com.vayunmathur.library.util.NavBackStack<Route>,
+        route: Route.LearnStage,
+    ) {
+        val learnViewModel: LearnViewModel = viewModel()
+        LaunchedEffect(route.categoryKey, route.stageKey) {
+            learnViewModel.loadStage(route.categoryKey, route.stageKey)
+        }
+        LearnStageScreen(
+            viewModel = learnViewModel,
+            onBack = { backStack.pop() },
+            onOpenStage = { cat, stage ->
+                backStack.setLast(Route.LearnStage(cat, stage))
+            }
+        )
+    }
 }

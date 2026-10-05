@@ -80,6 +80,11 @@ class MainActivity : ComponentActivity() {
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    companion object {
+        private const val STRIPE_PUBLISHABLE_KEY =
+            "pk_live_51NQy7lFJFBMK4hv9KubgZcyH2Wy0MsXn9BtrtM7moEi762WE7pcmZ1JL9BrCKPRKw6ZJdGo9YJSA1pidb0KUthlJ00Wr4bcpVD"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -92,7 +97,7 @@ class MainActivity : ComponentActivity() {
 
         PaymentConfiguration.init(
             applicationContext,
-            "pk_live_51NQy7lFJFBMK4hv9KubgZcyH2Wy0MsXn9BtrtM7moEi762WE7pcmZ1JL9BrCKPRKw6ZJdGo9YJSA1pidb0KUthlJ00Wr4bcpVD"
+            STRIPE_PUBLISHABLE_KEY,
         )
 
         setContent {
@@ -124,7 +129,8 @@ private fun Intent.trackOrderIdOrNull(): Int? =
 // page" deep link (see OrderLookupContract). Returns null for anything else.
 private fun Intent.restaurantIdOrNull(): Int? {
     val uri = data ?: return null
-    if (uri.scheme != OrderLookupContract.DEEP_LINK_SCHEME || uri.host != OrderLookupContract.DEEP_LINK_HOST) return null
+    if (uri.scheme != OrderLookupContract.DEEP_LINK_SCHEME) return null
+    if (uri.host != OrderLookupContract.DEEP_LINK_HOST) return null
     return uri.lastPathSegment?.toIntOrNull()?.takeIf { it > 0 }
 }
 

@@ -9,10 +9,12 @@ import com.vayunmathur.findfamily.data.LocationValue
 import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.data.RequestStatus
 import com.vayunmathur.findfamily.data.havershine
+import com.vayunmathur.findfamily.data.TemporaryLink
 import com.vayunmathur.findfamily.domain.NoShowPolicy
 import com.vayunmathur.findfamily.R
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
 
 /**
  * How stale the held fix has to be before a less accurate one replaces it.
@@ -46,10 +48,15 @@ internal val MAX_FIX_ACCURACY_METERS: Float
  * Fixes worse than [MAX_FIX_ACCURACY_METERS] are dropped here and never become
  * [LocationTrackingService.lastKnownLocation].
  */
+private fun Location.hasUsableAccuracy(): Boolean {
+    if (!hasAccuracy()) return false
+    if (!accuracy.isFinite()) return false
+    if (accuracy < 0f) return false
+    return accuracy <= MAX_FIX_ACCURACY_METERS
+}
+
 internal fun LocationTrackingService.recordFix(location: Location) {
-    if (!location.hasAccuracy() || !location.accuracy.isFinite() ||
-        location.accuracy < 0f || location.accuracy > MAX_FIX_ACCURACY_METERS
-    ) {
+    if (!location.hasUsableAccuracy()) {
         return
     }
     val held = lastKnownLocation
@@ -64,6 +71,138 @@ internal fun LocationTrackingService.recordFix(location: Location) {
     }
 }
 
+private fun LocationTrackingService.logHeartbeatSummary(
+    location: Location,
+    userCount: Int,
+    linkCount: Int,
+) {
+    val userId = Networking.userid
+    val loc = "${location.latitude},${location.longitude} acc=${location.accuracy}"
+    Log.d("FF-Heartbeat", "heartbeat userid=${userId.toULong()} self raw=$userId users=$userCount")
+    Log.d("FF-Heartbeat", "heartbeat links=$linkCount moving=$isMoving loc=$loc")
+}
+
+private suspend fun LocationTrackingService.upsertSelfLocation(
+    location: Location,
+    now: Instant,
+): LocationValue {
+    val locationValue = LocationValue(
+        Networking.userid,
+        Coord(location.latitude, location.longitude),
+        0f,
+        location.accuracy,
+        now,
+        bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).toFloat()
+    )
+    Log.d("FF-Heartbeat", "upsert local LocationValue for self")
+    repository.upsertLocation(locationValue)
+    return locationValue
+}
+
+private suspend fun LocationTrackingService.ensureSelfUser(currentUsers: List<User>) {
+    if (currentUsers.none { it.id == Networking.userid }) {
+        Log.d("FF-Heartbeat", "self not in user DB, inserting me")
+        repository.upsertUser(
+            User(
+                getString(R.string.me_label),
+                null,
+                "Unnamed Location",
+                true,
+                RequestStatus.MUTUAL_CONNECTION,
+                Clock.System.now(),
+                null,
+                Networking.userid
+            )
+        )
+    }
+}
+
+// Broad catch is deliberate: auto-toggle DAO failures must not kill the heartbeat tick.
+@Suppress("TooGenericExceptionCaught")
+private suspend fun LocationTrackingService.applyTimerAutoToggles(
+    currentUsers: List<User>,
+    now: Instant,
+): List<User> {
+    // Auto-toggle check: atomic flip guarded by the timer value itself.
+    // If the user manually cleared or rescheduled after we read currentUsers, the
+    // WHERE clause (sharingAutoToggleAt <= now) won't match and we won't accidentally
+    // disable/enable when they didn't intend it. No stale copy() + upsert().
+    try {
+        val flipped = repository.applyDueAutoToggles(now.epochSeconds)
+        if (flipped > 0) {
+            Log.d("FF-Heartbeat", "auto-toggle flipped $flipped user(s), reloading sharing state")
+            // Reload fresh sharing flags so we don't publish once after an intended disable,
+            // and we start publishing immediately after an intended enable.
+            return repository.getAllUsers()
+        }
+    } catch (e: Exception) {
+        Log.w("FF-Heartbeat", "auto-toggle apply failed", e)
+    }
+    return currentUsers
+}
+
+// Broad catch is deliberate: waypoint DAO failures must not kill the heartbeat tick.
+@Suppress("TooGenericExceptionCaught")
+private suspend fun LocationTrackingService.applyArrivalAutoToggles(
+    publishBaseUsers: List<User>,
+    location: Location,
+): List<User> {
+    // Arrival auto-toggle check (GitHub #406): flip sharing for any user whose trigger
+    // points at a saved place that "Me" is currently inside. Uses the same atomic,
+    // waypoint-id-guarded update as the timer path so a stale snapshot cannot mis-flip.
+    try {
+        val myCoord = Coord(location.latitude, location.longitude)
+        val insideWaypointIds = repository.getAllWaypoints()
+            .filter { havershine(it.coord, myCoord) < it.range }
+            .map { it.id }
+        if (insideWaypointIds.isNotEmpty()) {
+            val flippedArrival = repository.applyDueArrivalToggles(insideWaypointIds)
+            if (flippedArrival > 0) {
+                Log.d("FF-Heartbeat", "arrival auto-toggle flipped $flippedArrival user(s), reloading")
+                return repository.getAllUsers()
+            }
+        }
+    } catch (e: Exception) {
+        Log.w("FF-Heartbeat", "arrival auto-toggle apply failed", e)
+    }
+    return publishBaseUsers
+}
+
+private suspend fun LocationTrackingService.publishHeartbeat(
+    locationValue: LocationValue,
+    publishBaseUsers: List<User>,
+    currentLinks: List<TemporaryLink>,
+    now: Instant,
+) {
+    // The sharing tile (GitHub #648) suppresses outbound publishing without touching the
+    // per-person switches, so turning it back on resumes exactly the set of people the
+    // user was sharing with. Receiving, waypoints and tracker reporting are unaffected.
+    val sharingOut = LocationServiceController.isGlobalSharingEnabled(this)
+    val publishTargets = if (!sharingOut) emptyList<User>()
+    else publishBaseUsers.filter { it.id != Networking.userid && it.sendingEnabled }
+    val targetIds = publishTargets.map { it.id.toULong() }
+    val targetNames = publishTargets.map { it.name }
+    Log.d("FF-Heartbeat", "publish targets count=${publishTargets.size} ids=$targetIds names=$targetNames")
+    Log.d("FF-Heartbeat", "publish globalSharing=$sharingOut")
+    publishTargets.forEach {
+        val result = runCatching { Networking.publishLocation(locationValue, it) }
+        if (result.isFailure) {
+            Log.w("FF-Heartbeat", "publish to ${it.id.toULong()} threw", result.exceptionOrNull())
+        }
+    }
+    if (sharingOut) currentLinks.filter { now < it.deleteAt }.forEach {
+        val result = runCatching { Networking.publishLocation(locationValue, it) }
+        if (result.isFailure) {
+            Log.w("FF-Heartbeat", "publish to link ${it.id} threw", result.exceptionOrNull())
+        }
+    }
+    currentLinks.filter { now >= it.deleteAt }.forEach {
+        runCatching { repository.temporaryLinkStore.delete(it) }
+    }
+}
+
+// Broad catch is deliberate: one failing DAO/crypto/network call must not kill the foreground service loop.
+@Suppress("TooGenericExceptionCaught")
 internal suspend fun LocationTrackingService.syncHeartbeat() {
     val location = lastKnownLocation ?: run {
         Log.d("FF-Heartbeat", "syncHeartbeat: no lastKnownLocation yet")
@@ -79,92 +218,14 @@ internal suspend fun LocationTrackingService.syncHeartbeat() {
     // FATAL BadPaddingException in decrypt).
     try {
         val currentUsers = repository.getAllUsers()
-        val currentLinks = repository.getAllTemporaryLinks()
+        val currentLinks = repository.temporaryLinkStore.getAll()
         val now = Clock.System.now()
-
-        Log.d("FF-Heartbeat", "heartbeat userid=${Networking.userid.toULong()} self raw=${Networking.userid} users=${currentUsers.size} links=${currentLinks.size} moving=$isMoving loc=${location.latitude},${location.longitude} acc=${location.accuracy}")
-
-        val locationValue = LocationValue(
-            Networking.userid,
-            Coord(location.latitude, location.longitude),
-            0f,
-            location.accuracy,
-            now,
-            bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).toFloat()
-        )
-
-        Log.d("FF-Heartbeat", "upsert local LocationValue for self")
-        repository.upsertLocation(locationValue)
-
-        if (currentUsers.none { it.id == Networking.userid }) {
-            Log.d("FF-Heartbeat", "self not in user DB, inserting me")
-            repository.upsertUser(
-                User(
-                    getString(R.string.me_label),
-                    null,
-                    "Unnamed Location",
-                    true,
-                    RequestStatus.MUTUAL_CONNECTION,
-                    Clock.System.now(),
-                    null,
-                    Networking.userid
-                )
-            )
-        }
-
-        // Auto-toggle check: atomic flip guarded by the timer value itself.
-        // If the user manually cleared or rescheduled after we read currentUsers, the
-        // WHERE clause (sharingAutoToggleAt <= now) won't match and we won't accidentally
-        // disable/enable when they didn't intend it. No stale copy() + upsert().
-        var publishBaseUsers = currentUsers
-        try {
-            val flipped = repository.applyDueAutoToggles(now.epochSeconds)
-            if (flipped > 0) {
-                Log.d("FF-Heartbeat", "auto-toggle flipped $flipped user(s), reloading sharing state before publish")
-                // Reload fresh sharing flags so we don't publish once after an intended disable,
-                // and we start publishing immediately after an intended enable.
-                publishBaseUsers = repository.getAllUsers()
-            }
-        } catch (e: Exception) {
-            Log.w("FF-Heartbeat", "auto-toggle apply failed", e)
-        }
-
-        // Arrival auto-toggle check (GitHub #406): flip sharing for any user whose trigger
-        // points at a saved place that "Me" is currently inside. Uses the same atomic,
-        // waypoint-id-guarded update as the timer path so a stale snapshot cannot mis-flip.
-        try {
-            val myCoord = Coord(location.latitude, location.longitude)
-            val insideWaypointIds = repository.getAllWaypoints()
-                .filter { havershine(it.coord, myCoord) < it.range }
-                .map { it.id }
-            if (insideWaypointIds.isNotEmpty()) {
-                val flippedArrival = repository.applyDueArrivalToggles(insideWaypointIds)
-                if (flippedArrival > 0) {
-                    Log.d("FF-Heartbeat", "arrival auto-toggle flipped $flippedArrival user(s), reloading sharing state before publish")
-                    publishBaseUsers = repository.getAllUsers()
-                }
-            }
-        } catch (e: Exception) {
-            Log.w("FF-Heartbeat", "arrival auto-toggle apply failed", e)
-        }
-
-        // The sharing tile (GitHub #648) suppresses outbound publishing without touching the
-        // per-person switches, so turning it back on resumes exactly the set of people the
-        // user was sharing with. Receiving, waypoints and tracker reporting are unaffected.
-        val sharingOut = LocationServiceController.isGlobalSharingEnabled(this)
-        val publishTargets = if (!sharingOut) emptyList<User>()
-        else publishBaseUsers.filter { it.id != Networking.userid && it.sendingEnabled }
-        Log.d("FF-Heartbeat", "publish targets count=${publishTargets.size} ids=${publishTargets.map{ it.id.toULong() }} names=${publishTargets.map{ it.name }} globalSharing=$sharingOut")
-        publishTargets.forEach {
-            val result = runCatching { Networking.publishLocation(locationValue, it) }
-            if (result.isFailure) Log.w("FF-Heartbeat", "publish to ${it.id.toULong()} threw", result.exceptionOrNull())
-        }
-        if (sharingOut) currentLinks.filter { now < it.deleteAt }.forEach {
-            val result = runCatching { Networking.publishLocation(locationValue, it) }
-            if (result.isFailure) Log.w("FF-Heartbeat", "publish to link ${it.id} threw", result.exceptionOrNull())
-        }
-        currentLinks.filter { now >= it.deleteAt }.forEach { runCatching { repository.deleteTemporaryLink(it) } }
-
+        logHeartbeatSummary(location, currentUsers.size, currentLinks.size)
+        val locationValue = upsertSelfLocation(location, now)
+        ensureSelfUser(currentUsers)
+        var publishBaseUsers = applyTimerAutoToggles(currentUsers, now)
+        publishBaseUsers = applyArrivalAutoToggles(publishBaseUsers, location)
+        publishHeartbeat(locationValue, publishBaseUsers, currentLinks, now)
         // Incoming peer locations arrive via the live WebSocket push (see startTracking →
         // Networking.startLive). There is no HTTP receive; if the socket is down the loop
         // reconnects and the next heartbeat re-publishes.
@@ -197,5 +258,8 @@ internal suspend fun LocationTrackingService.seedDirectBootMirror() {
         globalSharingEnabled = sharingOut,
     )
     lastSeededMirror = signature
-    Log.i(LocationTrackingService.TAG_DIRECT_BOOT, "mirror seeded: ${targets.size} target(s) sharing=$sharingOut tracking=$trackingEnabled")
+    Log.i(
+        LocationTrackingService.TAG_DIRECT_BOOT,
+        "mirror seeded: ${targets.size} target(s) sharing=$sharingOut tracking=$trackingEnabled"
+    )
 }

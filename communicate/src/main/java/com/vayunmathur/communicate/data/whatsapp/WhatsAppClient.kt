@@ -1,26 +1,29 @@
-@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
-
-package com.vayunmathur.communicate.data.whatsapp
-
-import kotlin.time.Duration.Companion.seconds
-import kotlin.concurrent.atomics.*
 import android.app.Application
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.util.Log
-import com.vayunmathur.communicate.data.whatsapp.e2e.WhatsAppE2E
 import com.vayunmathur.communicate.data.whatsapp.buildMediaConnQuery
 import com.vayunmathur.communicate.data.whatsapp.buildMexQuery
-import com.vayunmathur.communicate.data.whatsapp.encodeNode
-import com.vayunmathur.communicate.data.whatsapp.transport.WhatsAppSocket
 import com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager
+import com.vayunmathur.communicate.data.whatsapp.e2e.WhatsAppE2E
+import com.vayunmathur.communicate.data.whatsapp.e2e.WhatsAppE2E.ParsedPreKeyBundle
+import com.vayunmathur.communicate.data.whatsapp.encodeNode
+import com.vayunmathur.communicate.data.whatsapp.mex.MexResult
+import com.vayunmathur.communicate.data.whatsapp.transport.WhatsAppSocket
+import java.security.SecureRandom
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -30,10 +33,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
-import com.vayunmathur.communicate.data.whatsapp.e2e.WhatsAppE2E.ParsedPreKeyBundle
-import java.security.SecureRandom
-import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
 
 object WhatsAppClient {
 
@@ -66,13 +65,13 @@ object WhatsAppClient {
     val source: MessageSource = MessageSource.WHATSAPP
 
     /** True only when the Noise socket is logged in (`<success>`). Group/message ops require it. */
-    fun isConnected(): Boolean = _state.value is State.Connected
+    fun isConnected(): Boolean = stateMutable.value is State.Connected
 
-    internal val _state = MutableStateFlow<State>(State.Idle)
-    val state: StateFlow<State> = _state.asStateFlow()
+    internal val stateMutable = MutableStateFlow<State>(State.Idle)
+    val state: StateFlow<State> = stateMutable.asStateFlow()
 
-    internal val _events = MutableSharedFlow<WhatsAppEvent>(extraBufferCapacity = 256)
-    val events: SharedFlow<WhatsAppEvent> = _events.asSharedFlow()
+    internal val eventsMutable = MutableSharedFlow<WhatsAppEvent>(extraBufferCapacity = 256)
+    val events: SharedFlow<WhatsAppEvent> = eventsMutable.asSharedFlow()
 
     internal val initialized = AtomicBoolean(false)
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -167,10 +166,10 @@ object WhatsAppClient {
             val auth = WhatsAppAuthData.load(appContext)
             if (auth != null) {
                 authData = auth
-                _state.value = State.Connecting
+                stateMutable.value = State.Connecting
                 registerNetworkMonitor()
             } else {
-                _state.value = State.NeedsSetup
+                stateMutable.value = State.NeedsSetup
             }
         }
     }
@@ -180,10 +179,10 @@ object WhatsAppClient {
         // Only skip if fully connected. (Connecting is intentionally NOT skipped: a stale/stuck
         // Connecting state must be able to retry; connect() calls teardownSocket() first so an
         // overlapping attempt can't leave two live sockets.)
-        if (_state.value is State.Connected) return
+        if (stateMutable.value is State.Connected) return
         scope.launch {
             val auth = WhatsAppAuthData.load(appContext) ?: run {
-                _state.value = State.NeedsSetup
+                stateMutable.value = State.NeedsSetup
                 return@launch
             }
             authData = auth
@@ -210,7 +209,7 @@ object WhatsAppClient {
         // NOTE: credentials are intentionally NOT cleared here — that would wipe the registration
         // every time the foreground service stops. Sign-out (which clears auth) is owned by
         // WhatsAppLineSession.signOut().
-        _state.value = State.NeedsSetup
+        stateMutable.value = State.NeedsSetup
     }
 
     /**
@@ -232,8 +231,8 @@ object WhatsAppClient {
         scope.launch {
             try {
                 connect(auth)
-            } catch (e: Exception) {
-                Log.e(TAG, "forceResync connect failed", e)
+            } catch (expected: Exception) {
+                Log.e(TAG, "forceResync connect failed", expected)
                 scheduleReconnect()
             }
         }
@@ -252,14 +251,14 @@ object WhatsAppClient {
             val shift = reconnectAttempts.coerceAtMost(16)
             val delayMs = minOf(INITIAL_RECONNECT_DELAY_MS shl shift, MAX_RECONNECT_DELAY_MS)
             Log.i(TAG, "Reconnecting in ${delayMs}ms (attempt ${reconnectAttempts + 1})")
-            _state.value = State.Connecting
+            stateMutable.value = State.Connecting
             delay(delayMs)
             reconnectAttempts++
             val auth = authData ?: return@launch
             try {
                 connect(auth)
-            } catch (e: Exception) {
-                Log.e(TAG, "Reconnection failed", e)
+            } catch (expected: Exception) {
+                Log.e(TAG, "Reconnection failed", expected)
                 scheduleReconnect()
             }
         }
@@ -275,7 +274,7 @@ object WhatsAppClient {
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 if (authData == null || suppressReconnect) return
-                if (_state.value is State.Connected) return
+                if (stateMutable.value is State.Connected) return
                 if (connectInProgress.load()) return
                 WhatsAppDiag.log(TAG, "network available — reconnecting now")
                 reconnectAttempts = 0
@@ -284,8 +283,8 @@ object WhatsAppClient {
                     val auth = authData ?: return@launch
                     try {
                         connect(auth)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "reconnect on network-available failed", e)
+                    } catch (expected: Exception) {
+                        Log.e(TAG, "reconnect on network-available failed", expected)
                         scheduleReconnect()
                     }
                 }
@@ -294,8 +293,8 @@ object WhatsAppClient {
         connectivityCallback = cb
         try {
             cm.registerDefaultNetworkCallback(cb)
-        } catch (e: Exception) {
-            Log.e(TAG, "registerDefaultNetworkCallback failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "registerDefaultNetworkCallback failed", expected)
             connectivityCallback = null
         }
     }
@@ -306,14 +305,15 @@ object WhatsAppClient {
         try {
             (appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)
                 ?.unregisterNetworkCallback(cb)
-        } catch (e: Exception) {
-            Log.e(TAG, "unregisterNetworkCallback failed", e)
+        } catch (expected: Exception) {
+            Log.e(TAG, "unregisterNetworkCallback failed", expected)
         }
     }
 
     /** Compact human-readable summary of a decoded binary-XML node for on-screen diagnostics. */
     internal fun nodeSummary(node: WhatsAppProtocol.Node): String {
-        val attrs = if (node.attrs.isEmpty()) "" else " " + node.attrs.entries.joinToString(" ") { "${it.key}=${it.value}" }
+        val attrs =
+            if (node.attrs.isEmpty()) "" else " " + node.attrs.entries.joinToString(" ") { "${it.key}=${it.value}" }
         val kids = node.getChildren()
         val kidPart = if (kids.isEmpty()) "" else " {" + kids.joinToString(",") { it.tag } + "}"
         return "<${node.tag}$attrs>$kidPart"
@@ -381,21 +381,21 @@ object WhatsAppClient {
             .docIdFor(appContext, operationName)
             ?: run {
                 WhatsAppDiag.log(TAG, "mex[$operationName]: no persisted doc_id (add it to mex_persist_ids.json)")
-                return com.vayunmathur.communicate.data.whatsapp.mex.MexResult.transport("no_persisted_id:$operationName")
+                return MexResult.transport("no_persisted_id:$operationName")
             }
         val id = generateMessageId()
         val queryJson = com.vayunmathur.communicate.data.whatsapp.mex.MexEnvelope.buildQueryJson(docId, variablesJson)
         val node = WhatsAppProtocol.buildMexQuery(docId, queryJson, id, type)
         val resp = sendIqAndWait(node, timeoutMs = 32_000)
-            ?: return com.vayunmathur.communicate.data.whatsapp.mex.MexResult.transport("timeout")
+            ?: return MexResult.transport("timeout")
         if (resp.attrs["type"] == "error") {
             val code = resp.getChildByTag("error")?.attrs?.get("code")
             WhatsAppDiag.log(TAG, "mex[$operationName]: iq error code=${code ?: "unknown"}")
-            return com.vayunmathur.communicate.data.whatsapp.mex.MexResult.transport("iq_error:${code ?: "unknown"}")
+            return MexResult.transport("iq_error:${code ?: "unknown"}")
         }
         val envelope = resp.getChildByTag("result")?.data?.toString(Charsets.UTF_8)
-            ?: return com.vayunmathur.communicate.data.whatsapp.mex.MexResult.transport("no_result")
-        val out = com.vayunmathur.communicate.data.whatsapp.mex.MexResult.fromEnvelope(envelope)
+            ?: return MexResult.transport("no_result")
+        val out = MexResult.fromEnvelope(envelope)
         WhatsAppDiag.log(TAG, "mex[$operationName]: success=${out.isSuccess} errors=${out.errors.size}")
         return out
     }
@@ -410,8 +410,8 @@ object WhatsAppClient {
      */
     internal suspend fun maybeUploadPreKeys() {
         val database = db ?: return
-        val count = try { database.e2ePreKeyDao().getCount() } catch (e: Exception) { return }
-        val unuploaded = try { database.e2ePreKeyDao().getUnuploaded().size } catch (e: Exception) { 0 }
+        val count = try { database.e2ePreKeyDao().getCount() } catch (ignored: Exception) { return }
+        val unuploaded = try { database.e2ePreKeyDao().getUnuploaded().size } catch (ignored: Exception) { 0 }
         WhatsAppDiag.log(TAG, "prekeys: local count=$count unuploaded=$unuploaded")
         when {
             count == 0 -> uploadPreKeys(initialUpload = true)
@@ -456,7 +456,18 @@ object WhatsAppClient {
         val auth = authData ?: return false
         val crypto = ensureE2E(auth) ?: return false
         if (crypto.hasSession(jid)) return true
+        val bundle = fetchPreKeyBundle(jid) ?: return false
+        return try {
+            crypto.processPreKeyBundle(jid, bundle)
+            true
+        } catch (expected: Exception) {
+            Log.e(TAG, "Failed to process prekey bundle for $jid", expected)
+            false
+        }
+    }
 
+    /** Fetch and parse the peer's pre-key bundle, or null when unavailable. */
+    private suspend fun fetchPreKeyBundle(jid: String): ParsedPreKeyBundle? {
         val device = jid.substringBefore("@").substringAfter(":", "0").toIntOrNull() ?: 0
         val iq = WhatsAppProtocol.Node(
             tag = "iq",
@@ -478,17 +489,11 @@ object WhatsAppClient {
                 )
             ),
         )
-        val resp = sendIqAndWait(iq) ?: return false
-        val list = resp.getChildByTag("list") ?: return false
-        val userNode = list.getChildren().firstOrNull { it.tag == "user" } ?: return false
-        val bundle: ParsedPreKeyBundle = crypto.parsePreKeyBundleNode(device, userNode) ?: return false
-        return try {
-            crypto.processPreKeyBundle(jid, bundle)
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to process prekey bundle for $jid", e)
-            false
-        }
+        val resp = sendIqAndWait(iq) ?: return null
+        val list = resp.getChildByTag("list") ?: return null
+        val userNode = list.getChildren().firstOrNull { it.tag == "user" } ?: return null
+        val auth = authData ?: return null
+        return ensureE2E(auth)?.parsePreKeyBundleNode(device, userNode)
     }
 
     /**
@@ -499,27 +504,39 @@ object WhatsAppClient {
     suspend fun refreshPresence(conversationId: String) {
         if (!WhatsAppFeature.enabled) return
         val jid = extractJid(conversationId) ?: return
-        val res = runCatching {
-            com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.getOnlineOrLastStatus(appContext, listOf(jid), null)
-        }.getOrNull() ?: return
-        if (!res.isSuccess) return
-        val data = res.data ?: return
-        val payload = data.optJSONObject("xwa2_presence_data_platform_get_online_or_last_status") ?: return
+        val payload = fetchPresencePayload(jid) ?: return
         val presences = payload.optJSONArray("presences") ?: return
         if (presences.length() == 0) return
         val p = presences.optJSONObject(0) ?: return
         val lastSeen = p.optString("last_seen").toLongOrNull() ?: 0L
-        _events.emit(WhatsAppEvent.PresenceUpdate(
+        eventsMutable.emit(WhatsAppEvent.PresenceUpdate(
             conversationId = "wa:$jid",
             isOnline = lastSeen == 0L, // online payloads omit last_seen; last-status carries it
             lastSeen = lastSeen,
         ))
     }
 
+    /** Presence payload for [jid], or null when unavailable. */
+    private suspend fun fetchPresencePayload(jid: String): org.json.JSONObject? {
+        val res = runCatching {
+            com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.getOnlineOrLastStatus(
+                appContext,
+                listOf(jid),
+                null)
+        }.getOrNull() ?: return null
+        if (!res.isSuccess) return null
+        val data = res.data ?: return null
+        return data.optJSONObject("xwa2_presence_data_platform_get_online_or_last_status")
+    }
+
     /**
      * Fetch (and cache) the media upload host + auth token via the w:m media_conn IQ.
      * Ref whatsmeow mediaconn.go queryMediaConn. Returns (host, auth) or null.
      */
+    private companion object {
+        private const val MS_PER_SECOND = 1000L
+    }
+
     internal suspend fun mediaConn(): Pair<String, String>? {
         mediaConnCache?.let { if (System.currentTimeMillis() < it.third) return it.first to it.second }
         val iq = WhatsAppProtocol.buildMediaConnQuery(generateMessageId())
@@ -528,49 +545,12 @@ object WhatsAppClient {
         val auth = mc.attrs["auth"] ?: return null
         val ttl = mc.attrs["ttl"]?.toLongOrNull() ?: 300L
         val host = mc.getChildren().firstOrNull { it.tag == "host" }?.attrs?.get("hostname") ?: return null
-        mediaConnCache = Triple(host, auth, System.currentTimeMillis() + ttl * 1000)
+
+        mediaConnCache = Triple(host, auth, System.currentTimeMillis() + ttl * MS_PER_SECOND)
         return host to auth
     }
 
-    /**
-     * Establish sessions and Signal-encrypt a (padded) plaintext for each device, skipping our own
-     * current device. Own other devices get [dsmPlaintextPadded] (the DeviceSentMessage); everyone
-     * else gets [msgPlaintextPadded]. Mirrors whatsmeow send.go encryptMessageForDevices.
-     */
-    internal suspend fun encryptForDevices(
-        crypto: WhatsAppE2E,
-        devices: List<String>,
-        ownUser: String,
-        ownDeviceJid: String,
-        msgPlaintextPadded: ByteArray,
-        dsmPlaintextPadded: ByteArray?,
-    ): Pair<List<WhatsAppProtocol.ParticipantEnc>, Boolean> {
-        val encs = mutableListOf<WhatsAppProtocol.ParticipantEnc>()
-        var includeIdentity = false
-        // Our own device number (from wid "user.agent:device@..."). usync returns devices as
-        // "user:device@..." (no agent), so comparing against the raw wid never matches and we'd
-        // fan out to OURSELVES — which the server rejects with <conflict type=device_removed>.
-        val ownDeviceNum = ownDeviceJid.substringBefore("@").substringAfter(":", "0").toIntOrNull() ?: 0
-        for (dev in devices.distinct()) {
-            val devUser = dev.substringBefore("@").substringBefore(":").substringBefore(".")
-            val devNum = dev.substringBefore("@").substringAfter(":", "0").toIntOrNull() ?: 0
-            if (devUser == ownUser && devNum == ownDeviceNum) continue // skip our own device
-            val plaintext = if (devUser == ownUser && dsmPlaintextPadded != null) dsmPlaintextPadded else msgPlaintextPadded
-            if (!ensureSession(dev)) {
-                Log.w(TAG, "No session for device $dev; skipping in fan-out")
-                continue
-            }
-            val enc = try {
-                crypto.encryptDM(dev, plaintext)
-            } catch (e: Exception) {
-                Log.w(TAG, "Encrypt failed for device $dev", e)
-                continue
-            }
-            if (enc.type == "pkmsg") includeIdentity = true
-            encs.add(WhatsAppProtocol.ParticipantEnc(dev, enc.type, enc.data))
-        }
-        return encs to includeIdentity
-    }
+
 
     /** Cancel the current socket's collectors and disconnect it, so only one socket is ever live. */
     private fun teardownSocket() {
@@ -581,7 +561,7 @@ object WhatsAppClient {
     }
 
     private suspend fun connect(auth: WhatsAppAuthData) {
-        _state.value = State.Connecting
+        stateMutable.value = State.Connecting
         suppressReconnect = false
         connectInProgress.store(true)
         registerNetworkMonitor()
@@ -607,7 +587,7 @@ object WhatsAppClient {
                             if (authData != null && !suppressReconnect) {
                                 scheduleReconnect()
                             } else {
-                                _state.value = State.Disconnected(state.reason)
+                                stateMutable.value = State.Disconnected(state.reason)
                             }
                         }
                         else -> {}
@@ -660,14 +640,14 @@ object WhatsAppClient {
             val crypto = ensureE2E(auth) ?: return null
             return try {
                 crypto.decryptDM(senderJid, isPreKey = encType == "pkmsg", ciphertext = ciphertext)
-            } catch (e: Exception) {
-                Log.w(TAG, "call key decrypt failed from $senderJid", e)
+            } catch (expected: Exception) {
+                Log.w(TAG, "call key decrypt failed from $senderJid", expected)
                 null
             }
         }
 
         override fun emit(event: WhatsAppEvent) {
-            scope.launch { _events.emit(event) }
+            scope.launch { eventsMutable.emit(event) }
         }
 
         override fun resolveName(jid: String): String? {
@@ -694,7 +674,7 @@ object WhatsAppClient {
     internal suspend fun handleConnectSuccess(node: WhatsAppProtocol.Node) {
         WhatsAppDiag.log(TAG, "AUTHENTICATED (<success>) — login complete")
         reconnectAttempts = 0
-        _state.value = State.Connected
+        stateMutable.value = State.Connected
         val lid = node.attrs["lid"]
         val current = authData
         if (!lid.isNullOrEmpty() && current != null && current.lid.isEmpty()) {

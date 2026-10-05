@@ -42,7 +42,9 @@ fun SpecialCharsDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
                                 modifier = Modifier.size(40.dp).clickable { onPick(ch); onDismiss() },
                                 shape = RoundedCornerShape(4.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant
-                            ) { Box(contentAlignment = Alignment.Center) { Text(ch, style = MaterialTheme.typography.titleMedium) } }
+                            ) { Box(contentAlignment = Alignment.Center) { Text(
+                                ch,
+                                style = MaterialTheme.typography.titleMedium) } }
                         }
                     }
                     Spacer(Modifier.height(4.dp))

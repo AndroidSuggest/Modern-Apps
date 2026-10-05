@@ -20,7 +20,7 @@ class LyftTokenStore(private val context: Context) {
         context.lyftDataStore.edit {
             it[accessKey] = token.accessToken
             if (!token.refreshToken.isNullOrBlank()) it[refreshKey] = token.refreshToken
-            it[expiresAtKey] = System.currentTimeMillis() + token.expiresIn * 1000
+            it[expiresAtKey] = System.currentTimeMillis() + token.expiresIn * MILLIS_PER_SECOND
             if (!token.userId.isNullOrBlank()) it[userIdKey] = token.userId
         }
     }
@@ -36,12 +36,18 @@ class LyftTokenStore(private val context: Context) {
     /** Treats the token as expired a minute early so a call never races the expiry. */
     suspend fun isExpired(): Boolean {
         val expiresAt = context.lyftDataStore.data.first()[expiresAtKey] ?: return true
-        return System.currentTimeMillis() >= expiresAt - 60_000
+        return System.currentTimeMillis() >= expiresAt - EXPIRY_SKEW_MS
     }
 
     suspend fun isSignedIn(): Boolean = accessToken() != null
 
     suspend fun clear() {
         context.lyftDataStore.edit { it.clear() }
+    }
+
+    private companion object {
+        private const val MILLIS_PER_SECOND = 1000L
+        /** How early before real expiry the token counts as expired, so a call never races it. */
+        private const val EXPIRY_SKEW_MS = 60_000L
     }
 }

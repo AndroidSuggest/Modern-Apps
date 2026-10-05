@@ -18,7 +18,8 @@ import org.signal.libsignal.protocol.ecc.ECKeyPair
  * - Account password (random for Basic e164:password) and UAK 32B
  *
  * Serialization contract (coordinate with crypto teammate who owns SignalPqPreKey):
- * - aci/pniIdentityKey wire = Base64-nopad(IdentityKey.serialize()) 33B (0x05||32) via RegistrationSessionRequestBody.aciIdentityKey
+ * - aci/pniIdentityKey wire = Base64-nopad(IdentityKey.serialize()) 33B (0x05||32) via
+ * RegistrationSessionRequestBody.aciIdentityKey
  * - SignedPreKeyEntity wire = {keyId, publicKey: Base64-nopad(ECPublicKey.serialize() 33B), signature}
  * - KyberPreKeyEntity wire = {keyId, publicKey: Base64-nopad(KEMPublicKey.serialize() 1569B with 0x08 tag), signature}
  *   Signature for Kyber is over the FULL 1569B serialize (including 0x08) — stripping tag breaks server verification.
@@ -28,7 +29,8 @@ class SignalRegistrationKeys private constructor(val authScaffold: SignalAuthDat
     companion object {
         fun generate(phoneNumber: String): SignalRegistrationKeys {
             val rng = SecureRandom()
-            fun regId() = rng.nextInt(0x3FFF) + 1
+            private const val MAX_REGISTRATION_ID = 0x3FFF
+            fun regId() = rng.nextInt(MAX_REGISTRATION_ID) + 1
 
             val aciIdentity = IdentityKeyPair.generate()
             val pniIdentity = IdentityKeyPair.generate()
@@ -53,6 +55,33 @@ class SignalRegistrationKeys private constructor(val authScaffold: SignalAuthDat
             // the server enforces a 16-byte length, so a 32-byte value is rejected with HTTP 422.
             val uak = ByteArray(16).also { rng.nextBytes(it) }
 
+            val scaffold = buildAuthScaffold(
+                phoneNumber, aciIdentity, pniIdentity, aciRegId, pniRegId,
+                aciSignedKp, pniSignedKp, aciSignedId, pniSignedId, aciSignedSig, pniSignedSig,
+                aciPq, pniPq, password, uak,
+            )
+            return SignalRegistrationKeys(scaffold)
+        }
+
+        /** Build the auth scaffold from generated key material. */
+        @Suppress("LongParameterList")
+        private fun buildAuthScaffold(
+            phoneNumber: String,
+            aciIdentity: IdentityKeyPair,
+            pniIdentity: IdentityKeyPair,
+            aciRegId: Int,
+            pniRegId: Int,
+            aciSignedKp: ECKeyPair,
+            pniSignedKp: ECKeyPair,
+            aciSignedId: Int,
+            pniSignedId: Int,
+            aciSignedSig: ByteArray,
+            pniSignedSig: ByteArray,
+            aciPq: SignalPqPreKey.GeneratedPq,
+            pniPq: SignalPqPreKey.GeneratedPq,
+            password: String,
+            uak: ByteArray,
+        ): SignalAuthData {
             // Identity serialization: IdentityKey.serialize() = 33B (0x05||32), private = 32B raw EC
             val aciPubB64 = b64(aciIdentity.publicKey.serialize())
             val pniPubB64 = b64(pniIdentity.publicKey.serialize())
@@ -60,7 +89,7 @@ class SignalRegistrationKeys private constructor(val authScaffold: SignalAuthDat
             val aciPrivB64 = b64(aciIdentity.privateKey.serialize())
             val pniPrivB64 = b64(pniIdentity.privateKey.serialize())
 
-            val scaffold = SignalAuthData(
+            return SignalAuthData(
                 phoneNumber = phoneNumber,
                 aci = "",
                 pni = "",
@@ -106,7 +135,9 @@ class SignalRegistrationKeys private constructor(val authScaffold: SignalAuthDat
                 pniPqLastResortSignature = b64(pniPq.signature),
                 password = password,
                 unidentifiedAccessKey = b64(uak),
-                registrationLock = null, // live-only SVR2 derivation (MasterKey.deriveRegistrationLock); keep wire-correct null for offline
+                // live-only SVR2 derivation (MasterKey.deriveRegistrationLock);
+                // keep wire-correct null for offline
+                registrationLock = null,
                 verificationSessionId = null,
                 registered = false,
             )
@@ -114,7 +145,8 @@ class SignalRegistrationKeys private constructor(val authScaffold: SignalAuthDat
         }
 
         private fun generatePassword(rng: SecureRandom): String {
-            // Signal password is a random client secret for Basic auth; 16 bytes base64 is sufficient and server-agnostic.
+            // Signal password is a random client secret for Basic auth; 16 bytes base64 is sufficient and
+            // server-agnostic.
             val b = ByteArray(16).also { rng.nextBytes(it) }
             // Use URL-safe-ish alphanumeric: base64 without padding, strip '=' — server accepts any non-empty string.
             return Base64.encodeToString(b, Base64.NO_WRAP or Base64.NO_PADDING)

@@ -363,26 +363,49 @@ object CastPlayback {
             PlaybackAction.Play -> target.play()
             PlaybackAction.Pause -> target.pause()
             PlaybackAction.Toggle -> if (target.isPlaying) target.pause() else target.play()
+            PlaybackAction.SeekTo,
+            PlaybackAction.SkipForward,
+            PlaybackAction.SkipBack,
+            -> applySeekCommand(target, command)
+            PlaybackAction.SetSpeed,
+            PlaybackAction.SetVolume,
+            -> applyLevelCommand(command)
+            PlaybackAction.Next -> navigateIfAvailable(forward = true)
+            PlaybackAction.Previous -> navigateIfAvailable(forward = false)
+        }
+    }
+
+    private fun applySeekCommand(target: Player, command: PlaybackCommand) {
+        when (command.action) {
             PlaybackAction.SeekTo -> command.value?.let { seek(target, it.toLong()) }
             PlaybackAction.SkipForward -> seek(target, target.currentPosition + SKIP_MS)
             PlaybackAction.SkipBack -> seek(target, target.currentPosition - SKIP_MS)
-            PlaybackAction.SetSpeed -> command.value?.let { speed ->
-                // Written into [transport] rather than onto the player: `VideoPlayer` already has an
-                // effect that applies the speed together with the pitch, and setting
-                // `playbackParameters` here would drop whatever pitch the user had chosen.
-                update { it.copy(speed = speed.toFloat().coerceIn(MIN_SPEED, MAX_SPEED)) }
-            }
+            else -> Unit
+        }
+    }
+
+    private fun applyLevelCommand(command: PlaybackCommand) {
+        when (command.action) {
+            PlaybackAction.SetSpeed -> command.value?.let { applySpeed(it.toFloat()) }
             // The television asked for a level. Applied to the device's media volume, so it is still
             // there when playback comes back to the phone - which is the point of sharing one level
             // rather than inventing a cast-only one.
             PlaybackAction.SetVolume -> command.value?.let { setVolume(it.toFloat()) }
-            // Only offered when the phone said there was something to go to, but checked again here:
-            // the TV's copy of that is up to half a second old.
-            PlaybackAction.Next ->
-                if (_transport.value.hasNext) onNavigate?.invoke(true)
-            PlaybackAction.Previous ->
-                if (_transport.value.hasPrevious) onNavigate?.invoke(false)
+            else -> Unit
         }
+    }
+
+    private fun applySpeed(speed: Float) {
+        // Written into [transport] rather than onto the player: `VideoPlayer` already has an
+        // effect that applies the speed together with the pitch, and setting
+        // `playbackParameters` here would drop whatever pitch the user had chosen.
+        update { it.copy(speed = speed.coerceIn(MIN_SPEED, MAX_SPEED)) }
+    }
+
+    private fun navigateIfAvailable(forward: Boolean) {
+        val transport = _transport.value
+        if (forward && transport.hasNext) onNavigate?.invoke(true)
+        if (!forward && transport.hasPrevious) onNavigate?.invoke(false)
     }
 
     /**
@@ -557,7 +580,7 @@ object CastAudioTap : TeeAudioProcessor.AudioBufferSink {
             val stream = out ?: return
             try {
                 stream.write(chunk)
-            } catch (e: Exception) {
+            } catch (e: java.io.IOException) {
                 // The Cast side closed the pipe; there is nothing to recover and nothing to say to
                 // the user, because the session teardown already will.
                 Log.i(TAG, "the PCM pipe closed", e)
@@ -585,23 +608,27 @@ object CastAudioTap : TeeAudioProcessor.AudioBufferSink {
         ) {
             return bytes
         }
-        val frames = remaining / (2 * channelCount)
+        val frames = remaining / (BYTES_PER_SAMPLE * channelCount)
         if (frames == 0) return null
         val outFrames = (frames.toLong() * CastContract.AUDIO_SAMPLE_RATE / sampleRate).toInt()
         if (outFrames == 0) return null
-        val result = ByteArray(outFrames * 2 * CastContract.AUDIO_CHANNELS)
+        val result = ByteArray(outFrames * BYTES_PER_SAMPLE * CastContract.AUDIO_CHANNELS)
         for (frame in 0 until outFrames) {
             // Nearest source frame. Resampling per buffer rather than continuously leaves a sub-sample
             // discontinuity at each boundary, which is inaudible next to the alternative of no audio.
             val source = (frame.toLong() * frames / outFrames).toInt().coerceAtMost(frames - 1)
-            val base = source * 2 * channelCount
+            val base = source * BYTES_PER_SAMPLE * channelCount
             val left = sampleAt(bytes, base)
-            val right = if (channelCount >= 2) sampleAt(bytes, base + 2) else left
-            val target = frame * 4
-            result[target] = (left and 0xFF).toByte()
-            result[target + 1] = (left shr 8 and 0xFF).toByte()
-            result[target + 2] = (right and 0xFF).toByte()
-            result[target + 3] = (right shr 8 and 0xFF).toByte()
+            val right = if (channelCount >= STEREO_CHANNEL_COUNT) {
+                sampleAt(bytes, base + BYTES_PER_SAMPLE)
+            } else {
+                left
+            }
+            val target = frame * BYTES_PER_FRAME
+            result[target] = (left and BYTE_MASK).toByte()
+            result[target + FIRST_BYTE_OFFSET] = (left shr BYTE_SHIFT and BYTE_MASK).toByte()
+            result[target + SECOND_BYTE_OFFSET] = (right and BYTE_MASK).toByte()
+            result[target + THIRD_BYTE_OFFSET] = (right shr BYTE_SHIFT and BYTE_MASK).toByte()
         }
         return result
     }
@@ -609,6 +636,17 @@ object CastAudioTap : TeeAudioProcessor.AudioBufferSink {
     /** One little-endian 16-bit sample, as its raw bits. */
     private fun sampleAt(bytes: ByteArray, offset: Int): Int {
         if (offset + 1 >= bytes.size) return 0
-        return (bytes[offset].toInt() and 0xFF) or (bytes[offset + 1].toInt() shl 8)
+        return (bytes[offset].toInt() and BYTE_MASK) or (bytes[offset + 1].toInt() shl BYTE_SHIFT)
+    }
+
+    companion object {
+        private const val BYTES_PER_SAMPLE = 2
+        private const val BYTES_PER_FRAME = 4
+        private const val STEREO_CHANNEL_COUNT = 2
+        private const val BYTE_MASK = 0xFF
+        private const val BYTE_SHIFT = 8
+        private const val FIRST_BYTE_OFFSET = 1
+        private const val SECOND_BYTE_OFFSET = 2
+        private const val THIRD_BYTE_OFFSET = 3
     }
 }

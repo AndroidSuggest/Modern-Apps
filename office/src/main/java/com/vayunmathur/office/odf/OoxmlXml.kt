@@ -10,6 +10,8 @@ import org.xmlpull.v1.XmlPullParserFactory
  */
 internal object OoxmlXml {
 
+    private const val ALPHA_BASE = 26
+
     fun newParser(xml: String): XmlPullParser {
         val f = XmlPullParserFactory.newInstance()
         f.isNamespaceAware = true
@@ -86,7 +88,7 @@ internal object OoxmlXml {
     fun colIndex(cellRef: String): Int {
         var n = 0
         for (c in cellRef) {
-            if (c.isLetter()) n = n * 26 + (c.uppercaseChar() - 'A' + 1) else break
+            if (c.isLetter()) n = n * ALPHA_BASE + (c.uppercaseChar() - 'A' + 1) else break
         }
         return (n - 1).coerceAtLeast(0)
     }

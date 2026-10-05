@@ -27,7 +27,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import com.vayunmathur.fooddelivery.R
-import com.vayunmathur.fooddelivery.api.BitesApi
+import com.vayunmathur.fooddelivery.api.BitesAuth
+import com.vayunmathur.fooddelivery.api.BitesCustomers
+import com.vayunmathur.fooddelivery.api.BitesRewards
 import com.vayunmathur.fooddelivery.data.AddressStore
 import com.vayunmathur.fooddelivery.data.Customer
 import com.vayunmathur.fooddelivery.data.CustomerSavings
@@ -64,10 +66,10 @@ fun AccountScreen() {
     var notice by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
     var editingProfile by remember { mutableStateOf(false) }
-    var loggedIn by remember { mutableStateOf(BitesApi.isLoggedIn()) }
+    var loggedIn by remember { mutableStateOf(BitesAuth.isLoggedIn()) }
     // The saved token is restored by the background warm-up, so "signed out" isn't known to
     // be true until that has landed — don't offer the sign-in card before then.
-    var authResolved by remember { mutableStateOf(BitesApi.isLoggedIn()) }
+    var authResolved by remember { mutableStateOf(BitesAuth.isLoggedIn()) }
 
     var stateId by remember { mutableStateOf<String?>(null) }
     var phone by remember { mutableStateOf("") }
@@ -92,16 +94,16 @@ fun AccountScreen() {
     // it has landed instead of assuming the initial (possibly pre-restore) answer.
     LaunchedEffect(Unit) {
         AppInit.awaitReady()
-        if (!loggedIn) loggedIn = BitesApi.isLoggedIn()
+        if (!loggedIn) loggedIn = BitesAuth.isLoggedIn()
         authResolved = true
     }
 
     LaunchedEffect(loggedIn) {
         if (loggedIn) {
-            customer = BitesApi.getCustomer()
-            savings = BitesApi.getCustomerSavings()
-            referrals = BitesApi.getReferrals()
-            platformSavings = BitesApi.getPlatformSavings()
+            customer = BitesCustomers.getCustomer()
+            savings = BitesCustomers.getCustomerSavings()
+            referrals = BitesCustomers.getReferrals()
+            platformSavings = BitesRewards.getPlatformSavings()
         }
     }
 
@@ -123,16 +125,16 @@ fun AccountScreen() {
                         scope.launch {
                             authLoading = true
                             if (!codeSent) {
-                                val sid = BitesApi.verifyPhone(phone)
+                                val sid = BitesAuth.verifyPhone(phone)
                                 if (sid != null) {
                                     stateId = sid
                                     codeSent = true
                                 }
                             } else {
                                 val sid = stateId ?: return@launch
-                                val token = BitesApi.exchangeOtpCodeForToken(sid, code)
-                                if (token != null && token.access_token.isNotEmpty()) {
-                                    BitesApi.setToken(token)
+                                val token = BitesAuth.exchangeOtpCodeForToken(sid, code)
+                                if (token != null && token.accessToken.isNotEmpty()) {
+                                    BitesAuth.setToken(token)
                                     loggedIn = true
                                 }
                             }
@@ -149,7 +151,7 @@ fun AccountScreen() {
                             onSave = { updated ->
                                 scope.launch {
                                     editingProfile = false
-                                    val saved = BitesApi.createOrUpdateCustomer(updated)
+                                    val saved = BitesCustomers.createOrUpdateCustomer(updated)
                                     if (saved != null) {
                                         customer = saved
                                         notice = "Profile updated"
@@ -180,7 +182,7 @@ fun AccountScreen() {
                                 OutlinedButton(
                                     onClick = {
                                         scope.launch {
-                                            val ok = BitesApi.sendEmailVerification(c.email)
+                                            val ok = BitesCustomers.sendEmailVerification(c.email)
                                             notice = if (ok) "Verification email sent to ${c.email}"
                                             else "Couldn't send the verification email"
                                         }
@@ -210,10 +212,10 @@ fun AccountScreen() {
                             Button(onClick = {
                                 scope.launch {
                                     confirmDelete = false
-                                    if (BitesApi.deleteCustomer()) {
+                                    if (BitesCustomers.deleteCustomer()) {
                                         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                                             .edit { remove(KEY_TOKEN) }
-                                        BitesApi.clearToken()
+                                        BitesAuth.clearToken()
                                         loggedIn = false
                                         customer = null
                                         savings = null
@@ -237,7 +239,7 @@ fun AccountScreen() {
                     onClick = {
                         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                             .edit { remove(KEY_TOKEN) }
-                        BitesApi.clearToken()
+                        BitesAuth.clearToken()
                         loggedIn = false
                         customer = null
                         savings = null

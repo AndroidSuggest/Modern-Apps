@@ -19,7 +19,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.graphics.toArgb
 import com.vayunmathur.pdf.util.SafeAnnotation
 import com.vayunmathur.pdf.util.SafePdfDocument
-import com.vayunmathur.pdf.util.SafePdfPage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -29,7 +28,6 @@ import kotlinx.coroutines.launch
  */
 @Composable
 internal fun EditOverlay(
-    page: SafePdfPage,
     annotations: List<SafeAnnotation>,
     selected: Long?,
     tool: EditTool,
@@ -37,7 +35,6 @@ internal fun EditOverlay(
     markup: MarkupKind,
     color: Color,
     strokeWidth: Float,
-    cw: Float,
     ch: Float,
     scale: Float,
     toPage: (Offset) -> Offset,

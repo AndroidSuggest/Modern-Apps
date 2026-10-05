@@ -3,7 +3,6 @@ package com.vayunmathur.appstore.data
 import android.content.Context
 import android.os.Build
 import android.util.JsonReader
-import android.util.JsonToken
 import com.vayunmathur.appstore.data.security.ApkCertificates
 import com.vayunmathur.appstore.data.security.SignedJarIndex
 import com.vayunmathur.library.network.NetworkClient
@@ -70,13 +69,7 @@ object FDroidRepository {
         downloadToFile("$base/entry.jar", entryJar)
         val verified = SignedJarIndex.readVerified(entryJar, "entry.json", pinnedFingerprint)
 
-        val entry = JSONObject(String(verified.content, Charsets.UTF_8))
-        val index = entry.optJSONObject("index")
-            ?: throw java.io.IOException("entry.json has no index section")
-        val name = index.optString("name").takeIf { it.isNotBlank() }
-            ?: throw java.io.IOException("entry.json index has no name")
-        val expectedSha = index.optString("sha256").takeIf { it.isNotBlank() }
-            ?: throw java.io.IOException("entry.json index has no sha256")
+        val (name, expectedSha) = entryIndexRef(verified.content)
 
         val indexFile = File(work, "index-v2.json")
         downloadToFile(base + "/" + name.trimStart('/'), indexFile)
@@ -93,6 +86,20 @@ object FDroidRepository {
         )
     }
 
+    private data class IndexRef(val name: String, val sha256: String)
+
+    private fun entryIndexRef(entryJson: ByteArray): IndexRef {
+        val entry = JSONObject(String(entryJson, Charsets.UTF_8))
+        val index = entry.optJSONObject("index")
+            ?: throw java.io.IOException("entry.json has no index section")
+        val name = index.optString("name").takeIf { it.isNotBlank() }
+        val sha = index.optString("sha256").takeIf { it.isNotBlank() }
+        if (name == null || sha == null) {
+            throw java.io.IOException("entry.json index has no name/sha256")
+        }
+        return IndexRef(name, sha)
+    }
+
     internal fun downloadToFile(url: String, outFile: File) {
         val rawConnection = URL(url).openConnection()
         val sslSocketFactory = NetworkClient.defaultSslSocketFactory
@@ -100,19 +107,19 @@ object FDroidRepository {
             rawConnection.sslSocketFactory = sslSocketFactory
         }
         val conn = (rawConnection as HttpURLConnection).apply {
-            connectTimeout = 30000
-            readTimeout = 120000
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "ModernAppStore/1.0")
+            setRequestProperty("User-Agent", USER_AGENT)
             instanceFollowRedirects = true
         }
         try {
-            if (conn.responseCode !in 200..299) {
+            if (conn.responseCode !in HTTP_OK_MIN..HTTP_OK_MAX) {
                 throw java.io.IOException("HTTP ${conn.responseCode} for $url")
             }
             conn.inputStream.use { input ->
                 outFile.outputStream().use { out ->
-                    val buf = ByteArray(32 * 1024)
+                    val buf = ByteArray(DOWNLOAD_BUFFER_SIZE)
                     var n: Int
                     while (input.read(buf).also { n = it } != -1) out.write(buf, 0, n)
                 }
@@ -135,21 +142,10 @@ object FDroidRepository {
             r.isLenient = true
             r.beginObject()
             while (r.hasNext()) {
-                when (r.nextName()) {
-                    "packages" -> {
-                        r.beginObject()
-                        while (r.hasNext()) {
-                            val pkg = r.nextName()
-                            try {
-                                val app = parsePackageV2(r, pkg, repoBase, source, isReproducible)
-                                if (app != null) result.add(app)
-                            } catch (_: Exception) {
-                                try { r.skipValue() } catch (_: Exception) {}
-                            }
-                        }
-                        r.endObject()
-                    }
-                    else -> r.skipValue()
+                if (r.nextName() == PACKAGES_KEY) {
+                    readPackagesV2(r, repoBase, source, isReproducible, result)
+                } else {
+                    r.skipValue()
                 }
             }
             r.endObject()
@@ -157,14 +153,40 @@ object FDroidRepository {
         return result
     }
 
-    private fun parsePackageV2(
-        reader: JsonReader,
-        packageName: String,
+    private fun readPackagesV2(
+        r: JsonReader,
         repoBase: String,
         source: AppSource,
         isReproducible: (String, Long) -> Boolean,
-    ): UnifiedApp? {
-        // reader at BEGIN_OBJECT of package
+        result: MutableList<UnifiedApp>,
+    ) {
+        r.beginObject()
+        while (r.hasNext()) {
+            val pkg = r.nextName()
+            try {
+                val app = parsePackageV2(r, pkg, repoBase, source, isReproducible)
+                if (app != null) result.add(app)
+            } catch (_: Exception) {
+                try {
+                    r.skipValue()
+                } catch (_: Exception) {
+                }
+            }
+        }
+        r.endObject()
+    }
+
+    companion object {
+        private const val PACKAGES_KEY = "packages"
+        private const val CONNECT_TIMEOUT_MS = 30000
+        private const val READ_TIMEOUT_MS = 120000
+        private const val DOWNLOAD_BUFFER_SIZE = 32 * 1024
+        private const val HTTP_OK_MIN = 200
+        private const val HTTP_OK_MAX = 299
+        private const val USER_AGENT = "ModernAppStore/1.0"
+    }
+
+    private class PackageBuilder {
         var metaName: String? = null
         var metaSummary: String? = null
         var metaDesc: String? = null
@@ -180,136 +202,52 @@ object FDroidRepository {
         var screenshots: List<String> = emptyList()
         var antiFeatures: List<String> = emptyList()
         val versions = mutableListOf<VersionCandidate>()
+    }
+
+    private class VersionBuilder {
+        var added: Long = 0L
+        var fileName: String? = null
+        var fileSize: Long = 0L
+        var fileSha256: String? = null
+        var signers: List<String> = emptyList()
+        var versionName: String? = null
+        var versionCode: Long = 0L
+        var targetSdk: Int? = null
+        var nativeCode: List<String> = emptyList()
+        var whatsNew: String? = null
+
+        fun build(): VersionCandidate? {
+            val name = fileName ?: return null
+            return VersionCandidate(
+                added = added,
+                fileName = name,
+                size = fileSize,
+                sha256 = fileSha256,
+                signers = signers,
+                versionName = versionName,
+                versionCode = versionCode,
+                targetSdk = targetSdk,
+                nativeCode = nativeCode,
+                whatsNew = whatsNew,
+            )
+        }
+    }
+
+    private fun parsePackageV2(
+        reader: JsonReader,
+        packageName: String,
+        repoBase: String,
+        source: AppSource,
+        isReproducible: (String, Long) -> Boolean,
+    ): UnifiedApp? {
+        // reader at BEGIN_OBJECT of package
+        val b = PackageBuilder()
 
         reader.beginObject()
         while (reader.hasNext()) {
             when (reader.nextName()) {
-                "metadata" -> {
-                    reader.beginObject()
-                    while (reader.hasNext()) {
-                        when (val mk = reader.nextName()) {
-                            "name" -> metaName = readLocalizedString(reader)
-                            "summary" -> metaSummary = readLocalizedString(reader)
-                            "description" -> metaDesc = readLocalizedString(reader)
-                            "authorName" -> author = nextStringOrNull(reader)
-                            "categories" -> categories = readStringArray(reader)
-                            "webSite" -> website = nextStringOrNull(reader)
-                            "sourceCode" -> sourceCode = nextStringOrNull(reader)
-                            "license" -> license = nextStringOrNull(reader)
-                            "added" -> added = nextLongOrNull(reader) ?: 0L
-                            "lastUpdated" -> lastUpdated = nextLongOrNull(reader) ?: 0L
-                            "icon" -> {
-                                // index-v2 icon names are repo-absolute ("/icons/foo.png");
-                                // don't prepend /icons/ again as the v1 branch has to.
-                                val iconName = readIconName(reader)
-                                if (iconName != null) iconUrl = repoBase + "/" + iconName.trimStart('/')
-                            }
-                            "featureGraphic" -> {
-                                val name = readIconName(reader)
-                                if (name != null) featureGraphic = repoBase + "/" + name.trimStart('/')
-                            }
-                            "screenshots" -> screenshots = readScreenshotsV2(reader, repoBase)
-                            // v2 states anti-features as a map of id -> localised reason;
-                            // the ids are what the UI shows, so only the keys are kept.
-                            "antiFeatures" -> antiFeatures = readObjectKeys(reader)
-                            else -> reader.skipValue()
-                        }
-                    }
-                    reader.endObject()
-                }
-                "versions" -> {
-                    reader.beginObject()
-                    while (reader.hasNext()) {
-                        reader.nextName() // version key
-                        try {
-                            reader.beginObject()
-                            var vAdded: Long = 0L
-                            var vFileName: String? = null
-                            var vFileSize: Long = 0L
-                            var vFileSha256: String? = null
-                            var vSigners: List<String> = emptyList()
-                            var vVersionName: String? = null
-                            var vVersionCode: Long = 0L
-                            var vTargetSdk: Int? = null
-                            var vNativeCode: List<String> = emptyList()
-                            var vWhatsNew: String? = null
-                            while (reader.hasNext()) {
-                                when (reader.nextName()) {
-                                    "added" -> vAdded = nextLongOrNull(reader) ?: 0L
-                                    "file" -> {
-                                        reader.beginObject()
-                                        while (reader.hasNext()) {
-                                            when (reader.nextName()) {
-                                                "name" -> vFileName = nextStringOrNull(reader)
-                                                "size" -> vFileSize = nextLongOrNull(reader) ?: 0L
-                                                "sha256" -> vFileSha256 = nextStringOrNull(reader)
-                                                else -> reader.skipValue()
-                                            }
-                                        }
-                                        reader.endObject()
-                                    }
-                                    "manifest" -> {
-                                        reader.beginObject()
-                                        while (reader.hasNext()) {
-                                            when (reader.nextName()) {
-                                                "versionName" -> vVersionName = nextStringOrNull(reader)
-                                                "versionCode" -> vVersionCode = nextLongOrNull(reader) ?: 0L
-                                                "usesSdk" -> {
-                                                    reader.beginObject()
-                                                    while (reader.hasNext()) {
-                                                        when (reader.nextName()) {
-                                                            "targetSdkVersion" -> vTargetSdk = nextIntOrNull(reader)
-                                                            else -> reader.skipValue()
-                                                        }
-                                                    }
-                                                    reader.endObject()
-                                                }
-                                                // The ABIs this APK carries native libraries for.
-                                                // Absent means it has none and runs anywhere.
-                                                "nativecode" -> vNativeCode = readStringArray(reader)
-                                                // signer.sha256 is the list of signing-certificate
-                                                // fingerprints this APK is expected to carry.
-                                                "signer" -> {
-                                                    reader.beginObject()
-                                                    while (reader.hasNext()) {
-                                                        when (reader.nextName()) {
-                                                            "sha256" -> vSigners = readStringArray(reader)
-                                                            else -> reader.skipValue()
-                                                        }
-                                                    }
-                                                    reader.endObject()
-                                                }
-                                                else -> reader.skipValue()
-                                            }
-                                        }
-                                        reader.endObject()
-                                    }
-                                    "whatsNew" -> vWhatsNew = readLocalizedString(reader)
-                                    else -> reader.skipValue()
-                                }
-                            }
-                            reader.endObject()
-                            val fileName = vFileName
-                            if (fileName != null) {
-                                versions += VersionCandidate(
-                                    added = vAdded,
-                                    fileName = fileName,
-                                    size = vFileSize,
-                                    sha256 = vFileSha256,
-                                    signers = vSigners,
-                                    versionName = vVersionName,
-                                    versionCode = vVersionCode,
-                                    targetSdk = vTargetSdk,
-                                    nativeCode = vNativeCode,
-                                    whatsNew = vWhatsNew,
-                                )
-                            }
-                        } catch (_: Exception) {
-                            try { reader.endObject() } catch (_: Exception) {}
-                        }
-                    }
-                    reader.endObject()
-                }
+                "metadata" -> readMetadataV2(reader, repoBase, b)
+                "versions" -> readVersionsV2(reader, b)
                 else -> reader.skipValue()
             }
         }
@@ -317,7 +255,7 @@ object FDroidRepository {
 
         // Nothing this device can run — drop the package rather than advertising an entry
         // that has no installable APK behind it.
-        val latest = selectVersion(versions, deviceAbis) ?: return null
+        val latest = selectVersion(b.versions, deviceAbis) ?: return null
 
         // index-v2 file names are repo-absolute ("/com.example_12.apk").
         val apkUrl = repoBase + "/" + latest.fileName.trimStart('/')
@@ -327,28 +265,176 @@ object FDroidRepository {
             expectedSigners = latest.signers,
             apkSha256 = latest.sha256,
             reproducible = isReproducible(packageName, latest.versionCode),
-            name = metaName ?: packageName.substringAfterLast('.'),
-            summary = metaSummary ?: "",
-            description = metaDesc ?: "",
-            iconUrl = iconUrl,
-            featureGraphic = featureGraphic,
-            screenshots = screenshots,
-            antiFeatures = antiFeatures,
-            author = author,
-            categories = categories,
+            name = b.metaName ?: packageName.substringAfterLast('.'),
+            summary = b.metaSummary ?: "",
+            description = b.metaDesc ?: "",
+            iconUrl = b.iconUrl,
+            featureGraphic = b.featureGraphic,
+            screenshots = b.screenshots,
+            antiFeatures = b.antiFeatures,
+            author = b.author,
+            categories = b.categories,
             versionName = latest.versionName,
             versionCode = latest.versionCode,
             sizeBytes = latest.size,
             apkUrl = apkUrl,
             targetSdk = latest.targetSdk,
-            license = license,
-            website = website,
-            sourceCode = sourceCode,
+            license = b.license,
+            website = b.website,
+            sourceCode = b.sourceCode,
             whatsNew = latest.whatsNew,
-            addedTimestamp = added,
-            lastUpdated = if (lastUpdated != 0L) lastUpdated else added,
+            addedTimestamp = b.added,
+            lastUpdated = if (b.lastUpdated != 0L) b.lastUpdated else b.added,
             repoUrl = repoBase
         )
+    }
+
+    private fun readMetadataV2(reader: JsonReader, repoBase: String, b: PackageBuilder) {
+        reader.beginObject()
+        while (reader.hasNext()) {
+            val key = reader.nextName()
+            if (!readMetadataScalar(reader, b, key)) {
+                readMetadataNested(reader, repoBase, b, key)
+            }
+        }
+        reader.endObject()
+    }
+
+    private fun readMetadataScalar(
+        reader: JsonReader,
+        b: PackageBuilder,
+        key: String,
+    ): Boolean {
+        when (key) {
+            "name" -> b.metaName = readLocalizedString(reader)
+            "summary" -> b.metaSummary = readLocalizedString(reader)
+            "description" -> b.metaDesc = readLocalizedString(reader)
+            "authorName" -> b.author = nextStringOrNull(reader)
+            "categories" -> b.categories = readStringArray(reader)
+            "webSite" -> b.website = nextStringOrNull(reader)
+            "sourceCode" -> b.sourceCode = nextStringOrNull(reader)
+            "license" -> b.license = nextStringOrNull(reader)
+            "added" -> b.added = nextLongOrNull(reader) ?: 0L
+            "lastUpdated" -> b.lastUpdated = nextLongOrNull(reader) ?: 0L
+            else -> return false
+        }
+        return true
+    }
+
+    private fun readMetadataNested(
+        reader: JsonReader,
+        repoBase: String,
+        b: PackageBuilder,
+        key: String,
+    ) {
+        when (key) {
+            "icon" -> b.iconUrl = repoAssetUrl(reader, repoBase)
+            "featureGraphic" -> b.featureGraphic = repoAssetUrl(reader, repoBase)
+            "screenshots" -> b.screenshots = readScreenshotsV2(reader, repoBase)
+            // v2 states anti-features as a map of id -> localised reason;
+            // the ids are what the UI shows, so only the keys are kept.
+            "antiFeatures" -> b.antiFeatures = readObjectKeys(reader)
+            else -> reader.skipValue()
+        }
+    }
+
+    private fun repoAssetUrl(reader: JsonReader, repoBase: String): String? {
+        // index-v2 icon names are repo-absolute ("/icons/foo.png");
+        // don't prepend /icons/ again as the v1 branch has to.
+        val iconName = readIconName(reader) ?: return null
+        return repoBase + "/" + iconName.trimStart('/')
+    }
+
+    private fun readVersionsV2(reader: JsonReader, b: PackageBuilder) {
+        reader.beginObject()
+        while (reader.hasNext()) {
+            reader.nextName() // version key
+            try {
+                readOneVersionV2(reader, b)
+            } catch (_: Exception) {
+                try {
+                    reader.endObject()
+                } catch (_: Exception) {
+                }
+            }
+        }
+        reader.endObject()
+    }
+
+    private fun readOneVersionV2(reader: JsonReader, b: PackageBuilder) {
+        reader.beginObject()
+        val v = VersionBuilder()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "added" -> v.added = nextLongOrNull(reader) ?: 0L
+                "file" -> readVersionFileV2(reader, v)
+                "manifest" -> readVersionManifestV2(reader, v)
+                "whatsNew" -> v.whatsNew = readLocalizedString(reader)
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+        v.build()?.let { b.versions += it }
+    }
+
+    private fun readVersionFileV2(reader: JsonReader, v: VersionBuilder) {
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "name" -> v.fileName = nextStringOrNull(reader)
+                "size" -> v.fileSize = nextLongOrNull(reader) ?: 0L
+                "sha256" -> v.fileSha256 = nextStringOrNull(reader)
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+    }
+
+    private fun readVersionManifestV2(reader: JsonReader, v: VersionBuilder) {
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "versionName" -> v.versionName = nextStringOrNull(reader)
+                "versionCode" -> v.versionCode = nextLongOrNull(reader) ?: 0L
+                "usesSdk" -> v.targetSdk = readTargetSdkV2(reader)
+                // The ABIs this APK carries native libraries for.
+                // Absent means it has none and runs anywhere.
+                "nativecode" -> v.nativeCode = readStringArray(reader)
+                // signer.sha256 is the list of signing-certificate
+                // fingerprints this APK is expected to carry.
+                "signer" -> v.signers = readSignerShaV2(reader)
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+    }
+
+    private fun readTargetSdkV2(reader: JsonReader): Int? {
+        reader.beginObject()
+        var target: Int? = null
+        while (reader.hasNext()) {
+            if (reader.nextName() == "targetSdkVersion") {
+                target = nextIntOrNull(reader)
+            } else {
+                reader.skipValue()
+            }
+        }
+        reader.endObject()
+        return target
+    }
+
+    private fun readSignerShaV2(reader: JsonReader): List<String> {
+        reader.beginObject()
+        var signers: List<String> = emptyList()
+        while (reader.hasNext()) {
+            if (reader.nextName() == "sha256") {
+                signers = readStringArray(reader)
+            } else {
+                reader.skipValue()
+            }
+        }
+        reader.endObject()
+        return signers
     }
 
     // ---- Version selection ----
@@ -413,227 +499,4 @@ object FDroidRepository {
         return nativeCode.mapNotNull { abi -> deviceAbis.indexOf(abi).takeIf { it >= 0 } }.minOrNull()
     }
 
-    // ---- Helpers ----
-
-    private fun readLocalizedString(reader: JsonReader): String? {
-        return when (reader.peek()) {
-            JsonToken.STRING -> reader.nextString()
-            JsonToken.BEGIN_OBJECT -> {
-                var first: String? = null
-                var enUs: String? = null
-                var en: String? = null
-                reader.beginObject()
-                while (reader.hasNext()) {
-                    val locale = reader.nextName()
-                    when (reader.peek()) {
-                        JsonToken.STRING -> {
-                            val v = reader.nextString()
-                            if (first == null) first = v
-                            if (locale == "en-US") enUs = v
-                            if (locale == "en") en = v
-                        }
-                        else -> reader.skipValue()
-                    }
-                }
-                reader.endObject()
-                enUs ?: en ?: first
-            }
-            else -> { reader.skipValue(); null }
-        }
-    }
-
-    private fun readIconName(reader: JsonReader): String? {
-        // icon can be: { "en-US": { "96": {"name":...} } } or { "en-US": {"name":...} }
-        return try {
-            if (reader.peek() != JsonToken.BEGIN_OBJECT) { reader.skipValue(); return null }
-            var found: String? = null
-            reader.beginObject()
-            while (reader.hasNext() && found == null) {
-                reader.nextName() // locale
-                found = findFirstNameInAnyNested(reader)
-            }
-            while (reader.hasNext()) { reader.nextName(); reader.skipValue() }
-            reader.endObject()
-            found
-        } catch (_: Exception) { null }
-    }
-
-    private fun findFirstNameInAnyNested(reader: JsonReader): String? {
-        // searches recursively for first object containing key "name" = String
-        return when (reader.peek()) {
-            JsonToken.BEGIN_OBJECT -> {
-                var found: String? = null
-                reader.beginObject()
-                while (reader.hasNext()) {
-                    val key = reader.nextName()
-                    if (key == "name" && reader.peek() == JsonToken.STRING) {
-                        val v = reader.nextString()
-                        if (found == null) found = v
-                        // keep consuming remaining to properly close
-                    } else {
-                        if (found == null && reader.peek() == JsonToken.BEGIN_OBJECT) {
-                            val inner = findFirstNameInAnyNested(reader)
-                            if (inner != null) found = inner
-                        } else if (found == null && reader.peek() == JsonToken.BEGIN_ARRAY) {
-                            reader.skipValue()
-                        } else {
-                            reader.skipValue()
-                        }
-                    }
-                }
-                reader.endObject()
-                found
-            }
-            JsonToken.BEGIN_ARRAY -> {
-                reader.beginArray()
-                var found: String? = null
-                while (reader.hasNext() && found == null) {
-                    found = findFirstNameInAnyNested(reader)
-                }
-                while (reader.hasNext()) reader.skipValue()
-                reader.endArray()
-                found
-            }
-            else -> { reader.skipValue(); null }
-        }
-    }
-
-    /**
-     * index-v2 `screenshots`: `{ phone: { "en-US": [ { name, sha256, size }, … ] }, … }`.
-     *
-     * Only the phone set is taken — the tablet, TV and wear sets are the same app shot on
-     * hardware the reader isn't holding, and mixing them makes the carousel jump between
-     * aspect ratios. Falls back to whichever set exists if there is no phone one.
-     */
-    private fun readScreenshotsV2(reader: JsonReader, repoBase: String): List<String> {
-        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
-            reader.skipValue()
-            return emptyList()
-        }
-        var phone: List<String> = emptyList()
-        var fallback: List<String> = emptyList()
-        reader.beginObject()
-        while (reader.hasNext()) {
-            val kind = reader.nextName()
-            val shots = readLocalizedFileList(reader, repoBase)
-            when {
-                kind == "phone" -> phone = shots
-                fallback.isEmpty() -> fallback = shots
-            }
-        }
-        reader.endObject()
-        return phone.ifEmpty { fallback }
-    }
-
-    /** `{ "en-US": [ { "name": "/pkg/en-US/phoneScreenshots/1.png" }, … ], … }`. */
-    private fun readLocalizedFileList(reader: JsonReader, repoBase: String): List<String> {
-        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
-            reader.skipValue()
-            return emptyList()
-        }
-        var enUs: List<String>? = null
-        var en: List<String>? = null
-        var first: List<String>? = null
-        reader.beginObject()
-        while (reader.hasNext()) {
-            val locale = reader.nextName()
-            val names = readFileNameArray(reader).map { repoBase + "/" + it.trimStart('/') }
-            if (first == null) first = names
-            when (locale) {
-                "en-US" -> enUs = names
-                "en" -> en = names
-            }
-        }
-        reader.endObject()
-        return enUs ?: en ?: first ?: emptyList()
-    }
-
-    /** `[ { "name": …, "sha256": …, "size": … }, … ]` reduced to the names. */
-    private fun readFileNameArray(reader: JsonReader): List<String> {
-        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
-            reader.skipValue()
-            return emptyList()
-        }
-        val names = mutableListOf<String>()
-        reader.beginArray()
-        while (reader.hasNext()) {
-            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
-                reader.skipValue()
-                continue
-            }
-            reader.beginObject()
-            while (reader.hasNext()) {
-                if (reader.nextName() == "name") {
-                    nextStringOrNull(reader)?.let { names.add(it) }
-                } else {
-                    reader.skipValue()
-                }
-            }
-            reader.endObject()
-        }
-        reader.endArray()
-        return names
-    }
-
-    /** Keys of an object whose values are of no interest, e.g. v2's anti-feature map. */
-    private fun readObjectKeys(reader: JsonReader): List<String> {
-        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
-            reader.skipValue()
-            return emptyList()
-        }
-        val keys = mutableListOf<String>()
-        reader.beginObject()
-        while (reader.hasNext()) {
-            keys.add(reader.nextName())
-            reader.skipValue()
-        }
-        reader.endObject()
-        return keys
-    }
-
-    private fun readStringArray(reader: JsonReader): List<String> {
-        return try {
-            if (reader.peek() != JsonToken.BEGIN_ARRAY) { reader.skipValue(); return emptyList() }
-            val list = mutableListOf<String>()
-            reader.beginArray()
-            while (reader.hasNext()) {
-                if (reader.peek() == JsonToken.STRING) list.add(reader.nextString()) else reader.skipValue()
-            }
-            reader.endArray()
-            list
-        } catch (_: Exception) { emptyList() }
-    }
-
-    private fun nextStringOrNull(reader: JsonReader): String? {
-        return try {
-            when (reader.peek()) {
-                JsonToken.STRING -> reader.nextString()
-                JsonToken.NULL -> { reader.nextNull(); null }
-                JsonToken.NUMBER -> reader.nextString()
-                else -> { reader.skipValue(); null }
-            }
-        } catch (_: Exception) { null }
-    }
-
-    private fun nextLongOrNull(reader: JsonReader): Long? {
-        return try {
-            when (reader.peek()) {
-                JsonToken.NUMBER -> reader.nextLong()
-                JsonToken.STRING -> reader.nextString().toLongOrNull()
-                JsonToken.NULL -> { reader.nextNull(); null }
-                else -> { reader.skipValue(); null }
-            }
-        } catch (_: Exception) { null }
-    }
-
-    private fun nextIntOrNull(reader: JsonReader): Int? {
-        return try {
-            when (reader.peek()) {
-                JsonToken.NUMBER -> reader.nextInt()
-                JsonToken.STRING -> reader.nextString().toIntOrNull()
-                JsonToken.NULL -> { reader.nextNull(); null }
-                else -> { reader.skipValue(); null }
-            }
-        } catch (_: Exception) { null }
-    }
 }

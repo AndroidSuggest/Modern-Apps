@@ -155,7 +155,7 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
         val start = position
         // The short way round, so a turn from 350 to 10 degrees goes through north rather
         // than the long way through south. Inert on the phone, where both ends are zero.
-        val turn = ((target.bearing - start.bearing + 540.0) % 360.0) - 180.0
+        val turn = angleDelta(start.bearing, target.bearing)
         Animatable(0f).animateTo(1f, tween(durationMs)) {
             val t = value.toDouble()
             position = CameraPosition(
@@ -314,7 +314,16 @@ private const val PITCH_DEG_PER_DP = 0.4
 private const val ROTATION_SENSITIVITY = 1.0f
 
 /** Bearing wrapped to 0–360: spinning past north continues through it rather than clamping. */
-internal fun wrapBearing(bearing: Double): Double = ((bearing % 360.0) + 360.0) % 360.0
+internal fun wrapBearing(bearing: Double): Double =
+    ((bearing % FULL_CIRCLE_DEG) + FULL_CIRCLE_DEG) % FULL_CIRCLE_DEG
+
+/** Shortest signed turn from [from] to [to], in degrees. */
+private fun angleDelta(from: Double, to: Double): Double =
+    ((to - from + ANGLE_WRAP_OFFSET_DEG) % FULL_CIRCLE_DEG) - HALF_CIRCLE_DEG
+
+private const val FULL_CIRCLE_DEG = 360.0
+private const val HALF_CIRCLE_DEG = 180.0
+private const val ANGLE_WRAP_OFFSET_DEG = 540.0
 
 /** Zoom levels covered by a quick-zoom drag across the full viewport height. */
 private const val QUICK_ZOOM_LEVELS_PER_VIEWPORT = 4.0

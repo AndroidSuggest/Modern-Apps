@@ -49,8 +49,8 @@ object MexPersistedQueryProvider {
         return try {
             val text = context.assets.open(ASSET_PATH).use { it.readBytes().toString(Charsets.UTF_8) }
             parsePersistIds(text)
-        } catch (t: Throwable) {
-            WhatsAppDiag.log(TAG, "persist-ids: failed to load $ASSET_PATH: ${t.message}")
+        } catch (expected: Throwable) {
+            WhatsAppDiag.log(TAG, "persist-ids: failed to load $ASSET_PATH: ${expected.message}")
             emptyMap()
         }
     }
@@ -64,7 +64,7 @@ object MexPersistedQueryProvider {
             val root = json.parseToJsonElement(jsonText).jsonObject
             val data = root["data"]?.jsonObject ?: return emptyMap()
             data.mapValues { (_, v) -> v.jsonPrimitive.content }
-        } catch (t: Throwable) {
+        } catch (ignored: Throwable) {
             emptyMap()
         }
     }

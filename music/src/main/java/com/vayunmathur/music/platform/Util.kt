@@ -43,16 +43,33 @@ import androidx.compose.ui.res.stringResource
 
 // Process-scope LRU for album thumbnails. Bounded so we don't retain decoded
 // bitmaps for the entire library; 64 entries covers a typical visible list.
-private val albumArtCache = LruCache<Uri, Bitmap>(64)
+private val albumArtCache = LruCache<Uri, Bitmap>(THUMBNAIL_CACHE_SIZE)
+
+private const val THUMBNAIL_CACHE_SIZE = 64
+private const val THUMBNAIL_EDGE = 300
+private const val PLACEHOLDER_FILL_FRACTION = 0.55f
+private const val COLLAGE_TILE_COUNT = 4
+private const val MILLIS_PER_SECOND = 1000L
+private const val SECONDS_PER_MINUTE = 60L
+private const val SECONDS_PER_HOUR = 3600L
+private const val DISC_TRACK_FACTOR = 1000
+private const val MIN_IMAGE_HEADER_BYTES = 12
+private const val RIFF_NAME_OFFSET = 0
+private const val RIFF_NAME_LENGTH = 4
+private const val RIFF_TYPE_OFFSET = 8
 
 fun getThumbnail(context: Context, uri: Uri): Bitmap? {
     return try {
         context.contentResolver.loadThumbnail(
             uri,
-            Size(300, 300),
+            Size(THUMBNAIL_EDGE, THUMBNAIL_EDGE),
             null
         )
-    } catch (_: Exception) {
+    } catch (_: IllegalArgumentException) {
+        null // Fallback to a placeholder
+    } catch (_: SecurityException) {
+        null // Fallback to a placeholder
+    } catch (_: UnsupportedOperationException) {
         null // Fallback to a placeholder
     }
 }
@@ -110,47 +127,62 @@ suspend fun getSongs(context: Context): List<Music> = withContext(Dispatchers.IO
             // the data, and NOCASE is closer to what a reader expects than Kotlin's case-sensitive
             // String.compareTo, which files everything lowercase after everything uppercase.
             "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC",
-        )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-            val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
-            val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
-            val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
-            val artistIDColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST_ID)
-            val albumIDColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
-            val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
-            val trackColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
-            val yearColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idColumn)
-                val uri = ContentUris.withAppendedId(
-                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id,
-                ).toString()
-                val rawTrack = cursor.getInt(trackColumn)
-                // MediaStore encodes multi-disc numbers as disc*1000 + track, so a value of
-                // 2005 is disc 2, track 5. Split them apart instead of discarding the disc.
-                val discNumber = if (rawTrack >= 1000) rawTrack / 1000 else 1
-                val trackNumber = if (rawTrack >= 1000) rawTrack % 1000 else rawTrack
-                songs.add(
-                    Music(
-                        id = id,
-                        title = cursor.getString(titleColumn),
-                        artist = cursor.getString(artistColumn),
-                        artistId = cursor.getLong(artistIDColumn),
-                        album = cursor.getString(albumColumn),
-                        albumId = cursor.getLong(albumIDColumn),
-                        uri = uri,
-                        duration = cursor.getLong(durationColumn),
-                        trackNumber = trackNumber,
-                        year = cursor.getInt(yearColumn).takeIf { it > 0 } ?: 0,
-                        discNumber = discNumber,
-                    )
-                )
-            }
-        }
-    } catch (e: Exception) {
+        )?.use { cursor -> songs.addAll(readSongs(cursor)) }
+    } catch (e: SecurityException) {
+        Log.e("MusicUtil", "Error querying songs", e)
+    } catch (e: IllegalArgumentException) {
+        Log.e("MusicUtil", "Error querying songs", e)
+    } catch (e: IllegalStateException) {
         Log.e("MusicUtil", "Error querying songs", e)
     }
     return@withContext songs
+}
+
+private class SongColumns(cursor: android.database.Cursor) {
+    val id = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+    val title = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+    val artist = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+    val album = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+    val artistId = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST_ID)
+    val albumId = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+    val duration = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+    val track = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
+    val year = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
+}
+
+private fun readSongs(cursor: android.database.Cursor): List<Music> {
+    val columns = SongColumns(cursor)
+    val songs = ArrayList<Music>()
+    while (cursor.moveToNext()) songs.add(readSong(cursor, columns))
+    return songs
+}
+
+private fun readSong(cursor: android.database.Cursor, columns: SongColumns): Music {
+    val id = cursor.getLong(columns.id)
+    val uri = ContentUris.withAppendedId(
+        MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id,
+    ).toString()
+    val (discNumber, trackNumber) = splitDiscTrack(cursor.getInt(columns.track))
+    return Music(
+        id = id,
+        title = cursor.getString(columns.title),
+        artist = cursor.getString(columns.artist),
+        artistId = cursor.getLong(columns.artistId),
+        album = cursor.getString(columns.album),
+        albumId = cursor.getLong(columns.albumId),
+        uri = uri,
+        duration = cursor.getLong(columns.duration),
+        trackNumber = trackNumber,
+        year = cursor.getInt(columns.year).takeIf { it > 0 } ?: 0,
+        discNumber = discNumber,
+    )
+}
+
+private fun splitDiscTrack(rawTrack: Int): Pair<Int, Int> {
+    // MediaStore encodes multi-disc numbers as disc*1000 + track, so a value of
+    // 2005 is disc 2, track 5. Split them apart instead of discarding the disc.
+    if (rawTrack < DISC_TRACK_FACTOR) return 1 to rawTrack
+    return (rawTrack / DISC_TRACK_FACTOR) to (rawTrack % DISC_TRACK_FACTOR)
 }
 
 suspend fun getAlbums(context: Context): List<Album> = withContext(Dispatchers.IO) {
@@ -186,7 +218,11 @@ suspend fun getAlbums(context: Context): List<Album> = withContext(Dispatchers.I
                 musicList.add(Album(id, title, contentUri))
             }
         }
-    } catch (e: Exception) {
+    } catch (e: SecurityException) {
+        Log.e("MusicUtil", "Error querying albums", e)
+    } catch (e: IllegalArgumentException) {
+        Log.e("MusicUtil", "Error querying albums", e)
+    } catch (e: IllegalStateException) {
         Log.e("MusicUtil", "Error querying albums", e)
     }
     return@withContext musicList
@@ -223,7 +259,11 @@ suspend fun getArtists(context: Context): List<Artist> = withContext(Dispatchers
                 artistList.add(Artist(id, title, contentUri))
             }
         }
-    } catch (e: Exception) {
+    } catch (e: SecurityException) {
+        Log.e("MusicUtil", "Error querying artists", e)
+    } catch (e: IllegalArgumentException) {
+        Log.e("MusicUtil", "Error querying artists", e)
+    } catch (e: IllegalStateException) {
         Log.e("MusicUtil", "Error querying artists", e)
     }
     return@withContext artistList
@@ -241,7 +281,7 @@ private fun AlbumArtPlaceholder(modifier: Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         IconAlbum(
-            modifier = Modifier.fillMaxSize(0.55f),
+            modifier = Modifier.fillMaxSize(PLACEHOLDER_FILL_FRACTION),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -293,7 +333,7 @@ fun AlbumArt(artUris: List<Uri>, modifier: Modifier) {
     LaunchedEffect(artUris) {
         withContext(Dispatchers.IO) {
             bitmap = if (artUris.size > 1) {
-                createCollageBitmap(context, artUris.take(4))
+                createCollageBitmap(context, artUris.take(COLLAGE_TILE_COUNT))
             } else {
                 // Fallback for single image
                 artUris.firstOrNull()?.let { getThumbnail(context, it) }
@@ -346,7 +386,14 @@ private inline fun <T> withAudioMetadata(
         retriever.setDataSource(context, uri)
         extract(retriever)
     }
-} catch (e: Exception) {
+} catch (e: IllegalArgumentException) {
+    Log.w("MusicUtil", "Could not read audio metadata", e)
+    default
+} catch (e: SecurityException) {
+    Log.w("MusicUtil", "Could not read audio metadata", e)
+    default
+} catch (e: IllegalStateException) {
+    Log.w("MusicUtil", "Could not read audio metadata", e)
     default
 }
 
@@ -356,10 +403,10 @@ fun getRealAudioDuration(context: Context, uri: Uri): Long =
     }
 
 fun formatDuration(durationMs: Long): String {
-    val totalSeconds = durationMs / 1000
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    val hours = totalSeconds / 3600
+    val totalSeconds = durationMs / MILLIS_PER_SECOND
+    val minutes = (totalSeconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE
+    val seconds = totalSeconds % SECONDS_PER_MINUTE
+    val hours = totalSeconds / SECONDS_PER_HOUR
 
     return if (hours > 0) {
         String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
@@ -460,10 +507,10 @@ private fun compressToJpeg(bitmap: Bitmap): ByteArray {
  * decode before it looks.
  */
 private fun sniffImageType(bytes: ByteArray): String? = when {
-    bytes.size < 12 -> null
+    bytes.size < MIN_IMAGE_HEADER_BYTES -> null
     bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> "image/jpeg"
     bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte() -> "image/png"
-    String(bytes, 0, 4, Charsets.ISO_8859_1) == "RIFF" &&
-        String(bytes, 8, 4, Charsets.ISO_8859_1) == "WEBP" -> "image/webp"
+    String(bytes, RIFF_NAME_OFFSET, RIFF_NAME_LENGTH, Charsets.ISO_8859_1) == "RIFF" &&
+        String(bytes, RIFF_TYPE_OFFSET, RIFF_NAME_LENGTH, Charsets.ISO_8859_1) == "WEBP" -> "image/webp"
     else -> null
 }

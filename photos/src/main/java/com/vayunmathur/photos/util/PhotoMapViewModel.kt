@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.photos.data.Photo
 import com.vayunmathur.photos.ui.MapCluster
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -90,7 +91,10 @@ class PhotoMapViewModel(application: Application) : AndroidViewModel(application
             val name = withContext(Dispatchers.IO) {
                 try {
                     geocoder.getFromLocation(lat, long, 1)?.firstOrNull()?.countryName ?: "Unknown"
-                } catch (e: Exception) {
+                } catch (e: IOException) {
+                    Log.e(TAG, "geocoder failed", e)
+                    "Unknown"
+                } catch (e: IllegalArgumentException) {
                     Log.e(TAG, "geocoder failed", e)
                     "Unknown"
                 }

@@ -65,6 +65,9 @@ class ScreenTimeGlanceWidget : GlanceAppWidget() {
         }
     }
 
+    // Broad catch is deliberate: a widget preview must never throw into the host,
+    // and Glance throws undocumented RuntimeExceptions.
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
         try {
             provideContent {
@@ -77,8 +80,8 @@ class ScreenTimeGlanceWidget : GlanceAppWidget() {
                     )
                 }
             }
-        } catch (t: Throwable) {
-            Log.e(TAG, "providePreview failed", t)
+        } catch (e: Exception) {
+            Log.e(TAG, "providePreview failed", e)
         }
     }
 }
@@ -140,5 +143,10 @@ private fun ScreenTimeWidgetContent(
 }
 
 private fun formatWidgetMinutes(minutes: Long): String =
-    if (minutes < 60) "${minutes}m"
-    else "${minutes / 60}h ${minutes % 60}m".trim()
+    if (minutes < MINUTES_PER_HOUR) {
+        "${minutes}m"
+    } else {
+        "${minutes / MINUTES_PER_HOUR}h ${minutes % MINUTES_PER_HOUR}m".trim()
+    }
+
+private const val MINUTES_PER_HOUR = 60L

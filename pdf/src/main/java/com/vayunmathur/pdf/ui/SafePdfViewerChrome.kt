@@ -92,7 +92,6 @@ internal fun SafePdfViewerChrome(
     listState: LazyListState,
     drawerState: DrawerState,
     pageViewer: @Composable (Modifier) -> Unit,
-    launchers: SafePdfLauncherSet,
     searchFocus: FocusRequester,
     onBack: () -> Unit,
     onShare: () -> Unit,

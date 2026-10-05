@@ -58,7 +58,9 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.util.sharedContainer
 import com.vayunmathur.library.util.sharedText
-import com.vayunmathur.fooddelivery.api.BitesApi
+import com.vayunmathur.fooddelivery.api.BitesCustomers
+import com.vayunmathur.fooddelivery.api.BitesMerchants
+import com.vayunmathur.fooddelivery.api.BitesRewards
 import com.vayunmathur.fooddelivery.data.CartItem
 import com.vayunmathur.fooddelivery.data.MerchantDetail
 import com.vayunmathur.fooddelivery.data.MenuItem
@@ -86,9 +88,9 @@ fun RestaurantScreen(
 
     LaunchedEffect(merchantId) {
         AppInit.awaitReady()
-        merchant = BitesApi.getMerchantDetail(merchantId)
+        merchant = BitesMerchants.getMerchantDetail(merchantId)
         loading = false
-        rewards = BitesApi.getCustomerMerchantRewards().firstOrNull { it.merchantId == merchantId }
+        rewards = BitesRewards.getCustomerMerchantRewards().firstOrNull { it.merchantId == merchantId }
     }
 
     RestaurantContent(
@@ -97,15 +99,15 @@ fun RestaurantScreen(
         rewards = rewards,
         onJoinLoyalty = { code ->
             scope.launch {
-                if (BitesApi.createCustomerMerchantLoyalty(code, merchantId)) {
-                    rewards = BitesApi.getCustomerMerchantRewards().firstOrNull { it.merchantId == merchantId }
+                if (BitesCustomers.createCustomerMerchantLoyalty(code, merchantId)) {
+                    rewards = BitesRewards.getCustomerMerchantRewards().firstOrNull { it.merchantId == merchantId }
                 }
             }
         },
         onLeaveLoyalty = {
             scope.launch {
-                if (BitesApi.deleteCustomerMerchantLoyalty(merchantId)) {
-                    rewards = BitesApi.getCustomerMerchantRewards().firstOrNull { it.merchantId == merchantId }
+                if (BitesCustomers.deleteCustomerMerchantLoyalty(merchantId)) {
+                    rewards = BitesRewards.getCustomerMerchantRewards().firstOrNull { it.merchantId == merchantId }
                 }
             }
         },

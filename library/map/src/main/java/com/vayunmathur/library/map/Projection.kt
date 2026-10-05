@@ -123,7 +123,7 @@ class Projection internal constructor(
         val w = d - psin * sy
         // Behind the eye — only past the horizon, which the pitch cap keeps off-screen. Push it
         // far off rather than dividing by a non-positive w.
-        if (w <= 0.0) return DpOffset((-1e5f).dp, (-1e5f).dp)
+        if (w <= 0.0) return DpOffset(OFF_SCREEN_DP.dp, OFF_SCREEN_DP.dp)
         val screenX = halfW + (fx * sx / w) * halfW
         val screenY = halfH + (fy * pcos * sy / w) * halfH
         return DpOffset(screenX.toFloat().dp, screenY.toFloat().dp)
@@ -155,7 +155,7 @@ class Projection internal constructor(
             // Invert clip.y = fy*cos*sy / (d - sin*sy) for sy, then clip.x for sx. The denominator
             // only vanishes at/above the horizon, which the pitch cap keeps off-screen; clamp to a
             // tiny positive so a query exactly on it maps far away rather than to a NaN.
-            val denom = (fy * pcos + ndcY * psin).coerceAtLeast(1e-6)
+            val denom = (fy * pcos + ndcY * psin).coerceAtLeast(MIN_PERSPECTIVE_DENOM)
             sy = ndcY * d / denom
             val w = d - psin * sy
             sx = ndcX * w / fx
@@ -184,7 +184,7 @@ class Projection internal constructor(
      */
     private fun globeScreenLocationFromPosition(position: GeoPoint): DpOffset {
         val (x, y, z) = globeProject(position.longitude, position.latitude)
-        if (z < 0.0) return DpOffset((-1e5f).dp, (-1e5f).dp)
+        if (z < 0.0) return DpOffset(OFF_SCREEN_DP.dp, OFF_SCREEN_DP.dp)
         return DpOffset((halfW + x).toFloat().dp, (halfH - y).toFloat().dp)
     }
 
@@ -253,7 +253,7 @@ class Projection internal constructor(
         val span = lons.max() - lons.min()
         val west: Double
         val east: Double
-        if (span > 180.0) {
+        if (span > ANTIMERIDIAN_SPAN_DEG) {
             west = pts.filter { it.longitude > 0 }.minOf { it.longitude }
             east = pts.filter { it.longitude < 0 }.maxOf { it.longitude }
         } else {
@@ -325,6 +325,11 @@ class Projection internal constructor(
      * `0` only when nothing is under the finger or no rendered surface is live.
      */
     fun pickMarker(xDp: Float, yDp: Float): Long = markerPick?.invoke(xDp, yDp) ?: 0L
+
+    companion object {
+        private const val OFF_SCREEN_DP = -1e5f
+        private const val MIN_PERSPECTIVE_DENOM = 1e-6
+    }
 }
 
 /**
@@ -337,12 +342,18 @@ class Projection internal constructor(
  */
 const val GLOBE_DETAIL_ZOOM = 8.0
 
+/** Half the full circle: antimeridian wrap threshold. */
+private const val ANTIMERIDIAN_SPAN_DEG = 180.0
+
 /** [longitude] wrapped to -180..180. */
 internal fun wrapLongitude(longitude: Double): Double {
-    var lon = (longitude + 180.0) % 360.0
-    if (lon < 0) lon += 360.0
-    return lon - 180.0
+    var lon = (longitude + LONGITUDE_WRAP_OFFSET) % LONGITUDE_FULL_CIRCLE
+    if (lon < 0) lon += LONGITUDE_FULL_CIRCLE
+    return lon - LONGITUDE_WRAP_OFFSET
 }
+
+private const val LONGITUDE_WRAP_OFFSET = 180.0
+private const val LONGITUDE_FULL_CIRCLE = 360.0
 
 /**
  * 3D unit-sphere point of ([longitude], [latitude]) in the basis facing
@@ -389,7 +400,9 @@ internal fun globeLonLat(
     val ex = x
     val ey = cy * y + sy * z
     val ez = -sy * y + cy * z
-    val lat = asin(ey.coerceIn(-1.0, 1.0)) * 180.0 / PI
-    val lon = centerLon + atan2(ex, ez) * 180.0 / PI
-    return GeoPoint(wrapLongitude(lon), lat.coerceIn(-90.0, 90.0))
+    val lat = asin(ey.coerceIn(-1.0, 1.0)) * LONGITUDE_WRAP_OFFSET / PI
+    val lon = centerLon + atan2(ex, ez) * LONGITUDE_WRAP_OFFSET / PI
+    return GeoPoint(wrapLongitude(lon), lat.coerceIn(-LAT_MAX, LAT_MAX))
 }
+
+private const val LAT_MAX = 90.0

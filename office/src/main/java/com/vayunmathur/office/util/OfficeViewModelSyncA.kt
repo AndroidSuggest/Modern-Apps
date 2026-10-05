@@ -10,23 +10,21 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.office.R
 import kotlin.io.encoding.Base64
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import com.vayunmathur.office.odf.*
-import com.vayunmathur.library.ui.odf.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import com.vayunmathur.office.R
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 // --- Sync A: identity + presence + live channel (split from OfficeViewModel.kt for file length) ---
 
@@ -41,7 +39,7 @@ internal fun OfficeViewModel.hasOnlineIdentity(): Boolean {
 /** User opted into online sharing: generates keys + device id and registers the device. */
 fun OfficeViewModel.enableOnlineSharing() {
     if (onlineEnabled.value) return
-    _onlineEnabled.value = true // lets the gated initSync() below actually generate keys + register
+    onlineEnabledMutable.value = true // lets the gated initSync() below actually generate keys + register
     initSync()
 }
 
@@ -62,17 +60,29 @@ internal fun OfficeViewModel.broadcastPresence(typing: Boolean) {
     val key = currentDocKey ?: return
     caretPresenceJob?.cancel()
     caretPresenceJob = viewModelScope.launch(Dispatchers.IO) {
-        delay(120)
+        delay(PRESENCE_DEBOUNCE_MS)
         runCatching {
             OfficeSync.sendPresence(docId, key, syncJson.encodeToString(
-                OfficePresence(OfficeSync.deviceId, myName(), typing = typing, ts = System.currentTimeMillis(), caret = localCaret, loc = localLoc)
+                OfficePresence(
+                    OfficeSync.deviceId,
+                    myName(),
+                    typing = typing,
+                    ts = System.currentTimeMillis(),
+                    caret = localCaret,
+                    loc = localLoc)
             ))
         }
     }
 }
 
+private const val PRESENCE_DEBOUNCE_MS = 120L
+private const val LIVE_PUSH_DEBOUNCE_MS = 150L
+private const val LIVE_POLL_MS = 1200L
+private const val PRESENCE_TICK_MS = 1000L
+private const val DEVICE_SUFFIX_LENGTH = 4
+
 /** Display name broadcast to collaborators (device-derived; not sensitive). */
-internal fun OfficeViewModel.myName(): String = "User " + OfficeSync.deviceId.takeLast(4)
+internal fun OfficeViewModel.myName(): String = "User " + OfficeSync.deviceId.takeLast(DEVICE_SUFFIX_LENGTH)
 
 /** Called after a local edit: debounced live push + a "typing" presence ping (online docs only). */
 internal fun OfficeViewModel.onLocalEdit() {
@@ -82,13 +92,19 @@ internal fun OfficeViewModel.onLocalEdit() {
     viewModelScope.launch(Dispatchers.IO) {
         runCatching {
             OfficeSync.sendPresence(docId, key, syncJson.encodeToString(
-                OfficePresence(OfficeSync.deviceId, myName(), typing = true, ts = System.currentTimeMillis(), caret = localCaret, loc = localLoc)
+                OfficePresence(
+                    OfficeSync.deviceId,
+                    myName(),
+                    typing = true,
+                    ts = System.currentTimeMillis(),
+                    caret = localCaret,
+                    loc = localLoc)
             ))
         }
     }
     livePushJob?.cancel()
     livePushJob = viewModelScope.launch(Dispatchers.IO) {
-        delay(150)
+        delay(LIVE_PUSH_DEBOUNCE_MS)
         runCatching { OfficeSync.init(getApplication()); syncDoc(docId, key) }
     }
 }
@@ -106,7 +122,7 @@ internal fun OfficeViewModel.startLive(docId: String, key: ByteArray) {
     livePollJob?.cancel()
     livePollJob = viewModelScope.launch(Dispatchers.IO) {
         while (isActive) {
-            kotlinx.coroutines.delay(1200)
+            kotlinx.coroutines.delay(LIVE_POLL_MS)
             runCatching { syncDoc(docId, key) }
             runCatching { pollTitle(docId, key) } // pick up an owner rename ~live
         }
@@ -116,12 +132,12 @@ internal fun OfficeViewModel.startLive(docId: String, key: ByteArray) {
     presenceTickJob?.cancel()
     presenceTickJob = viewModelScope.launch(Dispatchers.IO) {
         while (isActive) {
-            kotlinx.coroutines.delay(1000)
+            kotlinx.coroutines.delay(PRESENCE_TICK_MS)
             val now = System.currentTimeMillis()
-            val cur = _remotePresence.value
+            val cur = remotePresenceMutable.value
             val next = cur.filter { now - it.ts < PRESENCE_TTL_MS }
                 .map { if (it.typing && now - it.typingTs > TYPING_TTL_MS) it.copy(typing = false) else it }
-            if (next != cur) _remotePresence.value = next
+            if (next != cur) remotePresenceMutable.value = next
         }
     }
 }
@@ -143,53 +159,72 @@ internal fun OfficeViewModel.handleLive(raw: String, docId: String, key: ByteArr
     val msg = OfficeSync.parseLive(raw) ?: return
     when (msg.t) {
         "actions" -> viewModelScope.launch(Dispatchers.IO) {
-            syncMutex.withLock {
-                val tree = currentTree ?: return@withLock
-                val startVersion = editVersion
-                val localXml = exportFlat()
-                // Fold pending local edits into the tree FIRST (and push them), so an incoming or
-                // echoed op can't render a stale state and resurrect a char we just deleted.
-                val opsJson = tree.updateJson(localXml)
-                val hasLocal = opsJson != "[]"
-                if (hasLocal && OfficeRoles.canEdit(currentRole)) {
-                    val sig = Base64.encode(OfficeSync.sign(opsJson.encodeToByteArray()))
-                    val signed = syncJson.encodeToString(SignedOp(OfficeSync.deviceId, sig, opsJson))
-                    if (!OfficeSync.liveAppend(docId, key, listOf(signed))) OfficeSync.appendDocActions(docId, key, listOf(signed))
-                }
-                var changed = hasLocal
-                for (blob in msg.actions) {
-                    val plain = OfficeSync.decrypt(key, blob) ?: continue
-                    if (applySignedOp(tree, plain)) changed = true
-                }
-                if (changed) {
-                    val ds = DataStoreUtils.getInstance(getApplication())
-                    ds.setLong("crdtCursor:$docId", msg.seq.toLong())
-                    saveTree(ds, docId, tree)
-                    val merged = tree.render()
-                    if (merged != localXml) {
-                        val doc = parseFlat(merged)
-                        if (doc != null) withContext(Dispatchers.Main) {
-                            // Don't clobber a keystroke the user made while we were merging.
-                            if (editVersion == startVersion) {
-                                applyingRemote = true
-                                updateDocument(doc)
-                                applyingRemote = false
-                            }
-                        }
-                    }
-                }
-            }
+            syncMutex.withLock { applyLiveActions(msg, docId, key) }
         }
-        "presence" -> {
-            val plain = OfficeSync.decrypt(key, msg.data) ?: return
-            val p = runCatching { syncJson.decodeFromString<OfficePresence>(plain) }.getOrNull() ?: return
-            if (p.id == OfficeSync.deviceId) return
-            val now = System.currentTimeMillis()
-            val prev = _remotePresence.value.firstOrNull { it.id == p.id }
-            val typingTs = if (p.typing) now else (prev?.typingTs ?: 0L)
-            // Keep peers for up to 5 minutes; the ticker prunes/clears typing over time.
-            _remotePresence.value = _remotePresence.value.filter { it.id != p.id && now - it.ts < PRESENCE_TTL_MS } +
-                p.copy(ts = now, typingTs = typingTs)
+        "presence" -> applyLivePresence(msg, key)
+    }
+}
+
+/** Merges locally-pending edits plus incoming live ops into the CRDT (caller holds [syncMutex]). */
+internal suspend fun OfficeViewModel.applyLiveActions(msg: OfficeSync.LiveMsg, docId: String, key: ByteArray) {
+    val tree = currentTree ?: return
+    val startVersion = editVersion
+    val localXml = exportFlat()
+    // Fold pending local edits into the tree FIRST (and push them), so an incoming or
+    // echoed op can't render a stale state and resurrect a char we just deleted.
+    val opsJson = tree.updateJson(localXml)
+    val hasLocal = opsJson != "[]"
+    if (hasLocal && OfficeRoles.canEdit(currentRole)) pushLiveOps(docId, key, opsJson)
+    var changed = hasLocal
+    for (blob in msg.actions) {
+        val plain = OfficeSync.decrypt(key, blob) ?: continue
+        if (applySignedOp(tree, plain)) changed = true
+    }
+    if (changed) mergeLiveTree(docId, msg.seq, tree, localXml, startVersion)
+}
+
+/** Pushes local ops over the live channel, falling back to HTTP when the socket is down. */
+internal suspend fun OfficeViewModel.pushLiveOps(docId: String, key: ByteArray, opsJson: String) {
+    val sig = Base64.encode(OfficeSync.sign(opsJson.encodeToByteArray()))
+    val signed = syncJson.encodeToString(SignedOp(OfficeSync.deviceId, sig, opsJson))
+    if (!OfficeSync.liveAppend(docId, key, listOf(signed))) OfficeSync.appendDocActions(
+        docId,
+        key,
+        listOf(signed))
+}
+
+/** Persists the merged tree and re-renders it into the editor when it changed. */
+internal suspend fun OfficeViewModel.mergeLiveTree(
+    docId: String,
+    seq: Int,
+    tree: DocumentTreeCrdt,
+    localXml: String,
+    startVersion: Int,
+) {
+    val ds = DataStoreUtils.getInstance(getApplication())
+    ds.setLong("crdtCursor:$docId", seq.toLong())
+    saveTree(ds, docId, tree)
+    val merged = tree.render()
+    if (merged == localXml) return
+    val doc = parseFlat(merged) ?: return
+    withContext(Dispatchers.Main) {
+        // Don't clobber a keystroke the user made while we were merging.
+        if (editVersion == startVersion) {
+            applyingRemote = true
+            updateDocument(doc)
+            applyingRemote = false
         }
     }
+}
+
+internal fun OfficeViewModel.applyLivePresence(msg: OfficeSync.LiveMsg, key: ByteArray) {
+    val plain = OfficeSync.decrypt(key, msg.data) ?: return
+    val p = runCatching { syncJson.decodeFromString<OfficePresence>(plain) }.getOrNull() ?: return
+    if (p.id == OfficeSync.deviceId) return
+    val now = System.currentTimeMillis()
+    val prev = remotePresenceMutable.value.firstOrNull { it.id == p.id }
+    val typingTs = if (p.typing) now else (prev?.typingTs ?: 0L)
+    // Keep peers for up to 5 minutes; the ticker prunes/clears typing over time.
+    val others = remotePresenceMutable.value.filter { it.id != p.id && now - it.ts < PRESENCE_TTL_MS }
+    remotePresenceMutable.value = others + p.copy(ts = now, typingTs = typingTs)
 }

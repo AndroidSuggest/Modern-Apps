@@ -146,25 +146,41 @@ object RushHourSolver {
             var found = 0
             for (i in 0 until n) {
                 if (fixed[i]) continue
-                for (direction in intArrayOf(-1, 1)) {
-                    var pos = positionOf(state, i)
-                    while (true) {
-                        val entering = if (direction < 0) pos - 1 else pos + length[i]
-                        if (entering < 0 || entering >= limit[i]) break
-                        var blocked = false
-                        for (c in 0 until crossLength[i]) {
-                            blocked = if (horizontal[i]) occupied[index(entering, cross[i] + c)]
-                            else occupied[index(cross[i] + c, entering)]
-                            if (blocked) break
-                        }
-                        if (blocked) break
-                        pos += direction
-                        out[found++] = withPosition(state, i, pos)
-                    }
-                }
+                found += slideMoves(state, i, out, found)
             }
             fill(state, false)
             return found
+        }
+
+        private fun slideMoves(state: Long, i: Int, out: LongArray, found: Int): Int {
+            var count = 0
+            for (direction in intArrayOf(-1, 1)) {
+                count += slideDirection(state, i, direction, out, found + count)
+            }
+            return count
+        }
+
+        private fun slideDirection(state: Long, i: Int, direction: Int, out: LongArray, found: Int): Int {
+            var count = 0
+            var pos = positionOf(state, i)
+            while (true) {
+                val entering = if (direction < 0) pos - 1 else pos + length[i]
+                if (isBlocked(i, entering)) break
+                pos += direction
+                out[found + count] = withPosition(state, i, pos)
+                count++
+            }
+            return count
+        }
+
+        private fun isBlocked(i: Int, entering: Int): Boolean {
+            if (entering < 0 || entering >= limit[i]) return true
+            for (c in 0 until crossLength[i]) {
+                val isOccupied = if (horizontal[i]) occupied[index(entering, cross[i] + c)]
+                else occupied[index(cross[i] + c, entering)]
+                if (isOccupied) return true
+            }
+            return false
         }
 
         fun startState(level: LevelData): Long {

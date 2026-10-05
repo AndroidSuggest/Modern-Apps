@@ -25,46 +25,7 @@ class RcsMsrpLoopbackTest {
         val port = server.localPort
         val received = AtomicReference<String>()
         val done = CountDownLatch(1)
-        val peer = Thread {
-            runCatching {
-                server.use { srv ->
-                    srv.soTimeout = 15_000
-                    val socket = srv.accept()
-                    socket.use { s ->
-                        s.soTimeout = 15_000
-                        val input = s.getInputStream().bufferedReader(Charsets.UTF_8)
-                        val headLines = mutableListOf<String>()
-                        var line = input.readLine()
-                        var guard = 0
-                        while (line != null && line.isNotEmpty() && guard++ < 32) {
-                            headLines.add(line)
-                            line = input.readLine()
-                        }
-                        val txid = headLines.firstOrNull()
-                            ?.split(" ")?.getOrNull(1).orEmpty()
-                        // Read body through the end marker.
-                        val body = StringBuilder()
-                        while (true) {
-                            val l = input.readLine() ?: break
-                            if (l.startsWith("-------$txid")) break
-                            body.append(l).append("\r\n")
-                        }
-                        received.set(headLines.joinToString("\r\n") + "\n" + body.toString())
-                        val out = s.getOutputStream()
-                        out.write(
-                            RcsMsrpFraming.buildErrorResponse(
-                                toPath = "",
-                                txid = txid,
-                                code = 200,
-                                reason = "OK",
-                            ),
-                        )
-                        out.flush()
-                    }
-                }
-            }.onFailure { received.set("ERROR: $it") }
-            done.countDown()
-        }
+        val peer = startPeer(server, received, done)
         peer.isDaemon = true
         peer.start()
 
@@ -77,6 +38,68 @@ class RcsMsrpLoopbackTest {
         )
         assertEquals(1, chunks.size)
         val chunk = chunks.single()
+        val acked = sendChunkAndAwaitAck(port, chunk)
+        assertTrue(done.await(15, TimeUnit.SECONDS), "peer thread finished")
+        val got = received.get()
+        assertTrue(got.contains("Byte-Range: 1-14/14"), "peer saw full range: $got")
+        assertTrue(acked, "client saw 200 OK")
+    }
+
+    /** Loopback peer: read one SEND, reply 200 OK. */
+    private fun startPeer(
+        server: ServerSocket,
+        received: AtomicReference<String>,
+        done: CountDownLatch,
+    ): Thread {
+        return Thread {
+            runCatching {
+                server.use { srv ->
+                    srv.soTimeout = 15_000
+                    val socket = srv.accept()
+                    socket.use { s ->
+                        servePeer(s, received)
+                    }
+                }
+            }.onFailure { received.set("ERROR: $it") }
+            done.countDown()
+        }
+    }
+
+    /** Read the SEND head + body, then reply 200 OK. */
+    private fun servePeer(s: java.net.Socket, received: AtomicReference<String>) {
+        s.soTimeout = 15_000
+        val input = s.getInputStream().bufferedReader(Charsets.UTF_8)
+        val headLines = mutableListOf<String>()
+        var line = input.readLine()
+        var guard = 0
+        while (line != null && line.isNotEmpty() && guard++ < 32) {
+            headLines.add(line)
+            line = input.readLine()
+        }
+        val txid = headLines.firstOrNull()
+            ?.split(" ")?.getOrNull(1).orEmpty()
+        // Read body through the end marker.
+        val body = StringBuilder()
+        while (true) {
+            val l = input.readLine()
+            if (l == null || l.startsWith("-------$txid")) break
+            body.append(l).append("\r\n")
+        }
+        received.set(headLines.joinToString("\r\n") + "\n" + body.toString())
+        val out = s.getOutputStream()
+        out.write(
+            RcsMsrpFraming.buildErrorResponse(
+                toPath = "",
+                txid = txid,
+                code = 200,
+                reason = "OK",
+            ),
+        )
+        out.flush()
+    }
+
+    /** Send one chunk and await the 200 OK. */
+    private fun sendChunkAndAwaitAck(port: Int, chunk: RcsMsrpFraming.OutChunk): Boolean {
         var acked = false
         runCatching {
             java.net.Socket().use { s ->
@@ -87,19 +110,19 @@ class RcsMsrpLoopbackTest {
                 out.flush()
                 val input = s.getInputStream().bufferedReader(Charsets.UTF_8)
                 var guard = 0
-                while (guard++ < 16) {
+                var done = false
+                while (guard++ < 16 && !done) {
                     val reply = input.readLine() ?: break
-                    val parsed = RcsMsrpFraming.parseResponseStart(reply) ?: continue
-                    if (parsed.first == chunk.txid) {
+                    val parsed = RcsMsrpFraming.parseResponseStart(reply)
+                    if (parsed != null && parsed.first == chunk.txid) {
                         acked = parsed.second in 200..299
-                        break
+                        done = true
                     }
                 }
             }
         }
-        assertTrue(done.await(15, TimeUnit.SECONDS), "peer thread finished")
-        val got = received.get()
-        assertTrue(got.contains("Byte-Range: 1-14/14"), "peer saw full range: $got")
+        return acked
+    }
         assertTrue(got.contains("hello loopback"), "peer saw body: $got")
         assertTrue(acked, "client saw 200 for its txid")
     }

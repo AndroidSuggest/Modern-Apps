@@ -69,7 +69,9 @@ internal suspend fun CommunicateRepository.loadSignalThreads(context: Context): 
     }.getOrDefault(emptyList())
 }
 
-internal suspend fun CommunicateRepository.loadSignalMessages(context: Context, conversationId: String): List<SmsMessage> =
+internal suspend fun CommunicateRepository.loadSignalMessages(
+    context: Context,
+    conversationId: String): List<SmsMessage> =
     runCatching {
         val db = SignalDatabase.getDatabase(context)
         db.cachedMessageDao().getForConversation(conversationId).map { m ->
@@ -196,6 +198,9 @@ suspend fun CommunicateRepository.createSignalGroup(
 
 fun CommunicateRepository.isSignalConnected(): Boolean = SignalClient.isConnected()
 
+private val uuidPattern =
+    uuidPattern
+
 /**
  * Build a Signal recipient id from a phone number / address / ACI.
  * Already-qualified identifiers (contain @ or look like a UUID ACI/PNI) pass through.
@@ -206,7 +211,7 @@ internal fun CommunicateRepository.toSignalRecipient(context: Context, address: 
     // Group or already-qualified identifier.
     if (address.contains("@")) return address
     // UUID-shaped ACI/PNI.
-    if (address.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))) return address
+    if (address.matches(uuidPattern)) return address
     val region = runCatching {
         val tm = context.getSystemService(TelephonyManager::class.java)
         (tm?.simCountryIso?.takeIf { it.isNotBlank() } ?: tm?.networkCountryIso)?.uppercase()
@@ -224,18 +229,25 @@ private fun CommunicateRepository.signalJidToDisplayAddress(conversationId: Stri
     // Group ids contain ':' or look like UUIDs — keep as-is for group rendering.
     if (conversationId.contains(":") || conversationId.contains("group")) return conversationId
     // ACI/PNI UUIDs are not phone numbers — keep as-is; UI will resolve via contacts.
-    if (conversationId.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))) return conversationId
+    if (conversationId.matches(uuidPattern)) return conversationId
     return conversationId
 }
 
-private fun CommunicateRepository.signalDisplayName(context: Context, conversationId: String, sd: SignalServiceData?): String? {
+private fun CommunicateRepository.signalDisplayName(
+    context: Context,
+    conversationId: String,
+    sd: SignalServiceData?): String? {
     // Group name from conversation metadata already handled; use senderName or contact lookup.
     if (conversationId.matches(Regex("[0-9a-fA-F]{8}-.*"))) return sd?.senderName
     return findContactName(context, conversationId) ?: sd?.senderName ?: conversationId
 }
 
 /** Insert an outgoing Signal message into the local cache so it shows in our own thread. */
-internal suspend fun CommunicateRepository.cacheOutgoingSignal(context: Context, conversationId: String, body: String, messageId: String) {
+internal suspend fun CommunicateRepository.cacheOutgoingSignal(
+    context: Context,
+    conversationId: String,
+    body: String,
+    messageId: String) {
     runCatching {
         val db = SignalDatabase.getDatabase(context)
         val now = System.currentTimeMillis()
