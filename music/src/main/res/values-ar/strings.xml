@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="nav_home">الصفحة الرئيسية</string>
+    <string name="label_albums">الألبومات</string>
 </resources>
