@@ -2,11 +2,9 @@ package com.vayunmathur.openassistant.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
-import com.vayunmathur.library.ui.BackupButtons
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.DetailLazyColumn
@@ -32,10 +30,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.vayunmathur.library.ui.BackupButtons
-import com.vayunmathur.library.ui.IconDelete
-import com.vayunmathur.library.room.SqlCipherDbCodec
-import com.vayunmathur.library.util.DatabaseHelper
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.openassistant.R
@@ -81,16 +75,6 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AssistantViewModel) 
                 }
             }
         },
-        // Passed in rather than built inside the screen: the backup buttons need the
-        // database passphrase, which only exists on a real device.
-        backupButtons = {
-            val pass = remember { DatabaseHelper(context).getPassphrase() }
-            BackupButtons(
-                dbConfigs = listOf("passwords-db" to pass),
-                dbCodec = SqlCipherDbCodec,
-                extraFiles = emptyList()
-            )
-        },
     )
 }
 
@@ -103,15 +87,12 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AssistantViewModel) 
 fun SettingsScreen(
     state: SettingsUiState,
     actions: SettingsActions,
-    /** Top-bar backup/restore buttons; empty in a preview, which has no database. */
-    backupButtons: @Composable RowScope.() -> Unit = {},
 ) {
     val memories = state.memories
 
     DetailLazyColumn(
         title = stringResource(R.string.settings_title),
         onNavigateBack = { actions.back() },
-        actions = backupButtons,
         scrollBehavior = appBarScrollBehavior(),
     ) {
             item {

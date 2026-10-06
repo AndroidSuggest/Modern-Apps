@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.vayunmathur.games.logicgate.platform.AppBackupAgent
 import com.vayunmathur.games.logicgate.platform.LogicViewModel
 import com.vayunmathur.games.logicgate.ui.GamePage
 import com.vayunmathur.games.logicgate.ui.ProgressionPage
@@ -26,7 +25,6 @@ fun Navigation(viewModel: LogicViewModel) {
             entry<Route.Game>(metadata = FullscreenPage()) { GamePage(backStack, viewModel, it.levelId) }
             entry<Route.GameCenter> {
                 GameCenterScreen(
-                    backupAgent = AppBackupAgent(),
                     manager = viewModel.achievementsManager,
                     onBack = { backStack.pop() }
                 )

@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.vayunmathur.games.chess.util.AppBackupAgent
 import com.vayunmathur.games.chess.util.ChessViewModel
 import com.vayunmathur.games.chess.util.LearnViewModel
 import com.vayunmathur.games.chess.util.PuzzleViewModel
@@ -94,7 +93,6 @@ class MainActivity : ComponentActivity() {
                 }
                 entry<Route.GameCenter> {
                     GameCenterScreen(
-                        backupAgent = AppBackupAgent(),
                         manager = achievementsManager,
                         onBack = { backStack.pop() }
                     )

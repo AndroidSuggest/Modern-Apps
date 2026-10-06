@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.vayunmathur.games.sudoku.platform.AppBackupAgent
 import com.vayunmathur.games.sudoku.platform.SudokuViewModel
 import com.vayunmathur.games.sudoku.ui.GameScreen
 import com.vayunmathur.games.sudoku.ui.HomeScreen
@@ -28,7 +27,6 @@ fun Navigation(viewModel: SudokuViewModel) {
             entry<Route.Game>(metadata = FullscreenPage()) { GameScreen(backStack, viewModel, it.config) }
             entry<Route.GameCenter> {
                 GameCenterScreen(
-                    backupAgent = AppBackupAgent(),
                     manager = viewModel.achievementsManager,
                     onBack = { backStack.pop() },
                 )

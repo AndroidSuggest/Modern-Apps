@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.vayunmathur.games.minesweeper.platform.AppBackupAgent
 import com.vayunmathur.games.minesweeper.platform.MinesweeperViewModel
 import com.vayunmathur.games.minesweeper.ui.GameScreen
 import com.vayunmathur.games.minesweeper.ui.HomeScreen
@@ -28,7 +27,6 @@ fun Navigation(viewModel: MinesweeperViewModel) {
             entry<Route.Game>(metadata = FullscreenPage()) { GameScreen(backStack, viewModel, it.config) }
             entry<Route.GameCenter> {
                 GameCenterScreen(
-                    backupAgent = AppBackupAgent(),
                     manager = viewModel.achievementsManager,
                     onBack = { backStack.pop() },
                 )

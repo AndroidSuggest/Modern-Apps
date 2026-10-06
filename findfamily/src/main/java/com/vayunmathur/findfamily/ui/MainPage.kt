@@ -69,7 +69,6 @@ import com.vayunmathur.library.ui.rememberBottomSheetScaffoldState
 import com.vayunmathur.library.ui.rememberMessenger
 import com.vayunmathur.library.ui.rememberPermissionRequest
 import com.vayunmathur.library.ui.rememberSliderState
-import com.vayunmathur.library.room.SqlCipherDbCodec
 import com.vayunmathur.findfamily.ui.dialogs.interactionSourceClickable
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
@@ -123,7 +122,6 @@ import com.vayunmathur.findfamily.util.PersonActions
 import com.vayunmathur.findfamily.util.PersonUiState
 import com.vayunmathur.findfamily.util.Platform
 import com.vayunmathur.findfamily.util.UwbSessionManager
-import com.vayunmathur.library.ui.BackupButtons
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.map.rememberCameraState
 import com.vayunmathur.library.util.NavBackStack
@@ -280,13 +278,6 @@ fun MainPage(
         familyActions = familyActions,
         personActions = personActions,
         actions = mainActions,
-        backupButtons = {
-            BackupButtons(
-                dbConfigs = listOf("passwords-db" to ffViewModel.backupPassphrase),
-                dbCodec = SqlCipherDbCodec,
-                extraFiles = emptyList()
-            )
-        },
         historyScrubber = {
             if (historyMode) {
                 HistoryScrubber(

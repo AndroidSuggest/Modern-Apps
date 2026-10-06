@@ -43,7 +43,6 @@ import com.vayunmathur.games.unblockjam.data.Block
 import com.vayunmathur.games.unblockjam.data.DailyLevelGenerator
 import com.vayunmathur.games.unblockjam.data.LevelData
 import com.vayunmathur.games.unblockjam.data.LevelPack
-import com.vayunmathur.games.unblockjam.platform.AppBackupAgent
 import com.vayunmathur.games.unblockjam.platform.DailyProgress
 import com.vayunmathur.games.unblockjam.platform.GameActions
 import com.vayunmathur.games.unblockjam.platform.GameUiState
@@ -123,7 +122,6 @@ fun Navigation(viewModel: UnblockJamViewModel) {
             }
             entry<Route.GameCenter> {
                 GameCenterScreen(
-                    backupAgent = AppBackupAgent(),
                     manager = viewModel.achievementsManager,
                     onBack = { backStack.pop() }
                 )

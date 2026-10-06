@@ -12,7 +12,6 @@ import com.vayunmathur.games.hub.util.DashboardActions
 import com.vayunmathur.games.hub.util.DashboardUiState
 import com.vayunmathur.games.hub.util.GameIconResolver
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModel
-import com.vayunmathur.library.ui.BackupButtons
 
 /** Binds [GameHubViewModel] to the stateless [DashboardScreen]. */
 @Composable
@@ -22,8 +21,6 @@ fun DashboardPage(
     onProfileClick: () -> Unit,
     onActivityClick: () -> Unit,
     onGamesClick: () -> Unit,
-    dbConfigs: List<Pair<String, String>>,
-    datastoreNames: List<String>,
     modifier: Modifier = Modifier,
     ownsGameMorphKeys: Boolean = true
 ) {
@@ -81,7 +78,6 @@ fun DashboardPage(
             override fun playGame(game: HubGameEntity) = launchGame(context, game)
         },
         iconFor = { game -> iconCache.getOrPut(game.packageName) { GameIconResolver.resolveAppIcon(context, game.packageName) } },
-        topBarActions = { BackupButtons(dbConfigs = dbConfigs, datastoreNames = datastoreNames) },
         ownsGameMorphKeys = ownsGameMorphKeys,
         modifier = modifier,
     )

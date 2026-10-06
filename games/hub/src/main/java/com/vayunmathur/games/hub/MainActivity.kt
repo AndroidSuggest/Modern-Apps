@@ -22,7 +22,6 @@ import com.vayunmathur.library.ui.IconSportsEsports
 import com.vayunmathur.library.ui.PagerTab
 import com.vayunmathur.library.ui.TabStyle
 import com.vayunmathur.library.ui.TabbedPagerScaffold
-import com.vayunmathur.games.hub.data.DB_NAME
 import com.vayunmathur.games.hub.data.GamesHubRepository
 import com.vayunmathur.games.hub.ui.screens.AchievementsScreen
 import com.vayunmathur.games.hub.ui.screens.ActivityFeedScreen
@@ -34,7 +33,6 @@ import com.vayunmathur.games.hub.ui.screens.SettingsScreen
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModel
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModelFactory
 import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.util.DatabaseHelper
 import com.vayunmathur.library.util.ListDetailPage
 import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
@@ -47,8 +45,6 @@ import kotlinx.serialization.Serializable
 
 class MainActivity : ComponentActivity() {
 
-    private var dbConfigs: List<Pair<String, String>> = emptyList()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -56,12 +52,6 @@ class MainActivity : ComponentActivity() {
         var ready by mutableStateOf(false)
 
         val repository = GamesHubRepository.get(application)
-        dbConfigs = try {
-            val pass = DatabaseHelper(this).getPassphrase()
-            listOf(DB_NAME to pass)
-        } catch (_: Exception) {
-            emptyList()
-        }
         val factory = GameHubViewModelFactory(application, repository)
         val vm: GameHubViewModel by viewModels { factory }
 
@@ -70,7 +60,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             DynamicTheme {
                 if (ready) {
-                    HubNavigation(vm, dbConfigs)
+                    HubNavigation(vm)
                 } else {
                     Box(Modifier.fillMaxSize())
                 }
@@ -90,14 +80,13 @@ sealed interface MainRoute : NavKey {
 
 @Composable
 fun HubNavigation(
-    viewModel: GameHubViewModel,
-    dbConfigs: List<Pair<String, String>>
+    viewModel: GameHubViewModel
 ) {
     val backStack = rememberNavBackStack<MainRoute>(MainRoute.Main)
 
     MainNavigation(backStack) {
         entry<MainRoute.Main>(metadata = ListPage()) {
-            HubTabs(viewModel = viewModel, backStack = backStack, dbConfigs = dbConfigs)
+            HubTabs(viewModel = viewModel, backStack = backStack)
         }
         entry<MainRoute.GameDetail>(metadata = ListDetailPage() + MorphPage()) { route ->
             GameDetailScreen(
@@ -119,9 +108,7 @@ fun HubNavigation(
         entry<MainRoute.Settings> {
             SettingsScreen(
                 viewModel = viewModel,
-                backStack = backStack,
-                dbConfigs = dbConfigs,
-                datastoreNames = listOf("datastore_default")
+                backStack = backStack
             )
         }
     }
@@ -131,7 +118,6 @@ fun HubNavigation(
 private fun HubTabs(
     viewModel: GameHubViewModel,
     backStack: NavBackStack<MainRoute>,
-    dbConfigs: List<Pair<String, String>>,
 ) {
     val pagerState = rememberPagerState(pageCount = { 4 })
     val scope = rememberCoroutineScope()
@@ -148,9 +134,7 @@ private fun HubTabs(
                 onProfileClick = { scope.launch { pagerState.animateScrollToPage(3) } },
                 onActivityClick = { backStack.add(MainRoute.Activity) },
                 onGamesClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-                ownsGameMorphKeys = pagerState.settledPage == 0,
-                dbConfigs = dbConfigs,
-                datastoreNames = listOf("datastore_default")
+                ownsGameMorphKeys = pagerState.settledPage == 0
             )
         },
         PagerTab("Games", { IconSportsEsports() }) {

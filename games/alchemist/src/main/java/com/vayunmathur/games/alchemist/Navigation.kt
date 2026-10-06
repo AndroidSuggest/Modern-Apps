@@ -15,7 +15,6 @@ import androidx.compose.ui.platform.LocalContext
 import com.vayunmathur.games.alchemist.data.AlchemyItem
 import com.vayunmathur.games.alchemist.platform.AlchemistAchievementsManager
 import com.vayunmathur.games.alchemist.platform.AlchemistViewModel
-import com.vayunmathur.games.alchemist.platform.AppBackupAgent
 import com.vayunmathur.games.alchemist.ui.CollectionPage
 import com.vayunmathur.games.alchemist.ui.HomePage
 import com.vayunmathur.games.alchemist.ui.ItemDetailsPage
@@ -74,7 +73,6 @@ fun Navigation(viewModel: AlchemistViewModel) {
             entry<Route.GameCenter> {
                 achievementsManager?.let {
                     GameCenterScreen(
-                        backupAgent = AppBackupAgent(),
                         manager = it,
                         onBack = { backStack.pop() },
                     )

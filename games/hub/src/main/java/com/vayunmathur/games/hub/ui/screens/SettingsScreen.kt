@@ -3,7 +3,6 @@ package com.vayunmathur.games.hub.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -21,7 +20,6 @@ import com.vayunmathur.games.hub.viewmodel.GameHubViewModel
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.AlertDialog
-import com.vayunmathur.library.ui.BackupButtons
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.MaterialTheme
@@ -38,8 +36,6 @@ import com.vayunmathur.games.hub.R
 fun SettingsScreen(
     viewModel: GameHubViewModel,
     backStack: NavBackStack<MainRoute>,
-    dbConfigs: List<Pair<String, String>>,
-    datastoreNames: List<String>,
     modifier: Modifier = Modifier
 ) {
     var showClearConfirm by remember { mutableStateOf(false) }
@@ -50,13 +46,6 @@ fun SettingsScreen(
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
         LazyColumn(modifier = modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            item {
-                Text(stringResource(R.string.backup_restore), style = MaterialTheme.typography.titleMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    BackupButtons(dbConfigs = dbConfigs, datastoreNames = datastoreNames)
-                }
-            }
-            item { HorizontalDivider() }
             item {
                 Text(stringResource(R.string.data), style = MaterialTheme.typography.titleMedium)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {

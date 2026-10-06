@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.platform.LocalContext
 import com.vayunmathur.games.wordmaker.data.LevelDataStore
-import com.vayunmathur.games.wordmaker.platform.AppBackupAgent
 import com.vayunmathur.games.wordmaker.platform.WordMakerAchievementsManager
 import com.vayunmathur.games.wordmaker.platform.WordMakerViewModel
 import com.vayunmathur.games.wordmaker.ui.SettingsPage
@@ -32,7 +31,6 @@ fun Navigation(viewModel: WordMakerViewModel) {
             val achievementsManager = rememberAchievementsManager(viewModel.levelDataStore)
             if (achievementsManager != null) {
                 GameCenterScreen(
-                    backupAgent = AppBackupAgent(),
                     manager = achievementsManager,
                     onBack = { backStack.pop() },
                 )

@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.vayunmathur.games.pipes.platform.AppBackupAgent
 import com.vayunmathur.games.pipes.platform.PipesViewModel
 import com.vayunmathur.games.pipes.ui.DailyLevelScreen
 import com.vayunmathur.games.pipes.ui.GameScreen
@@ -46,7 +45,6 @@ fun Navigation(viewModel: PipesViewModel) {
             }
             entry<Route.GameCenter> {
                 GameCenterScreen(
-                    backupAgent = AppBackupAgent(),
                     manager = viewModel.achievementsManager,
                     onBack = { backStack.pop() },
                 )

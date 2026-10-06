@@ -3,7 +3,6 @@ package com.vayunmathur.flashcards.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,7 +19,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -29,7 +27,6 @@ import com.vayunmathur.flashcards.R
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.flashcards.Route
 import com.vayunmathur.flashcards.data.Deck
-import com.vayunmathur.flashcards.data.flashcardsDbConfigs
 import com.vayunmathur.flashcards.util.DeckListActions
 import com.vayunmathur.flashcards.util.DeckListUiState
 import com.vayunmathur.flashcards.util.DeckSummary
@@ -37,10 +34,8 @@ import com.vayunmathur.flashcards.util.FlashcardsViewModel
 import com.vayunmathur.flashcards.util.addDeckImpl
 import com.vayunmathur.flashcards.util.deleteDeckImpl
 import com.vayunmathur.flashcards.util.reorderDecksImpl
-import com.vayunmathur.library.room.SqlCipherDbCodec
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.AppScaffold
-import com.vayunmathur.library.ui.BackupButtons
 import com.vayunmathur.library.ui.ConfirmDialog
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.FloatingActionButton
@@ -66,7 +61,6 @@ import kotlin.math.roundToInt
 /** Binds [FlashcardsViewModel] and the nav back stack to the stateless [DeckListScreen]. */
 @Composable
 fun DeckListPage(backStack: NavBackStack<Route>, viewModel: FlashcardsViewModel) {
-    val context = LocalContext.current
     val decks by viewModel.decks.collectAsStateWithLifecycle()
     val cards by viewModel.cards.collectAsStateWithLifecycle()
 
@@ -100,13 +94,6 @@ fun DeckListPage(backStack: NavBackStack<Route>, viewModel: FlashcardsViewModel)
     DeckListScreen(
         state = DeckListUiState(decks = summaries),
         actions = actions,
-        backupButtons = {
-            BackupButtons(
-                dbConfigs = remember { flashcardsDbConfigs(context) },
-                dbCodec = SqlCipherDbCodec,
-                extraFiles = emptyList(),
-            )
-        },
     )
 }
 
@@ -120,8 +107,6 @@ fun DeckListPage(backStack: NavBackStack<Route>, viewModel: FlashcardsViewModel)
 fun DeckListScreen(
     state: DeckListUiState,
     actions: DeckListActions,
-    /** Top-bar backup/restore buttons; empty in a preview, which has no database. */
-    backupButtons: @Composable RowScope.() -> Unit = {},
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<Deck?>(null) }
@@ -147,7 +132,6 @@ fun DeckListScreen(
 
     AppScaffold(
         title = stringResource(R.string.app_name),
-        actions = backupButtons,
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddDialog = true }) { IconAdd() }
         },

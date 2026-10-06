@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.vayunmathur.games.nonogram.platform.AppBackupAgent
 import com.vayunmathur.games.nonogram.platform.NonogramViewModel
 import com.vayunmathur.games.nonogram.ui.NonogramGamePage
 import com.vayunmathur.games.nonogram.ui.SettingsPage
@@ -30,7 +29,6 @@ fun Navigation(viewModel: NonogramViewModel) {
             entry<Route.Game>(metadata = FullscreenPage()) { NonogramGamePage(backStack, viewModel) }
             entry<Route.GameCenter> {
                 GameCenterScreen(
-                    backupAgent = AppBackupAgent(),
                     manager = viewModel.achievementsManager,
                     onBack = { backStack.pop() },
                 )

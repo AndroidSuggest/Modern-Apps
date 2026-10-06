@@ -60,7 +60,6 @@ import com.vayunmathur.health.util.FoodDatabase
 import com.vayunmathur.health.util.FoodSearchAPI
 import com.vayunmathur.health.util.HealthViewModel
 import com.vayunmathur.library.util.NavBackStack
-import com.vayunmathur.library.ui.BackupButtons
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 
@@ -89,7 +88,6 @@ fun RecipeManagementPage(backStack: NavBackStack<Route>, viewModel: HealthViewMo
     AppScaffold(
         title = stringResource(R.string.recipes),
         backStack = backStack,
-        actions = { BackupButtons() },
         floatingActionButton = {
             if (!isListEmpty) {
                 FloatingActionButton(onClick = { 

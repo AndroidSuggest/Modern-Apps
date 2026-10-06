@@ -7,7 +7,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.vayunmathur.games.solitaire.platform.AppBackupAgent
 import com.vayunmathur.games.solitaire.platform.SolitaireViewModel
 import com.vayunmathur.games.solitaire.ui.GameScreen
 import com.vayunmathur.games.solitaire.ui.HomeScreen
@@ -33,7 +32,6 @@ fun Navigation(viewModel: SolitaireViewModel) {
                 entry<Route.Game>(metadata = FullscreenPage()) { GameScreen(backStack, viewModel, it.mode) }
                 entry<Route.GameCenter> {
                     GameCenterScreen(
-                        backupAgent = AppBackupAgent(),
                         manager = viewModel.achievementsManager,
                         onBack = { backStack.pop() },
                     )

@@ -31,13 +31,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.library.util.AchievementsManager
-import com.vayunmathur.library.util.BaseBackupAgent
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.ui.R
 
 @Composable
 fun GameCenterScreen(
-    backupAgent: BaseBackupAgent,
     manager: AchievementsManager,
     onBack: () -> Unit
 ) {
@@ -51,14 +49,6 @@ fun GameCenterScreen(
                 navigationIcon = {
                     IconNavigation(onBack)
                 },
-                actions = {
-                    BackupButtons(
-                        dbConfigs = backupAgent.dbConfigs,
-                        datastoreNames = backupAgent.datastoreNames,
-                        prefNames = backupAgent.prefNames,
-                        extraFiles = backupAgent.extraFiles
-                    )
-                }
             )
         }
     ) { padding ->

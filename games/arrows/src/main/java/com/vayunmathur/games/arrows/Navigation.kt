@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.vayunmathur.games.arrows.platform.AppBackupAgent
 import com.vayunmathur.games.arrows.platform.ArrowsViewModel
 import com.vayunmathur.games.arrows.ui.ArrowsGamePage
 import com.vayunmathur.games.arrows.ui.SettingsPage
@@ -30,7 +29,6 @@ fun Navigation(viewModel: ArrowsViewModel) {
             entry<Route.Game>(metadata = FullscreenPage()) { ArrowsGamePage(backStack, viewModel) }
             entry<Route.GameCenter> {
                 GameCenterScreen(
-                    backupAgent = AppBackupAgent(),
                     manager = viewModel.achievementsManager,
                     onBack = { backStack.pop() },
                 )

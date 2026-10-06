@@ -2,7 +2,6 @@ package com.vayunmathur.games.wordmaker.ui
 import android.Manifest
 import android.os.Build
 import com.vayunmathur.library.ui.R as UiR
-import com.vayunmathur.library.ui.BackupButtons
 import com.vayunmathur.library.ui.DailyReminderSettingsSection
 import com.vayunmathur.library.ui.DetailScaffold
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -66,9 +65,6 @@ fun SettingsScreen(state: SettingsUiState, actions: SettingsActions, onBack: () 
     DetailScaffold(
         title = stringResource(UiR.string.settings),
         onNavigateBack = onBack,
-        actions = {
-            BackupButtons(datastoreNames = listOf("settings"))
-        },
         scrollBehavior = appBarScrollBehavior(),
     ) {
         SettingsSection {

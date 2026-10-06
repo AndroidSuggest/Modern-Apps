@@ -1,19 +1,15 @@
 package com.vayunmathur.findfamily.ui
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.OverlayAction
 import com.vayunmathur.library.ui.Spacing
 import com.vayunmathur.library.ui.TopAppBarOverlay
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -23,7 +19,6 @@ import com.vayunmathur.findfamily.R
 import com.vayunmathur.findfamily.util.MainPageActions
 import com.vayunmathur.findfamily.util.MainPageUiState
 import com.vayunmathur.library.ui.IconDelete
-import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.IconNavigationArrow
 import com.vayunmathur.library.ui.IconVerify
 
@@ -31,12 +26,9 @@ import com.vayunmathur.library.ui.IconVerify
 internal fun MapOverlayBar(
     state: MainPageUiState,
     actions: MainPageActions,
-    backupButtons: @Composable () -> Unit,
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
 
     val gpsWarningDescription = stringResource(R.string.gps_fallback_warning_content_description)
-    val menuDescription = stringResource(R.string.map_menu_content_description)
     val findNearbyDescription = stringResource(R.string.find_nearby_content_description)
     val verifyDescription = stringResource(R.string.verify_security_code_content_description)
     val deletePersonDescription = stringResource(R.string.delete_person_content_description)
@@ -61,18 +53,7 @@ internal fun MapOverlayBar(
                         contentDescription = gpsWarningDescription,
                         onClick = { actions.onGpsWarningClick() }
                     )
-                } else null,
-                OverlayAction(
-                    icon = {
-                        IconMoreVert()
-                        // Anchored to the button's own content so the menu drops from it.
-                        DropdownMenu(menuExpanded, { menuExpanded = false }) {
-                            Row(Modifier.padding(horizontal = Spacing.xs)) { backupButtons() }
-                        }
-                    },
-                    contentDescription = menuDescription,
-                    onClick = { menuExpanded = !menuExpanded }
-                )
+                } else null
             )
         } else if (selectedUserId != null && !state.historyMode) {
             if (state.isSelfSelected) emptyList() else listOfNotNull(
