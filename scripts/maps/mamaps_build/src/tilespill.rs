@@ -107,11 +107,6 @@ const BUILDING_BYTES: usize = 17;
 /// features by the body format, so the largest plausible entry is orders of magnitude below this.
 const MAX_ENTRY_BYTES: u64 = 1 << 30;
 
-/// Encoded bytes a worker buffers before it writes. Large enough that a chunk of a few thousand
-/// small entries is one or two writes, small enough that the buffer is noise next to the chunk map
-/// it is draining.
-const FLUSH_BYTES: usize = 1 << 20;
-
 /// Bytes the whole merge may hold in read windows, divided across its streams.
 ///
 /// Small against the old 256 MiB on purpose: the merge holds one cursor per chunk (~27 k at a
@@ -184,10 +179,14 @@ pub struct ChunkSpill {
     file: Option<File>,
     anon: Option<std::sync::Mutex<tile_build::anon::AnonStore>>,
     path: PathBuf,
-    /// The next free byte, and so also the total reserved. Held for one integer add per chunk and
-    /// never across I/O: a worker must not queue behind another worker's write with a finished chunk
-    /// in hand.
+    /// The next free byte, and so also the total reserved. Reserved under the commit lock
+    /// ([`Self::write`], always `write` before `at`), so reservation order is completion order
+    /// and the file offset advances monotonically — one sequential chunk after another.
     at: Mutex<u64>,
+    /// Serialises whole-chunk commits (reserve + write) so the file offset advances
+    /// monotonically: reservation order == completion order, one large sequential write
+    /// per chunk, no interleaved 1 MB pieces from N workers. Always taken before `at`.
+    write: Mutex<()>,
     written: AtomicU64,
     written_entries: AtomicU64,
     read: AtomicU64,
@@ -214,12 +213,15 @@ impl ChunkSpill {
             anon: None,
             path,
             at: Mutex::new(0),
+            write: Mutex::new(()),
             written: AtomicU64::new(0),
             written_entries: AtomicU64::new(0),
             read: AtomicU64::new(0),
             read_entries: AtomicU64::new(0),
         })
     }
+
+    /// Anonymous twin
 
     /// Anonymous twin of [`create`](Self::create): same chunks and offsets in
     /// pagefile-backed memory, no file. `path` names nothing — it only rides
@@ -239,6 +241,7 @@ impl ChunkSpill {
                 anon: Some(std::sync::Mutex::new(tile_build::anon::AnonStore::new())),
                 path: path.into(),
                 at: Mutex::new(0),
+                write: Mutex::new(()),
                 written: AtomicU64::new(0),
                 written_entries: AtomicU64::new(0),
                 read: AtomicU64::new(0),
@@ -259,12 +262,16 @@ impl ChunkSpill {
 
     /// Write one finished chunk and say where it went.
     ///
-    /// Takes the map **by value** and encodes out of `into_iter`, flushing every [`FLUSH_BYTES`], so
-    /// the map shrinks as it is written instead of being copied whole into a buffer beside itself.
+    /// Takes the map **by value** and encodes out of `into_iter`, so the map shrinks as it is
+    /// written instead of being copied whole into a buffer beside itself.
     ///
-    /// The byte range is reserved under the cursor lock and written outside it. That ordering is the
-    /// point: the lock covers an integer add, so a worker that has just finished a chunk is never
-    /// waiting on another worker's disk.
+    /// Encode happens outside any lock, in parallel across workers. The commit — reserving the
+    /// byte range and writing it — holds the `write` lock for one sequential write per chunk.
+    /// Reservation order is therefore completion order and the file offset advances
+    /// monotonically: no interleaved 1 MB pieces from N workers sharing one file offset space,
+    /// which is what turned N parallel positional fills into random-write interleaving on
+    /// spinning disks (and page-cache churn everywhere). The merge sorts chunks by their read
+    /// index, never by file position, so the layout change is not observable in the archive.
     pub fn write_chunk(&self, map: BTreeMap<(u64, u8), ChunkEntry>) -> Result<ChunkRef> {
         let entries = map.len() as u64;
         let mut len = 0u64;
@@ -281,6 +288,18 @@ impl ChunkSpill {
             len += entry_bytes(entry)?;
         }
 
+        // Encoded before the commit lock, so N workers still clip and encode in parallel and
+        // only the disk write itself is serial. Sized exactly: `len` above is the encoded
+        // length, so this is one allocation per chunk rather than a growing buffer.
+        let mut buf: Vec<u8> = Vec::with_capacity(len as usize);
+        for ((tile, layer_id), layer) in map {
+            encode_entry(tile, layer_id, &layer, &mut buf);
+        }
+        debug_assert_eq!(buf.len() as u64, len, "the encoded chunk must match its reservation");
+
+        // One commit per chunk: reserve and write under the same lock, so the file sees whole
+        // sequential chunks in reservation order. Always `write` before `at`.
+        let _commit = self.write.lock().expect("the tile chunk spill's commit lock");
         let at = {
             let mut next = self.at.lock().expect("the tile chunk spill's cursor");
             let at = *next;
@@ -288,15 +307,7 @@ impl ChunkSpill {
             at
         };
 
-        let mut buf: Vec<u8> = Vec::new();
-        let mut cursor = at;
-        for ((tile, layer_id), layer) in map {
-            encode_entry(tile, layer_id, &layer, &mut buf);
-            if buf.len() >= FLUSH_BYTES {
-                cursor += self.flush(&mut buf, cursor)?;
-            }
-        }
-        cursor += self.flush(&mut buf, cursor)?;
+        let cursor = at + self.flush(&mut buf, at)?;
 
         if cursor != at + len {
             return err(format!(

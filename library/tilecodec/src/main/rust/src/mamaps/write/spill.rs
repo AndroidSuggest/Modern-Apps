@@ -97,12 +97,22 @@ impl Spill {
             return Ok(self.buffer[at..at + candidate.len()] == *candidate);
         }
         self.confirms_from_file += 1;
-        self.bytes_from_file += candidate.len() as u64;
-        // A body straddling the boundary is one the buffer holds only the tail of. Flushing is
-        // simpler than stitching two compares together, and can only happen once per body.
+        // A body straddling the flush boundary lives half in the file, half in the buffer.
+        // Compare the two halves in place instead of flushing: a flush here would push a whole
+        // megabyte to disk just to answer one compare, and can only happen once per body.
+        // Byte-identical to the flush-then-compare it replaces: same bytes, same answer.
         if end > self.flushed {
-            self.flush()?;
+            let file_len = (self.flushed - start) as usize;
+            self.bytes_from_file += file_len as u64;
+            let Spill { file, path, scratch, buffer, .. } = self;
+            scratch.resize(file_len, 0);
+            read_exact_at(file, path, start, scratch)?;
+            if scratch[..] != candidate[..file_len] {
+                return Ok(false);
+            }
+            return Ok(buffer[..candidate.len() - file_len] == candidate[file_len..]);
         }
+        self.bytes_from_file += candidate.len() as u64;
         let Spill { file, path, scratch, .. } = self;
         scratch.resize(candidate.len(), 0);
         read_exact_at(file, path, start, scratch)?;

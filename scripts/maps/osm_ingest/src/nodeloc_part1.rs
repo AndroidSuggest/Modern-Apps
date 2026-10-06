@@ -123,6 +123,16 @@ where
         },
         |(coords, items)| {
             let at = on.then(std::time::Instant::now);
+            // Sorted by table index before the stores, so the mmap writes walk forward
+            // instead of scattering: a chunk's ids arrive in block order (ascending within
+            // a block, but blocks interleave across the chunk), and 8-byte stores to
+            // 1.23 GB touch one page per store when they jump. Ascending stores fault
+            // pages in order and reuse the TLB entry. Byte-identical: the table holds
+            // one coordinate per index and the bitset is order-independent, so write
+            // order is not observable. `items` (the classification drain) keeps its
+            // own order — only the coordinate writes are reordered.
+            let mut coords = coords;
+            coords.sort_unstable_by_key(|c| c.0);
             for (idx, lat, lon) in coords {
                 locs.set(idx as usize, lat, lon);
             }

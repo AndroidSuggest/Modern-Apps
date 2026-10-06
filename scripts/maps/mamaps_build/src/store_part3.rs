@@ -407,9 +407,16 @@ impl WaySink {
             }
             None => put_uvarint(&mut self.record, 0),
         }
-        self.out_write(&self.record.clone()).map_err(|e| {
+        // Moved out rather than cloned: `out_write` takes `&mut self`, so `&self.record`
+        // cannot borrow across the call, and a per-way clone is a memcpy per record over
+        // millions of records. The buffer is restored below with its capacity intact, so the
+        // `clear` at the top of the next `push` still reuses the allocation.
+        let record = std::mem::take(&mut self.record);
+        let result = self.out_write(&record).map_err(|e| {
             Error(format!("cannot write the ways spill: {e}"))
-        })?;
+        });
+        self.record = record;
+        result?;
         self.last_id = id;
         self.count += 1;
         self.refs += refs.len() as u64;
