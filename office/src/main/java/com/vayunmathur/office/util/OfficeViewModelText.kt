@@ -291,9 +291,9 @@ fun OfficeViewModel.insertTableOfContents(blockIndex: Int) {
         ParagraphStyle.HEADING4)
     val entries = mutableListOf<OdfParagraph>()
     for (block in doc.content) {
-        val para = (block as? OdfContentBlock.Paragraph)?.paragraph
-        val text = para?.takeIf { it.style in headingStyles }?.spans?.joinToString("") { it.text }?.trim()
-        if (!text.isNullOrEmpty() && para != null) {
+        val para = (block as? OdfContentBlock.Paragraph)?.paragraph ?: continue
+        val text = para.takeIf { it.style in headingStyles }?.spans?.joinToString("") { it.text }?.trim()
+        if (!text.isNullOrEmpty()) {
             val level = when (para.style) {
                 ParagraphStyle.HEADING1 -> 1
                 ParagraphStyle.HEADING2 -> 2

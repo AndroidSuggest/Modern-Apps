@@ -9,6 +9,7 @@ import com.vayunmathur.youpipe.ui.Comment
 import com.vayunmathur.youpipe.ui.SubtitleTrack
 import com.vayunmathur.youpipe.ui.VideoChapter
 import com.vayunmathur.youpipe.ui.VideoData
+import com.vayunmathur.youpipe.ui.VideoInfo
 import com.vayunmathur.youpipe.ui.VideoStream
 import com.vayunmathur.youpipe.ui.fromHTML
 import com.vayunmathur.youpipe.ui.getAudioCodecName
@@ -43,7 +44,7 @@ fun YouPipeViewModel.loadVideo(videoID: Long, downloadedVideo: DownloadedVideo?)
         // Broad catch is deliberate: the extractor throws across IO, parsing and
         // runtime failures, and every mode must land in error state, never crash.
         @Suppress("TooGenericExceptionCaught")
-        fun loadSafely() {
+        suspend fun loadSafely() {
             try {
                 loadVideoContent(videoID, downloadedVideo, url)
                 loadComments(youtubeService, url)
@@ -210,7 +211,7 @@ private fun loadNetworkStreams(
 ): LoadedNetworkStreams {
     val segments = ex.getStreamSegments().map {
         VideoChapter(
-            it.getStartTimeSeconds() * MILLIS_PER_SECOND,
+            (it.getStartTimeSeconds() * MILLIS_PER_SECOND).toInt(),
             it.getTitle(),
             it.getPreviewUrl(),
         )

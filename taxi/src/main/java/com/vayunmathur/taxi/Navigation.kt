@@ -12,6 +12,7 @@ import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.SiblingPage
 import com.vayunmathur.library.util.rememberNavBackStack
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.taxi.data.BookingTrip
 import com.vayunmathur.taxi.ui.AccountsScreen
 import com.vayunmathur.taxi.ui.CurrentRideScreen
@@ -40,7 +41,7 @@ fun Navigation(trackRideId: MutableState<String?>, bookingTrip: MutableState<Boo
     val pages = listOf(
         BottomBarItem(stringResource(R.string.nav_ride), Route.Ride) { IconMap() },
         BottomBarItem(stringResource(R.string.nav_current_ride), Route.CurrentRide) { IconNavigationArrow() },
-        BottomBarItem(stringResource(R.string.nav_settings), Route.Accounts) { IconSettings() },
+        BottomBarItem(stringResource(UiR.string.settings), Route.Accounts) { IconSettings() },
     )
 
     MainNavigation(

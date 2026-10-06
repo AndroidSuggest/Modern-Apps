@@ -157,8 +157,8 @@ private fun OdfParser.applyInlineMetaTag(
 ) {
     val flush: () -> Unit = { flushInlineBuf(acc, spans, ctx.styles) }
     when (parser.name) {
-        "note" -> applyInlineNote(parser, acc, ctx.styles, ctx.footnotes)
-        "annotation" -> applyInlineAnnotation(parser, acc, ctx.styles)
+        "note" -> applyInlineNote(parser, acc, ctx.styles, spans, ctx.footnotes)
+        "annotation" -> applyInlineAnnotation(parser, acc, ctx.styles, spans)
         "change-start" -> applyChangeStart(parser, acc, spans, flush)
         "change-end" -> applyChangeEnd(parser, acc, spans, flush)
         "change" -> applyChangePoint(parser, spans, flush)

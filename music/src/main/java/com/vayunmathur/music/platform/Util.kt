@@ -38,6 +38,7 @@ import com.vayunmathur.music.data.Music
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.util.Locale
 import androidx.compose.ui.res.stringResource
 
@@ -71,6 +72,8 @@ fun getThumbnail(context: Context, uri: Uri): Bitmap? {
         null // Fallback to a placeholder
     } catch (_: UnsupportedOperationException) {
         null // Fallback to a placeholder
+    } catch (_: IOException) {
+        null // No album art found (FileNotFoundException) — fall back to a placeholder
     }
 }
 

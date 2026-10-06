@@ -76,7 +76,7 @@ fun AddLabResultPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel
             )
         }
 
-        FormSection(title = stringResource(R.string.section_result)) {
+        FormSection(title = stringResource(R.string.field_result)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),

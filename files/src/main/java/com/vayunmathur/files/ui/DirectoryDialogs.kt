@@ -24,8 +24,8 @@ import com.vayunmathur.library.ui.R as UiR
 @Composable
 internal fun sortLabel(sortBy: SortBy): String = stringResource(
     when (sortBy) {
-        SortBy.NAME -> R.string.sort_name
-        SortBy.DATE -> R.string.sort_date
+        SortBy.NAME -> UiR.string.name
+        SortBy.DATE -> UiR.string.date
         SortBy.SIZE -> R.string.sort_size
         SortBy.TYPE -> R.string.sort_type
     }
@@ -89,7 +89,7 @@ internal fun PermanentDeleteDialog(
         title = { Text(stringResource(R.string.delete_permanently_title, count)) },
         text = { Text(stringResource(R.string.delete_permanently_message)) },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text(stringResource(R.string.delete)) }
+            TextButton(onClick = onConfirm) { Text(stringResource(UiR.string.delete)) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }

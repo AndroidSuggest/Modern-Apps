@@ -5,8 +5,6 @@
     <string name="tab_games">Games</string>
     <!-- ActivityFeedScreen / GameDetailScreen: Tab title for activity feed section. Noun -->
     <string name="tab_activity">Activity</string>
-    <!-- SettingsScreen: TopAppBar title for Settings. Noun -->
-    <string name="tab_settings">Settings</string>
     <!-- StreakIndicator: Content description for streak icon. Noun -->
     <string name="streak">Streak</string>
     <!-- DashboardScreen: Section header for continue playing recent games list. Verb phrase -->
@@ -17,12 +15,8 @@
     <string name="sort_last_played">Last played</string>
     <!-- GamesListScreen: Sort dropdown option by most played time. Noun phrase -->
     <string name="sort_most_played">Most played</string>
-    <!-- GamesListScreen: Sort dropdown option alphabetically by name. Noun -->
-    <string name="sort_name">Name</string>
     <!-- GamesListScreen: Sort dropdown option by completion percentage. Noun -->
     <string name="sort_completion">Completion</string>
-    <!-- AchievementsScreen: Filter chip for all achievements. Adjective -->
-    <string name="filter_all">All</string>
     <!-- AchievementsScreen: Filter chip for locked achievements. Adjective -->
     <string name="filter_locked">Locked</string>
     <!-- AchievementsScreen: Filter chip for unlocked achievements. Adjective -->

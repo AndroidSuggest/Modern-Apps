@@ -131,9 +131,8 @@ object TrackerUwbGatt {
      * rather than throwing.
      */
     @SuppressLint("MissingPermission")
-    @Suppress("DEPRECATION")
     // Broad catch is deliberate: GATT calls throw varied runtime exceptions; failure must return false, not crash.
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("DEPRECATION", "TooGenericExceptionCaught")
     private suspend fun writeSessionParams(
         context: Context,
         bleAddress: String,

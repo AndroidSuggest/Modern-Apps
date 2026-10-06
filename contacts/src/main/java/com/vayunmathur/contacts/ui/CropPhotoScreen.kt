@@ -47,10 +47,6 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.contacts.R
 
-private enum class DragHandle {
-    TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left, Move, None
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CropPhotoScreen(

@@ -77,7 +77,7 @@ fun LinkDialog(
             TextButton(
                 enabled = url.isNotBlank(),
                 onClick = { onConfirm(text.ifBlank { url }.trim(), url.trim()) },
-            ) { Text(if (context.editing) stringResource(R.string.link_action_save) else stringResource(R.string.link_action_add)) }
+            ) { Text(if (context.editing) stringResource(R.string.save) else stringResource(R.string.add)) }
         },
         dismissButton = {
             Row {
@@ -90,7 +90,7 @@ fun LinkDialog(
                         onClick = { runCatching { uriHandler.openUri(url.trim()) }; onDismiss() },
                     ) { Text(stringResource(R.string.link_action_open)) }
                 }
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.link_action_cancel)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             }
         },
     )

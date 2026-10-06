@@ -427,7 +427,7 @@ class SignalCallManager(
         }
     }
 
-    private companion object {
+    internal companion object {
         internal const val TAG = "SignalCallManager"
         const val AUDIO_LEVEL_INTERVAL_MS = 500
     }

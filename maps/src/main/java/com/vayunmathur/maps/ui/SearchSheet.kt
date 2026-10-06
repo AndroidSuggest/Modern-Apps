@@ -37,6 +37,7 @@ import com.vayunmathur.library.ui.TextField
 import com.vayunmathur.library.ui.TextFieldDefaults
 import com.vayunmathur.library.util.round
 import com.vayunmathur.maps.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.maps.util.SearchActions
 import com.vayunmathur.maps.util.SearchPhase
 import com.vayunmathur.maps.util.SearchResult
@@ -178,7 +179,7 @@ private fun RecentsList(recents: List<String>, actions: SearchActions) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    stringResource(R.string.clear_recents),
+                    stringResource(UiR.string.clear),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.clickable { actions.clearRecents() },

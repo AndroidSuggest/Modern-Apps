@@ -140,4 +140,3 @@ object SafePdfImages {
     private const val RED_SHIFT = 16
     private const val GREEN_SHIFT = 8
 }
-}

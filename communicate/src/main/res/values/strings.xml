@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Communicate</string>
-    <string name="nav_messages">Messages</string>
-    <string name="nav_dialer">Dialer</string>
-    <string name="nav_call_logs">Call logs</string>
     <string name="messages_title">Messages</string>
     <string name="dialer_title">Dialer</string>
     <string name="call_logs_title">Call logs</string>
@@ -29,10 +26,7 @@
     <string name="phone_number">Phone number</string>
     <string name="message_hint">Message</string>
     <string name="send">Send</string>
-    <string name="call">Call</string>
-    <string name="clear">Clear</string>
     <string name="delete_digit">Delete digit</string>
-    <string name="contacts">Contacts</string>
     <!-- Call log row: the seconds part of a call's duration, abbreviated. %1$d = whole seconds -->
     <plurals name="duration_seconds">
         <item quantity="one">%1$d sec</item>
@@ -71,13 +65,11 @@
     <string name="gv_sign_out">Sign out</string>
     <string name="gv_not_signed_in">Not signed in</string>
     <string name="gv_number_unknown">Google Voice</string>
-    <string name="line_sim">SIM</string>
     <string name="line_gv">Voice</string>
     <string name="choose_line">Send from</string>
     <string name="gv_send_failed">Couldn\'t send via Google Voice</string>
     <string name="gv_action_failed">Google Voice action failed</string>
     <string name="sim_mms_unsupported">SIM MMS attachments are not supported yet</string>
-    <string name="gv_media_message">Media message</string>
     <string name="gv_sync_channel_name">Google Voice receive</string>
     <string name="gv_sync_channel_desc">Keeps Google Voice calls and messages available in the background.</string>
     <string name="gv_incoming_channel_name">Google Voice messages</string>
@@ -112,8 +104,6 @@
     <string name="gv_call_failed">Google Voice call failed</string>
     <string name="regular_call_channel_name">Phone calls</string>
     <string name="regular_call_channel_desc">Call controls for regular phone calls.</string>
-    <string name="regular_call_incoming">Incoming call</string>
-    <string name="regular_call_ongoing">Ongoing call</string>
 
     <!-- Signal line -->
     <string name="signal_not_signed_in">Not signed in to Signal</string>
@@ -122,7 +112,6 @@
     <string name="signal_sign_out">Sign out of Signal</string>
     <string name="signal_sign_in_failed">Signal sign-in failed</string>
     <string name="signal_import_backup">Import Signal backup</string>
-    <string name="line_signal">Signal</string>
     <string name="account_signal">Signal</string>
     <string name="signal_send_failed">Couldn\'t send via Signal</string>
     <string name="signal_action_failed">Signal action failed</string>
@@ -161,7 +150,6 @@
     <string name="account_whatsapp">WhatsApp</string>
 
     <!-- RCS single-registration line -->
-    <string name="line_rcs">RCS</string>
     <string name="account_rcs">RCS</string>
     <string name="rcs_not_available">RCS unavailable</string>
     <string name="rcs_available">RCS connected</string>

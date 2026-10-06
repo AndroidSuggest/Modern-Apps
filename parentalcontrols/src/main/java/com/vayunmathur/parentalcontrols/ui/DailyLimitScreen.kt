@@ -15,6 +15,7 @@ import com.vayunmathur.library.ui.SettingsSection
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.parentalcontrols.R
 
 /** Actions the device-wide daily-limit screen can take. */
@@ -75,7 +76,7 @@ fun DailyLimitScreen(currentMinutes: Int?, actions: DailyLimitActions) {
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { picking = false }) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             },
         )

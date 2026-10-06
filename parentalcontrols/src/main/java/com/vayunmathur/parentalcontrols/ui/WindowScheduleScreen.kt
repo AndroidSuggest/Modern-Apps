@@ -24,6 +24,7 @@ import com.vayunmathur.library.ui.SettingsSwitchRow
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.parentalcontrols.R
 import com.vayunmathur.parentalcontrols.domain.TimeWindow
 import com.vayunmathur.parentalcontrols.platform.SupervisableApp
@@ -153,11 +154,11 @@ fun WindowScheduleScreen(
                         actions.onEndChange(timeState.hour, timeState.minute)
                     }
                     picking = null
-                }) { Text(stringResource(R.string.save)) }
+                }) { Text(stringResource(UiR.string.save)) }
             },
             dismissButton = {
                 TextButton(onClick = { picking = null }) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             },
         )

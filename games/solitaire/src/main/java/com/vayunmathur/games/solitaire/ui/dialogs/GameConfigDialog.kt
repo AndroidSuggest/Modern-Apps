@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.SegmentedButton
 import com.vayunmathur.library.ui.SegmentedButtonDefaults
 import com.vayunmathur.library.ui.SingleChoiceSegmentedButtonRow
@@ -47,14 +48,14 @@ fun GameConfigDialog(mode: GameMode, onStart: (GameConfig) -> Unit, onDismiss: (
                             }
                         }
                         SingleChoiceSegmentedButtonRow {
-                            listOf(KlondikeDifficulty.RELAXED to R.string.mode_relaxed, KlondikeDifficulty.REGULAR to R.string.difficulty_regular, KlondikeDifficulty.HARD to R.string.difficulty_hard).forEachIndexed { idx, (value, label) ->
+                            listOf(KlondikeDifficulty.RELAXED to R.string.mode_relaxed, KlondikeDifficulty.REGULAR to R.string.difficulty_regular, KlondikeDifficulty.HARD to UiR.string.hard).forEachIndexed { idx, (value, label) ->
                                 SegmentedButton(shape = SegmentedButtonDefaults.itemShape(idx, 3), onClick = { klondikeDifficulty = value }, selected = klondikeDifficulty == value) { Text(stringResource(label)) }
                             }
                         }
                     }
                     GameMode.SPIDER -> {
                         SingleChoiceSegmentedButtonRow {
-                            listOf(1 to R.string.difficulty_easy, 2 to R.string.difficulty_medium, 4 to R.string.difficulty_hard).forEachIndexed { idx, (value, label) ->
+                            listOf(1 to UiR.string.easy, 2 to UiR.string.medium, 4 to UiR.string.hard).forEachIndexed { idx, (value, label) ->
                                 SegmentedButton(shape = SegmentedButtonDefaults.itemShape(idx, 3), onClick = { spiderSuits = value }, selected = spiderSuits == value) { Text(stringResource(label)) }
                             }
                         }
@@ -62,11 +63,11 @@ fun GameConfigDialog(mode: GameMode, onStart: (GameConfig) -> Unit, onDismiss: (
                     GameMode.PYRAMID -> DifficultyRow(relaxed) { relaxed = it }
                     GameMode.FREECELL -> {}
                 }
-                Button(onClick = { onStart(GameConfig(drawMode = drawMode, klondikeDifficulty = klondikeDifficulty, relaxed = relaxed, spiderSuits = spiderSuits)) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.new_game)) }
+                Button(onClick = { onStart(GameConfig(drawMode = drawMode, klondikeDifficulty = klondikeDifficulty, relaxed = relaxed, spiderSuits = spiderSuits)) }, Modifier.fillMaxWidth()) { Text(stringResource(UiR.string.new_game)) }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.back)) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.back)) } }
     )
 }
 

@@ -39,8 +39,5 @@
     <!-- Foreground service -->
     <string name="tv_notification_channel_name">Receiving</string>
     <string name="tv_notification_channel_desc">Shown while this TV is available to cast to</string>
-    <string name="tv_notification_title">MA Cast</string>
-    <string name="tv_notification_text_idle">Ready to receive</string>
     <string name="tv_notification_text_pairing">Waiting for a pair code</string>
-    <string name="tv_notification_text_mirroring">Receiving from %1$s</string>
 </resources>

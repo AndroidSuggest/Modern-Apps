@@ -39,7 +39,7 @@ fun OwnerAddressDialog(
         },
         confirmButton = { },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.sos_cancel)) }
         },
     )
 }

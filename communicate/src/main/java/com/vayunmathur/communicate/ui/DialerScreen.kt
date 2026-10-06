@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.communicate.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.communicate.data.CommunicateContact
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.LineChoice
@@ -159,7 +160,7 @@ fun DialerScreen() {
                         ) {
                             item {
                                 Text(
-                                    stringResource(R.string.contacts),
+                                    stringResource(UiR.string.contacts),
                                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
@@ -262,7 +263,7 @@ private fun DialPad(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TextButton(onClick = onClear, enabled = number.isNotEmpty(), modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.clear))
+                    Text(stringResource(UiR.string.clear))
                 }
                 FilledIconButton(onClick = onCall, enabled = number.isNotBlank(), modifier = Modifier.size(52.dp)) {
                     IconCall()

@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.euicc.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.euicc.Route
 import com.vayunmathur.euicc.data.Profile
 import com.vayunmathur.euicc.platform.EuiccScreenState
@@ -120,7 +121,7 @@ fun ProfileDetailScreen(
                 stringResource(R.string.enable_carrier_dialog_text, label, it.displayName)
             } ?: stringResource(R.string.enable_carrier_dialog_text_no_current, label),
             confirmLabel = stringResource(R.string.enable_profile_title),
-            dismissLabel = stringResource(R.string.cancel),
+            dismissLabel = stringResource(UiR.string.cancel),
             onConfirm = { onEnable(profile) },
             onDismiss = { confirmEnable = false },
         )
@@ -130,7 +131,7 @@ fun ProfileDetailScreen(
             title = stringResource(R.string.disable_carrier_dialog_title),
             message = stringResource(R.string.disable_carrier_dialog_text, label),
             confirmLabel = stringResource(R.string.disable_profile_title),
-            dismissLabel = stringResource(R.string.cancel),
+            dismissLabel = stringResource(UiR.string.cancel),
             destructive = true,
             onConfirm = { onDisable(profile) },
             onDismiss = { confirmDisable = false },
@@ -141,7 +142,7 @@ fun ProfileDetailScreen(
             title = stringResource(R.string.erase_sim_dialog_title, label),
             message = stringResource(R.string.erase_sim_dialog_text, label),
             confirmLabel = stringResource(R.string.erase_sim_confirm_button),
-            dismissLabel = stringResource(R.string.cancel),
+            dismissLabel = stringResource(UiR.string.cancel),
             destructive = true,
             onConfirm = { onErase(profile) },
             onDismiss = { confirmErase = false },

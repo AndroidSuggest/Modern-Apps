@@ -155,6 +155,13 @@ private fun ProfileCard(profile: TrustProfile) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (profile != TrustProfile.PLAY) {
+                Text(
+                    stringResource(R.string.trust_no_takedown),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

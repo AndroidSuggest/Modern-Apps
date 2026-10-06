@@ -32,6 +32,7 @@ import com.vayunmathur.library.ui.RadioButton
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.taxi.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.taxi.data.BookingResult
 import com.vayunmathur.taxi.data.ChargeAccount
 import com.vayunmathur.taxi.data.PaymentMethodsResult
@@ -196,7 +197,7 @@ private fun PaymentPickerDialog(
                 Text(stringResource(R.string.book))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.dismiss)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.dismiss)) } },
     )
 }
 
@@ -238,7 +239,7 @@ private fun ConfirmBookingDialog(
                 )
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.dismiss)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.dismiss)) } },
     )
 }
 
@@ -264,7 +265,7 @@ private fun DryRunDialog(requestJson: String, onDismiss: () -> Unit) {
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.close)) } },
     )
 }
 
@@ -287,7 +288,7 @@ private fun MessageDialog(title: String, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.close)) } },
     )
 }
 

@@ -4,7 +4,6 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraMetadata
 import android.util.Log
 import androidx.camera.camera2.interop.Camera2CameraInfo
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -40,7 +39,6 @@ fun Int.toLensFacing(): LensFacing? = when (this) {
  *
  * Safe to call off the main thread; never throws (returns empty on failure).
  */
-@OptIn(ExperimentalCamera2Interop::class)
 fun enumerateLenses(provider: ProcessCameraProvider): List<PhysicalLens> {
     val raws = provider.availableCameraInfos.mapNotNull { info -> readRawLens(info) }
 
@@ -54,7 +52,6 @@ private const val ULTRA_WIDE_RATIO = 0.85f
 private const val TELEPHOTO_RATIO = 1.4f
 
 /** Reads one camera info's physical-lens description; null when unusable. */
-@OptIn(ExperimentalCamera2Interop::class)
 private fun readRawLens(info: androidx.camera.core.CameraInfo): RawLens? {
     return try {
         readRawLensOrThrow(info)
@@ -65,7 +62,7 @@ private fun readRawLens(info: androidx.camera.core.CameraInfo): RawLens? {
 }
 
 /** Physical-lens description probed off one CameraInfo (null for external/unknown lenses). */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 private fun readRawLensOrThrow(info: androidx.camera.core.CameraInfo): RawLens? {
     val cam2 = Camera2CameraInfo.from(info)
     val facing = when (
@@ -201,7 +198,7 @@ fun CameraViewModel.currentLensFamily(): List<PhysicalLens> {
  * the logical camera ID when non-null. A null lens keeps the legacy facing-only
  * behavior.
  */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 fun CameraViewModel.lensSelector(facingInt: Int, lens: PhysicalLens?): CameraSelector {
     val builder = CameraSelector.Builder().requireLensFacing(facingInt)
     if (lens != null) {

@@ -2,8 +2,11 @@
 <!--
   Maps. Audited state:
     * externalFilesDir/zone_<id>.pmtiles — downloaded offline map zones.
-    * externalFilesDir/tilecache/ (falls back to filesDir/tilecache when there is
-      no external storage) — the streamed-basemap disk cache from MapTileCache.
+    * cacheDir/vectortilecache/ — the streamed-basemap range cache from
+      :library:map's renderer, so "Clear cache" in system settings reclaims
+      it. An install that ran an older build may still hold a stale copy at
+      externalFilesDir/vectortilecache/, deleted on first launch (see
+      SurfaceMapRenderer).
     * externalFilesDir/{nodes,edges,transit_voyages,transit_attributes,metadata,
       road_names,intermediate}.bin — the global routing data set.
     * externalFilesDir/amenities.db — the downloaded amenity/address database.
@@ -34,9 +37,6 @@
     <cloud-backup>
         <include domain="root" path="." />
         <include domain="file" path="." />
-        <!-- tilecache/ falls back to internal files when there is no external
-             storage; keep it out of the cloud quota either way. -->
-        <exclude domain="file" path="tilecache" />
         <include domain="database" path="." />
         <!-- Room's createFromFile() copy of the downloaded amenity DB. -->
         <exclude domain="database" path="amenities.db" />
@@ -44,8 +44,9 @@
         <exclude domain="database" path="amenities.db-shm" />
         <exclude domain="database" path="amenities.db-journal" />
         <include domain="sharedpref" path="." />
-        <!-- external: holds the pmtiles zones, routing .bin set, tilecache and
-             amenities.db — all far past the cloud quota and all re-downloadable. -->
+        <!-- external: holds the pmtiles zones, routing .bin set and
+             amenities.db — all far past the cloud quota and all re-downloadable.
+             The range cache lives in cacheDir, outside backup scope entirely. -->
     </cloud-backup>
     <device-transfer>
         <include domain="root" path="." />

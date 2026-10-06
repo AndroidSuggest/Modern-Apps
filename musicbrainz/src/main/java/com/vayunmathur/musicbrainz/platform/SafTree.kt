@@ -171,7 +171,5 @@ object SafTree {
             .take(MAX_FILENAME_LENGTH)
             .ifEmpty { "Unknown" }
 
-    private companion object {
-        const val MAX_FILENAME_LENGTH = 120
-    }
+    private const val MAX_FILENAME_LENGTH = 120
 }

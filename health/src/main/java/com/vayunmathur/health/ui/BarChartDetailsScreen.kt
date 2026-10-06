@@ -157,7 +157,7 @@ fun BarChartDetailsScreen(
                         )
                         val end = start.plus(6, DateTimeUnit.DAY)
                         stringResource(
-                            R.string.week_range, start.displayString(), end.displayString()
+                            R.string.date_range, start.displayString(), end.displayString()
                         )
                     }
 

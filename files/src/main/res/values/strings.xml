@@ -35,8 +35,6 @@
     <string name="install_permission_needed">Allow Files to install unknown apps, then tap the APK again</string>
     <!-- Snackbar shown when the user returns from settings without granting install permission -->
     <string name="install_permission_denied">Permission to install apps was not granted</string>
-    <!-- TextEditorActivity: Fallback title when file name is unknown. Noun -->
-    <string name="file_fallback">File</string>
     <!-- Notification channel name for unzip foreground service -->
     <string name="unzip_channel_name">Unzip Operations</string>
     <!-- Foreground notification title while unzipping in progress -->
@@ -50,10 +48,6 @@
 
     <!-- Placeholder shown in the search field -->
     <string name="search_files">Search files…</string>
-    <!-- Sort option: by file/folder name -->
-    <string name="sort_name">Name</string>
-    <!-- Sort option: by last-modified date -->
-    <string name="sort_date">Date</string>
     <!-- Sort option: by file size -->
     <string name="sort_size">Size</string>
     <!-- Sort option: by file type/extension -->
@@ -61,22 +55,15 @@
     <!-- Sort direction options -->
     <string name="sort_ascending">Ascending</string>
     <string name="sort_descending">Descending</string>
-    <string name="home">Home</string>
     <!-- Menu item switching between grid and list layouts -->
     <string name="grid_view">Grid view</string>
     <string name="list_view">List view</string>
     <!-- Menu item selecting every item in the current folder -->
     <string name="select_all">Select all</string>
-    <!-- Selection action: copy selected files to the clipboard -->
-    <string name="copy">Copy</string>
     <!-- Selection action: cut (move) selected files to the clipboard -->
     <string name="cut">Cut</string>
     <!-- Action: paste clipboard files into the current folder -->
     <string name="paste">Paste</string>
-    <!-- Selection action: share selected files -->
-    <string name="share">Share</string>
-    <!-- Rename dialog title. Verb -->
-    <string name="rename">Rename</string>
     <!-- Rename dialog: TextField label for the new name -->
     <string name="new_name_label">New name</string>
     <!-- Snackbar after copying to clipboard. %1$d = item count -->
@@ -111,7 +98,6 @@
     <string name="new_file">New file</string>
     <string name="folder_name_label">Folder name</string>
     <string name="file_name_label">File name</string>
-    <string name="create">Create</string>
 
     <!-- Selection actions -->
     <string name="open_with">Open with</string>
@@ -127,16 +113,12 @@
 
     <!-- Properties dialog rows -->
     <string name="prop_path">Path</string>
-    <string name="prop_type">Type</string>
-    <string name="prop_size">Size</string>
     <string name="prop_modified">Modified</string>
     <string name="prop_items">Contents</string>
     <string name="type_folder">Folder</string>
     <string name="type_file">File</string>
     <!-- Folder contents count. %1$d = number of items -->
     <string name="items_count"><xliff:g id="count" example="12">%1$d</xliff:g> item(s)</string>
-    <!-- Close a dialog -->
-    <string name="close">Close</string>
 
     <!-- SAF document picker (shown only when Files is the system documents UI) -->
     <!-- Title when the caller is opening/selecting existing files -->
@@ -147,8 +129,6 @@
     <string name="saf_title_tree">Select a folder</string>
     <!-- Button confirming the current folder as the picked tree -->
     <string name="saf_use_this_folder">Use this folder</string>
-    <!-- Button saving a newly created document -->
-    <string name="saf_save">Save</string>
     <!-- Button confirming a multi-file selection. %1$d = number selected -->
     <string name="saf_select_count">Select (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
 
@@ -168,8 +148,6 @@
     <string name="delete_permanently_title">Delete <xliff:g id="count" example="3">%1$d</xliff:g> item(s) permanently?</string>
     <!-- Permanent-delete confirmation dialog body: folders cannot use the system trash -->
     <string name="delete_permanently_message">This cannot be undone. Folders and some files cannot be moved to the trash.</string>
-    <!-- Generic verb. Confirm permanent deletion -->
-    <string name="delete">Delete</string>
     <!-- Snackbar after moving items to the system trash. %1$d = item count -->
     <string name="moved_to_trash"><xliff:g id="count" example="3">%1$d</xliff:g> item(s) moved to trash</string>
     <!-- Snackbar after restoring trashed items. %1$d = item count -->

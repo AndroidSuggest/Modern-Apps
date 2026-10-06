@@ -294,8 +294,6 @@ object RcsE2E {
         }
 
 
-            .entries.joinToString(",") { "${it.key}=${it.value}" }
-
     /**
      * Record added members' leaf indices. The crate assigns leaves in join
      * order starting after our own leaf 0: for an N-member add to a group
@@ -572,6 +570,50 @@ object RcsE2E {
         val typedHeaders = headers.replace("Content-Type: message/cpim", "Content-Type: $contentType")
         return runCatching { RcsSipTransport.sendSipMessage(startLine, typedHeaders, content) }
             .getOrDefault(false)
+    }
+
+    /** Group id for [conversationId], or null when no E2EE group exists. */
+    suspend fun groupIdFor(context: Context, conversationId: String): ByteArray? =
+        withContext(Dispatchers.IO) {
+            if (!RcsFeature.enabled) return@withContext null
+            val group = RcsDatabase.getDatabase(context).mlsGroupDao().getByConversation(conversationId)
+                ?: return@withContext null
+            if (group.groupIdHex.startsWith("pending:")) return@withContext null
+            group.groupIdHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        }
+
+    /**
+     * True when [body] (CPIM text or raw) carries an MLS payload: magic
+     * prefixes after base64 decode, or the MLS content types.
+     */
+    fun isMlsPayload(body: String): Boolean {
+        if (!RcsFeature.enabled || !RustMlsCrypto.isAvailable) return false
+        if (body.contains(CT_MLS, ignoreCase = true) ||
+            body.contains(CT_COMMIT, ignoreCase = true) ||
+            body.contains(CT_WELCOME, ignoreCase = true)
+        ) {
+            return true
+        }
+        val b64 = if (body.contains("\r\n\r\n")) {
+            body.substringAfter("\r\n\r\n", "").trim()
+        } else {
+            body.trim()
+        }.takeIf { it.isNotEmpty() } ?: return false
+        val bytes = runCatching {
+            android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+        }.getOrNull() ?: return false
+        if (bytes.size < MIN_FRAME_BYTES) return false
+        return runCatching { RustMlsCrypto.payloadKind(bytes) in PAYLOAD_KINDS }.getOrDefault(false)
+    }
+
+    /** Our own E.164 (default SMS subscription's number when readable). */
+    fun localE164(context: Context): String? {
+        if (!RcsFeature.enabled) return null
+        return runCatching {
+            val tm = context.getSystemService(android.telephony.TelephonyManager::class.java)
+                ?: return null
+            tm.line1Number?.takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
 
 

@@ -105,6 +105,76 @@ class SubscriptionRepository private constructor(context: Context) :
     suspend fun upsertSubscriptionVideos(values: List<SubscriptionVideo>) = subscriptionVideoDao.upsertAll(values)
 
     // ------------------------------------------------------------------
+    // Category (delegates to SubscriptionCategoryStore; kept here so existing
+    // call sites using `repository.*` keep compiling)
+    // ------------------------------------------------------------------
+
+    suspend fun replaceCategory(originalCategoryName: String?, categoryName: String, ids: List<Long>) =
+        categoryStore.replaceCategory(originalCategoryName, categoryName, ids)
+
+    suspend fun deleteCategory(categoryName: String) = categoryStore.deleteCategory(categoryName)
+
+    suspend fun upsertSubscriptionCategories(items: List<SubscriptionCategory>) =
+        categoryStore.upsertSubscriptionCategories(items)
+
+    // ------------------------------------------------------------------
+    // Playlist (delegates to PlaylistStore)
+    // ------------------------------------------------------------------
+
+    suspend fun getAllPlaylists(): List<Playlist> = playlistStore.getAllPlaylists()
+    suspend fun upsertPlaylist(value: Playlist): Long = playlistStore.upsertPlaylist(value)
+    suspend fun upsertPlaylists(values: List<Playlist>) = playlistStore.upsertPlaylists(values)
+    suspend fun deletePlaylist(value: Playlist): Int = playlistStore.deletePlaylist(value)
+    suspend fun getPlaylistItemsForPlaylist(playlistId: Long): List<PlaylistItem> =
+        playlistStore.getPlaylistItemsForPlaylist(playlistId)
+    suspend fun upsertPlaylistItem(value: PlaylistItem): Long = playlistStore.upsertPlaylistItem(value)
+    suspend fun upsertPlaylistItems(values: List<PlaylistItem>) = playlistStore.upsertPlaylistItems(values)
+    suspend fun deletePlaylistItem(value: PlaylistItem): Int = playlistStore.deletePlaylistItem(value)
+
+    // ------------------------------------------------------------------
+    // Recommendation (delegates to RecommendationStore)
+    // ------------------------------------------------------------------
+
+    suspend fun getAllCachedRelatedVideos(): List<CachedRelatedVideo> =
+        recommendationStore.getAllCachedRelatedVideos()
+    suspend fun upsertCachedRelatedVideos(values: List<CachedRelatedVideo>) =
+        recommendationStore.upsertCachedRelatedVideos(values)
+    suspend fun deleteCachedRelatedOlderThan(cutoff: kotlin.time.Instant) =
+        recommendationStore.deleteCachedRelatedOlderThan(cutoff)
+    suspend fun getAllRecommendationImpressions(): List<RecommendationImpression> =
+        recommendationStore.getAllRecommendationImpressions()
+    suspend fun recordRecommendationImpression(
+        videoID: Long,
+        channelKey: String,
+        source: String,
+        now: kotlin.time.Instant,
+    ) = recommendationStore.recordRecommendationImpression(videoID, channelKey, source, now)
+    suspend fun deleteRecommendationImpressionsOlderThan(cutoff: kotlin.time.Instant) =
+        recommendationStore.deleteRecommendationImpressionsOlderThan(cutoff)
+    suspend fun clearAllRecommendationImpressions() = recommendationStore.clearAllRecommendationImpressions()
+    suspend fun getRecommendationPreferences(): RecommendationPreferences? =
+        recommendationStore.getRecommendationPreferences()
+    suspend fun upsertRecommendationPreferences(value: RecommendationPreferences) =
+        recommendationStore.upsertRecommendationPreferences(value)
+    suspend fun clearAllRecommendationPreferences() = recommendationStore.clearAllRecommendationPreferences()
+    suspend fun getAllChannelPreferences(): List<ChannelPreference> =
+        recommendationStore.getAllChannelPreferences()
+    suspend fun getChannelPreference(channelKey: String): ChannelPreference? =
+        recommendationStore.getChannelPreference(channelKey)
+    suspend fun upsertChannelPreference(value: ChannelPreference) =
+        recommendationStore.upsertChannelPreference(value)
+    suspend fun deleteChannelPreference(channelKey: String) =
+        recommendationStore.deleteChannelPreference(channelKey)
+    suspend fun clearAllChannelPreferences() = recommendationStore.clearAllChannelPreferences()
+    suspend fun getAllKeywordPreferences(): List<KeywordPreference> =
+        recommendationStore.getAllKeywordPreferences()
+    suspend fun upsertKeywordPreference(value: KeywordPreference) =
+        recommendationStore.upsertKeywordPreference(value)
+    suspend fun deleteKeywordPreference(keyword: String) =
+        recommendationStore.deleteKeywordPreference(keyword)
+    suspend fun clearAllKeywordPreferences() = recommendationStore.clearAllKeywordPreferences()
+
+    // ------------------------------------------------------------------
     // HistoryVideo
     // ------------------------------------------------------------------
 

@@ -76,9 +76,8 @@ class TrackerProvisioner(private val context: Context) {
      * [TrackerProtocol.recentEpochIds] search window and resolve to nothing.
      */
     @SuppressLint("MissingPermission")
-    @Suppress("DEPRECATION")
     // Broad catch is deliberate: GATT connect throws varied exceptions; bind failure must return false, not crash.
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("DEPRECATION", "TooGenericExceptionCaught")
     suspend fun provision(
         device: BluetoothDevice,
         trackerUserId: Long,
@@ -166,9 +165,8 @@ class TrackerProvisioner(private val context: Context) {
         }
 
     @SuppressLint("MissingPermission")
-    @Suppress("DEPRECATION")
     // Broad catch is deliberate: GATT write throws varied exceptions across API levels; failure must return false.
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("DEPRECATION", "TooGenericExceptionCaught")
     private fun writeChar(gatt: BluetoothGatt, ch: BluetoothGattCharacteristic, value: ByteArray): Boolean =
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

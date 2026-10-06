@@ -2,7 +2,7 @@ package com.vayunmathur.communicate.data.signal.e2e
 
 import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.message.PreKeySignalMessage
-import org.whispersystems.signalservice.api.push.PreKeyUpload
+import com.vayunmathur.communicate.data.signal.e2e.SignalE2E.PreKeyUpload
 
 /**
  * Identity/store queries for [SignalE2E] (split for file length).

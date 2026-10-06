@@ -168,7 +168,7 @@ private fun ShieldToggle(
 
 private val ShieldLevel.titleRes: Int
     get() = when (this) {
-        ShieldLevel.OFF -> R.string.shields_level_off
+        ShieldLevel.OFF -> UiR.string.off
         ShieldLevel.STANDARD -> R.string.shields_level_standard
         ShieldLevel.AGGRESSIVE -> R.string.shields_level_aggressive
     }

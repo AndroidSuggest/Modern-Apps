@@ -26,6 +26,7 @@ import com.vayunmathur.library.ui.verticalShape
 import com.vayunmathur.library.util.firstLetterUppercase
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.maps.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.maps.data.OpeningHours
 import com.vayunmathur.maps.data.timeFormat
 import kotlinx.datetime.DayOfWeek
@@ -42,7 +43,7 @@ internal fun OsmHours(openingHours: OpeningHours, todayOverride: Pair<DayOfWeek,
     val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
     val isOpen = openingHours.isOpen(now)
     val nextChangeTime = openingHours.nextStatusChangeTime(now)
-    val openStr = stringResource(R.string.open_status)
+    val openStr = stringResource(UiR.string.open)
     val closedStr = stringResource(R.string.closed_status)
     val closesAtStr = stringResource(R.string.closes_at, nextChangeTime.time.format(timeFormat))
     val opensAtStr = stringResource(R.string.opens_at, nextChangeTime.time.format(timeFormat))

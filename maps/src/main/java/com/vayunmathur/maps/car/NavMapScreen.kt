@@ -23,6 +23,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.vayunmathur.maps.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.maps.util.NavigationProgress
 import com.vayunmathur.maps.util.NavigationService
 import com.vayunmathur.maps.util.NavigationSessionManager
@@ -147,7 +148,7 @@ class NavMapScreen(carContext: CarContext) : Screen(carContext) {
         val builder = ActionStrip.Builder()
         builder.addAction(
             Action.Builder()
-                .setTitle(carContext.getString(R.string.car_search_action))
+                .setTitle(carContext.getString(UiR.string.search))
                 .setOnClickListener { screenManager.push(CarSearchScreen(carContext)) }
                 .build()
         )
@@ -193,7 +194,7 @@ class NavMapScreen(carContext: CarContext) : Screen(carContext) {
 
     private fun carStep(step: RouteService.Step, withLanes: Boolean): Step {
         val cue = step.navInstruction.instructions
-            .ifBlank { carContext.getString(R.string.car_continue) }
+            .ifBlank { carContext.getString(UiR.string.continue_label) }
         val builder = Step.Builder(cue)
             .setManeuver(CarManeuvers.build(step.navInstruction.maneuver))
         if (withLanes && step.lanes.isNotEmpty()) {

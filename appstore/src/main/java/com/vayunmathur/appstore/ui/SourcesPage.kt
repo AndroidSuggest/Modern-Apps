@@ -76,7 +76,7 @@ fun SourcesPage(
             ) {
                 Text(
                     stringResource(
-                        if (home.isSyncing) R.string.repos_syncing
+                        if (home.isSyncing) R.string.sync_in_progress
                         else R.string.repos_sync_sources
                     )
                 )
@@ -119,7 +119,7 @@ fun SourcesPage(
             onEnabledChange = { viewModel.setSourceEnabled(AppSource.MODERN_APPS, it) },
         )
         SourceCard(
-            title = stringResource(R.string.source_fdroid),
+            title = stringResource(R.string.source_chip_fdroid),
             subtitle = DefaultRepos.FDROID.url,
             pinLabel = stringResource(R.string.source_fdroid_pin),
             pins = setOfNotNull(
@@ -139,7 +139,7 @@ fun SourcesPage(
             onEnabledChange = { viewModel.setSourceEnabled(AppSource.PLAYSTORE, it) },
         )
         SourceCard(
-            title = stringResource(R.string.source_accrescent),
+            title = stringResource(R.string.source_chip_accrescent),
             subtitle = AccrescentRepo.REPOSITORY_URL,
             pinLabel = stringResource(R.string.source_accrescent_pin),
             pins = setOf(AccrescentRepo.REPODATA_PUBKEY),

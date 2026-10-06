@@ -201,7 +201,6 @@ fun CatalogPickerPage(
                         CatalogKind.Allergen -> R.string.search_allergens
                         CatalogKind.Condition -> R.string.search_conditions
                         CatalogKind.LabTest -> R.string.search_lab_tests
-                        else -> R.string.search_medications
                     }
                 ),
                 padding = PaddingValues(0.dp),

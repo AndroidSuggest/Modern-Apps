@@ -23,6 +23,7 @@ class WhatsAppEventProcessor(private val db: WhatsAppDatabase) {
 
     private companion object {
         private const val MS_PER_SECOND = 1000L
+        private const val TAG = "WAEventProcessor"
     }
 
     fun start(events: SharedFlow<WhatsAppEvent>) {
@@ -269,9 +270,5 @@ class WhatsAppEventProcessor(private val db: WhatsAppDatabase) {
         val msg = messages.get(messageId) ?: return
         val current = WhatsAppServiceData.parse(msg.serviceData) ?: WhatsAppServiceData()
         messages.updateServiceData(messageId, transform(current).serialize())
-    }
-
-    companion object {
-        private const val TAG = "WAEventProcessor"
     }
 }

@@ -116,7 +116,7 @@ internal fun CropRotatePanel(
                 modifier = Modifier.clickable { onReset() },
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surface,
-            ) { Text(stringResource(R.string.reset), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
+            ) { Text(stringResource(UiR.string.reset), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             Surface(
@@ -139,7 +139,7 @@ internal fun CropRotatePanel(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) { IconCheck(); Text(stringResource(R.string.apply), fontSize = 13.sp) }
+                ) { IconCheck(); Text(stringResource(UiR.string.apply), fontSize = 13.sp) }
             }
         }
     }

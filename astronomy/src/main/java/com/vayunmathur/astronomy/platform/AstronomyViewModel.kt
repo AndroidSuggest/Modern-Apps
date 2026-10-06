@@ -404,7 +404,7 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app), SkyMapAction
             loc?.let {
                 val latDeg = it.latitude; val lonDeg = it.longitude
                 _observer.value = ObserverLocation(latDeg.toRad(), lonDeg.toRad(), latDeg, lonDeg, it.altitude)
-                saveDouble("astro_lat", latDeg); saveDouble("astro_lon", lonDeg)
+                prefs.saveDouble("astro_lat", latDeg); prefs.saveDouble("astro_lon", lonDeg)
                 orientationMgr.updateLocation(latDeg, lonDeg, it.altitude.toFloat())
             } ?: run { _observer.value?.let { obs -> orientationMgr.updateLocation(obs.latDeg, obs.lonDeg) } }
         }

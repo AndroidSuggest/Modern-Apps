@@ -2,7 +2,7 @@ package com.vayunmathur.contacts.util
 
 import android.app.Application
 import android.util.Log
-import com.vayunmathur.contacts.data.ContactAccount
+import com.vayunmathur.contacts.util.ContactAccount
 import com.vayunmathur.contacts.data.LOCAL_ACCOUNT_TYPE
 import kotlinx.coroutines.flow.first
 
@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.first
  * (see TooManyFunctions). Called as viewModel.*.
  */
 
-private suspend fun ContactViewModel.migrateLegacyAccounts() {
+internal suspend fun ContactViewModel.migrateLegacyAccounts() {
     val legacyAccounts = dataStore.getString("extra_accounts").orEmpty()
     if (legacyAccounts.isBlank()) return
     legacyAccounts.split(",")
@@ -41,7 +41,7 @@ private suspend fun ContactViewModel.migrateLegacyAccountEntry(legacyEntry: Stri
     }
 }
 
-private suspend fun ContactViewModel.loadSavedAccounts(): List<ContactAccount> {
+internal suspend fun ContactViewModel.loadSavedAccounts(): List<ContactAccount> {
     val savedSet = dataStore.stringSetFlow("extra_accounts_set").first()
     val savedAccounts = mutableListOf<ContactAccount>()
     for (entry in savedSet) {
@@ -85,7 +85,7 @@ private fun isCleanSavedEntry(entry: String): Boolean =
 // Broad catch is deliberate: DataStore reads fail with OEM-specific
 // RuntimeExceptions and a best-effort migration must not break account load.
 @Suppress("TooGenericExceptionCaught")
-private suspend fun ContactViewModel.migrateHiddenAccountKeys() {
+internal suspend fun ContactViewModel.migrateHiddenAccountKeys() {
     try {
         val hiddenSet = dataStore.getStringSetAwait("hidden_accounts")
         for (hiddenEntry in hiddenSet) {

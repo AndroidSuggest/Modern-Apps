@@ -30,6 +30,7 @@ object WhatsAppCallCrypto {
     private const val INFO_MEDIA = "WhatsApp Call Media Keys"
     private const val INFO_REKEY = "WhatsApp Call Rekey"
     private const val INFO_SSRC = "WhatsApp Call SSRC"
+    private const val INT_POSITIVE_MASK = 0x7FFFFFFF
 
     private val rng = SecureRandom()
 
@@ -62,9 +63,8 @@ object WhatsAppCallCrypto {
     fun deriveSsrc(callKey: ByteArray, callId: String): Int {
         val mac = hmacSha256(callKey, (INFO_SSRC + callId).toByteArray(Charsets.UTF_8))
         val raw = ByteBuffer.wrap(mac, 0, 4).int
-        private const val INT_POSITIVE_MASK = 0x7FFFFFFF
 
-    return raw and INT_POSITIVE_MASK
+        return raw and INT_POSITIVE_MASK
     }
 
     /**

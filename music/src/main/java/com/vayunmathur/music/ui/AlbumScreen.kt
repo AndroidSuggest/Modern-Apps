@@ -24,7 +24,7 @@ import com.vayunmathur.music.data.Album
 @Composable
 fun AlbumsTabContent(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
     val albums by musicViewModel.albums.collectAsState()
-    ListPage<Album, Route, Route.Song>(backStack, albums, stringResource(R.string.page_title_music), {
+    ListPage<Album, Route, Route.Song>(backStack, albums, stringResource(R.string.app_name), {
         Text(it.name, modifier = Modifier.sharedText("music-album-title-${it.id}"))
     }, {
         Text(it.artistString(musicViewModel), modifier = Modifier.sharedText("music-album-artist-${it.id}"))

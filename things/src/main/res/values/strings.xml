@@ -22,8 +22,6 @@
     <string name="no_devices_found">No devices found</string>
     <!-- Button on a device card that unpairs it and stops reconnecting. Verb phrase -->
     <string name="forget_device">Forget device</string>
-    <!-- Dismiss button on the device picker dialog. Verb -->
-    <string name="cancel">Cancel</string>
     <!-- Scale note reassuring that measurements are saved to Health Connect. Sentence -->
     <string name="syncs_to_health_connect">Measurements sync to Health Connect</string>
 
@@ -50,8 +48,6 @@
     <string name="temperature_c"><xliff:g id="temp" example="22">%1$d</xliff:g>°C</string>
     <!-- Bottle status: water purity as TDS. %1$d = ppm integer -->
     <string name="purity_ppm"><xliff:g id="tds" example="85">%1$d</xliff:g> ppm</string>
-    <!-- Bottle status: battery level. %1$d = percent 0-100 -->
-    <string name="battery_pct"><xliff:g id="pct" example="75">%1$d</xliff:g>%%</string>
     <!-- Bottle status: battery level while charging. %1$d = percent 0-100 -->
     <string name="battery_charging"><xliff:g id="pct" example="75">%1$d</xliff:g>%% (charging)</string>
 
@@ -79,13 +75,9 @@
     <string name="scale_reset_title">Reset scale users?</string>
     <!-- Warns that the reset is not limited to this app's own slot -->
     <string name="scale_reset_message">This erases all eight user profiles stored on the scale, including any belonging to other people in your household. They would each have to set the scale up again. Your own measurements already in Health Connect are not affected.</string>
-    <!-- Confirm button on the scale reset dialog. Verb -->
-    <string name="scale_reset_confirm">Reset</string>
     <!-- Scale scan button -->
     <string name="scan_scale">Scan scale</string>
     <!-- Health Connect -->
-    <!-- Button to grant Health Connect permissions. Verb phrase -->
-    <string name="health_connect">Health Connect</string>
 
     <!-- First-run permission screen -->
     <!-- Headline on the first-run permission screen. Sentence -->

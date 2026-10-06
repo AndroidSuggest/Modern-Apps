@@ -21,16 +21,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Difficulty bands, mapped to Lichess rating ranges within the bundled set. */
+private val EASY_RANGE = 400..1199
+private val MEDIUM_RANGE = 1200..1799
+private val HARD_RANGE = 1800..2799
+
 enum class PuzzleDifficulty(val range: IntRange) {
     EASY(EASY_RANGE),
     MEDIUM(MEDIUM_RANGE),
     HARD(HARD_RANGE);
-
-    companion object {
-        private val EASY_RANGE = 400..1199
-        private val MEDIUM_RANGE = 1200..1799
-        private val HARD_RANGE = 1800..2799
-    }
 }
 
 enum class PuzzleStatus {

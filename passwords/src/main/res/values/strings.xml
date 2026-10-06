@@ -2,14 +2,8 @@
     <!-- App name: launcher label and Passkey Credential Manager create-entry title -->
     <string name="app_name">Passwords</string>
 
-    <!-- Field label. Noun. Display name of the saved credential -->
-    <string name="label_name">Name</string>
     <!-- Field label. Noun. Username associated with credential. May be empty. -->
     <string name="label_username">Username</string>
-    <!-- Field label. Noun. Email associated with credential. May be empty. -->
-    <string name="label_email">Email</string>
-    <!-- Field label. Noun. Free-form note for recovery codes, seed phrases, etc. -->
-    <string name="label_note">Note</string>
     <!-- Field label. Noun. The secret password itself -->
     <string name="label_password">Password</string>
     <!-- Field label. Noun. TOTP = Time-based One-Time Password. Keep acronym, input is base32 secret -->
@@ -24,9 +18,6 @@
     <string name="hide">Hide</string>
     <!-- Button inside password field to reveal contents. Verb, Title Case -->
     <string name="show">Show</string>
-
-    <!-- Section header for password field card. Noun. Also fallback display name when entry name blank -->
-    <string name="section_password">Password</string>
     <!-- Section header for TOTP code block. Noun, acronym TOTP -->
     <string name="section_totp">TOTP</string>
     <!-- Placeholder shown when TOTP secret is empty. Parentheses intentional, lower case -->
@@ -39,8 +30,6 @@
     <string name="websites_none">(none)</string>
     <!-- List fallback when password entry has no name. Parentheses -->
     <string name="no_name">(no name)</string>
-    <!-- Section header for the free-form note block on the detail screen. Noun -->
-    <string name="section_note">Note</string>
     <!-- Detail header fallback when username and email are blank. Parentheses -->
     <string name="no_user">(no user)</string>
 
@@ -72,8 +61,6 @@
     <string name="passkey_link_manual">Linked by you</string>
     <!-- Shown in place of an entry name when the user disconnected this passkey. Explains why it does not re-match -->
     <string name="passkey_link_detached">Disconnected. It will not be matched automatically.</string>
-    <!-- Button. Opens a picker to attach this passkey to a password entry. Verb -->
-    <string name="passkey_connect">Link to entry</string>
     <!-- Button. Detaches this passkey from its password entry. Verb -->
     <string name="passkey_disconnect">Unlink</string>
     <!-- Button. Returns a disconnected passkey to being matched automatically. Verb phrase -->
@@ -91,8 +78,6 @@
     <!-- Biometric/auth prompt action label shown when database needs unlocking (PasskeyCredentialService pending intent). Verb phrase -->
     <string name="unlock_database">Unlock Passwords</string>
 
-    <!-- TopAppBar title for settings screen. Noun plural -->
-    <string name="title_settings">Settings</string>
     <!-- Warning text above import button about CSV being plaintext -->
     <string name="import_csv_warning">Importing a CSV will bring plaintext credentials into this app. Please delete the export after importing.</string>
     <!-- Button that opens dropdown of import sources. Verb phrase -->
@@ -155,14 +140,8 @@
     <string name="sync_create_file">Create new file</string>
     <!-- Row title for the password that unlocks the KDBX file. Distinct from the app unlock -->
     <string name="sync_vault_password">Vault password</string>
-    <!-- Supporting text when the vault password has been stored -->
-    <string name="sync_vault_password_set">Saved</string>
     <!-- Supporting text when no vault password has been stored yet. Parentheses intentional -->
     <string name="sync_vault_password_unset">(not set)</string>
-    <!-- Dialog button. Verb, Title Case -->
-    <string name="sync_save">Save</string>
-    <!-- Dialog button. Verb, Title Case -->
-    <string name="sync_cancel">Cancel</string>
     <!-- Row title showing when the last sync ran. Noun phrase -->
     <string name="sync_last">Last sync</string>
     <!-- Supporting text when no sync has ever completed. Adverb -->

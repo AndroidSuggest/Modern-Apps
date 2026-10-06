@@ -205,7 +205,7 @@ internal fun EditorViewModel.selectTabImpl(index: Int) {
         currentIndex = index
         if (secondaryIndex == index) secondaryIndex = null // never show the same tab in both panes
         focusedSecondary = false
-        dismissCompletions()
+        actions.dismissCompletions()
         saveSession()
         scheduleDiagnostics()
     }
@@ -239,7 +239,7 @@ internal fun EditorViewModel.closeTabsUnder(file: File) {
     val prefix = target + File.separator
     for (i in tabs.indices.reversed()) {
         val p = tabs[i].file?.absolutePath ?: continue
-        if (p == target || p.startsWith(prefix)) closeTab(i)
+        if (p == target || p.startsWith(prefix)) actions.closeTab(i)
     }
 }
 

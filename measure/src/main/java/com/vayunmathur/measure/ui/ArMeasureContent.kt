@@ -30,6 +30,7 @@ import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.measure.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.measure.data.model.TrackingQuality
 import com.vayunmathur.measure.domain.MeasureNative
 import com.vayunmathur.measure.domain.Units
@@ -48,7 +49,7 @@ fun ArMeasureContent(
     bottomBar: @Composable () -> Unit = {},
 ) {
     AppScaffold(
-        title = stringResource(R.string.tool_measure),
+        title = stringResource(R.string.app_name),
         actions = { IconButton(onClick = onOpenSettings) { IconSettings() } },
         bottomBar = bottomBar,
         scrollBehavior = appBarScrollBehavior(),
@@ -100,7 +101,7 @@ fun ArMeasureContent(
                     OutlinedButton(
                         onClick = { actions.clearAnchors() },
                         enabled = state.anchors.isNotEmpty(),
-                    ) { Text(stringResource(R.string.ar_clear_points)) }
+                    ) { Text(stringResource(UiR.string.clear)) }
                 }
             }
         }

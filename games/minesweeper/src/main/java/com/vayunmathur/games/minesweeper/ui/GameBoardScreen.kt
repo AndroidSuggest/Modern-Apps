@@ -142,7 +142,7 @@ fun GameBoardScreen(
                     Button(
                         onClick = { if (hasProgress) confirmRestart = true else actions.restart() },
                         modifier = Modifier.weight(1f),
-                    ) { Text(stringResource(R.string.new_field_button)) }
+                    ) { Text(stringResource(R.string.new_field)) }
                     TextButton(
                         onClick = {
                             if (hasProgress) {
@@ -161,7 +161,7 @@ fun GameBoardScreen(
                 ConfirmDialog(
                     title = stringResource(R.string.confirm_new_field_title),
                     message = stringResource(R.string.confirm_new_field_message),
-                    confirmLabel = stringResource(R.string.new_field_button),
+                    confirmLabel = stringResource(R.string.new_field),
                     dismissLabel = stringResource(UiR.string.cancel),
                     destructive = true,
                     onConfirm = { actions.restart() },

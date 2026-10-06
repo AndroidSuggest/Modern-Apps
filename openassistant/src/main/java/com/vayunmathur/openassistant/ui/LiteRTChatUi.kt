@@ -5,7 +5,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
-import androidx.compose.material3.adaptive.navigationsuite.item
 import com.vayunmathur.library.ui.DrawerValue
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconButton
@@ -19,6 +18,7 @@ import com.vayunmathur.library.ui.rememberDrawerState
 import com.vayunmathur.library.ui.rememberPermissionRequest
 import com.vayunmathur.library.ui.NavigationSuiteScaffold
 import com.vayunmathur.library.ui.NavigationSuiteType
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue

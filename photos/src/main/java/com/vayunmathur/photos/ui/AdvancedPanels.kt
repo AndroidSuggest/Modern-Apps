@@ -45,6 +45,7 @@ import com.vayunmathur.photos.data.UnsharpMask
 import com.vayunmathur.photos.data.applyToBitmap
 import kotlin.math.roundToInt
 import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.photos.R
 
 @Composable
@@ -160,7 +161,7 @@ private fun ApplyButton(onApply: () -> Unit) {
             shape = RoundedCornerShape(6.dp),
             color = MaterialTheme.colorScheme.primaryContainer,
         ) {
-            Text(stringResource(R.string.apply),
+            Text(stringResource(UiR.string.apply),
                 fontSize = 13.sp,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 color = MaterialTheme.colorScheme.onPrimaryContainer,

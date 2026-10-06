@@ -26,6 +26,7 @@ import com.vayunmathur.library.ui.CommonSearchBar
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.util.sharedContainer
@@ -80,7 +81,7 @@ fun GamesListScreen(
             DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
                 DropdownMenuItem(text = { Text(stringResource(R.string.sort_last_played)) }, onClick = { sort = GameSort.LAST_PLAYED; showSortMenu = false })
                 DropdownMenuItem(text = { Text(stringResource(R.string.sort_most_played)) }, onClick = { sort = GameSort.MOST_PLAYED; showSortMenu = false })
-                DropdownMenuItem(text = { Text(stringResource(R.string.sort_name)) }, onClick = { sort = GameSort.NAME; showSortMenu = false })
+                DropdownMenuItem(text = { Text(stringResource(UiR.string.name)) }, onClick = { sort = GameSort.NAME; showSortMenu = false })
                 DropdownMenuItem(text = { Text(stringResource(R.string.sort_completion)) }, onClick = { sort = GameSort.COMPLETION; showSortMenu = false })
             }
         },

@@ -1,7 +1,6 @@
 package com.vayunmathur.camera.util
 
 import android.util.Log
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 
 fun CameraViewModel.setExposureTimeIndex(index: Int) {
     exposureTimeIndexMutable.value = index.coerceIn(0, CameraViewModel.EXPOSURE_TIME_STOPS.lastIndex)
@@ -14,7 +13,7 @@ fun CameraViewModel.setManualIsoIndex(index: Int) {
     applyManualControls()
 }
 
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 internal fun CameraViewModel.camera2ControlOrNull(): androidx.camera.camera2.interop.Camera2CameraControl? = try {
     boundCamera?.cameraControl?.let {
         androidx.camera.camera2.interop.Camera2CameraControl.from(it)
@@ -38,7 +37,7 @@ internal fun CameraViewModel.isExposureAuto(): Boolean =
  * the options are cleared, reverting to CameraX's default auto behavior (including tap-to-focus).
  * Called on every manual-control change and re-applied after a session rebind.
  */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 fun CameraViewModel.applyManualControls() {
     val cam2 = camera2ControlOrNull() ?: return
     val builder = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
@@ -73,7 +72,7 @@ fun CameraViewModel.applyManualControls() {
 }
 
 /** Reads the bound sensor's ISO range → stop list for the manual ISO control. */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 internal fun CameraViewModel.readManualControlRanges() {
     Log.d(
         "NightPreview",

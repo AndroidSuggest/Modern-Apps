@@ -71,10 +71,10 @@ class ScaleBleManager {
         // Command bytes, VA categories and decode constants live in ScaleBleProtocol.kt.
 
         // Handshake timings lifted from QNDecoderImpl.
-        private const val CONFIG_TO_TIME_MS = 300L
-        private const val TIME_RETRY_MS = 250L
-        private const val TIME_RETRY_LIMIT = 3
-        private const val ACK_TO_START_MS = 250L
+        internal const val CONFIG_TO_TIME_MS = 300L
+        internal const val TIME_RETRY_MS = 250L
+        internal const val TIME_RETRY_LIMIT = 3
+        internal const val ACK_TO_START_MS = 250L
 
         /** ConnectionViewModel scans in a bounded window rather than indefinitely. */
         internal const val SCAN_TIMEOUT_MS = 20_000L
@@ -125,7 +125,7 @@ class ScaleBleManager {
     private val commandQueue = ArrayDeque<Command>()
     private var writing = false
     private val descriptorQueue = ArrayDeque<Pair<BluetoothGattDescriptor, ByteArray>>()
-    private var timeRetries = 0
+    internal var timeRetries = 0
 
     // Advertised manufacturer data per address, kept from the scan so that the scale category and
     // the resistance-encryption flag can be resolved once we know which device we are connecting to.
@@ -147,9 +147,6 @@ class ScaleBleManager {
 
     internal val scanTimeout = Runnable {
         stopScan()
-            supportsIdentifyWeight =
-                ((v[SCALE_INFO_IDENTIFY_INDEX].toInt() shr IDENTIFY_WEIGHT_BIT) and 1) == 1
-        }
     }
 
     /**
@@ -415,11 +412,9 @@ class ScaleBleManager {
 
     private fun UUID.short(): String = toString().substring(UUID_SHORT_START, UUID_SHORT_END)
 
-    internal fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
-
     /** CmdBuilder.buildCmd with this connection's scale type; see ScaleBleProtocol.kt. */
     internal fun buildCmd(cmd: Int, vararg payload: Int): ByteArray =
-        buildCmd(cmd, scaleType, *payload)
+        buildCmdWithType(cmd, scaleType, *payload)
 
     // Packet dispatch and measurement decoding live in ScaleBleMeasurement.kt as
     // `internal` members of the manager, so this file stays under the function-count limit.

@@ -18,6 +18,7 @@ import androidx.core.content.IntentCompat
 import androidx.core.content.getSystemService
 import com.vayunmathur.cast.MainActivity
 import com.vayunmathur.cast.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.cast.domain.CastDevice
 import com.vayunmathur.cast.domain.ClientPhase
 import com.vayunmathur.cast.domain.ClientState
@@ -248,16 +249,16 @@ class CastService : Service() {
     }
 
     private fun statusText(phase: ClientPhase, mirror: MirrorPhase): String = when {
-        mirror == MirrorPhase.Mirroring -> getString(R.string.cast_notification_text_mirroring)
+        mirror == MirrorPhase.Mirroring -> getString(R.string.cast_status_mirroring)
         mirror == MirrorPhase.Negotiating -> getString(R.string.cast_notification_text_starting)
         mirror == MirrorPhase.Failed -> getString(R.string.cast_notification_text_failed)
         phase == ClientPhase.Connecting -> getString(R.string.cast_notification_text_connecting)
         // Worth its own line: the user has to walk over and read the TV, and a notification that just
         // said "connecting" would not tell them that.
         phase == ClientPhase.AwaitingCode -> getString(R.string.cast_notification_text_pairing)
-        phase == ClientPhase.Paired -> getString(R.string.cast_notification_text_ready)
+        phase == ClientPhase.Paired -> getString(R.string.cast_status_ready)
         phase == ClientPhase.Failed -> getString(R.string.cast_notification_text_failed)
-        else -> getString(R.string.cast_notification_text_ready)
+        else -> getString(R.string.cast_status_ready)
     }
 
     private fun buildNotification(deviceName: String, text: String): Notification {
@@ -281,7 +282,7 @@ class CastService : Service() {
             .setContentText(text)
             .setOngoing(true)
             .setContentIntent(open)
-            .addAction(R.drawable.ic_cast, getString(R.string.cast_notification_action_stop), stop)
+            .addAction(R.drawable.ic_cast, getString(UiR.string.stop), stop)
             .build()
     }
 

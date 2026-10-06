@@ -17,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import android.media.RingtoneManager
 import com.vayunmathur.clock.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.MaterialTheme
@@ -29,7 +30,7 @@ import com.vayunmathur.library.ui.ringtoneTitle
 val SNOOZE_OPTIONS = listOf(1, 5, 10, 15, 20, 30)
 val GRADUAL_OPTIONS = listOf(0, 5, 15, 30, 60)
 
-fun gradualLabel(context: android.content.Context, seconds: Int): String = if (seconds <= 0) context.getString(R.string.gradual_off) else "${seconds}s"
+fun gradualLabel(context: android.content.Context, seconds: Int): String = if (seconds <= 0) context.getString(UiR.string.off) else "${seconds}s"
 
 @Composable
 fun AlarmOptionControls(

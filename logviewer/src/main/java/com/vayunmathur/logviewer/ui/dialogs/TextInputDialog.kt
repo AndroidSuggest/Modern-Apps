@@ -20,6 +20,7 @@ import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.logviewer.R
+import com.vayunmathur.library.ui.R as UiR
 
 /**
  * A dialog that collects one piece of text: the log's description, or a filter regex.
@@ -63,10 +64,10 @@ internal fun TextInputDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(text) }) { Text(stringResource(R.string.action_apply)) }
+            TextButton(onClick = { onConfirm(text) }) { Text(stringResource(UiR.string.apply)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

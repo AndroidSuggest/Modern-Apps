@@ -76,7 +76,7 @@ class CborReader(private val bytes: ByteArray, private var pos: Int = 0) {
 
     private fun readArg(minor: Int): Long = when (minor) {
         in 0..ARG_IMMEDIATE_MAX -> minor.toLong()
-        ARG_UINT8 -> readByte().toLong() and BYTE_MASK
+        ARG_UINT8 -> readByte().toLong() and BYTE_MASK.toLong()
         ARG_UINT16 -> readUInt(UINT16_BYTES)
         ARG_UINT32 -> readUInt(UINT32_BYTES)
         ARG_UINT64 -> readUInt(UINT64_BYTES)
@@ -85,7 +85,7 @@ class CborReader(private val bytes: ByteArray, private var pos: Int = 0) {
 
     private fun readUInt(n: Int): Long {
         var value = 0L
-        repeat(n) { value = (value shl BYTE_SHIFT) or (readByte().toLong() and BYTE_MASK) }
+        repeat(n) { value = (value shl BYTE_SHIFT) or (readByte().toLong() and BYTE_MASK.toLong()) }
         return value
     }
 

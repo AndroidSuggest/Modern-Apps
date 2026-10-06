@@ -73,7 +73,7 @@ data class CableQrData(
         private fun appendLittleEndian(out: MutableList<Byte>, value: Long, byteCount: Int) {
             var v = value
             repeat(byteCount) {
-                out.add((v and BYTE_MASK).toByte())
+                out.add((v and BYTE_MASK.toLong()).toByte())
                 v = v ushr BYTE_SHIFT
             }
         }

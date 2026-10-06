@@ -307,7 +307,7 @@ class DocumentPickerActivity : ComponentActivity() {
             modifier = Modifier.weight(1f),
         )
         Button(onClick = onCreate, enabled = createName.isNotBlank()) {
-            Text(stringResource(R.string.saf_save))
+            Text(stringResource(UiR.string.save))
         }
     }
 

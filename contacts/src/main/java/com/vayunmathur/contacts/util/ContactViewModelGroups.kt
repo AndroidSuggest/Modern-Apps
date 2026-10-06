@@ -105,6 +105,7 @@ private fun buildRemoveFromGroupOperation(
  * Contact lookup and group-membership queries, kept with the account helpers
  * so ContactViewModel stays under the function cap (see TooManyFunctions).
  * Called as viewModel.*.
+ */
 
 /**
  * Contact lookup and group-membership queries, kept with the account helpers

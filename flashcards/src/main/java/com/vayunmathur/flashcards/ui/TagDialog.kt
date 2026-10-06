@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.flashcards.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Text
@@ -35,11 +36,11 @@ fun TagDialog(
         },
         confirmButton = {
             TextButton(onClick = { if (tag.isNotBlank()) onConfirm(tag.trim()) }) {
-                Text(stringResource(R.string.save))
+                Text(stringResource(UiR.string.save))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

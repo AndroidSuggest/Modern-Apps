@@ -118,7 +118,7 @@ internal fun BoxWithConstraintsScope.CameraPreviewBox(
                         ) {
                             val localMask = currentMask
                             val shader = bokehShader?.value
-                            if (shader != null && localMask != null &&
+                            if (shader != null &&
                                 !localMask.isRecycled &&
                                 size.width > 0 && size.height > 0
                             ) {

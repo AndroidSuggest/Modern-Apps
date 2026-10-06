@@ -11,6 +11,7 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.logviewer.R
+import com.vayunmathur.library.ui.R as UiR
 
 /**
  * Shows why saving the log failed, in full.
@@ -38,11 +39,11 @@ internal fun StackTraceDialog(
         },
         confirmButton = {
             TextButton(onClick = { onCopy(); onDismiss() }) {
-                Text(stringResource(R.string.action_copy))
+                Text(stringResource(UiR.string.copy))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

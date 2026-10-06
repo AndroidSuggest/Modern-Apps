@@ -20,6 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.fooddelivery.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.fooddelivery.data.Customer
 import com.vayunmathur.fooddelivery.data.CustomerSavings
 import com.vayunmathur.fooddelivery.data.PlatformSavings
@@ -196,7 +197,7 @@ internal fun EditProfileDialog(
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text(stringResource(R.string.email)) },
+                    label = { Text(stringResource(UiR.string.email)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -214,7 +215,7 @@ internal fun EditProfileDialog(
             }) { Text(stringResource(R.string.save_changes)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

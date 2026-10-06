@@ -310,13 +310,28 @@ class SurfaceMapRenderer(
     private var regionResolved = true
 
     /**
-     * Where cached byte ranges live. External files rather than the cache dir: this is
-     * large and expensive to rebuild, so it should not be the first thing the platform
-     * reclaims, and external files are outside the 25 MB cloud-backup quota.
+     * Where cached byte ranges live: the app cache dir, so "Clear cache" in
+     * system settings reclaims them like any other cache. Previously external
+     * files, where only "Clear storage" could reach them.
+     *
+     * The platform may evict this first under storage pressure, which is fine:
+     * every entry re-streams on demand, and offline areas simply re-download.
      */
     private val cacheDir: File by lazy {
-        val root = appContext.getExternalFilesDir(null) ?: appContext.filesDir
-        File(root, CACHE_DIR_NAME).apply { mkdirs() }
+        deleteStaleExternalCache()
+        File(appContext.cacheDir, CACHE_DIR_NAME).apply { mkdirs() }
+    }
+
+    /**
+     * One-time reclaim: older builds kept the range cache at
+     * externalFilesDir/vectortilecache/, invisible to "Clear cache". The
+     * entries are keyed by URL + range, so nothing here can be confused for
+     * the new location's — delete the whole stale directory.
+     */
+    private fun deleteStaleExternalCache() {
+        val external = appContext.getExternalFilesDir(null) ?: return
+        val stale = File(external, CACHE_DIR_NAME)
+        if (stale.exists()) stale.deleteRecursively()
     }
 
     /**

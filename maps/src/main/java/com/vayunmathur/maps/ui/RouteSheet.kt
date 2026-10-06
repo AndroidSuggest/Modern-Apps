@@ -134,7 +134,7 @@ fun RouteSheet(
                                 RouteService.TravelMode.WALK -> R.string.travel_mode_walk
                                 RouteService.TravelMode.BICYCLE -> R.string.travel_mode_bicycle
                                 RouteService.TravelMode.DRIVE -> R.string.travel_mode_drive
-                                RouteService.TravelMode.TRANSIT -> R.string.travel_mode_transit
+                                RouteService.TravelMode.TRANSIT -> R.string.layer_transit
                             }
                         ),
                         primary = modeRoute?.let { formatDuration(context, it.duration) },

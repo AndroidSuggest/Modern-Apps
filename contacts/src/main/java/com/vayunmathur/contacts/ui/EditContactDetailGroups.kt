@@ -18,6 +18,7 @@ import com.vayunmathur.library.ui.FormDetailGroup
 import com.vayunmathur.library.ui.IconCall
 import com.vayunmathur.library.ui.IconLocationOn
 import com.vayunmathur.library.ui.IconMail
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 
 /**
@@ -67,7 +68,7 @@ fun EditContactDetailGroups(
         val emailCtx = LocalContext.current
         FormDetailGroup(
             items = draft.emails,
-            label = stringResource(R.string.email),
+            label = stringResource(UiR.string.email),
             addLabel = stringResource(R.string.add_email),
             typeOptions = listOf(CDKEmail.TYPE_HOME, CDKEmail.TYPE_WORK, CDKEmail.TYPE_OTHER, CDKEmail.TYPE_MOBILE, CDKEmail.TYPE_CUSTOM),
             value = { it.value },

@@ -163,7 +163,7 @@ object MmsPduReader {
             val len = buf[pos++].toInt() and BYTE_MASK
             if (len > MAX_SHORT_LENGTH) return 0 // not a short-length; bail
             var v = 0L
-            repeat(len) { v = (v shl BYTE_BITS) or (buf[pos++].toLong() and BYTE_MASK) }
+            repeat(len) { v = (v shl BYTE_BITS) or (buf[pos++].toLong() and BYTE_MASK.toLong()) }
             return v
         }
 

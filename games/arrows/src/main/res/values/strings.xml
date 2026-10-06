@@ -10,10 +10,6 @@
 
     <!-- ArrowsGameScreen TopAppBar: Current level in the progression. %1$d = level number, e.g. 6 -->
     <string name="level_title">Level <xliff:g id="level" example="6">%1$d</xliff:g></string>
-    <!-- ArrowsGameScreen: Button advancing to the next level after clearing the board. Verb phrase -->
-    <string name="next_level">Next Level</string>
-    <!-- ArrowsGameScreen: Puts every arrow back and restores the hearts. Verb -->
-    <string name="restart">Restart</string>
     <!-- ArrowsGameScreen restart confirmation: Title asking whether to reset the board. Question -->
     <string name="confirm_restart_title">Restart this board?</string>
     <!-- ArrowsGameScreen restart confirmation: Explains progress on the board is lost. Sentence -->

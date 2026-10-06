@@ -46,7 +46,6 @@
     <string name="nobody_here">ingen är här just nu</string>
     <string name="user_is_here"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> är här just nu</string>
     <string name="users_are_here"><xliff:g id="person_names" example="Alice, Bob">%1$s</xliff:g> är här just nu</string>
-    <string name="last_updated_never">Aldrig</string>
     <string name="since_just_now">Sedan nyss</string>
     <string name="since_minutes_ago">Sedan <xliff:g id="minutes" example="5">%1$d</xliff:g> minuter</string>
     <string name="since_time_date">Sedan <xliff:g id="time" example="3:45 PM">%1$s</xliff:g> <xliff:g id="date" example="today">%2$s</xliff:g></string>

@@ -18,6 +18,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.fooddelivery.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.fooddelivery.data.MenuItem
 import com.vayunmathur.fooddelivery.data.SelectedModifier
 import com.vayunmathur.library.ui.AlertDialog
@@ -156,7 +157,7 @@ fun ModifierDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_cancel))
+                Text(stringResource(UiR.string.cancel))
             }
         }
     )

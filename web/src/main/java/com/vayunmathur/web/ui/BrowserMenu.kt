@@ -70,7 +70,7 @@ internal fun BrowserMenu(
     val activeTab = viewModel.activeTab
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
-            text = { Text(stringResource(R.string.go_back)) },
+            text = { Text(stringResource(UiR.string.back)) },
             leadingIcon = { IconBack() },
             onClick = {
                 onDismiss()

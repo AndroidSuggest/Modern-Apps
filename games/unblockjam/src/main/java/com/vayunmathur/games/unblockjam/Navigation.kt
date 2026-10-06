@@ -287,7 +287,7 @@ fun DailyLevelPage(backStack: NavBackStack<Route>, viewModel: UnblockJamViewMode
     LevelScreen(
         pack = pack,
         levelStats = dailyStats,
-        title = stringResource(R.string.daily_challenge),
+        title = stringResource(UiR.string.daily_challenge),
         onOpenLevel = { backStack.add(Route.DailyGame(it)) }
     )
 }
@@ -472,7 +472,7 @@ private fun GameActionButtons(state: GameUiState, actions: GameActions) {
             onClick = { actions.onRestart() },
             enabled = state.canUndo
         ) {
-            Text(stringResource(R.string.restart))
+            Text(stringResource(UiR.string.restart))
         }
     } else if (state.levelIndex < state.maxLevelIndex) {
         Button(onClick = { actions.onLevelChange(state.levelIndex + 1) }) {

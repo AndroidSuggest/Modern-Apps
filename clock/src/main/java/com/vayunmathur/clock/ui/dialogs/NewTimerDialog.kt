@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.clock.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.clock.Route
 import com.vayunmathur.clock.data.Timer
 import com.vayunmathur.clock.ui.components.sendTimerNotification
@@ -121,12 +122,12 @@ fun NewTimerDialog(
                 },
                 enabled = timeInput.isNotEmpty() && timeInput.any { it != '0' }
             ) {
-                Text(stringResource(R.string.button_save))
+                Text(stringResource(UiR.string.save))
             }
         },
         dismissButton = {
             TextButton(onClick = { backStack.pop() }) {
-                Text(stringResource(R.string.button_cancel))
+                Text(stringResource(UiR.string.cancel))
             }
         }
     )

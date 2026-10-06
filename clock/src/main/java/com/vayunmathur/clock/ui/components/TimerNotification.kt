@@ -8,6 +8,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.vayunmathur.clock.MainActivity
 import com.vayunmathur.clock.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.clock.data.Timer
 import com.vayunmathur.clock.platform.TimerReceiver
 import kotlin.time.Clock
@@ -56,8 +57,8 @@ fun sendTimerNotification(context: Context, timer: Timer, isStarting: Boolean) {
 
     if (timer.isRunning) builder.addAction(R.drawable.ic_pause_24, context.getString(R.string.action_pause), pauseIntent)
     else builder.addAction(R.drawable.ic_play_24, context.getString(R.string.action_resume), resumeIntent)
-    builder.addAction(R.drawable.ic_cancel_24, context.getString(R.string.action_cancel), cancelIntent)
-    builder.addAction(R.drawable.ic_reset_24, context.getString(R.string.action_reset), resetIntent)
+    builder.addAction(R.drawable.ic_cancel_24, context.getString(UiR.string.cancel), cancelIntent)
+    builder.addAction(R.drawable.ic_reset_24, context.getString(UiR.string.reset), resetIntent)
 
     nm.notify(notificationId, builder.build())
     am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, endTimestamp, pendingAlarm)

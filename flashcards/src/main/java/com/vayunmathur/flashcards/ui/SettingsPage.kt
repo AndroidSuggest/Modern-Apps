@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.flashcards.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.flashcards.Route
 import com.vayunmathur.flashcards.util.FlashcardsViewModel
 import com.vayunmathur.flashcards.util.SettingsActions
@@ -125,7 +126,7 @@ fun SettingsScreen(state: SettingsUiState, actions: SettingsActions) {
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState()),
         ) {
-            SettingsSection(title = stringResource(R.string.settings_study)) {
+            SettingsSection(title = stringResource(R.string.study)) {
                 SliderRow(
                     title = stringResource(R.string.setting_retention),
                     value = "${(state.desiredRetention * 100).roundToInt()}%",
@@ -300,11 +301,11 @@ private fun PresetNameDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit)
         },
         confirmButton = {
             TextButton(onClick = { if (name.isNotBlank()) onConfirm(name.trim()) }) {
-                Text(stringResource(R.string.save))
+                Text(stringResource(UiR.string.save))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }
@@ -326,11 +327,11 @@ private fun TimePickerDialog(
         text = { androidx.compose.material3.TimePicker(state = timeState) },
         confirmButton = {
             TextButton(onClick = { onConfirm(timeState.hour, timeState.minute) }) {
-                Text(stringResource(R.string.save))
+                Text(stringResource(UiR.string.save))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

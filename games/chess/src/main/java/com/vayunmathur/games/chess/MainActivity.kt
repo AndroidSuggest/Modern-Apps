@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,6 +26,7 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.GameCenterScreen
 import com.vayunmathur.library.ui.Icon
 import com.vayunmathur.library.ui.IconPlay
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.BottomBarItem
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.GameHubComposeHook
@@ -110,7 +112,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun bottomBarPages(): List<BottomBarItem<out Route>> = listOf(
         BottomBarItem(
-            stringResource(R.string.tab_play),
+            stringResource(UiR.string.play),
             Route.Game,
         ) { IconPlay() },
         BottomBarItem(

@@ -81,6 +81,11 @@ internal const val RT_VOLUME_OFFSET = 6
 internal const val PT_COUNT_OFFSET = 2
 internal const val PT_FIRST_DATA_OFFSET = 6
 internal const val PT_NEXT_DATA_OFFSET = 2
+/**
+ * Flag byte of a PT first packet, mirroring RP's selector at index 5: 0x06 marks
+ * log-stream data, which is what [BleManager.handlePtFirst] drains.
+ */
+internal const val PT_FLAG_INDEX = 5
 /** Byte 12 of each record is the validity flag; only 0 is a real drink. */
 internal const val LOG_RECORD_FLAG_OFFSET = 12
 internal const val RECORD_SIZE = 13

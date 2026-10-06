@@ -251,7 +251,7 @@ class NavigationService : Service() {
                 null, defaultIcon,
             )
             NavigationSessionManager.NavState.Arrived -> statusInfo(
-                getString(R.string.nav_status_arrived),
+                getString(R.string.nav_arrived_title),
                 destLabel,
                 FULL_PROGRESS_PERCENT, defaultIcon,
             )

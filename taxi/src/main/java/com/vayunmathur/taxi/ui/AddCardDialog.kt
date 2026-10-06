@@ -27,6 +27,7 @@ import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.taxi.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.taxi.data.NewCard
 import java.util.Calendar
 
@@ -127,11 +128,11 @@ internal fun AddCardDialog(
                         onFailure = { validationError = it.message },
                     )
                 },
-            ) { Text(stringResource(R.string.add)) }
+            ) { Text(stringResource(UiR.string.add)) }
         },
         dismissButton = {
             TextButton(enabled = !adding, onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
+                Text(stringResource(UiR.string.cancel))
             }
         },
     )

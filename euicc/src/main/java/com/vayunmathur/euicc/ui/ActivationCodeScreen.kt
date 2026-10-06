@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import com.vayunmathur.euicc.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.euicc.Route
 import com.vayunmathur.library.ui.IconQrCode
 import com.vayunmathur.library.ui.OutlinedTextField
@@ -59,7 +60,7 @@ fun ActivationCodeScreen(backStack: NavBackStack<Route>) {
         icon = { IconQrCode() },
         backStack = backStack,
         primaryAction = SetupAction(
-            label = stringResource(R.string.continue_button),
+            label = stringResource(UiR.string.continue_label),
             onClick = {
                 backStack.add(
                     Route.Download(

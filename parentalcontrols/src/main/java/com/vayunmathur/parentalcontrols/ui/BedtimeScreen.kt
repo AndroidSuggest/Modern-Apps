@@ -24,6 +24,7 @@ import com.vayunmathur.library.ui.SettingsSwitchRow
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.parentalcontrols.R
 import com.vayunmathur.parentalcontrols.data.BedtimeSchedule
 import com.vayunmathur.parentalcontrols.platform.SupervisionUiState
@@ -58,13 +59,13 @@ fun BedtimeScreen(state: SupervisionUiState, actions: BedtimeActions) {
                     onCheckedChange = actions.onEnabledChange,
                 )
                 SettingsRow(
-                    title = stringResource(R.string.bedtime_start),
+                    title = stringResource(R.string.schedule_start),
                     supportingText = formatMinute(schedule.startMinute),
                     enabled = schedule.enabled,
                     onClick = { picking = Picking.Start },
                 )
                 SettingsRow(
-                    title = stringResource(R.string.bedtime_end),
+                    title = stringResource(R.string.schedule_end),
                     supportingText = formatMinute(schedule.endMinute),
                     enabled = schedule.enabled,
                     onClick = { picking = Picking.End },
@@ -73,7 +74,7 @@ fun BedtimeScreen(state: SupervisionUiState, actions: BedtimeActions) {
         }
 
         item {
-            SettingsSection(title = stringResource(R.string.bedtime_days)) {
+            SettingsSection(title = stringResource(R.string.schedule_days)) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -122,7 +123,7 @@ fun BedtimeScreen(state: SupervisionUiState, actions: BedtimeActions) {
             title = {
                 Text(
                     stringResource(
-                        if (active == Picking.Start) R.string.bedtime_start else R.string.bedtime_end,
+                        if (active == Picking.Start) R.string.schedule_start else R.string.schedule_end,
                     ),
                 )
             },
@@ -135,11 +136,11 @@ fun BedtimeScreen(state: SupervisionUiState, actions: BedtimeActions) {
                         actions.onEndChange(timeState.hour, timeState.minute)
                     }
                     picking = null
-                }) { Text(stringResource(R.string.save)) }
+                }) { Text(stringResource(UiR.string.save)) }
             },
             dismissButton = {
                 TextButton(onClick = { picking = null }) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             },
         )

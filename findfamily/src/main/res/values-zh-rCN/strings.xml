@@ -27,7 +27,6 @@
     <string name="nobody_here">当前无人在此</string>
     <string name="user_is_here"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> 当前在此</string>
     <string name="users_are_here"><xliff:g id="person_names" example="Alice, Bob">%1$s</xliff:g> 当前在此</string>
-    <string name="last_updated_never">从不</string>
     <string name="since_just_now">刚刚</string>
     <string name="since_minutes_ago">自 <xliff:g id="minutes" example="5">%1$d</xliff:g> 分钟前起</string>
     <string name="since_time_date">自 <xliff:g id="time" example="3:45 PM">%1$s</xliff:g> <xliff:g id="date" example="today">%2$s</xliff:g> 起</string>

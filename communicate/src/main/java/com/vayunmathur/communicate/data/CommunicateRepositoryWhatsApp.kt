@@ -25,6 +25,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 
+private const val MS_PER_SECOND = 1000L
+
 /**
  * CommunicateRepository WhatsApp primary line (split from CommunicateRepository.kt for file length).
  *

@@ -106,8 +106,6 @@
     <string name="user_is_here"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> is currently here</string>
     <!-- MainPage: WaypointCard when multiple users inside. %1$s = comma-separated names, e.g. Alice, Bob. Sentence -->
     <string name="users_are_here"><xliff:g id="person_names" example="Alice, Bob">%1$s</xliff:g> are currently here</string>
-    <!-- MainPage: UserCard last-updated fallback when no location data. Adverb -->
-    <string name="last_updated_never">Never</string>
     <!-- MainPage: UserCard since label when last entry just happened (<60s). Adverbial phrase -->
     <string name="since_just_now">Since just now</string>
     <!-- MainPage: UserCard since label for minutes. %1$d = minutes count, e.g. 5 -->
@@ -276,8 +274,6 @@
     <!-- SecurityCodeDialog: Error when other party key not available. %1$s = person name. Sentence -->
     <string name="couldn_t_compute_yet_s_key_isn_t_availab">Couldn\'t compute yet — <xliff:g id="person_name" example="Bob">%1$s</xliff:g>\'s key isn\'t available. Make sure you\'re both connected, then try again.</string>
 
-    <!-- UwbRangingScreen: Fallback for unknown direction/distance. Noun/adjective -->
-    <string name="unknown">Unknown</string>
     <!-- UwbRangingScreen: Debug overlay prefix for distance value. Abbreviation noun, keep short, includes trailing space -->
     <string name="dist">dist: </string>
     <!-- UwbRangingScreen: Debug overlay prefix for azimuth value. Abbreviation noun with leading spaces -->
@@ -327,14 +323,29 @@
     <!-- UserPage: Note under the disabled sharing switch when the Quick Settings sharing tile is off. Sentence -->
     <string name="sharing_paused_note">Sharing is paused for everyone from the Quick Settings tile</string>
 
+    <!-- PersonDetailSheet, own entry: header for the crowd-finding section. Noun phrase -->
+    <string name="crowd_finding_title">Help find lost devices</string>
+    <!-- PersonDetailSheet, own entry: explains quiet background scanning for switched-off devices and the encrypted sighting report. Paragraph -->
+    <string name="crowd_finding_explanation">Your phone quietly looks for switched-off devices nearby and sends the owner an encrypted notice of where you were when you passed one. You never learn whose device it was, and only its owner can read the notice. It uses almost no battery, and other phones can do the same for yours.</string>
+    <!-- PersonDetailSheet, own entry: shown when the Bluetooth scan permission is missing. Sentence -->
+    <string name="crowd_finding_needs_bluetooth">Finding nearby devices needs permission to scan for Bluetooth devices</string>
+
     <!-- UserCard: status line for a position that came from another phone spotting this device's beacon rather than from the device itself. Deliberately vaguer than the live wording. Two lines -->
     <string name="user_card_network_sighting">Seen by a passing phone <xliff:g id="last_seen" example="2 hours ago">%1$s</xliff:g>\nSomewhere near <xliff:g id="location_name" example="Home">%2$s</xliff:g> — approximate</string>
+    <!-- PersonDetailSheet, own entry: title for the findable-while-off section. Noun phrase -->
+    <string name="poweroff_finding_title">Findable when switched off</string>
+    <!-- PersonDetailSheet, own entry: explains the rotating anonymous Bluetooth signal. Paragraph -->
+    <string name="poweroff_finding_explanation">When this phone is switched off, its Bluetooth chip keeps sending a short anonymous signal so a passing family member can report where the phone is. The signal changes every 17 minutes and only your family members can recognize it. Nobody, including us, can learn where it was seen except you.</string>
     <!-- PersonDetailSheet, own entry: the limit, shown under the explanation whether the switch is on or off. Must not be hidden behind the switch. Two sentences -->
     <string name="poweroff_finding_limit">This lasts about 3 days after you switch the phone off, then it stops. It is a limit of the Bluetooth chip, not a setting.</string>
+    <!-- PersonDetailSheet, own entry: shown under the switch when poweroff finding is off. Sentence -->
+    <string name="poweroff_finding_off_hint">If you switch this setting off, the phone broadcasts nothing at all when switched off.</string>
+    <!-- PersonDetailSheet, own entry: shown when the Bluetooth chip cannot advertise while off. Sentence -->
+    <string name="poweroff_finding_unsupported">This phone\'s Bluetooth chip cannot stay findable while switched off.</string>
     <!-- PersonDetailSheet, own entry: the capability the user cannot be shielded from. Must not be softened or hidden behind a tap: choosing someone also lets that person track the phone. Paragraph -->
-    <string name="poweroff_grant_tracking_warning">Anyone you choose can also go looking for this phone themselves, whenever they like, for as long as they stay on this list. Reading where it was seen and looking for it use the same key, so there is no way to give one without the other. Only choose people you would be happy to have find this phone.</string>
+    <string name="poweroff_grant_tracking_warning">Anyone you choose can go looking for this phone themselves, whenever they like, for as long as they stay on this list. Reading where it was seen and looking for it use the same key, so one cannot be given without the other. Only choose people you would be happy to have find this phone.</string>
     <!-- PersonDetailSheet, own entry: what removing someone does and does not do. Must state plainly that revocation is forward-only. Paragraph -->
-    <string name="poweroff_grant_revoke_warning">Taking someone off the list stops them seeing anywhere this phone goes from then on. It cannot take back places they have already collected, and it cannot make them forget. Anything this phone was seen at recently, but nobody has picked up yet, may be lost to you as well.</string>
+    <string name="poweroff_grant_revoke_warning">Taking someone off the list stops them seeing anywhere this phone goes from then on. It cannot take back places they already collected, or make them forget. Anything seen recently but not yet picked up may be lost to you as well.</string>
     <!-- PersonDetailSheet, own entry: shown in place of the list when the user has no connected family members to choose from. Sentence -->
     <string name="poweroff_grant_no_peers">Once you are connected to someone, you can choose them here.</string>
 

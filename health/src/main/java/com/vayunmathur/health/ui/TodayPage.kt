@@ -172,7 +172,7 @@ fun TodayScreen(state: TodayUiState, actions: TodayActions) {
                 ) {
                     val sleepValue = state.metrics.sleepMinutes?.let { formatSleep(it) } ?: "--"
                     MetricRow(
-                        label = stringResource(R.string.label_sleep),
+                        label = stringResource(R.string.metric_sleep),
                         value = sleepValue,
                         unit = "",
                         leadingIcon = { m, c -> IconBedtime(m, c) },
@@ -190,7 +190,7 @@ fun TodayScreen(state: TodayUiState, actions: TodayActions) {
                     accentColor = HealthColors.Vitals,
                 ) {
                     MetricRow(
-                        label = stringResource(R.string.label_heart_rate),
+                        label = stringResource(R.string.metric_heart_rate),
                         value = if (state.heartRateMax > 0L) "${state.heartRateMin}-${state.heartRateMax}" else "--",
                         unit = stringResource(R.string.unit_bpm),
                         leadingIcon = { m, c -> IconFavorite(m, c) },
@@ -200,7 +200,7 @@ fun TodayScreen(state: TodayUiState, actions: TodayActions) {
                     )
                     DashboardSectionDivider()
                     MetricRow(
-                        label = stringResource(R.string.label_blood_pressure),
+                        label = stringResource(R.string.metric_blood_pressure),
                         value = state.metrics.bloodPressure?.let { "${it.first.toInt()}/${it.second.toInt()}" } ?: "--",
                         unit = stringResource(R.string.label_blood_pressure_unit),
                         leadingIcon = { m, c -> IconFavorite(m, c) },
@@ -210,7 +210,7 @@ fun TodayScreen(state: TodayUiState, actions: TodayActions) {
                     )
                     DashboardSectionDivider()
                     MetricRow(
-                        label = stringResource(R.string.label_oxygen_saturation),
+                        label = stringResource(R.string.metric_oxygen_saturation),
                         value = state.metrics.spo2?.round(1)?.toString() ?: "--",
                         unit = stringResource(R.string.unit_percent),
                         leadingIcon = { m, c -> IconFavorite(m, c) },
@@ -220,7 +220,7 @@ fun TodayScreen(state: TodayUiState, actions: TodayActions) {
                     )
                     DashboardSectionDivider()
                     MetricRow(
-                        label = stringResource(R.string.label_resting_heart_rate),
+                        label = stringResource(R.string.metric_resting_heart_rate),
                         value = state.metrics.rhr?.toString() ?: "--",
                         unit = stringResource(R.string.unit_bpm),
                         leadingIcon = { m, c -> IconFavorite(m, c) },
@@ -240,9 +240,9 @@ fun TodayScreen(state: TodayUiState, actions: TodayActions) {
                     accentColor = HealthColors.Activity,
                 ) {
                     MetricRow(
-                        label = stringResource(R.string.label_steps),
+                        label = stringResource(R.string.metric_steps),
                         value = state.steps.toString(),
-                        unit = stringResource(R.string.unit_steps),
+                        unit = stringResource(R.string.metric_steps),
                         leadingIcon = { m, c -> IconDirectionsWalk(m, c) },
                         leadingTint = colorFor(RecordType.Steps),
                         labelModifier = Modifier.sharedText("health-metric-label-STEPS"),
@@ -260,7 +260,7 @@ fun TodayScreen(state: TodayUiState, actions: TodayActions) {
                     )
                     DashboardSectionDivider()
                     MetricRow(
-                        label = stringResource(R.string.label_distance),
+                        label = stringResource(R.string.metric_distance),
                         value = state.distanceKm.round(2).toString(),
                         unit = stringResource(R.string.unit_km),
                         leadingIcon = { m, c -> IconLocationOn(m, c) },
@@ -290,7 +290,7 @@ fun TodayScreen(state: TodayUiState, actions: TodayActions) {
                     )
                     DashboardSectionDivider()
                     MetricRow(
-                        label = stringResource(R.string.label_wheelchair_pushes),
+                        label = stringResource(R.string.metric_wheelchair_pushes),
                         value = state.wheelchairPushes.toString(),
                         unit = stringResource(R.string.unit_pushes),
                         leadingIcon = { m, c -> IconDirectionsWalk(m, c) },
@@ -300,7 +300,7 @@ fun TodayScreen(state: TodayUiState, actions: TodayActions) {
                     )
                     DashboardSectionDivider()
                     MetricRow(
-                        label = stringResource(R.string.label_exercise),
+                        label = stringResource(R.string.metric_exercise_duration),
                         value = state.exerciseMinutes.toString(),
                         unit = stringResource(R.string.unit_min),
                         leadingIcon = { m, c -> IconDirectionsWalk(m, c) },
@@ -310,7 +310,7 @@ fun TodayScreen(state: TodayUiState, actions: TodayActions) {
                     )
                     DashboardSectionDivider()
                     MetricRow(
-                        label = stringResource(R.string.label_hydration),
+                        label = stringResource(R.string.metric_hydration),
                         value = state.hydrationMl.toInt().toString(),
                         unit = stringResource(R.string.unit_ml),
                         leadingIcon = { m, c -> IconRain(m, c) },

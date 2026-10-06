@@ -2,6 +2,7 @@ package com.vayunmathur.code.ui
 
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.code.R
+import com.vayunmathur.library.ui.R as UiR
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -131,19 +132,19 @@ fun FileTreePane(
     when (val d = dialog) {
         is TreeDialog.NewFile -> NameDialog(
             title = stringResource(R.string.new_file),
-            confirmLabel = stringResource(R.string.create),
+            confirmLabel = stringResource(UiR.string.create),
             onConfirm = { actions.createFile(d.parentIndex, it) },
             onDismiss = { dialog = null },
         )
         is TreeDialog.NewFolder -> NameDialog(
             title = stringResource(R.string.new_folder),
-            confirmLabel = stringResource(R.string.create),
+            confirmLabel = stringResource(UiR.string.create),
             onConfirm = { actions.createFolder(d.parentIndex, it) },
             onDismiss = { dialog = null },
         )
         is TreeDialog.Rename -> NameDialog(
-            title = stringResource(R.string.rename),
-            confirmLabel = stringResource(R.string.rename),
+            title = stringResource(UiR.string.rename),
+            confirmLabel = stringResource(UiR.string.rename),
             initial = d.current,
             onConfirm = { actions.renameNode(d.index, it) },
             onDismiss = { dialog = null },
@@ -151,8 +152,8 @@ fun FileTreePane(
         is TreeDialog.Delete -> ConfirmDialog(
             title = stringResource(R.string.delete_title, d.name),
             message = stringResource(R.string.delete_message),
-            confirmLabel = stringResource(R.string.delete),
-            dismissLabel = stringResource(R.string.cancel),
+            confirmLabel = stringResource(UiR.string.delete),
+            dismissLabel = stringResource(UiR.string.cancel),
             destructive = true,
             onConfirm = { actions.deleteNode(d.index) },
             onDismiss = { dialog = null },
@@ -203,11 +204,11 @@ private fun TreeRow(
                 }
             }
             Item(
-                text = stringResource(R.string.rename),
+                text = stringResource(UiR.string.rename),
                 leadingIcon = { IconEdit() },
             ) { onOpenDialog(TreeDialog.Rename(index, node.name)) }
             Item(
-                text = stringResource(R.string.delete),
+                text = stringResource(UiR.string.delete),
                 leadingIcon = { IconDelete() },
             ) { onOpenDialog(TreeDialog.Delete(index, node.name)) }
         }
@@ -232,7 +233,7 @@ private fun NameDialog(
                 value = value,
                 onValueChange = { value = it },
                 singleLine = true,
-                label = { Text(stringResource(R.string.name)) },
+                label = { Text(stringResource(UiR.string.name)) },
             )
         },
         confirmButton = {
@@ -242,7 +243,7 @@ private fun NameDialog(
             ) { Text(confirmLabel) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

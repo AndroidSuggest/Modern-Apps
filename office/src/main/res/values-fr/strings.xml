@@ -21,7 +21,6 @@
     <string name="csv">CSV…</string>
     <string name="role">Rôle :</string>
     <string name="html_html">HTML (.html)…</string>
-    <string name="insert_table_1">Insérer un tableau</string>
     <string name="opens_odf_word_excel_powerpoint_csv_tsv">Ouvre les fichiers ODF, Word, Excel, PowerPoint, CSV, TSV, Markdown et texte</string>
     <string name="cell_comment">Commentaire de cellule</string>
     <string name="words_chars_min"><xliff:g id="words" example="120">%1$s</xliff:g> mots · <xliff:g id="chars" example="650">%2$s</xliff:g> caractères · environ <xliff:g id="minutes" example="1">%3$s</xliff:g> min</string>
@@ -186,7 +185,6 @@
     <string name="new_slides">Nouvelle présentation</string>
     <string name="promote_list_item">Remonter le niveau de l’élément de liste</string>
     <string name="prev">◀ Précédent</string>
-    <string name="speaker_notes_2">Notes du présentateur</string>
     <string name="outline">Plan</string>
     <string name="notes_for_this_slide">Notes de cette diapositive</string>
     <string name="meta_pages">Pages</string>

@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.flashcards.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.flashcards.util.NoteListActions
 import com.vayunmathur.flashcards.util.NoteListUiState
 import com.vayunmathur.library.ui.AppScaffold
@@ -236,7 +237,7 @@ fun NoteListScreen(
             title = stringResource(R.string.reset_scheduling),
             message = stringResource(R.string.reset_scheduling_message),
             confirmLabel = stringResource(R.string.reset_scheduling),
-            dismissLabel = stringResource(R.string.cancel),
+            dismissLabel = stringResource(UiR.string.cancel),
             destructive = true,
             onConfirm = {
                 actions.resetScheduling(selection.selected.toList())

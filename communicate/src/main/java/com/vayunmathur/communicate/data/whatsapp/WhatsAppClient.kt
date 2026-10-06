@@ -1,3 +1,5 @@
+package com.vayunmathur.communicate.data.whatsapp
+
 import android.app.Application
 import android.content.Context
 import android.net.ConnectivityManager
@@ -15,8 +17,7 @@ import java.security.SecureRandom
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.time.Duration.Companion.seconds
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 
+@OptIn(ExperimentalAtomicApi::class)
 object WhatsAppClient {
 
     internal const val TAG = "WhatsAppClient"
@@ -533,9 +535,7 @@ object WhatsAppClient {
      * Fetch (and cache) the media upload host + auth token via the w:m media_conn IQ.
      * Ref whatsmeow mediaconn.go queryMediaConn. Returns (host, auth) or null.
      */
-    private companion object {
-        private const val MS_PER_SECOND = 1000L
-    }
+    private const val MS_PER_SECOND = 1000L
 
     internal suspend fun mediaConn(): Pair<String, String>? {
         mediaConnCache?.let { if (System.currentTimeMillis() < it.third) return it.first to it.second }

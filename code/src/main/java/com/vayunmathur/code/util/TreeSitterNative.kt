@@ -72,12 +72,9 @@ object TreeSitterNative {
             if (kind != null && end > start) out.add(TsSpan(start, end, kind))
             i += PACKED_SPAN_SIZE
         }
-    }
-
-    private companion object {
-        const val PACKED_SPAN_SIZE = 3
-        const val PACKED_SPAN_TAIL = 2
-    }
         return out
     }
+
+    private const val PACKED_SPAN_SIZE = 3
+    private const val PACKED_SPAN_TAIL = 2
 }

@@ -45,19 +45,17 @@ enum class Difficulty(val elo: Int, val temperature: Float, val topP: Float) {
     INTERMEDIATE(ELO_INTERMEDIATE, TEMP_INTERMEDIATE, TOP_P),
     ADVANCED(ELO_ADVANCED, TEMP_ADVANCED, TOP_P),
     GRANDMASTER(ELO_GRANDMASTER, TEMP_GRANDMASTER, TOP_P);
-
-    companion object {
-        private const val ELO_BEGINNER = 1100
-        private const val ELO_INTERMEDIATE = 1500
-        private const val ELO_ADVANCED = 1900
-        private const val ELO_GRANDMASTER = 2500
-        private const val TEMP_BEGINNER = 0.5f
-        private const val TEMP_INTERMEDIATE = 0.4f
-        private const val TEMP_ADVANCED = 0.35f
-        private const val TEMP_GRANDMASTER = 0.3f
-        private const val TOP_P = 0.95f
-    }
 }
+
+private const val ELO_BEGINNER = 1100
+private const val ELO_INTERMEDIATE = 1500
+private const val ELO_ADVANCED = 1900
+private const val ELO_GRANDMASTER = 2500
+private const val TEMP_BEGINNER = 0.5f
+private const val TEMP_INTERMEDIATE = 0.4f
+private const val TEMP_ADVANCED = 0.35f
+private const val TEMP_GRANDMASTER = 0.3f
+private const val TOP_P = 0.95f
 
 /**
  * The chess AI: Maia3-5M on `:library:ml`'s Vulkan runtime.

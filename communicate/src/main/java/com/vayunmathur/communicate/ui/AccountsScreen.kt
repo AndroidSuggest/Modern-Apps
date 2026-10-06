@@ -69,7 +69,7 @@ fun AccountsScreen(
             ListItem(
                 leadingContent = { IconCall() },
                 content = { Text(stringResource(R.string.account_sim), fontWeight = FontWeight.SemiBold) },
-                supportingContent = { Text(stringResource(R.string.line_sim)) },
+                supportingContent = { Text(stringResource(R.string.account_sim)) },
             )
         }
 

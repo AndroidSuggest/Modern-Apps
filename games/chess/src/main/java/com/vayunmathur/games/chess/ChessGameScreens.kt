@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -68,6 +69,7 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.Icon
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.SegmentedButton
 import com.vayunmathur.library.ui.SegmentedButtonDefaults
 import com.vayunmathur.library.ui.SingleChoiceSegmentedButtonRow
@@ -182,9 +184,9 @@ private fun DifficultyPicker(
 ) {
     SingleChoiceSegmentedButtonRow {
         val difficultyLabels = listOf(
-            stringResource(R.string.difficulty_easy),
-            stringResource(R.string.difficulty_medium),
-            stringResource(R.string.difficulty_hard),
+            stringResource(UiR.string.easy),
+            stringResource(UiR.string.medium),
+            stringResource(UiR.string.hard),
             stringResource(R.string.difficulty_master)
         )
         Difficulty.entries.zip(difficultyLabels)
@@ -210,7 +212,7 @@ private fun NewGameChoiceDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = stringResource(R.string.new_game)) },
+        title = { Text(text = stringResource(UiR.string.new_game)) },
         text = {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Button(onClick = { onNewGame(GameMode.TwoPlayer) }) {
@@ -409,7 +411,7 @@ private fun GameSidePanel(
     CapturedPiecesRow(state.board.capturedByWhite)
     Spacer(modifier = Modifier.height(16.dp))
     Button(onClick = onNewGame) {
-        Text(stringResource(R.string.new_game))
+        Text(stringResource(UiR.string.new_game))
     }
     state.gameStatus?.let {
         Spacer(modifier = Modifier.height(16.dp))
@@ -503,7 +505,7 @@ private fun PortraitGameLayout(
         }
         CapturedPiecesRow(state.board.capturedByWhite)
         Button(onClick = onNewGame) {
-            Text(stringResource(R.string.new_game))
+            Text(stringResource(UiR.string.new_game))
         }
 
         state.gameStatus?.let {
@@ -683,7 +685,7 @@ fun BoardGrid(
 }
 
 @Composable
-private fun BoardRow(
+private fun ColumnScope.BoardRow(
     board: com.vayunmathur.games.chess.data.Board,
     row: Int,
     selectedPiece: Position?,

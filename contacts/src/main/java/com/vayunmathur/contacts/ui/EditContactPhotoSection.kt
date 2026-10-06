@@ -25,6 +25,7 @@ import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.library.ui.IconAddPhoto
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.util.sharedContent
@@ -90,7 +91,7 @@ fun EditContactPhotoSection(
             if (photo != null) {
                 TextButton(removePhoto) {
                     Text(
-                        text = stringResource(R.string.remove_picture),
+                        text = stringResource(UiR.string.remove),
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.primary
                     )

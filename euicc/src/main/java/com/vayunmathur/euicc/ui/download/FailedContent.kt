@@ -3,6 +3,7 @@ package com.vayunmathur.euicc.ui.download
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.euicc.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.IconWarning
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.SetupAction
@@ -25,7 +26,7 @@ fun FailedContent(message: String?, onRetry: () -> Unit, onCancel: () -> Unit) {
         subtitle = stringResource(R.string.download_fail_generic),
         icon = { IconWarning() },
         primaryAction = SetupAction(stringResource(R.string.try_again), onRetry),
-        secondaryAction = SetupAction(stringResource(R.string.cancel), onCancel),
+        secondaryAction = SetupAction(stringResource(UiR.string.cancel), onCancel),
         scrollBehavior = appBarScrollBehavior(),
     ) {
         if (message != null) {

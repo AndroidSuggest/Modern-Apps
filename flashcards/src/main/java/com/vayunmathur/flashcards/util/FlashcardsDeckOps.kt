@@ -19,6 +19,7 @@ import com.vayunmathur.flashcards.data.upsertDeckImpl
 import com.vayunmathur.flashcards.data.upsertNotesImpl
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.flashcards.R
+import com.vayunmathur.library.ui.R as UiR
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -56,7 +57,7 @@ internal fun FlashcardsViewModel.deleteDeckImpl(deck: Deck) = launchIoImpl {
     repository.deleteDeckImpl(deck)
     AppMessages.show(
         getApplication<Application>().getString(R.string.deleted),
-        actionLabel = getApplication<Application>().getString(R.string.undo),
+        actionLabel = getApplication<Application>().getString(UiR.string.undo),
         duration = AppMessages.Duration.Long,
     ) {
         launchIoImpl {

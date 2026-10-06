@@ -16,6 +16,7 @@ import androidx.core.net.toUri
 import com.vayunmathur.library.util.deleteNotificationChannel
 import com.vayunmathur.library.util.ensureNotificationChannel
 import com.vayunmathur.share.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.share.domain.protocol.ShareState
 import com.vayunmathur.share.network.transport.Connection
 import com.vayunmathur.share.network.transport.TcpTransport
@@ -306,7 +307,7 @@ class ShareReceiveNotifier(
             .setOnlyAlertOnce(true)
             .addAction(
                 R.drawable.ic_tile_share,
-                appContext.getString(R.string.share_action_cancel),
+                appContext.getString(UiR.string.cancel),
                 sessionAction(ShareTransferService.ACTION_CANCEL, conn.sessionHandle, id),
             )
         val sizesKb = conn.pendingFiles.value.map { (it.sizeBytes / BYTES_PER_KB).toInt().coerceAtLeast(1) }
@@ -349,12 +350,12 @@ class ShareReceiveNotifier(
             val mime = received.map { it.mimeType }.distinct().singleOrNull() ?: "*/*"
             builder.addAction(
                 R.drawable.ic_tile_share,
-                appContext.getString(R.string.share_action_share),
+                appContext.getString(R.string.app_name),
                 sharePendingIntent(uris, mime, id),
             )
             builder.addAction(
                 R.drawable.ic_tile_share,
-                appContext.getString(R.string.share_action_save),
+                appContext.getString(UiR.string.save),
                 savePendingIntent(uris, id),
             )
         }

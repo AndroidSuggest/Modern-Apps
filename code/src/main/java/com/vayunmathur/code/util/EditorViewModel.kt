@@ -81,7 +81,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     // ---- Preferences ----
     var softWrap by mutableStateOf(false)
-        private set
+        internal set
 
     // These five are read as `fontSize`/`tabWidth`/... but written through the CodeActions
     // `setFontSize`/`setTabWidth`/... methods. Backing them by a private MutableState (rather than

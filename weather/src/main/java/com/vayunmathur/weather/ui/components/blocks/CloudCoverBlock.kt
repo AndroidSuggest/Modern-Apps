@@ -14,6 +14,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.weather.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.weather.network.Current
 
 /**
@@ -25,9 +26,9 @@ import com.vayunmathur.weather.network.Current
 fun CloudCoverBlock(current: Current) {
     val pct = current.cloudCover.coerceIn(0, 100)
     val labelRes = when {
-        pct < 10 -> R.string.cloud_clear
-        pct < 40 -> R.string.cloud_mostly_clear
-        pct < 70 -> R.string.cloud_partly_cloudy
+        pct < 10 -> UiR.string.clear
+        pct < 40 -> R.string.condition_mostly_clear
+        pct < 70 -> R.string.condition_partly_cloudy
         pct < 90 -> R.string.cloud_mostly_cloudy
         else -> R.string.cloud_overcast
     }

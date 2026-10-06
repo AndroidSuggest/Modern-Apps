@@ -122,7 +122,7 @@ internal fun AddressFormCard(
                     onClick = onCancel,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(stringResource(R.string.action_cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
                 Button(
                     onClick = onSave,

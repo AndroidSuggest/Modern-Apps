@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.musicbrainz.data.library.LibraryIndex
 import com.vayunmathur.musicbrainz.data.library.LibraryScanner
 import com.vayunmathur.musicbrainz.data.library.LibrarySnapshot
 import com.vayunmathur.musicbrainz.data.tidal.TidalAuth

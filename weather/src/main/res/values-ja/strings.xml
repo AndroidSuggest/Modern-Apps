@@ -22,8 +22,6 @@
     <string name="dew_point">露点</string>
     <string name="from_gusts"><xliff:g id="direction" example="NW">%1$s</xliff:g> の風 · 最大瞬間風速 <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
     <string name="not_enough_data_to_plot">グラフを描く十分なデータがありません。</string>
-    <string name="map_time">時間</string>
-    <string name="condition_clear">快晴</string>
     <string name="condition_mostly_clear">晴れ</string>
     <string name="condition_partly_cloudy">晴れ</string>
     <string name="condition_cloudy">曇</string>
@@ -32,7 +30,6 @@
     <string name="condition_rain">雨</string>
     <string name="condition_snow">雪</string>
     <string name="condition_thunderstorm">雷雨</string>
-    <string name="condition_unknown">不明</string>
     <string name="metric_temperature">気温</string>
     <string name="metric_feels_like">体感温度</string>
     <string name="metric_humidity">湿度</string>
@@ -59,12 +56,9 @@
     <string name="hourly_forecast">1時間ごとの天気予報</string>
     <string name="daily_forecast">1日ごとの天気予報</string>
     <string name="now">現在</string>
-    <string name="today">今日</string>
     <string name="today_short">今日</string>
     <string name="tomorrow_short">明日</string>
-    <string name="level_none">なし</string>
     <string name="level_low">弱い</string>
-    <string name="level_medium">中程度</string>
     <string name="level_moderate">中程度</string>
     <string name="level_high">強い</string>
     <string name="level_very_high">非常に強い</string>

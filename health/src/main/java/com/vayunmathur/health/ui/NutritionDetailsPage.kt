@@ -95,7 +95,7 @@ fun NutritionDetailsPage(backStack: NavBackStack<Route>, viewModel: HealthViewMo
             ) {
                 item {
                     Text(
-                        text = if (day == today) stringResource(R.string.label_today) else day.displayString(),
+                        text = if (day == today) stringResource(R.string.nav_today) else day.displayString(),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),

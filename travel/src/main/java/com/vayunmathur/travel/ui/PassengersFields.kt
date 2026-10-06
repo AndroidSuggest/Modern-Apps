@@ -26,6 +26,7 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.travel.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.travel.network.AirlineDto
 import com.vayunmathur.travel.network.IdentityDocumentDto
 import com.vayunmathur.travel.network.LoyaltyAccountDto
@@ -182,7 +183,7 @@ internal fun InfantLinkField(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FilterChip(selected = selected.isNullOrBlank(), onClick = { onSelect(null) }, label = { Text(stringResource(R.string.none)) })
+            FilterChip(selected = selected.isNullOrBlank(), onClick = { onSelect(null) }, label = { Text(stringResource(UiR.string.none)) })
             infantOptions.forEach { (id, label) ->
                 FilterChip(selected = selected == id, onClick = { onSelect(id) }, label = { Text(label) })
             }

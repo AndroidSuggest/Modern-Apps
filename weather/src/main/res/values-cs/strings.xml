@@ -7,7 +7,6 @@
     <string name="city_name_hint">Název města</string>
     <string name="weather_title">Počasí</string>
     <string name="add_location">Přidat místo</string>
-    <string name="map_time">Čas</string>
     <string name="no_locations_yet">Zatím žádné místa</string>
     <string name="add_a_city_or_use_your_current_location">Přidejte město nebo použijte vaši aktuální polohu pro zobrazení předpovědi.</string>
     <string name="use_current_location">Použít aktuální polohu</string>
@@ -23,7 +22,6 @@
     <string name="dew_point">Rosný bod</string>
     <string name="from_gusts">Z <xliff:g id="direction" example="NW">%1$s</xliff:g> · Nárazy <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
     <string name="not_enough_data_to_plot">Nedostatek dat pro zobrazení.</string>
-    <string name="condition_clear">Jasno</string>
     <string name="condition_partly_cloudy">Polojasno</string>
     <string name="condition_cloudy">Zataženo</string>
     <string name="condition_fog">Mlha</string>
@@ -31,7 +29,6 @@
     <string name="condition_rain">Déšť</string>
     <string name="condition_snow">Sníh</string>
     <string name="condition_thunderstorm">Bouřka</string>
-    <string name="condition_unknown">Neznámé</string>
     <string name="metric_temperature">Teplota</string>
     <string name="metric_feels_like">Pocitově</string>
     <string name="metric_humidity">Vlhkost</string>
@@ -49,12 +46,9 @@
     <string name="hourly_forecast">Hodinová předpověď</string>
     <string name="daily_forecast">Denní předpověď</string>
     <string name="now">Nyní</string>
-    <string name="today">Dnes</string>
     <string name="today_short">DNE</string>
     <string name="tomorrow_short">ZÍT</string>
-    <string name="level_none">Žádný</string>
     <string name="level_low">Nízký</string>
-    <string name="level_medium">Střední</string>
     <string name="level_moderate">Mírný</string>
     <string name="level_high">Vysoký</string>
     <string name="level_very_high">Velmi vysoký</string>

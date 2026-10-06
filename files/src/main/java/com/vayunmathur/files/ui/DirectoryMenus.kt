@@ -35,6 +35,7 @@ import com.vayunmathur.library.ui.IconStar
 import com.vayunmathur.library.ui.IconUnarchive
 import com.vayunmathur.library.ui.IconVisibilityOff
 import com.vayunmathur.library.ui.IconVisible
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 
 /** Top-bar action slot for [DirectoryScreen]: search / selection / overflow menus. */
@@ -71,7 +72,7 @@ internal fun DirectoryTopActions(
             onDismissRequest = { showSelectionOverflow = false },
         ) {
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.copy)) },
+                text = { Text(stringResource(UiR.string.copy)) },
                 leadingIcon = { IconCopy() },
                 onClick = { showSelectionOverflow = false; actions.copySelection() },
             )
@@ -81,7 +82,7 @@ internal fun DirectoryTopActions(
                 onClick = { showSelectionOverflow = false; actions.cutSelection() },
             )
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.share)) },
+                text = { Text(stringResource(UiR.string.share)) },
                 leadingIcon = { IconShare() },
                 onClick = { showSelectionOverflow = false; actions.shareSelection() },
             )
@@ -95,7 +96,7 @@ internal fun DirectoryTopActions(
             }
             if (single != null) {
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.rename)) },
+                    text = { Text(stringResource(UiR.string.rename)) },
                     leadingIcon = { IconEdit() },
                     onClick = {
                         showSelectionOverflow = false

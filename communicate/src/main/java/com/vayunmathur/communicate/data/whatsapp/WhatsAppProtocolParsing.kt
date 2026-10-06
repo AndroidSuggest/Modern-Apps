@@ -6,12 +6,12 @@ import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto
 
 // -- Message parsing: type/body extraction, inbound node parsing, WA formatting --
 
-private const val SECONDS_PER_MINUTE = 60
-private const val SECONDS_90_DAYS = SECONDS_PER_DAY * 90
-private const val SECONDS_PER_WEEK = SECONDS_PER_DAY * 7
-private const val FENCE_LENGTH = 3
-private const val SECONDS_PER_HOUR = 3600
-private const val SECONDS_PER_DAY = 86400
+internal const val SECONDS_PER_MINUTE = 60
+internal const val SECONDS_PER_HOUR = 3600
+internal const val SECONDS_PER_DAY = 86400
+internal const val SECONDS_PER_WEEK = SECONDS_PER_DAY * 7
+internal const val SECONDS_90_DAYS = SECONDS_PER_DAY * 90
+internal const val FENCE_LENGTH = 3
 
 
 fun WhatsAppProtocol.rerouteLIDSender(senderJid: String, participants: Map<String, String>?): String {
@@ -251,10 +251,10 @@ private fun WhatsAppProtocol.decryptPayload(
     val encType = encNode.attrs["type"] ?: "msg"
     val senderJid = participant ?: from
     val decryptedPadded: ByteArray = if (decryptEnc != null) {
-        decryptEnc(senderJid, encType, encNode.data)
+        decryptEnc(senderJid, encType, encNode.data ?: return null)
             ?: return null
     } else {
-        encNode.data
+        encNode.data ?: return null
     }
     return unpadMessage(decryptedPadded)
 }
@@ -321,7 +321,7 @@ private fun WhatsAppProtocol.buildParsedMessage(
     // (unwrapped above). HD is not representable in this proto subset — WhatsApp's HD
     // flag lives in fields we don't model — so it stays false (documented, not faked).
 
-    WhatsAppMessage(
+    return WhatsAppMessage(
         id = id,
         from = chatJid,
         to = node.attrs["to"] ?: "",
@@ -375,7 +375,7 @@ private fun contactDataOf(e2eMessage: WhatsAppE2EProto.Message): ContactData? = 
 }
 
 /** Poll payload, when present. */
-private fun pollDataOf(e2eMessage: WhatsAppE2EProto.Message): PollData? =
+private fun WhatsAppProtocol.pollDataOf(e2eMessage: WhatsAppE2EProto.Message): PollData? =
     pollCreation(e2eMessage)?.let { poll ->
         PollData(
             question = poll.name,

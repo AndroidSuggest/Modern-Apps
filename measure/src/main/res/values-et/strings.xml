@@ -14,11 +14,9 @@
     <string name="compass_show_true_north">Näita geograafilist põhjasuunda</string>
     <string name="compass_hold_bearing">Hoia suunda/kurssi</string>
     <string name="compass_release_bearing">Lase suund/kurss vabaks</string>
-    <string name="saved_title">Salvestatud</string>
     <string name="saved_empty_title">Ühtegi salvestatud mõõdistust pole</string>
     <string name="saved_empty_body">Mõõda midagi liitreaalsuse abil ja klõpsa salvesta</string>
     <string name="saved_default_label">Mõõdistus</string>
-    <string name="settings_title">Seadistused</string>
     <string name="settings_section_units">Ühikud</string>
     <string name="settings_imperial_units">Inglise mõõtühikud</string>
     <string name="settings_imperial_units_summary">Jalad ja tollid meetrite asemel</string>

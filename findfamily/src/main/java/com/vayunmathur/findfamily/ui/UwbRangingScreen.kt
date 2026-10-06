@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.vayunmathur.findfamily.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.findfamily.Route
 import com.vayunmathur.findfamily.uwb.RangingSample
 import com.vayunmathur.findfamily.util.FindFamilyViewModel
@@ -110,7 +111,7 @@ fun UwbRangingScreen(
     }
 
     UwbRangingContent(
-        peerName = peer?.name ?: stringResource(R.string.unknown),
+        peerName = peer?.name ?: stringResource(UiR.string.unknown),
         session = session,
         onBack = { backStack.pop() }
     )

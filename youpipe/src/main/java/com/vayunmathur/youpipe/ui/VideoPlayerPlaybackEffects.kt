@@ -22,7 +22,6 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.MoreExecutors
@@ -44,7 +43,6 @@ import kotlinx.coroutines.delay
  * unchanged. State objects (not snapshots) are passed in so dispose blocks still read the
  * latest values.
  */
-@OptIn(UnstableApi::class)
 @Composable
 internal fun VideoPlayerControllerLifecycle(
     controllerState: MutableState<MediaController?>,
@@ -103,7 +101,6 @@ internal fun VideoPlayerControllerLifecycle(
 }
 
 /** Observes the controller into the shared transport, aspect ratio and cues. */
-@OptIn(UnstableApi::class)
 @Composable
 internal fun VideoPlayerTransportObserver(
     controller: MediaController?,

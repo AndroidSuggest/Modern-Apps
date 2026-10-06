@@ -2,6 +2,8 @@ package com.vayunmathur.communicate.data.signal
 
 import android.util.Base64 as AndroidBase64
 import android.util.Log
+import com.vayunmathur.communicate.data.signal.e2e.remoteRegistrationId
+import com.vayunmathur.communicate.data.signal.e2e.senderRegistrationId
 import com.vayunmathur.communicate.data.signal.transport.SignalPayload
 import org.signal.libsignal.protocol.message.DecryptionErrorMessage
 import org.signal.libsignal.protocol.message.PlaintextContent
@@ -226,7 +228,7 @@ private suspend fun SignalClient.sendRetryReceipt(env: SignalProtocol.SignalEnve
  * [SignalClient.downloadMedia] needs to decrypt and verify.
  */
 /** Original messageId for a reaction/edit/delete/poll target timestamp, else the timestamp itself. */
-private fun SignalClient.messageIdForTimestamp(conversationId: String, targetTs: Long): String {
+private suspend fun SignalClient.messageIdForTimestamp(conversationId: String, targetTs: Long): String {
     val cached = db?.cachedMessageDao()?.getForConversation(conversationId)
     return cached?.firstOrNull { it.timestamp == targetTs }?.messageId ?: targetTs.toString()
 }

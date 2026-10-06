@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.games.solitaire.R
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.game.GameResultOverlay
 import com.vayunmathur.library.ui.game.formatDuration
@@ -26,11 +27,11 @@ fun WinOverlay(
         won = true,
         onPlayAgain = onNewGame,
         onBack = onBack,
-        playAgainLabel = stringResource(R.string.new_game),
-        backLabel = stringResource(R.string.back),
+        playAgainLabel = stringResource(UiR.string.new_game),
+        backLabel = stringResource(UiR.string.back),
     ) {
         Text(
-            "${stringResource(R.string.time)}: ${formatDuration(elapsedSeconds)}",
+            "${stringResource(UiR.string.time)}: ${formatDuration(elapsedSeconds)}",
             style = MaterialTheme.typography.titleMedium,
         )
         Text(

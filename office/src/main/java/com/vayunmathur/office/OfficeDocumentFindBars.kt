@@ -24,6 +24,7 @@ import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TextField
 import com.vayunmathur.library.ui.TextFieldDefaults
 import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.office.util.OfficeViewModel
 import com.vayunmathur.office.util.findMatchBlocks
 import com.vayunmathur.office.util.replaceInDocument
@@ -77,8 +78,8 @@ private fun TimerBar(s: DocumentScreenState, isPresentation: Boolean) {
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer)
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = { s.timerSeconds = 0 }) { Text(stringResource(R.string.reset)) }
-                TextButton(onClick = { s.showTimer = false }) { Text(stringResource(R.string.stop)) }
+                TextButton(onClick = { s.timerSeconds = 0 }) { Text(stringResource(UiR.string.reset)) }
+                TextButton(onClick = { s.showTimer = false }) { Text(stringResource(UiR.string.stop)) }
             }
         }
     }
@@ -139,7 +140,7 @@ private fun MatchNavigator(
             Text(stringResource(R.string.prev))
         }
         TextButton(onClick = { jumpMatch(s, document, viewModel, scope, listState, 1) }) {
-            Text(stringResource(R.string.next))
+            Text(stringResource(UiR.string.next))
         }
         Text(
             if (total > 0) "${(s.findIndex % total) + 1}/$total" else "0/0",
@@ -187,7 +188,7 @@ private fun ReplaceBar(s: DocumentScreenState, viewModel: OfficeViewModel) {
                     false,
                     s.matchCase,
                     s.wholeWord) }) { Text(stringResource(R.string.one)) }
-                TextButton(onClick = { replaceAll(s, viewModel) }) { Text(stringResource(R.string.all)) }
+                TextButton(onClick = { replaceAll(s, viewModel) }) { Text(stringResource(UiR.string.all)) }
             }
             MatchOptionsRow(s)
         }
@@ -247,7 +248,7 @@ private fun FontScaleBar(s: DocumentScreenState) {
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
             Text("A", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.width(8.dp))
-            TextButton(onClick = { s.fontSizeMultiplier = 1f }) { Text(stringResource(R.string.reset)) }
+            TextButton(onClick = { s.fontSizeMultiplier = 1f }) { Text(stringResource(UiR.string.reset)) }
         }
     }
 }

@@ -22,6 +22,7 @@ import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.CommonSearchBar
 import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import androidx.compose.ui.res.stringResource
@@ -64,7 +65,7 @@ fun AchievementsScreen(
         LazyColumn(modifier = modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             item {
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item { FilterChip(selected = statusFilter == AchievementFilter.ALL, onClick = { statusFilter = AchievementFilter.ALL }, label = { Text(stringResource(R.string.filter_all)) }) }
+                    item { FilterChip(selected = statusFilter == AchievementFilter.ALL, onClick = { statusFilter = AchievementFilter.ALL }, label = { Text(stringResource(UiR.string.all)) }) }
                     item { FilterChip(selected = statusFilter == AchievementFilter.UNLOCKED, onClick = { statusFilter = AchievementFilter.UNLOCKED }, label = { Text(stringResource(R.string.filter_unlocked)) }) }
                     item { FilterChip(selected = statusFilter == AchievementFilter.LOCKED, onClick = { statusFilter = AchievementFilter.LOCKED }, label = { Text(stringResource(R.string.filter_locked)) }) }
                 }

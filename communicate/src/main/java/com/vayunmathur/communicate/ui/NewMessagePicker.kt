@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import com.vayunmathur.communicate.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.communicate.data.CommunicateContact
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.CommunicateRepository
@@ -238,7 +239,7 @@ internal fun NewMessagePicker(
                     enabled = selected != null && selectedContacts.size >= 1,
                 ) { Text("Create") }
             } else {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.clear)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.clear)) }
             }
         },
         dismissButton = if (groupMode) {

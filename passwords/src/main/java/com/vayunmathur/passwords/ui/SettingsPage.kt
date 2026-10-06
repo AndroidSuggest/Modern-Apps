@@ -19,6 +19,7 @@ import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.OutlinedTextField
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.SettingsDivider
 import com.vayunmathur.library.ui.SettingsRow
 import com.vayunmathur.library.ui.SettingsSection
@@ -70,7 +71,7 @@ fun SettingsPage(
     }
 
     DetailScaffold(
-        title = stringResource(R.string.title_settings),
+        title = stringResource(UiR.string.settings),
         backStack = backStack,
         actions = {
             BackupButtons(
@@ -209,7 +210,7 @@ private fun KdbxSyncSection() {
         SettingsRow(
             title = stringResource(R.string.sync_vault_password),
             supportingText = stringResource(
-                if (passwordSaved) R.string.sync_vault_password_set else R.string.sync_vault_password_unset,
+                if (passwordSaved) UiR.string.saved else R.string.sync_vault_password_unset,
             ),
             onClick = { showPasswordDialog = true },
         )
@@ -276,11 +277,11 @@ private fun VaultPasswordDialog(onDismiss: () -> Unit, onSave: (String) -> Unit)
         },
         confirmButton = {
             TextButton(onClick = { onSave(value) }, enabled = value.isNotEmpty()) {
-                Text(stringResource(R.string.sync_save))
+                Text(stringResource(UiR.string.save))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.sync_cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

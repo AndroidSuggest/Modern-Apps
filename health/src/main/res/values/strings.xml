@@ -17,8 +17,6 @@
     <string name="tab_year">Year</string>
 
 
-    <!-- BarChartDetails: Header format for week range. %1$s = start date e.g. May 12, %2$s = end date e.g. May 18. Includes en-dash separator -->
-    <string name="week_range"><xliff:g id="start_date" example="May 12">%1$s</xliff:g> – <xliff:g id="end_date" example="May 18">%2$s</xliff:g></string>
     <!-- BarChartDetails / SleepDetailsPage: Empty chart placeholder when no health data for period. Sentence -->
     <string name="no_data_available">No data available for this period</string>
 
@@ -40,7 +38,7 @@
     <string name="metric_active_calories">Active Calories</string>
     <!-- HealthMetricConfig: Basal Metabolic Rate title. Noun phrase -->
     <string name="metric_basal_metabolic_rate">Basal Metabolic Rate</string>
-    <!-- HealthMetricConfig: Steps title. Noun -->
+    <!-- HealthMetricConfig / TodayPage / TodayHero: Steps title; also steps unit suffix (lowercase display differs only by case). Noun -->
     <string name="metric_steps">Steps</string>
     <!-- HealthMetricConfig: Wheelchair Pushes title. Noun phrase -->
     <string name="metric_wheelchair_pushes">Wheelchair Pushes</string>
@@ -84,7 +82,7 @@
     <string name="metric_body_water_mass">Body Water Mass</string>
     <!-- HealthMetricConfig: Sleep duration title. Noun -->
     <string name="metric_sleep">Sleep</string>
-    <!-- HealthMetricConfig: Exercise duration title. Noun -->
+    <!-- HealthMetricConfig / TodayPage / ExerciseDetailsPage: Exercise duration title. Noun -->
     <string name="metric_exercise_duration">Exercise</string>
 
     <!-- SleepDetailsPage: Hypnogram Y-axis label for Awake stage. Adjective/noun -->
@@ -99,11 +97,8 @@
     <!-- BodyPage: Section header for body composition metrics. Noun phrase -->
     <string name="section_body_composition">Body Composition</string>
 
-    <!-- TodayPage / ActivityPage: Mini-card legend for active calories ring. Adjective short label -->
+    <!-- TodayPage / ActivityPage / AddConditionPage: Mini-card legend for active calories ring; also condition active status. Adjective short label -->
     <string name="label_active">Active</string>
-
-    <!-- NutritionDetailsPage / SleepDetailsPage: Label for today date badge. Noun -->
-    <string name="label_today">Today</string>
 
     <!-- BarChartDetails: Slash format for dual averages, e.g. active/basal or systolic/diastolic avg. %1$s = first avg string, %2$s = second avg string -->
     <string name="slash_value_format"><xliff:g id="first" example="120">%1$s</xliff:g>/<xliff:g id="second" example="80">%2$s</xliff:g></string>
@@ -113,44 +108,12 @@
     <string name="hours_minutes_format"><xliff:g id="hours" example="7">%1$d</xliff:g>h <xliff:g id="minutes" example="30">%2$d</xliff:g>m</string>
     <!-- HealthFormat: Duration minutes only when hours zero. %1$d = minutes integer e.g. 25 -->
     <string name="minutes_format"><xliff:g id="minutes" example="25">%1$d</xliff:g>m</string>
-    <!-- TodayPage / BodyPage / ActivityPage: Label for Steps metric row. Noun -->
-    <string name="label_steps">Steps</string>
-    <!-- TodayPage: Label for Wheelchair Pushes row. Noun phrase -->
-    <string name="label_wheelchair_pushes">Wheelchair Pushes</string>
     <!-- TodayPage: Label for Mindfulness minutes row. Noun -->
     <string name="label_mindfulness">Mindfulness</string>
     <!-- TodayPage: Label for Elevation gained row. Noun -->
     <string name="label_elevation">Elevation</string>
     <!-- TodayPage: Label for Floors climbed row. Noun -->
     <string name="label_floors">Floors</string>
-    <!-- TodayPage: Label for Distance row. Noun -->
-    <string name="label_distance">Distance</string>
-    <!-- TodayPage: Label for Heart rate row. Noun phrase -->
-    <string name="label_heart_rate">Heart rate</string>
-    <!-- TodayPage: Label for Sleep row. Noun -->
-    <string name="label_sleep">Sleep</string>
-    <!-- TodayPage: Label for Hydration row. Noun -->
-    <string name="label_hydration">Hydration</string>
-
-    <!-- TodayPage: Section header for Blood Pressure vitals card. Noun phrase -->
-    <string name="label_blood_pressure">Blood Pressure</string>
-    <!-- TodayPage: Label for Oxygen Saturation. Noun phrase -->
-    <string name="label_oxygen_saturation">Oxygen Saturation</string>
-    <!-- TodayPage: Label for Resting Heart Rate. Noun phrase -->
-    <string name="label_resting_heart_rate">Resting Heart Rate</string>
-
-    <!-- BodyPage: Label for Height row in body composition dashboard. Noun -->
-    <string name="label_height">Height</string>
-    <!-- BodyPage: Label for Weight row. Noun -->
-    <string name="label_weight">Weight</string>
-    <!-- BodyPage: Label for Body Fat row. Noun phrase -->
-    <string name="label_body_fat">Body Fat</string>
-    <!-- BodyPage: Label for Lean Body Mass row. Noun phrase -->
-    <string name="label_lean_body_mass">Lean Body Mass</string>
-    <!-- BodyPage: Label for Bone Mass row. Noun phrase -->
-    <string name="label_bone_mass">Bone Mass</string>
-    <!-- BodyPage: Label for Body Water Mass row. Noun phrase -->
-    <string name="label_body_water_mass">Body Water Mass</string>
 
 
     <!-- Units: Beats per minute. Abbreviation -->
@@ -169,8 +132,6 @@
     <string name="unit_m">m</string>
     <!-- Units: Kilometers for distance. Abbreviation -->
     <string name="unit_km">km</string>
-    <!-- Units: Steps unit suffix. Noun -->
-    <string name="unit_steps">steps</string>
     <!-- Units: Pushes unit suffix for wheelchair pushes. Noun -->
     <string name="unit_pushes">pushes</string>
     <!-- Units: Minutes abbreviation. Short -->
@@ -199,15 +160,10 @@
     <string name="set_quantity_for_format">Set Quantity for <xliff:g id="ingredient" example="Tomato">%1$s</xliff:g></string>
     <!-- RecipeManagementPage: Input label for quantity in grams or factor. Noun -->
     <string name="quantity">Quantity</string>
-    <!-- RecipeManagementPage: Input label for unit selection. Noun -->
-    <string name="unit">Unit</string>
     <!-- RecipeManagementPage: Confirm button in quantity dialog. Verb -->
     <string name="confirm">Confirm</string>
     <!-- RecipeManagementPage: Search field label for ingredient search (online+local). Noun phrase verb -->
     <string name="search_ingredient">Search Ingredient</string>
-    <!-- RecipeManagementPage: Search action button / label. Verb -->
-    <string name="search">Search</string>
-
     <!-- NutritionPage FAB / dialogs: Action to log hydration. Verb phrase -->
     <string name="log_hydration">Log Hydration</string>
     <!-- NutritionPage: Action to log a meal using recipe. Verb phrase -->
@@ -216,7 +172,7 @@
     <!-- BodyLoggingDialog: Title to log body metric. %1$s = metric title e.g. Weight, Body Fat. Verb phrase -->
     <string name="log_body_metric">Log <xliff:g id="metric" example="Weight">%1$s</xliff:g></string>
 
-    <!-- MainActivity BottomNavBar: Today tab label. Noun -->
+    <!-- MainActivity BottomNavBar / NutritionDetailsPage / SleepDetailsPage: Today tab and date badge label. Noun -->
     <string name="nav_today">Today</string>
     <!-- MainActivity BottomNavBar: Nutrition tab label. Noun -->
     <string name="nav_nutrition">Nutrition</string>
@@ -230,8 +186,6 @@
     <!-- TodayPage: Section header for quick stats mini-cards. Noun phrase -->
     <string name="section_quick_stats">Quick stats</string>
 
-    <!-- ExerciseDetailsPage: Title for exercise section/details page. Noun -->
-    <string name="label_exercise">Exercise</string>
     <!-- ExerciseDetailsPage: Empty state when no workouts recorded. Sentence -->
     <string name="no_workouts">No workouts recorded</string>
 
@@ -300,6 +254,11 @@
     <string name="servings">Servings</string>
     <string name="kcal_2">kcal</string>
 
+    <!-- MedicalPage: Navigation label and section title for the medications list. Noun, plural -->
+    <string name="nav_medication">Medications</string>
+    <!-- MedicalPage: Navigation label for the records section. Noun, plural -->
+    <string name="nav_records">Records</string>
+
     <!-- BottomNavBar: Tab for the medical page, which contains all medical logs. Noun -->
     <string name="nav_medical">Medical</string>
     <!-- MedicalPage: Nested row opening the past medications list. Noun phrase -->
@@ -307,6 +266,10 @@
 
     <!-- MedicalPage: Row opening the vaccination log. Noun, plural -->
     <string name="vaccinations">Vaccinations</string>
+    <!-- MedicalPage: Empty state when no vaccinations are recorded. Sentence -->
+    <string name="no_vaccinations">No vaccinations</string>
+    <!-- MedicalPage: Empty-state body for the vaccination list. Sentence -->
+    <string name="no_vaccinations_message">Add a vaccination to start a record you can keep and share.</string>
     <!-- MedicalPage: Row opening the allergy list. Noun, plural -->
     <string name="allergies">Allergies</string>
     <!-- MedicalPage: Row opening the diagnosis list. Noun, plural -->
@@ -314,22 +277,30 @@
 
     <!-- MedicalPage: Banner shown when the device cannot store FHIR records. Sentence -->
     <string name="phr_unavailable">Health Connect on this device cannot store medical records, so these are kept in the app only.</string>
+    <!-- MedicalPage: Shown when no records exist in any category. Sentence -->
+    <string name="nothing_recorded">Nothing recorded yet</string>
 
     <!-- MedicalPage: FAB entry and add screen title. Verb phrase -->
     <string name="add_vaccination">Add vaccination</string>
     <!-- AddVaccinationPage: Title when changing an existing record. Verb phrase -->
     <string name="edit_vaccination">Edit vaccination</string>
-    <!-- MedicalPage: Confirm deleting one vaccination, %1$s is the vaccine name. Sentence -->
-    <string name="delete_vaccination_confirm">Delete the record of %1$s?</string>
+    <!-- MedicalPage: Confirm deleting one medical record (vaccination, medication, allergy, condition, lab result). %1$s = record display name. Sentence -->
+    <string name="delete_record_confirm">Delete the record of %1$s?</string>
+    <!-- MedicalPage: CVX code shown under a vaccination entry. %1$s = code, e.g. 08 -->
+    <string name="cvx_code">CVX %1$s</string>
 
-    <!-- MedicalPage: Row opening the medication list. Noun, plural -->
-    <string name="medications">Medications</string>
+    <!-- MedicalPage: Empty state when no medications are recorded. Sentence -->
+    <string name="no_medications">No medications</string>
+    <!-- MedicalPage: Empty-state body for the medications list. Sentence -->
+    <string name="no_medications_message">Add a medication to track what you take and when.</string>
     <!-- MedicalPage: FAB entry and add screen title. Verb phrase -->
     <string name="add_medication">Add medication</string>
     <!-- AddMedicationPage: Title when changing an existing record. Verb phrase -->
     <string name="edit_medication">Edit medication</string>
-    <!-- MedicalPage: Confirm deleting one medication, %1$s is the medication name. Sentence -->
-    <string name="delete_medication_confirm">Delete the record of %1$s?</string>
+    <!-- MedicalPage: Tab showing medications still being taken. Adjective -->
+    <string name="medication_current">Current</string>
+    <!-- MedicalPage: Tab showing finished and stopped medications. Adjective -->
+    <string name="medication_past">Past</string>
     <!-- AddMedicationPage: Status shown on a medication still being taken. Adjective -->
     <string name="medication_status_active">Taking</string>
     <!-- AddMedicationPage: Status shown on a completed course. Adjective -->
@@ -369,7 +340,7 @@
     <!-- AddVaccinationPage: Name used when the file picker reports no name for a file. Noun -->
     <string name="attachment_untitled">Attachment</string>
 
-    <!-- AddMedicationPage: Read-only field opening the ingredient picker. Noun -->
+    <!-- AddMedicationPage / AddAllergyPage: Read-only field opening the ingredient picker; also drug-allergy category label. Noun -->
     <string name="field_medication">Medication</string>
     <!-- AddMedicationPage: Placeholder in the medication field before one is chosen. Verb phrase -->
     <string name="choose_a_medication">Choose a medication</string>
@@ -383,7 +354,7 @@
     <string name="field_ended">Ended</string>
     <!-- AddMedicationPage: How much and how often, for example one tablet twice a day. Noun -->
     <string name="field_dosage">Dosage</string>
-    <!-- AddMedicationPage: Label above the taking/finished/stopped selector. Noun -->
+    <!-- AddMedicationPage / AddConditionPage: Label above the status selector. Noun -->
     <string name="field_status">Status</string>
 
     <!-- CatalogPickerPage: Search field placeholder, which doubles as the screen title. Verb phrase -->
@@ -402,6 +373,8 @@
     <string name="use_typed_name">Use “%1$s”</string>
     <!-- CatalogPickerPage: Marks a vaccine code the CDC has retired. Adjective -->
     <string name="cvx_retired">Retired code</string>
+    <!-- BarChartDetails / MedicalPage: Date/week range shown on a record group or chart header. %1$s = start date e.g. Mar 1 2026, %2$s = end date e.g. Apr 4 2026. Includes en-dash separator -->
+    <string name="date_range"><xliff:g id="start" example="Mar 1 2026">%1$s</xliff:g> – <xliff:g id="end" example="Apr 4 2026">%2$s</xliff:g></string>
 
     <!-- Notification channel for the alert when a medication dose is due. Noun phrase -->
     <string name="channel_dose_reminder_name">Dose reminders</string>
@@ -443,6 +416,10 @@
     <string name="dose_reminder_exact_alarm_settings">Open settings</string>
     <!-- AddMedicationPage: Button opening the system full-screen intent settings. Verb -->
     <string name="grant_full_screen">Allow</string>
+    <!-- MedicalPage: Next scheduled dose shown on a current medication. %1$s = when, e.g. Tomorrow 08:00 -->
+    <string name="next_dose">Next dose <xliff:g id="when" example="Tomorrow 08:00">%1$s</xliff:g></string>
+    <!-- MedicalPage: When the last dose was taken. %1$s = date or relative time, e.g. Mar 4 2026 -->
+    <string name="last_taken">Last taken: %1$s</string>
 
     <!-- Weekday initials for the reminder day selector. Single letters, Sunday first -->
     <string name="day_initial_sunday">S</string>
@@ -455,16 +432,18 @@
 
     <!-- MedicalPage: FAB entry and add screen title. Verb phrase -->
     <string name="add_allergy">Add allergy</string>
+    <!-- MedicalPage: Empty state when no allergies are recorded. Sentence -->
+    <string name="no_allergies">No allergies recorded</string>
+    <!-- MedicalPage: Empty-state body for the allergy list. Sentence -->
+    <string name="no_allergies_message">Record an allergy so it stays with your health data.</string>
     <!-- AddAllergyPage: Title when changing an existing record. Verb phrase -->
     <string name="edit_allergy">Edit allergy</string>
-    <!-- MedicalPage: Confirm deleting one allergy, %1$s is the allergen name. Sentence -->
-    <string name="delete_allergy_confirm">Delete the record of %1$s?</string>
     <!-- AddAllergyPage: What kind of thing the allergen is. Noun -->
     <string name="field_allergy_category">Type</string>
     <!-- AddAllergyPage: The substance itself. Noun -->
     <string name="field_allergen">Allergen</string>
     <!-- AddAllergyPage: Placeholder before an allergen is chosen. Verb phrase -->
-    <string name="choose_an_allergen">Choose a medication</string>
+    <string name="choose_an_allergen">Choose an allergen</string>
     <!-- AddAllergyPage: How severe the reaction is. Noun -->
     <string name="field_criticality">Severity</string>
     <!-- AddAllergyPage: What happens on exposure, for example hives. Noun -->
@@ -473,8 +452,6 @@
     <string name="field_first_noticed">First noticed</string>
     <!-- AddAllergyPage and AddConditionPage: Shown in an optional date field left empty. Sentence -->
     <string name="not_recorded">Not recorded</string>
-    <!-- Allergy type: a drug allergy. Noun -->
-    <string name="allergy_category_medication">Medication</string>
     <!-- Allergy type: a food allergy. Noun -->
     <string name="allergy_category_food">Food</string>
     <!-- Allergy type: pollen, dust and similar. Noun -->
@@ -490,10 +467,12 @@
 
     <!-- MedicalPage: FAB entry and add screen title. Verb phrase -->
     <string name="add_condition">Add condition</string>
+    <!-- MedicalPage: Empty state when no conditions are recorded. Sentence -->
+    <string name="no_conditions">No conditions recorded</string>
+    <!-- MedicalPage: Empty-state body for the condition list. Sentence -->
+    <string name="no_conditions_message">Record a diagnosis so your condition list is always with you.</string>
     <!-- AddConditionPage: Title when changing an existing record. Verb phrase -->
     <string name="edit_condition">Edit condition</string>
-    <!-- MedicalPage: Confirm deleting one condition, %1$s is the diagnosis. Sentence -->
-    <string name="delete_condition_confirm">Delete the record of %1$s?</string>
     <!-- AddConditionPage: The diagnosis itself. Noun -->
     <string name="field_condition">Condition</string>
     <!-- AddConditionPage: Placeholder before a diagnosis is chosen. Verb phrase -->
@@ -502,8 +481,6 @@
     <string name="field_diagnosed">Diagnosed</string>
     <!-- AddConditionPage: When the condition resolved. Verb, past tense -->
     <string name="field_resolved">Resolved</string>
-    <!-- Condition status: ongoing. Adjective -->
-    <string name="condition_status_active">Active</string>
     <!-- Condition status: came back after resolving. Noun -->
     <string name="condition_status_recurrence">Recurrence</string>
     <!-- Condition status: present but not currently causing symptoms. Noun -->
@@ -512,7 +489,7 @@
     <string name="condition_status_resolved">Resolved</string>
 
     <!-- CatalogPickerPage: Search placeholder when picking an allergen. Verb phrase -->
-    <string name="search_allergens">Search medications</string>
+    <string name="search_allergens">Search allergens</string>
     <!-- CatalogPickerPage: Search placeholder when picking a diagnosis. Verb phrase -->
     <string name="search_conditions">Search conditions</string>
     <!-- CatalogPickerPage: Search placeholder when picking a lab test. Verb phrase -->
@@ -520,21 +497,21 @@
 
     <!-- MedicalPage: The lab results log. Noun phrase, plural -->
     <string name="lab_results">Lab results</string>
+    <!-- MedicalPage: Empty state when no lab results are recorded. Sentence -->
+    <string name="no_lab_results">No lab results</string>
+    <!-- MedicalPage: Empty-state body for the lab results list. Sentence -->
+    <string name="no_lab_results_message">Record a lab result to keep it with the rest of your medical history.</string>
     <!-- MedicalPage: FAB entry and add screen title. Verb phrase -->
     <string name="add_lab_result">Add lab result</string>
     <!-- AddLabResultPage: Title when changing an existing record. Verb phrase -->
     <string name="edit_lab_result">Edit lab result</string>
-    <!-- MedicalPage: Confirm deleting one result, %1$s is the test name. Sentence -->
-    <string name="delete_lab_confirm">Delete the record of %1$s?</string>
-    <!-- AddLabResultPage: Form section heading for the measured value. Noun -->
-    <string name="section_result">Result</string>
     <!-- AddLabResultPage: The test that was run. Noun phrase -->
     <string name="field_lab_test">Test</string>
     <!-- AddLabResultPage: Placeholder before a test is chosen. Verb phrase -->
     <string name="choose_a_lab_test">Choose a test</string>
-    <!-- AddLabResultPage: The measured value, which may be a number or a word. Noun -->
+    <!-- AddLabResultPage: The measured value, which may be a number or a word; also section heading. Noun -->
     <string name="field_result">Result</string>
-    <!-- AddLabResultPage: Unit of measurement, for example mg/dL. Noun -->
+    <!-- AddLabResultPage / IngredientQuantityDialog: Unit of measurement, for example mg/dL. Noun -->
     <string name="field_unit">Unit</string>
     <!-- AddLabResultPage: Bottom of the normal range for the test. Noun phrase -->
     <string name="field_reference_low">Normal from</string>
@@ -544,6 +521,12 @@
     <string name="field_taken_on">Taken on</string>
     <!-- AboutYouPage: Screen of standing facts about the user. Noun phrase -->
     <string name="about_you">About you</string>
+    <!-- AboutYouPage: Overline above the current-status summary. Noun phrase -->
+    <string name="about_you_overline">Current state</string>
+    <!-- AboutYouPage: Section heading for pregnancy facts. Noun -->
+    <string name="section_pregnancy">Pregnancy</string>
+    <!-- AboutYouPage: Section heading for smoking facts. Noun -->
+    <string name="section_smoking">Smoking</string>
     <!-- MedicalPage: Trailing text on a category with no entries, so tapping it and seeing nothing change reads as an answer rather than a broken row. Adjective -->
     <string name="medical_empty">None</string>
     <!-- MedicalPage About you: The pregnancy question, shown as the row headline. Question -->
@@ -552,6 +535,10 @@
     <string name="about_you_smoking_question">Do you smoke?</string>
     <!-- MedicalPage About you: Estimated delivery date. Noun phrase -->
     <string name="field_due_date">Due date</string>
+    <!-- AboutYouPage: Date a fact was recorded. %1$s = date e.g. Mar 4 2026 -->
+    <string name="recorded_on">Recorded <xliff:g id="date" example="Mar 4 2026">%1$s</xliff:g></string>
+    <!-- Shared unanswered status for pregnancy/smoking facts. Adjective -->
+    <string name="answer_unknown">No answer</string>
     <!-- Pregnancy status: currently pregnant. Adjective -->
     <string name="pregnancy_pregnant">Pregnant</string>
     <!-- Pregnancy status: not currently pregnant. Adjective phrase -->
@@ -575,6 +562,10 @@
     <string name="social_food_ran_out">Within the past 12 months, the food we bought just did not last and we did not have money to get more.</string>
     <!-- AboutYouPage: The transport question. Question -->
     <string name="social_transport">Has a lack of transport kept you from medical appointments, work, or from getting things you need for daily living?</string>
+    <!-- AboutYouPage: Section heading for lifestyle questions. Noun phrase -->
+    <string name="section_lifestyle">Lifestyle</string>
+    <!-- AboutYouPage: Section heading for living-circumstance questions. Noun phrase -->
+    <string name="section_circumstances">Living situation</string>
     <!-- AboutYouPage: Default option on every question the user has not answered. Adjective -->
     <string name="not_answered">Not answered</string>
 
@@ -616,4 +607,10 @@
     <string name="transport_no">No</string>
     <!-- Answer available on some questions when the user would rather not say. Sentence -->
     <string name="decline_to_answer">I choose not to answer</string>
+
+    <!-- MedicalPage: Count of records. %1$d = count -->
+    <plurals name="records_recorded">
+        <item quantity="one">%1$d record</item>
+        <item quantity="other">%1$d records</item>
+    </plurals>
 </resources>

@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.euicc.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.IconSim
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedTextField
@@ -42,14 +43,14 @@ fun ConfirmationCodeContent(
             ?: stringResource(R.string.confirmation_code_text_no_carrier),
         icon = { IconSim() },
         primaryAction = SetupAction(
-            label = stringResource(R.string.continue_button),
+            label = stringResource(UiR.string.continue_label),
             onClick = {
                 if (error) messenger.show(wrongCodeMessage)
                 onSubmit(code.trim())
             },
             enabled = code.isNotBlank(),
         ),
-        secondaryAction = SetupAction(stringResource(R.string.cancel), onCancel),
+        secondaryAction = SetupAction(stringResource(UiR.string.cancel), onCancel),
         scrollBehavior = appBarScrollBehavior(),
     ) {
         OutlinedTextField(

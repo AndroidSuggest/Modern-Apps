@@ -32,7 +32,7 @@ import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.youpipe.R
-
+import com.vayunmathur.library.ui.R as UiR
 private fun chipModifier(): Modifier =
     Modifier.background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp)).size(32.dp)
 
@@ -139,7 +139,7 @@ internal fun VideoPlayerTopControls(
                 }
                 DropdownMenu(expanded = isCaptionMenuExpanded, onDismissRequest = { onCaptionMenuExpandedChange(false) }) {
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.off)) },
+                        text = { Text(stringResource(UiR.string.off)) },
                         onClick = { onSubtitleChange(null); onCaptionMenuExpandedChange(false) }
                     )
                     subtitles.forEach { sub ->
@@ -249,7 +249,7 @@ internal fun VideoPlayerTopControls(
                             onUnhookPitchChange(false)
                         },
                         modifier = Modifier.align(Alignment.End)
-                    ) { Text(stringResource(R.string.playback_reset)) }
+                    ) { Text(stringResource(UiR.string.reset)) }
                 }
             }
         }

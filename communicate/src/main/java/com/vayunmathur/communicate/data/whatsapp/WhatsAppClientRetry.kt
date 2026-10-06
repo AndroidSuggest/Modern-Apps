@@ -1,5 +1,9 @@
 package com.vayunmathur.communicate.data.whatsapp
 
+import android.util.Log
+import com.vayunmathur.communicate.data.whatsapp.e2e.WhatsAppE2E
+import com.vayunmathur.communicate.data.whatsapp.transport.WhatsAppSocket
+
 /**
  * Retry-receipt handling (split from WhatsAppClientSync.kt for file length).
  * Behavior identical, call sites unchanged.

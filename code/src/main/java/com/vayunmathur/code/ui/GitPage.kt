@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.code.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.code.Route
 import com.vayunmathur.code.util.EditorViewModel
 import com.vayunmathur.code.util.clearDiffRows
@@ -241,17 +242,17 @@ private fun RepoSection(viewModel: EditorViewModel) {
                     value = name,
                     onValueChange = { name = it },
                     singleLine = true,
-                    label = { Text(stringResource(R.string.name)) },
+                    label = { Text(stringResource(UiR.string.name)) },
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = { viewModel.gitCreateBranch(name.trim()); showNewBranch = false },
                     enabled = name.isNotBlank(),
-                ) { Text(stringResource(R.string.create)) }
+                ) { Text(stringResource(UiR.string.create)) }
             },
             dismissButton = {
-                TextButton(onClick = { showNewBranch = false }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { showNewBranch = false }) { Text(stringResource(UiR.string.cancel)) }
             },
         )
     }

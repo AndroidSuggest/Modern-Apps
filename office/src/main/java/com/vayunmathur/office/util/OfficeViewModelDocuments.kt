@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.core.content.edit
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.odf.OdfCell
 import com.vayunmathur.library.ui.odf.OdfContentBlock
 import com.vayunmathur.library.ui.odf.OdfDocument
@@ -209,7 +210,7 @@ fun OfficeViewModel.save(targetUri: Uri? = null) {
                     syncDoc(currentDocId!!, currentDocKey!!)
                 }
             }
-            launch(Dispatchers.Main) { AppMessages.show(getApplication<Application>().getString(R.string.saved)) }
+            launch(Dispatchers.Main) { AppMessages.show(getApplication<Application>().getString(UiR.string.saved)) }
         } catch (expected: Exception) {
             launch(Dispatchers.Main) { AppMessages.show(getApplication<Application>().getString(
                 R.string.save_failed,

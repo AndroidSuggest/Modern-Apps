@@ -54,7 +54,6 @@
     <string name="nobody_here">mitte keegi pole hetkel siin</string>
     <string name="user_is_here"><xliff:g id="person_name" example="Kadri">%1$s</xliff:g> on praegu siin</string>
     <string name="users_are_here"><xliff:g id="person_names" example="Kadri, Mati">%1$s</xliff:g> on praegu siin üheskoos</string>
-    <string name="last_updated_never">Mitte kunagi</string>
     <string name="since_just_now">Tulid äsja</string>
     <string name="since_minutes_ago">Tulid <xliff:g id="minutes" example="5">%1$d</xliff:g> minuti eest</string>
     <string name="since_time_date">Tulid <xliff:g id="time" example="15:45">%1$s</xliff:g> <xliff:g id="date" example="täna">%2$s</xliff:g></string>

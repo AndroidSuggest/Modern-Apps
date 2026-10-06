@@ -30,6 +30,7 @@ import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.share.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.share.network.transport.Connection
 import com.vayunmathur.share.platform.discovery.DiscoverySource
 import com.vayunmathur.share.platform.discovery.NearbyDevice
@@ -116,7 +117,7 @@ fun ShareSendContent(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 if (uiState.isScanning) {
-                    Button(onClick = actions::stopScan) { Text(stringResource(R.string.share_stop)) }
+                    Button(onClick = actions::stopScan) { Text(stringResource(UiR.string.stop)) }
                 } else {
                     OutlinedButton(onClick = actions::startScan) { Text(stringResource(R.string.share_scan)) }
                 }
@@ -201,7 +202,7 @@ fun OutgoingFilesCard(
                         )
                     }
                     if (uris.isNotEmpty()) {
-                        OutlinedButton(onClick = onClear) { Text(stringResource(R.string.share_clear)) }
+                        OutlinedButton(onClick = onClear) { Text(stringResource(UiR.string.clear)) }
                     }
                 }
             }
@@ -307,7 +308,7 @@ fun TransferCard(
                 }
                 ShareState.Completed -> {
                     Text(stringResource(R.string.share_sent), color = MaterialTheme.colorScheme.primary)
-                    Button(onClick = onDisconnect) { Text(stringResource(R.string.share_done)) }
+                    Button(onClick = onDisconnect) { Text(stringResource(UiR.string.done)) }
                 }
                 ShareState.Failed -> {
                     Text(
@@ -316,7 +317,7 @@ fun TransferCard(
                         error ?: stringResource(R.string.share_send_failed),
                         color = MaterialTheme.colorScheme.error,
                     )
-                    Button(onClick = onDisconnect) { Text(stringResource(R.string.share_dismiss)) }
+                    Button(onClick = onDisconnect) { Text(stringResource(UiR.string.dismiss)) }
                 }
                 ShareState.Unknown -> {
                     Text(stringResource(R.string.share_unknown_state))

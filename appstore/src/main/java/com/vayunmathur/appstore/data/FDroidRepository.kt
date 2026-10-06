@@ -176,15 +176,13 @@ object FDroidRepository {
         r.endObject()
     }
 
-    companion object {
-        private const val PACKAGES_KEY = "packages"
-        private const val CONNECT_TIMEOUT_MS = 30000
-        private const val READ_TIMEOUT_MS = 120000
-        private const val DOWNLOAD_BUFFER_SIZE = 32 * 1024
-        private const val HTTP_OK_MIN = 200
-        private const val HTTP_OK_MAX = 299
-        private const val USER_AGENT = "ModernAppStore/1.0"
-    }
+    private const val PACKAGES_KEY = "packages"
+    private const val CONNECT_TIMEOUT_MS = 30000
+    private const val READ_TIMEOUT_MS = 120000
+    private const val DOWNLOAD_BUFFER_SIZE = 32 * 1024
+    private const val HTTP_OK_MIN = 200
+    private const val HTTP_OK_MAX = 299
+    private const val USER_AGENT = "ModernAppStore/1.0"
 
     private class PackageBuilder {
         var metaName: String? = null

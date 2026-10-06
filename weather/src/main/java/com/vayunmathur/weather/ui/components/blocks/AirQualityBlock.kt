@@ -70,7 +70,7 @@ fun AirQualityBlock(air: AirQualityCurrent?) {
 private fun aqiLevelRes(aqi: Int?): Int? = when {
     aqi == null -> null
     aqi <= 50 -> R.string.aqi_good
-    aqi <= 100 -> R.string.aqi_moderate
+    aqi <= 100 -> R.string.level_moderate
     aqi <= 150 -> R.string.aqi_unhealthy_sensitive
     aqi <= 200 -> R.string.aqi_unhealthy
     aqi <= 300 -> R.string.aqi_very_unhealthy

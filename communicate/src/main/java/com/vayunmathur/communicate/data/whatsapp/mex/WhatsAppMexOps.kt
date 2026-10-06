@@ -40,8 +40,8 @@ object WhatsAppMexOps {
 
     // -- GraphQL operation names (persist-ids JSON keys) ---------------------------------------
 
-    /* * Seeded id 27462649126753603. `query
-    /* QueryGroupInfo($group_input:XWA2GroupQueryInput!){xwa2_group_query_by_id…}`.
+    // Seeded id 27462649126753603. `query
+    // QueryGroupInfo($group_input:XWA2GroupQueryInput!){xwa2_group_query_by_id…}`.
     const val OP_GROUP_QUERY = "QueryGroupInfo"
     /** Uncaptured. `xwa2_group_query_participating_groups`. */
     const val OP_GROUP_PARTICIPATING = "QueryParticipatingGroups"
@@ -446,7 +446,7 @@ object WhatsAppMexOps {
         JsonObject.serializer(),
         buildJsonObject {
             putJsonObject("input") {
-                put("type", b64(byteArrayOf(PREKEY_VERSION_BYTE)))
+                put("type", b64(byteArrayOf(PREKEY_VERSION_BYTE.toByte())))
                 put("identity", b64(identity))
                 putJsonObject("skey") {
                     put("id", b64(int3BE(skeyId)))

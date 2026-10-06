@@ -64,7 +64,7 @@
     <string name="notification_channel_location_tracking_desc">Utilisé pour les mises à jour de localisation en arrière-plan de Trouver sa famille</string>
     <string name="time_in_hours">en %1$d heures</string>
     <string name="today">aujourd\'hui</string>
-    <string name="last_updated_never">Jamais</string>
+    <string name="auto_toggle_never">Jamais</string>
     <string name="permission_background_explanation">Pour activer le suivi en arrière-plan, veuillez sélectionner « Autoriser en permanence » sur l\'écran suivant.</string>
     <string name="permission_background_granted">✅ Autorisation accordée en arrière-plan</string>
     <string name="expires">Expire le %1$s</string>

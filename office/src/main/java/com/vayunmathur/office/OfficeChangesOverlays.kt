@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.odf.OdfContentBlock
 import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.office.util.OfficeViewModel
 import com.vayunmathur.office.util.acceptAllChanges
 import com.vayunmathur.office.util.acceptChange
@@ -46,7 +47,7 @@ AlertDialog(onDismissRequest = { state.showChanges = false }, title = { Text(str
                     Text(stringResource(
                         R.string.tracked_change_author_date,
                         ch.type.replaceFirstChar { it.uppercase() },
-                        ch.author ?: stringResource(R.string.unknown),
+                        ch.author ?: stringResource(UiR.string.unknown),
                         ch.date?.let { " · ${it.take(SHARED_DATE_PREFIX_LENGTH)}" } ?: ""),
                         style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     Row {

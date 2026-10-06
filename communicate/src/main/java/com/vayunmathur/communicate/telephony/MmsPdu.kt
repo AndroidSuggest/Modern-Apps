@@ -141,10 +141,10 @@ object MmsPdu {
         }
         val bytes = ArrayList<Int>()
         var v = value
-        bytes.add((v and UINTVAR_MASK).toInt())
+        bytes.add((v and UINTVAR_MASK.toLong()).toInt())
         v = v shr UINTVAR_BITS
         while (v > 0) {
-            bytes.add(((v and UINTVAR_MASK) or UINTVAR_CONT).toInt())
+            bytes.add(((v and UINTVAR_MASK.toLong()) or UINTVAR_CONT.toLong()).toInt())
             v = v shr UINTVAR_BITS
         }
         for (i in bytes.indices.reversed()) out.write(bytes[i])

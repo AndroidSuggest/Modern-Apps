@@ -1,6 +1,7 @@
 package com.vayunmathur.communicate.data.whatsapp
 
 import android.util.Log
+import com.vayunmathur.communicate.data.whatsapp.e2e.WhatsAppE2E
 
 /**
  * Device fan-out encryption for [WhatsAppClient] (split for file length).

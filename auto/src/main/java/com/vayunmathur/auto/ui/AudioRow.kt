@@ -35,11 +35,11 @@ fun AudioRow(
     )
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_audio_bytes)) },
-        supportingContent = { Text(stringResource(R.string.session_audio_bytes_value, bytesSent)) },
+        supportingContent = { Text(stringResource(R.string.session_stat_value, bytesSent)) },
     )
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_audio_music_captured)) },
-        supportingContent = { Text(stringResource(R.string.session_audio_music_captured_value, musicCaptured)) },
+        supportingContent = { Text(stringResource(R.string.session_stat_value, musicCaptured)) },
     )
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_audio_mic)) },
@@ -49,7 +49,7 @@ fun AudioRow(
     )
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_audio_tts)) },
-        supportingContent = { Text(stringResource(R.string.session_audio_tts_value, ttsSpoken)) },
+        supportingContent = { Text(stringResource(R.string.session_stat_value, ttsSpoken)) },
     )
 }
 

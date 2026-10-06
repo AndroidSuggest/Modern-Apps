@@ -28,6 +28,8 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.util.ContactViewModel
+import com.vayunmathur.contacts.util.addContactsToGroup
+import com.vayunmathur.contacts.util.removeContactsFromGroup
 
 @Composable
 fun AddToGroupDialog(

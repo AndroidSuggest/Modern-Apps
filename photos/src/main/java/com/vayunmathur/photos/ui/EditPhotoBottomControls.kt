@@ -68,7 +68,7 @@ private fun DrawControls(state: EditPhotoEditorState, backStack: NavBackStack<Ed
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = { state.goHome() }) { IconBack() }
-            Text(stringResource(R.string.draw), fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.tool_cat_draw), fontWeight = FontWeight.Bold)
             InfoHint(stringResource(R.string.draw_freehand_highlight_erase_or_tap_to))
             Spacer(Modifier.weight(1f))
             if (state.selectedTextId != null) {

@@ -117,7 +117,7 @@ object RcsDirectSip {
     )
 
     /** Resolve network/P-CSCF/telephone pieces, or null when any is unavailable. */
-    private fun prepareConnection(context: Context, subId: Int): DirectConnection? {
+    private suspend fun prepareConnection(context: Context, subId: Int): DirectConnection? {
         if (!SubscriptionManager.isValidSubscriptionId(subId)) return null
         val app = context.applicationContext
         val network = RcsImsNetwork.imsNetwork(app, subId) ?: run {

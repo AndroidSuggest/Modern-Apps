@@ -22,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.code.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.code.Route
 import com.vayunmathur.code.syntax.Language
 import com.vayunmathur.code.util.EditorViewModel
@@ -156,10 +157,10 @@ private fun SnippetEditDialog(
             TextButton(
                 onClick = { onSave(UserSnippet(trigger.trim(), template, languageId)) },
                 enabled = trigger.isNotBlank(),
-            ) { Text(stringResource(R.string.save)) }
+            ) { Text(stringResource(UiR.string.save)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 
@@ -202,7 +203,7 @@ private fun LanguageChoiceDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.close)) }
         },
     )
 }

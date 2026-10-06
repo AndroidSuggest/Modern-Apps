@@ -334,7 +334,7 @@ private fun FailureCard(
                 horizontalArrangement = Arrangement.End,
             ) {
                 FilledTonalButton(onClick = onDismiss) {
-                    Text(stringResource(R.string.nav_arrived_dismiss))
+                    Text(stringResource(UiR.string.dismiss))
                 }
             }
         }

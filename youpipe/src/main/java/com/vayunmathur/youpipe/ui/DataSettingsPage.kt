@@ -73,7 +73,7 @@ fun DataSettingsPage(
                     .padding(padding)
                     .verticalScroll(rememberScrollState())
             ) {
-                SettingsSection(title = stringResource(R.string.label_history)) {
+                SettingsSection(title = stringResource(R.string.title_history)) {
                     SettingsRow(
                         title = stringResource(R.string.clear_history),
                         onClick = { showClearHistoryDialog = true },

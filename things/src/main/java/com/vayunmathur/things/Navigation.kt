@@ -7,6 +7,8 @@ import com.vayunmathur.library.util.rememberNavBackStack
 import com.vayunmathur.things.platform.BleManager
 import com.vayunmathur.things.platform.DeviceController
 import com.vayunmathur.things.platform.ScaleBleManager
+import com.vayunmathur.things.platform.recalcScaleMetrics
+import com.vayunmathur.things.platform.requestScaleReset
 import com.vayunmathur.things.ui.DevicesPage
 import com.vayunmathur.things.ui.HomePage
 

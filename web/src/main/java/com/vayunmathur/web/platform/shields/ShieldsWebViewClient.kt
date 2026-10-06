@@ -13,7 +13,6 @@ import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
-import com.vayunmathur.web.R
 import com.vayunmathur.web.domain.EffectiveShields
 import com.vayunmathur.web.domain.shields.UrlCleaner
 import com.vayunmathur.web.platform.AdultSites
@@ -115,7 +114,7 @@ open class ShieldsWebViewClient(
         val host = request.url.host ?: return null
         if (!AdultSites.blocks(context, host)) return null
         onBlocked(pageUrl, request.url.toString())
-        val body = context.getString(R.string.content_filter_blocked_html)
+        val body = context.assets.open("content_filter_blocked.html").bufferedReader().use { it.readText() }
         return WebResourceResponse(
             "text/html",
             "utf-8",

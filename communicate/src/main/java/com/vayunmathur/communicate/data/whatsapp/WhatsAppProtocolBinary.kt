@@ -11,6 +11,7 @@ import org.signal.libsignal.protocol.ecc.ECPublicKey
 // Token tables live in core (WhatsAppProtocol.BinaryToken); the stateful
 // encoder/decoder are file-private here and exposed via encodeNode/decodeNode.
 
+private const val TAG = "WhatsAppProtocolBinary"
 private const val BYTE_MASK = 0xFF
 private const val NIBBLE_MASK = 0x0F
 private const val ASCII_MASK = 0x7F

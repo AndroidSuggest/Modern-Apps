@@ -34,11 +34,11 @@ fun <T: NavKey> TimePickerDialogContent(backStack: NavBackStack<T>, resultKey: S
                 },
                 enabled = (minTime == null || selectedTime >= minTime)
             ) {
-                Text(stringResource(R.string.dialog_ok))
+                Text(stringResource(R.string.ok))
             }
         },
         dismissButton = {
-            TextButton(onClick = { backStack.pop() }) { Text(stringResource(R.string.link_action_cancel)) }
+            TextButton(onClick = { backStack.pop() }) { Text(stringResource(R.string.cancel)) }
         }
     ) {
         TimePicker(state)

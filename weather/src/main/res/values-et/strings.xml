@@ -6,7 +6,6 @@
     <string name="city_name_hint">Linna või koha nimi</string>
     <string name="weather_title">Ilmaennustus</string>
     <string name="add_location">Lisa asukoht</string>
-    <string name="map_time">Aeg</string>
     <string name="weather_widget_description">Ilmateave ja kellaaeg ühe vaatena - klõpsa ja vaata ennustust</string>
     <string name="no_matches">Vasteid pole</string>
     <string name="couldn_t_determine_location">Asukoha tuvastamine ei õnnestunud</string>
@@ -23,7 +22,6 @@
     <string name="locations">Asukohad</string>
     <string name="from_gusts">Tuule suund <xliff:g id="direction" example="NW">%1$s</xliff:g> · Puhangud <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
     <string name="not_enough_data_to_plot">Graafiku joonistamiseks pole piisavalt andmeid.</string>
-    <string name="condition_clear">Pilvitu</string>
     <string name="condition_partly_cloudy">Vahelduv pilvisus</string>
     <string name="condition_cloudy">Pilves</string>
     <string name="condition_fog">Udu</string>
@@ -31,7 +29,6 @@
     <string name="condition_rain">Vihm</string>
     <string name="condition_snow">Lumesadu</string>
     <string name="condition_thunderstorm">Äike</string>
-    <string name="condition_unknown">Pole teada</string>
     <string name="metric_temperature">Temperatuur</string>
     <string name="metric_feels_like">Tundub nagu</string>
     <string name="metric_humidity">Õhuniiskus</string>
@@ -49,12 +46,9 @@
     <string name="hourly_forecast">Ennustus tundide kaupa</string>
     <string name="daily_forecast">Järgmiste päevade ennustus</string>
     <string name="now">Hetkel</string>
-    <string name="today">Täna</string>
     <string name="today_short">TÄNA</string>
     <string name="tomorrow_short">HOMME</string>
-    <string name="level_none">Puudub</string>
     <string name="level_low">Madal</string>
-    <string name="level_medium">Keskmine</string>
     <string name="level_moderate">Mõõdukas</string>
     <string name="level_high">Kõrge</string>
     <string name="level_very_high">Väga kõrge</string>

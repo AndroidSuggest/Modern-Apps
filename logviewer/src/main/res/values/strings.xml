@@ -11,16 +11,11 @@
     <!-- Title bar when viewing one app's log. %1$s is that app's name, e.g. "Camera". -->
     <string name="app_log_title"><xliff:g id="app_name" example="Camera">%1$s</xliff:g> log</string>
 
-    <!-- Bottom button on the log screen: puts the log on the clipboard. -->
-    <string name="action_copy">Copy</string>
     <!-- Message after the Copy button succeeds. -->
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <!-- Message after Copy when the log was too large and only the tail was copied. -->
     <string name="copied_to_clipboard_truncated">Copied truncated text to clipboard</string>
 
-    <!-- Bottom button and overflow item on the log screen: writes the log to a file the user
-         picks. -->
-    <string name="action_save">Save</string>
     <!-- Message after the log has been written. %1$s is the file name that was created. -->
     <string name="toast_saved">Saved “<xliff:g id="file_name" example="System log a1b2c3d4e5f6.txt">%1$s</xliff:g>”</string>
     <!-- Message when the file the user picked could not be opened for writing. -->
@@ -28,13 +23,6 @@
     <!-- Title of the error dialog shown when writing the log to the picked file failed. -->
     <string name="unable_to_save_file">Unable to save file</string>
 
-    <!-- Confirm button of the filter, description and log-level dialogs. -->
-    <string name="action_apply">Apply</string>
-    <!-- Dismiss button of the filter, description, log-level and log-buffer dialogs. -->
-    <string name="action_cancel">Cancel</string>
-
-    <!-- Bottom button on the log screen: hands the log to another app. -->
-    <string name="action_share">Share</string>
     <!-- Bottom button on the error report screen: copies the report and opens the issue
          tracker. -->
     <string name="action_report">Report</string>

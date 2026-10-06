@@ -85,17 +85,4 @@ internal class AssistantDeviceTools(private val context: Context) {
         memoryDao.upsert(Memory(content))
         return "Success: Added memory"
     }
-
-    fun getLocalCurrentDateTime(): String {
-        val now = Clock.System.now()
-        val local = now.toLocalDateTime(TimeZone.currentSystemDefault())
-        val zoneId = TimeZone.currentSystemDefault().id
-        val epochMillis = now.toEpochMilliseconds()
-        return "$zoneId: $local (epochMillis=$epochMillis)"
-    }
-
-    fun setConversationTitle(newTitle: String): String {
-        InferenceService.newTitle = newTitle
-        return "Conversation title set successfully"
-    }
 }

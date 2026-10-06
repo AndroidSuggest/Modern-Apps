@@ -24,7 +24,6 @@
     <string name="nobody_here">in questo momento nessuno è qui</string>
     <string name="user_is_here"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> è qui in questo momento</string>
     <string name="users_are_here"><xliff:g id="person_names" example="Alice, Bob">%1$s</xliff:g> sono qui in questo momento</string>
-    <string name="last_updated_never">Mai</string>
     <string name="since_just_now">Da adesso</string>
     <string name="since_minutes_ago">Da <xliff:g id="minutes" example="5">%1$d</xliff:g> minuti fa</string>
     <string name="since_time_date">Da %1$s%2$s</string>

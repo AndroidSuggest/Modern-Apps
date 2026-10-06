@@ -485,7 +485,7 @@ suspend fun SignalClient.sendContactCard(
 private const val UUID_BYTES = 16
 private val MSB_RANGE = 7 downTo 0
 private val LSB_RANGE = 15 downTo 8
-private const val BYTE_MASK = 0xFF
+private const val BYTE_MASK = 0xFFL
 private const val BYTE_BITS = 8
 
 private fun SignalClient.uuidStringToBytes(uuid: String): ByteArray {

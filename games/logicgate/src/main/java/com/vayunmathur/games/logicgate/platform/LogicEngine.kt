@@ -2,6 +2,9 @@ package com.vayunmathur.games.logicgate.platform
 
 import com.vayunmathur.games.logicgate.data.Circuit
 import com.vayunmathur.games.logicgate.data.LevelDef
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Internal engine behind [LogicViewModel].
@@ -283,7 +286,6 @@ internal class LogicEngine internal constructor(internal val vm: LogicViewModel)
     private fun missingOutputMessage(circuit: Circuit): String? {
         if (circuit.outputMappings.isNotEmpty()) return null
         return "Connect final OUT[8] bus – drag from RAM or CPU output bus dot to output terminal."
-    }
     }
 
     private fun onLevelWon(level: LevelDef) {

@@ -29,6 +29,7 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.maps.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.maps.data.SavedPlace
 import com.vayunmathur.maps.data.SpecificFeature
 
@@ -56,7 +57,7 @@ internal fun PlaceActionRow(
             onClick = requestDirections,
         )
         phone?.let {
-            PlaceAction(Modifier.weight(1f), { IconCall() }, stringResource(R.string.place_action_call)) {
+            PlaceAction(Modifier.weight(1f), { IconCall() }, stringResource(UiR.string.call)) {
                 goto(context, "tel:$it")
             }
         }
@@ -71,13 +72,13 @@ internal fun PlaceActionRow(
                 goto(context, uri)
             }
         }
-        PlaceAction(Modifier.weight(1f), { IconShare() }, stringResource(R.string.place_action_share)) {
+        PlaceAction(Modifier.weight(1f), { IconShare() }, stringResource(UiR.string.share)) {
             sharePlace(context, feature)
         }
         PlaceAction(
             Modifier.weight(1f),
             { IconSave(tint = if (isSaved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) },
-            stringResource(if (isSaved) R.string.place_action_saved else R.string.place_action_save),
+            stringResource(if (isSaved) UiR.string.saved else UiR.string.save),
         ) {
             if (isSaved) {
                 savedMatch?.let { onRemoveSaved(it) }

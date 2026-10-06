@@ -2,6 +2,7 @@ package com.vayunmathur.communicate.data.signal.call
 
 import android.util.Log
 import kotlinx.coroutines.launch
+import org.signal.ringrtc.CallId
 import org.signal.ringrtc.CallManager
 
 /**
@@ -28,7 +29,7 @@ fun SignalCallManager.receivedOffer(
         callMediaTypes[callId] = mediaType
         try {
             manager.receivedOffer(
-                CallManager.CallId(callId),
+                CallId(callId),
                 SignalRemote(senderAci),
                 senderDeviceId,
                 opaque,
@@ -50,7 +51,7 @@ fun SignalCallManager.receivedAnswer(callId: Long, senderAci: String, senderDevi
         val keys = signaling.identityKeys(senderAci) ?: return@launch
         try {
             manager.receivedAnswer(
-                CallManager.CallId(callId),
+                CallId(callId),
                 SignalRemote(senderAci),
                 senderDeviceId,
                 opaque,
@@ -71,7 +72,7 @@ fun SignalCallManager.receivedIceCandidates(
 ) {
     withManager("receivedIceCandidates") {
         it.receivedIceCandidates(
-            CallManager.CallId(callId),
+            CallId(callId),
             SignalRemote(senderAci),
             senderDeviceId,
             candidates)
@@ -87,7 +88,7 @@ fun SignalCallManager.receivedHangup(
 ) {
     withManager("receivedHangup") {
         it.receivedHangup(
-            CallManager.CallId(callId),
+            CallId(callId),
             SignalRemote(senderAci),
             senderDeviceId,
             type,
@@ -97,6 +98,6 @@ fun SignalCallManager.receivedHangup(
 
 fun SignalCallManager.receivedBusy(callId: Long, senderAci: String, senderDeviceId: Int) {
     withManager("receivedBusy") {
-        it.receivedBusy(CallManager.CallId(callId), SignalRemote(senderAci), senderDeviceId)
+        it.receivedBusy(CallId(callId), SignalRemote(senderAci), senderDeviceId)
     }
 }

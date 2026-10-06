@@ -23,8 +23,6 @@
     <string name="dew_point">Daggpunkt</string>
     <string name="from_gusts">Från <xliff:g id="direction" example="NW">%1$s</xliff:g> · Byar <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
     <string name="not_enough_data_to_plot">Inte tillräckligt med data för att rita diagrammet.</string>
-    <string name="map_time">Tid</string>
-    <string name="condition_clear">Klart</string>
     <string name="condition_mostly_clear">Mestadels klart</string>
     <string name="condition_partly_cloudy">Delvis molnigt</string>
     <string name="condition_cloudy">Molnigt</string>
@@ -33,7 +31,6 @@
     <string name="condition_rain">Regn</string>
     <string name="condition_snow">Snö</string>
     <string name="condition_thunderstorm">Åskväder</string>
-    <string name="condition_unknown">Okänt</string>
     <string name="metric_temperature">Temperatur</string>
     <string name="metric_feels_like">Känns som</string>
     <string name="metric_humidity">Luftfuktighet</string>
@@ -60,12 +57,9 @@
     <string name="hourly_forecast">Timprognos</string>
     <string name="daily_forecast">Dygnsprognos</string>
     <string name="now">Nu</string>
-    <string name="today">I dag</string>
     <string name="today_short">IDAG</string>
     <string name="tomorrow_short">I MORGON</string>
-    <string name="level_none">Ingen</string>
     <string name="level_low">Låg</string>
-    <string name="level_medium">Medel</string>
     <string name="level_moderate">Måttlig</string>
     <string name="level_high">Hög</string>
     <string name="level_very_high">Mycket hög</string>

@@ -26,6 +26,7 @@ import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.ui.game.GameTopBarActions
@@ -118,7 +119,7 @@ fun CompetitiveLobbyScreen(
             Button(onClick = { actions.loadNextCompetitiveLevel() }) {
                 Text(
                     stringResource(
-                        if (result == null) R.string.competitive_start else R.string.next_level
+                        if (result == null) R.string.competitive_start else UiR.string.next_level
                     )
                 )
             }

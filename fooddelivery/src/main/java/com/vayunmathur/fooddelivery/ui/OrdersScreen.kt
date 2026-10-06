@@ -2,6 +2,7 @@ package com.vayunmathur.fooddelivery.ui
 
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.fooddelivery.R
+import com.vayunmathur.library.ui.R as UiR
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -334,7 +335,7 @@ private fun FeedbackDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

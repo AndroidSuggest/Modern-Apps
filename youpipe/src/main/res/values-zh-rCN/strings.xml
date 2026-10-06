@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="title_history">历史记录</string>
-    <string name="label_search">搜索</string>
     <string name="subscribers_count"><xliff:g id="count" example="12K">%1$s</xliff:g> 位订阅者</string>
     <string name="title_create_subscription_category">创建订阅类别</string>
     <string name="title_update_subscription_category">更新订阅类别</string>
     <string name="label_category_name">类别名称</string>
     <string name="label_select_subscriptions">选择订阅：</string>
-    <string name="action_create">创建</string>
     <string name="action_update">更新</string>
     <string name="video_load_error">视频加载错误 - YouTube 可能已阻止来自此 IP 的匿名观看访问</string>
     <string name="action_go_back">返回</string>
@@ -29,10 +27,8 @@
     <string name="count_b_format"><xliff:g id="number" example="3.4">%1$s</xliff:g>B</string>
     <string name="action_subscribe">订阅</string>
     <string name="action_unsubscribe">取消订阅</string>
-    <string name="channel_info"><xliff:g id="count" example="1.2M">%1$s</xliff:g> 位订阅者</string>
     <string name="video_stat_format"><xliff:g id="views" example="1M">%1$s</xliff:g> 次观看 | <xliff:g id="time" example="3 days ago">%2$s</xliff:g></string>
     <string name="label_description">描述</string>
-    <string name="title_settings">设置</string>
     <string name="label_sponsorblock">SponsorBlock 类别</string>
     <string name="label_backup_restore">备份和恢复</string>
     <string name="label_restore_youpipe">从 YouPipe 恢复</string>
@@ -63,7 +59,6 @@
     <string name="label_hide_live">隐藏直播/时长未知内容</string>
     <string name="label_min_duration">最短时长（秒）</string>
     <string name="label_max_duration">最长时长（秒）</string>
-    <string name="label_manage_interests">管理兴趣</string>
     <string name="action_reset_algorithm">重置算法</string>
     <string name="preset_discover_more">发现更多</string>
     <string name="preset_balanced">均衡</string>
@@ -81,7 +76,6 @@
     <string name="label_pinned">已固定</string>
     <string name="action_pin">固定</string>
     <string name="action_unpin">取消固定</string>
-    <string name="action_remove">移除</string>
     <string name="action_unblock">取消屏蔽</string>
     <string name="action_unmute">取消屏蔽</string>
     <string name="label_youtube_content">YouTube 内容</string>
@@ -91,9 +85,7 @@
     <string name="loading_recent_subscriptions">正在加载最近的订阅</string>
     <string name="download_options">下载选项</string>
     <string name="clear_history">清除历史记录</string>
-    <string name="off">已关闭</string>
     <string name="selected_count">已选择 <xliff:g id="count" example="3">%1$s</xliff:g> 项</string>
-    <string name="selected_1">已选择 <xliff:g id="count" example="2">%1$s</xliff:g> 项</string>
     <string name="download">下载</string>
     <string name="language">语言</string>
     <string name="chapter">章节</string>
@@ -101,22 +93,16 @@
     <string name="resolution">分辨率</string>
     <string name="label_general">常规</string>
     <string name="label_default_page">打开</string>
-    <string name="page_home">首页</string>
-    <string name="page_downloads">下载</string>
-    <string name="page_saved">已保存</string>
-    <string name="title_saved">已保存</string>
     <string name="title_downloads">下载</string>
     <string name="playlist_watch_later">稍后观看</string>
     <string name="title_create_playlist">创建播放列表</string>
     <string name="label_playlist_name">播放列表名称</string>
-    <string name="action_create_playlist">创建</string>
     <string name="add_to_playlist">添加到播放列表</string>
     <string name="new_playlist">新播放列表</string>
     <string name="action_delete_playlist">删除播放列表</string>
     <string name="playlist_empty">此播放列表中尚无视频</string>
     <string name="adding_to_watch_later">正在添加到稍后观看…</string>
     <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> 个视频</string>
-    <string name="label_history">历史记录</string>
     <string name="settings_general_content">常规和内容</string>
     <string name="settings_sponsorblock">SponsorBlock</string>
     <string name="settings_data">数据和备份</string>
@@ -127,7 +113,6 @@
     <string name="playback_tempo">速度</string>
     <string name="playback_pitch">音高</string>
     <string name="playback_unhook_pitch">解除音高锁定（可能导致失真）</string>
-    <string name="playback_reset">重置</string>
     <string name="lock_controls">锁定控制</string>
     <string name="unlock_controls">解锁控制</string>
     <string name="video_stat_paid_format">付费 | <xliff:g id="time" example="3 days ago">%1$s</xliff:g></string>

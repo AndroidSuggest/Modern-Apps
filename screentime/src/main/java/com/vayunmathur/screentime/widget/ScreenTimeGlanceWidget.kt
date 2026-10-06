@@ -113,7 +113,7 @@ private fun ScreenTimeWidgetContent(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = context.getString(R.string.widget_today),
+                text = context.getString(R.string.range_today),
                 style = TextStyle(
                     color = GlanceTheme.colors.onSurfaceVariant,
                     fontSize = 12.sp,

@@ -57,10 +57,6 @@ sealed interface PlaybackSource {
 
 class PlaybackManager private constructor(context: Context) {
 
-    private companion object {
-        const val PROGRESS_UPDATE_MS = 1000L
-    }
-
     private var controller: MediaController? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -230,6 +226,7 @@ class PlaybackManager private constructor(context: Context) {
     }
 
     companion object {
+        private const val PROGRESS_UPDATE_MS = 1000L
         @SuppressLint("StaticFieldLeak")
         @Volatile private var INSTANCE: PlaybackManager? = null
         fun getInstance(context: Context): PlaybackManager =

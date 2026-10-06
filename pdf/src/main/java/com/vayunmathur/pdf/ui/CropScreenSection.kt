@@ -15,6 +15,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 
 @Composable
 fun CropScreenSection(offset: Offset, onDragStart: () -> Unit = {}, onDragEnd: () -> Unit = {}, onDrag: (Offset) -> Unit) {

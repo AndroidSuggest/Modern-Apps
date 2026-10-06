@@ -289,12 +289,9 @@ class LogicViewModel(application: Application) : AndroidViewModel(application), 
         engine.pushHistory(prevCircuit)
         val newMap = s.outputPositions.toMutableMap()
         newMap[idx] = IoPos(engine.clampCanvasX(x), engine.clampCanvasY(y))
-        val newCircuit = s.copy(outputPositions = newMap)
+        val newCircuit = s.copy(inputPositions = newMap)
         val lvl = _uiState.value.currentLevelId
         if (lvl != null) allCircuits[lvl] = newCircuit
-        _uiState.update { it.copy(circuit = newCircuit) }
-        engine.schedulePersist()
-    }
         _uiState.update { it.copy(circuit = newCircuit) }
         engine.schedulePersist()
     }
@@ -339,36 +336,36 @@ class LogicViewModel(application: Application) : AndroidViewModel(application), 
     fun dismissAchievement() = achievementsManager.dismissNotification()
 
     companion object {
-        private const val KEY_CIRCUITS = "logicgate_circuits_v1"
-        private const val ACHIEVEMENTS_ASSET = "achievements.json"
-        private const val EMPTY_ACHIEVEMENTS_JSON = "[]"
+        internal const val KEY_CIRCUITS = "logicgate_circuits_v1"
+        internal const val ACHIEVEMENTS_ASSET = "achievements.json"
+        internal const val EMPTY_ACHIEVEMENTS_JSON = "[]"
 
         /** Canvas drag clamp range (world coordinates). */
-        private const val CANVAS_MIN = -4000f
-        private const val CANVAS_MAX_X = 6000f
+        internal const val CANVAS_MIN = -4000f
+        internal const val CANVAS_MAX_X = 6000f
 
         /** Random suffix length for generated wire ids. */
-        private const val WIRE_ID_SUFFIX = 6
+        internal const val WIRE_ID_SUFFIX = 6
 
         /** Random suffix length for generated gate ids. */
-        private const val GATE_ID_SUFFIX = 6
+        internal const val GATE_ID_SUFFIX = 6
 
         /** Minimum CPU<->RAM wires before the COMPUTER level checks bus usage. */
-        private const val MIN_CPU_RAM_WIRES = 2
+        internal const val MIN_CPU_RAM_WIRES = 2
 
         /** Responsive default gate placement grid (world coordinates). */
-        private const val PLACEMENT_COLS = 4
-        private const val PLACEMENT_BASE_X = 80f
-        private const val PLACEMENT_BASE_Y = 100f
-        private const val PLACEMENT_DX = 140f
-        private const val PLACEMENT_DY = 110f
-        private const val PLACEMENT_MIN = 8f
-        private const val PLACEMENT_MAX_X = 1200f
-        private const val PLACEMENT_MAX_Y = 2000f
+        internal const val PLACEMENT_COLS = 4
+        internal const val PLACEMENT_BASE_X = 80f
+        internal const val PLACEMENT_BASE_Y = 100f
+        internal const val PLACEMENT_DX = 140f
+        internal const val PLACEMENT_DY = 110f
+        internal const val PLACEMENT_MIN = 8f
+        internal const val PLACEMENT_MAX_X = 1200f
+        internal const val PLACEMENT_MAX_Y = 2000f
     }
 }
 
-private fun PersistedCircuit.toCircuit(): Circuit {
+internal fun PersistedCircuit.toCircuit(): Circuit {
     return Circuit(
         gates = gates.map { PlacedChip(it.instanceId, it.chipId, it.x, it.y) },
         wires = wires.map {
@@ -384,7 +381,7 @@ private fun PersistedCircuit.toCircuit(): Circuit {
         outputPositions = outputPos.mapValues { IoPos(it.value.x, it.value.y) },
     )
 }
-private fun Circuit.toPersisted(): PersistedCircuit {
+internal fun Circuit.toPersisted(): PersistedCircuit {
     return PersistedCircuit(
         gates = gates.map { PersistedGate(it.instanceId, it.chipId, it.x, it.y) },
         wires = wires.map {

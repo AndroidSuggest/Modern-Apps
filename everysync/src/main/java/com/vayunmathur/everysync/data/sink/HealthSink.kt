@@ -90,7 +90,7 @@ object HealthSink {
                             client.insertRecords(batch)
                             synchronized(this@HealthSink) { inserted += batch.size }
                         } catch (expected: Exception) {
-                            Log.e(TAG, "insertRecords failed (${batch.size} records)", e)
+                            Log.e(TAG, "insertRecords failed (${batch.size} records)", expected)
                         }
                     }
                 }

@@ -48,10 +48,13 @@
     <string name="session_frames">Frames / acks</string>
     <!-- %1$d is frames sent, %2$d is acks seen. -->
     <string name="session_frames_value"><xliff:g example="120" id="frames">%1$d</xliff:g> / <xliff:g example="118" id="acks">%2$d</xliff:g></string>
+    <!-- Shared value for every bare session-stat count on the session card
+         (ack mismatches, ack sequence, drains, thread/message/reply counts,
+         touch/key/scroll/drop counts, audio bytes, music captured, TTS).
+         %1$d is the count. -->
+    <string name="session_stat_value"><xliff:g example="3" id="count">%1$d</xliff:g></string>
     <!-- Heading of the row counting acks that named the wrong session. -->
     <string name="session_ack_mismatch">Ack mismatches</string>
-    <!-- %1$d is the count of mismatched acks. -->
-    <string name="session_ack_mismatch_value"><xliff:g example="1" id="count">%1$d</xliff:g></string>
     <!-- Heading of the row showing the encode-side and ack rates over a sliding window.
          Sender-side only: sent frames per second and head-unit acks per second. -->
     <string name="session_rates">Rates sent / acked</string>
@@ -71,20 +74,14 @@
     <string name="session_ack_age_none">No acks yet</string>
     <!-- Heading of the row showing the highest head-unit ack counter seen. -->
     <string name="session_ack_seq">Ack sequence</string>
-    <!-- %1$d is the highest 0x8004 ack counter seen so far. -->
-    <string name="session_ack_seq_value"><xliff:g example="118" id="seq">%1$d</xliff:g></string>
-    <!-- Shown when no ack has carried a sequence counter yet. -->
-    <string name="session_ack_seq_none">—</string>
+    <!-- Shared dash shown when there is no session value to display. -->
+    <string name="session_value_none">—</string>
     <!-- Heading of the row showing the mean encode-to-send latency. -->
     <string name="session_latency">Encode latency</string>
     <!-- %1$d is the rolling mean encode-to-send latency in microseconds. -->
     <string name="session_latency_value"><xliff:g example="8300" id="latency_us">%1$d</xliff:g> µs</string>
-    <!-- Shown when no frame has been sent yet to measure latency from. -->
-    <string name="session_latency_none">—</string>
     <!-- Heading of the row counting encoder drains. -->
     <string name="session_drains">Encoder drains</string>
-    <!-- %1$d is the count of encoder drains so far. -->
-    <string name="session_drains_value"><xliff:g example="240" id="count">%1$d</xliff:g></string>
     <!-- Heading of the row showing whether the virtual display plus encoder input
          surface pair is currently up. -->
     <string name="session_surface">Surface</string>
@@ -127,8 +124,6 @@
     <string name="session_credential_expired">Expired — projection needs a new credential</string>
     <!-- Heading of the row showing how long the session has been active. -->
     <string name="session_elapsed">Session time</string>
-    <!-- Shown when there is no active session to time. -->
-    <string name="session_elapsed_none">—</string>
 
     <!-- Heading of the card gating message mirroring. Both switches must be on
          before a notification reaches the car: the system listener binding and
@@ -154,33 +149,19 @@
     <string name="messaging_open_settings">Open settings</string>
     <!-- Heading of the row counting ch14 thread snapshots posted this session. -->
     <string name="session_messaging_threads">Message threads</string>
-    <!-- %1$d is the count of thread snapshots posted. -->
-    <string name="session_messaging_threads_value"><xliff:g example="3" id="count">%1$d</xliff:g></string>
     <!-- Heading of the row counting ch14 message bodies posted this session. -->
     <string name="session_messaging_messages">Messages posted</string>
-    <!-- %1$d is the count of message bodies posted. -->
-    <string name="session_messaging_messages_value"><xliff:g example="5" id="count">%1$d</xliff:g></string>
     <!-- Heading of the row counting head-unit replies received this session. -->
     <string name="session_messaging_replies">Car replies</string>
-    <!-- %1$d is the count of replies received. -->
-    <string name="session_messaging_replies_value"><xliff:g example="1" id="count">%1$d</xliff:g></string>
 
     <!-- Heading of the row counting ch8 touch frames injected this session. -->
     <string name="session_input_touches">Car touches</string>
-    <!-- %1$d is the count of touch frames injected. -->
-    <string name="session_input_touches_value"><xliff:g example="40" id="count">%1$d</xliff:g></string>
     <!-- Heading of the row counting ch8 key presses/releases injected this session. -->
     <string name="session_input_keys">Car keys</string>
-    <!-- %1$d is the count of keys injected. -->
-    <string name="session_input_keys_value"><xliff:g example="7" id="count">%1$d</xliff:g></string>
     <!-- Heading of the row counting ch8 scroll ticks injected this session. -->
     <string name="session_input_scrolls">Car scrolls</string>
-    <!-- %1$d is the count of scroll ticks injected. -->
-    <string name="session_input_scrolls_value"><xliff:g example="3" id="count">%1$d</xliff:g></string>
     <!-- Heading of the row counting ch8 reports dropped for lack of input focus. -->
     <string name="session_input_dropped">Input dropped</string>
-    <!-- %1$d is the count of reports dropped without input focus. -->
-    <string name="session_input_dropped_value"><xliff:g example="2" id="count">%1$d</xliff:g></string>
 
     <!-- Heading of the row showing what the on-device media session is playing. -->
     <string name="session_now_playing">Now playing</string>
@@ -219,8 +200,6 @@
     <string name="pairing_usb_connected">Connected %1$s</string>
     <!-- Shown when the USB accessory went away after having been seen. -->
     <string name="pairing_usb_lost">Cable disconnected</string>
-    <!-- Heading of the row showing the wireless bring-up state. -->
-    <string name="pairing_wireless">Wireless</string>
     <!-- Shown before wireless discovery starts. -->
     <string name="pairing_wireless_idle">Not looking for cars</string>
     <!-- Button starting WiFi Direct discovery. -->
@@ -259,16 +238,8 @@
 
     <!-- Second line of the car status bar, under the product name. -->
     <string name="car_connected">Connected</string>
-    <!-- Heading of the single now-playing card on the car display (Phase 4 time-box). -->
-    <string name="car_now_playing">Now playing</string>
-    <!-- Shown on the car card while audio is playing. -->
-    <string name="car_now_playing_playing">Playing</string>
-    <!-- Shown on the car card while playback is paused. -->
-    <string name="car_now_playing_paused">Paused</string>
-    <!-- Shown on the car card when the media session reports no title. -->
-    <string name="car_now_playing_unknown">Unknown track</string>
-    <!-- Shown on the car card when the media session reports no artist. -->
-    <string name="car_now_playing_unknown_artist">Unknown artist</string>
+    <!-- The car display now-playing card reuses the session now-playing strings
+         above (session_now_playing*); no car-specific copies are kept. -->
     <!-- Shown on the car display when no launchable apps were found on the phone. -->
     <string name="car_no_apps">No apps available — install Maps or Music to get started</string>
     <!-- Label of the hotseat drawer cell and the drawer heading listing every car app. -->
@@ -291,14 +262,10 @@
     <string name="session_audio_sink_idle">Idle</string>
     <!-- Shown for a streaming sink. %1$s is the arbitrated gain ("Full", "Ducked"). -->
     <string name="session_audio_sink_streaming">Streaming (<xliff:g example="Full" id="gain">%1$s</xliff:g>)</string>
-    <!-- Heading of the session-card row counting PCM bytes framed out on ch4/5. -->
+    <!-- Heading of the row counting PCM bytes framed out on ch4/5. -->
     <string name="session_audio_bytes">Audio bytes</string>
-    <!-- %1$d is PCM bytes framed out this session. -->
-    <string name="session_audio_bytes_value"><xliff:g example="48000" id="bytes">%1$d</xliff:g></string>
-    <!-- Heading of the session-card row counting music PCM captured into ch5. -->
+    <!-- Heading of the row counting music PCM captured into ch5. -->
     <string name="session_audio_music_captured">Music captured</string>
-    <!-- %1$d is music PCM bytes captured into the ch5 sink this session. -->
-    <string name="session_audio_music_captured_value"><xliff:g example="48000" id="bytes">%1$d</xliff:g></string>
 
     <!-- Heading of the card gating car music. Both switches must be on before
          phone audio reaches the head unit: the in-app consent below and the
@@ -320,8 +287,8 @@
     <string name="music_capture_projection_granted">Allowed — MA Auto can capture media audio</string>
     <!-- Shown when the system media-projection grant is not stored. -->
     <string name="music_capture_projection_missing">Not allowed — grant permission to send music to the car</string>
-    <!-- Button launching the system media-projection consent dialog. -->
-    <string name="music_capture_allow">Allow</string>
+    <!-- Button launching the system media-projection consent dialog. Reuses
+         the mic permission label below ("Allow"). -->
     <!-- Snackbar when the media-projection consent dialog is denied or fails. -->
     <string name="music_capture_denied">Permission denied — music stays on the phone</string>
     <!-- Ongoing notification while music capture runs (its own service holds
@@ -331,10 +298,8 @@
     <string name="session_audio_mic">Car mic</string>
     <!-- %1$d is mic turns that yielded PCM, %2$d is chunks acked upstream. -->
     <string name="session_audio_mic_value"><xliff:g example="2" id="turns">%1$d</xliff:g> turns / <xliff:g example="140" id="acks">%2$d</xliff:g> acked</string>
-    <!-- Heading of the session-card row counting TTS utterances that reached the car. -->
+    <!-- Heading of the row counting TTS utterances that reached the car. -->
     <string name="session_audio_tts">Car TTS</string>
-    <!-- %1$d is utterances spoken on the car speakers this session. -->
-    <string name="session_audio_tts_value"><xliff:g example="3" id="count">%1$d</xliff:g></string>
 
     <!-- Heading of the card gating car-mic voice retention on the microphone permission. -->
     <string name="mic_headline">Car microphone</string>
@@ -427,12 +392,10 @@
     <!-- Shown on the car call card hold button while held. -->
     <string name="car_call_resume">Resume</string>
 
-    <!-- Title of the car dock pin picker. -->
+    <!-- Title of the car dock pin picker; also used for the button opening it. -->
     <string name="pinned_apps_title">Car dock</string>
     <!-- Explains the picker: check apps to pin, reorder with the arrows. %1$d is the max pins. -->
     <string name="pinned_apps_body">Choose up to %1$d car apps for the bottom bar, in order.</string>
-    <!-- Button opening the pin picker from the status card. -->
-    <string name="pinned_apps_open">Car dock</string>
     <!-- %1$d is the pinned position, 1-based. -->
     <string name="pinned_apps_rank">Pinned %1$d</string>
     <!-- Snackbar when pinning while the dock is full. %1$d is the max pins. -->

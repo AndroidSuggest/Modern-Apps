@@ -40,8 +40,6 @@
 
     <!-- Widget: description shown in the picker. -->
     <string name="widget_description">Today\'s screen time at a glance.</string>
-    <!-- Widget: heading above the total. Noun phrase. -->
-    <string name="widget_today">Today</string>
 
     <!-- Dashboard: one-line summary under the Screen Time row in Settings. -->
     <string name="dashboard_summary">Today\'s total and per-app usage, with timers</string>

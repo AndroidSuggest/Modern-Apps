@@ -175,7 +175,7 @@ object OpusTranscoder {
     private const val INITIAL_CAPACITY = 1 * 1024 * 1024
 
     /** microseconds per second, for presenting 48 kHz frame counts as stream timestamps. */
-    private const val US_PER_SECOND = 1_000_000L
+    internal const val US_PER_SECOND = 1_000_000L
 }
 
 /**
@@ -310,7 +310,7 @@ private class OpusPump(
         return moved
     }
 
-    private fun drainDecodeSide(): Boolean {
+    private fun feedEncodeSide(active: MediaCodec): Boolean {
         var moved = false
         while (!encoderClosed && queue.size >= frameBytes && feedEncoder(active, POLL_US)) {
             moved = true
@@ -508,7 +508,7 @@ private class OpusPump(
      * Timestamps from the post-resample frame counter, never from the extractor: this is a
      * 48 kHz stream now, and a container timestamp would describe the source's rate.
      */
-    private fun presentationTimeUs(): Long = frames * US_PER_SECOND / OpusHead.SAMPLE_RATE
+    private fun presentationTimeUs(): Long = frames * OpusTranscoder.US_PER_SECOND / OpusHead.SAMPLE_RATE
 
     /** Collects one encoded packet. Returns true while this stage is still worth servicing. */
     private fun drainEncoder(encoder: MediaCodec, timeoutUs: Long): Boolean {

@@ -12,6 +12,7 @@ import com.vayunmathur.camera.platform.lensSelector
  */
 
 /** Attaches the AE snapshot callback to a preview builder ([tag] names the session). */
+@Suppress("DEPRECATION")
 internal fun CameraViewModel.attachAeSnapshot(
     previewBuilder: Preview.Builder,
     tag: String

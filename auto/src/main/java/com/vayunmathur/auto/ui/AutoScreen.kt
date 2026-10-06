@@ -94,7 +94,7 @@ fun AutoScreen(viewModel: AutoViewModel, onPairing: () -> Unit, onPinnedApps: ()
                     supportingContent = { Text(stringResource(R.string.pinned_apps_body, PinnedAppsPrefs.MAX_PINNED)) },
                     trailingContent = {
                         TextButton(onClick = onPinnedApps) {
-                            Text(stringResource(R.string.pinned_apps_open))
+                            Text(stringResource(R.string.pinned_apps_title))
                         }
                     },
                 )

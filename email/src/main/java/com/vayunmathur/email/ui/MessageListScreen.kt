@@ -147,7 +147,7 @@ fun MessageListScreen(
             when {
                 selectionActive -> Text(stringResource(R.string.selected_count, state.selectedUids.size))
                 isSearching -> CommonSearchBar(value = state.searchQuery, onValueChange = { actions.setSearchQuery(it) }, padding = PaddingValues(0.dp))
-                else -> Text(if (state.selectedAccountEmail == null) stringResource(R.string.unified_inbox) else state.selectedFolderName)
+                else -> Text(if (state.selectedAccountEmail == null) stringResource(R.string.unified_inbox_label) else state.selectedFolderName)
             }
         },
         navigationIcon = {

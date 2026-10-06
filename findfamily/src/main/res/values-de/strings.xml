@@ -27,7 +27,7 @@
     <string name="nobody_here">niemand ist gerade hier</string>
     <string name="user_is_here">%1$s ist gerade hier</string>
     <string name="users_are_here">%1$s sind gerade hier</string>
-    <string name="last_updated_never">Nie</string>
+    <string name="auto_toggle_never">Nie</string>
     <string name="since_just_now">Seit jetzt</string>
     <string name="since_minutes_ago">Seit %1$d minuten</string>
     <string name="since_time_date">Seit %1$s %2$s</string>

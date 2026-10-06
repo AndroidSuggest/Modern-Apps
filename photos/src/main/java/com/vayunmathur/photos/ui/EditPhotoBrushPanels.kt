@@ -189,7 +189,7 @@ internal fun FreeTransformPanel(
                 modifier = Modifier.clickable { onApply() },
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.primaryContainer,
-            ) { Text(stringResource(R.string.apply), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            ) { Text(stringResource(UiR.string.apply), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
         }
     }
 }

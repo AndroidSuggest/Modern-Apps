@@ -6,7 +6,6 @@
     <string name="city_name_hint">城市名称</string>
     <string name="weather_title">天气</string>
     <string name="add_location">添加位置</string>
-    <string name="map_time">时间</string>
     <string name="weather_widget_description">一览当前时间、日期和天气 - 点按即可查看天气预报</string>
     <string name="add_a_city_or_use_your_current_location">添加城市或使用当前位置查看天气预报。</string>
     <string name="locations">位置</string>
@@ -18,7 +17,6 @@
     <string name="metric_pressure">气压</string>
     <string name="summary_showers_possible">晚些时候可能有阵雨。</string>
     <string name="max_min">最高 <xliff:g id="max" example="28°C">%1$s</xliff:g> 最低 <xliff:g id="min" example="14°C">%2$s</xliff:g></string>
-    <string name="condition_unknown">未知</string>
     <string name="metric_humidity">湿度</string>
     <string name="summary_mixed_conditions">混合天气</string>
     <string name="metric_uv_index">紫外线指数</string>
@@ -28,7 +26,6 @@
     <string name="metric_visibility">能见度</string>
     <string name="metric_temperature">温度</string>
     <string name="from_gusts">来自 <xliff:g id="direction" example="NW">%1$s</xliff:g> · 阵风 <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
-    <string name="condition_clear">晴</string>
     <string name="metric_feels_like">体感</string>
     <string name="feels_like">体感 <xliff:g id="temp" example="26°C">%1$s</xliff:g></string>
     <string name="use_current_location">使用当前位置</string>
@@ -65,12 +62,9 @@
     <string name="hourly_forecast">每小时预报</string>
     <string name="daily_forecast">每日预报</string>
     <string name="now">现在</string>
-    <string name="today">今天</string>
     <string name="today_short">今天</string>
     <string name="tomorrow_short">明天</string>
-    <string name="level_none">无</string>
     <string name="level_low">低</string>
-    <string name="level_medium">中</string>
     <string name="level_moderate">中等</string>
     <string name="level_high">高</string>
     <string name="level_very_high">很高</string>

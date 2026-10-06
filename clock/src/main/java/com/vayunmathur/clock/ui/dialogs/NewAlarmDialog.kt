@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.clock.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.clock.Route
 import com.vayunmathur.clock.platform.AlarmScheduler
 import com.vayunmathur.clock.platform.ClockViewModel
@@ -90,12 +91,12 @@ fun NewAlarmDialog(
                     backStack.pop()
                 },
             ) {
-                Text(stringResource(R.string.button_save))
+                Text(stringResource(UiR.string.save))
             }
         },
         dismissButton = {
             TextButton(onClick = { backStack.pop() }) {
-                Text(stringResource(R.string.button_cancel))
+                Text(stringResource(UiR.string.cancel))
             }
         },
     )

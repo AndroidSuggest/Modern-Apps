@@ -199,7 +199,7 @@ suspend fun CommunicateRepository.createSignalGroup(
 fun CommunicateRepository.isSignalConnected(): Boolean = SignalClient.isConnected()
 
 private val uuidPattern =
-    uuidPattern
+    Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 /**
  * Build a Signal recipient id from a phone number / address / ACI.

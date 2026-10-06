@@ -3,8 +3,6 @@
     <string name="clear_history">مسح السجل</string>
     <string name="language">اللغة</string>
     <string name="action_update">تحديث</string>
-    <string name="off">معطّل</string>
-    <string name="label_search">البحث</string>
     <string name="subscribers_count"><xliff:g id="count" example="12K">%1$s</xliff:g> مشترك</string>
     <string name="empty_recommendations">شاهد بعض مقاطع الفيديو للحصول على توصيات مخصصة</string>
     <string name="video_info_format"><xliff:g id="channel" example="Linus Tech Tips">%1$s</xliff:g> | <xliff:g id="views" example="1.2M">%2$s</xliff:g> مشاهدة | <xliff:g id="time" example="2 days ago">%3$s</xliff:g></string>
@@ -35,7 +33,6 @@
     <string name="video_info_paid_format"><xliff:g id="channel" example="Linus Tech Tips">%1$s</xliff:g> | مدفوع | <xliff:g id="time" example="2 days ago">%2$s</xliff:g></string>
     <string name="action_subscribe">اشتراك</string>
     <string name="action_unsubscribe">إلغاء الاشتراك</string>
-    <string name="channel_info"><xliff:g id="count" example="1.2M">%1$s</xliff:g> مشترك</string>
     <string name="title_subscriptions">الاشتراكات</string>
     <string name="label_groups">المجموعات:</string>
     <string name="label_all_subscriptions">كل الاشتراكات</string>
@@ -45,18 +42,12 @@
     <string name="title_update_subscription_category">تحديث فئة الاشتراك</string>
     <string name="label_category_name">اسم الفئة</string>
     <string name="label_select_subscriptions">تحديد الاشتراكات:</string>
-    <string name="action_create">إنشاء</string>
     <string name="label_general">العام</string>
     <string name="label_default_page">الفتح إلى</string>
-    <string name="page_home">الشاشة الرئيسية</string>
-    <string name="page_downloads">التنزيلات</string>
-    <string name="page_saved">المحفوظ</string>
-    <string name="title_saved">المحفوظ</string>
     <string name="title_downloads">التنزيلات</string>
     <string name="playlist_watch_later">المشاهدة لاحقًا</string>
     <string name="title_create_playlist">إنشاء قائمة تشغيل</string>
     <string name="label_playlist_name">اسم قائمة التشغيل</string>
-    <string name="action_create_playlist">إنشاء</string>
     <string name="add_to_playlist">إضافة إلى قائمة التشغيل</string>
     <string name="new_playlist">قائمة تشغيل جديدة</string>
     <string name="action_delete_playlist">حذف قائمة التشغيل</string>
@@ -66,8 +57,6 @@
     <string name="title_history">السجل</string>
     <string name="selected_count">تم تحديد <xliff:g id="count" example="3">%1$s</xliff:g></string>
     <string name="are_you_sure_you_want_to_clear_all_watch">هل أنت متأكد أنك تريد مسح سجل المشاهدة بالكامل؟</string>
-    <string name="selected_1">تم تحديد <xliff:g id="count" example="2">%1$s</xliff:g></string>
-    <string name="title_settings">الإعدادات</string>
     <string name="label_dial_discovery">مألوف ↔ اكتشاف</string>
     <string name="label_dial_fresh">دائم الخضرة ↔ طازج</string>
     <string name="label_dial_diverse">مركز ↔ متنوع</string>

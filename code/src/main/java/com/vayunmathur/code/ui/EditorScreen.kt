@@ -24,6 +24,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.code.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.code.util.CodeActions
 import com.vayunmathur.code.util.CodeUiState
 import com.vayunmathur.code.util.EditorViewModel
@@ -336,7 +337,7 @@ fun EditorScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showExitGuard = false }) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             },
         )

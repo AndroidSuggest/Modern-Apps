@@ -22,6 +22,7 @@ import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.youpipe.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.util.YouPipeViewModel
 
@@ -53,7 +54,7 @@ fun CreatePlaylist(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeView
                     Modifier.fillMaxWidth().padding(top = 8.dp),
                     enabled = name.isNotBlank() && name.trim() !in existingNames,
                 ) {
-                    Text(stringResource(R.string.action_create_playlist))
+                    Text(stringResource(UiR.string.create))
                 }
             }
         }

@@ -1,13 +1,16 @@
 package com.vayunmathur.youpipe.ui
 
-import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
@@ -50,7 +53,7 @@ fun LinkifiedText(
     val linkColor = MaterialTheme.colorScheme.primary
     val contentColor = LocalContentColor.current
 
-    // Fix: ClickableText (foundation) does NOT resolve Color.Unspecified to LocalContentColor,
+    // Fix: foundation BasicText does NOT resolve Color.Unspecified to LocalContentColor,
     // unlike Material3 Text. It falls back to Color.Black, making description/comments invisible
     // in dark mode where background is dark and onBackground is white, while links use primary
     // (light) so only links remain visible. Resolve explicitly.
@@ -63,7 +66,7 @@ fun LinkifiedText(
         }
     }
 
-    val annotatedString = remember(text, linkColor) {
+    val annotatedString = remember(text, linkColor, uriHandler) {
         buildAnnotatedString {
             var lastIndex = 0
             for (match in UrlRegex.findAll(text)) {
@@ -85,11 +88,25 @@ fun LinkifiedText(
                         cleanUrl
                     }
 
-                    // Add URL annotation + link styling
-                    addStringAnnotation(tag = "URL", annotation = resolvedUrl, start = length, end = length + cleanUrl.length)
-                    pushStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
+                    // Link annotation + link styling
+                    addLink(
+                        LinkAnnotation.Url(
+                            url = resolvedUrl,
+                            styles = TextLinkStyles(
+                                style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
+                            ),
+                            linkInteractionListener = LinkInteractionListener {
+                                try {
+                                    uriHandler.openUri(resolvedUrl)
+                                } catch (_: Exception) {
+                                    // Ignore failures to open URI (no browser, malformed URL, etc.)
+                                }
+                            },
+                        ),
+                        start = length,
+                        end = length + cleanUrl.length,
+                    )
                     append(cleanUrl)
-                    pop()
 
                     // Append trailing punctuation as normal text
                     if (trailing.isNotEmpty()) {
@@ -110,20 +127,9 @@ fun LinkifiedText(
         }
     }
 
-    ClickableText(
+    BasicText(
         text = annotatedString,
         modifier = modifier,
         style = resolvedStyle,
-        onClick = { offset ->
-            val annotations = annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)
-            val url = annotations.firstOrNull()?.item
-            if (url != null) {
-                try {
-                    uriHandler.openUri(url)
-                } catch (_: Exception) {
-                    // Ignore failures to open URI (no browser, malformed URL, etc.)
-                }
-            }
-        }
     )
 }

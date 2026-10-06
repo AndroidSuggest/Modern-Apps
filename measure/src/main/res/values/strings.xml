@@ -10,9 +10,6 @@
     <string name="tool_level">Level</string>
     <!-- Bottom navigation tab label and screen title for the on-screen ruler tool. Noun. -->
     <string name="tool_ruler">Ruler</string>
-    <!-- Bottom navigation tab label and screen title for the augmented-reality distance
-         measuring tool. Noun, the name of the tool; also the app name. -->
-    <string name="tool_measure">Measure</string>
 
     <!-- CompassContent: caption under the bearing, when the reading is corrected for magnetic
          declination and so points at the geographic north pole. -->
@@ -96,8 +93,6 @@
     <!-- ArMeasureContent: button that joins the last placed point back to the first, turning
          an open chain of points into a closed shape so its area can be measured. -->
     <string name="ar_close_shape">Close shape</string>
-    <!-- ArMeasureContent: button that removes every placed measuring point. Verb. -->
-    <string name="ar_clear_points">Clear</string>
     <!-- ArMeasureContent: coaching banner while tracking starts up. The app genuinely cannot
          work out real-world scale until the phone is physically moved, so this is an
          instruction, not a progress message. -->
@@ -128,9 +123,6 @@
     <!-- ArMeasureContent: reason shown under ar_unavailable_title when the camera permission
          has not been granted. -->
     <string name="ar_unavailable_camera">Camera access is needed to measure in AR.</string>
-
-    <!-- SavedMeasurementsContent: screen title for the list of measurements the user kept. -->
-    <string name="saved_title">Saved</string>
     <!-- SavedMeasurementsContent: heading of the empty state. -->
     <string name="saved_empty_title">No saved measurements</string>
     <!-- SavedMeasurementsContent: body of the empty state, telling the user how to add one. -->
@@ -138,9 +130,6 @@
     <!-- MeasureViewModel: name given to a saved measurement when the user left the name
          blank. Shown as the row title in the saved list. Noun. -->
     <string name="saved_default_label">Measurement</string>
-
-    <!-- SettingsContent: screen title. -->
-    <string name="settings_title">Settings</string>
     <!-- SettingsContent: section heading over the unit-system options. Noun, plural - units of
          measurement such as metres or feet. -->
     <string name="settings_section_units">Units</string>
@@ -164,9 +153,6 @@
     <!-- SettingsContent: supporting text on the level calibration row when no zero offset has
          been stored, so the level shows the raw accelerometer reading. -->
     <string name="settings_level_uncalibrated_summary">Using raw gravity reading</string>
-    <!-- SettingsContent: trailing action on the level calibration row, which discards the
-         stored zero offset. Verb. -->
-    <string name="settings_clear">Clear</string>
     <!-- SettingsContent: section heading over the miscellaneous options. -->
     <string name="settings_section_general">General</string>
     <!-- SettingsContent: switch for vibration on interaction. -->

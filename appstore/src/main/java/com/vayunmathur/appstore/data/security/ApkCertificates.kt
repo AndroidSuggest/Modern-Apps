@@ -140,11 +140,9 @@ object ApkCertificates {
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
-    private companion object {
-        private const val SHA256_HEX_LEN = 64
-        private const val SHA256_BYTES = 32
-        private const val HASH_BUFFER_SIZE = 64 * 1024
-        private const val HEX_PAIR_LEN = 2
-        private const val ABBREVIATED_PAIRS = 8
-    }
+    private const val SHA256_HEX_LEN = 64
+    private const val SHA256_BYTES = 32
+    private const val HASH_BUFFER_SIZE = 64 * 1024
+    private const val HEX_PAIR_LEN = 2
+    private const val ABBREVIATED_PAIRS = 8
 }

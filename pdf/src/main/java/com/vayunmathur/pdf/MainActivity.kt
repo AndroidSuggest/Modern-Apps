@@ -98,7 +98,7 @@ fun InitialScreen(onOpenPdf: () -> Unit, onCapturePdf: () -> Unit, onCutGlue: ()
                 Text(stringResource(R.string.open_pdf))
             }
             Button(onClick = onCapturePdf, Modifier.padding(16.dp)) {
-                Text(stringResource(R.string.capture_pdf))
+                Text(stringResource(R.string.capture_pdf_title))
             }
             Button(onClick = onCutGlue, Modifier.padding(16.dp)) {
                 Text(stringResource(R.string.pdf_cut_and_glue))

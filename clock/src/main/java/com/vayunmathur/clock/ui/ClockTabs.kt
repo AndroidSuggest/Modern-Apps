@@ -28,13 +28,13 @@ fun ClockTabs(
         PagerTab(stringResource(R.string.label_alarm), { IconAlarm() }) {
             AlarmPage(backStack, clockViewModel)
         },
-        PagerTab(stringResource(R.string.label_clock), { IconAccessTime() }) {
+        PagerTab(stringResource(R.string.app_name), { IconAccessTime() }) {
             ClockPage(backStack, ds, clockViewModel)
         },
         PagerTab(stringResource(R.string.label_timer), { IconHourglass() }) {
             TimerPage(clockViewModel)
         },
-        PagerTab(stringResource(R.string.label_stopwatch), { IconTimer() }) {
+        PagerTab(stringResource(R.string.channel_stopwatch_name), { IconTimer() }) {
             StopwatchPage(clockViewModel)
         },
     )

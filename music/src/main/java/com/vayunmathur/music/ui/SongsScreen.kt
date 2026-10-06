@@ -54,7 +54,7 @@ fun SongsScreen(
         if (!state.rowOwnsSongKeys) Modifier
         else Modifier.sharedText("music-song-$slot-${song.id}")
 
-    ListPage<Music, Route, Route.Song>(backStack, state.songs, stringResource(R.string.page_title_music), { song ->
+    ListPage<Music, Route, Route.Song>(backStack, state.songs, stringResource(R.string.app_name), { song ->
         val isPlaying = song.id == state.playingSongId
         Text(
             text = song.title,

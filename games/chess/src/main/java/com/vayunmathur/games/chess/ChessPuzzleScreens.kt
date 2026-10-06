@@ -31,6 +31,7 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.SegmentedButton
 import com.vayunmathur.library.ui.SegmentedButtonDefaults
@@ -112,7 +113,7 @@ fun PuzzleBoardScreen(state: PuzzleUiState, actions: PuzzleActions) {
                 if (state.status == PuzzleStatus.Failed) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { actions.retry() }) {
-                            Text(stringResource(R.string.puzzle_retry))
+                            Text(stringResource(UiR.string.retry))
                         }
                         OutlinedButton(onClick = { actions.showSolution() }) {
                             Text(stringResource(R.string.puzzle_show_solution))
@@ -132,9 +133,9 @@ fun PuzzleBoardScreen(state: PuzzleUiState, actions: PuzzleActions) {
 private fun PuzzleDifficultySelector(state: PuzzleUiState, actions: PuzzleActions) {
     SingleChoiceSegmentedButtonRow {
         val labels = listOf(
-            stringResource(R.string.puzzle_difficulty_easy),
-            stringResource(R.string.puzzle_difficulty_medium),
-            stringResource(R.string.puzzle_difficulty_hard)
+            stringResource(UiR.string.easy),
+            stringResource(UiR.string.medium),
+            stringResource(UiR.string.hard)
         )
         PuzzleDifficulty.entries.forEachIndexed { idx, diff ->
             SegmentedButton(

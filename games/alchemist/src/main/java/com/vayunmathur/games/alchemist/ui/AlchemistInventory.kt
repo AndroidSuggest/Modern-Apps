@@ -41,6 +41,7 @@ import com.vayunmathur.games.alchemist.data.AlchemyItem
 import com.vayunmathur.games.alchemist.ui.components.DynamicAlchemyIcon
 import com.vayunmathur.library.ui.Icon
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.SwappedContent
 import com.vayunmathur.library.ui.Text
@@ -133,7 +134,7 @@ internal fun AlchemistInventoryPanel(
                     ) {
                         Icon(
                             painterResource(id = android.R.drawable.ic_delete),
-                            contentDescription = stringResource(R.string.cd_delete),
+                            contentDescription = stringResource(UiR.string.delete),
                             tint = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.size(48.dp)
                         )

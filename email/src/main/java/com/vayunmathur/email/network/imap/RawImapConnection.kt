@@ -444,6 +444,10 @@ class RawImapConnection(
         return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
     }
 
+    private fun requireContinuation(line: String, op: String) {
+        if (!line.startsWith("+")) throw IOException("$op failed: $line")
+    }
+
     override fun close() {
         try { input?.close() } catch (_: Exception) {}
         try { output?.close() } catch (_: Exception) {}

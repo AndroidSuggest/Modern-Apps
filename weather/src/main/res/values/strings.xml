@@ -3,8 +3,6 @@
     <string name="app_name">Weather</string>
     <!-- Glance widget metadata description shown in widget picker — what widget does. Full sentence -->
     <string name="weather_widget_description">Current time, date, and weather at a glance - tap for the forecast</string>
-    <!-- Empty-state TopAppBar title when no locations saved yet. Noun -->
-    <string name="weather_title">Weather</string>
 
     <!-- Empty state headline when no cities saved. Noun phrase -->
     <string name="no_locations_yet">No locations yet</string>
@@ -52,10 +50,8 @@
     <string name="not_enough_data_to_plot">Not enough data to plot.</string>
 
     <!-- Map time slider label when layer time is null fallback. Noun -->
-    <string name="map_time">Time</string>
 
     <!-- Condition: clear sky. Adjective/noun -->
-    <string name="condition_clear">Clear</string>
     <!-- Condition: mainly/mostly clear sky. Adverb + adjective -->
     <string name="condition_mostly_clear">Mostly clear</string>
     <!-- Condition: partly cloudy. Noun phrase -->
@@ -73,7 +69,6 @@
     <!-- Condition: thunderstorm. Noun -->
     <string name="condition_thunderstorm">Thunderstorm</string>
     <!-- Condition: unknown/fallback. Adjective -->
-    <string name="condition_unknown">Unknown</string>
 
     <!-- Metric: air temperature. Noun -->
     <string name="metric_temperature">Temperature</string>
@@ -131,18 +126,15 @@
     <!-- Label for current hour in hourly strip. Adverb -->
     <string name="now">Now</string>
     <!-- Label for today in daily strip. Noun -->
-    <string name="today">Today</string>
     <!-- Abbreviation for today in hourly day label. Keep short (3 letters) -->
     <string name="today_short">TDY</string>
     <!-- Abbreviation for tomorrow in hourly day label. Keep short (3 letters) -->
     <string name="tomorrow_short">TMR</string>
 
     <!-- Level: none. Adjective/noun -->
-    <string name="level_none">None</string>
     <!-- Level: low. Adjective -->
     <string name="level_low">Low</string>
     <!-- Level: medium. Adjective -->
-    <string name="level_medium">Medium</string>
     <!-- Level: moderate. Adjective -->
     <string name="level_moderate">Moderate</string>
     <!-- Level: high. Adjective -->
@@ -154,12 +146,6 @@
     <!-- Level: severe. Adjective -->
     <string name="level_severe">Severe</string>
 
-    <!-- Cloud cover: clear -->
-    <string name="cloud_clear">Clear</string>
-    <!-- Cloud cover: mostly clear -->
-    <string name="cloud_mostly_clear">Mostly clear</string>
-    <!-- Cloud cover: partly cloudy -->
-    <string name="cloud_partly_cloudy">Partly cloudy</string>
     <!-- Cloud cover: mostly cloudy -->
     <string name="cloud_mostly_cloudy">Mostly cloudy</string>
     <!-- Cloud cover: overcast -->
@@ -167,8 +153,6 @@
 
     <!-- AQI level: good -->
     <string name="aqi_good">Good</string>
-    <!-- AQI level: moderate (AQI). Keep consistent with level_moderate -->
-    <string name="aqi_moderate">Moderate</string>
     <!-- AQI level: unhealthy for sensitive groups. Keep short -->
     <string name="aqi_unhealthy_sensitive">Unhealthy (sensitive)</string>
     <!-- AQI level: unhealthy -->

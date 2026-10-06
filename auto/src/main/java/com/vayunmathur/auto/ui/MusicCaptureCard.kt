@@ -92,7 +92,7 @@ fun MusicCaptureCard(modifier: Modifier = Modifier) {
                                     messenger.show(context.getString(R.string.music_capture_denied))
                                 }
                             }) {
-                                Text(stringResource(R.string.music_capture_allow))
+                                Text(stringResource(R.string.mic_allow))
                             }
                         }
                     },

@@ -92,8 +92,6 @@ class MetadataPreviews {
             )
         }
     }
-}
-
     @PreviewTest
     @Preview(name = "3-home-expanded", device = EXPANDED, showSystemUi = true)
     @Composable

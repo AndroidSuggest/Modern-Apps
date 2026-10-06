@@ -24,7 +24,7 @@ internal fun SaveDialog(
         title = { Text(stringResource(R.string.action_save)) },
         text = { Text(stringResource(R.string.video_save_prompt)) },
         confirmButton = {
-            TextButton(onClick = onSaveCopy) { Text(stringResource(R.string.video_save_copy)) }
+            TextButton(onClick = onSaveCopy) { Text(stringResource(R.string.action_save_as_copy)) }
         },
         dismissButton = {
             TextButton(onClick = onOverwrite) { Text(stringResource(R.string.video_overwrite)) }

@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.flashcards.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.flashcards.util.Grade
 import com.vayunmathur.flashcards.util.ReviewUiState
 import com.vayunmathur.library.ui.Button
@@ -26,9 +27,9 @@ internal fun GradeButtons(state: ReviewUiState, onGrade: (Grade) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         GradeButton(R.string.grade_again, GRADE_AGAIN_COLOR, state.label(Grade.AGAIN), Grade.AGAIN, onGrade, Modifier.weight(1f))
-        GradeButton(R.string.grade_hard, GRADE_HARD_COLOR, state.label(Grade.HARD), Grade.HARD, onGrade, Modifier.weight(1f))
+        GradeButton(UiR.string.hard, GRADE_HARD_COLOR, state.label(Grade.HARD), Grade.HARD, onGrade, Modifier.weight(1f))
         GradeButton(R.string.grade_good, GRADE_GOOD_COLOR, state.label(Grade.GOOD), Grade.GOOD, onGrade, Modifier.weight(1f))
-        GradeButton(R.string.grade_easy, GRADE_EASY_COLOR, state.label(Grade.EASY), Grade.EASY, onGrade, Modifier.weight(1f))
+        GradeButton(UiR.string.easy, GRADE_EASY_COLOR, state.label(Grade.EASY), Grade.EASY, onGrade, Modifier.weight(1f))
     }
 }
 

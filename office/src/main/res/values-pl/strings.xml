@@ -474,8 +474,6 @@
     <string name="slide_background">Tło slajdu…</string>
     <!-- OfficeBottomBar: Action duplicate paragraph. Verb phrase. -->
     <string name="duplicate_paragraph">Duplikuj akapit</string>
-    <!-- OfficeBottomBar: Menu insert table without ellipsis alternative -->
-    <string name="insert_table_1">Wstaw tabelę</string>
     <!-- OfficeBottomBar: Arrange bring to front. Verb phrase. -->
     <string name="bring_to_front">Przesuń na wierzch</string>
     <!-- OfficeBottomBar: Action promote list item (decrease indent). Verb phrase. -->
@@ -514,8 +512,6 @@
     <string name="edit_chart">Edytuj wykres</string>
     <!-- DocumentViews: Button hide speaker notes. Verb phrase. -->
     <string name="hide_notes">Ukryj notatki</string>
-    <!-- DocumentViews: Section header speaker notes without ellipsis -->
-    <string name="speaker_notes_2">Notatki prelegenta</string>
     <!-- MainActivity: Status computing, ellipsis -->
     <string name="computing">Obliczanie…</string>
     <!-- MainActivity: Button show security code for verification. Verb phrase. -->

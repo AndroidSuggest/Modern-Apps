@@ -45,7 +45,7 @@ fun SettingsScreen(
     var showClearConfirm by remember { mutableStateOf(false) }
 
     AppScaffold(
-        title = stringResource(R.string.tab_settings),
+        title = stringResource(UiR.string.settings),
         backStack = backStack,
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->

@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.cast.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.cast.platform.CastActions
 import com.vayunmathur.cast.platform.CastConnection
 import com.vayunmathur.cast.platform.CastUiState
@@ -82,7 +83,7 @@ fun CastPickerContent(
             }
             item {
                 TextButton(onClick = onCancel) {
-                    Text(stringResource(R.string.cast_picker_cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             }
         }

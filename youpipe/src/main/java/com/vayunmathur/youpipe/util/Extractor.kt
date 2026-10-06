@@ -18,8 +18,8 @@ import kotlin.time.toKotlinInstant
 data class SponsorSegment(
     val category: String,
     val segment: List<Float>,
-    @SerialName("UUID") val uuid: String
-)
+    @SerialName("UUID") val uuid: String,
+) {
     val start: Long get() = (segment[0] * 1000).toLong()
     val end: Long get() = (segment[1] * 1000).toLong()
 }
@@ -106,7 +106,9 @@ fun getChannelVideos(channelId: String): Sequence<VideoInfo> = sequence {
         page.getItems().filterIsInstance<StreamInfoItem>().forEach { item ->
             item.toVideoInfo()?.let { yield(it) }
         }
-        page = nextChannelPage(ex, page) ?: break
+        @Suppress("UNCHECKED_CAST")
+        val nextPage = nextChannelPage(ex, page) as org.schabi.newpipe.extractor.ListExtractor.InfoItemsPage<org.schabi.newpipe.extractor.InfoItem>?
+        page = nextPage ?: break
     }
 }
 

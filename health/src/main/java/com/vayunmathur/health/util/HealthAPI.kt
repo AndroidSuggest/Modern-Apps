@@ -245,10 +245,8 @@ object HealthAPI {
         Monthly
     }
 
-    companion object {
-        private const val DAYS_PER_WEEK = 7
-        private const val HOURS_PER_DAY = 24
-    }
+    private const val DAYS_PER_WEEK = 7
+    private const val HOURS_PER_DAY = 24
 
     private val hourlyFormat =
             LocalDateTime.Format {

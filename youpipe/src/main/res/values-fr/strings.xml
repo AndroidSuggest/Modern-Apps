@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="channel_info"><xliff:g id="count" example="1,2 M">%1$s</xliff:g> abonnés</string>
     <string name="action_unpin">Désépingler</string>
     <string name="video_stat_format"><xliff:g id="views" example="1M">%1$s</xliff:g> vues | <xliff:g id="time" example="3 days ago">%2$s</xliff:g></string>
     <string name="label_description">Description</string>
     <string name="video_load_error">Erreur de chargement de la vidéo – YouTube a peut-être bloqué le visionnage anonyme depuis cette adresse IP</string>
-    <string name="action_create">Créer</string>
     <string name="action_not_interested">Ça ne m\'intéresse pas</string>
     <string name="label_all_subscriptions">Tous les abonnements</string>
     <string name="label_backup_restore">Sauvegarde et restauration</string>
@@ -28,7 +26,6 @@
     <string name="time_ago_days">Il y a <xliff:g id="days" example="2">%1$d</xliff:g> jours</string>
     <string name="label_pinned">Épinglé</string>
     <string name="label_blocked_channels">Chaînes bloquées</string>
-    <string name="label_manage_interests">Gérer les centres d\'intérêt</string>
     <string name="action_pin">Épingler</string>
     <string name="label_source_search">Basé sur la recherche</string>
     <string name="label_muted_keywords">Mots-clés masqués</string>
@@ -51,7 +48,6 @@
     <string name="label_your_topics">Vos sujets</string>
     <string name="label_channels">Chaînes :</string>
     <string name="title_subscriptions">Abonnements</string>
-    <string name="label_search">Rechercher</string>
     <string name="action_subscribe">S\'abonner</string>
     <string name="time_ago_months">Il y a <xliff:g id="months" example="6">%1$d</xliff:g> mois</string>
     <string name="action_pin_channel">Épingler la chaîne</string>
@@ -61,7 +57,6 @@
     <string name="label_no_blocked_channels">Aucune chaîne bloquée</string>
     <string name="video_quality_fps_codec"><xliff:g id="quality" example="1080p">%1$s</xliff:g> (<xliff:g id="fps" example="60">%2$d</xliff:g> i/s) <xliff:g id="codec" example="avc">%3$s</xliff:g></string>
     <string name="preset_deep_dives">Analyses approfondies</string>
-    <string name="action_remove">Retirer</string>
     <string name="label_source_subscription">Vos abonnements</string>
     <string name="label_related_videos">Vidéos associées</string>
     <string name="title_update_subscription_category">Actualiser la catégorie d\'abonnement</string>
@@ -73,7 +68,6 @@
     <string name="action_go_back">Retour</string>
     <string name="empty_recommendations">Regardez quelques vidéos pour obtenir des recommandations personnalisées</string>
     <string name="label_source_top_channel">Chaînes les plus populaires</string>
-    <string name="title_settings">Paramètres</string>
     <string name="action_unmute">Réactiver le son</string>
     <string name="video_info_format"><xliff:g id="channel" example="Linus Tech Tips">%1$s</xliff:g> | <xliff:g id="views" example="1,2 M">%2$s</xliff:g> vues | <xliff:g id="time" example="Il y a 2 jours">%3$s</xliff:g></string>
     <string name="label_youtube_content">Contenu YouTube</string>
@@ -91,32 +85,24 @@
     <string name="loading_recent_subscriptions">Chargement des abonnements récents</string>
     <string name="download_options">Options de téléchargement</string>
     <string name="clear_history">Effacer l’historique</string>
-    <string name="off">Désactivé</string>
     <string name="selected_count">%1$s sélectionné(s)</string>
-    <string name="selected_1">Sélection : <xliff:g id="count" example="2">%1$s</xliff:g></string>
     <string name="download">Télécharger</string>
     <string name="language">Langage</string>
     <string name="chapter">Chapitre</string>
     <string name="are_you_sure_you_want_to_clear_all_watch">Voulez-vous vraiment effacer tout l’historique des vidéos regardées ?</string>
     <string name="resolution">Résolution</string>
-    <string name="page_home">Accueil</string>
     <string name="label_default_page">Ouvrir sur</string>
     <string name="label_general">Général</string>
-    <string name="page_downloads">Téléchargements</string>
-    <string name="page_saved">Enregistrés</string>
-    <string name="title_saved">Enregistrés</string>
     <string name="title_downloads">Téléchargements</string>
     <string name="playlist_watch_later">À regarder plus tard</string>
     <string name="title_create_playlist">Créer une playlist</string>
     <string name="label_playlist_name">Nom de la playlist</string>
-    <string name="action_create_playlist">Créer</string>
     <string name="add_to_playlist">Ajouter à une playlist</string>
     <string name="new_playlist">Nouvelle playlist</string>
     <string name="action_delete_playlist">Supprimer la playlist</string>
     <string name="playlist_empty">Aucune vidéo dans cette playlist pour le moment</string>
     <string name="adding_to_watch_later">Ajout à « À regarder plus tard »…</string>
     <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> vidéos</string>
-    <string name="label_history">Historique</string>
     <string name="settings_general_content">Général et contenu</string>
     <string name="settings_sponsorblock">SponsorBlock</string>
     <string name="settings_data">Données et sauvegarde</string>
@@ -127,7 +113,6 @@
     <string name="playback_tempo_value"><xliff:g id="value" example="1.5">%1$s</xliff:g>×</string>
     <string name="playback_pitch_value"><xliff:g id="value" example="100">%1$d</xliff:g> %%</string>
     <string name="playback_unhook_pitch">Dissocier la hauteur (peut entraîner des distorsions)</string>
-    <string name="playback_reset">Réinitialiser</string>
     <string name="lock_controls">Verrouiller les commandes</string>
     <string name="unlock_controls">Déverrouiller les commandes</string>
 </resources>

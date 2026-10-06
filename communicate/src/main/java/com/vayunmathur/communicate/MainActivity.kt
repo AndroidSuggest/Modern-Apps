@@ -30,6 +30,7 @@ import com.vayunmathur.library.util.ListDetailPage
 import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.MorphPage
+import com.vayunmathur.library.util.EntryProviderScope
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -391,7 +392,7 @@ private fun AppTelecomEffects(
 private fun CommunicateTabs(backStack: NavBackStack<Route>) {
     val pagerState = rememberPagerState(pageCount = { 3 })
     val tabs = listOf(
-        PagerTab(stringResource(R.string.nav_messages), { IconSms() }) {
+        PagerTab(stringResource(R.string.messages_title), { IconSms() }) {
             MessagesScreen(
                 onOpenThread = { thread ->
                     val route = Route.Conversation(
@@ -412,8 +413,8 @@ private fun CommunicateTabs(backStack: NavBackStack<Route>) {
                 onOpenAccounts = { backStack.add(Route.Accounts) },
             )
         },
-        PagerTab(stringResource(R.string.nav_dialer), { IconCall() }) { DialerScreen() },
-        PagerTab(stringResource(R.string.nav_call_logs), { IconHistory() }) { CallLogsScreen() },
+        PagerTab(stringResource(R.string.dialer_title), { IconCall() }) { DialerScreen() },
+        PagerTab(stringResource(R.string.call_logs_title), { IconHistory() }) { CallLogsScreen() },
     )
     TabbedPagerScaffold(tabs = tabs, pagerState = pagerState, tabStyle = TabStyle.BottomNav)
 }

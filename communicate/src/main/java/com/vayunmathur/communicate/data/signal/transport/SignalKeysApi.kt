@@ -102,7 +102,7 @@ object SignalKeysApi {
 
         val result = ArrayList<DeviceBundle>(devices.size)
         for (element in devices) {
-            parseDeviceBundle(aci, element, identityKey)?.let { result.add(it) }
+            parseDeviceBundle(aci, element, identityKey, warn)?.let { result.add(it) }
         }
         return result
     }
@@ -111,7 +111,12 @@ object SignalKeysApi {
     private const val HTTP_NOT_FOUND = 404
     private const val BASE64_SINGLE_PAD = 3
 
-    private fun parseDeviceBundle(aci: String, element: JsonElement, identityKey: ByteArray): DeviceBundle? {
+    private fun parseDeviceBundle(
+        aci: String,
+        element: JsonElement,
+        identityKey: ByteArray,
+        warn: (String) -> Unit = { Log.w(TAG, it) },
+    ): DeviceBundle? {
         val device = try {
             element.jsonObject
         } catch (_: Exception) {

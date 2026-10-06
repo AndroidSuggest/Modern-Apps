@@ -108,7 +108,7 @@ class ReceiverService : Service() {
     }
 
     private fun enterForeground() {
-        val notification = buildNotification(getString(R.string.tv_notification_text_idle))
+        val notification = buildNotification(getString(R.string.tv_ready_title))
         try {
             if (Build.VERSION.SDK_INT >= MIN_SERVICE_TYPE_SDK) {
                 startForeground(
@@ -136,8 +136,8 @@ class ReceiverService : Service() {
     private fun statusText(phase: ReceiverPhase): String = when (phase) {
         is ReceiverPhase.Pairing -> getString(R.string.tv_notification_text_pairing)
         is ReceiverPhase.Mirroring ->
-            getString(R.string.tv_notification_text_mirroring, phase.sourceName)
-        else -> getString(R.string.tv_notification_text_idle)
+            getString(R.string.tv_mirroring, phase.sourceName)
+        else -> getString(R.string.tv_ready_title)
     }
 
     private fun buildNotification(text: String): Notification {
@@ -151,7 +151,7 @@ class ReceiverService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_cast_tv)
-            .setContentTitle(getString(R.string.tv_notification_title))
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(text)
             .setOngoing(true)
             .setContentIntent(open)

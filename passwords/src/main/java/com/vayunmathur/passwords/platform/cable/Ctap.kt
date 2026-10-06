@@ -18,22 +18,17 @@ object Ctap {
     const val CMD_GET_INFO = 0x04
     const val CMD_GET_NEXT_ASSERTION = 0x08
 
-    private const val NUMBER_OF_CREDENTIALS_KEY = 5L
-    private const val ATTESTATION_FIRST_KEY = 1L
-    private const val ATTESTATION_SECOND_KEY = 2L
-    private const val ATTESTATION_THIRD_KEY = 3L
-    private const val KEY_CLIENT_DATA_HASH = 1L
-    private const val KEY_RP = 2L
-    private const val KEY_USER = 3L
-    private const val KEY_PUB_KEY_PARAMS = 4L
-    private const val KEY_EXCLUDE_LIST = 5L
-    private const val KEY_EXTENSIONS = 6L
-    private const val KEY_OPTIONS = 7L
-    // Command bytes (client -> authenticator).
-    const val CMD_MAKE_CREDENTIAL = 0x01
-    const val CMD_GET_ASSERTION = 0x02
-    const val CMD_GET_INFO = 0x04
-    const val CMD_GET_NEXT_ASSERTION = 0x08
+    internal const val NUMBER_OF_CREDENTIALS_KEY = 5L
+    internal const val ATTESTATION_FIRST_KEY = 1L
+    internal const val ATTESTATION_SECOND_KEY = 2L
+    internal const val ATTESTATION_THIRD_KEY = 3L
+    internal const val KEY_CLIENT_DATA_HASH = 1L
+    internal const val KEY_RP = 2L
+    internal const val KEY_USER = 3L
+    internal const val KEY_PUB_KEY_PARAMS = 4L
+    internal const val KEY_EXCLUDE_LIST = 5L
+    internal const val KEY_EXTENSIONS = 6L
+    internal const val KEY_OPTIONS = 7L
 
     // Status bytes (authenticator -> client). CTAP2 error codes.
     const val OK = 0x00
@@ -193,21 +188,21 @@ data class CtapMakeCredentialRequest(
         /** Parses the CBOR payload (the bytes after the 0x01 command byte). */
         fun parse(payload: ByteArray): CtapMakeCredentialRequest {
             val map = CborReader(payload).readIntMap()
-            val rp = map[KEY_RP] as? Map<*, *> ?: error("makeCredential: missing rp")
-            val user = map[KEY_USER] as? Map<*, *> ?: error("makeCredential: missing user")
+            val rp = map[Ctap.KEY_RP] as? Map<*, *> ?: error("makeCredential: missing rp")
+            val user = map[Ctap.KEY_USER] as? Map<*, *> ?: error("makeCredential: missing user")
             val rpId = rp["id"] as? String ?: error("makeCredential: missing rp.id")
             val userName = user["name"] as? String ?: ""
             return CtapMakeCredentialRequest(
-                clientDataHash = requiredBytes(map, KEY_CLIENT_DATA_HASH, "clientDataHash"),
+                clientDataHash = requiredBytes(map, Ctap.KEY_CLIENT_DATA_HASH, "clientDataHash"),
                 rpId = rpId,
                 rpName = rp["name"] as? String ?: rpId,
                 userId = user["id"] as? ByteArray ?: error("makeCredential: missing user.id"),
                 userName = userName,
                 userDisplayName = user["displayName"] as? String ?: userName,
-                algorithms = parseAlgorithms(map[KEY_PUB_KEY_PARAMS]),
-                excludeList = parseExcludeList(map[KEY_EXCLUDE_LIST]),
-                options = parseOptions(map[KEY_OPTIONS]),
-                extensions = map[KEY_EXTENSIONS] as? Map<*, *>,
+                algorithms = parseAlgorithms(map[Ctap.KEY_PUB_KEY_PARAMS]),
+                excludeList = parseExcludeList(map[Ctap.KEY_EXCLUDE_LIST]),
+                options = parseOptions(map[Ctap.KEY_OPTIONS]),
+                extensions = map[Ctap.KEY_EXTENSIONS] as? Map<*, *>,
             )
         }
 

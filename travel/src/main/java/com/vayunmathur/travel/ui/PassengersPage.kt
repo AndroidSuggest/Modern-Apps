@@ -1,5 +1,6 @@
 package com.vayunmathur.travel.ui
 import com.vayunmathur.travel.R
+import com.vayunmathur.library.ui.R as UiR
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -187,7 +188,7 @@ private fun PassengerForm(
                 if (canImportContacts) {
                     OutlinedButton(onClick = { importFromContacts() }) {
                         IconContacts(modifier = Modifier.padding(end = 8.dp))
-                        Text(stringResource(R.string.contacts))
+                        Text(stringResource(UiR.string.contacts))
                     }
                 }
             }
@@ -223,7 +224,7 @@ private fun PassengerForm(
             OutlinedTextField(
                 value = passenger.email,
                 onValueChange = { onChange(passenger.copy(email = it)) },
-                label = { Text(if (isAdult) stringResource(R.string.email) else stringResource(R.string.email_optional)) },
+                label = { Text(if (isAdult) stringResource(UiR.string.email) else stringResource(R.string.email_optional)) },
                 singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Email),
                 modifier = Modifier.fillMaxWidth(),

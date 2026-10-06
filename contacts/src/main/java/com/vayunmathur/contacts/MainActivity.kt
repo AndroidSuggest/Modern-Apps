@@ -24,6 +24,7 @@ import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.PagerTab
 import com.vayunmathur.library.ui.PermissionRequirement
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.TabStyle
 import com.vayunmathur.library.ui.TabbedPagerScaffold
 import androidx.compose.runtime.Composable
@@ -47,24 +48,26 @@ import com.vayunmathur.contacts.data.CDKSName
 import com.vayunmathur.contacts.data.CDKStructuredPostal
 import com.vayunmathur.contacts.data.ContactPrefill
 import com.vayunmathur.contacts.data.PrefillValue
-import com.vayunmathur.contacts.ui.AddAccountDialog
-import com.vayunmathur.contacts.ui.AddToGroupDialog
+import com.vayunmathur.contacts.ui.dialogs.AddAccountDialog
+import com.vayunmathur.contacts.ui.dialogs.AddToGroupDialog
 import com.vayunmathur.contacts.ui.ContactDetailsPage
 import com.vayunmathur.contacts.ui.ContactList
 import com.vayunmathur.contacts.ui.ContactListPick
 import com.vayunmathur.contacts.ui.CropPhotoScreen
 import com.vayunmathur.contacts.ui.EditContactPage
-import com.vayunmathur.contacts.ui.EventDeleteConfirmDialog
+import com.vayunmathur.contacts.ui.dialogs.EventDeleteConfirmDialog
 import com.vayunmathur.contacts.ui.GroupsPage
-import com.vayunmathur.contacts.ui.IconGroup
-import com.vayunmathur.contacts.ui.IconPerson
-import com.vayunmathur.contacts.ui.IconSettings
+import com.vayunmathur.library.ui.IconGroup
+import com.vayunmathur.library.ui.IconPerson
+import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.contacts.ui.ImportVcfScreen
 import com.vayunmathur.contacts.ui.InsertOrEditContactScreen
 import com.vayunmathur.contacts.ui.SettingsPage
 import com.vayunmathur.contacts.ui.dialogs.EventDatePickerDialog
 import com.vayunmathur.contacts.util.ContactViewModel
+import com.vayunmathur.contacts.util.loadAccounts
 import com.vayunmathur.contacts.util.setEditDraftPhotoFromBitmap
+import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.util.DialogPage
 import com.vayunmathur.library.util.IntentHelper
 import com.vayunmathur.library.util.ListDetailPage
@@ -214,13 +217,6 @@ class MainActivity : ComponentActivity() {
         val action = intent.action
         if (!isContactViewAction(action)) return
         externalRoute.value = routeForAction(action, intent)
-    }
-
-    private fun isVcfIntent(intent: Intent): Boolean {
-        val type = intent.type ?: ""
-        return type.contains("vcard") ||
-            type.contains("vcf") ||
-            intent.data?.path?.endsWith(".vcf", ignoreCase = true) == true
     }
 
     private fun isContactViewAction(action: String?): Boolean =
@@ -416,35 +412,6 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    /**
-     * Reads a CommonDataKinds TYPE extra that may be an Int, a numeric String, or a custom label.
-     * Returns (type, customLabel); a non-numeric String becomes TYPE_CUSTOM with that label.
-     */
-    private fun readType(intent: Intent, key: String): Pair<Int?, String?> {
-        val raw = intent.extras?.get(key) ?: return null to null
-        return when (raw) {
-            is Int -> raw to null
-            is CharSequence -> {
-                val s = raw.toString()
-                s.toIntOrNull()?.let { it to null }
-                    ?: (ContactsContract.CommonDataKinds.BaseTypes.TYPE_CUSTOM to s)
-            }
-            else -> null to null
-        }
-    }
-
-    /** Extracts a phone number from a `tel:` or `phone_lookup` data URI (not from extras). */
-    private fun uriPhoneNumber(intent: Intent): String? {
-        val uri = intent.data ?: return null
-        if (uri.scheme == "tel") {
-            return uri.schemeSpecificPart
-        }
-        if (uri.authority == ContactsContract.AUTHORITY && uri.path?.contains("phone_lookup") == true) {
-            return uri.lastPathSegment
-        }
-        return null
-    }
-
     private fun resolveContactId(uri: Uri?): Long? {
         if (uri == null) return null
         val path = uri.path ?: return null
@@ -514,8 +481,9 @@ fun Navigation(
         // Only push non-tab routes (detail/edit/import etc.) that are not already the host.
         // Tab routes are represented by the pager host and must not be pushed as separate entries
         // (GroupsList with an expand arg is handled via groupsExpandId above).
-        if (initialRoute.shouldPushOnto(backStack)) {
-            backStack.add(initialRoute)
+        val pending = initialRoute
+        if (pending != null && pending.shouldPushOnto(backStack)) {
+            backStack.add(pending)
         }
     }
 
@@ -734,7 +702,7 @@ private fun ContactsTabs(
     }
     val pagerState = rememberPagerState(initialPage = startPage, pageCount = { 3 })
     val tabs = listOf(
-        PagerTab(stringResource(R.string.contacts), { IconPerson() }) {
+        PagerTab(stringResource(UiR.string.contacts), { IconPerson() }) {
             ContactList(
                 viewModel = viewModel,
                 backStack = backStack,

@@ -12,6 +12,7 @@ import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.data.CDKEvent
 import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.data.hasYear
+import com.vayunmathur.library.ui.R as UiR
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atTime
@@ -125,7 +126,7 @@ object CalendarSyncHelper {
             put(CalendarContract.Calendars.OWNER_ACCOUNT, ACCOUNT_NAME)
             put(
                 CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
-                context.getString(R.string.contacts_calendar_name)
+                context.getString(UiR.string.contacts)
             )
             put(CalendarContract.Calendars.NAME, CALENDAR_NAME)
             put(CalendarContract.Calendars.CALENDAR_COLOR, CALENDAR_COLOR_ARGB.toInt())

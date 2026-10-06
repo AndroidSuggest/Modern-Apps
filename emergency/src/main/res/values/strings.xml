@@ -22,8 +22,6 @@
     <string name="section_allergies">Allergies</string>
     <!-- View screen: heading above the conditions group. Noun. -->
     <string name="section_conditions">Conditions</string>
-    <!-- View screen: heading above the medications group. Noun. -->
-    <string name="section_medications">Medications</string>
     <!-- View screen: shown when neither medical info nor contacts are set. -->
     <string name="no_info">No emergency information provided.</string>
 
@@ -41,8 +39,6 @@
     <string name="fail_pick_owner">Could not read that contact.</string>
     <!-- Edit screen: blood-type row. Noun phrase. -->
     <string name="field_blood_type">Blood type</string>
-    <!-- Edit screen: "unknown" option in the blood-type dropdown. Adjective. -->
-    <string name="blood_type_unknown">Unknown</string>
     <!-- Edit screen: organ-donor row. Noun phrase. -->
     <string name="field_organ_donor">Organ donor</string>
     <!-- Edit screen: "yes" option in the organ-donor dropdown. -->
@@ -70,9 +66,6 @@
     <string name="contacts_permission_hint">Allow Emergency to read contacts to choose who to call for you.</string>
     <!-- Contacts permission: button that requests the permission. Verb phrase. -->
     <string name="contacts_permission_action">Allow contacts access</string>
-
-    <!-- SOS: title of the countdown screen and its notification channel. Noun phrase. -->
-    <string name="sos_title">Emergency SOS</string>
     <!-- SOS: countdown subtitle naming the number about to be dialled. Has the number as its argument. -->
     <string name="sos_subtitle">Calling <xliff:g id="number" example="911">%1$s</xliff:g> in <xliff:g id="seconds" example="5">%2$d</xliff:g></string>
     <!-- SOS: slide-to-cancel control. Verb. -->
@@ -104,8 +97,4 @@
     <!-- Edit screen: explanation under the Health Connect import row. -->
     <string name="health_connect_hint">Show your allergies and current medications from Health Connect on the emergency card.</string>
 
-    <!-- Dialog button that stores the chosen value. Verb. -->
-    <string name="save">Save</string>
-    <!-- Dialog button that discards the change. Verb. -->
-    <string name="cancel">Cancel</string>
 </resources>

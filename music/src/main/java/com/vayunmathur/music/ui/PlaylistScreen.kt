@@ -31,7 +31,7 @@ fun PlaylistsTabContent(backStack: NavBackStack<Route>, musicViewModel: MusicVie
     // at the call site is a new instance every recomposition, which invalidates ListPage's
     // memoised sort.
     val byName = remember { compareBy<Playlist> { it.name } }
-    ListPage<Playlist, Route, Route.Song>(backStack, playlists, stringResource(R.string.page_title_playlists), {
+    ListPage<Playlist, Route, Route.Song>(backStack, playlists, stringResource(R.string.nav_playlists), {
         Text(it.name, modifier = Modifier.sharedText("music-playlist-name-${it.id}"))
     }, {
     }, {

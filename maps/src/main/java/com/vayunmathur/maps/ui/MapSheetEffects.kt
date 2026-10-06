@@ -14,7 +14,7 @@ import com.vayunmathur.library.ui.FreeHeightSheetState
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.ui.OverlayAction
 import com.vayunmathur.library.util.NavBackStack
-import com.vayunmathur.maps.R as MapsR
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.maps.Route
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.util.MapsSearchViewModel
@@ -167,7 +167,7 @@ internal fun MapSheetEffects(
 internal fun rememberSettingsAction(backStack: NavBackStack<Route>): List<OverlayAction> {
     // Rebuilt only when the label changes: `TopAppBarOverlay` takes a list, so an inline one
     // would be a fresh instance every recomposition of the map.
-    val settingsLabel = stringResource(MapsR.string.settings_title)
+    val settingsLabel = stringResource(UiR.string.settings)
     return remember(settingsLabel, backStack) {
         listOf(
             OverlayAction(

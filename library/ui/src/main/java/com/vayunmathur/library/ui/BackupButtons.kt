@@ -119,10 +119,10 @@ fun BackupButtons(format: BackupFormat) {
                         }
                     },
                     enabled = passwordText.isNotEmpty()
-                ) { Text(stringResource(R.string.backup_dialog_ok)) }
+                ) { Text(stringResource(R.string.ok)) }
             },
             dismissButton = {
-                TextButton(onClick = { showPasswordDialog = null }) { Text(stringResource(R.string.link_action_cancel)) }
+                TextButton(onClick = { showPasswordDialog = null }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }

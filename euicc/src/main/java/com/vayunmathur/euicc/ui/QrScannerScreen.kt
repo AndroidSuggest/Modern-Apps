@@ -34,6 +34,7 @@ import com.google.zxing.NotFoundException
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 import com.vayunmathur.euicc.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.euicc.Route
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.IconQrCode
@@ -73,9 +74,6 @@ fun QrScannerScreen(backStack: NavBackStack<Route>, onResult: (String) -> Unit) 
         hasPermission = granted
         if (!granted) messenger.show(deniedMessage)
     }
-    LaunchedEffect(Unit) {
-        if (!hasPermission) requestCamera()
-    }
 
     AppScaffold(
         title = stringResource(R.string.scan_qr_title),
@@ -102,7 +100,7 @@ fun QrScannerScreen(backStack: NavBackStack<Route>, onResult: (String) -> Unit) 
                 Modifier.fillMaxSize().padding(Spacing.xl),
                 contentAlignment = Alignment.BottomCenter,
             ) {
-                TextButton(onClick = { backStack.pop() }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { backStack.pop() }) { Text(stringResource(UiR.string.cancel)) }
             }
         }
     }

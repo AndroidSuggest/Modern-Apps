@@ -77,6 +77,11 @@ internal object SabrNgDownloadHelper {
     }
 
     @Throws(IOException::class)
+    private fun ensureWorkDir(dir: File) {
+        if (!dir.exists()) dir.mkdirs()
+    }
+
+    @Throws(IOException::class)
     private fun cleanupAfterFailure(outputFile: File, videoId: String, cause: Throwable): IOException {
         Log.e(TAG, "SABR download failed for $videoId", cause)
         if (outputFile.exists()) {

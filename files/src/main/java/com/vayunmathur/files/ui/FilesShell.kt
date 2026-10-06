@@ -50,6 +50,7 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.ModalDrawerSheet
 import com.vayunmathur.library.ui.ModalNavigationDrawer
 import com.vayunmathur.library.ui.NavigationDrawerItem
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.rememberDrawerState
@@ -206,7 +207,7 @@ private fun FilesDrawer(
             modifier = Modifier.padding(16.dp),
         )
         NavigationDrawerItem(
-            label = { Text(stringResource(R.string.home)) },
+            label = { Text(stringResource(UiR.string.home)) },
             icon = { IconHome() },
             selected = false,
             onClick = { go { actions.goHome() } },
@@ -313,5 +314,3 @@ fun dropTarget(
     override fun onExited(event: DragAndDropEvent) { onDragStateChange(false) }
     override fun onEnded(event: DragAndDropEvent) { onDragStateChange(false) }
 }
-
-

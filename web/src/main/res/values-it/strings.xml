@@ -30,13 +30,11 @@
     <string name="permissions">Autorizzazioni</string>
     <string name="no_permissions_set">Nessuna autorizzazione impostata</string>
     <string name="no_installed_apps">Nessuna app installata</string>
-    <string name="all">Tutti</string>
     <string name="delete_folder">Elimina cartella</string>
     <string name="no_bookmarks_yet">Ancora nessun segnalibro</string>
     <string name="no_bookmarks_in_this_folder">Nessun segnalibro in questa cartella</string>
     <string name="new_folder">Nuova cartella</string>
     <string name="folder_name">Nome cartella</string>
-    <string name="create">Crea</string>
     <string name="delete_bookmark">Eliminare il segnalibro?</string>
     <string name="delete_folder_2">Eliminare la cartella?</string>
     <string name="no_history_yet">Ancora nessuna cronologia</string>

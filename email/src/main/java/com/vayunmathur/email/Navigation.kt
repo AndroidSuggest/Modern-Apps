@@ -179,7 +179,7 @@ private fun DrawerInboxHeader(
     drawerState: DrawerState,
 ) {
     Text(
-        stringResource(R.string.unified_inbox),
+        stringResource(R.string.unified_inbox_label),
         modifier = Modifier.padding(16.dp),
         style = MaterialTheme.typography.titleMedium,
     )

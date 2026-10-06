@@ -25,9 +25,9 @@ internal fun ScaleBleManager.dispatch(value: ByteArray) {
                 // A pending wipe has to go first, since it invalidates any slot we hold.
                 if (DeviceController.scaleResetPending()) sendDeleteAllUsers() else syncUser()
             } else {
-                Log.d(TAG, "time frame acknowledged; starting measurement")
+                Log.d(ScaleBleManager.TAG, "time frame acknowledged; starting measurement")
                 handler.removeCallbacks(sendStart)
-                handler.postDelayed(sendStart, ACK_TO_START_MS)
+                handler.postDelayed(sendStart, ScaleBleManager.ACK_TO_START_MS)
             }
         }
         // Stored-record replay: the VA layout differs from the classic one.
@@ -73,7 +73,7 @@ internal fun ScaleBleManager.sendUserFrame(
     val gender = if (profile.sex == Sex.Male) 0 else 1
     val age = profile.age.coerceIn(6, 80)
     val heightMm = (profile.heightCm.coerceIn(40.0, 240.0) * 10).toInt()
-    Log.d(TAG, "user sync sub=$sub index=$index gender=$gender age=$age heightMm=$heightMm")
+    Log.d(ScaleBleManager.TAG, "user sync sub=$sub index=$index gender=$gender age=$age heightMm=$heightMm")
     enqueue(
         bleWriteChar,
         buildFrame(
@@ -87,7 +87,7 @@ internal fun ScaleBleManager.sendUserFrame(
 
 /** Frees all eight slots. Ten trailing zero bytes pad it to the length the scale expects. */
 internal fun ScaleBleManager.sendDeleteAllUsers() {
-    Log.d(TAG, "resetting all scale user slots")
+    Log.d(ScaleBleManager.TAG, "resetting all scale user slots")
     enqueue(
         bleWriteChar,
         buildFrame(CMD_USER_SYNC, VA_SUB_DELETE, VA_DELETE_ALL_MASK, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
@@ -99,12 +99,12 @@ internal fun ScaleBleManager.handleUserSyncResult(v: ByteArray) {
     val sub = v[2].toInt() and BYTE_MASK
     val index = v[3].toInt() and BYTE_MASK
     val ok = (v[4].toInt() and BYTE_MASK) == 1
-    Log.d(TAG, "user sync result sub=$sub index=$index ok=$ok")
+    Log.d(ScaleBleManager.TAG, "user sync result sub=$sub index=$index ok=$ok")
     when (sub) {
         VA_SUB_REGISTER -> {
             if (!ok) {
                 // The scale only fails this when all eight slots are occupied.
-                Log.w(TAG, "no free scale slots; falling back to visitor")
+                Log.w(ScaleBleManager.TAG, "no free scale slots; falling back to visitor")
                 sendVisitorUser()
                 return
             }
@@ -119,7 +119,7 @@ internal fun ScaleBleManager.handleUserSyncResult(v: ByteArray) {
         }
         VA_SUB_DELETE -> {
             DeviceController.onScaleResetDone()
-            if (ok) syncUser() else Log.w(TAG, "scale reset rejected")
+            if (ok) syncUser() else Log.w(ScaleBleManager.TAG, "scale reset rejected")
         }
     }
 }
@@ -145,7 +145,7 @@ internal fun ScaleBleManager.handleVaStored(v: ByteArray) {
     if (v.size < VA_STORED_MIN_SIZE) return
     val total = v[3].toInt() and BYTE_MASK
     if (total == 0) {
-        Log.d(TAG, "no stored records")
+        Log.d(ScaleBleManager.TAG, "no stored records")
         return
     }
     val index = v[4].toInt() and BYTE_MASK
@@ -154,7 +154,7 @@ internal fun ScaleBleManager.handleVaStored(v: ByteArray) {
     // filing someone else's weigh-in, or an unattributed one (0xF0), as ours.
     val ours = vaUserIndex
     if (ours != null && recordUser != ours) {
-        Log.d(TAG, "stored record $index/$total belongs to user $recordUser; skipped")
+        Log.d(ScaleBleManager.TAG, "stored record $index/$total belongs to user $recordUser; skipped")
         return
     }
     // Timestamp is little-endian here while weight and impedance below are big-endian; that
@@ -162,17 +162,17 @@ internal fun ScaleBleManager.handleVaStored(v: ByteArray) {
     var seconds = 0L
     for (i in 0 until TIME_BYTES) {
         seconds = seconds or
-            ((v[i + VA_STORED_TIME_OFFSET].toLong() and BYTE_MASK) shl (i * BITS_PER_BYTE))
+            ((v[i + VA_STORED_TIME_OFFSET].toLong() and BYTE_MASK.toLong()) shl (i * BITS_PER_BYTE))
     }
     val measuredAt = (BASE_TIME_2000_SECONDS + seconds) * MILLIS_PER_SECOND
     val now = System.currentTimeMillis()
     if (now < measuredAt || now - measuredAt > MAX_STORED_AGE_MILLIS) {
-        Log.d(TAG, "stored record $index/$total timestamp implausible; dropped")
+        Log.d(ScaleBleManager.TAG, "stored record $index/$total timestamp implausible; dropped")
         return
     }
     val weight = decodeWeightByMultiplication(twoByteInt(v[10], v[11]), kgWeightRatio)
     if (weight <= 0) return
-    Log.d(TAG, "stored record $index/$total user=$recordUser weight=$weight")
+    Log.d(ScaleBleManager.TAG, "stored record $index/$total user=$recordUser weight=$weight")
     DeviceController.onScaleHistory(
         weightKg = weight,
         r50 = fourResTwoByte2Int(v[VA_STORED_R50_HI], v[VA_STORED_R50_LO]),
@@ -255,7 +255,7 @@ internal fun ScaleBleManager.startHandshake() {
     val age = profile.age.coerceIn(6, 80)
     // The config frame inverts the sex encoding used everywhere else in the SDK.
     val gender = if (profile.sex == Sex.Male) 0 else 1
-    Log.d(TAG, "handshake: scaleType=$scaleType h=$height age=$age gender=$gender holtek=$isHoltek va=$isVaScale")
+    Log.d(ScaleBleManager.TAG, "handshake: scaleType=$scaleType h=$height age=$age gender=$gender holtek=$isHoltek va=$isVaScale")
     if (isVaScale) {
         // The VA config frame carries display settings only; the profile goes in 0xA0 instead.
         enqueue(configChar, buildCmd(CMD_CONFIG, UNIT_KG, LIGHT_INTERVAL, 0, 0, 0))
@@ -265,7 +265,7 @@ internal fun ScaleBleManager.startHandshake() {
     timeRetries = 0
     handler.removeCallbacks(timeRetry)
     // Holtek waits for its own 0x14 packet before it will take the time frame.
-    if (!isHoltek) handler.postDelayed(timeRetry, CONFIG_TO_TIME_MS)
+    if (!isHoltek) handler.postDelayed(timeRetry, ScaleBleManager.CONFIG_TO_TIME_MS)
 }
 
 internal fun ScaleBleManager.sendTimeSync() {
@@ -346,7 +346,7 @@ internal fun ScaleBleManager.handleStored(v: ByteArray) {
     var seconds = 0L
     for (i in 0 until TIME_BYTES) {
         seconds = seconds or
-            ((v[i + CLASSIC_STORED_TIME_OFFSET].toLong() and BYTE_MASK) shl (i * BITS_PER_BYTE))
+            ((v[i + CLASSIC_STORED_TIME_OFFSET].toLong() and BYTE_MASK.toLong()) shl (i * BITS_PER_BYTE))
     }
     val measuredAt = (BASE_TIME_2000_SECONDS + seconds) * MILLIS_PER_SECOND
     val now = System.currentTimeMillis()

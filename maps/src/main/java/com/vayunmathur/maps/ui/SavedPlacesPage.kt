@@ -35,6 +35,7 @@ import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.maps.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.maps.Route
 import com.vayunmathur.maps.data.SavedPlace
 import com.vayunmathur.maps.util.SavedPlacesViewModel
@@ -67,7 +68,7 @@ fun SavedPlacesPage(backStack: NavBackStack<Route>, viewModel: SavedPlacesViewMo
                 .verticalScroll(rememberScrollState()),
         ) {
             // --- Flat saved list ---
-            SettingsSection(title = stringResource(R.string.saved_list_header)) {
+            SettingsSection(title = stringResource(UiR.string.saved)) {
                 if (saved.isEmpty()) {
                     SettingsRow(
                         title = stringResource(R.string.saved_list_empty),
@@ -121,7 +122,7 @@ fun SavedPlacesPage(backStack: NavBackStack<Route>, viewModel: SavedPlacesViewMo
         TextEntryDialog(
             title = stringResource(R.string.saved_rename_title),
             initial = target.name,
-            confirmLabel = stringResource(R.string.saved_rename_confirm),
+            confirmLabel = stringResource(UiR.string.rename),
             onDismiss = { renameTarget = null },
             onConfirm = { newName ->
                 viewModel.renameSaved(target, newName)
@@ -134,7 +135,7 @@ fun SavedPlacesPage(backStack: NavBackStack<Route>, viewModel: SavedPlacesViewMo
         TextEntryDialog(
             title = stringResource(R.string.saved_lists_new),
             initial = "",
-            confirmLabel = stringResource(R.string.saved_lists_create),
+            confirmLabel = stringResource(UiR.string.create),
             onDismiss = { showCreateList = false },
             onConfirm = { name ->
                 viewModel.createList(name)
@@ -177,7 +178,7 @@ private fun SavedPlaceRow(
             IconButton(onClick = { menuOpen = true }) { IconMoreVert() }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.saved_action_rename)) },
+                    text = { Text(stringResource(UiR.string.rename)) },
                     onClick = { menuOpen = false; onRename() },
                 )
                 DropdownMenuItem(
@@ -185,7 +186,7 @@ private fun SavedPlaceRow(
                     onClick = { menuOpen = false; onAddToList() },
                 )
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.saved_action_remove)) },
+                    text = { Text(stringResource(UiR.string.remove)) },
                     onClick = { menuOpen = false; onRemove() },
                 )
             }
@@ -210,7 +211,7 @@ private fun TextEntryDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.saved_cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
         title = { Text(title) },
         text = {
@@ -235,11 +236,11 @@ private fun AddToListDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             Button(onClick = { onCreateAndAdd(newName) }, enabled = newName.isNotBlank()) {
-                Text(stringResource(R.string.saved_lists_create))
+                Text(stringResource(UiR.string.create))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.saved_cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
         title = { Text(stringResource(R.string.saved_action_add_to_list)) },
         text = {

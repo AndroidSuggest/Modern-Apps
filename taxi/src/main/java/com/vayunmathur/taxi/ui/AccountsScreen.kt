@@ -35,6 +35,7 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.taxi.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.taxi.data.AddCardResult
 import com.vayunmathur.taxi.data.ChargeAccount
 import com.vayunmathur.taxi.data.PaymentActionResult
@@ -92,7 +93,7 @@ fun AccountsScreen(onConnectLyft: () -> Unit) {
         busyId = null
     }
 
-    AppScaffold(title = stringResource(R.string.nav_settings), scrollBehavior = appBarScrollBehavior()) { padding ->
+    AppScaffold(title = stringResource(UiR.string.settings), scrollBehavior = appBarScrollBehavior()) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -199,7 +200,7 @@ fun AccountsScreen(onConnectLyft: () -> Unit) {
             },
             dismissButton = {
                 TextButton(enabled = !signingOut, onClick = { showSignOut = false }) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             },
         )
@@ -267,12 +268,12 @@ private fun PaymentRow(
         } else {
             if (!account.isDefault) {
                 TextButton(onClick = onSetDefault) {
-                    Text(stringResource(R.string.payment_set_default))
+                    Text(stringResource(R.string.card_set_default))
                 }
             }
             TextButton(onClick = onRemove) {
                 Text(
-                    stringResource(R.string.payment_remove),
+                    stringResource(UiR.string.remove),
                     color = MaterialTheme.colorScheme.error,
                 )
             }

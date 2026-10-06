@@ -2,7 +2,6 @@
 <resources>
     <string name="recent">最近</string>
     <string name="history">履歴</string>
-    <string name="create">作成</string>
     <string name="app_name">ウェブ</string>
     <string name="search_or_enter_address">検索またはアドレスを入力</string>
     <string name="reload">再読み込み</string>
@@ -46,7 +45,6 @@
     <string name="permissions">権限</string>
     <string name="no_permissions_set">権限がありません</string>
     <string name="no_installed_apps">インストールされたアプリがありません</string>
-    <string name="all">全て</string>
     <string name="delete_folder">フォルダを削除</string>
     <string name="no_bookmarks_yet">ブックマークがありません</string>
     <string name="no_bookmarks_in_this_folder">このフォルダにブックマークがありません</string>
@@ -88,7 +86,6 @@
     <string name="shields">シールド</string>
     <string name="shields_for_host">%1$s のシールド</string>
     <string name="shields_level">保護レベル</string>
-    <string name="shields_level_off">オフ</string>
     <string name="shields_level_off_desc">広告、トラッカー、フィンガープリントのブロックなし</string>
     <string name="shields_level_standard">標準</string>
     <string name="shields_level_standard_desc">広告とトラッカーをブロック</string>

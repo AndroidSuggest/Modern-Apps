@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.findfamily.R
+import com.vayunmathur.library.ui.R as UiR
 import androidx.compose.runtime.Composable
 import com.vayunmathur.findfamily.data.LocationSource
 import com.vayunmathur.findfamily.data.LocationValue
@@ -43,7 +44,7 @@ import kotlinx.datetime.toLocalDateTime
 @Composable
 fun UserCard(user: User, locationValue: LocationValue?, showSupportingContent: Boolean, onClick: () -> Unit) {
     val context = LocalContext.current
-    val lastUpdatedTime = locationValue?.let { timestring(it.timestamp, false, context) } ?: stringResource(R.string.last_updated_never)
+    val lastUpdatedTime = locationValue?.let { timestring(it.timestamp, false, context) } ?: stringResource(R.string.auto_toggle_never)
     val speedString = (locationValue?.speed ?: 0f).formatSpeed()
     val sinceTime = user.lastLocationChangeTime.toLocalDateTime(TimeZone.currentSystemDefault())
     val timeSinceEntry = Clock.System.now() - user.lastLocationChangeTime
@@ -54,7 +55,7 @@ fun UserCard(user: User, locationValue: LocationValue?, showSupportingContent: B
         else -> {
             val formattedTime = DateString.time(sinceTime.time, is24Hour(context))
             val formattedDate = when (Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toEpochDays() - sinceTime.date.toEpochDays()) {
-                0L -> stringResource(R.string.today)
+                0L -> stringResource(UiR.string.today)
                 1L -> stringResource(R.string.yesterday)
                 else -> DateString.monthDayYear(sinceTime.date)
             }

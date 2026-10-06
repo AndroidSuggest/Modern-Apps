@@ -6,7 +6,8 @@ package com.vayunmathur.communicate.data.whatsapp
 internal object BinaryTokenTablesA {
 
     val doubleByteTokensA = arrayOf(
-        "read-self",
+        arrayOf(
+            "read-self",
         "active",
         "fbns",
         "protocol",

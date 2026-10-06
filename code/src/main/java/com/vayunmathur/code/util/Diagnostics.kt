@@ -273,7 +273,6 @@ private class BracketScanner(val text: String, val allowLineComment: Boolean) {
         }
     }
 }
-}
 
 /** Advances past a `"..."`/`'...'`/`` `...` `` string starting at [from]; returns the index after it. */
 private inline fun skipString(text: String, from: Int, quote: Char, onNewline: (Int) -> Unit): Int {

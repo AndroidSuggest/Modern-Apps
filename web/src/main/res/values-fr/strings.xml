@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="history">Historique</string>
-    <string name="all">Tout</string>
-    <string name="create">Créer</string>
     <string name="storage">Stockage</string>
     <string name="clear_browsing_data_2">Effacer les données de navigation ?</string>
     <string name="blocks_doubleclick_googletagmanager_anal">Bloque DoubleClick, Google Tag Manager et les outils d’analyse</string>
@@ -98,7 +96,6 @@
     <string name="shields_down">Protections désactivées pour ce site</string>
     <string name="shields_for_host">Protections pour %1$s</string>
     <string name="shields_level">Niveau de protection</string>
-    <string name="shields_level_off">Désactivé</string>
     <string name="shields_level_off_desc">Aucun blocage des publicités, des traqueurs ou du pistage par empreinte numérique</string>
     <string name="shields_level_standard">Standard</string>
     <string name="shields_level_standard_desc">Bloque les publicités et les traqueurs</string>

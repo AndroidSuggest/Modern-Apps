@@ -17,6 +17,7 @@ import com.vayunmathur.library.ui.SettingsSwitchRow
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.measure.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.measure.data.model.UnitSystem
 import com.vayunmathur.measure.platform.SettingsActions
 import com.vayunmathur.measure.platform.SettingsUiState
@@ -30,7 +31,7 @@ fun SettingsContent(
     onOpenSaved: () -> Unit = {},
 ) {
     AppScaffold(
-        title = stringResource(R.string.settings_title),
+        title = stringResource(UiR.string.settings),
         onNavigateBack = onBack,
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
@@ -78,7 +79,7 @@ fun SettingsContent(
                     enabled = state.levelCalibrated,
                     onClick = actions::clearLevelCalibration,
                     trailingContent = {
-                        if (state.levelCalibrated) Text(stringResource(R.string.settings_clear))
+                        if (state.levelCalibrated) Text(stringResource(UiR.string.clear))
                     },
                 )
             }

@@ -65,7 +65,7 @@ private fun TextEditorScreen(uri: Uri, viewModel: TextEditorViewModel) {
     if (content == null) {
         // Loading: render the bar only so the screen isn't blank during async read.
         AppScaffold(
-            title = uri.lastPathSegment ?: stringResource(R.string.file_fallback),
+            title = uri.lastPathSegment ?: stringResource(R.string.type_file),
             modifier = Modifier.imePadding(),
             scrollBehavior = appBarScrollBehavior(),
         ) { }
@@ -81,7 +81,7 @@ private fun TextEditorLoaded(uri: Uri, initialContent: String, viewModel: TextEd
     var isEditing by remember { mutableStateOf(false) }
 
     AppScaffold(
-        title = uri.lastPathSegment ?: stringResource(R.string.file_fallback),
+        title = uri.lastPathSegment ?: stringResource(R.string.type_file),
         modifier = Modifier.imePadding(),
         actions = {
             IconButton(onClick = {

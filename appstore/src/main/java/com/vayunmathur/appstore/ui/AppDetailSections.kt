@@ -14,6 +14,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.appstore.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.data.installer.InstallStage
@@ -67,7 +68,7 @@ internal fun AppInstallActions(
                         Text(stringResource(R.string.action_update))
                     }
                     FilledTonalButton(onClick = { actions.openApp(app.packageName) }) {
-                        Text(stringResource(R.string.open))
+                        Text(stringResource(UiR.string.open))
                     }
                 }
 
@@ -76,7 +77,7 @@ internal fun AppInstallActions(
                         onClick = { actions.openApp(app.packageName) },
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text(stringResource(R.string.open))
+                        Text(stringResource(UiR.string.open))
                     }
                     OutlinedButton(onClick = onUninstall) { IconDelete() }
                 }

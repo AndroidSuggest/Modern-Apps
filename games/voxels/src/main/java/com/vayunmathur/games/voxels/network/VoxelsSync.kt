@@ -265,7 +265,7 @@ object VoxelsSync {
                 wsSession = null
                 if (!isActive) break
                 delay(backoff)
-                backoff = (backoff * 2).coerceAtMost(RECONNECT_MAX_MS)
+                backoff = (backoff * 2).coerceAtMost(RECONNECT_MAX_MS.toLong())
             }
         }
     }

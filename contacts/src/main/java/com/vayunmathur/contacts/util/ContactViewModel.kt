@@ -352,8 +352,8 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         // so we trigger it.
         // Use a direct call to avoid extra launch overhead: we are already on IO, but
         // loadAccounts() launches its own coroutine, so just trigger it.
-        // To keep accounts in sync, launch a refresh:
-        launch { loadAccountsInternal() }
+    // To keep accounts in sync, refresh directly: already on IO via syncFromSystem().
+        loadAccountsInternal()
     }
 
     fun getContact(contactId: Long): Contact? {

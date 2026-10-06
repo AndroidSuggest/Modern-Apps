@@ -51,11 +51,9 @@ import kotlinx.coroutines.delay
  * Self-contained (its own ExoPlayer, no library/database dependency) so it stays fast and
  * works before the library has been scanned.
  */
-class AudioPreviewActivity : ComponentActivity() {
+private const val POSITION_POLL_MS = 250L
 
-    private companion object {
-        const val POSITION_POLL_MS = 250L
-    }
+class AudioPreviewActivity : ComponentActivity() {
 
     private var player: ExoPlayer? = null
 

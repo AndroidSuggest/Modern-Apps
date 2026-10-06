@@ -32,6 +32,7 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.youpipe.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.util.YouPipeViewModel
 import kotlinx.coroutines.launch
@@ -97,7 +98,7 @@ fun CreateSubscriptionCategory(backStack: NavBackStack<Route>, youPipeViewModel:
                     enabled = categoryName.isNotBlank() && selectedSubscriptions.isNotEmpty() && (id != null || categoryName !in categoryNames)
                 ) {
                     if(id == null)
-                        Text(stringResource(R.string.action_create))
+                        Text(stringResource(UiR.string.create))
                     else
                         Text(stringResource(R.string.action_update))
                 }

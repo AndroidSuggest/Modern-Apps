@@ -85,6 +85,14 @@
         <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> song found</item>
         <item quantity="other"><xliff:g id="count" example="428">%1$d</xliff:g> songs found</item>
     </plurals>
+    <!-- Settings row: embeds cover art into downloaded files. Noun phrase -->
+    <string name="embed_cover_art">Cover art</string>
+    <!-- Settings row: explains cover art is saved inside downloaded files. Sentence -->
+    <string name="embed_cover_art_description">Save cover art inside downloaded files.</string>
+    <!-- Settings row: fetches synced lyrics for downloads. Noun -->
+    <string name="fetch_lyrics">Lyrics</string>
+    <!-- Settings row: explains synced lyrics are fetched and saved into music files. Sentence -->
+    <string name="fetch_lyrics_description">Find synced lyrics online and save them into music files.</string>
     <!-- Settings row: picks where downloaded audio is fetched from. Noun. -->
     <string name="download_source">Download from</string>
     <!-- Download source: YouTube. Brand name, do not translate. -->

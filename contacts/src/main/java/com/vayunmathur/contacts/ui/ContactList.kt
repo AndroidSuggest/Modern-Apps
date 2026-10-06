@@ -13,6 +13,7 @@ import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.util.ContactListUiState
 import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.contacts.util.ContactsActions
+import com.vayunmathur.contacts.util.loadAccounts
 import com.vayunmathur.library.util.NavBackStack
 
 /** Binds [ContactViewModel] to the stateless [ContactListScreen]. */

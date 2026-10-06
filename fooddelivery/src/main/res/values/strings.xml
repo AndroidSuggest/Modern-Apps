@@ -49,7 +49,6 @@
     <string name="order_not_found">Order not found</string>
     <string name="no_map_location">Location not available yet</string>
     <string name="your_courier">Your courier</string>
-    <string name="call">Call</string>
     <string name="delivered_photo">Delivered</string>
     <!-- %1$d = minutes remaining, %2$s = clock time e.g. 7:45 PM -->
     <string name="eta_minutes">Arriving in about %1$d min (%2$s)</string>
@@ -59,7 +58,6 @@
     <string name="feedback_optional">Feedback (optional)</string>
     <string name="add_extra_tip">Add an extra tip</string>
     <string name="submit">Submit</string>
-    <string name="action_cancel">Cancel</string>
     <string name="mark_picked_up">Mark picked up</string>
     <string name="promo_code_optional">Promo code (optional)</string>
     <string name="calculating_tax_fees">Calculating tax &amp; fees…</string>
@@ -92,7 +90,6 @@
     <string name="default_address">Default</string>
     <string name="set_default">Set Default</string>
     <string name="edit">Edit</string>
-    <string name="email">Email</string>
     <string name="label_e_g_home_work">Label (e.g. Home, Work)</string>
     <string name="street_address">Street address *</string>
     <string name="city">City *</string>

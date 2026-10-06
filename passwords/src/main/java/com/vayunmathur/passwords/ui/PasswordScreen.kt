@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.sharedText
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -84,7 +85,7 @@ fun PasswordScreen(
     LazyListScaffold(
         topBar = {
             TopAppBar(
-                title = { Text(password.name.ifBlank { stringResource(R.string.section_password) }) },
+                title = { Text(password.name.ifBlank { stringResource(R.string.label_password) }) },
                 actions = {
                     IconButton(onClick = { actions.delete(password); onBack() }) {
                         IconDelete()
@@ -164,7 +165,7 @@ fun PasswordScreen(
                         }
                         if (password.email.isNotBlank()) {
                             PasswordScreenSection(
-                                label = stringResource(R.string.label_email),
+                                label = stringResource(UiR.string.email),
                                 value = password.email,
                                 onCopy = { actions.copyToClipboard("email", password.email) },
                             )
@@ -178,7 +179,7 @@ fun PasswordScreen(
         item {
             Card(shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
-                    Text(stringResource(R.string.section_password), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.label_password), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
 
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -268,7 +269,7 @@ fun PasswordScreen(
                 Card(shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Text(stringResource(R.string.section_note), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                            Text(stringResource(UiR.string.note), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                             IconButton(onClick = { actions.copyToClipboard("note", password.note) }) {
                                 IconCopy()
                             }
@@ -336,8 +337,6 @@ private fun PasskeyRow(passkey: Passkey, onClick: () -> Unit) {
         }
     }
 }
-
-fun sanitizeUrl
 
 fun sanitizeUrl(input: String): String {
     val trimmed = input.trim()

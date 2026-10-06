@@ -36,11 +36,9 @@
     <string name="ar_unavailable_title">Pomiar AR jest niedostępny</string>
     <string name="ar_unavailable_native">Pomiar AR wymaga wbudowanego silnika śledzenia ruchu, który nie jest dostępny na tym urządzeniu.</string>
     <string name="ar_unavailable_camera">Pomiary AR wymagają dostępu do aparatu.</string>
-    <string name="saved_title">Zapisano</string>
     <string name="saved_empty_title">Brak zapisanych pomiarów</string>
     <string name="saved_empty_body">Wykonaj pomiar AR i dotknij „Zapisz”</string>
     <string name="saved_default_label">Pomiar</string>
-    <string name="settings_title">Ustawienia</string>
     <string name="settings_section_units">Jednostki</string>
     <string name="settings_imperial_units">Jednostki imperialne</string>
     <string name="settings_imperial_units_summary">Stopy i cale zamiast metrów</string>
@@ -50,7 +48,6 @@
     <string name="settings_use_true_north_summary">Uwzględnia deklinację magnetyczną dla Twojej lokalizacji</string>
     <string name="settings_section_calibration">Kalibracja</string>
     <string name="settings_level_uncalibrated_summary">Używanie surowego odczytu grawitacji</string>
-    <string name="settings_clear">Wyczyść</string>
     <string name="settings_section_general">Ogólne</string>
     <string name="settings_haptic_feedback">Wibracje haptyczne</string>
     <string name="settings_keep_screen_on">Utrzymuj ekran włączony</string>

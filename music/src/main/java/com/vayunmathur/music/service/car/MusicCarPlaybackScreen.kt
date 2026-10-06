@@ -29,7 +29,7 @@ class MusicCarPlaybackScreen(
         const val MIN_API_MEDIA_STYLE = 9
     }
 
-    private val listener
+    private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             invalidate()
         }
@@ -40,6 +40,7 @@ class MusicCarPlaybackScreen(
         state.observe { invalidate() }
     }
 
+    @Suppress("DEPRECATION")
     override fun onGetTemplate(): Template {
         // API 8+: the dedicated media playback template. The host renders
         // transport from the registered MediaSession token (see
@@ -71,6 +72,7 @@ class MusicCarPlaybackScreen(
         return meta?.title?.toString() ?: "Now playing"
     }
 
+    @Suppress("DEPRECATION")
     private fun legacyPaneTemplate(): Template {
         val controller = state.controller
         val meta = controller?.currentMediaItem?.mediaMetadata

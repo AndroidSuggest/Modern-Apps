@@ -21,6 +21,7 @@ import com.vayunmathur.library.ui.IconCheckCircle
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.maps.R
+import com.vayunmathur.library.ui.R as UiR
 
 /**
  * End-of-trip arrival card. Shows a confirmation with
@@ -64,7 +65,7 @@ fun ArrivalSummary(
             }
             Spacer(Modifier.height(12.dp))
             FilledTonalButton(onClick = onDismiss) {
-                Text(androidx.compose.ui.res.stringResource(R.string.nav_arrived_dismiss))
+                Text(androidx.compose.ui.res.stringResource(UiR.string.dismiss))
             }
         }
     }

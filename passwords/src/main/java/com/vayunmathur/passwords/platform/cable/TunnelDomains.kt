@@ -56,15 +56,15 @@ object TunnelDomains {
 
         var result = 0L
         for (i in 0 until DIGEST_QWORDS) {
-            result = result or ((digest[i].toLong() and BYTE_MASK) shl (BYTE_SHIFT * i))
+            result = result or ((digest[i].toLong() and BYTE_MASK.toLong()) shl (BYTE_SHIFT * i))
         }
 
-        val tld = TLDS[(result and TLD_MASK).toInt()]
+        val tld = TLDS[(result and TLD_MASK.toLong()).toInt()]
         result = result ushr TLD_BITS
 
         val sb = StringBuilder("cable.")
         while (result != 0L) {
-            sb.append(BASE32[(result and BASE32_MASK).toInt()])
+            sb.append(BASE32[(result and BASE32_MASK.toLong()).toInt()])
             result = result ushr BASE32_BITS
         }
         return sb.append('.').append(tld).toString()

@@ -148,7 +148,7 @@ fun ChannelHeader(channelInfo: ChannelInfo) {
     ListItem(modifier = Modifier.sharedContainer("youpipe-channel-${channelInfo.channelID}"), overlineContent = {
 
     }, supportingContent = {
-        Text(stringResource(R.string.channel_info, countString(context, channelInfo.subscribers)))
+        Text(stringResource(R.string.subscribers_count, countString(context, channelInfo.subscribers)))
     }, leadingContent = {
         AsyncImage(
             model = ImageRequest.Builder(context)

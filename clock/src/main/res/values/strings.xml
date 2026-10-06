@@ -5,12 +5,8 @@
     <!-- Navigation / Page labels: bottom nav + top bar titles -->
     <!-- Bottom nav + TopAppBar title for Alarms screen. Noun. -->
     <string name="label_alarm">Alarm</string>
-    <!-- Bottom nav + TopAppBar title for World Clock screen. Noun. -->
-    <string name="label_clock">Clock</string>
     <!-- Bottom nav + TopAppBar title for Timer screen. Noun. Also fallback timer name -->
     <string name="label_timer">Timer</string>
-    <!-- Bottom nav + TopAppBar title for Stopwatch screen. Noun. -->
-    <string name="label_stopwatch">Stopwatch</string>
 
     <!-- AlarmPage: empty state -->
     <!-- Empty state CTA button to create first alarm. Verb. -->
@@ -81,26 +77,16 @@
     <string name="action_pause">Pause</string>
     <!-- Action to resume paused timer/stopwatch. Verb. -->
     <string name="action_resume">Resume</string>
-    <!-- Action to cancel/remove timer. Verb. -->
-    <string name="action_cancel">Cancel</string>
-    <!-- Action to reset timer/stopwatch to zero. Verb. -->
-    <string name="action_reset">Reset</string>
 
     <!-- Stopwatch notification specific actions -->
     <!-- Action to record a lap in stopwatch notification. Verb/Noun. -->
     <string name="action_lap">Lap</string>
-    <!-- Action to stop stopwatch from notification. Verb. -->
-    <string name="action_stop">Stop</string>
 
     <!-- NewTimerDialog: create new timer -->
     <!-- Dialog title: create new timer -->
     <string name="label_new_timer">New Timer</string>
     <!-- Text field label for timer name/label input. Noun. -->
     <string name="field_label">Label</string>
-    <!-- Generic cancel button. Verb. Dismisses dialog -->
-    <string name="button_cancel">Cancel</string>
-    <!-- Generic save button. Verb. Saves timer/alarm -->
-    <string name="button_save">Save</string>
 
     <!-- SelectTimeZonesDialog: world clock city picker -->
     <!-- Dialog title: select cities for world clock -->
@@ -129,8 +115,6 @@
     <string name="defaults_for_new_alarms">Defaults for new alarms</string>
 
     <!-- AlarmSettingsPage: volume and ringtone dropdown options -->
-    <!-- Dropdown option: gradual volume increase disabled -->
-    <string name="gradual_off">Off</string>
     <string name="timer_name_optional">Timer name (optional)</string>
     <string name="alarm_label_hint">Alarm name (optional)</string>
     <string name="sound">Sound</string>

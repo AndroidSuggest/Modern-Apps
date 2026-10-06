@@ -22,7 +22,7 @@ fun AddBookmarkDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
         text = { TextField(
             value = name,
             onValueChange = { name = it },
-            label = { Text(stringResource(R.string.name)) },
+            label = { Text(stringResource(UiR.string.name)) },
             singleLine = true) },
         confirmButton = { TextButton(onClick = { if (name.isNotBlank()) { onAdd(name); onDismiss() } }) { Text(stringResource(UiR.string.add)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }

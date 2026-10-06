@@ -157,7 +157,7 @@ fun ArrowsGameScreen(
                                 Button(
                                     onClick = { actions.nextLevel() },
                                     modifier = Modifier.fillMaxWidth(),
-                                ) { Text(stringResource(R.string.next_level)) }
+                                ) { Text(stringResource(UiR.string.next_level)) }
                             }
                         }
 
@@ -190,7 +190,7 @@ fun ArrowsGameScreen(
                                 if (hasProgress) confirmRestart = true
                                 else actions.restartLevel()
                             }) {
-                                Text(stringResource(R.string.restart))
+                                Text(stringResource(UiR.string.restart))
                             }
                         }
                     }
@@ -203,7 +203,7 @@ fun ArrowsGameScreen(
         ConfirmDialog(
             title = stringResource(R.string.confirm_restart_title),
             message = stringResource(R.string.confirm_restart_message),
-            confirmLabel = stringResource(R.string.restart),
+            confirmLabel = stringResource(UiR.string.restart),
             dismissLabel = stringResource(UiR.string.cancel),
             destructive = true,
             onConfirm = { actions.restartLevel() },

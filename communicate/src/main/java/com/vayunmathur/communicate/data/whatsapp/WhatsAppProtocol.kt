@@ -103,8 +103,12 @@ object WhatsAppProtocol {
      * Implements Noise_XX_25519_AESGCM_SHA256 as per whatsmeow/socket/noisehandshake.go
      */
     class NoiseHandshake {
-        private const val HASH_SIZE = 32
-        private const val EXPANDED_SIZE = 64
+        companion object {
+            private const val HASH_SIZE = 32
+            private const val EXPANDED_SIZE = 64
+            private const val GCM_IV_OFFSET = 8
+            private const val GCM_IV_LENGTH = 4
+        }
         private var hash = ByteArray(32)
         private var salt = ByteArray(32)
         private var key: SecretKeySpec? = null
@@ -181,8 +185,6 @@ object WhatsAppProtocol {
 
         private fun generateIV(counter: UInt): ByteArray {
             val iv = ByteArray(12)
-            private const val GCM_IV_OFFSET = 8
-    private const val GCM_IV_LENGTH = 4
 
             ByteBuffer.wrap(iv, GCM_IV_OFFSET, GCM_IV_LENGTH)
                 .order(ByteOrder.BIG_ENDIAN)

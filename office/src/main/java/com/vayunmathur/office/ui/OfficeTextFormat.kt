@@ -190,7 +190,7 @@ internal fun TextFormatControls(
         }
         DropdownMenu(expanded = tableMenu, onDismissRequest = { tableMenu = false }) {
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.insert_table_1)) },
+                text = { Text(stringResource(R.string.insert_table)) },
                 onClick = { tableMenu = false; actions.onInsertTable() })
             HorizontalDivider()
             DropdownMenuItem(

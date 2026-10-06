@@ -114,3 +114,15 @@ internal fun SignalProtocol.destAciFor(envelope: SignalServiceProtos.Envelope): 
     envelope.hasDestinationServiceId() -> envelope.destinationServiceId
     else -> null
 }
+
+/** Client send timestamp, or 0 when absent. */
+internal fun SignalProtocol.timestampFor(envelope: SignalServiceProtos.Envelope): Long =
+    if (envelope.hasClientTimestamp()) envelope.clientTimestamp else 0L
+
+/** Server delivery UUID string, or null when absent. */
+internal fun SignalProtocol.serverGuidFor(envelope: SignalServiceProtos.Envelope): String? =
+    if (envelope.hasServerGuid()) envelope.serverGuid else null
+
+/** Server delivery UUID bytes, or null when absent. */
+internal fun SignalProtocol.serverGuidBinaryFor(envelope: SignalServiceProtos.Envelope): ByteArray? =
+    if (envelope.hasServerGuidBinary()) envelope.serverGuidBinary.toByteArray() else null

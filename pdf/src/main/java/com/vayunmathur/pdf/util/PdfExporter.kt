@@ -62,7 +62,7 @@ suspend fun savePdfToUri(
 private const val A4_LONG_SIDE_PT = 842f
 private const val MIN_PAGE_DIM = 1
 
-private fun renderImagePage(
+private suspend fun renderImagePage(
     context: Context,
     pdfDocument: PdfDocument,
     capturedImage: CapturedImage,

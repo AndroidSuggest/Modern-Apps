@@ -40,6 +40,7 @@ import com.vayunmathur.library.ui.IconLibraryMusic
 import com.vayunmathur.library.ui.IconPlay
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TextField
@@ -87,8 +88,8 @@ fun PlaylistDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicVi
                         ConfirmDialog(
                             title = stringResource(R.string.dialog_delete_playlist),
                             message = stringResource(R.string.dialog_delete_playlist_confirm, playlist!!.name),
-                            confirmLabel = stringResource(R.string.dialog_delete),
-                            dismissLabel = stringResource(R.string.dialog_cancel),
+                            confirmLabel = stringResource(UiR.string.delete),
+                            dismissLabel = stringResource(UiR.string.cancel),
                             onConfirm = { val toDelete = playlist!!
                                     backStack.pop()
                                     musicViewModel.deletePlaylist(toDelete) },
@@ -140,12 +141,12 @@ fun PlaylistDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicVi
                                         musicViewModel.renamePlaylist(playlist!!, newName)
                                         showRenameDialog = false
                                     }) {
-                                        Text(stringResource(R.string.dialog_rename))
+                                        Text(stringResource(UiR.string.rename))
                                     }
                                 },
                                 dismissButton = {
                                     TextButton(onClick = { showRenameDialog = false }) {
-                                        Text(stringResource(R.string.dialog_cancel))
+                                        Text(stringResource(UiR.string.cancel))
                                     }
                                 }
                             )

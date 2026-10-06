@@ -639,14 +639,12 @@ object CastAudioTap : TeeAudioProcessor.AudioBufferSink {
         return (bytes[offset].toInt() and BYTE_MASK) or (bytes[offset + 1].toInt() shl BYTE_SHIFT)
     }
 
-    companion object {
-        private const val BYTES_PER_SAMPLE = 2
-        private const val BYTES_PER_FRAME = 4
-        private const val STEREO_CHANNEL_COUNT = 2
-        private const val BYTE_MASK = 0xFF
-        private const val BYTE_SHIFT = 8
-        private const val FIRST_BYTE_OFFSET = 1
-        private const val SECOND_BYTE_OFFSET = 2
-        private const val THIRD_BYTE_OFFSET = 3
-    }
+    private const val BYTES_PER_SAMPLE = 2
+    private const val BYTES_PER_FRAME = 4
+    private const val STEREO_CHANNEL_COUNT = 2
+    private const val BYTE_MASK = 0xFF
+    private const val BYTE_SHIFT = 8
+    private const val FIRST_BYTE_OFFSET = 1
+    private const val SECOND_BYTE_OFFSET = 2
+    private const val THIRD_BYTE_OFFSET = 3
 }

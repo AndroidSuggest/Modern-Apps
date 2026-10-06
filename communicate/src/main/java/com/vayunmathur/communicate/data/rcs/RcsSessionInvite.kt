@@ -1,5 +1,6 @@
 package com.vayunmathur.communicate.data.rcs
 
+import android.util.Log
 import java.util.UUID
 
 /**
@@ -161,7 +162,7 @@ internal fun RcsSessionManager.onInviteRequest(
     val conversationId = fromUri.substringAfter("sip:").substringBefore("@")
         .takeIf { it.isNotBlank() } ?: fromUri
     // Stash the offerer's path/setup for acceptIncoming connect-out.
-    pendingOffersMutable[callId] = PendingOffer(
+    pendingOffersMutable[callId] = RcsSessionManager.PendingOffer(
         remotePath = Regex("a=path:(\\S+)", RegexOption.IGNORE_CASE).find(body)
             ?.groupValues?.getOrNull(1)?.trim(),
         setup = parseSdpSetup(body),
@@ -190,20 +191,6 @@ internal fun RcsSessionManager.onMessageRequest(fromUri: String, contentType: St
     ) {
         val active = parseIsComposingBody(body) ?: false
         typingMutable.value = typingMutable.value + (conversationId to active)
-    }
-}
-    val proto = if (useTls) "TCP/TLS/MSRP" else "TCP/MSRP"
-    return buildString {
-        append("v=0\r\n")
-        append("o=- ${System.currentTimeMillis()} ${System.currentTimeMillis()} IN IP4 $ip\r\n")
-        append("s=-\r\n")
-        append("c=IN IP4 $ip\r\n")
-        append("t=0 0\r\n")
-        append("m=message $port $proto *\r\n")
-        append("a=path:$path\r\n")
-        append("a=accept-types:message/cpim text/plain message/imdn+xml application/im-iscomposing+xml\r\n")
-        append("a=setup:$setup\r\n")
-        if (useTls) append("a=fingerprint:${RcsMsrpTls.FINGERPRINT_HASH} $tlsFingerprint\r\n")
     }
 }
 

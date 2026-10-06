@@ -24,7 +24,6 @@ import com.vayunmathur.camera.platform.refreshCapabilities
  * limits, it falls back to a default ImageCapture resolution. ImageAnalysis is always
  * capped (~1.2 MP) — see the note in [CameraViewModel.bindSession].
  */
-@OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
 suspend fun CameraViewModel.setupPhotoSession(): Boolean {
     Log.d(
         "NightPreview",
@@ -66,7 +65,6 @@ internal data class PhotoSessionPrep(
 )
 
 /** Binds provider/owner/preview and probes Ultra HDR; the bind ladder runs next. */
-@OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
 internal suspend fun CameraViewModel.preparePhotoSession(): PhotoSessionPrep? {
     val provider = ProcessCameraProvider.awaitInstance(app)
     cameraProvider = provider
@@ -105,7 +103,6 @@ internal suspend fun CameraViewModel.preparePhotoSession(): PhotoSessionPrep? {
 }
 
 /** Runs the max-res → default → plain-JPEG bind ladder and records the bound lens. */
-@OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
 internal suspend fun CameraViewModel.bindPhotoLadder(session: PhotoSessionPrep) {
     var boundLensId: String? = null
     boundCamera = try {
@@ -160,7 +157,6 @@ internal suspend fun CameraViewModel.bindPhotoLadder(session: PhotoSessionPrep) 
 }
 
 /** Binds Preview + ImageCapture + capped ImageAnalysis for the photo session. */
-@OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
 internal fun CameraViewModel.bindPhotoUseCases(
     session: PhotoSessionPrep,
     lensSelector: CameraSelector,

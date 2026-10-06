@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.code.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.code.util.DiffRow
 import com.vayunmathur.code.util.DiffRowType
 import com.vayunmathur.code.util.Resolution
@@ -54,7 +55,7 @@ fun SideBySideDiffDialog(rows: List<DiffRow>, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.close)) }
         },
     )
 }
@@ -137,10 +138,10 @@ fun MergeResolverDialog(
             TextButton(
                 onClick = { onResolve(choices.toList()); onDismiss() },
                 enabled = conflicts.isNotEmpty(),
-            ) { Text(stringResource(R.string.apply)) }
+            ) { Text(stringResource(UiR.string.apply)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

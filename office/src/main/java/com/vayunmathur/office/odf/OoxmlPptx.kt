@@ -11,6 +11,8 @@ import com.vayunmathur.library.ui.odf.OdfShape
 import com.vayunmathur.library.ui.odf.OdfSlide
 import com.vayunmathur.library.ui.odf.OdfSlideElement
 import com.vayunmathur.library.ui.odf.OdfSpan
+import com.vayunmathur.library.ui.odf.bounds
+import com.vayunmathur.library.ui.odf.setElementBounds
 import com.vayunmathur.library.ui.odf.ParagraphStyle
 import com.vayunmathur.library.ui.odf.setElementBounds
 import org.xmlpull.v1.XmlPullParser
@@ -23,13 +25,13 @@ import org.xmlpull.v1.XmlPullParser
  */
 internal object OoxmlPptx {
 
-    private const val RELS_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    internal const val RELS_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
     private const val MIN_FRAME_HEIGHT = 20f
     private const val CORNER_RADIUS_FRACTION = 0.15f
     private const val OOXML_THOUSANDTHS = 100000f
     private const val AUTO_Y_GAP = 12f
-    private const val PERCENT_DIVISOR = 100f
+    internal const val PERCENT_DIVISOR = 100f
     private const val BOUNDS_X = 0
     private const val BOUNDS_Y = 1
     private const val BOUNDS_W = 2
@@ -39,11 +41,11 @@ internal object OoxmlPptx {
     private const val DEFAULT_PLACEHOLDER_H = 80f
 
     /** EMU attribute as px, or null when absent/unparseable. */
-    private fun emuAttr(parser: XmlPullParser, name: String): Float? =
+    internal fun emuAttr(parser: XmlPullParser, name: String): Float? =
         OoxmlXml.attr(parser, name)?.toLongOrNull()?.let { OoxmlUnits.emuToPx(it) }
 
     /** OOXML horizontal alignment code ("ctr"/"r"/"just"/"l") or null. */
-    private fun textAlignOf(code: String?): TextAlign? = when (code) {
+    internal fun textAlignOf(code: String?): TextAlign? = when (code) {
         "ctr" -> TextAlign.Center
         "r" -> TextAlign.End
         "just" -> TextAlign.Justify
@@ -95,12 +97,12 @@ internal object OoxmlPptx {
             .sortedBy { it.substringAfterLast("slide").substringBefore(".xml").toIntOrNull() ?: 0 }
     }
 
-    private class SlideCtx(
+    internal class SlideCtx(
         val pkg: OoxmlPackage,
         val part: String,
         val theme: OoxmlTheme,
         val rels: Map<String, OoxmlPackage.Rel>,
-        val placeholders: PlaceholderMap = PlaceholderMap(emptyList(), emptyList()),
+        val placeholders: OoxmlPptxPlaceholders.PlaceholderMap = OoxmlPptxPlaceholders.PlaceholderMap(emptyList(), emptyList()),
         var autoY: Float = 36f
     )
 
@@ -111,10 +113,10 @@ internal object OoxmlPptx {
         val masterPart = layoutPart?.let { layout ->
             pkg.relsFor(layout).values.firstOrNull { r -> r.type?.endsWith("slideMaster") == true }?.target
         }
-        val slideTheme = theme.withClrMap(parseClrMap(masterPart?.let { pkg.entries[it] }))
-        val placeholders = PlaceholderMap(
-            parsePlaceholderGeoms(pkg, layoutPart),
-            parsePlaceholderGeoms(pkg, masterPart))
+        val slideTheme = theme.withClrMap(OoxmlPptxPlaceholders.parseClrMap(masterPart?.let { pkg.entries[it] }))
+        val placeholders = OoxmlPptxPlaceholders.PlaceholderMap(
+            OoxmlPptxPlaceholders.parsePlaceholderGeoms(pkg, layoutPart),
+            OoxmlPptxPlaceholders.parsePlaceholderGeoms(pkg, masterPart))
         val ctx = SlideCtx(pkg, part, slideTheme, pkg.relsFor(part), placeholders)
         val slide = SlideAcc(defaultName)
         val parser = OoxmlXml.newParser(xml)
@@ -211,7 +213,7 @@ internal object OoxmlPptx {
         slide: SlideAcc,
     ) {
         when (parser.name) {
-            "grpSp" -> parseGroup(parser, ctx, null).let { slide.elements.addAll(it) }
+            "grpSp" -> OoxmlPptxGroups.parseGroup(parser, ctx, null).let { slide.elements.addAll(it) }
             "cxnSp" -> parseConnector(parser, ctx)?.let { slide.elements.add(it) }
             "graphicFrame" -> parseGraphicFrame(parser, ctx)?.let { slide.elements.add(it) }
         }
@@ -280,7 +282,7 @@ internal object OoxmlPptx {
         var isPlaceholder: Boolean = false, var phType: String? = null, var phIdx: String? = null
     )
 
-    private fun parseShape(parser: XmlPullParser, ctx: SlideCtx): OdfSlideElement? {
+    internal fun parseShape(parser: XmlPullParser, ctx: SlideCtx): OdfSlideElement? {
         val depth = parser.depth
         val sp = SpProps()
         val paras = mutableListOf<OdfParagraph>()
@@ -293,7 +295,7 @@ internal object OoxmlPptx {
                     parser,
                     "type"); sp.phIdx = OoxmlXml.attr(parser, "idx") }
                 "spPr" -> parseSpPr(parser, ctx, sp)
-                "txBody" -> { parseTxBody(
+                "txBody" -> { OoxmlPptxText.parseTxBody(
                     parser,
                     ctx,
                     paras); if (paras.any { p -> p.spans.any { it.text.isNotBlank() } }) hasText = true }
@@ -435,145 +437,7 @@ internal object OoxmlPptx {
         ctx.autoY = sp.y + sp.h + AUTO_Y_GAP
     }
 
-    // ---- Placeholder inheritance (layout / master) ----
-
-    private class PlaceholderInfo(
-        val type: String?,
-        val idx: String?,
-        val x: Float,
-        val y: Float,
-        val w: Float,
-        val h: Float)
-
-    private class PlaceholderMap(private val layout: List<PlaceholderInfo>, private val master: List<PlaceholderInfo>) {
-        /** Geometry [x,y,w,h] for a placeholder: idx match first, then type; layout overrides master. */
-        fun geom(type: String?, idx: String?): FloatArray? =
-            match(layout, type, idx) ?: match(master, type, idx)
-
-        private fun match(list: List<PlaceholderInfo>, type: String?, idx: String?): FloatArray? {
-            if (idx != null) list.firstOrNull { it.idx == idx }?.let { return floatArrayOf(it.x, it.y, it.w, it.h) }
-            val t = normType(type)
-            list.firstOrNull { normType(it.type) == t }?.let { return floatArrayOf(it.x, it.y, it.w, it.h) }
-            return null
-        }
-
-        private fun normType(t: String?): String = when (t) { null -> "body"; "ctrTitle" -> "title"; else -> t }
-    }
-
-    /** Extracts placeholder geometries (with an explicit xfrm) from a layout/master part's spTree. */
-    private fun parsePlaceholderGeoms(pkg: OoxmlPackage, part: String?): List<PlaceholderInfo> {
-        val xml = part?.let { pkg.entries[it] } ?: return emptyList()
-        val parser = OoxmlXml.newParser(xml)
-        val acc = PlaceholderAcc()
-        var e = parser.eventType
-        while (e != XmlPullParser.END_DOCUMENT) {
-            if (e == XmlPullParser.START_TAG) applyPlaceholderStart(parser, acc)
-            else if (e == XmlPullParser.END_TAG) applyPlaceholderEnd(parser, acc)
-            e = parser.next()
-        }
-        return acc.list
-    }
-
-    private class PlaceholderAcc(
-        val list: MutableList<PlaceholderInfo> = mutableListOf(),
-        var spDepth: Int = -1,
-        var phType: String? = null,
-        var phIdx: String? = null,
-        var x: Float = 0f,
-        var y: Float = 0f,
-        var w: Float = 0f,
-        var h: Float = 0f,
-        var hasXfrm: Boolean = false,
-        var inXfrm: Boolean = false,
-    ) {
-        fun resetShape(depth: Int) {
-            spDepth = depth
-            phType = null
-            phIdx = null
-            x = 0f
-            y = 0f
-            w = 0f
-            h = 0f
-            hasXfrm = false
-        }
-
-        fun flush() {
-            if (hasXfrm && (phType != null || phIdx != null)) list.add(PlaceholderInfo(
-                phType,
-                phIdx,
-                x,
-                y,
-                w,
-                h))
-            spDepth = -1
-        }
-    }
-
-    private fun applyPlaceholderStart(parser: XmlPullParser, acc: PlaceholderAcc) {
-        when (parser.name) {
-            "sp" -> acc.resetShape(parser.depth)
-            "ph" -> applyPlaceholderPhTag(parser, acc)
-            "xfrm" -> if (acc.spDepth >= 0) acc.inXfrm = true
-            "off" -> applyPlaceholderOffTag(parser, acc)
-            "ext" -> applyPlaceholderExtTag(parser, acc)
-        }
-    }
-
-    private fun applyPlaceholderPhTag(parser: XmlPullParser, acc: PlaceholderAcc) {
-        if (acc.spDepth < 0) return
-        acc.phType = OoxmlXml.attr(parser, "type")
-        acc.phIdx = OoxmlXml.attr(parser, "idx")
-    }
-
-    private fun applyPlaceholderOffTag(parser: XmlPullParser, acc: PlaceholderAcc) {
-        if (!acc.inXfrm) return
-        emuAttr(parser, "x")?.let { acc.x = it }
-        emuAttr(parser, "y")?.let { acc.y = it }
-        acc.hasXfrm = true
-    }
-
-    private fun applyPlaceholderExtTag(parser: XmlPullParser, acc: PlaceholderAcc) {
-        if (!acc.inXfrm) return
-        emuAttr(parser, "cx")?.let { acc.w = it }
-        emuAttr(parser, "cy")?.let { acc.h = it }
-    }
-
-    private fun applyPlaceholderEnd(parser: XmlPullParser, acc: PlaceholderAcc) {
-        when (parser.name) {
-            "xfrm" -> acc.inXfrm = false
-            "sp" -> if (parser.depth == acc.spDepth) acc.flush()
-        }
-    }
-
-    /** Parses a slide master's <p:clrMap> (bg1/tx1/... -> theme slot) attributes. */
-    private fun parseClrMap(masterXml: String?): Map<String, String> {
-        if (masterXml == null) return emptyMap()
-        val parser = OoxmlXml.newParser(masterXml)
-        var e = parser.eventType
-        while (e != XmlPullParser.END_DOCUMENT) {
-            if (e == XmlPullParser.START_TAG && parser.name == "clrMap") {
-                val m = HashMap<String, String>()
-                for (k in listOf(
-                    "bg1",
-                    "tx1",
-                    "bg2",
-                    "tx2",
-                    "accent1",
-                    "accent2",
-                    "accent3",
-                    "accent4",
-                    "accent5",
-                    "accent6",
-                    "hlink",
-                    "folHlink")) {
-                    OoxmlXml.attr(parser, k)?.let { m[k.lowercase()] = it.lowercase() }
-                }
-                return m
-            }
-            e = parser.next()
-        }
-        return emptyMap()
-    }
+    // ---- Placeholder inheritance (layout / master): see OoxmlPptxPlaceholders ----
 
     private fun parseSpPr(parser: XmlPullParser, ctx: SlideCtx, sp: SpProps) {
         val depth = parser.depth
@@ -703,11 +567,11 @@ internal object OoxmlPptx {
         return color?.let { pos to it }
     }
 
-    private val COLOR_TAGS = setOf("srgbClr", "schemeClr", "sysClr", "prstClr", "scrgbClr")
+    internal val COLOR_TAGS = setOf("srgbClr", "schemeClr", "sysClr", "prstClr", "scrgbClr")
 
     // ---- Pictures ----
 
-    private fun parsePic(parser: XmlPullParser, ctx: SlideCtx): OdfSlideElement? {
+    internal fun parsePic(parser: XmlPullParser, ctx: SlideCtx): OdfSlideElement? {
         val depth = parser.depth
         val sp = SpProps()
         val pic = PicAcc()
@@ -761,128 +625,16 @@ internal object OoxmlPptx {
         pic.cropB = (OoxmlXml.attr(parser, "b")?.toIntOrNull() ?: 0) / OOXML_THOUSANDTHS
     }
 
-    // ---- Groups / connectors ----
+    // ---- Groups / connectors: see OoxmlPptxGroups (split for file length; behavior identical) ----
 
-    /** Affine map (per-axis scale + offset) from a group's child coordinate space to screen px@96. */
-    private class GroupTf(val ax: Float, val bx: Float, val ay: Float, val by: Float) {
-        fun apply(x: Float, y: Float, w: Float, h: Float) = floatArrayOf(ax * x + bx, ay * y + by, w * ax, h * ay)
-        companion object {
-            /** parent ∘ child: apply child first (its space -> parent's child space), then parent. */
-            fun compose(p: GroupTf, c: GroupTf) =
-                GroupTf(p.ax * c.ax, p.ax * c.bx + p.bx, p.ay * c.ay, p.ay * c.by + p.by)
-        }
-    }
-
-    private fun parseGroup(parser: XmlPullParser, ctx: SlideCtx, parentTf: GroupTf?): List<OdfSlideElement> {
-        val depth = parser.depth
-        val out = mutableListOf<OdfSlideElement>()
-        var tf = parentTf
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "grpSp")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) tf = applyGroupTag(parser, ctx, tf, parentTf, out)
-            e = parser.next()
-        }
-        return out
-    }
-
-    private fun applyGroupTag(
-        parser: XmlPullParser, ctx: SlideCtx, tf: GroupTf?, parentTf: GroupTf?,
-        out: MutableList<OdfSlideElement>,
-    ): GroupTf? {
-        var cur = tf
-        when (parser.name) {
-            // grpSpPr precedes the children; fold the group's own off/ext/chOff/chExt into the transform.
-            "grpSpPr" -> parseGroupXfrm(parser)?.let { own -> cur = parentTf?.let { GroupTf.compose(
-                it,
-                own) } ?: own }
-            "sp" -> parseShape(parser, ctx)?.let { out.add(applyTf(it, cur)) }
-            "pic" -> parsePic(parser, ctx)?.let { out.add(applyTf(it, cur)) }
-            "cxnSp" -> parseConnector(parser, ctx)?.let { out.add(applyTf(it, cur)) }
-            "grpSp" -> out.addAll(parseGroup(parser, ctx, cur))
-        }
-        return cur
-    }
-
-    private class GroupXfrmAcc(
-        var offX: Float = 0f,
-        var offY: Float = 0f,
-        var extX: Float = 0f,
-        var extY: Float = 0f,
-        var chOffX: Float = 0f,
-        var chOffY: Float = 0f,
-        var chExtX: Float = 0f,
-        var chExtY: Float = 0f,
-        var inXfrm: Boolean = false,
-        var seen: Boolean = false,
-    ) {
-        fun toTf(): GroupTf {
-            val ax = if (chExtX != 0f) extX / chExtX else 1f
-            val ay = if (chExtY != 0f) extY / chExtY else 1f
-            return GroupTf(ax, offX - chOffX * ax, ay, offY - chOffY * ay)
-        }
-    }
-
-    /** Reads a group's <a:xfrm> (off/ext/chOff/chExt) into a child-space -> parent-space transform. */
-    private fun parseGroupXfrm(parser: XmlPullParser): GroupTf? {
-        val depth = parser.depth
-        val acc = GroupXfrmAcc()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "grpSpPr")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) applyGroupXfrmTag(parser, acc)
-            else if (e == XmlPullParser.END_TAG && parser.name == "xfrm") acc.inXfrm = false
-            e = parser.next()
-        }
-        if (!acc.seen) return null
-        return acc.toTf()
-    }
-
-    private fun applyGroupXfrmTag(parser: XmlPullParser, acc: GroupXfrmAcc) {
-        when (parser.name) {
-            "xfrm" -> { acc.inXfrm = true; acc.seen = true }
-            "off" -> applyGroupOffTag(parser, acc)
-            "ext" -> applyGroupExtTag(parser, acc)
-            "chOff" -> applyGroupChOffTag(parser, acc)
-            "chExt" -> applyGroupChExtTag(parser, acc)
-        }
-    }
-
-    private fun groupEmu(parser: XmlPullParser, name: String): Float =
-        OoxmlXml.attr(parser, name)?.toLongOrNull()?.let { OoxmlUnits.emuToPx(it) } ?: 0f
-
-    private fun applyGroupOffTag(parser: XmlPullParser, acc: GroupXfrmAcc) {
-        if (!acc.inXfrm) return
-        acc.offX = groupEmu(parser, "x")
-        acc.offY = groupEmu(parser, "y")
-    }
-
-    private fun applyGroupExtTag(parser: XmlPullParser, acc: GroupXfrmAcc) {
-        if (!acc.inXfrm) return
-        acc.extX = groupEmu(parser, "cx")
-        acc.extY = groupEmu(parser, "cy")
-    }
-
-    private fun applyGroupChOffTag(parser: XmlPullParser, acc: GroupXfrmAcc) {
-        if (!acc.inXfrm) return
-        acc.chOffX = groupEmu(parser, "x")
-        acc.chOffY = groupEmu(parser, "y")
-    }
-
-    private fun applyGroupChExtTag(parser: XmlPullParser, acc: GroupXfrmAcc) {
-        if (!acc.inXfrm) return
-        acc.chExtX = groupEmu(parser, "cx")
-        acc.chExtY = groupEmu(parser, "cy")
-    }
-
-    private fun applyTf(el: OdfSlideElement, tf: GroupTf?): OdfSlideElement {
+    internal fun applyTf(el: OdfSlideElement, tf: OoxmlPptxGroups.GroupTf?): OdfSlideElement {
         if (tf == null) return el
         val b = el.bounds()
         val n = tf.apply(b[BOUNDS_X], b[BOUNDS_Y], b[BOUNDS_W], b[BOUNDS_H])
         return setElementBounds(el, n[BOUNDS_X], n[BOUNDS_Y], n[BOUNDS_W], n[BOUNDS_H])
     }
 
-    private fun parseConnector(parser: XmlPullParser, ctx: SlideCtx): OdfSlideElement? {
+    internal fun parseConnector(parser: XmlPullParser, ctx: SlideCtx): OdfSlideElement? {
         val depth = parser.depth
         val sp = SpProps()
         var e = parser.next()
@@ -949,7 +701,7 @@ internal object OoxmlPptx {
             }
             "chart" -> frame.chartRid = OoxmlXml.attrNs(parser, RELS_NS, "id") ?: OoxmlXml.attr(parser, "id")
             "relIds" -> frame.dmRid = OoxmlXml.attrNs(parser, RELS_NS, "dm")
-            "tbl" -> parseSlideTable(parser, ctx, tableParas)
+            "tbl" -> OoxmlPptxPlaceholders.parseSlideTable(parser, ctx, tableParas)
         }
     }
 
@@ -976,258 +728,7 @@ internal object OoxmlPptx {
             lines.map { OdfParagraph(listOf(OdfSpan(it))) }))
     }
 
-    /** Flattens an a:tbl into one paragraph per row, cells separated by tabs (best-effort). */
-    private fun parseSlideTable(parser: XmlPullParser, ctx: SlideCtx, out: MutableList<OdfParagraph>) {
-        val depth = parser.depth
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "tbl")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG && parser.name == "tr") {
-                out.add(OdfParagraph(parseSlideRow(parser, ctx)))
-            }
-            e = parser.next()
-        }
-    }
-
-    /** One slide-table row → spans (cells separated by tabs). */
-    private fun parseSlideRow(parser: XmlPullParser, ctx: SlideCtx): List<OdfSpan> {
-        val spans = mutableListOf<OdfSpan>()
-        val rd = parser.depth
-        var ev = parser.next()
-        var firstCell = true
-        while (!(ev == XmlPullParser.END_TAG && parser.depth == rd && parser.name == "tr")) {
-            if (ev == XmlPullParser.END_DOCUMENT) break
-            if (ev == XmlPullParser.START_TAG && parser.name == "tc") {
-                if (!firstCell) spans.add(OdfSpan("\t"))
-                firstCell = false
-                val cellParas = mutableListOf<OdfParagraph>()
-                parseTxBody(parser, ctx, cellParas)
-                for (p in cellParas) spans.addAll(p.spans)
-            }
-            ev = parser.next()
-        }
-        return spans.ifEmpty { listOf(OdfSpan("")) }
-    }
-
-    // ---- Text ----
-
-    private fun parseTxBody(parser: XmlPullParser, ctx: SlideCtx, out: MutableList<OdfParagraph>) {
-        val start = out.size
-        val depth = parser.depth
-        val endTag = parser.name  // txBody or txbx
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == endTag)) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG && parser.name == "p") parseDrawingParagraph(
-                parser,
-                ctx)?.let { out.add(it) }
-            e = parser.next()
-        }
-        // Assign running 1/2/3 numbering to contiguous numbered (buAutoNum) items per level.
-        val counters = HashMap<Int, Int>()
-        for (i in start until out.size) {
-            val p = out[i]
-            if (p.listType == ListType.NUMBERED) {
-                val n = (counters[p.listLevel] ?: 0) + 1
-                counters[p.listLevel] = n
-                counters.keys.filter { it > p.listLevel }.toList().forEach { counters.remove(it) }
-                out[i] = p.copy(listItemIndex = n)
-            } else {
-                counters.keys.filter { it >= p.listLevel }.toList().forEach { counters.remove(it) }
-            }
-        }
-    }
-
-    private fun parseDrawingParagraph(parser: XmlPullParser, ctx: SlideCtx): OdfParagraph? {
-        val depth = parser.depth
-        val para = DrawingParaAcc()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "p")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) applyDrawingParaTag(parser, ctx, para)
-            e = parser.next()
-        }
-        if (para.spans.isEmpty()) return null
-        return OdfParagraph(
-            spans = para.spans,
-            alignment = para.align,
-            listLevel = para.level,
-            listType = para.listType ?: ListType.BULLET,
-            style = if (para.listType != null) ParagraphStyle.LIST_ITEM else ParagraphStyle.BODY,
-            listBulletChar = para.bulletChar,
-            listNumberFormat = para.numFmt
-        )
-    }
-
-    /** Drawing-paragraph accumulation state. */
-    private class DrawingParaAcc(
-        val spans: MutableList<OdfSpan> = mutableListOf(),
-        var align: TextAlign? = null,
-        var level: Int = 0,
-        var listType: ListType? = null,
-        var bulletChar: String = "\u2022",
-        var numFmt: String = "1",
-    )
-
-    /** Apply one drawing-paragraph child tag. */
-    private fun applyDrawingParaTag(parser: XmlPullParser, ctx: SlideCtx, para: DrawingParaAcc) {
-        when (parser.name) {
-            "pPr" -> {
-                para.align = textAlignOf(OoxmlXml.attr(parser, "algn"))
-                para.level = OoxmlXml.attr(parser, "lvl")?.toIntOrNull() ?: 0
-                val bul = parseBullet(parser)
-                para.listType = bul.first
-                para.bulletChar = bul.second ?: para.bulletChar
-                para.numFmt = bul.third ?: para.numFmt
-            }
-            "r" -> parseDrawingRun(parser, ctx)?.let { para.spans.add(it) }
-            "br" -> para.spans.add(OdfSpan("\n"))
-            "fld" -> parseDrawingRun(parser, ctx)?.let { para.spans.add(it) }
-        }
-    }
-
-    /** Returns (listType or null, bulletChar, numberFormat) from an a:pPr's bullet children. */
-    private fun parseBullet(parser: XmlPullParser): Triple<ListType?, String?, String?> {
-        val depth = parser.depth
-        var type: ListType? = null; var char: String? = null; var numFmt: String? = null
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "pPr")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) when (parser.name) {
-                "buChar" -> { type = ListType.BULLET; char = OoxmlXml.attr(parser, "char") }
-                "buAutoNum" -> { type = ListType.NUMBERED; numFmt = mapAutoNum(OoxmlXml.attr(parser, "type")) }
-                "buNone" -> type = null
-            }
-            e = parser.next()
-        }
-        return Triple(type, char, numFmt)
-    }
-
-    private fun mapAutoNum(type: String?): String = when {
-        type == null -> "1"
-        type.startsWith("alphaLc") -> "a"
-        type.startsWith("alphaUc") -> "A"
-        type.startsWith("romanLc") -> "i"
-        type.startsWith("romanUc") -> "I"
-        else -> "1"
-    }
-
-    private fun parseDrawingRun(parser: XmlPullParser, ctx: SlideCtx): OdfSpan? {
-        val endTag = parser.name  // r or fld
-        val depth = parser.depth
-        val run = DrawingRunAcc()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == endTag)) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) applyDrawingRunTag(parser, ctx, run)
-            e = parser.next()
-        }
-        if (run.sb.isEmpty()) return null
-        return OdfSpan(
-            text = run.sb.toString(), bold = run.bold, italic = run.italic, underline = run.underline,
-            strikethrough = run.strike,
-            fontSize = run.size, fontFamily = run.font, color = run.color, superscript = run.superscript,
-            subscript = run.subscript,
-            href = run.href, letterSpacing = run.letterSpacing,
-            textTransform = if (run.caps) "uppercase" else null
-        )
-    }
-
-    /** Drawing-run accumulation state. */
-    private class DrawingRunAcc(
-        var bold: Boolean = false,
-        var italic: Boolean = false,
-        var underline: Boolean = false,
-        var strike: Boolean = false,
-        var color: Long? = null,
-        var size: Float? = null,
-        var font: String? = null,
-        var superscript: Boolean = false,
-        var subscript: Boolean = false,
-        var href: String? = null,
-        var letterSpacing: Float? = null,
-        var caps: Boolean = false,
-        val sb: StringBuilder = StringBuilder(),
-    )
-
-    /** Apply one drawing-run child tag. */
-    private fun applyDrawingRunTag(parser: XmlPullParser, ctx: SlideCtx, run: DrawingRunAcc) {
-        when (parser.name) {
-            "rPr", "defRPr", "endParaRPr" -> applyDrawingRPr(parser, ctx, run)
-            "t" -> run.sb.append(OoxmlXml.readElementText(parser, "t"))
-        }
-    }
-
-    /** Run properties from an a:rPr tag. */
-    private fun applyDrawingRPr(parser: XmlPullParser, ctx: SlideCtx, run: DrawingRunAcc) {
-        applyRPrEmphasisTag(parser, run)
-        applyRPrMetricsTag(parser, run)
-        val r = parseRunColorFontLink(parser, ctx)
-        run.color = run.color ?: r.first
-        run.font = run.font ?: r.second
-        run.href = run.href ?: r.third
-    }
-
-    private fun applyRPrEmphasisTag(parser: XmlPullParser, run: DrawingRunAcc) {
-        if (OoxmlXml.boolAttr(OoxmlXml.attr(parser, "b")) && OoxmlXml.attr(parser, "b") != null) run.bold = true
-        if (OoxmlXml.attr(parser, "b") == "1") run.bold = true
-        if (OoxmlXml.attr(parser, "i") == "1") run.italic = true
-        if (OoxmlXml.attr(parser, "u")?.let { it != "none" } == true) run.underline = true
-        if (OoxmlXml.attr(parser, "strike")?.let { it != "noStrike" } == true) run.strike = true
-    }
-
-    private fun applyRPrMetricsTag(parser: XmlPullParser, run: DrawingRunAcc) {
-        OoxmlXml.attr(parser, "sz")?.toFloatOrNull()?.let { run.size = it / PERCENT_DIVISOR }
-        OoxmlXml.attr(parser, "spc")?.toIntOrNull()?.let { run.letterSpacing = OoxmlUnits.hundredthPtToPt(it) }
-        when (OoxmlXml.attr(parser, "cap")) { "all", "small" -> run.caps = true }
-        OoxmlXml.attr(
-            parser,
-            "baseline")
-        ?.toIntOrNull()?.let { if (it > 0) run.superscript = true else if (it < 0) run.subscript = true }
-    }
-
-    private class RunLinkAcc(
-        var color: Long? = null,
-        var font: String? = null,
-        var href: String? = null,
-        var inFill: Boolean = false,
-    )
-
-    /** Parses solidFill color, latin font, and hlinkClick target from within an a:rPr. */
-    private fun parseRunColorFontLink(parser: XmlPullParser, ctx: SlideCtx): Triple<Long?, String?, String?> {
-        val depth = parser.depth
-        val acc = RunLinkAcc()
-        var e = parser.next()
-        val endTags = setOf("rPr", "defRPr", "endParaRPr")
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name in endTags)) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) applyRunLinkTag(parser, ctx, acc)
-            else if (e == XmlPullParser.END_TAG && parser.name == "solidFill") acc.inFill = false
-            e = parser.next()
-        }
-        return Triple(acc.color, acc.font, acc.href)
-    }
-
-    private fun applyRunLinkTag(parser: XmlPullParser, ctx: SlideCtx, acc: RunLinkAcc) {
-        when (parser.name) {
-            "solidFill" -> acc.inFill = true
-            "latin" -> acc.font = OoxmlXml.attr(parser, "typeface")
-            "hlinkClick" -> applyRunLinkHrefTag(parser, ctx, acc)
-            in COLOR_TAGS -> applyRunLinkColorTag(parser, ctx, acc)
-        }
-    }
-
-    private fun applyRunLinkHrefTag(parser: XmlPullParser, ctx: SlideCtx, acc: RunLinkAcc) {
-        val rId = OoxmlXml.attrNs(
-            parser,
-            RELS_NS,
-            "id") ?: OoxmlXml.attr(parser, "id")
-        acc.href = ctx.rels[rId]?.target
-    }
-
-    private fun applyRunLinkColorTag(parser: XmlPullParser, ctx: SlideCtx, acc: RunLinkAcc) {
-        if (acc.inFill && acc.color == null) acc.color = OoxmlColor.parse(parser, ctx.theme)
-    }
+    // ---- Text: see OoxmlPptxText (split for file length; behavior identical) ----
 
     // ---- Notes ----
 
@@ -1241,7 +742,7 @@ internal object OoxmlPptx {
         var e = parser.eventType
         var inBody = false
         while (e != XmlPullParser.END_DOCUMENT) {
-            if (e == XmlPullParser.START_TAG && parser.name == "txBody") { parseTxBody(
+            if (e == XmlPullParser.START_TAG && parser.name == "txBody") { OoxmlPptxText.parseTxBody(
                 parser,
                 ctx,
                 paras); inBody = true }

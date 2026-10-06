@@ -31,6 +31,7 @@ import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.taxi.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.taxi.data.ActiveRide
 import com.vayunmathur.taxi.data.RideStatus
 
@@ -129,7 +130,7 @@ internal fun DriverCard(ride: ActiveRide, onCall: (String) -> Unit) {
                 }
                 driver?.phoneNumber?.takeIf { it.isNotBlank() }?.let { phone ->
                     OutlinedButton(onClick = { onCall(phone) }) {
-                        Text(stringResource(R.string.call))
+                        Text(stringResource(UiR.string.call))
                     }
                 }
             }

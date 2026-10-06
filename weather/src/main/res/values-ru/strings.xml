@@ -19,8 +19,6 @@
     <string name="location_permission_denied">Разрешение на определение местоположения отклонено</string>
     <string name="dew_point">Точка росы</string>
     <string name="not_enough_data_to_plot">Недостаточно данных для построения графика.</string>
-    <string name="map_time">Время</string>
-    <string name="condition_clear">Ясно</string>
     <string name="condition_mostly_clear">Малооблачно</string>
     <string name="condition_partly_cloudy">Переменная облачность</string>
     <string name="condition_cloudy">Облачно</string>
@@ -29,7 +27,6 @@
     <string name="condition_rain">Дождь</string>
     <string name="condition_snow">Снег</string>
     <string name="condition_thunderstorm">Гроза</string>
-    <string name="condition_unknown">Нет данных</string>
     <string name="metric_temperature">Температура</string>
     <string name="metric_feels_like">Ощущается</string>
     <string name="metric_humidity">Влажность</string>
@@ -56,11 +53,9 @@
     <string name="hourly_forecast">Почасовой прогноз</string>
     <string name="daily_forecast">Прогноз на неделю</string>
     <string name="now">Сейчас</string>
-    <string name="today">Сег</string>
     <string name="today_short">сег</string>
     <string name="tomorrow_short">зав</string>
     <string name="level_low">Низко</string>
-    <string name="level_medium">Средне</string>
     <string name="level_moderate">Умереннo</string>
     <string name="level_high">Высоко</string>
     <string name="level_very_high">Очень высоко</string>
@@ -93,7 +88,6 @@
     <string name="max_min">Max <xliff:g id="max" example="28°C">%1$s</xliff:g> Min <xliff:g id="min" example="14°C">%2$s</xliff:g></string>
     <string name="feels_like">Ощущается <xliff:g id="temp" example="26°C">%1$s</xliff:g></string>
     <string name="from_gusts">Напр <xliff:g id="direction" example="NW">%1$s</xliff:g> · Порывы <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
-    <string name="level_none">Нет</string>
     <string name="precip_rain_in_min">Дождь через ~<xliff:g id="minutes" example="15">%1$d</xliff:g> минут</string>
     <string name="last_updated">Обновлено <xliff:g id="time_ago" example="2h ago">%1$s</xliff:g></string>
     <string name="minutes_ago"><xliff:g id="minutes" example="5">%1$d</xliff:g>минут назад</string>

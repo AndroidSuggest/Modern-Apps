@@ -115,13 +115,13 @@ class FindFamilyRepository private constructor(context: Context) :
      * so the repository stays under the function cap — call sites use
      * `repository.temporaryLinkStore.*`.
      */
-    val temporaryLinkStore: TemporaryLinkStore get() = TemporaryLinkStore(temporaryLinkDao)
+    internal val temporaryLinkStore: TemporaryLinkStore get() = TemporaryLinkStore(temporaryLinkDao)
 
     /**
      * No-show watch rows. Same arrangement as [temporaryLinkStore]:
      * call sites use `repository.noShowAlertStore.*`.
      */
-    val noShowAlertStore: NoShowAlertStore get() = NoShowAlertStore(noShowAlertDao)
+    internal val noShowAlertStore: NoShowAlertStore get() = NoShowAlertStore(noShowAlertDao)
 
     companion object {
         @Volatile

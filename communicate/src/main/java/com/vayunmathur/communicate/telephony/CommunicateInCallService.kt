@@ -75,7 +75,7 @@ class CommunicateInCallService : InCallService() {
         }
 
         val title =
-            if (incoming) getString(R.string.regular_call_incoming) else getString(R.string.regular_call_ongoing)
+            if (incoming) getString(R.string.call_state_incoming_generic) else getString(R.string.inapp_ongoing_call)
         val number = call.details.handle?.schemeSpecificPart.orEmpty()
         val builder = Notification.Builder(this, CHANNEL_ID)
             .setContentTitle(title)

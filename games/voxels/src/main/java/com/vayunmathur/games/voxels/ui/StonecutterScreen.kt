@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.games.voxels.R
 import com.vayunmathur.games.voxels.util.VoxelsNative
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 
 /** One stonecutter conversion, addressed by its index in the engine's table. */
@@ -87,7 +87,7 @@ fun StonecutterOverlay(cutsJson: String, inventoryJson: String, onClose: () -> U
                 Box(
                     Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(0.10f))
                         .clickable { onClose() }.padding(horizontal = 18.dp, vertical = 8.dp)
-                ) { Text(stringResource(R.string.close), color = Color.White, fontSize = 14.sp) }
+                ) { Text(stringResource(UiR.string.close), color = Color.White, fontSize = 14.sp) }
             }
 
             if (held.isEmpty()) {

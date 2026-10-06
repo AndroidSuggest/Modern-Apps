@@ -100,10 +100,10 @@ enum class TrustProfile {
     val title: Int
         get() = when (this) {
             MODERN_APPS -> R.string.trust_modern_apps_title
-            FDROID -> R.string.trust_fdroid_title
-            GRAPHENEOS -> R.string.trust_grapheneos_title
+            FDROID -> R.string.source_chip_fdroid
+            GRAPHENEOS -> R.string.source_chip_grapheneos
             PLAY -> R.string.trust_play_title
-            ACCRESCENT -> R.string.trust_accrescent_title
+            ACCRESCENT -> R.string.source_chip_accrescent
         }
 
     /** One line, shown under the heading on the app's page. */

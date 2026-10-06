@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_history">Historia</string>
-    <string name="label_search">Szukaj</string>
     <string name="subscribers_count">%1$s subskrybentów</string>
     <string name="title_create_subscription_category">Utwórz kategorię subskrypcji</string>
     <string name="title_update_subscription_category">Zaktualizuj kategorię subskrypcji</string>
     <string name="label_category_name">Imię kategori</string>
     <string name="label_select_subscriptions">Wybierz subskrypcję:</string>
-    <string name="action_create">Stwórz</string>
     <string name="action_update">Aktualizacja</string>
     <string name="video_load_error">Błąd ładowania filmu – YouTube mógł zablokować anonimowy dostęp do filmów z tego adresu IP</string>
     <string name="action_go_back">Wróć</string>
@@ -30,9 +28,7 @@
     <string name="count_b_format">%1$sB</string>
     <string name="action_subscribe">Subskrybuj</string>
     <string name="action_unsubscribe">Zrezygnuj z subskrybcji</string>
-    <string name="channel_info">%1$s subskrybentów</string>
     <string name="video_stat_format">%1$s wyświetleń | %2$s</string>
-    <string name="title_settings">Ustawienia</string>
     <string name="label_sponsorblock">Kategorie SponsorBlock</string>
     <string name="label_backup_restore">Kopie zapasowe i przywracanie danych</string>
     <string name="label_restore_youpipe">Przywróć z YouPipe</string>

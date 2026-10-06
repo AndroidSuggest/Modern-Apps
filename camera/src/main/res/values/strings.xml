@@ -46,8 +46,6 @@
     <!-- Video codec settings (SettingsPage) -->
     <!-- SettingsPage: section header for video codec selection -->
     <string name="settings_video_codec">Video codec</string>
-    <!-- SettingsPage: text field label for video codec dropdown -->
-    <string name="settings_video_codec_label">Video codec</string>
     <!-- Video codec option label: H.264 / AVC -->
     <string name="codec_avc_label">H.264 / AVC</string>
     <!-- Video codec description: most compatible, explain compatibility trade-off -->
@@ -64,8 +62,6 @@
     <!-- Audio input source settings (SettingsPage): mic source used for video recordings -->
     <!-- SettingsPage: section header for audio input source selection -->
     <string name="settings_audio_source">Audio input source</string>
-    <!-- SettingsPage: text field label for audio input source dropdown -->
-    <string name="settings_audio_source_label">Audio input source</string>
     <!-- Audio source option label: camcorder (default, tuned for video) -->
     <string name="audio_source_camcorder_label">Camcorder</string>
     <!-- Audio source description: default mic tuned for video recording -->

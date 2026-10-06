@@ -44,7 +44,7 @@ fun CastContent(
     modifier: Modifier = Modifier,
 ) {
     AppScaffold(
-        title = stringResource(R.string.cast_devices_title),
+        title = stringResource(R.string.app_name),
         modifier = modifier,
         actions = {
             if (state.isScanning) {

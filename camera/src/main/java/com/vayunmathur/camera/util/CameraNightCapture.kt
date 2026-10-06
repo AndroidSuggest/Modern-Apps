@@ -5,7 +5,6 @@ import android.graphics.Matrix
 import android.graphics.Rect
 import android.net.Uri
 import android.util.Log
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
@@ -31,6 +30,7 @@ import kotlin.math.roundToInt
  * moon button keeps tracking brightness. The extension does its own timing, so no manual
  * long-exposure countdown here.
  */
+@Suppress("DEPRECATION")
 internal suspend fun CameraViewModel.captureNightPhotoExtension() {
     isCapturingMutable.value = true
     // Drop the photo session so the UI's analyzer effect re-attaches PhotoAnalyzer once we restore.
@@ -171,7 +171,7 @@ private suspend fun CameraViewModel.mergeNightFrames(frames: List<Bitmap>): Uri?
  * Falls back to empty list if [imageCapture] is unavailable, which makes
  * [captureNightPhotoCustom] fall back to single-frame long-exposure.
  */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 internal fun CameraViewModel.captureNightBurst(exposure: NightExposure, onDone: (List<Bitmap>) -> Unit) {
     if (imageCapture == null) {
         onDone(emptyList())
@@ -189,7 +189,7 @@ internal fun CameraViewModel.captureNightBurst(exposure: NightExposure, onDone: 
 }
 
 /** Camera2 control handle; null (logged) when unavailable. */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 private fun CameraViewModel.camera2ControlQuietly():
     androidx.camera.camera2.interop.Camera2CameraControl? {
     return try {
@@ -207,7 +207,7 @@ private fun CameraViewModel.camera2ControlQuietly():
  * captures back-to-back, converts each to an upright bitmap and restores 3A + the
  * manual-control state when done.
  */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 private class NightBurstDriver(
     private val viewModel: CameraViewModel,
     private val cam2Control: androidx.camera.camera2.interop.Camera2CameraControl?,
@@ -307,6 +307,7 @@ private class NightBurstDriver(
 }
 
 /** Locks AE off + night exposure/ISO + AWB, then runs [onLocked]. Falls through on failure. */
+@Suppress("DEPRECATION")
 private fun CameraViewModel.lockNightExposure(
     cam2Control: androidx.camera.camera2.interop.Camera2CameraControl,
     exposure: NightExposure,
@@ -348,7 +349,7 @@ internal data class NightExposure(val nanos: Long, val iso: Int?)
  * into the sensor's exposure-time range and picks a high fraction of its sensitivity range.
  * Falls back to [targetNanos] (and auto ISO) if the characteristics are unavailable.
  */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 internal fun CameraViewModel.computeNightExposure(
     targetNanos: Long = CameraViewModel.NIGHT_TARGET_EXPOSURE_NANOS
 ): NightExposure {

@@ -15,8 +15,6 @@ import android.util.Log
  * measurement decoding stay on the manager.
  */
 
-private const val HEX_RADIX = 16
-
 private fun ScaleBleManager.isScaleName(name: String?): Boolean {
     if (name == null) return false
     return ScaleBleManager.SCALE_NAME_PREFIXES.any { name.startsWith(it, ignoreCase = true) }

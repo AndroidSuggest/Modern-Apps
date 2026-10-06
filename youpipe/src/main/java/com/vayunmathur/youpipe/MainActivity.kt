@@ -36,6 +36,7 @@ import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.MorphPage
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.rememberNavBackStack
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.youpipe.data.SubscriptionRepository
 import com.vayunmathur.youpipe.ui.ChannelPage
 import com.vayunmathur.youpipe.ui.DownloadedVideosPage
@@ -192,12 +193,12 @@ const val DEFAULT_PAGE_SETTINGS = "settings"
  * serializes cleanly and survives refactors.
  */
 val DEFAULT_PAGE_OPTIONS: List<Pair<String, Int>> = listOf(
-    DEFAULT_PAGE_HOME to R.string.page_home,
+    DEFAULT_PAGE_HOME to UiR.string.home,
     DEFAULT_PAGE_SUBSCRIPTIONS to R.string.title_subscriptions,
     DEFAULT_PAGE_ALL_SUBSCRIPTIONS to R.string.label_all_subscriptions,
     DEFAULT_PAGE_HISTORY to R.string.title_history,
-    DEFAULT_PAGE_SAVED to R.string.page_saved,
-    DEFAULT_PAGE_SETTINGS to R.string.title_settings,
+    DEFAULT_PAGE_SAVED to UiR.string.saved,
+    DEFAULT_PAGE_SETTINGS to UiR.string.settings,
 )
 
 /** Map a persisted default-page key to the initial backstack to launch with. */

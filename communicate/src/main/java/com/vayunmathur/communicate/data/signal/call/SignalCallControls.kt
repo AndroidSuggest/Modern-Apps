@@ -1,6 +1,7 @@
 package com.vayunmathur.communicate.data.signal.call
 
 import android.util.Log
+import org.signal.ringrtc.CallId
 import org.signal.ringrtc.CallManager
 
 /**
@@ -9,7 +10,7 @@ import org.signal.ringrtc.CallManager
  */
 
 fun SignalCallManager.accept(callId: Long): Boolean = withManager("accept") {
-    it.acceptCall(org.signal.ringrtc.CallManager.CallId(callId))
+    it.acceptCall(CallId(callId))
 }
 
 fun SignalCallManager.hangup(): Boolean = withManager("hangup") { it.hangup() }

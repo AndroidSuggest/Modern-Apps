@@ -46,7 +46,7 @@ internal suspend fun WhatsAppClient.handleAppStateKeyShare(share: WhatsAppE2EPro
  * Ref whatsmeow appstate.go fetchAppState. MAC/LTHash verification is skipped.
  */
 private const val SYNC_PAGE_GUARD = 12
-private const val MAX_RETRY_RECEIPTS = 5
+internal const val MAX_RETRY_RECEIPTS = 5
 private const val MS_PER_SECOND = 1000L
 private const val HEX_RADIX = 16
 private const val HEX_PAIR = 2
@@ -387,7 +387,7 @@ internal fun WhatsAppClient.sendHistorySyncReceipt(msgId: String) {
  */
 /** Displayable body + wrapper for a history message, or null when skipped. */
 private fun extractHistoryBody(
-    hsMsg: WhatsAppE2EProto.HsMessage,
+    hsMsg: WhatsAppE2EProto.HistorySyncMsg,
 ): Pair<String, WhatsAppE2EProto.WebMessageInfo>? {
     if (!hsMsg.hasMessage()) return null
     val wmi = hsMsg.message

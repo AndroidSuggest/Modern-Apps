@@ -259,7 +259,7 @@ private fun PeopleGrid(
                         .invisibleClickable { onNameClick(person) },
                 )
                 Text(
-                    text = pluralStringResource(R.plurals.people_photo_count, person.photos.size, person.photos.size),
+                    text = pluralStringResource(R.plurals.album_photo_count, person.photos.size, person.photos.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

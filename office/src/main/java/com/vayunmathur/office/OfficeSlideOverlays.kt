@@ -137,7 +137,7 @@ private fun SlideTransitionOverlay(
                     "medium",
                 )
                 state.showSlideTransition = false
-            }) { Text(stringResource(R.string.apply)) }
+            }) { Text(stringResource(UiR.string.apply)) }
         },
         dismissButton = {
             TextButton(onClick = { state.showSlideTransition = false }) {

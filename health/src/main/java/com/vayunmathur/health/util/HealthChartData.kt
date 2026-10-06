@@ -256,7 +256,7 @@ internal object HealthChartData {
     }
 
     /** Min..max of the plotted values, widened when every value is equal. */
-    private fun chartRange(mappedChart: List<Pair<String, Double?>>): ClosedRange<Double>? {
+    private fun chartRange(mappedChart: List<Pair<String, Double?>>): ClosedFloatingPointRange<Double>? {
         val vals = mappedChart.mapNotNull { it.second }
         if (vals.isEmpty()) return null
         val min = vals.minOrNull() ?: return null

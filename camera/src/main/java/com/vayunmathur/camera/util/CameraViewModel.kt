@@ -3,72 +3,30 @@ package com.vayunmathur.camera.util
 import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Rect
-import android.util.Rational
-import android.graphics.Canvas
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Matrix
-import android.graphics.Paint
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.location.Location
-import android.location.LocationManager
-import android.media.MediaFormat
 import android.net.Uri
-import android.provider.MediaStore
-import androidx.annotation.OptIn
-import androidx.core.graphics.createBitmap
-import androidx.core.graphics.scale
-import androidx.core.net.toUri
-import androidx.annotation.StringRes
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
-import com.vayunmathur.camera.R
 import android.util.Log
-import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Camera
-import androidx.camera.core.SessionConfig
-import androidx.camera.core.UseCase
-import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.ImageProxy
-import androidx.camera.core.MirrorMode
-import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
-import androidx.camera.core.resolutionselector.ResolutionSelector
-import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import androidx.camera.extensions.ExtensionMode
-import androidx.camera.extensions.ExtensionSessionConfig
 import androidx.camera.extensions.ExtensionsManager
-import androidx.camera.video.AudioSpec
-import androidx.camera.video.FileOutputOptions
-import androidx.camera.video.HighSpeedVideoSessionConfig
-import androidx.camera.video.MediaStoreOutputOptions
-import androidx.camera.video.Quality
-import androidx.camera.video.QualitySelector
-import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
-import androidx.camera.video.VideoRecordEvent
-import androidx.core.content.ContextCompat
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.library.util.DataStoreUtils
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -76,98 +34,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlinx.coroutines.withContext
-import androidx.camera.lifecycle.awaitInstance
-import java.io.ByteArrayInputStream
 import kotlin.math.atan2
-import kotlin.math.roundToInt
-
-enum class CameraMode { PHOTO, PORTRAIT, PANORAMA, PHOTOSPHERE, VIDEO, SLOW_MO, TIMELAPSE, CINEMATIC }
-enum class FlashMode { ON, OFF, AUTO }
-
-/** Shutter-timer durations (seconds). */
-private const val TIMER_THREE_SECONDS = 3
-private const val TIMER_FIVE_SECONDS = 5
-private const val TIMER_TEN_SECONDS = 10
-enum class TimerDuration(val seconds: Int) {
-    NONE(0),
-    THREE(TIMER_THREE_SECONDS),
-    FIVE(TIMER_FIVE_SECONDS),
-    TEN(TIMER_TEN_SECONDS)
-}
-enum class AspectRatioOption(val label: String) {
-    RATIO_16_9("16:9"),
-    RATIO_4_3("4:3"),
-    RATIO_3_2("3:2"),
-    RATIO_1_1("1:1")
-}
-enum class VideoCodec(@StringRes val labelRes: Int, @StringRes val descriptionRes: Int) {
-    AVC(R.string.codec_avc_label, R.string.codec_avc_description),
-    HEVC(R.string.codec_hevc_label, R.string.codec_hevc_description),
-    AV1(R.string.codec_av1_label, R.string.codec_av1_description),
-}
-enum class AudioInputSource(
-    @StringRes val labelRes: Int,
-    @StringRes val descriptionRes: Int,
-    val specValue: Int,
-) {
-    CAMCORDER(
-        R.string.audio_source_camcorder_label,
-        R.string.audio_source_camcorder_description,
-        AudioSpec.SOURCE_CAMCORDER
-    ),
-    MIC(R.string.audio_source_mic_label, R.string.audio_source_mic_description, AudioSpec.SOURCE_MIC),
-    VOICE_COMMUNICATION(
-        R.string.audio_source_voice_communication_label,
-        R.string.audio_source_voice_communication_description,
-        AudioSpec.SOURCE_VOICE_COMMUNICATION
-    ),
-    UNPROCESSED(
-        R.string.audio_source_unprocessed_label,
-        R.string.audio_source_unprocessed_description,
-        AudioSpec.SOURCE_UNPROCESSED
-    ),
-}
-
-/** Zoom-label tuning: sub-1x threshold, decimal scaling, near-integer snap tolerance. */
-private const val ZOOM_SUB_UNIT_MAX = 1f
-private const val ZOOM_DECIMAL_SCALE = 10f
-private const val ZOOM_INTEGER_SNAP_TOLERANCE = 0.05f
-
-/** Formats a zoom ratio for the zoom bar: ".5", "1x", or "1.5x". */
-fun formatZoomLabel(ratio: Float): String = when {
-    ratio < ZOOM_SUB_UNIT_MAX -> ".${(ratio * ZOOM_DECIMAL_SCALE).roundToInt()}"
-    else -> {
-        val rounded = (ratio * ZOOM_DECIMAL_SCALE).roundToInt() / ZOOM_DECIMAL_SCALE
-        if (kotlin.math.abs(rounded - rounded.roundToInt()) < ZOOM_INTEGER_SNAP_TOLERANCE) {
-            "${rounded.roundToInt()}x"
-        } else {
-            "%.1fx".format(rounded)
-        }
-    }
-}
-
-data class ExposureTimeStop(val label: String, val nanos: Long?)
-
-/**
- * Builds the warmth/shadows color matrix shared by the live preview and the
- * saved capture, so a photo looks the same as what the viewfinder showed.
- */
-/** Warmth/shadows color-matrix tuning (red/blue channel tilt, shadow lift). */
-private const val COLOR_WARMTH_RED_GAIN = 0.15f
-private const val COLOR_WARMTH_GREEN_GAIN = 0.05f
-private const val COLOR_SHADOW_LIFT = 40f
-
-fun buildColorAdjustmentMatrix(warmth: Float, shadows: Float): ColorMatrix = ColorMatrix(
-    floatArrayOf(
-        1f + warmth * COLOR_WARMTH_RED_GAIN, 0f, 0f, 0f, shadows * COLOR_SHADOW_LIFT,
-        0f, 1f + warmth * COLOR_WARMTH_GREEN_GAIN, 0f, 0f, shadows * COLOR_SHADOW_LIFT,
-        0f, 0f, 1f - warmth * COLOR_WARMTH_RED_GAIN, 0f, shadows * COLOR_SHADOW_LIFT,
-        0f, 0f, 0f, 1f, 0f,
-    )
-)
 
 class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
     companion object {
@@ -630,12 +497,7 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
         sloMoFps = fps
     }
 
-    /** Cancels an armed photo/video shutter timer (second tap dismisses it). */
-    fun cancelTimerCountdown() {
-        timerCountdownJob?.cancel()
-        timerCountdownJob = null
-        timerCountdownMutable.value = 0
-    }
+    // (cancelTimerCountdown lives in CameraViewModelActions.kt as an extension.)
 
     /**
      * Which camera route is in the foreground ("camera" vs "settings"), or null before first
@@ -657,85 +519,23 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
         }
         // DEBUG: Night mode resolution question – extension uses default resolution vs max-res,
         // may be lower so can't take full quality?
-        viewModelScope.launch {
-            var last: List<Pair<String, Float>> = emptyList()
-            availableZoomLevels.collect { levels ->
-                if (levels != last) {
-                    Log.d(
-                        "NightPreview",
-                        "CameraViewModel availableZoomLevels FLOW emitted=$levels previous=$last " +
-                            "nightPreviewActive=${nightPreviewActiveMutable.value} " +
-                            "photoActive=${photoSessionActiveMutable.value} zoomRatio=${zoomRatioMutable.value} – " +
-                            "if only [1x], zoom bar appears disappeared"
-                    )
-                    last = levels
-                }
-            }
-        }
-        viewModelScope.launch {
-            var lastRes: android.util.Size? = null
-            surfaceRequest.collect { req ->
-                val res = req?.resolution
-                if (res != lastRes) {
-                    Log.d(
-                        "NightPreview",
-                        "CameraViewModel surfaceRequest FLOW emitted res=$res previous=$lastRes " +
-                            "nightPreviewActive=${nightPreviewActiveMutable.value} " +
-                            "photoActive=${photoSessionActiveMutable.value} – " +
-                            "null->val during extension bind, black if stuck null"
-                    )
-                    lastRes = res
-                }
-            }
-        }
-        viewModelScope.launch {
-            nightModeActive.collect { active ->
-                Log.d(
-                    "NightPreview",
-                    "CameraViewModel nightModeActive FLOW=$active " +
-                        "lowLight=${lowLightDetectedMutable.value} " +
-                        "overriddenOff=${nightModeOverriddenOffMutable.value} – " +
-                        "button toggle drives this, triggers session rebind via useNightPreview in UI"
-                )
-            }
-        }
+        startDebugLogging()
     }
 
     // Slo-Mo probe + thumbnail loading live in CameraStartup.kt as extensions.
 
     // Capture settings live in CameraSettings.kt as extensions.
 
-    /**
-     * Still-capture crop aspect ratio, expressed width:height in the portrait UI
-     * orientation (the activity is portrait-locked) so it matches the on-screen
-     * preview box. CameraX crops OutputFileOptions saves to this and sets the
-     * ImageProxy cropRect for in-memory captures.
-     */
-    internal fun currentCropAspectRatio(): android.util.Rational = when (aspectRatioMutable.value) {
-        AspectRatioOption.RATIO_1_1 -> Rational(ASPECT_SQUARE_W, ASPECT_SQUARE_H)
-        AspectRatioOption.RATIO_4_3 -> Rational(ASPECT_4_3_W, ASPECT_4_3_H)
-        AspectRatioOption.RATIO_3_2 -> Rational(ASPECT_3_2_W, ASPECT_3_2_H)
-        AspectRatioOption.RATIO_16_9 -> Rational(ASPECT_16_9_W, ASPECT_16_9_H)
-    }
+    // --- Mode, lens, capture-intent, shutter, timer and sensor members stay here: ---
+    // they are called from other packages (ui, root), which this task may not edit,
+    // and Kotlin extensions would need new imports at those call sites.
+    // Same-package-only helpers (crop ratio, level sensor, mirror flag, debug logging)
+    // live in CameraViewModelActions.kt as extensions.
 
     // Bitmap/EXIF processing helpers live in CameraCaptureProcessing.kt as extensions.
     // (long-exposure countdown lives in CameraNightCapture.kt.)
 
     // Capture settings live in CameraSettings.kt as extensions.
-
-    internal fun registerLevelSensor() {
-        if (levelSensorRegistered) return
-        val sensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
-            ?: sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) ?: return
-        sensorManager.registerListener(levelListener, sensor, SensorManager.SENSOR_DELAY_UI)
-        levelSensorRegistered = true
-    }
-
-    internal fun unregisterLevelSensor() {
-        if (!levelSensorRegistered) return
-        sensorManager.unregisterListener(levelListener)
-        levelSensorRegistered = false
-    }
 
     // Night luminance/override handling lives in CameraNightMode.kt as extensions.
     // Last-capture persistence lives in CameraSettings.kt as an extension.
@@ -795,15 +595,7 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
     }
 
     // (night reset helper lives in CameraNightMode.kt.)
-
-    /**
-     * Whether captures should be horizontally mirrored to match the preview. CameraX mirrors the
-     * front-camera preview but saves un-mirrored by default, so selfies otherwise come out flipped.
-     * Controlled by the user-facing "mirror selfie" setting (issue #632); only ever applies to the
-     * front lens.
-     */
-    internal val mirrorCaptures: Boolean
-        get() = lensFacingMutable.value == CameraSelector.LENS_FACING_FRONT && mirrorFrontMutable.value
+    // (mirrorCaptures lives in CameraViewModelActions.kt as an extension.)
 
     // Zoom/focus/analyzer controls live in CameraControls.kt as extensions.
 
@@ -852,16 +644,4 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
         try { stillBokeh.close() } catch (_: Exception) {}
     }
 }
-
-internal class ManualLifecycleOwner : LifecycleOwner {
-    private val registry = androidx.lifecycle.LifecycleRegistry(this)
-    override val lifecycle: androidx.lifecycle.Lifecycle get() = registry
-
-    fun start() {
-        registry.currentState = androidx.lifecycle.Lifecycle.State.RESUMED
-    }
-
-    fun destroy() {
-        registry.currentState = androidx.lifecycle.Lifecycle.State.DESTROYED
-    }
-}
+// (ManualLifecycleOwner lives in CameraViewModelTypes.kt.)

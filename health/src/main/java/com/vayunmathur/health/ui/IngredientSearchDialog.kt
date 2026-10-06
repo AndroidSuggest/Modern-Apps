@@ -4,17 +4,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.align
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import com.vayunmathur.health.data.Ingredient
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
@@ -64,7 +65,7 @@ fun IngredientSearchDialog(
                     OutlinedTextField(
                         value = query,
                         onValueChange = { query = it },
-                        label = { Text(stringResource(R.string.search)) },
+                        label = { Text(stringResource(UiR.string.search)) },
                         modifier = Modifier.weight(1f)
                     )
                     Spacer(Modifier.width(8.dp))
@@ -77,7 +78,7 @@ fun IngredientSearchDialog(
                             isSearching = false
                         }
                     }) {
-                        Text(stringResource(R.string.search))
+                        Text(stringResource(UiR.string.search))
                     }
                 }
 

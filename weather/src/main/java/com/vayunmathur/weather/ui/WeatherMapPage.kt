@@ -27,6 +27,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.weather.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.weather.Route
 import com.vayunmathur.weather.domain.WeatherMetric
 import com.vayunmathur.weather.domain.colorRamp
@@ -173,7 +174,7 @@ fun WeatherMapPage(
                     }
                 } else {
                     Text(
-                        text = stringResource(R.string.map_time),
+                        text = stringResource(UiR.string.time),
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                     )

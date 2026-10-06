@@ -30,5 +30,5 @@ interface SignalCallSignaling {
      */
     suspend fun iceServers(): List<PeerConnection.IceServer>
 
-    fun onCallStateChanged(aci: String, callId: Long, state: CallState, isVideo: Boolean)
+    fun onCallStateChanged(aci: String, callId: Long, state: SignalCallManager.CallState, isVideo: Boolean)
 }

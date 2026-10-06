@@ -599,14 +599,14 @@ interface SignalE2EKyberUsedBaseKeyDao {
 
 @Dao
 interface SignalE2ESenderKeyDao {
-    @Query("SELECT * FROM signal_e2e_sender_keys WHERE address = :address AND" +
+    @Query("SELECT * FROM signal_e2e_sender_keys WHERE address = :address AND " +
         "deviceId = :deviceId AND distributionId = :distributionId LIMIT 1")
     suspend fun get(address: String, deviceId: Int, distributionId: String): SignalE2ESenderKey?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entity: SignalE2ESenderKey)
 
-    @Query("DELETE FROM signal_e2e_sender_keys WHERE address = :address" +
+    @Query("DELETE FROM signal_e2e_sender_keys WHERE address = :address " +
         "AND deviceId = :deviceId AND distributionId = :distributionId")
     suspend fun delete(address: String, deviceId: Int, distributionId: String)
 }

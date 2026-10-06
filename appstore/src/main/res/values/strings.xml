@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">App Store</string>
-    <string name="open">Open</string>
     <string name="uninstall">Uninstall</string>
     <string name="view_in_play_store">View in Play Store</string>
     <string name="installed">Installed</string>
@@ -11,7 +10,7 @@
     <string name="last_sync">Last sync: %1$s</string>
     <string name="repositories">Sources</string>
     <!-- Sources page, under the title. Explains that the list is fixed but each entry can be switched off. -->
-    <string name="sources_are_fixed">These sources are built in and no others can be added — other F-Droid repos just hand out binaries someone else built, so there is nothing to check them against. Switch off any you do not want the store to use.</string>
+    <string name="sources_are_fixed">Built-in sources only; no others can be added. Other repos hand out unchecked binaries someone else built. Switch off any you do not use.</string>
     <!-- Sources page, warning shown when the user has switched every source off. -->
     <string name="sources_all_disabled">Every source is switched off, so there is nothing to browse, search or update from.</string>
 
@@ -29,7 +28,6 @@
     <string name="source_chip_accrescent">Accrescent</string>
     <string name="filter_all">All</string>
     <string name="filter_with_count">%1$s (%2$d)</string>
-    <string name="category_all">All</string>
 
     <!-- Home. -->
     <string name="section_modern_apps">From Modern Apps</string>
@@ -78,11 +76,11 @@
     <string name="updates_checking">Checking for updates…</string>
     <string name="updates_last_checked">Last checked %1$s</string>
     <string name="updates_notification_body">Open the App Store to review and install them.</string>
-    <string name="updates_confirm_notification_body">Android only lets the App Store update apps it installed itself, so these need a tap from you. Open the App Store to install them.</string>
+    <string name="updates_confirm_notification_body">Android only lets the store update apps it installed, so these need your tap. Open the App Store to install them.</string>
     <string name="updates_channel_name">App updates</string>
     <string name="updates_channel_description">Tells you when apps you installed here have a newer version.</string>
     <string name="setting_auto_install_updates_title">Automatically install updates</string>
-    <string name="setting_auto_install_updates_summary">Install updates as soon as they are found, with no tap. When off, updates wait until you tap Update. Either way apps this store installed update without asking each time; anything else just notifies you.</string>
+    <string name="setting_auto_install_updates_summary">When on, updates install when found. When off, they wait for a tap. Store-installed apps update silently; the rest just notify.</string>
     <plurals name="updates_count">
         <item quantity="one">%1$d update available</item>
         <item quantity="other">%1$d updates available</item>
@@ -189,6 +187,9 @@
     <string name="trust_own_key_detail">Modern Apps downloads have to be signed by this key. It is read off your phone at install time, so it is always the key this copy of the store was really signed with.</string>
     <string name="trust_own_key_unreadable">Couldn\'t read this app\'s signing key.</string>
 
+    <!-- Shared clause factored out of the per-source limits strings below. -->
+    <string name="trust_no_takedown">There is no way to pull a bad release off phones that already took it.</string>
+
     <string name="trust_modern_apps_title" translatable="false">Modern Apps</string>
     <string name="trust_modern_apps_summary">Built in the same repo as this store and signed with the same key, which your phone can check against the copy of the store you are holding.</string>
     <string name="trust_modern_apps_practice_open">All of it is open source, in one public repository</string>
@@ -196,9 +197,8 @@
     <string name="trust_modern_apps_check_index_signed">The repository index is signed and checked against this store\'s own pinned key</string>
     <string name="trust_modern_apps_check_key">Signed by this app\'s own key, read straight from your phone at install time</string>
     <string name="trust_modern_apps_check_hash">The file matches the hash in the repository\'s signed index</string>
-    <string name="trust_modern_apps_limits">One developer, one key, no independent review and nobody rebuilding the source to confirm the app matches it. There is no scanning and no way to pull a bad release off phones that already took it.</string>
+    <string name="trust_modern_apps_limits">One developer, one key, no independent review and nobody rebuilding the source to confirm the app matches it. There is no scanning.</string>
 
-    <string name="trust_fdroid_title">F-Droid</string>
     <string name="trust_fdroid_summary">Built from public source code. Versions a second machine independently rebuilt to an identical file are badged as reproducible.</string>
     <string name="trust_fdroid_practice_source">Every app is built from source F-Droid publishes, not from a binary a developer sent in</string>
     <string name="trust_fdroid_practice_rebuild">A second build server rebuilds many apps and compares the result byte for byte</string>
@@ -207,8 +207,7 @@
     <string name="trust_fdroid_check_chained">Every entry in that list is chained back to the signature</string>
     <string name="trust_fdroid_check_rebuilt">Versions F-Droid\'s second build server reproduced bit-for-bit are badged as reproducible</string>
     <string name="trust_fdroid_check_hash_and_key">The hash and the signing key both come from the signed list</string>
-    <string name="trust_fdroid_limits">F-Droid holds the signing key, not the developer, so its build servers can sign anything. Nobody checks what an app does, only that it matches its source. Updates wait to be rebuilt, which can take days or weeks - security fixes included - and there is no way to pull a bad app back off phones.</string>
-    <string name="trust_grapheneos_title">GrapheneOS</string>
+    <string name="trust_fdroid_limits">F-Droid holds the signing key, not the developer, so its build servers can sign anything. Nobody checks what an app does, only that it matches its source. Updates wait to be rebuilt, which can take days or weeks, security fixes included.</string>
     <string name="trust_grapheneos_summary">Google\'s own signed builds of the Sandboxed Google Play components, re-hosted by GrapheneOS behind a signed list naming each file\'s hash and signing key.</string>
     <string name="trust_grapheneos_practice_official">The files are Google\'s own signed builds, re-hosted unchanged rather than rebuilt</string>
     <string name="trust_grapheneos_practice_signed_index">GrapheneOS signs the list of versions, file hashes and expected signing keys with its release key</string>
@@ -216,7 +215,7 @@
     <string name="trust_grapheneos_check_index_signed">That signed list is checked against a key built into this store</string>
     <string name="trust_grapheneos_check_rollback">A list older than the last one seen is refused, so an old build cannot be pushed back onto you</string>
     <string name="trust_grapheneos_check_hash_and_key">Every downloaded file matches the hash and the signing key that list names for it</string>
-    <string name="trust_grapheneos_limits">These are Google\'s closed-source apps. Nothing is built from published source and nothing is reproducible, so what is proven is that you received the file GrapheneOS listed, not anything about what that file does. The source carries only the Sandboxed Google Play components, and there is no way to pull a bad release back off phones.</string>
+    <string name="trust_grapheneos_limits">These are Google\'s closed-source apps. Nothing is built from published source and nothing is reproducible, so what is proven is that you received the file GrapheneOS listed, not anything about what that file does. The source carries only the Sandboxed Google Play components.</string>
     <string name="trust_play_title">Google Play</string>
     <string name="trust_play_summary">Reviewed, scanned and signed by Google, who verify who the developer is and can pull an app from every phone at once.</string>
     <string name="trust_play_practice_identity">Developers have to prove who they are, with a real name and address on file</string>
@@ -226,9 +225,8 @@
     <string name="trust_play_check_hash">Each downloaded file matches the hash Google sent with it</string>
     <string name="trust_play_check_key">Signed by the key Google lists for this app</string>
     <string name="trust_play_check_stamp">The app\'s publisher stamp is saved the first time you install it, and has to stay the same afterwards</string>
-    <string name="trust_play_limits">No source code and no second build, so nothing proves the app matches any published source. Google supplies both the file and the expectation it is checked against, so these checks catch a tampered download but not a bad update Google signs itself. This store also reaches Play through an anonymous account rather than the official client, so it sees less than the Play app does.</string>
+    <string name="trust_play_limits">No source code and no second build, so nothing proves the app matches any source. Google supplies both the file and the expectation, catching a tampered download but not a bad update Google signs itself. This store\'s anonymous account sees less than the Play app.</string>
 
-    <string name="trust_accrescent_title">Accrescent</string>
     <string name="trust_accrescent_summary">Apps signed by their own developers, listed on Accrescent\'s ed25519-signed allowlist which pins each app\'s signing key and lowest allowed version.</string>
     <string name="trust_accrescent_practice_developer_key">Each app is signed by its developer\'s own key, not by Accrescent</string>
     <string name="trust_accrescent_practice_signed_list">Which apps are legitimate, and each one\'s expected key, come from a single ed25519-signed list</string>
@@ -236,17 +234,14 @@
     <string name="trust_accrescent_check_list_signed">The app list is signed and checked against a key built into this store, with a timestamp that can never go backwards</string>
     <string name="trust_accrescent_check_key">The download is signed by exactly the key the signed list names for this app</string>
     <string name="trust_accrescent_check_min_version">The download\'s version is at or above the minimum the signed list allows</string>
-    <string name="trust_accrescent_limits">Accrescent publishes no per-file hashes and no reproducible builds, so the guarantee is the signature and minimum version, not a match against source. Listings and download links come from an ordinary server over gRPC; a bad response can only ever produce a file that fails these signature and version checks. Nobody scans the apps, and there is no way to pull a bad release back off phones.</string>
+    <string name="trust_accrescent_limits">Accrescent publishes no per-file hashes and no reproducible builds, so the guarantee is the signature and minimum version, not source. Listings come from an ordinary server over gRPC; a bad response can only produce a file that fails these checks. Nobody scans the apps.</string>
 
     <!-- Sources page. -->
-    <string name="repos_syncing">Syncing…</string>
     <string name="repos_sync_sources">Sync sources</string>
     <string name="source_modern_apps" translatable="false">Modern Apps</string>
     <string name="source_modern_apps_pin">Pinned to this app\'s own signing key</string>
-    <string name="source_fdroid">F-Droid</string>
     <string name="source_fdroid_pin">Pinned to F-Droid\'s app list signing key</string>
     <string name="source_play">Play Store (anonymous)</string>
     <string name="source_play_pin">Nothing to pin: Google holds the signing key</string>
-    <string name="source_accrescent">Accrescent</string>
     <string name="source_accrescent_pin">Pinned to Accrescent\'s repodata signing key (ed25519)</string>
 </resources>

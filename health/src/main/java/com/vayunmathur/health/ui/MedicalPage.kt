@@ -85,7 +85,7 @@ fun MedicalPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) {
 
     pendingVaccinationDelete?.let { entry ->
         ConfirmDialog(
-            title = stringResource(R.string.delete_vaccination_confirm, entry.displayName),
+            title = stringResource(R.string.delete_record_confirm, entry.displayName),
             confirmLabel = stringResource(UiR.string.delete),
             destructive = true,
             onConfirm = {
@@ -97,7 +97,7 @@ fun MedicalPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) {
     }
     pendingAllergyDelete?.let { entry ->
         ConfirmDialog(
-            title = stringResource(R.string.delete_allergy_confirm, entry.displayName),
+            title = stringResource(R.string.delete_record_confirm, entry.displayName),
             confirmLabel = stringResource(UiR.string.delete),
             destructive = true,
             onConfirm = {
@@ -109,7 +109,7 @@ fun MedicalPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) {
     }
     pendingConditionDelete?.let { entry ->
         ConfirmDialog(
-            title = stringResource(R.string.delete_condition_confirm, entry.displayName),
+            title = stringResource(R.string.delete_record_confirm, entry.displayName),
             confirmLabel = stringResource(UiR.string.delete),
             destructive = true,
             onConfirm = {
@@ -121,7 +121,7 @@ fun MedicalPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) {
     }
     pendingLabDelete?.let { entry ->
         ConfirmDialog(
-            title = stringResource(R.string.delete_lab_confirm, entry.displayName),
+            title = stringResource(R.string.delete_record_confirm, entry.displayName),
             confirmLabel = stringResource(UiR.string.delete),
             destructive = true,
             onConfirm = {
@@ -133,7 +133,7 @@ fun MedicalPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) {
     }
     pendingMedicationDelete?.let { entry ->
         ConfirmDialog(
-            title = stringResource(R.string.delete_medication_confirm, entry.displayName),
+            title = stringResource(R.string.delete_record_confirm, entry.displayName),
             confirmLabel = stringResource(UiR.string.delete),
             destructive = true,
             onConfirm = {

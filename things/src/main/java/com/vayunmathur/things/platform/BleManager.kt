@@ -567,5 +567,4 @@ class BleManager {
     }
 }
 
-private const val RECORD_SIZE = 13
 private const val SCANNING_STATE = "Scanning..."

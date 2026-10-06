@@ -27,6 +27,7 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Spacing
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
@@ -63,12 +64,12 @@ fun HomeScreen(
                 Button(
                     onClick = { backStack.add(Route.Game(uiState.config)) },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(stringResource(R.string.continue_game)) }
+                ) { Text(stringResource(UiR.string.continue_label)) }
             }
             Button(
                 onClick = { showConfig = true },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text(stringResource(R.string.new_game)) }
+            ) { Text(stringResource(UiR.string.new_game)) }
 
             Row(
                 Modifier.fillMaxWidth(),

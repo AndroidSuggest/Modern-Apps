@@ -24,6 +24,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.code.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.code.util.CodeActions
 import com.vayunmathur.code.util.CodeUiState
 import com.vayunmathur.library.ui.AlertDialog
@@ -91,7 +92,7 @@ internal fun TabStrip(state: CodeUiState, actions: CodeActions) {
         ConfirmDialog(
             title = stringResource(R.string.discard_changes_title),
             confirmLabel = stringResource(R.string.discard),
-            dismissLabel = stringResource(R.string.cancel),
+            dismissLabel = stringResource(UiR.string.cancel),
             destructive = true,
             onConfirm = { actions.closeTab(index) },
             onDismiss = { pendingCloseIndex = null },
@@ -222,7 +223,7 @@ internal fun GoToLineDialog(onGo: (Int) -> Unit, onDismiss: () -> Unit) {
             ) { Text(stringResource(R.string.go)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }
@@ -246,7 +247,7 @@ internal fun editorCommands(
     onOpenFile: () -> Unit,
 ): List<PickerItem> = listOf(
     PickerItem(stringResource(R.string.quick_open)) { onQuickOpen() },
-    PickerItem(stringResource(R.string.save)) { actions.save() },
+    PickerItem(stringResource(UiR.string.save)) { actions.save() },
     PickerItem(stringResource(R.string.save_all)) { actions.saveAll() },
     PickerItem(stringResource(R.string.find)) { onToggleFind() },
     PickerItem(stringResource(R.string.go_to_line)) { onGoToLine() },
@@ -261,13 +262,13 @@ internal fun editorCommands(
     PickerItem(stringResource(R.string.problems)) { onProblems() },
     PickerItem(stringResource(R.string.split_view)) { actions.toggleSplit() },
     PickerItem(stringResource(R.string.soft_wrap)) { actions.toggleSoftWrap() },
-    PickerItem(stringResource(R.string.undo)) { actions.undo() },
+    PickerItem(stringResource(UiR.string.undo)) { actions.undo() },
     PickerItem(stringResource(R.string.redo)) { actions.redo() },
     PickerItem(stringResource(R.string.search_in_project)) { onOpenSearch() },
     PickerItem(stringResource(R.string.source_control)) { onOpenGit() },
     PickerItem(stringResource(R.string.terminal)) { onOpenTerminal() },
     PickerItem(stringResource(R.string.preview)) { onOpenPreview() },
-    PickerItem(stringResource(R.string.settings)) { onOpenSettings() },
+    PickerItem(stringResource(UiR.string.settings)) { onOpenSettings() },
     PickerItem(stringResource(R.string.open_folder)) { onOpenFolder() },
     PickerItem(stringResource(R.string.open_file)) { onOpenFile() },
 )

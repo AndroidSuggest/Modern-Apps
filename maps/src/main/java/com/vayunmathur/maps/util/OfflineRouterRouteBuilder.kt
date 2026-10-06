@@ -3,6 +3,7 @@ package com.vayunmathur.maps.util
 import android.content.Context
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.maps.R
+import com.vayunmathur.library.ui.R as UiR
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -188,7 +189,7 @@ internal object OfflineRouterRouteBuilder {
         }
         return namedOrUnnamed(
             context, hasName, raw.roadName,
-            R.string.maneuver_unspecified, R.string.maneuver_unspecified_unnamed,
+            R.string.maneuver_unspecified, UiR.string.continue_label,
         )
     }
 

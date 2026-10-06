@@ -7,6 +7,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.vayunmathur.clock.MainActivity
 import com.vayunmathur.clock.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.DataStoreUtils
 import java.util.Locale
 import kotlin.time.Clock
@@ -57,7 +58,7 @@ object StopwatchNotificationHelper {
         )
         return NotificationCompat.Builder(context, "stopwatch_channel")
             .setSmallIcon(R.drawable.outline_timer_24)
-            .setContentTitle(context.getString(R.string.label_stopwatch))
+            .setContentTitle(context.getString(R.string.channel_stopwatch_name))
             .setContentText(contentText)
             .setContentIntent(contentIntent)
             .setOngoing(true)
@@ -117,7 +118,7 @@ object StopwatchNotificationHelper {
         }
         builder.addAction(
             R.drawable.ic_stop_24,
-            context.getString(R.string.action_stop),
+            context.getString(UiR.string.stop),
             stopIntent,
         )
     }

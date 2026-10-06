@@ -30,6 +30,7 @@ import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
@@ -67,9 +68,9 @@ fun HomeScreen(backStack: NavBackStack<Route>, viewModel: SolitaireViewModel) {
             val uiState by viewModel.uiState.collectAsState()
             val hasGame = viewModel.hasActiveGame()
             if (hasGame) {
-                Button(onClick = { backStack.add(Route.Game(uiState.gameMode!!)) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.continue_game)) }
+                Button(onClick = { backStack.add(Route.Game(uiState.gameMode!!)) }, Modifier.fillMaxWidth()) { Text(stringResource(UiR.string.continue_label)) }
             }
-            Button(onClick = { showGamePicker = true }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.new_game)) }
+            Button(onClick = { showGamePicker = true }, Modifier.fillMaxWidth()) { Text(stringResource(UiR.string.new_game)) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GameMode.entries.forEach { mode ->
                     val stats = viewModel.getStats(mode)
@@ -100,7 +101,7 @@ fun HomeScreen(backStack: NavBackStack<Route>, viewModel: SolitaireViewModel) {
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { showGamePicker = false }) { Text(stringResource(R.string.back)) } }
+            dismissButton = { TextButton(onClick = { showGamePicker = false }) { Text(stringResource(UiR.string.back)) } }
         )
     }
     configMode?.let { mode ->

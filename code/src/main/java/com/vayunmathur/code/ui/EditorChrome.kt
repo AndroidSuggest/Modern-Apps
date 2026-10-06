@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.vayunmathur.code.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.code.syntax.Language
 import com.vayunmathur.code.syntax.MAX_HIGHLIGHT_CHARS
 import com.vayunmathur.code.syntax.SyntaxColors
@@ -168,7 +169,7 @@ fun FindBar(
                 singleLine = true,
             )
             TextButton(onClick = onReplace, enabled = matchCount > 0) { Text(stringResource(R.string.replace)) }
-            TextButton(onClick = onReplaceAll, enabled = matchCount > 0) { Text(stringResource(R.string.all)) }
+            TextButton(onClick = onReplaceAll, enabled = matchCount > 0) { Text(stringResource(UiR.string.all)) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ToggleChip(

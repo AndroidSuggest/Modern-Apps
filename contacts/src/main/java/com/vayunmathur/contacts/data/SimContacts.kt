@@ -326,7 +326,7 @@ object SimContactsDataSource {
                 }
                 Uri.parse(BASE_URI)
             }
-            deleteSingle(context, uri, simContact)
+            return deleteSingle(context, uri, simContact)
     }
 
     private fun deleteSingle(context: Context, uri: Uri, simContact: SimContact): Boolean {

@@ -21,6 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.code.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.code.Route
 import com.vayunmathur.code.util.EditorViewModel
 import com.vayunmathur.library.ui.AppScaffold
@@ -52,7 +53,7 @@ fun SearchPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
         viewModel.actions.searchProject(query, caseSensitive, useRegex)
     }
 
-    AppScaffold(title = stringResource(R.string.search), backStack = backStack, scrollBehavior = appBarScrollBehavior()) { padding ->
+    AppScaffold(title = stringResource(UiR.string.search), backStack = backStack, scrollBehavior = appBarScrollBehavior()) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             OutlinedTextField(
                 value = query,

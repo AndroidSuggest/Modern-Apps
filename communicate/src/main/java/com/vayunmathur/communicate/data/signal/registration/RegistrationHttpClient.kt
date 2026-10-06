@@ -119,7 +119,7 @@ class RegistrationHttpClient(private val context: Context) {
 
     /** Challenge gates (captcha/pushChallenge); null when clear to send the code. */
     private suspend fun gateChallenges(
-        create: CreateSessionResult,
+        create: SessionInfo,
     ): CodeResult? {
         // captcha: needs an hCaptcha token minted via the signalcaptchas.org WebView (see submitCaptcha +
         // SignalCaptchaScreen).
@@ -236,8 +236,8 @@ class RegistrationHttpClient(private val context: Context) {
         }
     }
 
-    /* * Real Signal has no GET /v1/accounts/exists/{e164}; CDSIv2 is authority for number->ACI. Post-auth use GET
-    /* /v1/accounts/whoami.
+    // Real Signal has no GET /v1/accounts/exists/{e164}; CDSIv2 is authority for number->ACI.
+    // Post-auth use GET /v1/accounts/whoami.
     suspend fun checkExists(e164: String): ExistResult {
         val auth = SignalAuthData.load(context)
         // If authenticated (registered), probe real endpoint GET /v1/accounts/whoami with Basic e164:password

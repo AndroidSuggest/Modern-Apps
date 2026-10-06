@@ -24,6 +24,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.flashcards.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.flashcards.Route
 import com.vayunmathur.flashcards.data.NoteTypeKind
 import com.vayunmathur.flashcards.util.FlashcardsViewModel
@@ -131,10 +132,10 @@ fun NoteTypeListScreen(state: NoteTypeListUiState, actions: NoteTypeListActions)
 
     pendingDelete?.let { summary ->
         ConfirmDialog(
-            title = stringResource(R.string.delete),
+            title = stringResource(UiR.string.delete),
             message = stringResource(R.string.delete_note_type_message, summary.name, summary.noteCount),
-            confirmLabel = stringResource(R.string.delete),
-            dismissLabel = stringResource(R.string.cancel),
+            confirmLabel = stringResource(UiR.string.delete),
+            dismissLabel = stringResource(UiR.string.cancel),
             destructive = true,
             onConfirm = {
                 actions.deleteNoteType(summary.id)
@@ -214,7 +215,7 @@ fun NoteTypeEditScreen(state: NoteTypeEditUiState, actions: NoteTypeEditActions)
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text(stringResource(R.string.name)) },
+                label = { Text(stringResource(UiR.string.name)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -288,7 +289,7 @@ fun NoteTypeEditScreen(state: NoteTypeEditUiState, actions: NoteTypeEditActions)
 
             if (!state.isNew && !builtIn) {
                 OutlinedButton(onClick = { actions.delete() }, modifier = Modifier.padding(top = 24.dp)) {
-                    IconDelete(); Text(stringResource(R.string.delete))
+                    IconDelete(); Text(stringResource(UiR.string.delete))
                 }
             }
         }

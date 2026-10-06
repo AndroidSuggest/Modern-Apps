@@ -102,7 +102,7 @@ fun DirectoryScreen(
         var newName by remember(renaming.key) { mutableStateOf(renaming.name) }
         AlertDialog(
             onDismissRequest = { itemBeingRenamed = null },
-            title = { Text(stringResource(R.string.rename)) },
+            title = { Text(stringResource(UiR.string.rename)) },
             text = {
                 TextField(
                     value = newName,
@@ -120,7 +120,7 @@ fun DirectoryScreen(
                 TextButton(onClick = {
                     actions.rename(renaming, newName)
                     itemBeingRenamed = null
-                }) { Text(stringResource(R.string.rename)) }
+                }) { Text(stringResource(UiR.string.rename)) }
             },
             dismissButton = {
                 TextButton(onClick = { itemBeingRenamed = null }) {
@@ -134,7 +134,7 @@ fun DirectoryScreen(
             title = stringResource(R.string.new_folder),
             label = stringResource(R.string.folder_name_label),
             initial = "",
-            confirmLabel = stringResource(R.string.create),
+            confirmLabel = stringResource(UiR.string.create),
             onConfirm = { actions.createFolder(it); showNewFolderDialog = false },
             onDismiss = { showNewFolderDialog = false },
         )
@@ -144,7 +144,7 @@ fun DirectoryScreen(
             title = stringResource(R.string.new_file),
             label = stringResource(R.string.file_name_label),
             initial = "untitled.txt",
-            confirmLabel = stringResource(R.string.create),
+            confirmLabel = stringResource(UiR.string.create),
             onConfirm = { actions.createFile(it); showNewFileDialog = false },
             onDismiss = { showNewFileDialog = false },
         )

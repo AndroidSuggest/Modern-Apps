@@ -20,6 +20,7 @@ import com.vayunmathur.library.ui.SettingsRow
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.measure.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.measure.data.model.MeasurementKind
 import com.vayunmathur.measure.data.model.SavedMeasurement
 import com.vayunmathur.measure.data.model.UnitSystem
@@ -34,7 +35,7 @@ fun SavedMeasurementsContent(
     onBack: () -> Unit = {},
 ) {
     AppScaffold(
-        title = stringResource(R.string.saved_title),
+        title = stringResource(UiR.string.saved),
         onNavigateBack = onBack,
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->

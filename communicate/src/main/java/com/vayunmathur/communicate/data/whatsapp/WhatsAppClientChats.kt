@@ -17,10 +17,10 @@ suspend fun WhatsAppClient.deleteChat(conversationId: String, leaveGroup: Boolea
     val jid = extractJid(conversationId) ?: return false
     val ws = webSocket
 
-    if (leaveGroup && jid.contains("@g.us") && canLeaveGroup(ws)) {
+    if (leaveGroup && jid.contains("@g.us") && canLeaveGroup()) {
         val id = WhatsAppProtocol.generateMessageId(authData?.wid)
         val node = WhatsAppProtocol.buildLeaveGroup(jid, id)
-        ws.send(WhatsAppProtocol.encodeNode(node))
+        ws?.send(WhatsAppProtocol.encodeNode(node))
     }
 
     // Query last message timestamp for the delete anchor

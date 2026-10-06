@@ -1,5 +1,6 @@
 package com.vayunmathur.travel.ui
 import com.vayunmathur.travel.R
+import com.vayunmathur.library.ui.R as UiR
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -66,7 +67,7 @@ fun TripsPage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
             }
 
             if (trips.isNotEmpty()) {
-                item { SectionHeader(stringResource(R.string.saved)) }
+                item { SectionHeader(stringResource(UiR.string.saved)) }
                 items(trips) { trip -> LocalTripCard(trip) { backStack.add(destinationForTrip(trip)) } }
             }
 

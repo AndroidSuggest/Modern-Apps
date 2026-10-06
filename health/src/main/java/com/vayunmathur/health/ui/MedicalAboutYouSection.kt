@@ -236,13 +236,13 @@ private fun AboutYouOptionDialog(
 }
 
 internal fun PregnancyStatus.labelRes() = when (this) {
-    PregnancyStatus.Unknown -> R.string.not_answered
+    PregnancyStatus.Unknown -> R.string.answer_unknown
     PregnancyStatus.Pregnant -> R.string.pregnancy_pregnant
     PregnancyStatus.NotPregnant -> R.string.pregnancy_not_pregnant
 }
 
 internal fun SmokingStatus.labelRes() = when (this) {
-    SmokingStatus.Unknown -> R.string.not_answered
+    SmokingStatus.Unknown -> R.string.answer_unknown
     SmokingStatus.Never -> R.string.smoking_never
     SmokingStatus.Former -> R.string.smoking_former
     SmokingStatus.Current -> R.string.smoking_current

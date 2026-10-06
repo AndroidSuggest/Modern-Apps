@@ -21,6 +21,7 @@ import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.parentalcontrols.R
 
 /** Actions the PIN challenge screen can take. */
@@ -69,7 +70,7 @@ fun PinGateScreen(error: String?, lockedOut: Boolean, actions: PinGateActions) {
                 Text(stringResource(R.string.pin_unlock))
             }
             TextButton(onClick = actions.onCancel) {
-                Text(stringResource(R.string.cancel))
+                Text(stringResource(UiR.string.cancel))
             }
         }
     }

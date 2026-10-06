@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.euicc.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.euicc.data.Profile
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.OutlinedTextField
@@ -26,7 +27,7 @@ fun RenameDialog(profile: Profile, onConfirm: (String) -> Unit, onDismiss: () ->
                 label = { Text(stringResource(R.string.rename_profile_label)) },
             )
         },
-        confirmButton = { TextButton(onClick = { onConfirm(name) }) { Text(stringResource(R.string.save)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+        confirmButton = { TextButton(onClick = { onConfirm(name) }) { Text(stringResource(UiR.string.save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } },
     )
 }

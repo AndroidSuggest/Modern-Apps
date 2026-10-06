@@ -31,9 +31,6 @@ import kotlinx.serialization.json.Json
 
 // --- Sync B: device/index/inbox/join-requests/trees/share/open (split from OfficeViewModel.kt for file length) ---
 
-/** This device's sync id. Empty until [initSync] has run. */
-val OfficeViewModel.syncDeviceId: String get() = OfficeSync.deviceId
-
 /** Registers this device, loads the local online index, and pulls any new invites. */
 fun OfficeViewModel.initSync() {
     viewModelScope.launch(Dispatchers.IO) {

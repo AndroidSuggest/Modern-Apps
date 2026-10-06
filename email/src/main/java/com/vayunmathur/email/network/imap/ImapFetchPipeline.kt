@@ -1,6 +1,5 @@
 package com.vayunmathur.email.network.imap
 
-import android.util.Base64
 import java.io.IOException
 
 /**
@@ -20,6 +19,20 @@ internal class ImapFetchPipeline(
         private const val HEADER_SUBJECT_MARKER = "Subject:"
         private const val HEADER_FIELD_SEPARATOR = ":"
         private const val CRLF = "\r\n"
+
+        fun looksLikeHeaderBlock(bytes: ByteArray): Boolean {
+            if (bytes.isEmpty()) return false
+            val sample = String(bytes, 0, minOf(bytes.size, HEADER_SNIFF_LEN), Charsets.UTF_8)
+            return sample.contains(HEADER_FROM_MARKER) ||
+                sample.contains(HEADER_SUBJECT_MARKER) ||
+                (sample.contains(HEADER_FIELD_SEPARATOR) && sample.contains(CRLF))
+        }
+
+        fun isBodyLiteral(line: String): Boolean {
+            if (line.contains("HEADER")) return false
+            if (line.contains("BODY[]") || line.contains("BODY.PEEK[]")) return true
+            return Regex("""BODY\[.*\]""").containsMatchIn(line)
+        }
     }
 
     fun uidFetchHeaders(uidSet: String): List<ImapFetchResult> {
@@ -234,21 +247,5 @@ internal class ImapFetchPipeline(
             }
         }
         return (final.ifEmpty { lines.lastOrNull() ?: "" }) to lines
-    }
-
-    companion object {
-        fun looksLikeHeaderBlock(bytes: ByteArray): Boolean {
-            if (bytes.isEmpty()) return false
-            val sample = String(bytes, 0, minOf(bytes.size, HEADER_SNIFF_LEN), Charsets.UTF_8)
-            return sample.contains(HEADER_FROM_MARKER) ||
-                sample.contains(HEADER_SUBJECT_MARKER) ||
-                (sample.contains(HEADER_FIELD_SEPARATOR) && sample.contains(CRLF))
-        }
-
-        fun isBodyLiteral(line: String): Boolean {
-            if (line.contains("HEADER")) return false
-            if (line.contains("BODY[]") || line.contains("BODY.PEEK[]")) return true
-            return Regex("""BODY\[.*\]""").containsMatchIn(line)
-        }
     }
 }

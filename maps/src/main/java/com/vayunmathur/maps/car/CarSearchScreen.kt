@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.vayunmathur.maps.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.data.google.GoogleSearchDataSource
 import com.vayunmathur.maps.data.google.GoogleSearchResult
@@ -87,14 +88,14 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
             .setHeader(
                 Header.Builder()
                     .setStartHeaderAction(Action.BACK)
-                    .setTitle(carContext.getString(R.string.car_search_title))
+                    .setTitle(carContext.getString(UiR.string.search))
                     .build()
             )
             .setActionStrip(
                 ActionStrip.Builder()
                     .addAction(
                         Action.Builder()
-                            .setTitle(carContext.getString(R.string.car_search_action))
+                            .setTitle(carContext.getString(UiR.string.search))
                             .setOnClickListener { requestMicThenListen() }
                             .build()
                     )

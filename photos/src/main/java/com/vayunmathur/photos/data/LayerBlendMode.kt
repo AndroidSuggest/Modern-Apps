@@ -43,7 +43,7 @@ enum class LayerBlendMode(@StringRes val labelRes: Int) {
     Difference(R.string.blend_difference),
     Exclusion(R.string.blend_exclusion),
     Hue(R.string.blend_hue),
-    Saturation(R.string.blend_saturation),
+    Saturation(R.string.adj_saturation),
     Color(R.string.color),
     Luminosity(R.string.blend_luminosity);
 

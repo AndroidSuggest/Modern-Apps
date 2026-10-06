@@ -3,6 +3,10 @@ package com.vayunmathur.communicate.data.signal
 import android.content.Context
 import android.util.Log
 import com.vayunmathur.communicate.data.signal.e2e.SignalE2E
+import com.vayunmathur.communicate.data.signal.e2e.deviceIdsWithSessions
+import com.vayunmathur.communicate.data.signal.e2e.ensureLocalPreKeys
+import com.vayunmathur.communicate.data.signal.e2e.hasSignedPreKeyMatching
+import com.vayunmathur.communicate.data.signal.e2e.rotateSignedPreKeyNow
 import com.vayunmathur.communicate.data.signal.transport.SignalKeysApi
 import com.vayunmathur.communicate.data.signal.transport.SignalPayload
 import com.vayunmathur.communicate.data.signal.transport.SignalSocket
@@ -272,7 +276,7 @@ private suspend fun SignalClient.sendEncryptedAttempt(
     timestamp: Long,
     urgent: Boolean,
 ): Boolean? {
-    val targets = e.deviceIdsWithSessions(aci)
+    val targets = e.deviceIdsWithSessions(aci).toSet()
     val messages = encryptForTargets(e, aci, padded, sealedSender, targets) ?: return false
     if (messages.isEmpty()) {
         Log.w(TAG, "no device of $aci could be encrypted for")
@@ -368,13 +372,14 @@ internal suspend fun SignalClient.putMessages(
         if (outcome != null) Log.i(TAG, "sealed send to $aci refused with 401, retrying authenticated")
     }
 
-    /** True when the outcome is an auth refusal (retry authenticated). */
-    private fun isAuthRefused(outcome: SignalClient.SendOutcome): Boolean =
-        outcome is SignalClient.SendOutcome.Failed && outcome.status == HTTP_UNAUTHORIZED
     val identified = putMessagesOverSocket(socket, aci, jsonBody, accessKey = null)
     if (identified != null) return identified
     return putMessagesOverRest(aci, jsonBody)
 }
+
+/** True when the outcome is an auth refusal (retry authenticated). */
+private fun isAuthRefused(outcome: SignalClient.SendOutcome): Boolean =
+    outcome is SignalClient.SendOutcome.Failed && outcome.status == HTTP_UNAUTHORIZED
 
 /** Null when the socket is absent or gave no response, so the caller can fall back. */
 private suspend fun SignalClient.putMessagesOverSocket(
@@ -418,7 +423,7 @@ private suspend fun SignalClient.putMessagesOverRest(aci: String, jsonBody: Byte
         headers = headers,
         body = jsonBody,
         sslSocketFactory = signalTls(),
-    val identified = putMessagesOverSocket(socket, aci, jsonBody, accessKey = null)
+    )
     when {
         resp.isSuccess -> SignalClient.SendOutcome.Success
         resp.status == HTTP_MISMATCH || resp.status == HTTP_STALE -> {

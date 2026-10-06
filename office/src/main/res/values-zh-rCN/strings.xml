@@ -144,7 +144,6 @@
     <string name="no_tracked_changes_in_this_document">本文档中没有跟踪更改。</string>
     <string name="heading_4">标题 4</string>
     <string name="role">角色：</string>
-    <string name="insert_table_1">插入表格</string>
     <string name="opens_odf_word_excel_powerpoint_csv_tsv">支持打开 ODF、Word/Excel/PowerPoint、CSV、TSV、Markdown 和文本文件</string>
     <string name="cell_comment">单元格批注</string>
     <string name="words_chars_min"><xliff:g id="words" example="120">%1$s</xliff:g> 个单词 · <xliff:g id="chars" example="650">%2$s</xliff:g> 个字符 · 约 <xliff:g id="minutes" example="1">%3$s</xliff:g> 分钟</string>
@@ -228,7 +227,6 @@
     <string name="bold_cell">粗体单元格</string>
     <string name="promote_list_item">升级列表项</string>
     <string name="prev">◀ 上一个</string>
-    <string name="speaker_notes_2">演讲者备注</string>
     <string name="open_document_format_viewer_editor">ODF 查看器和编辑器</string>
     <string name="percent">百分比</string>
     <string name="general">常规</string>

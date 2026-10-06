@@ -98,7 +98,7 @@ fun BodyPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                     accentColor = HealthColors.Body,
                 ) {
                     MetricRow(
-                        label = stringResource(R.string.label_weight),
+                        label = stringResource(R.string.metric_weight),
                         value = metrics.weight?.round(1)?.toString() ?: "--",
                         unit = stringResource(R.string.unit_kg),
                         leadingIcon = { m, c -> IconBodySystem(m, c) },
@@ -108,7 +108,7 @@ fun BodyPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                     )
                     DashboardSectionDivider()
                     MetricRow(
-                        label = stringResource(R.string.label_height),
+                        label = stringResource(R.string.metric_height),
                         value = metrics.height?.let { (it * 100).round(1).toString() } ?: "--",
                         unit = stringResource(R.string.unit_cm),
                         leadingIcon = { m, c -> IconBodySystem(m, c) },
@@ -118,7 +118,7 @@ fun BodyPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                     )
                     DashboardSectionDivider()
                     MetricRow(
-                        label = stringResource(R.string.label_body_fat),
+                        label = stringResource(R.string.metric_body_fat),
                         value = metrics.bodyFat?.round(1)?.toString() ?: "--",
                         unit = stringResource(R.string.unit_percent),
                         leadingIcon = { m, c -> IconBodySystem(m, c) },
@@ -128,7 +128,7 @@ fun BodyPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                     )
                     DashboardSectionDivider()
                     MetricRow(
-                        label = stringResource(R.string.label_lean_body_mass),
+                        label = stringResource(R.string.metric_lean_body_mass),
                         value = metrics.leanBodyMass?.round(1)?.toString() ?: "--",
                         unit = stringResource(R.string.unit_kg),
                         leadingIcon = { m, c -> IconBodySystem(m, c) },
@@ -138,7 +138,7 @@ fun BodyPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                     )
                     DashboardSectionDivider()
                     MetricRow(
-                        label = stringResource(R.string.label_bone_mass),
+                        label = stringResource(R.string.metric_bone_mass),
                         value = metrics.boneMass?.round(1)?.toString() ?: "--",
                         unit = stringResource(R.string.unit_kg),
                         leadingIcon = { m, c -> IconBodySystem(m, c) },
@@ -148,7 +148,7 @@ fun BodyPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                     )
                     DashboardSectionDivider()
                     MetricRow(
-                        label = stringResource(R.string.label_body_water_mass),
+                        label = stringResource(R.string.metric_body_water_mass),
                         value = metrics.bodyWaterMass?.round(1)?.toString() ?: "--",
                         unit = stringResource(R.string.unit_kg),
                         leadingIcon = { m, c -> IconBodySystem(m, c) },

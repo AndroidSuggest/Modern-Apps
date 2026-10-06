@@ -2,7 +2,6 @@ package com.vayunmathur.camera.util
 
 import android.util.Log
 import android.util.Size
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -79,6 +78,7 @@ internal data class NightPreviewPrep(
  * Resolves provider/manager/lens and probes extension + analysis support.
  * Null when the manager is missing (caller falls back to the normal photo session).
  */
+@Suppress("DEPRECATION")
 internal suspend fun CameraViewModel.prepareNightPreview(): NightPreviewPrep? {
     val provider = ProcessCameraProvider.awaitInstance(app)
     cameraProvider = provider

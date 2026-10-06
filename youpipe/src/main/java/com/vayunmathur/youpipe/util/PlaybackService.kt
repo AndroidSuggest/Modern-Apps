@@ -193,6 +193,7 @@ class PlaybackService : MediaSessionService() {
              * local muting still works, because `volume` is applied in the sink *after* the chain, so
              * the tap sees full-scale PCM either way.
              */
+            @Suppress("DEPRECATION")
             override fun buildAudioSink(
                 context: android.content.Context,
                 enableFloatOutput: Boolean,
@@ -209,6 +210,7 @@ class PlaybackService : MediaSessionService() {
                     .build()
 
             @OptIn(ExperimentalApi::class)
+            @Suppress("DEPRECATION")
             override fun buildTextRenderers(
                 context: android.content.Context,
                 output: androidx.media3.exoplayer.text.TextOutput,

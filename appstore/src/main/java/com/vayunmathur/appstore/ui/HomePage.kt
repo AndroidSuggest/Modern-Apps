@@ -284,7 +284,7 @@ private fun CategoryRow(
             FilterChip(
                 selected = selected == null,
                 onClick = { onSelect(null) },
-                label = { Text(stringResource(R.string.category_all)) },
+                label = { Text(stringResource(R.string.filter_all)) },
             )
         }
         items(categories, key = { it }) { category ->

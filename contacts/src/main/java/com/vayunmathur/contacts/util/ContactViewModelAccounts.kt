@@ -88,7 +88,7 @@ internal suspend fun ContactViewModel.loadAccountsInternal() {
     val savedAccounts = loadSavedAccounts()
     migrateHiddenAccountKeys()
     refreshSimAccounts(app)
-    sortAccountsIntoState(accountSet + savedAccounts + simAccountsOf(app))
+    sortAccountsIntoState((accountSet + savedAccounts + simAccountsOf(app)).toList())
 }
 
 private suspend fun ContactViewModel.queryProviderAccounts(
@@ -418,7 +418,6 @@ private suspend fun ContactViewModel.clearDeletedAccountRefs(account: ContactAcc
         dataStore.setString("last_account_name", "")
         dataStore.setString("last_account_type", "")
         lastSelectedAccountState.value = ContactAccount("", "")
-        }
     }
 }
 

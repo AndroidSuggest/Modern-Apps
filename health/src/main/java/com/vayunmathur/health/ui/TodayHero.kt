@@ -63,9 +63,9 @@ internal fun ActivityRingsHero(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 RingLegendItem(
                     color = HealthColors.Activity,
-                    label = stringResource(R.string.label_steps),
+                    label = stringResource(R.string.metric_steps),
                     value = "$stepsToday",
-                    unit = stringResource(R.string.unit_steps),
+                    unit = stringResource(R.string.metric_steps),
                 )
                 RingLegendItem(
                     color = HealthColors.Nutrition,

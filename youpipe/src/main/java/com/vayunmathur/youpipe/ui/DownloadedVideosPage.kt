@@ -78,7 +78,7 @@ fun DownloadedVideosPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPi
                 title = { 
                     if (isSelectionMode) {
                         val totalSelected = selectedIds.size + selectedActiveIds.size
-                        Text(stringResource(R.string.selected_1, totalSelected))
+                        Text(stringResource(R.string.selected_count, totalSelected))
                     } else {
                         Text(stringResource(R.string.title_downloads))
                     }

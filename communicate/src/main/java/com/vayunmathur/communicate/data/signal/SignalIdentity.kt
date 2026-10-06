@@ -1,6 +1,8 @@
 package com.vayunmathur.communicate.data.signal
 
 import android.util.Log
+import com.vayunmathur.communicate.data.signal.e2e.acceptIdentity
+import com.vayunmathur.communicate.data.signal.e2e.storedIdentityKey
 import kotlinx.coroutines.launch
 import org.signal.libsignal.protocol.IdentityKey
 import org.whispersystems.signalservice.internal.push.SignalServiceProtos

@@ -153,7 +153,7 @@ fun PresentationView(
                 TextButton(
                     onClick = { if (currentSlide > 0) currentSlide-- },
                     enabled = currentSlide > 0) { Text(stringResource(R.string.prev)) }
-                TextButton(onClick = { showSlideshow = true }) { Text(stringResource(R.string.play)) }
+                TextButton(onClick = { showSlideshow = true }) { Text(stringResource(UiR.string.play)) }
                 TextButton(onClick = { showGoToSlide = true }) {
                     Text(
                         stringResource(R.string.slide_of, currentSlide + 1, doc.slides.size),
@@ -161,7 +161,7 @@ fun PresentationView(
                 }
                 TextButton(
                     onClick = { if (currentSlide < doc.slides.size - 1) currentSlide++ },
-                    enabled = currentSlide < doc.slides.size - 1) { Text(stringResource(R.string.next)) }
+                    enabled = currentSlide < doc.slides.size - 1) { Text(stringResource(UiR.string.next)) }
             }
         }
     }
@@ -175,20 +175,6 @@ fun PresentationView(
         currentSlide,
         onSlideChange = { currentSlide = it },
         onDismiss = { showSlideshow = false })
-}
-
-@Composable
-private fun SlideElementTextField(key: String, initial: String, label: String, onChange: (String) -> Unit) {
-    var tfv by remember(key) { mutableStateOf(TextFieldValue(initial)) }
-    TextField(
-        value = tfv,
-        onValueChange = { tfv = it; onChange(it.text) },
-        label = { Text(label) },
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant)
-    )
 }
 
 @Composable
@@ -252,34 +238,7 @@ private fun SlideThumbnail(slide: OdfSlide, index: Int, isSelected: Boolean, onC
 }
 
 @Composable
-fun DrawingView(doc: OdfDocument.Drawing) {
-    if (doc.pages.isEmpty()) { Text(
-        stringResource(R.string.empty_drawing),
-        modifier = Modifier.padding(16.dp)); return }
-    var currentPage by remember { mutableIntStateOf(0) }
-    Column(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(modifier = Modifier.weight(1f).padding(8.dp)) { item { SlideCard(doc.pages[currentPage]) } }
-        if (doc.pages.size > 1) Surface(tonalElevation = 3.dp) {
-            Row(
-                Modifier.fillMaxWidth().padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(
-                    onClick = { if (currentPage > 0) currentPage-- },
-                    enabled = currentPage > 0) { Text(stringResource(R.string.prev)) }
-                Text(
-                    stringResource(R.string.page_of, currentPage + 1, doc.pages.size),
-                    style = MaterialTheme.typography.titleSmall)
-                TextButton(
-                    onClick = { if (currentPage < doc.pages.size - 1) currentPage++ },
-                    enabled = currentPage < doc.pages.size - 1) { Text(stringResource(R.string.next)) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SlideCard(
+internal fun SlideCard(
     slide: OdfSlide,
     editMode: Boolean = false,
     selectedIndex: Int = -1,
@@ -339,7 +298,7 @@ private fun SlideCard(
             TextButton(
                 onClick = { expanded = !expanded },
                 modifier = Modifier.padding(start = 8.dp))
-            { Text(if (expanded) stringResource(R.string.hide_notes) else stringResource(R.string.speaker_notes_2)) }
+            { Text(if (expanded) stringResource(R.string.hide_notes) else stringResource(R.string.speaker_notes)) }
             if (expanded) Column(modifier = Modifier.padding(
                 horizontal = 16.dp,
                 vertical = 4.dp)) { for (note in slide.notes) ParagraphView(note) }

@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.flashcards.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.flashcards.Route
 import com.vayunmathur.flashcards.data.Deck
 import com.vayunmathur.flashcards.data.flashcardsDbConfigs
@@ -198,10 +199,10 @@ fun DeckListScreen(
 
     pendingDelete?.let { deck ->
         ConfirmDialog(
-            title = stringResource(R.string.delete),
+            title = stringResource(UiR.string.delete),
             message = stringResource(R.string.delete_deck_message, deck.name),
-            confirmLabel = stringResource(R.string.delete),
-            dismissLabel = stringResource(R.string.cancel),
+            confirmLabel = stringResource(UiR.string.delete),
+            dismissLabel = stringResource(UiR.string.cancel),
             destructive = true,
             onConfirm = {
                 actions.deleteDeck(deck)
@@ -278,10 +279,10 @@ private fun AddDeckDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
             TextButton(onClick = {
                 if (name.isNotBlank()) onAdd(name.trim())
                 onDismiss()
-            }) { Text(stringResource(R.string.add)) }
+            }) { Text(stringResource(UiR.string.add)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

@@ -11,7 +11,6 @@
     <string name="request_from">Žádost od <xliff:g id="sender_id" example="ABC123">%1$s</xliff:g></string>
     <string name="expires">Vyprší <xliff:g id="relative_time" example="za 5 minut">%1$s</xliff:g></string>
     <string name="nobody_here">momentálně tu nikdo není</string>
-    <string name="last_updated_never">Nikdy</string>
     <string name="since_just_now">Právě teď</string>
     <string name="today">dnes</string>
     <string name="yesterday">včera</string>

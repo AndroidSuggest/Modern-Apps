@@ -67,12 +67,12 @@ import kotlinx.coroutines.launch
 class RcsSyncService : Service() {
 
     internal val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private companion object {
-        private const val OUTBOX_POLL_MS = 5 * 60_000L
-    }
 
     /** MSRP connections per conversation, owned by this service's lifecycle. */
     internal val msrpConnections = java.util.concurrent.ConcurrentHashMap<String, RcsMsrp.MsrpConnection>()
+
+    /** Remote path the live MSRP connection serves, per conversation. */
+    internal val boundPaths = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /** Subscription listener for subId switches (§7.2); unregistered on destroy. */
     private var subListener: android.telephony.SubscriptionManager.OnSubscriptionsChangedListener? = null
@@ -138,7 +138,7 @@ class RcsSyncService : Service() {
     }
 
     /** Passive MSRP accept loop + transient-chunk fallback. */
-    private fun startAcceptLoop() {
+    private suspend fun startAcceptLoop() {
         // Let the session manager offer/answer passive MSRP: the sync
         // service owns the accept loop, so accepted sockets land here.
         RcsSessionManager.listenContextProvider = { this@RcsSyncService }
@@ -158,7 +158,7 @@ class RcsSyncService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     /** Ensure one live MSRP connection per session path (connect/replace/cleanup). */
-    private fun syncMsrpConnection(conversationId: String, session: RcsSession, path: String) {
+    internal suspend fun syncMsrpConnection(conversationId: String, session: RcsSession, path: String) {
         val live = msrpConnections[conversationId]
         if (live != null && boundPaths[conversationId] == path && live.isClosed().not()) {
             return
@@ -482,7 +482,7 @@ class RcsSyncService : Service() {
             .build()
     }
 
-    private fun updateSyncNotification(state: RcsRegistrationState) {
+    internal fun updateSyncNotification(state: RcsRegistrationState) {
         runCatching {
             val nm = getSystemService(NotificationManager::class.java) ?: return
             nm.notify(SYNC_NOTIFICATION_ID, buildSyncNotification(state))
@@ -497,7 +497,7 @@ class RcsSyncService : Service() {
         }
     }
 
-    private fun shutdown() {
+    internal fun shutdown() {
         RcsSipTransport.onInboundMessage = null
         RcsSessionManager.listenContextProvider = null
         RcsMsrp.onInboundFallback = null
@@ -516,6 +516,7 @@ class RcsSyncService : Service() {
 
     companion object {
         internal const val TAG = "RcsSync"
+        internal const val OUTBOX_POLL_MS = 5 * 60_000L
         private const val SYNC_NOTIFICATION_ID = 4723
         private const val SYNC_CHANNEL_ID = "rcs_sync"
         internal const val INCOMING_CHANNEL_ID = "rcs_messages_incoming"

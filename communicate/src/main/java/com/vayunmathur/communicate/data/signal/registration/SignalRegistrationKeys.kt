@@ -27,9 +27,10 @@ import org.signal.libsignal.protocol.ecc.ECKeyPair
  */
 class SignalRegistrationKeys private constructor(val authScaffold: SignalAuthData) {
     companion object {
+        private const val MAX_REGISTRATION_ID = 0x3FFF
+
         fun generate(phoneNumber: String): SignalRegistrationKeys {
             val rng = SecureRandom()
-            private const val MAX_REGISTRATION_ID = 0x3FFF
             fun regId() = rng.nextInt(MAX_REGISTRATION_ID) + 1
 
             val aciIdentity = IdentityKeyPair.generate()
@@ -77,8 +78,8 @@ class SignalRegistrationKeys private constructor(val authScaffold: SignalAuthDat
             pniSignedId: Int,
             aciSignedSig: ByteArray,
             pniSignedSig: ByteArray,
-            aciPq: SignalPqPreKey.GeneratedPq,
-            pniPq: SignalPqPreKey.GeneratedPq,
+            aciPq: SignalPqPreKey.Generated,
+            pniPq: SignalPqPreKey.Generated,
             password: String,
             uak: ByteArray,
         ): SignalAuthData {
@@ -141,7 +142,6 @@ class SignalRegistrationKeys private constructor(val authScaffold: SignalAuthDat
                 verificationSessionId = null,
                 registered = false,
             )
-            return SignalRegistrationKeys(scaffold)
         }
 
         private fun generatePassword(rng: SecureRandom): String {

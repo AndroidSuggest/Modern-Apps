@@ -3,32 +3,18 @@
     <!-- Manifest / HomeScreen TopAppBar: App name. Noun, proper -->
     <string name="app_name" translatable="false">Minesweeper</string>
 
-    <!-- HomeScreen: Primary CTA opening the size and density picker. Verb phrase -->
-    <string name="new_game">New Game</string>
-    <!-- HomeScreen: Button shown when an unfinished field is still in memory. Verb -->
-    <string name="continue_game">Continue</string>
     <!-- GameConfigDialog: Title of the size and density picker dialog. Noun phrase -->
     <string name="new_field">New Field</string>
     <!-- GameConfigDialog: Label above the field size segmented buttons. Noun -->
     <string name="field_size">Field size</string>
     <!-- GameConfigDialog: Label above the mine density segmented buttons. Noun -->
     <string name="difficulty">Mines</string>
-    <!-- GameConfigDialog / WinOverlay: Dismiss button. Verb -->
-    <string name="back">Back</string>
 
     <!-- GameConfigDialog: Smallest field, 8 columns by 10 rows. Adjective -->
     <string name="size_small">Small</string>
-    <!-- GameConfigDialog: Middle field, 10 columns by 14 rows. Adjective -->
-    <string name="size_medium">Medium</string>
     <!-- GameConfigDialog: Largest field, 12 columns by 18 rows. Adjective -->
     <string name="size_large">Large</string>
 
-    <!-- GameConfigDialog: Lowest mine density, about one cell in ten. Adjective -->
-    <string name="difficulty_easy">Easy</string>
-    <!-- GameConfigDialog: Middle mine density. Adjective -->
-    <string name="difficulty_medium">Medium</string>
-    <!-- GameConfigDialog: Second highest mine density. Adjective -->
-    <string name="difficulty_hard">Hard</string>
     <!-- GameConfigDialog: Highest mine density, close to a quarter of the field. Adjective -->
     <string name="difficulty_expert">Expert</string>
 
@@ -46,8 +32,6 @@
     </plurals>
     <!-- GameBoardScreen action bar: Abandons the field, recorded as a loss. Verb phrase -->
     <string name="give_up">Give Up</string>
-    <!-- GameBoardScreen: Starts a fresh field with the same settings. Verb phrase -->
-    <string name="new_field_button">New Field</string>
     <!-- GameBoardScreen restart confirmation: Title asking whether to throw away the field in progress. Question -->
     <string name="confirm_new_field_title">Start a new field?</string>
     <!-- GameBoardScreen restart confirmation: Explains the current field is discarded. Sentence -->

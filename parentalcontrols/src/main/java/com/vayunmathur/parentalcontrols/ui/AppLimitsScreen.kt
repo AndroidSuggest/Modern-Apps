@@ -15,6 +15,7 @@ import com.vayunmathur.library.ui.SettingsSection
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.parentalcontrols.R
 import com.vayunmathur.parentalcontrols.platform.SupervisableApp
 import com.vayunmathur.parentalcontrols.platform.SupervisionUiState
@@ -104,7 +105,7 @@ private fun LimitPickerDialog(
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

@@ -5,8 +5,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -14,7 +12,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,6 +79,9 @@ fun openAppSettings(context: Context) {
  * Full-screen [PermissionWall] for ordinary runtime permissions, which
  * requests them itself.
  *
+ * Nothing launches on entry: the system dialog appears only when the user
+ * taps the wall's button.
+ *
  * Kept for callers that only need the simple case; anything with a different
  * contract should use [PermissionWall] directly.
  */
@@ -93,17 +93,10 @@ fun NoPermissionsScreen(
     // Last so it can still be passed as a trailing lambda.
     setHasPermissions: (Boolean) -> Unit,
 ) {
-    val permissionRequestor = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissionsResult ->
-        setHasPermissions(permissionsResult.values.all { it })
-    }
-    // Button press recovers from permanent denial by opening app settings; the initial
-    // auto-ask below stays a plain request so entering the screen never jumps to settings.
+    // Recovers from permanent denial by opening app settings; the request
+    // itself fires only on button tap so entering the screen never pops a
+    // system dialog on its own.
     val requestOrOpenSettings = rememberMultiplePermissionRequest(permissions) { setHasPermissions(it) }
-    LaunchedEffect(Unit) {
-        permissionRequestor.launch(permissions)
-    }
     Scaffold { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             PermissionWall(

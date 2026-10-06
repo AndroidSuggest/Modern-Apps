@@ -200,7 +200,7 @@ fun lineLabel(line: CommunicateLine, subscriptionId: Int?, alwaysShowSim: Boolea
         CommunicateLine.GoogleVoice -> stringResource(R.string.line_gv)
         CommunicateLine.WhatsApp -> "WhatsApp"
         CommunicateLine.Signal -> "Signal"
-        CommunicateLine.Rcs -> stringResource(R.string.line_rcs)
+        CommunicateLine.Rcs -> stringResource(R.string.account_rcs)
         CommunicateLine.Sim -> {
             val sims = remember { SimManager.activeSims(context) }
             // Only label SIM rows when there's more than one SIM (or explicitly requested).

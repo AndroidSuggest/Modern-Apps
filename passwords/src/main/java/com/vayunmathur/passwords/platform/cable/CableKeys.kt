@@ -17,6 +17,13 @@ import javax.crypto.spec.SecretKeySpec
  */
 object CableKeys {
 
+    private const val PURPOSE_EID_KEY = 1
+    private const val PURPOSE_TUNNEL_ID = 2
+    private const val PURPOSE_PSK = 3
+    private const val PURPOSE_PAIRED_SECRET = 4
+    private const val PURPOSE_IDENTITY_KEY_SEED = 5
+    private const val PURPOSE_PER_CONTACT_ID_SECRET = 6
+
     /** `DerivedValueType` enum values from Chromium. */
     enum class Purpose(val value: Int) {
         EID_KEY(PURPOSE_EID_KEY),
@@ -25,15 +32,6 @@ object CableKeys {
         PAIRED_SECRET(PURPOSE_PAIRED_SECRET),
         IDENTITY_KEY_SEED(PURPOSE_IDENTITY_KEY_SEED),
         PER_CONTACT_ID_SECRET(PURPOSE_PER_CONTACT_ID_SECRET),
-    }
-
-    private companion object {
-        private const val PURPOSE_EID_KEY = 1
-        private const val PURPOSE_TUNNEL_ID = 2
-        private const val PURPOSE_PSK = 3
-        private const val PURPOSE_PAIRED_SECRET = 4
-        private const val PURPOSE_IDENTITY_KEY_SEED = 5
-        private const val PURPOSE_PER_CONTACT_ID_SECRET = 6
     }
 
     // Output sizes (bytes).

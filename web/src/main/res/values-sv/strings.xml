@@ -2,7 +2,6 @@
 <resources>
     <string name="bookmarks">Bokmärken</string>
     <string name="new_folder">Ny mapp</string>
-    <string name="create">Skapa</string>
     <string name="history">Historik</string>
     <string name="app_name">Webb</string>
     <string name="search_or_enter_address">Sök eller ange adress</string>
@@ -49,7 +48,6 @@
     <string name="permissions">Behörigheter</string>
     <string name="no_permissions_set">Inga behörigheter angivna</string>
     <string name="no_installed_apps">Inga installerade appar</string>
-    <string name="all">Alla</string>
     <string name="delete_folder">Ta bort mapp</string>
     <string name="no_bookmarks_yet">Inga bokmärken ännu</string>
     <string name="no_bookmarks_in_this_folder">Inga bokmärken i den här mappen</string>
@@ -96,7 +94,6 @@
     <string name="shields_down">Skyddet är av för den här webbplatsen</string>
     <string name="shields_for_host">Skydd för %1$s</string>
     <string name="shields_level">Skyddsnivå</string>
-    <string name="shields_level_off">Av</string>
     <string name="shields_level_off_desc">Ingen blockering av annonser, spårare eller fingeravtryck</string>
     <string name="shields_level_standard">Standard</string>
     <string name="shields_level_standard_desc">Blockerar annonser och spårare</string>
@@ -124,5 +121,4 @@
     <string name="cleartext_blocked_message">%1$s begärdes via vanlig HTTP. Okrypterade anslutningar tillåts endast till enheter i ditt lokala nätverk.</string>
     <string name="local_network_title">Tillåt åtkomst till lokalt nätverk?</string>
     <string name="local_network_message">%1$s verkar vara en enhet i ditt nätverk. Android behöver behörighet till det lokala nätverket innan sidan kan läsas in.</string>
-    <string name="content_filter_blocked_html"><![CDATA[<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:sans-serif;margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#111;color:#eee}main{max-width:22rem;padding:2rem;text-align:center}h1{font-size:1.25rem;font-weight:600;margin:0 0 .5rem}p{margin:0;opacity:.7;line-height:1.5}</style></head><body><main><h1>Webbplatsen är blockerad</h1><p>Webbinnehållsfiltrering är aktiverad på den här enheten. Kontakta den som har ställt in föräldrakontrollerna om du tror att detta är ett misstag.</p></main></body></html>]]></string>
 </resources>

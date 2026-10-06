@@ -214,7 +214,7 @@ object ReferenceCatalog {
                     while (cursor.moveToNext()) add(cursor.getString(0))
                 }
             }
-        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
+        } catch (e: android.database.sqlite.SQLiteException) {
             Log.e(TAG, "Ingredient search failed", e)
             emptyList()
         }
@@ -234,7 +234,7 @@ object ReferenceCatalog {
                 """.trimIndent(),
                 arrayOf(ingredient),
             ).use { cursor -> cursor.readMedications() }
-        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
+        } catch (e: android.database.sqlite.SQLiteException) {
             Log.e(TAG, "Product lookup failed", e)
             emptyList()
         }
@@ -256,7 +256,7 @@ object ReferenceCatalog {
                 """.trimIndent(),
                 arrayOf(match),
             ).use { cursor -> cursor.readMedications() }
-        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
+        } catch (e: android.database.sqlite.SQLiteException) {
             Log.e(TAG, "Product search failed", e)
             emptyList()
         }
@@ -289,7 +289,7 @@ object ReferenceCatalog {
                     }
                 }
             }
-        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
+        } catch (e: android.database.sqlite.SQLiteException) {
             Log.e(TAG, "Allergen search failed", e)
             emptyList()
         }
@@ -337,7 +337,7 @@ object ReferenceCatalog {
                     }
                 }
             }
-        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
+        } catch (e: android.database.sqlite.SQLiteException) {
             Log.e(TAG, "Lab search failed", e)
             emptyList()
         }
@@ -373,7 +373,7 @@ object ReferenceCatalog {
                     }
                 }
             }
-        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
+        } catch (e: android.database.sqlite.SQLiteException) {
             Log.e(TAG, "Condition search failed", e)
             emptyList()
         }
@@ -556,7 +556,7 @@ object ReferenceCatalog {
                     SQLiteDatabase.OPEN_READONLY,
                     null,
                 ).also { handle = it }
-            } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
+            } catch (e: android.database.sqlite.SQLiteException) {
                 Log.e(TAG, "Failed to open the medical catalogue", e)
                 null
             }

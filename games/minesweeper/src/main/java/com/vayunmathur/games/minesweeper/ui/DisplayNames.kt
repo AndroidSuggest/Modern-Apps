@@ -5,6 +5,7 @@ import androidx.compose.ui.res.stringResource
 import com.vayunmathur.games.minesweeper.R
 import com.vayunmathur.games.minesweeper.data.BoardSize
 import com.vayunmathur.games.minesweeper.data.Difficulty
+import com.vayunmathur.library.ui.R as UiR
 
 /**
  * Display names live here rather than on the enums so `data` stays free of Android types and the
@@ -14,7 +15,7 @@ import com.vayunmathur.games.minesweeper.data.Difficulty
 fun BoardSize.displayName(): String = stringResource(
     when (this) {
         BoardSize.SMALL -> R.string.size_small
-        BoardSize.MEDIUM -> R.string.size_medium
+        BoardSize.MEDIUM -> UiR.string.medium
         BoardSize.LARGE -> R.string.size_large
     }
 )
@@ -22,9 +23,9 @@ fun BoardSize.displayName(): String = stringResource(
 @Composable
 fun Difficulty.displayName(): String = stringResource(
     when (this) {
-        Difficulty.EASY -> R.string.difficulty_easy
-        Difficulty.MEDIUM -> R.string.difficulty_medium
-        Difficulty.HARD -> R.string.difficulty_hard
+        Difficulty.EASY -> UiR.string.easy
+        Difficulty.MEDIUM -> UiR.string.medium
+        Difficulty.HARD -> UiR.string.hard
         Difficulty.EXPERT -> R.string.difficulty_expert
     }
 )

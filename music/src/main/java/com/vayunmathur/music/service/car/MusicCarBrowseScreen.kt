@@ -84,7 +84,7 @@ class MusicCarBrowseScreen(
         ).map { id -> id to (tree.item(id)?.mediaMetadata?.title?.toString() ?: id) }
     }
 
-    @OptIn(androidx.car.app.annotations.ExperimentalCarApi::class)
+    @Suppress("DEPRECATION")
     private fun tabTemplate(): Template {
         val tabs = rootTabs()
         val active = activeTabId(tabs)
@@ -127,6 +127,7 @@ class MusicCarBrowseScreen(
     // SectionedItemTemplate (API 8+)
     // ------------------------------------------------------------------
 
+    @Suppress("DEPRECATION")
     private fun sectionedTemplate(): Template {
         val tree = state.tree
         val title = tree.item(nodeId)?.mediaMetadata?.title?.toString() ?: "Music"
@@ -149,7 +150,7 @@ class MusicCarBrowseScreen(
     }
 
     /** Quick-action chips: shuffle-all and play-all. */
-    @OptIn(androidx.car.app.annotations.ExperimentalCarApi::class)
+    @Suppress("DEPRECATION")
     private fun quickActionChips(): androidx.car.app.model.ChipSection {
         val items = state.tree.children(nodeId)
         val section = androidx.car.app.model.ChipSection.Builder()
@@ -192,7 +193,7 @@ class MusicCarBrowseScreen(
      * A grouping's section: albums render as an artwork [GridSection] (the AA
      * album-grid look); everything else stays a condensed [RowSection] list.
      */
-    @OptIn(androidx.car.app.annotations.ExperimentalCarApi::class)
+    @Suppress("DEPRECATION")
     private fun contentSection(
         id: String,
         title: String,
@@ -211,6 +212,7 @@ class MusicCarBrowseScreen(
         }
 
     /** Album grid tiles: cover art (host-resolved from the content URI) + name. */
+    @Suppress("DEPRECATION")
     private fun albumTiles(items: List<MediaItem>): List<GridItem> =
         items.mapNotNull { item ->
             if (item.mediaMetadata.isBrowsable != true) return@mapNotNull null
@@ -234,6 +236,7 @@ class MusicCarBrowseScreen(
     }
 
     /** Condensed song rows: one line each so more fits on screen. */
+    @Suppress("DEPRECATION")
     private fun songRows(items: List<MediaItem>): List<Row> =
         items.mapNotNull { item ->
             val meta = item.mediaMetadata
@@ -263,6 +266,7 @@ class MusicCarBrowseScreen(
         }
 
     /** Single FAB: Play-all (media apps get max 1 on API 9+ hosts). */
+    @Suppress("DEPRECATION")
     private fun playAllAction(): Action? {
         val items = state.tree.children(nodeId)
         if (items.none { it.mediaMetadata.isPlayable == true && it.mediaMetadata.isBrowsable != true }) {
@@ -278,6 +282,7 @@ class MusicCarBrowseScreen(
     // ListTemplate fallback (API 1–7)
     // ------------------------------------------------------------------
 
+    @Suppress("DEPRECATION")
     private fun listContent(tabId: String, label: String): Template {
         val tree = state.tree
         val list = ItemList.Builder()
@@ -291,6 +296,7 @@ class MusicCarBrowseScreen(
             .build()
     }
 
+    @Suppress("DEPRECATION")
     private fun legacyListTemplate(): Template {
         val tree = state.tree
         val title = tree.item(nodeId)?.mediaMetadata?.title?.toString() ?: "Music"
@@ -314,6 +320,7 @@ class MusicCarBrowseScreen(
         return builder.build()
     }
 
+    @Suppress("DEPRECATION")
     private fun songRow(item: MediaItem): Row? {
         val meta = item.mediaMetadata
         val browsable = meta.isBrowsable == true

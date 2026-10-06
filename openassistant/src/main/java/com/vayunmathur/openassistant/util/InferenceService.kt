@@ -22,7 +22,6 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.ExperimentalFlags
-import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.tool
 import com.vayunmathur.library.util.SecureResultReceiver
 import com.vayunmathur.library.util.DataStoreUtils
@@ -41,7 +40,7 @@ import kotlinx.coroutines.flow.catch
 import java.io.File
 import kotlin.time.Clock
 import com.vayunmathur.openassistant.data.AppDatabase
-import com.vayunmathur.openassistant.data.Message
+import com.vayunmathur.openassistant.data.Message as DbMessage
 import com.vayunmathur.openassistant.data.OpenAssistantRepository
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -58,9 +57,9 @@ class InferenceService : Service() {
 
         /** DataStore key holding the user-editable chat system prompt. */
         const val KEY_SYSTEM_PROMPT = "system_prompt"
-        private const val EMBEDDING_ERROR_CODE = -1
-        private const val EMBEDDING_DOWNLOADING_CODE = 2
-        private const val EMBEDDING_OK_CODE = 0
+        internal const val EMBEDDING_ERROR_CODE = -1
+        internal const val EMBEDDING_DOWNLOADING_CODE = 2
+        internal const val EMBEDDING_OK_CODE = 0
         private const val INTENT_TIMEOUT_MILLIS = 45000L
         private const val INTENT_QUEUE_TTL_MILLIS = 45000L
         private const val INFERENCE_TIMEOUT_MILLIS = 45000L
@@ -391,7 +390,7 @@ class InferenceService : Service() {
             Log.e("InferenceService", "Retry also failed", retryExpected)
             val detail = retryExpected.localizedMessage ?: ""
             upsertMessageToDb(
-                Message(
+                DbMessage(
                     conversationId = job.conversationId,
                     text = getString(R.string.error_prefix, detail),
                     role = "assistant",
@@ -442,7 +441,7 @@ class InferenceService : Service() {
             initialContents.add(Content.Text(userText))
         }
 
-        val nextMessage = Message.user(Contents.of(initialContents))
+        val nextMessage = com.google.ai.edge.litertlm.Message.user(Contents.of(initialContents))
 
         var fullResponseText = ""
         Log.d(
@@ -529,15 +528,15 @@ class InferenceService : Service() {
         engine = newEngine
     }
 
-    private suspend fun setupConversation(id: Long, history: List<Message>) {
+    private suspend fun setupConversation(id: Long, history: List<DbMessage>) {
         val stored = DataStoreUtils.getInstance(applicationContext).getStringAwait(KEY_SYSTEM_PROMPT)
         val systemPrompt = if (stored.isNullOrBlank()) DEFAULT_SYSTEM_PROMPT else stored
 
         val initialMessages = history.map { msg ->
             when (msg.role) {
-                "user" -> Message.user(Contents.of(msg.text))
-                "assistant" -> Message.model(Contents.of(msg.text))
-                else -> Message.user(Contents.of(msg.text))
+                "user" -> com.google.ai.edge.litertlm.Message.user(Contents.of(msg.text))
+                "assistant" -> com.google.ai.edge.litertlm.Message.model(Contents.of(msg.text))
+                else -> com.google.ai.edge.litertlm.Message.user(Contents.of(msg.text))
             }
         }
 
@@ -561,7 +560,7 @@ class InferenceService : Service() {
         val conv = currentConversation ?: return
 
         val aiMsgId = upsertMessageToDb(
-            Message(
+            DbMessage(
                 conversationId = conversationId,
                 text = "...",
                 role = "assistant",
@@ -575,7 +574,7 @@ class InferenceService : Service() {
         audioPath?.let { if (File(it).exists()) contents.add(Content.AudioFile(it)) }
         if (userText.isNotBlank()) contents.add(Content.Text(userText))
 
-        val stream = conv.sendMessageAsync(Message.user(Contents.of(contents)))
+        val stream = conv.sendMessageAsync(com.google.ai.edge.litertlm.Message.user(Contents.of(contents)))
 
         stream.catch { e ->
             Log.d("InferenceService", "Caught inference error: ${e::class.simpleName}", e)
@@ -614,8 +613,8 @@ class InferenceService : Service() {
             e.cause is StopInferenceException ||
             halt
 
-    private suspend fun fetchHistoryFromDb(id: Long): List<Message> = messageDao.getByConversation(id)
-    private suspend fun upsertMessageToDb(msg: Message): Long = messageDao.upsert(msg)
+    private suspend fun fetchHistoryFromDb(id: Long): List<DbMessage> = messageDao.getByConversation(id)
+    private suspend fun upsertMessageToDb(msg: DbMessage): Long = messageDao.upsert(msg)
     private suspend fun updateMessageInDb(id: Long, text: String) {
         val existing = messageDao.getById(id) ?: return
         upsertMessageToDb(existing.copy(text = text))

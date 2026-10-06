@@ -21,6 +21,7 @@ import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.SegmentedButton
 import com.vayunmathur.library.ui.SegmentedButtonDefaults
 import com.vayunmathur.library.ui.SingleChoiceSegmentedButtonRow
@@ -98,12 +99,12 @@ fun GameConfigDialog(
                 Button(
                     onClick = { onStart(GameConfig(size, difficulty)) },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(stringResource(R.string.new_game)) }
+                ) { Text(stringResource(UiR.string.new_game)) }
             }
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.back)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.back)) }
         },
     )
 }

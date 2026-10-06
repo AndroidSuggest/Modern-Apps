@@ -222,7 +222,7 @@ class YouPipeViewModel(
     // behavior identical, same module. Call sites use `playlistOps.*` directly.
 
     /** Playlist mutations (split out: TooManyFunctions cap). Same module; behavior identical. */
-    val playlistOps by lazy { YouPipePlaylistOps(this) }
+    internal val playlistOps by lazy { YouPipePlaylistOps(this) }
 
     suspend fun replaceCategory(originalCategoryName: String?, categoryName: String, ids: List<Long>) {
         withContext(Dispatchers.IO) {

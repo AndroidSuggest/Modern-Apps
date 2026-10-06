@@ -102,7 +102,7 @@ internal fun AppStoreViewModel.updateAllImpl() {
                 statusMessageFlow.value = context.getString(
                     R.string.updates_progress, app.name, index + 1, batch.size
                 )
-                if (run.record(installer.install(app))) break
+                if (run.record(this@updateAllImpl, installer.install(app))) break
             }
             // PackageInstaller commits asynchronously, so the last app's real verdict
             // is still on its way. Wait for it before summarising, or it lands on its
@@ -146,14 +146,14 @@ private class UpdateRun {
      * Records one install outcome. Returns true when the run should stop:
      * the same reason has failed [REPEATED_FAILURE_LIMIT] times in a row.
      */
-    fun AppStoreViewModel.record(outcome: com.vayunmathur.appstore.data.installer.SessionInstaller.Outcome): Boolean {
+    fun record(viewModel: AppStoreViewModel, outcome: com.vayunmathur.appstore.data.installer.SessionInstaller.Outcome): Boolean {
         if (outcome.started) {
             started++
             previousReason = null
             repeats = 0
             return false
         }
-        val failure = reason(outcome.verification)
+        val failure = viewModel.reason(outcome.verification)
         failures += failure
         repeats = if (failure == previousReason) repeats + 1 else 1
         previousReason = failure

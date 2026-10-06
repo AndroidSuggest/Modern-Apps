@@ -13,6 +13,8 @@ import com.vayunmathur.communicate.data.whatsapp.padMessage
 import com.vayunmathur.communicate.data.whatsapp.senderKeyDistributionPlaintext
 import android.util.Base64
 import android.util.Log
+import com.vayunmathur.communicate.data.whatsapp.e2e.WhatsAppE2E
+import com.vayunmathur.communicate.data.whatsapp.transport.WhatsAppSocket
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto
 import kotlinx.coroutines.Dispatchers

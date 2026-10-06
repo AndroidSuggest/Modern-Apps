@@ -24,6 +24,7 @@ import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.odf.OdfNumberFormat
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.office.R
 import com.vayunmathur.office.util.OfficeViewModel
 import com.vayunmathur.office.util.duplicateSlideElement
@@ -105,8 +106,8 @@ internal fun CellFormatControls(target: FormatTarget.Cell?, viewModel: OfficeVie
             DropdownMenuItem(text = { Text(stringResource(R.string.integer)) }, onClick = { numMenu = false; moreMenu = false; if (enabled) viewModel.setCellNumberFormat(s, r, c, OdfNumberFormat(decimals = 0)) })
             DropdownMenuItem(text = { Text(stringResource(R.string.percent)) }, onClick = { numMenu = false; moreMenu = false; if (enabled) viewModel.setCellNumberFormat(s, r, c, OdfNumberFormat(decimals = 0, percent = true)) })
             DropdownMenuItem(text = { Text(stringResource(R.string.currency)) }, onClick = { numMenu = false; moreMenu = false; if (enabled) viewModel.setCellNumberFormat(s, r, c, OdfNumberFormat(decimals = 2, currencySymbol = "$", grouping = true)) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.date)) }, onClick = { numMenu = false; moreMenu = false; if (enabled) viewModel.setCellNumberFormat(s, r, c, OdfNumberFormat(isDate = true)) })
-            DropdownMenuItem(text = { Text(stringResource(R.string.time)) }, onClick = { numMenu = false; moreMenu = false; if (enabled) viewModel.setCellNumberFormat(s, r, c, OdfNumberFormat(isTime = true)) })
+            DropdownMenuItem(text = { Text(stringResource(UiR.string.date)) }, onClick = { numMenu = false; moreMenu = false; if (enabled) viewModel.setCellNumberFormat(s, r, c, OdfNumberFormat(isDate = true)) })
+            DropdownMenuItem(text = { Text(stringResource(UiR.string.time)) }, onClick = { numMenu = false; moreMenu = false; if (enabled) viewModel.setCellNumberFormat(s, r, c, OdfNumberFormat(isTime = true)) })
             DropdownMenuItem(text = { Text(stringResource(R.string.scientific)) }, onClick = { numMenu = false; moreMenu = false; if (enabled) viewModel.setCellNumberFormat(s, r, c, OdfNumberFormat(decimals = 2, isScientific = true)) })
             DropdownMenuItem(text = { Text(stringResource(R.string.fraction)) }, onClick = { numMenu = false; moreMenu = false; if (enabled) viewModel.setCellNumberFormat(s, r, c, OdfNumberFormat(isFraction = true, fractionDenominatorDigits = 2)) })
         }

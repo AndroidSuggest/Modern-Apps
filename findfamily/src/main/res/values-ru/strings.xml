@@ -32,7 +32,6 @@
     <string name="nobody_here">сейчас здесь никого нету</string>
     <string name="user_is_here"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> сейчас здесь</string>
     <string name="users_are_here"><xliff:g id="person_names" example="Алиса, Боб">%1$s</xliff:g> сейчас здесь</string>
-    <string name="last_updated_never">Никогда</string>
     <string name="since_just_now">Недавно</string>
     <string name="since_minutes_ago"><xliff:g id="минуты" example="5">%1$d</xliff:g> минут назад</string>
     <string name="since_time_date">С <xliff:g id="time" example="15:45">%1$s</xliff:g> <xliff:g id="date" example="today">%2$s</xliff:g></string>

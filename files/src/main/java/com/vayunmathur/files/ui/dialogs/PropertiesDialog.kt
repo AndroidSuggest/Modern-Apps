@@ -16,6 +16,7 @@ import com.vayunmathur.files.R
 import com.vayunmathur.files.platform.FileBrowserItem
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import java.io.File
@@ -36,9 +37,9 @@ fun PropertiesDialog(item: FileBrowserItem, onDismiss: () -> Unit) {
         text = {
             Column(Modifier.fillMaxWidth()) {
                 PropertyRow(stringResource(R.string.prop_path), details.path)
-                PropertyRow(stringResource(R.string.prop_type), details.typeLabel)
+                PropertyRow(stringResource(R.string.sort_type), details.typeLabel)
                 details.sizeLabel?.let { size ->
-                    PropertyRow(stringResource(R.string.prop_size), size)
+                    PropertyRow(stringResource(R.string.sort_size), size)
                 }
                 PropertyRow(stringResource(R.string.prop_modified), details.modifiedLabel)
                 details.contentsLabel?.let { contents ->
@@ -47,7 +48,7 @@ fun PropertiesDialog(item: FileBrowserItem, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.close)) }
         },
     )
 }

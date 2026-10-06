@@ -7,8 +7,6 @@
     <string name="level_selector">Puzzle Select</string>
     <!-- PackScreen: TopAppBar title for initial pack chooser. Noun phrase -->
     <string name="pack_selector">Pack Select</string>
-    <!-- GameScreen: Button to reset current puzzle. Verb -->
-    <string name="restart">Restart</string>
     <!-- GameScreen PuzzleInfoBox: Accessibility content description for back arrow to previous puzzle. Noun phrase -->
     <string name="previous_level">Previous Puzzle</string>
     <!-- GameScreen PuzzleInfoBox: Accessibility content description for forward arrow to next puzzle. Noun phrase -->
@@ -17,8 +15,6 @@
     <string name="completed">Completed</string>
     <!-- Moves info: Title for move counter. Noun -->
     <string name="moves">Moves</string>
-    <!-- PackScreen / DailyLevelPage: Pinned card and screen title for the date-generated daily pack. Noun phrase -->
-    <string name="daily_challenge">Daily Challenge</string>
     <!-- PackScreen daily card: Consecutive days the player has cleared the daily pack. %1$d = streak length e.g. 5. Noun phrase with number -->
     <string name="daily_streak"><xliff:g id="days" example="5">%1$d</xliff:g> day streak</string>
 </resources>

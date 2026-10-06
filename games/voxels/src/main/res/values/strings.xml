@@ -34,8 +34,6 @@
     <string name="furnace">Furnace</string>
     <string name="blast_furnace">Blast Furnace</string>
     <string name="smelt">Smelt</string>
-    <string name="stop">Stop</string>
-    <string name="close">Close</string>
     <string name="inventory">Inventory</string>
     <string name="crafting">Crafting</string>
     <string name="outfit">Outfit</string>
@@ -61,7 +59,6 @@
     <string name="online_worlds">Online worlds</string>
     <string name="host_online_world">Host online world</string>
     <string name="your_device_id">Your device ID (share it so others can invite you):</string>
-    <string name="copy">Copy</string>
     <string name="refresh">Refresh</string>
     <string name="requires_internet">Requires internet</string>
     <string name="no_online_worlds">No online worlds yet. Host one, or ask a friend to invite you.</string>

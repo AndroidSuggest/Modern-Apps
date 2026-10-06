@@ -1,53 +1,23 @@
 package com.vayunmathur.office
 
-import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.print.PrintAttributes
-import android.print.PrintManager
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -60,33 +30,16 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.platform.ClipEntry
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import androidx.core.content.IntentCompat
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
-import com.vayunmathur.library.ui.AlertDialog
-import com.vayunmathur.library.ui.AppScaffold
-import com.vayunmathur.library.ui.Button
-import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CircularProgressIndicator
-import com.vayunmathur.library.ui.DrawerState
 import com.vayunmathur.library.ui.DrawerValue
-import com.vayunmathur.library.ui.DropdownMenu
-import com.vayunmathur.library.ui.DropdownMenuItem
-import com.vayunmathur.library.ui.ExpandVisibility
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
-import com.vayunmathur.library.ui.ExternalIntents
-import com.vayunmathur.library.ui.HorizontalDivider
-import com.vayunmathur.library.ui.IconBack
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconDownload
@@ -98,26 +51,8 @@ import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.ui.IconShare
 import com.vayunmathur.library.ui.IconUndo
-import com.vayunmathur.library.ui.ListItem
-import com.vayunmathur.library.ui.LocalContentColor
 import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.ModalDrawerSheet
-import com.vayunmathur.library.ui.ModalNavigationDrawer
-import com.vayunmathur.library.ui.NavigationBar
-import com.vayunmathur.library.ui.NavigationBarItem
-import com.vayunmathur.library.ui.OutlinedButton
-import com.vayunmathur.library.ui.OutlinedTextField
-import com.vayunmathur.library.ui.PagerTab
-import com.vayunmathur.library.ui.R as UiR
-import com.vayunmathur.library.ui.Scaffold
-import com.vayunmathur.library.ui.Slider
-import com.vayunmathur.library.ui.Surface
-import com.vayunmathur.library.ui.TabStyle
-import com.vayunmathur.library.ui.TabbedPagerScaffold
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.TextButton
-import com.vayunmathur.library.ui.TextField
-import com.vayunmathur.library.ui.TextFieldDefaults
 import com.vayunmathur.library.ui.Typography
 import com.vayunmathur.library.ui.dynamicDarkColorScheme
 import com.vayunmathur.library.ui.dynamicLightColorScheme
@@ -126,41 +61,17 @@ import com.vayunmathur.library.ui.rememberDrawerState
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavKey
-import com.vayunmathur.library.util.OfflineBanner
-import com.vayunmathur.library.util.rememberIsOnline
 import com.vayunmathur.library.util.rememberNavBackStack
 import com.vayunmathur.office.R
-import com.vayunmathur.office.ui.BottomBarActions
-import com.vayunmathur.office.ui.DocCaps
-import com.vayunmathur.office.ui.FormatTarget
-import com.vayunmathur.office.ui.OfficeBottomBar
-import com.vayunmathur.office.ui.OfficeEditorWideLayout
-import com.vayunmathur.office.ui.countChars
-import com.vayunmathur.office.ui.countWords
-import com.vayunmathur.office.ui.extractHeadings
-import com.vayunmathur.office.ui.readingTimeMinutes
 import com.vayunmathur.office.util.OfficeViewModel
-import com.vayunmathur.office.util.addShapeToSheet
-import com.vayunmathur.office.util.addShapeToSlide
 import com.vayunmathur.office.util.clearDocument
-import com.vayunmathur.office.util.deleteSlideElement
 import com.vayunmathur.office.util.initSync
-import com.vayunmathur.office.util.insertImage
-import com.vayunmathur.office.util.insertImageIntoSheet
-import com.vayunmathur.office.util.insertImageIntoSlide
 import com.vayunmathur.office.util.loadDocument
-import com.vayunmathur.office.util.needsSaveAs
 import com.vayunmathur.office.util.openOnlineDocument
 import com.vayunmathur.office.util.requestToJoin
 import com.vayunmathur.office.util.runParagraphIndexAt
-import com.vayunmathur.office.util.save
-import com.vayunmathur.office.util.setLocalCaret
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
-import com.vayunmathur.library.ui.appBarScrollBehavior
-import com.vayunmathur.library.ui.isExpandedWidth
 
 // Public so `src/screenshotTest` can wrap a document exactly the way DocumentScreen does;
 // without it the listing images would show the paper in the wrong scheme.
@@ -411,28 +322,8 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * Error body for a document that failed to load.
+ * Error body for a document that failed to load: see DocumentScreenShell.
  */
-@Composable
-private fun MainActivity.EditorError(message: String, onOpenDocument: () -> Unit) {
-    ErrorBody(message, onOpenDocument)
-}
-
-/** Error body content. */
-@Composable
-private fun ErrorBody(message: String, onOpenDocument: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(message, style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.height(16.dp))
-        TextButton(onClick = onOpenDocument) {
-            Text(stringResource(R.string.open_document))
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentScreen(
@@ -490,607 +381,4 @@ fun DocumentScreen(
     )
 }
 
-/** Run-selection handler (clears table selection, moves the caret). */
-@Composable
-private fun rememberRunSelectionHandler(
-    sel: ScreenSelectionHolder,
-    viewModel: OfficeViewModel,
-): (Int, Int, Int, Int) -> Unit = remember(sel, viewModel) {
-    { rs: Int, re: Int, gs: Int, ge: Int ->
-        sel.activeRunStart = rs
-        sel.activeRunEnd = re
-        sel.selStart = gs
-        sel.selEnd = ge
-        sel.activeTableBlock = -1
-        sel.activeTableRow = -1
-        sel.activeTableCol = -1
-        viewModel.setLocalCaret(gs)
-    }
-}
-
-/** Mutable screen selection state (hoisted from DocumentScreen). */
-private class ScreenSelectionHolder(s: DocumentScreenState) {
-    var showSearch by s.showSearchState
-    var showUnsavedDialog by s.showUnsavedDialogState
-    var activeRunStart by s.activeRunStartState
-    var activeRunEnd by s.activeRunEndState
-    var activeTableBlock by s.activeTableBlockState
-    var activeTableRow by s.activeTableRowState
-    var activeTableCol by s.activeTableColState
-    var selStart by s.selStartState
-    var selEnd by s.selEndState
-    var activeCell by s.activeCellState
-    var activeSlide by s.activeSlideState
-    var activeSlideEl by s.activeSlideElState
-}
-
-/** Remembered screen selection holder. */
-@Composable
-private fun rememberScreenSelection(s: DocumentScreenState): ScreenSelectionHolder {
-    return remember(s) { ScreenSelectionHolder(s) }
-}
-
-/** Timer + back-handler effects for [DocumentScreen]. */
-@Composable
-private fun DocumentEffects(
-    s: DocumentScreenState,
-    chrome: DocumentChrome,
-    onBack: () -> Unit,
-    onShowUnsavedDialog: () -> Unit,
-) {
-    // Presentation timer
-    LaunchedEffect(s.showTimer) {
-        if (s.showTimer) {
-            s.timerSeconds = 0
-            while (s.showTimer) { kotlinx.coroutines.delay(TIMER_TICK_MS); s.timerSeconds++ }
-        }
-    }
-
-    // Always intercept back inside a document so it returns to the home screen instead of exiting
-    // the app. Online docs sync live (nothing to save); offline docs with edits prompt to save.
-    BackHandler(enabled = true) {
-        if (!chrome.isOnline && chrome.hasUnsavedChanges) onShowUnsavedDialog() else onBack()
-    }
-}
-
-/** Navigation drawer + scaffold shell for [DocumentScreen]. */
-@Composable
-private fun DocumentDrawerShell(
-    s: DocumentScreenState,
-    document: OdfDocument,
-    viewModel: OfficeViewModel,
-    activity: ComponentActivity,
-    chrome: DocumentChrome,
-    launchers: DocumentLaunchers,
-    scope: CoroutineScope,
-    drawerState: DrawerState,
-    listState: LazyListState,
-    onToggleSearch: () -> Unit,
-    onShowUnsavedDialog: () -> Unit,
-    sel: ScreenSelection,
-    onRunSelectionChange: (Int, Int, Int, Int) -> Unit,
-    onCellFocus: (Int, Int, Int) -> Unit,
-    onCellSelected: (Int, Int, Int) -> Unit,
-    onSlideChange: (Int) -> Unit,
-    onSlideElementSelected: (Int, Int) -> Unit,
-    focusedPara: Int,
-    onBack: () -> Unit,
-    onBecameOnline: (String) -> Unit,
-) {
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        gesturesEnabled = chrome.isTextDoc &&
-            (chrome.headings.isNotEmpty() || chrome.bookmarks.isNotEmpty()),
-        drawerContent = {
-            DrawerOutline(chrome, listState, drawerState, scope)
-        }
-    ) {
-        DocumentScaffoldShell(
-            s = s,
-            document = document,
-            viewModel = viewModel,
-            activity = activity,
-            chrome = chrome,
-            launchers = launchers,
-            scope = scope,
-            drawerState = drawerState,
-            listState = listState,
-            onToggleSearch = onToggleSearch,
-            onShowUnsavedDialog = onShowUnsavedDialog,
-            sel = sel,
-            onRunSelectionChange = onRunSelectionChange,
-            onCellFocus = onCellFocus,
-            onCellSelected = onCellSelected,
-            onSlideChange = onSlideChange,
-            onSlideElementSelected = onSlideElementSelected,
-            onBack = onBack,
-        )
-        DrawerScreenOverlays(
-            s = s,
-            document = document,
-            viewModel = viewModel,
-            chrome = chrome,
-            launchers = launchers,
-            scope = scope,
-            listState = listState,
-            focusedPara = focusedPara,
-            onBack = onBack,
-            onBecameOnline = onBecameOnline,
-        )
-    }
-}
-
-/** Outline drawer content. */
-@Composable
-private fun DrawerOutline(
-    chrome: DocumentChrome,
-    listState: LazyListState,
-    drawerState: DrawerState,
-    scope: CoroutineScope,
-) {
-    if (!chrome.isTextDoc) return
-    ModalDrawerSheet(Modifier.width(DrawerWidth)) {
-        OfficeOutlinePane(
-            chrome.bookmarks,
-            chrome.headings,
-            listState,
-            drawerState,
-            scope,
-            Modifier.fillMaxWidth())
-    }
-}
-
-/** Trailing overlays for the drawer shell. */
-@Composable
-private fun DrawerScreenOverlays(
-    s: DocumentScreenState,
-    document: OdfDocument,
-    viewModel: OfficeViewModel,
-    chrome: DocumentChrome,
-    launchers: DocumentLaunchers,
-    scope: CoroutineScope,
-    listState: LazyListState,
-    focusedPara: Int,
-    onBack: () -> Unit,
-    onBecameOnline: (String) -> Unit,
-) {
-    DocumentOverlays(
-            state = s,
-            document = document,
-            viewModel = viewModel,
-            isPresentation = chrome.isPresentation,
-            isOnline = chrome.isOnline,
-            focusedPara = focusedPara,
-            saveAsName = chrome.saveAsName,
-            activeCell = s.activeCellState,
-            activeSlide = s.activeSlideState,
-            activeSlideEl = s.activeSlideElState,
-            activeRunStart = s.activeRunStartState,
-            activeRunEnd = s.activeRunEndState,
-            selStart = s.selStartState,
-            selEnd = s.selEndState,
-            pendingReplace = s.pendingReplaceState,
-            listState = listState,
-            scope = scope,
-            launchers = launchers,
-            onBecameOnline = onBecameOnline,
-            onBack = onBack,
-        )
-    }
-
-/** App-bar scaffold with actions + bottom bar. */
-@Composable
-private fun DocumentScaffoldShell(
-    s: DocumentScreenState,
-    document: OdfDocument,
-    viewModel: OfficeViewModel,
-    activity: ComponentActivity,
-    chrome: DocumentChrome,
-    launchers: DocumentLaunchers,
-    scope: kotlinx.coroutines.CoroutineScope,
-    drawerState: com.vayunmathur.library.ui.DrawerState,
-    listState: androidx.compose.foundation.lazy.LazyListState,
-    onToggleSearch: () -> Unit,
-    onShowUnsavedDialog: () -> Unit,
-    sel: ScreenSelection,
-    onRunSelectionChange: (Int, Int, Int, Int) -> Unit,
-    onCellFocus: (Int, Int, Int) -> Unit,
-    onCellSelected: (Int, Int, Int) -> Unit,
-    onSlideChange: (Int) -> Unit,
-    onSlideElementSelected: (Int, Int) -> Unit,
-    onBack: () -> Unit,
-) {
-    AppScaffold(
-        title = { Text(
-            document.title,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.titleMedium) },
-        navigationIcon = {
-            IconButton(onClick = {
-                if (!chrome.isOnline && chrome.hasUnsavedChanges) onShowUnsavedDialog() else onBack()
-            }) {
-                IconBack()
-            }
-        },
-        actions = {
-            DocumentScaffoldActions(
-                chrome = chrome,
-                viewModel = viewModel,
-                canEdit = chrome.canEdit,
-                saveAsName = chrome.saveAsName,
-                launchers = launchers,
-                onToggleSearch = onToggleSearch,
-            )
-        },
-        bottomBar = {
-            ScaffoldBottomBar(s, document, viewModel, chrome, launchers, sel)
-        },
-        scrollBehavior = appBarScrollBehavior(),
-    ) { paddingValues ->
-        DocumentScaffoldBody(
-            s = s,
-            document = document,
-            viewModel = viewModel,
-            activity = activity,
-            chrome = chrome,
-            launchers = launchers,
-            scope = scope,
-            drawerState = drawerState,
-            listState = listState,
-            contentPadding = paddingValues,
-            onRunSelectionChange = onRunSelectionChange,
-            onCellFocus = onCellFocus,
-            onCellSelected = onCellSelected,
-            onSlideChange = onSlideChange,
-            onSlideElementSelected = onSlideElementSelected,
-        )
-    }
-}
-
-/** Bottom bar for the document scaffold. */
-@Composable
-private fun ScaffoldBottomBar(
-    s: DocumentScreenState,
-    document: OdfDocument,
-    viewModel: OfficeViewModel,
-    chrome: DocumentChrome,
-    launchers: DocumentLaunchers,
-    sel: ScreenSelection,
-) {
-    DocumentBottomBarHost(
-        s, document, viewModel, chrome.canEdit, chrome.isTextDoc, chrome.isSpreadsheet, chrome.isPresentation,
-        sel.activeRunStart, sel.activeRunEnd, sel.selStart, sel.selEnd, sel.activeCell,
-        sel.activeSlide, sel.activeSlideEl, launchers,
-        sel.activeTableBlock, sel.activeTableRow, sel.activeTableCol)
-}
-
-/** Value snapshot of the hoisted selection (avoids 9-param plumbing). */
-private class ScreenSelection(
-    val activeRunStart: Int,
-    val activeRunEnd: Int,
-    val activeTableBlock: Int,
-    val activeTableRow: Int,
-    val activeTableCol: Int,
-    val selStart: Int,
-    val selEnd: Int,
-    val activeCell: Triple<Int, Int, Int>?,
-    val activeSlide: Int,
-    val activeSlideEl: Int,
-)
-
-/** Collected + derived document-screen chrome state. */
-private class DocumentChrome(
-    val isEditMode: Boolean,
-    val hasUnsavedChanges: Boolean,
-    val isOnline: Boolean,
-    val onlineEnabled: Boolean,
-    val isSaving: Boolean,
-    val canUndo: Boolean,
-    val canRedo: Boolean,
-    val nightMode: Boolean,
-    val documentDarkMode: Boolean,
-    val isTextDoc: Boolean,
-    val isSpreadsheet: Boolean,
-    val isPresentation: Boolean,
-    val canEdit: Boolean,
-    val saveAsName: String,
-    val headings: List<com.vayunmathur.office.ui.HeadingItem>,
-    val wordCount: Int,
-    val charCount: Int,
-    val readingTime: Int,
-    val bookmarks: List<com.vayunmathur.library.ui.odf.OdfBookmark>,
-)
-
-/** Collects ViewModel flows + document-derived values for [DocumentScreen]. */
-@Composable
-private fun rememberDocumentChrome(viewModel: OfficeViewModel, document: OdfDocument): DocumentChrome {
-    val isEditMode by viewModel.isEditMode.collectAsState()
-    val hasUnsavedChanges by viewModel.hasUnsavedChanges.collectAsState()
-    val isOnline by viewModel.isOnline.collectAsState()
-    val onlineEnabled by viewModel.onlineEnabled.collectAsState()
-    val isSaving by viewModel.isSaving.collectAsState()
-    val canUndo by viewModel.canUndo.collectAsState()
-    val canRedo by viewModel.canRedo.collectAsState()
-    val nightMode by viewModel.nightMode.collectAsState()
-    val documentThemeMode by viewModel.documentThemeMode.collectAsState()
-    val documentDarkMode = when (documentThemeMode) {
-        OfficeViewModel.DocumentThemeMode.FOLLOW_SYSTEM -> isSystemInDarkTheme()
-        OfficeViewModel.DocumentThemeMode.UNCHANGED -> false
-    }
-    val isTextDoc = document is OdfDocument.TextDocument
-    val isSpreadsheet = document is OdfDocument.Spreadsheet
-    val isPresentation = document is OdfDocument.Presentation
-    val saveAsName = document.title.substringBeforeLast('.').ifBlank { "Untitled" } +
-        when { isTextDoc -> ".odt"; isSpreadsheet -> ".ods"; isPresentation -> ".odp"; else -> ".odg" }
-    return DocumentChrome(
-        isEditMode = isEditMode,
-        hasUnsavedChanges = hasUnsavedChanges,
-        isOnline = isOnline,
-        onlineEnabled = onlineEnabled,
-        isSaving = isSaving,
-        canUndo = canUndo,
-        canRedo = canRedo,
-        nightMode = nightMode,
-        documentDarkMode = documentDarkMode,
-        isTextDoc = isTextDoc,
-        isSpreadsheet = isSpreadsheet,
-        isPresentation = isPresentation,
-        canEdit = isTextDoc || isSpreadsheet || isPresentation,
-        saveAsName = saveAsName,
-        headings = remember(document) {
-            if (document is OdfDocument.TextDocument) extractHeadings(document) else emptyList()
-        },
-        wordCount = remember(document) {
-            if (document is OdfDocument.TextDocument) countWords(document) else 0
-        },
-        charCount = remember(document) {
-            if (document is OdfDocument.TextDocument) countChars(document) else 0
-        },
-        readingTime = remember(document) {
-            if (document is OdfDocument.TextDocument) readingTimeMinutes(document) else 0
-        },
-        bookmarks = remember(document) {
-            if (document is OdfDocument.TextDocument) document.bookmarks else emptyList()
-        },
-    )
-}
-
-/** Image-picker handler routing bytes to the active document kind. */
-@Composable
-private fun rememberImagePickerHandler(
-    document: OdfDocument,
-    viewModel: OfficeViewModel,
-    focusedPara: Int,
-    activeSlide: Int,
-    activeCell: Triple<Int, Int, Int>?,
-): (String, ByteArray) -> Unit = remember(document, focusedPara, activeSlide, activeCell) {
-    { name, bytes ->
-        when (document) {
-            is OdfDocument.TextDocument -> if (focusedPara >= 0) viewModel.insertImage(focusedPara, name, bytes)
-            is OdfDocument.Presentation -> viewModel.insertImageIntoSlide(activeSlide, name, bytes)
-            is OdfDocument.Spreadsheet -> viewModel.insertImageIntoSheet(activeCell?.first ?: 0, name, bytes)
-            else -> {}
-        }
-    }
-}
-
-/** Top-app-bar actions for [DocumentScreen]. */
-@Composable
-private fun DocumentScaffoldActions(
-    chrome: DocumentChrome,
-    viewModel: OfficeViewModel,
-    canEdit: Boolean,
-    saveAsName: String,
-    launchers: DocumentLaunchers,
-    onToggleSearch: () -> Unit,
-) {
-    if (canEdit) IconButton(onClick = { onToggleSearch() }) { IconSearch() }
-    IconButton(onClick = { viewModel.undo() }, enabled = chrome.canUndo) { IconUndo() }
-    IconButton(onClick = { viewModel.redo() }, enabled = chrome.canRedo) { IconRedo() }
-    if (!chrome.isOnline) {
-        SaveAction(viewModel, chrome, saveAsName, launchers)
-    }
-}
-
-/** Save / save-as action (offline only). */
-@Composable
-private fun SaveAction(
-    viewModel: OfficeViewModel,
-    chrome: DocumentChrome,
-    saveAsName: String,
-    launchers: DocumentLaunchers,
-) {
-    IconButton(
-        onClick = {
-            if (viewModel.needsSaveAs()) {
-                launchers.saveAs.launch(saveAsName)
-            } else {
-                viewModel.save()
-            }
-        },
-        enabled = chrome.hasUnsavedChanges && !chrome.isSaving,
-    ) {
-        if (chrome.isSaving) CircularProgressIndicator(Modifier.size(SavingSpinnerSize)) else IconSave()
-    }
-}
-
-/** Scaffold body: menu bar, find bars, and the editor pane. */
-@Composable
-private fun DocumentScaffoldBody(
-    s: DocumentScreenState,
-    document: OdfDocument,
-    viewModel: OfficeViewModel,
-    activity: ComponentActivity,
-    chrome: DocumentChrome,
-    launchers: DocumentLaunchers,
-    scope: kotlinx.coroutines.CoroutineScope,
-    drawerState: com.vayunmathur.library.ui.DrawerState,
-    listState: androidx.compose.foundation.lazy.LazyListState,
-    contentPadding: androidx.compose.foundation.layout.PaddingValues,
-    onRunSelectionChange: (Int, Int, Int, Int) -> Unit,
-    onCellFocus: (Int, Int, Int) -> Unit,
-    onCellSelected: (Int, Int, Int) -> Unit,
-    onSlideChange: (Int) -> Unit,
-    onSlideElementSelected: (Int, Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(Modifier.fillMaxSize().padding(contentPadding)) {
-        ScaffoldMenuBars(
-            s = s, document = document, viewModel = viewModel,
-            activity = activity, chrome = chrome, launchers = launchers,
-            scope = scope, drawerState = drawerState, listState = listState)
-        // Timer/search/font/word bars: see DocumentFindBars (file-length split).
-        DocumentEditorPane(
-            s = s,
-            document = document,
-            viewModel = viewModel,
-            chrome = chrome,
-            listState = listState,
-            scope = scope,
-            drawerState = drawerState,
-            onRunSelectionChange = onRunSelectionChange,
-            onCellFocus = onCellFocus,
-            onCellSelected = onCellSelected,
-            onSlideChange = onSlideChange,
-            onSlideElementSelected = onSlideElementSelected,
-            modifier = modifier,
-        )
-    }
-}
-
-/** Menu + find bars for the scaffold body. */
-@Composable
-private fun ScaffoldMenuBars(
-    s: DocumentScreenState,
-    document: OdfDocument,
-    viewModel: OfficeViewModel,
-    activity: ComponentActivity,
-    chrome: DocumentChrome,
-    launchers: DocumentLaunchers,
-    scope: kotlinx.coroutines.CoroutineScope,
-    drawerState: com.vayunmathur.library.ui.DrawerState,
-    listState: androidx.compose.foundation.lazy.LazyListState,
-) {
-    DocumentMenuBar(
-        s = s,
-        document = document,
-        viewModel = viewModel,
-        activity = activity,
-        isTextDoc = chrome.isTextDoc,
-        isSpreadsheet = chrome.isSpreadsheet,
-        isPresentation = chrome.isPresentation,
-        isOnline = chrome.isOnline,
-        onlineEnabled = chrome.onlineEnabled,
-        hasUnsavedChanges = chrome.hasUnsavedChanges,
-        saveAsName = chrome.saveAsName,
-        wordCount = chrome.wordCount,
-        charCount = chrome.charCount,
-        readingTime = chrome.readingTime,
-        nightMode = chrome.nightMode,
-        documentDarkMode = chrome.documentDarkMode,
-        launchers = launchers,
-        scope = scope,
-        drawerState = drawerState,
-    )
-    DocumentFindBars(
-        s = s,
-        document = document,
-        viewModel = viewModel,
-        isTextDoc = chrome.isTextDoc,
-        isPresentation = chrome.isPresentation,
-        wordCount = chrome.wordCount,
-        charCount = chrome.charCount,
-        readingTime = chrome.readingTime,
-        scope = scope,
-        listState = listState,
-    )
-}
-
-/** Editor pane with the wide-layout outline branch. */
-@Composable
-private fun DocumentEditorPane(
-    s: DocumentScreenState,
-    document: OdfDocument,
-    viewModel: OfficeViewModel,
-    chrome: DocumentChrome,
-    listState: androidx.compose.foundation.lazy.LazyListState,
-    scope: kotlinx.coroutines.CoroutineScope,
-    drawerState: com.vayunmathur.library.ui.DrawerState,
-    onRunSelectionChange: (Int, Int, Int, Int) -> Unit,
-    onCellFocus: (Int, Int, Int) -> Unit,
-    onCellSelected: (Int, Int, Int) -> Unit,
-    onSlideChange: (Int) -> Unit,
-    onSlideElementSelected: (Int, Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier) {
-        val showOutline = isExpandedWidth() && chrome.isTextDoc &&
-            (chrome.headings.isNotEmpty() || chrome.bookmarks.isNotEmpty())
-        if (showOutline) {
-            OfficeEditorWideLayout(
-                outline = { OfficeOutlinePane(
-                    chrome.bookmarks,
-                    chrome.headings,
-                    listState,
-                    drawerState,
-                    scope,
-                    Modifier.fillMaxSize()) },
-                document = {
-                    EditorDocumentPane(
-                        s = s, document = document, viewModel = viewModel, chrome = chrome,
-                        listState = listState, onRunSelectionChange = onRunSelectionChange,
-                        onCellFocus = onCellFocus, onCellSelected = onCellSelected,
-                        onSlideChange = onSlideChange, onSlideElementSelected = onSlideElementSelected,
-                        modifier = Modifier.fillMaxSize())
-                },
-            )
-        } else {
-            EditorDocumentPane(
-                s = s, document = document, viewModel = viewModel, chrome = chrome,
-                listState = listState, onRunSelectionChange = onRunSelectionChange,
-                onCellFocus = onCellFocus, onCellSelected = onCellSelected,
-                onSlideChange = onSlideChange, onSlideElementSelected = onSlideElementSelected,
-                modifier = Modifier.fillMaxSize())
-        }
-    }
-}
-
-/** Single shared [OfficeDocumentPane] call (compact + wide layouts). */
-@Composable
-private fun EditorDocumentPane(
-    s: DocumentScreenState,
-    document: OdfDocument,
-    viewModel: OfficeViewModel,
-    chrome: DocumentChrome,
-    listState: androidx.compose.foundation.lazy.LazyListState,
-    onRunSelectionChange: (Int, Int, Int, Int) -> Unit,
-    onCellFocus: (Int, Int, Int) -> Unit,
-    onCellSelected: (Int, Int, Int) -> Unit,
-    onSlideChange: (Int) -> Unit,
-    onSlideElementSelected: (Int, Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val activeSlideEl by s.activeSlideElState
-    OfficeDocumentPane(
-        document = document,
-        viewModel = viewModel,
-        documentDarkMode = chrome.documentDarkMode,
-        nightMode = chrome.nightMode,
-        searchQuery = s.searchQuery,
-        fontSizeMultiplier = s.fontSizeMultiplier,
-        listState = listState,
-        isEditMode = chrome.isEditMode,
-        activeSlideEl = activeSlideEl,
-        onRunSelectionChange = onRunSelectionChange,
-        onCellFocus = onCellFocus,
-        onCellSelected = onCellSelected,
-        onSlideChange = onSlideChange,
-        onSlideElementSelected = onSlideElementSelected,
-        onChartClick = { bi -> s.editingChartBlock = bi; s.showChartEditor = true },
-        onCropImage = { bi -> s.cropImageBlock = bi },
-        onCropSlide = { si, e -> s.cropSlideTarget = si to e },
-        onCropSheet = { si, e -> s.cropSheetTarget = si to e },
-        modifier = modifier,
-    )
-}
+/** Run-selection + shell sections: see DocumentScreenChrome / DocumentScreenShell. */

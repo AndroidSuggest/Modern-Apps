@@ -1,7 +1,6 @@
 package com.vayunmathur.camera.util
 
 import android.util.Log
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -28,7 +27,6 @@ import com.vayunmathur.camera.platform.refreshCapabilities
  * Fallback ladder prioritizes keeping max-res capture:
  * capped+max+UHD → capped+max+JPEG → capped+default+UHD → capped+default+JPEG → default+default
  */
-@OptIn(ExperimentalCamera2Interop::class)
 suspend fun CameraViewModel.setupPortraitSession(): Boolean {
     Log.d(
         "NightPreview",
@@ -69,7 +67,6 @@ internal data class PortraitSessionPrep(
 )
 
 /** Binds provider/owner/preview and probes Ultra HDR for the portrait session. */
-@OptIn(ExperimentalCamera2Interop::class)
 internal suspend fun CameraViewModel.preparePortraitSession(): PortraitSessionPrep {
     val provider = ProcessCameraProvider.awaitInstance(app)
     cameraProvider = provider
@@ -146,7 +143,6 @@ internal fun portraitAttempts(ultraHdrSupported: Boolean): List<PortraitAttempt>
  * Runs the portrait bind ladder (each resolution rung across the lens ladder),
  * keeping max-res capture. Records the bound lens id.
  */
-@OptIn(ExperimentalCamera2Interop::class)
 internal suspend fun CameraViewModel.bindPortraitLadder(session: PortraitSessionPrep) {
     var bound: Camera? = null
     var portraitBoundLensId: String? = null
@@ -181,7 +177,6 @@ internal data class PortraitRungResult(
 )
 
 /** Tries one resolution rung across the lens ladder (requested → wide → any). */
-@OptIn(ExperimentalCamera2Interop::class)
 internal fun CameraViewModel.tryPortraitRungSet(
     session: PortraitSessionPrep,
     capped: Boolean,
@@ -210,7 +205,6 @@ internal fun CameraViewModel.tryPortraitRungSet(
 internal var portraitLastError: Exception? = null
 
 /** Tries one portrait rung on one lens; true when it binds. */
-@OptIn(ExperimentalCamera2Interop::class)
 internal fun CameraViewModel.tryPortraitRung(
     session: PortraitSessionPrep,
     candidate: com.vayunmathur.camera.domain.PhysicalLens?,
@@ -260,7 +254,6 @@ internal fun CameraViewModel.tryPortraitRung(
 }
 
 /** Binds Preview + ImageCapture + capped/default ImageAnalysis for portrait. */
-@OptIn(ExperimentalCamera2Interop::class)
 internal fun CameraViewModel.bindPortraitUseCases(
     session: PortraitSessionPrep,
     candidate: com.vayunmathur.camera.domain.PhysicalLens?,

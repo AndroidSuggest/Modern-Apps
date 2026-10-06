@@ -38,9 +38,9 @@ internal object MapNative {
     /**
      * Bring up Vulkan on [surface]. Returns an opaque handle, or 0 on failure.
      *
-     * [cacheDir] is where the range cache lives. It should be external files rather than
-     * the cache dir: like the archive `maps` downloads, it is large and expensive to
-     * rebuild, so it should not be the first thing the platform reclaims.
+     * [cacheDir] is where the range cache lives: the app cache dir, so the
+     * platform's "Clear cache" reclaims it. Entries re-stream on demand, so
+     * eviction under storage pressure only costs a re-download.
      *
      * [localPath] is an optional path to a `.mamaps` archive already on the device. When
      * it names an existing file the renderer reads that file directly and does no

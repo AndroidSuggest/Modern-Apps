@@ -27,6 +27,7 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TextField
 import com.vayunmathur.maps.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.maps.data.ParkingSpot
 
 /**
@@ -90,7 +91,7 @@ fun ParkingSheet(
                     Text(stringResource(R.string.directions))
                 }
                 TextButton(onClick = onClear) {
-                    Text(stringResource(R.string.parking_clear))
+                    Text(stringResource(UiR.string.clear))
                 }
             }
         }

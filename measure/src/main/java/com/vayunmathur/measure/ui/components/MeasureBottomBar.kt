@@ -21,7 +21,7 @@ fun MeasureBottomBar(backStack: NavBackStack<Route>, current: Route) {
             BottomBarItem(stringResource(R.string.tool_compass), Route.Compass) { IconCompass() },
             BottomBarItem(stringResource(R.string.tool_level), Route.Level) { IconToolsLevel() },
             BottomBarItem(stringResource(R.string.tool_ruler), Route.Ruler) { IconRuler() },
-            BottomBarItem(stringResource(R.string.tool_measure), Route.ArMeasure) { IconArea() },
+            BottomBarItem(stringResource(R.string.app_name), Route.ArMeasure) { IconArea() },
         ),
         currentPage = current,
     )

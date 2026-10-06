@@ -43,6 +43,7 @@ import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.ui.atEndOfDayIn
 import com.vayunmathur.calendar.ui.dateRangeString
 import com.vayunmathur.library.ui.DateString
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.widgets.DynamicThemeGlance
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
@@ -199,7 +200,7 @@ fun Content(context: Context, positionedEvents: Map<LocalDate, List<Instance>>) 
 
 /** "Today"/"Tomorrow" for those days, otherwise the weekday + date. */
 private fun dayHeaderLabel(day: LocalDate, today: LocalDate, context: Context): String = when (day) {
-    today -> context.getString(R.string.today)
+    today -> context.getString(UiR.string.today)
     today + DatePeriod(days = 1) -> context.getString(R.string.tomorrow)
     else -> DateString.dateWeekday(day)
 }

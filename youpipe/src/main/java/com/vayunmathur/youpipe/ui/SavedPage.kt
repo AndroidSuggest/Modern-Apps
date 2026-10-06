@@ -38,6 +38,7 @@ import com.vayunmathur.library.ui.animatedDp
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.sharedText
 import com.vayunmathur.youpipe.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.util.YouPipeViewModel
 
@@ -103,7 +104,7 @@ fun SavedPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeViewModel
     }
 
     LazyListScaffold(
-        title = stringResource(R.string.title_saved),
+        title = stringResource(UiR.string.saved),
         state = listState,
         floatingActionButton = {
             FloatingActionButton(onClick = { backStack.add(Route.CreatePlaylist) }) {

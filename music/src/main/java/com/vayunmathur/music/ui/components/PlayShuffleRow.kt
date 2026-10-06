@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.FilledTonalButton
 import com.vayunmathur.library.ui.IconShuffle
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -36,7 +37,7 @@ fun PlayShuffleRow(onPlay: () -> Unit, onShuffle: () -> Unit) {
         ) {
             IconPlay()
             Spacer(modifier = Modifier.width(8.dp))
-            Text(stringResource(R.string.label_play))
+            Text(stringResource(UiR.string.play))
         }
 
         Button(

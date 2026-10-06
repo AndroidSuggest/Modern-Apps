@@ -101,14 +101,14 @@ internal fun EditorViewModel.openSearchResultImpl(result: SearchResult) {
     val existing = tabs.indexOfFirst { it.key == result.path }
     if (existing >= 0) {
         currentIndex = existing
-        goToLine(result.line)
+        actions.goToLine(result.line)
         return
     }
     val file = File(result.path)
     viewModelScope.launch {
         tabs.add(makeFileTab(file, result.name))
         currentIndex = tabs.lastIndex
-        goToLine(result.line)
+        this@openSearchResultImpl.actions.goToLine(result.line)
         saveSession()
     }
 }

@@ -35,6 +35,7 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.FilledIconButton
 import com.vayunmathur.library.ui.Icon
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import kotlinx.coroutines.CoroutineScope
 
@@ -99,7 +100,7 @@ fun WordGameWheel(
                 )
             } else if (isWon && !isCompetitive) {
                 Button(onClick = { actions.saveLevel(currentLevel + 1) }) {
-                    Text(stringResource(R.string.next_level))
+                    Text(stringResource(UiR.string.next_level))
                 }
             } else if (isCompetitive && (isWon || timedOut)) {
                 // Level finished — the between-levels lobby (WordMakerGameLoader) takes over.

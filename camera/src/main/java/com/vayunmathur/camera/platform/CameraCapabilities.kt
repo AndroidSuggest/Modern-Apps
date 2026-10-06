@@ -1,7 +1,6 @@
 package com.vayunmathur.camera.platform
 
 import android.util.Log
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import com.vayunmathur.camera.domain.LensSelectionLogic
 import com.vayunmathur.camera.util.CameraViewModel
@@ -40,7 +39,6 @@ data class LensCapabilities(
  * Call on the main thread (LiveData `observeForever` expects it); the heavier
  * extension probe hops to Dispatchers.Default like the UI's launcher effect.
  */
-@OptIn(ExperimentalCamera2Interop::class)
 suspend fun CameraViewModel.refreshCapabilities(bound: Camera, lensId: String?) {
     val (minZoom, maxZoom) = readZoomBounds(bound)
     updateZoomLevels(minZoom, maxZoom)

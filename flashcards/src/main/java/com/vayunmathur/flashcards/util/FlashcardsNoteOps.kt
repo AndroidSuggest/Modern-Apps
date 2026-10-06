@@ -39,6 +39,7 @@ import com.vayunmathur.flashcards.data.upsertNoteTypeFieldsImpl
 import com.vayunmathur.flashcards.data.upsertNoteTypeImpl
 import com.vayunmathur.flashcards.data.upsertNotesImpl
 import com.vayunmathur.flashcards.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.AppMessages
 
 // ------------------------------------------------------------------
@@ -89,7 +90,7 @@ internal fun FlashcardsViewModel.deleteNoteImpl(note: Note) = launchIoImpl {
     repository.deleteNoteImpl(note)
     AppMessages.show(
         getApplication<Application>().getString(R.string.deleted),
-        actionLabel = getApplication<Application>().getString(R.string.undo),
+        actionLabel = getApplication<Application>().getString(UiR.string.undo),
         duration = AppMessages.Duration.Long,
     ) {
         launchIoImpl {
@@ -127,7 +128,7 @@ internal fun FlashcardsViewModel.deleteNotesImpl(noteIds: List<Long>) = launchIo
     repository.deleteNotesByIdsImpl(noteIds)
     AppMessages.show(
         getApplication<Application>().getString(R.string.deleted),
-        actionLabel = getApplication<Application>().getString(R.string.undo),
+        actionLabel = getApplication<Application>().getString(UiR.string.undo),
         duration = AppMessages.Duration.Long,
     ) {
         launchIoImpl {

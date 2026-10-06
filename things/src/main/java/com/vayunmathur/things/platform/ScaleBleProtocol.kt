@@ -121,7 +121,7 @@ internal const val MAX_WEIGHT_KG = 300.0
 internal const val WEIGHT_RESCALE_DIVISOR = 10.0
 
 /** CmdBuilder.buildCmd: `[cmd, totalLen, scaleType, ...payload, checksum]`. */
-internal fun buildCmd(cmd: Int, scaleType: Int, vararg payload: Int): ByteArray =
+internal fun buildCmdWithType(cmd: Int, scaleType: Int, vararg payload: Int): ByteArray =
     buildFrame(cmd, scaleType, *payload)
 
 /** Byte 2 is the scale type for most commands, but a sub-command for 0xA0. */
@@ -140,7 +140,7 @@ internal fun buildFrame(cmd: Int, arg: Int, vararg payload: Int): ByteArray {
 /** CmdBuilder.builderTimeData: seconds since the 2000 epoch, little-endian. */
 internal fun timePayload(millis: Long): IntArray {
     val seconds = millis / 1000 - BASE_TIME_2000_SECONDS
-    return IntArray(TIME_PAYLOAD_BYTES) { ((seconds shr (it * BITS_PER_BYTE)) and BYTE_MASK).toInt() }
+    return IntArray(TIME_PAYLOAD_BYTES) { ((seconds shr (it * BITS_PER_BYTE)) and BYTE_MASK.toLong()).toInt() }
 }
 
 /**

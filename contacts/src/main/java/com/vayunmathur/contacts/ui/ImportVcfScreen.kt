@@ -52,7 +52,10 @@ import com.vayunmathur.contacts.Route
 import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.util.ContactAccount
 import com.vayunmathur.contacts.util.ContactViewModel
+import com.vayunmathur.contacts.util.clearParsedVcf
 import com.vayunmathur.contacts.util.createAccount
+import com.vayunmathur.contacts.util.importVcfContacts
+import com.vayunmathur.contacts.util.parseVcfUris
 import com.vayunmathur.library.util.NavBackStack
 import kotlinx.coroutines.launch
 import com.vayunmathur.library.ui.EmptyState

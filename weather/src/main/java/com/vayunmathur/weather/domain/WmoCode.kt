@@ -2,6 +2,7 @@ package com.vayunmathur.weather.domain
 
 import androidx.annotation.StringRes
 import com.vayunmathur.weather.R
+import com.vayunmathur.library.ui.R as UiR
 
 /**
  * Bucket the WMO weather codes Open-Meteo returns (0..99) into a handful of
@@ -12,7 +13,7 @@ import com.vayunmathur.weather.R
  * Use [forCode] from anywhere that needs a label / icon for a numeric code.
  */
 enum class WeatherCondition(@StringRes val label: Int) {
-    Clear(R.string.condition_clear),
+    Clear(UiR.string.clear),
     MostlyClear(R.string.condition_mostly_clear),
     PartlyCloudy(R.string.condition_partly_cloudy),
     Cloudy(R.string.condition_cloudy),
@@ -21,7 +22,7 @@ enum class WeatherCondition(@StringRes val label: Int) {
     Rain(R.string.condition_rain),
     Snow(R.string.condition_snow),
     Thunderstorm(R.string.condition_thunderstorm),
-    Unknown(R.string.condition_unknown);
+    Unknown(UiR.string.unknown);
 
     /** Drawable id for this condition. `isDay` swaps clear/partly-cloudy night variants. */
     fun iconRes(isDay: Boolean): Int = when (this) {

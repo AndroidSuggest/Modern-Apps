@@ -163,7 +163,7 @@ private fun WirelessRow(
     Card(modifier.fillMaxWidth()) {
         Column {
             ListItem(
-                headlineContent = { Text(stringResource(R.string.pairing_wireless)) },
+                headlineContent = { Text(stringResource(R.string.pairing_transport_wireless)) },
                 supportingContent = { Text(line) },
             )
             when (state) {

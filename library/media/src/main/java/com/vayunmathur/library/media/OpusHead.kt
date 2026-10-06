@@ -43,7 +43,7 @@ internal object OpusHead {
     fun build(channels: Int, preSkip: Int, inputSampleRate: Int): ByteArray {
         val head = ByteArray(SIZE)
         MAGIC.toByteArray(Charsets.ISO_8859_1).copyInto(head)
-        head[VERSION_OFFSET] = OPUS_VERSION // version
+        head[VERSION_OFFSET] = OPUS_VERSION.toByte() // version
         head[CHANNELS_OFFSET] = channels.toByte()
         head[PRE_SKIP_LOW_OFFSET] = preSkip.toByte()
         head[PRE_SKIP_HIGH_OFFSET] = (preSkip ushr HIGH_BYTE_SHIFT).toByte()
@@ -114,7 +114,7 @@ internal object OpusHead {
     private fun readLongLe(buffer: ByteArray, offset: Int): Long {
         var value = 0L
         for (i in 0 until LONG_SIZE_BYTES) {
-            value = value or ((buffer[offset + i].toLong() and BYTE_MASK) shl (HIGH_BYTE_SHIFT * i))
+            value = value or ((buffer[offset + i].toLong() and BYTE_MASK.toLong()) shl (HIGH_BYTE_SHIFT * i))
         }
         return value
     }

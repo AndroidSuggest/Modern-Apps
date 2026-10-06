@@ -355,23 +355,23 @@ class SipClient(
         internal const val SIP_DOMAIN = "web.c.pbx.voice.sip.google.com"
 
         // SIP status codes.
-        private const val TRYING = 100
+        internal const val TRYING = 100
         private const val RINGING = 180
-        private const val OK = 200
+        internal const val OK = 200
         private const val UNAUTHORIZED = 401
         private const val PROXY_AUTH_REQUIRED = 407
         private const val INTERVAL_TOO_BRIEF = 423
         private const val REQUEST_TERMINATED = 487
         private const val BUSY_HERE = 486
         private const val DECLINE = 603
-        private const val TAG_TOKEN_LENGTH = 8
+        internal const val TAG_TOKEN_LENGTH = 8
         private val DIALOG_CODES = RINGING..299
         private val PROVISIONAL_CODES = TRYING..199
         private val FAILURE_CODES = 400..699
     }
 }
 
-private fun randomToken(len: Int): String {
+internal fun randomToken(len: Int): String {
     val chars = "abcdefghijklmnopqrstuvwxyz0123456789"
     return (1..len).map { chars[Random.nextInt(chars.length)] }.joinToString("")
 }

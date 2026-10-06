@@ -51,7 +51,7 @@ fun ContactViewModel.initEditDraft(
 
 private fun ContactViewModel.lookupDraftContact(contactId: Long): Contact? =
     getContact(contactId)
-        ?: Contact.getContact(getApplication(), contactId)
+        ?: Contact.getContact(getApplication<Application>(), contactId)
         ?: allContactsState.value.find { c -> c.id == contactId }
 
 private fun ContactViewModel.buildDraft(

@@ -37,6 +37,4 @@
     </plurals>
     <!-- HomeScreen: Accessibility content description for final-item star badge on palette icons. Noun phrase, indicates no outgoing recipes -->
     <string name="cd_final_item">Final Item</string>
-    <!-- HomeScreen: Accessibility description for trash drop zone when dragging board item to delete. Verb -->
-    <string name="cd_delete">Delete</string>
 </resources>

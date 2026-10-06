@@ -20,6 +20,7 @@ import com.vayunmathur.library.ui.SettingsSelectRow
 import com.vayunmathur.library.ui.SettingsSwitchRow
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.maps.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.maps.Route
 import com.vayunmathur.maps.data.ThemeMode
 import com.vayunmathur.maps.util.MapSettingsViewModel
@@ -55,7 +56,7 @@ fun MapSettingsPage(backStack: NavBackStack<Route>, viewModel: MapSettingsViewMo
     )
 
     AppScaffold(
-        title = stringResource(R.string.settings_title),
+        title = stringResource(UiR.string.settings),
         backStack = backStack,
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
@@ -83,7 +84,7 @@ fun MapSettingsPage(backStack: NavBackStack<Route>, viewModel: MapSettingsViewMo
                 )
             }
 
-            SettingsSection(title = stringResource(R.string.settings_section_navigation)) {
+            SettingsSection(title = stringResource(R.string.nav_channel_name)) {
                 SettingsSwitchRow(
                     title = stringResource(R.string.settings_voice_guidance),
                     supportingText = stringResource(R.string.settings_voice_guidance_desc),

@@ -29,7 +29,7 @@ object RcsTyping {
 
     /** Minimum gap between active reports (avoid a MESSAGE per keystroke). */
     const val ACTIVE_THROTTLE_MS = 10_000L
-    private const val IDLE_SLACK_MS = 500L
+    internal const val IDLE_SLACK_MS = 500L
 
     /**
      * Send an is-composing notification to [recipient]. Prefers the
@@ -96,7 +96,7 @@ object RcsTypingThrottle {
         // Schedule the idle report (idempotent: only the latest due fires).
         val due = clock.idleDueMs
         CoroutineScope(Dispatchers.IO).launch {
-            delay(RcsTyping.IDLE_AFTER_MS + IDLE_SLACK_MS)
+            delay(RcsTyping.IDLE_AFTER_MS + RcsTyping.IDLE_SLACK_MS)
             val current = clocks[recipient] ?: return@launch
             if (current.idleDueMs == due && System.currentTimeMillis() >= due) {
                 current.idleDueMs = 0L

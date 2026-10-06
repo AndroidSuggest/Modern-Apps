@@ -3,18 +3,12 @@
     <!-- Manifest / HomeScreen TopAppBar: App name. Noun, proper -->
     <string name="app_name" translatable="false">Sudoku</string>
 
-    <!-- HomeScreen: Primary CTA opening the size and difficulty picker. Verb phrase -->
-    <string name="new_game">New Game</string>
-    <!-- HomeScreen: Button shown when an unfinished puzzle is still in memory. Verb -->
-    <string name="continue_game">Continue</string>
     <!-- GameConfigDialog: Title of the size and difficulty picker dialog. Verb phrase -->
     <string name="new_puzzle">New Puzzle</string>
     <!-- GameConfigDialog: Label above the board size segmented buttons. Noun -->
     <string name="board_size">Board size</string>
     <!-- GameConfigDialog: Label above the difficulty segmented buttons. Noun -->
     <string name="difficulty">Difficulty</string>
-    <!-- GameConfigDialog / WinOverlay: Dismiss button. Verb -->
-    <string name="back">Back</string>
 
     <!-- GameConfigDialog: Board size option, a 6 by 6 grid of 2x3 boxes. Noun, dimensions -->
     <string name="size_six" translatable="false">6x6</string>
@@ -23,12 +17,6 @@
     <!-- GameConfigDialog: Board size option, a 12 by 12 grid of 3x4 boxes. Noun, dimensions -->
     <string name="size_twelve" translatable="false">12x12</string>
 
-    <!-- GameConfigDialog: Easiest difficulty, most clues given. Adjective -->
-    <string name="difficulty_easy">Easy</string>
-    <!-- GameConfigDialog: Middle difficulty. Adjective -->
-    <string name="difficulty_medium">Medium</string>
-    <!-- GameConfigDialog: Second hardest difficulty. Adjective -->
-    <string name="difficulty_hard">Hard</string>
     <!-- GameConfigDialog: Hardest difficulty, fewest clues given. Adjective -->
     <string name="difficulty_expert">Expert</string>
 

@@ -49,7 +49,7 @@ fun SettingsDialog(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.auto_save), modifier = Modifier.weight(1f))
                     TextButton(onClick = { autoSaveEnabled = !autoSaveEnabled }) {
-                        Text(if (autoSaveEnabled) stringResource(R.string.on) else stringResource(R.string.off),
+                        Text(if (autoSaveEnabled) stringResource(R.string.on) else stringResource(UiR.string.off),
                             color = if (autoSaveEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                     }
                 }

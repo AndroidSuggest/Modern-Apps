@@ -244,7 +244,7 @@ private fun WhatsAppClient.logGroupError(resp: WhatsAppProtocol.Node) {
 }
 
 /** New group JID from a create response, or null (logged) when absent. */
-private fun WhatsAppClient.extractGroupJid(resp: WhatsAppProtocol.Node): String? {
+private suspend fun WhatsAppClient.extractGroupJid(resp: WhatsAppProtocol.Node): String? {
     val group = resp.getChildByTag("group") ?: run { WhatsAppDiag.log(TAG, "createGroup: no <group>"); return null }
     // Response group node carries the new JID either as `jid` or as a bare `id` local-part.
     val groupJid = group.attrs["jid"]

@@ -1,7 +1,6 @@
 package com.vayunmathur.camera.util
 
 import android.util.Log
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -161,7 +160,7 @@ internal fun CameraViewModel.hlgSupportedByCamera(cameraInfo: androidx.camera.co
  * range exists we return null and let CameraX pick its default, which avoids the
  * crop-switch flicker.
  */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 internal fun CameraViewModel.highestFpsRange(
     cameraInfo: androidx.camera.core.CameraInfo
 ): android.util.Range<Int>? = try {
@@ -204,7 +203,7 @@ internal fun CameraViewModel.highestFpsRange(
  * Preferred video stabilization mode for Cinematic: preview-stabilization ("EIS") when the
  * device lists it, else on-mode, else null (unsupported → stabilization is skipped).
  */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 internal fun CameraViewModel.preferredStabilizationMode(cameraInfo: androidx.camera.core.CameraInfo): Int? = try {
     val modes = androidx.camera.camera2.interop.Camera2CameraInfo.from(cameraInfo)
         .getCameraCharacteristic(
@@ -235,7 +234,7 @@ private const val VIDEO_FPS_STANDARD = 30
 private const val VIDEO_FPS_HIGH = 60
 
 /** Applies max-fps + (optional) stabilization capture options onto a Preview/VideoCapture builder. */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 internal fun <T> CameraViewModel.applyVideoCaptureRequestOptions(
     builder: androidx.camera.core.ExtendableBuilder<T>,
     fpsRange: android.util.Range<Int>?,

@@ -80,7 +80,7 @@ object SignalProtocol {
         return parseEnvelope(request.body.toByteArray())
     }
 
-    fun parseEnvelopeFromWsMessage(wsMessage: WebSocketMessage): SignalEnvelope? {
+    fun parseEnvelopeFromWsMessage(wsMessage: WebSocketMessage): SignalServiceProtos.Envelope? {
         if (!wsMessage.hasRequest()) return null
         return parseEnvelopeFromRequest(wsMessage.request)
     }
@@ -267,7 +267,7 @@ object SignalProtocol {
     fun isGroupConversation(conversationId: String): Boolean = conversationId.startsWith(GROUP_PREFIX)
 
     /** The conversation id for a raw 32-byte group identifier, the inverse of what calling hands back. */
-    private fun bytesToAciString(bytes: ByteArray): String {
+    internal fun bytesToAciString(bytes: ByteArray): String {
         if (bytes.size == UUID_SIZE) return bytesToUuidString(bytes)
         if (bytes.size == UUID_PREFIXED_SIZE) {
             return bytesToUuidString(bytes.copyOfRange(1, UUID_PREFIXED_SIZE))

@@ -3,6 +3,7 @@ package com.vayunmathur.euicc.ui.download
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.euicc.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.IconSim
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.SetupAction
@@ -30,7 +31,7 @@ fun ConfirmCarrierContent(
         subtitle = stringResource(R.string.carrier_confirm_subtitle),
         icon = { IconSim() },
         primaryAction = SetupAction(stringResource(R.string.download_esim_button), onConfirm),
-        secondaryAction = SetupAction(stringResource(R.string.cancel), onCancel),
+        secondaryAction = SetupAction(stringResource(UiR.string.cancel), onCancel),
         scrollBehavior = appBarScrollBehavior(),
     ) {
         if (carrier != null) {

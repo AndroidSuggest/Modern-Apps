@@ -1,11 +1,13 @@
 package com.vayunmathur.communicate.data.whatsapp
 
+import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto
+
 /**
  * Message formatting (split from WhatsAppProtocolParsing.kt for file length).
  * Behavior identical, call sites unchanged.
  */
 
-private fun WhatsAppProtocol.formatDisappearingTimer(seconds: Int): String {
+internal fun WhatsAppProtocol.formatDisappearingTimer(seconds: Int): String {
     return when {
         seconds >= SECONDS_90_DAYS -> "90 days"
         seconds >= SECONDS_PER_WEEK -> "7 days"
@@ -16,7 +18,7 @@ private fun WhatsAppProtocol.formatDisappearingTimer(seconds: Int): String {
     }
 }
 
-private fun WhatsAppProtocol.extractContextInfo(
+internal fun WhatsAppProtocol.extractContextInfo(
     e2eMessage: WhatsAppE2EProto.Message
 ): ContextInfoResult {
     val ctx = when {

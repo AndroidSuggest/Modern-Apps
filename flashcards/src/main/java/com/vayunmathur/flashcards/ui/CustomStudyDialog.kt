@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.flashcards.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.flashcards.util.StudyMode
 import com.vayunmathur.flashcards.util.StudyParams
 import com.vayunmathur.library.ui.AlertDialog
@@ -66,7 +67,7 @@ fun CustomStudyDialog(
             }) { Text(stringResource(R.string.start)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

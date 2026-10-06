@@ -11,6 +11,7 @@ import com.vayunmathur.library.intents.clock.SetTimerData
 import com.vayunmathur.library.intents.contacts.ContactData
 import com.vayunmathur.library.intents.music.PlayMusicData
 import com.vayunmathur.library.intents.notes.NoteData
+import com.vayunmathur.openassistant.MainActivity
 import com.vayunmathur.openassistant.data.MemoryDao
 import com.vayunmathur.openassistant.data.MessageDao
 import kotlinx.datetime.TimeZone
@@ -18,6 +19,9 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 
 class AssistantToolSet(
     private val context: Context,
@@ -180,6 +184,7 @@ data class WeatherNameRequest(val name: String)
 @kotlinx.serialization.Serializable
 data class CreateLinkRequest(val name: String, val expiryMillis: Long)
 
+@OptIn(ExperimentalSerializationApi::class)
 suspend inline fun <reified Input : Any, reified Output : Any> launchIntent(
     context: Context,
     packageName: String,
@@ -197,6 +202,7 @@ suspend inline fun <reified Input : Any, reified Output : Any> launchIntent(
     return Json.decodeFromString(serializer<Output>(), stringOutput)
 }
 
+@OptIn(ExperimentalSerializationApi::class)
 suspend inline fun <reified Input : Any> launchIntentU(
     context: Context,
     packageName: String,

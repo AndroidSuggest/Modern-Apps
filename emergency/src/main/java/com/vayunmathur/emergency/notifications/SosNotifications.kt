@@ -56,7 +56,7 @@ object SosNotifications {
         )
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle(context.getString(R.string.sos_title))
+            .setContentTitle(context.getString(R.string.sos_channel_name))
             .setContentText(context.getString(R.string.sos_notification_text, number))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)

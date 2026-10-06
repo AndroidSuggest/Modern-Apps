@@ -99,8 +99,8 @@ internal suspend fun dispatchLiveFrame(
     when (op) {
         Networking.WS_OP_MSG -> handleLiveMsg(buf, onLocations, onUwb)
         Networking.WS_OP_GETKEY_RESP -> handleKeyResp(buf)
-        Networking.WS_OP_RESOLVE_RESP -> handleResolveResp(buf)
-        Networking.WS_OP_REPORT_GET_RESP -> handleReportGetResp(buf)
+        WS_OP_RESOLVE_RESP -> handleResolveResp(buf)
+        WS_OP_REPORT_GET_RESP -> handleReportGetResp(buf)
         else -> Unit
     }
 }

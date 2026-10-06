@@ -101,7 +101,7 @@ fun PasswordEditScreen(
                     LabeledTextField(
                         value = current.name,
                         onValueChange = { v -> actions.updateDraft { it.copy(name = v) } },
-                        label = stringResource(R.string.label_name),
+                        label = stringResource(UiR.string.name),
                         sharedTextKey = "password-name-${current.id}".takeIf { current.id != 0L },
                     )
                     OutlinedTextField(
@@ -113,7 +113,7 @@ fun PasswordEditScreen(
                     OutlinedTextField(
                         value = current.email,
                         onValueChange = { v -> actions.updateDraft { it.copy(email = v) } },
-                        label = { Text(stringResource(R.string.label_email)) },
+                        label = { Text(stringResource(UiR.string.email)) },
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     )
@@ -148,7 +148,7 @@ fun PasswordEditScreen(
                     OutlinedTextField(
                         value = current.note,
                         onValueChange = { v -> actions.updateDraft { it.copy(note = v) } },
-                        label = { Text(stringResource(R.string.label_note)) },
+                        label = { Text(stringResource(UiR.string.note)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = false,
                         minLines = 3,

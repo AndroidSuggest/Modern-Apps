@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.euicc.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.euicc.Route
 import com.vayunmathur.euicc.platform.EuiccScreenState
 import com.vayunmathur.euicc.ui.dialogs.EidDialog
@@ -50,7 +51,7 @@ fun DeviceInfoScreen(state: EuiccScreenState, backStack: NavBackStack<Route>, on
             SettingsRow(
                 title = stringResource(R.string.sgp22_version),
                 supportingText = state.info?.svn?.ifEmpty { null }
-                    ?: stringResource(R.string.unknown),
+                    ?: stringResource(UiR.string.unknown),
             )
         }
         SettingsSection(title = stringResource(R.string.notifications_title)) {
@@ -68,7 +69,7 @@ fun DeviceInfoScreen(state: EuiccScreenState, backStack: NavBackStack<Route>, on
                                     messenger.show(removedMessage)
                                 },
                                 enabled = !state.loading,
-                            ) { Text(stringResource(R.string.remove)) }
+                            ) { Text(stringResource(UiR.string.remove)) }
                         },
                     )
                 }

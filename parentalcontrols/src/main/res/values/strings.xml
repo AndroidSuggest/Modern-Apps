@@ -37,12 +37,12 @@
     <string name="bedtime_enable">Use a bedtime schedule</string>
     <!-- Bedtime screen: explanation under the main switch. -->
     <string name="bedtime_enable_hint">The apps you choose below cannot be opened during the hours you set.</string>
-    <!-- Bedtime screen: row for the time the window opens. Noun phrase. -->
-    <string name="bedtime_start">Starts at</string>
-    <!-- Bedtime screen: row for the time the window closes. Noun phrase. -->
-    <string name="bedtime_end">Ends at</string>
-    <!-- Bedtime screen: heading above the day-of-week chips. Noun. -->
-    <string name="bedtime_days">Days</string>
+    <!-- Shared schedule rows for the bedtime, downtime and school time screens: row for the time the window opens. Noun phrase. -->
+    <string name="schedule_start">Starts at</string>
+    <!-- Shared schedule rows for the bedtime, downtime and school time screens: row for the time the window closes. Noun phrase. -->
+    <string name="schedule_end">Ends at</string>
+    <!-- Shared schedule rows for the bedtime, downtime and school time screens: heading above the day-of-week chips. Noun. -->
+    <string name="schedule_days">Days</string>
     <!-- Bedtime screen: heading above the list of apps the schedule covers. Noun. -->
     <string name="bedtime_apps">Apps</string>
     <!-- Bedtime screen: single-letter labels for the seven day chips, Monday first, comma separated. -->
@@ -117,12 +117,6 @@
     <string name="downtime_enable">Use a downtime schedule</string>
     <!-- Downtime screen: explanation under the main switch. -->
     <string name="downtime_enable_hint">Everything except the apps you approve below stays closed during the hours you set.</string>
-    <!-- Downtime screen: row for the time the window opens. Noun phrase. -->
-    <string name="downtime_start">Starts at</string>
-    <!-- Downtime screen: row for the time the window closes. Noun phrase. -->
-    <string name="downtime_end">Ends at</string>
-    <!-- Downtime screen: heading above the day-of-week chips. Noun. -->
-    <string name="downtime_days">Days</string>
     <!-- Downtime screen: heading above the list of apps that stay available. Noun phrase. -->
     <string name="downtime_apps">Approved apps</string>
 
@@ -134,12 +128,6 @@
     <string name="school_enable">Use a school time schedule</string>
     <!-- School time screen: explanation under the main switch. -->
     <string name="school_enable_hint">Only the learning apps you approve below can be opened during school hours.</string>
-    <!-- School time screen: row for the time the window opens. Noun phrase. -->
-    <string name="school_start">Starts at</string>
-    <!-- School time screen: row for the time the window closes. Noun phrase. -->
-    <string name="school_end">Ends at</string>
-    <!-- School time screen: heading above the day-of-week chips. Noun. -->
-    <string name="school_days">Days</string>
     <!-- School time screen: heading above the list of learning apps. Noun phrase. -->
     <string name="school_apps">Learning apps</string>
 
@@ -153,9 +141,4 @@
     <string name="daily_explainer_hint">Everything locks once the day\'s budget is used up, and unlocks again at midnight.</string>
     <!-- Daily limit screen: row showing the current budget. Noun phrase. -->
     <string name="daily_budget">Daily budget</string>
-
-    <!-- Dialog button that stores the chosen value. Verb. -->
-    <string name="save">Save</string>
-    <!-- Dialog button that discards the change. Verb. -->
-    <string name="cancel">Cancel</string>
 </resources>

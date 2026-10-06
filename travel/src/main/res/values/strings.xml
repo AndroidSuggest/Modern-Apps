@@ -35,8 +35,6 @@
     <string name="depart">Depart</string>
     <!-- Label for return segment, avoids keyword 'return'. Noun -->
     <string name="return_label">Return</string>
-    <!-- Generic date label for picker. Noun -->
-    <string name="date">Date</string>
     <!-- Leg header: Flight number in itinerary. %1$s = leg index 1,2,3 -->
     <string name="flight_1">Flight <xliff:g id="number" example="1">%1$s</xliff:g></string>
     <!-- Passenger picker: adult count. Noun plural -->
@@ -122,8 +120,6 @@
 
     <!-- TopAppBar title for passengers input. Noun plural -->
     <string name="passengers">Passengers</string>
-    <!-- Button to import contacts from phone. Noun plural -->
-    <string name="contacts">Contacts</string>
     <!-- Section label: first/given name. Noun phrase -->
     <string name="given_name">Given name</string>
     <!-- Section label: last/family name. Noun phrase -->
@@ -134,8 +130,6 @@
     <string name="last_name">Last name</string>
     <!-- Field label: date of birth. Noun phrase -->
     <string name="date_of_birth">Date of birth</string>
-    <!-- Field label: email address. Noun -->
-    <string name="email">Email</string>
     <!-- Field label: optional email. Noun with hint -->
     <string name="email_optional">Email (optional)</string>
     <!-- Field label: phone formatted example. Keep +14155550123 example, not translatable pattern but label -->
@@ -156,8 +150,6 @@
     <string name="airline">Airline</string>
     <!-- Field label: FF account number. Noun phrase -->
     <string name="number">Number</string>
-    <!-- Chip/label: no infant. Noun -->
-    <string name="none">None</string>
     <!-- Link: accompanying infant selector row. Noun phrase -->
     <string name="accompanying_infant">Accompanying infant</string>
     <!-- CTA to payment page. Verb phrase -->
@@ -211,9 +203,7 @@
     <!-- Sync remote Duffel orders button. Verb phrase -->
     <string name="sync_remote_orders">Sync remote orders</string>
     <!-- Loading sync state -->
-    <string name="syncing">Syncing…</string>
-    <!-- Section header: locally saved trips. Noun past participle -->
-    <string name="saved">Saved</string>
+    <string name="syncing">Syncing.</string>
     <!-- Section header: trips synced from Duffel sandbox API -->
     <string name="synced_from_duffel">Synced from Duffel</string>
     <!-- Chip: payment due on trip card. Noun phrase -->
@@ -268,18 +258,14 @@
 
     <!-- Section header: frequent flyer numbers saved. Noun phrase -->
     <string name="frequent_flyer_numbers">Frequent flyer numbers</string>
-    <!-- Explanatory text: first half of sentence about FF numbers being sent during search. Trailing space intentional for concatenation -->
-    <string name="saved_numbers_are_sent_when_searching_so">Saved numbers are sent when searching so member fares and perks </string>
-    <!-- Explanatory text: second half concatenated after above. Leading up to are priced… -->
-    <string name="are_priced_and_are_pre_filled_when_booki">are priced, and are pre-filled when booking.</string>
+    <!-- Explanatory text: how saved FF numbers are used during search and booking -->
+    <string name="ff_numbers_explained">Saved numbers are sent when searching so member fares and perks are priced, and are pre-filled when booking.</string>
     <!-- Empty state when no FF numbers saved -->
     <string name="no_frequent_flyer_numbers_saved_yet">No frequent-flyer numbers saved yet.</string>
     <!-- Section header: customers/profiles saved -->
     <string name="customers">Customers</string>
-    <!-- Explanatory: bookings linked to active customer. First half sentence, trailing space for concat -->
-    <string name="bookings_are_associated_with_the_active">Bookings are associated with the active customer so orders and </string>
-    <!-- Explanatory: second half for active customer tracking -->
-    <string name="payments_can_be_tracked_per_person">payments can be tracked per person.</string>
+    <!-- Explanatory: bookings linked to active customer -->
+    <string name="active_customer_explained">Bookings are associated with the active customer so orders and payments can be tracked per person.</string>
     <!-- Empty state when no customers saved -->
     <string name="no_customers_yet">No customers yet.</string>
     <!-- Chip/badge: active customer indicator. Adjective -->

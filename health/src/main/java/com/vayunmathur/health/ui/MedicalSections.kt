@@ -120,7 +120,7 @@ internal fun MedicalMedicationsSection(
     val current = entries.filter { it.status == MedicationStatus.Active }
     val past = entries.filter { it.status != MedicationStatus.Active }
     MedicalCategoryGroup(
-        title = stringResource(R.string.medications),
+        title = stringResource(R.string.nav_medication),
         icon = { modifier, tint -> IconMedication(modifier, tint) },
         isExpanded = isExpanded,
         onToggle = onToggle,

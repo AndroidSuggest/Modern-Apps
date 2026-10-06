@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.weather.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.weather.network.Daily
 import com.vayunmathur.weather.domain.TemperatureUnit
 import com.vayunmathur.weather.domain.formatTemperatureCompact
@@ -82,7 +83,7 @@ fun DailyCard(
                     val isToday = date != null && date == todayIsoDate
 
                     DailyItem(
-                        weekday = if (isToday) stringResource(R.string.today) else dayLabel(date),
+                        weekday = if (isToday) stringResource(UiR.string.today) else dayLabel(date),
                         maxTemp = hi,
                         minTemp = lo,
                         icon = weatherConditionForCode(code).iconContent(true),

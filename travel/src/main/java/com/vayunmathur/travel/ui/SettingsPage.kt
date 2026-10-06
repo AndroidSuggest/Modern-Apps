@@ -78,8 +78,7 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
         ) {
             Text(stringResource(R.string.frequent_flyer_numbers), style = MaterialTheme.typography.titleMedium)
             Text(
-                stringResource(R.string.saved_numbers_are_sent_when_searching_so) +
-                    stringResource(R.string.are_priced_and_are_pre_filled_when_booki),
+                stringResource(R.string.ff_numbers_explained),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -106,8 +105,7 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
 
             Text(stringResource(R.string.customers), style = MaterialTheme.typography.titleMedium)
             Text(
-                stringResource(R.string.bookings_are_associated_with_the_active) +
-                    stringResource(R.string.payments_can_be_tracked_per_person),
+                stringResource(R.string.active_customer_explained),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -204,7 +202,7 @@ private fun AddCustomerForm(
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text(stringResource(R.string.email)) },
+            label = { Text(stringResource(UiR.string.email)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )

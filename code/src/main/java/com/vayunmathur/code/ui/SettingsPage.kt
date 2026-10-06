@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.code.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.code.Route
 import com.vayunmathur.code.syntax.EditorThemes
 import com.vayunmathur.code.util.EditorPrefs
@@ -51,7 +52,7 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
     var showTabWidthDialog by remember { mutableStateOf(false) }
     var showEditorThemeDialog by remember { mutableStateOf(false) }
 
-    AppScaffold(title = stringResource(R.string.settings), backStack = backStack, scrollBehavior = appBarScrollBehavior()) { padding ->
+    AppScaffold(title = stringResource(UiR.string.settings), backStack = backStack, scrollBehavior = appBarScrollBehavior()) { padding ->
         Column(
             Modifier
                 .padding(padding)
@@ -96,14 +97,14 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
                     title = stringResource(R.string.auto_indent),
                     supportingText = stringResource(R.string.auto_indent_desc),
                     checked = viewModel.autoIndent,
-                    onCheckedChange = viewModel::setAutoIndent,
+                    onCheckedChange = viewModel.actions::setAutoIndent,
                 )
                 SettingsDivider()
                 SettingsSwitchRow(
                     title = stringResource(R.string.auto_close_brackets),
                     supportingText = stringResource(R.string.auto_close_brackets_desc),
                     checked = viewModel.autoCloseBrackets,
-                    onCheckedChange = viewModel::setAutoCloseBrackets,
+                    onCheckedChange = viewModel.actions::setAutoCloseBrackets,
                 )
                 SettingsDivider()
                 SettingsSwitchRow(
@@ -204,7 +205,7 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
             title = stringResource(R.string.editor_theme),
             options = EditorThemes.ALL,
             selected = viewModel.editorTheme,
-            onSelect = { viewModel.actions.setEditorTheme(it) },
+            onSelect = viewModel::setEditorTheme,
             onDismiss = { showEditorThemeDialog = false },
         )
     }
@@ -253,7 +254,7 @@ private fun <T> ChoiceDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.close)) }
         },
     )
 }

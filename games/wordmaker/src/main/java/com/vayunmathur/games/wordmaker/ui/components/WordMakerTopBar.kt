@@ -17,6 +17,7 @@ import com.vayunmathur.games.wordmaker.data.GameMode
 import com.vayunmathur.library.ui.CenterAlignedTopAppBar
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.game.DailyStreakText
 import com.vayunmathur.library.ui.game.GameModeChooser
@@ -31,7 +32,7 @@ fun DailyStatusBar(streak: Long) {
             .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(stringResource(R.string.daily_challenge), fontWeight = FontWeight.Bold)
+        Text(stringResource(UiR.string.daily_challenge), fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
         DailyStreakText(streak)
     }
@@ -50,9 +51,9 @@ fun DifficultyDropdown(selected: Difficulty, onSelected: (Difficulty) -> Unit) {
 }
 
 private fun difficultyLabel(difficulty: Difficulty) = when (difficulty) {
-    Difficulty.EASY -> R.string.difficulty_easy
-    Difficulty.MEDIUM -> R.string.difficulty_medium
-    Difficulty.HARD -> R.string.difficulty_hard
+    Difficulty.EASY -> UiR.string.easy
+    Difficulty.MEDIUM -> UiR.string.medium
+    Difficulty.HARD -> UiR.string.hard
 }
 
 private fun gameModeLabel(mode: GameMode) = when (mode) {

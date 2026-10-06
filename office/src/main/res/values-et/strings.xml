@@ -242,7 +242,6 @@
     <string name="restart_numbering">Alusta nummerdust uuesti</string>
     <string name="slide_background">Määra taustaks…</string>
     <string name="duplicate_paragraph">Tee lõigust koopia</string>
-    <string name="insert_table_1">Lisa tabel</string>
     <string name="bring_to_front">Too esiplaanile</string>
     <string name="promote_list_item">Liigenda loendirida vasakule</string>
     <string name="italic_cell">Lahter kaldkirjas</string>
@@ -258,7 +257,6 @@
     <string name="insert_chart">Lisa diagramm</string>
     <string name="edit_chart">Muuda diagrammi</string>
     <string name="hide_notes">Peida märkmed</string>
-    <string name="speaker_notes_2">Esineja märkmed</string>
     <string name="show_security_code">Näita turvakoodi</string>
     <string name="adding">Lisan…</string>
     <string name="shared_by_you">Jagatud sinu poolt</string>

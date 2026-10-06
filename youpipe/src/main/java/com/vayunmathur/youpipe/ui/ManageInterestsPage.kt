@@ -18,6 +18,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.youpipe.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.util.YouPipeViewModel
 import com.vayunmathur.youpipe.util.clearChannelPreference
@@ -73,7 +74,7 @@ fun ManageInterestsPage(
                                 if (pinned) ypvm.clearChannelPreference(channelKey) else ypvm.pinChannel(channelKey)
                             }) { Text(stringResource(if (pinned) R.string.action_unpin else R.string.action_pin)) }
                             TextButton(onClick = { ypvm.removeInterest(channelKey = channelKey) }) {
-                                Text(stringResource(R.string.action_remove))
+                                Text(stringResource(UiR.string.remove))
                             }
                         }
                     },
@@ -89,7 +90,7 @@ fun ManageInterestsPage(
                     content = { Text(keyword, style = MaterialTheme.typography.titleMedium) },
                     trailingContent = {
                         TextButton(onClick = { ypvm.removeInterest(keyword = keyword) }) {
-                            Text(stringResource(R.string.action_remove))
+                            Text(stringResource(UiR.string.remove))
                         }
                     },
                 )

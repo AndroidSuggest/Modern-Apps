@@ -211,7 +211,5 @@ object TidalAuth {
 
     private fun JsonObject.int(key: String, default: Int): Int = long(key)?.toInt() ?: default
 
-    private companion object {
-        const val DEFAULT_TOKEN_LIFETIME_SECONDS = 86_400L
-    }
+    private const val DEFAULT_TOKEN_LIFETIME_SECONDS = 86_400L
 }

@@ -17,6 +17,17 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import com.vayunmathur.pdf.util.SafePdfDocument
+import com.vayunmathur.pdf.util.addCallout
+import com.vayunmathur.pdf.util.addImageStamp
+import com.vayunmathur.pdf.util.addNote
+import com.vayunmathur.pdf.util.addPoly
+import com.vayunmathur.pdf.util.addText
+import com.vayunmathur.pdf.util.deleteAnnotation
+import com.vayunmathur.pdf.util.detachAnnotation
+import com.vayunmathur.pdf.util.duplicateAnnotation
+import com.vayunmathur.pdf.util.editText
+import com.vayunmathur.pdf.util.moveAnnotation
+import com.vayunmathur.pdf.util.reattachAnnotation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 

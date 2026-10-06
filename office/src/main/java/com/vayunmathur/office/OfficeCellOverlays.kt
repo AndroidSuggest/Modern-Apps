@@ -130,7 +130,7 @@ private fun CellResizeOverlay(
             w.toFloatOrNull()?.let { viewModel.setColumnWidth(s, c, it) }
             h.toFloatOrNull()?.let { viewModel.setRowHeight(s, r, it) }
             state.showCellResize = false
-        }) { Text(stringResource(R.string.apply)) } },
+        }) { Text(stringResource(UiR.string.apply)) } },
         dismissButton =
             { TextButton(onClick = { state.showCellResize = false }) { Text(stringResource(UiR.string.cancel)) } }
     )

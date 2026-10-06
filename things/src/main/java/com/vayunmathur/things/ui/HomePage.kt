@@ -31,6 +31,7 @@ import com.vayunmathur.library.ui.IconWidgets
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.OutlinedTextField
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.things.R
@@ -149,7 +150,7 @@ fun HomePage(
 
             item {
                 OutlinedButton(onClick = onHealthConnectClick, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.health_connect))
+                    Text(stringResource(R.string.permission_health_connect))
                 }
             }
         }
@@ -206,7 +207,7 @@ private fun BottleStatusCard(
                     val battery = if (charging) {
                         stringResource(R.string.battery_charging, batteryPct)
                     } else {
-                        stringResource(R.string.battery_pct, batteryPct)
+                        stringResource(R.string.percent, batteryPct)
                     }
                     StatusRow(stringResource(R.string.label_battery), battery)
                 }
@@ -322,10 +323,10 @@ private fun ScaleCard(
         ConfirmDialog(
             title = stringResource(R.string.scale_reset_title),
             message = stringResource(R.string.scale_reset_message),
-            confirmLabel = stringResource(R.string.scale_reset_confirm),
+            confirmLabel = stringResource(UiR.string.reset),
             // Without an explicit dismiss label the dialog renders no cancel button, which is a
             // poor way to guard something destructive.
-            dismissLabel = stringResource(R.string.cancel),
+            dismissLabel = stringResource(UiR.string.cancel),
             destructive = true,
             onConfirm = {
                 confirmReset = false

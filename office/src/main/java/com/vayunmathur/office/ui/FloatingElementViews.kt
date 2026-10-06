@@ -10,14 +10,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,19 +24,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.library.ui.IconCrop
@@ -47,9 +39,9 @@ import com.vayunmathur.library.ui.IconDragHandle
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.odf.OdfFrame
-import com.vayunmathur.library.ui.odf.OdfParagraph
 import com.vayunmathur.library.ui.odf.OdfShape
 import com.vayunmathur.library.ui.odf.OdfSlideElement
+import com.vayunmathur.library.ui.odf.bounds
 
 @Composable
 fun FloatingElementLayer(
@@ -221,55 +213,7 @@ fun FloatingElementLayer(
     }
 }
 
-@Composable
-private fun ElementHandle(
-    modifier: Modifier,
-    icon: (@Composable () -> Unit)? = null,
-    onStart: () -> Unit,
-    onEnd: () -> Unit,
-    onDrag: (Float, Float) -> Unit) {
-    Box(
-        modifier.size(18.dp)
-            .background(MaterialTheme.colorScheme.primary, CircleShape)
-            .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { onStart() },
-                    onDragEnd = { onEnd() },
-                    onDragCancel = { onEnd() }
-                ) { change, drag -> change.consume(); onDrag(drag.x, drag.y) }
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        if (icon != null) icon()
-    }
-}
 
-@Composable
-private fun SlideTextEditor(
-    key: String,
-    paragraphs: List<OdfParagraph>,
-    fontScale: Float,
-    onChange: (String) -> Unit,
-    onFocus: () -> Unit = {}) {
-    val initial = paragraphs.joinToString("\n") { p -> p.spans.joinToString("") { it.text } }
-    var tfv by remember(key) { mutableStateOf(TextFieldValue(initial)) }
-    val baseSp = (paragraphs.firstOrNull()?.spans?.firstOrNull()?.fontSize ?: 18f) * fontScale
-    val bold = paragraphs.firstOrNull()?.spans?.firstOrNull()?.bold == true
-    val italic = paragraphs.firstOrNull()?.spans?.firstOrNull()?.italic == true
-    val color = paragraphs.firstOrNull()?.spans?.firstOrNull()?.color?.let { Color(it.toInt()) } ?: MaterialTheme.colorScheme.onSurface
-    BasicTextField(
-        value = tfv,
-        onValueChange = { tfv = it; onChange(it.text) },
-        textStyle = TextStyle(
-            color = color,
-            fontSize = baseSp.coerceAtLeast(8f).sp,
-            fontWeight = if (bold) FontWeight.Bold else null,
-            fontStyle = if (italic) FontStyle.Italic else null),
-        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-        modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) onFocus() }
-    )
-}
 
 @Composable
 private fun PositionedFrame(

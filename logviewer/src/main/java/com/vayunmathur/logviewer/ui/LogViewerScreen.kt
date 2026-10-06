@@ -44,6 +44,7 @@ import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.ui.isExpandedWidth
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.logviewer.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.logviewer.domain.LogDocument
 import com.vayunmathur.logviewer.platform.ExtraAction
 import com.vayunmathur.logviewer.platform.LogViewerActions
@@ -123,10 +124,10 @@ internal fun LogViewerScreen(state: LogViewerUiState, actions: LogViewerActions)
                         // Share and Save appear here only when the bottom row gave their slot to
                         // Report and Copy - never twice.
                         if (state.showReportButton) {
-                            Item(stringResource(R.string.action_share)) { actions.share() }
+                            Item(stringResource(UiR.string.share)) { actions.share() }
                         }
                         if (state.canCopy) {
-                            Item(stringResource(R.string.action_save)) {
+                            Item(stringResource(UiR.string.save)) {
                                 save.launch(state.snapshotFileName)
                             }
                         }
@@ -290,8 +291,8 @@ private fun StackTraceSidePanel(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             ) {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
-                Button(onClick = { onCopy(); onDismiss() }) { Text(stringResource(R.string.action_copy)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
+                Button(onClick = { onCopy(); onDismiss() }) { Text(stringResource(UiR.string.copy)) }
             }
         }
     }
@@ -308,14 +309,14 @@ private fun BottomActions(
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
     ) {
         if (state.canCopy) {
-            Button(onClick = actions::copy) { Text(stringResource(R.string.action_copy)) }
+            Button(onClick = actions::copy) { Text(stringResource(UiR.string.copy)) }
         } else {
-            Button(onClick = onSave) { Text(stringResource(R.string.action_save)) }
+            Button(onClick = onSave) { Text(stringResource(UiR.string.save)) }
         }
         if (state.showReportButton) {
             Button(onClick = actions::report) { Text(stringResource(R.string.action_report)) }
         } else {
-            Button(onClick = actions::share) { Text(stringResource(R.string.action_share)) }
+            Button(onClick = actions::share) { Text(stringResource(UiR.string.share)) }
         }
         for (extra in state.extraActions) {
             Button(onClick = { actions.perform(extra) }) { Text(stringResource(extra.labelRes)) }

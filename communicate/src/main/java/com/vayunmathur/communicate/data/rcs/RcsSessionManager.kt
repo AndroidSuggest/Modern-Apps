@@ -7,6 +7,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/** Rewrite an `msrp(s)://` path's scheme (e.g. advertise `msrps://`). */
+internal fun String.withScheme(scheme: String): String {
+    val rest = substringAfter("://", missingDelimiterValue = this)
+    return if (rest === this) this else "$scheme://$rest"
+}
+
 /**
  * CPM session manager: INVITE/MSRP 1:1 dialogs + group conference dialogs.
  *
@@ -537,12 +543,6 @@ object RcsSessionManager {
         return null to path
     }
 
-    /** Rewrite an `msrp(s)://` path's scheme (e.g. advertise `msrps://`). */
-    internal fun String.withScheme(scheme: String): String {
-        val rest = substringAfter("://", missingDelimiterValue = this)
-        return if (rest === this) this else "$scheme://$rest"
-    }
-
     /** True when the SDP negotiates TLS media (`TCP/TLS/MSRP`, `msrps`, or fingerprint). */
     fun isSecureSdp(sdp: String?): Boolean {
         if (sdp.isNullOrBlank()) return false
@@ -609,7 +609,7 @@ object RcsSessionManager {
     }
 
     /** Hosted-focus lookup: which focus a To-URI/SDP blob targets. */
-    private data class HostedTarget(val focusUri: String, val conversationId: String)
+    internal data class HostedTarget(val focusUri: String, val conversationId: String)
     internal fun hostedConversationFor(target: String): HostedTarget? {
         if (target.isBlank()) return null
         for ((conversationId, session) in sessionsMutable.value) {

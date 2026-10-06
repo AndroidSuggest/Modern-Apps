@@ -128,7 +128,7 @@ internal fun BookmarksScreen(
                         FilterChip(
                             selected = selectedFolder == null,
                             onClick = { selectedFolder = null },
-                            label = { Text(stringResource(R.string.all)) }
+                            label = { Text(stringResource(UiR.string.all)) }
                         )
                     }
                     items(folders, key = { it.id }) { folder ->
@@ -230,7 +230,7 @@ internal fun BookmarksScreen(
                         showNewFolderDialog = false
                     },
                     enabled = newFolderName.isNotBlank()
-                ) { Text(stringResource(R.string.create)) }
+                ) { Text(stringResource(UiR.string.create)) }
             },
             dismissButton = {
                 TextButton(onClick = {

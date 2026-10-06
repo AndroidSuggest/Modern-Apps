@@ -221,7 +221,7 @@
             android:name=".ui.SosEntryPoint"
             android:directBootAware="true"
             android:exported="true"
-            android:label="@string/sos_title"
+            android:label="@string/sos_channel_name"
             android:permission="android.permission.MANAGE_SENSOR_PRIVACY"
             android:targetActivity=".ui.SosActivity">
             <intent-filter>

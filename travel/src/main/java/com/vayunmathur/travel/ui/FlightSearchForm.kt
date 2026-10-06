@@ -32,6 +32,7 @@ import com.vayunmathur.travel.util.TravelViewModel
 import androidx.compose.ui.res.stringResource
 import androidx.annotation.StringRes
 import com.vayunmathur.travel.R
+import com.vayunmathur.library.ui.R as UiR
 
 /** The Duffel cabin classes, with a display label. */
 enum class Cabin(val code: String, @StringRes val label: Int) {
@@ -212,6 +213,6 @@ private fun MultiCityLeg(
         }
         PlaceAutocompleteField("From", viewModel, onCodeChange = onOrigin)
         PlaceAutocompleteField("To", viewModel, onCodeChange = onDestination)
-        DateField(stringResource(R.string.date), date, onDate = onDate)
+        DateField(stringResource(UiR.string.date), date, onDate = onDate)
     }
 }

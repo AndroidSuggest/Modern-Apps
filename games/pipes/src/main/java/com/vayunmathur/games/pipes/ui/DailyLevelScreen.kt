@@ -20,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.vayunmathur.games.pipes.R
 import com.vayunmathur.games.pipes.Route
 import com.vayunmathur.games.pipes.platform.PipesViewModel
 import com.vayunmathur.library.ui.AppScaffold
@@ -30,6 +29,7 @@ import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconStar
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.util.NavBackStack
@@ -40,7 +40,7 @@ fun DailyLevelScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel) 
     val dailyPack by viewModel.dailyPack.collectAsState()
     val dailyStats by viewModel.dailyStats.collectAsState()
     LaunchedEffect(Unit) { viewModel.refreshDaily() }
-    AppScaffold(title = stringResource(R.string.daily_challenge), backStack = backStack, scrollBehavior = appBarScrollBehavior()) { paddingValues ->
+    AppScaffold(title = stringResource(UiR.string.daily_challenge), backStack = backStack, scrollBehavior = appBarScrollBehavior()) { paddingValues ->
         val levels = dailyPack?.levels
         if (levels == null) { Box(Modifier.fillMaxSize().padding(paddingValues), Alignment.Center) { CircularProgressIndicator() }; return@AppScaffold }
         LazyVerticalGrid(GridCells.Adaptive(88.dp), Modifier.fillMaxSize(), contentPadding = paddingValues + PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 0.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

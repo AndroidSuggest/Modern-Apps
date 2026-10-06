@@ -20,6 +20,7 @@ import com.google.zxing.common.BitMatrix
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.vayunmathur.euicc.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.ui.MaterialTheme
@@ -63,10 +64,10 @@ fun EidDialog(eid: String, onDismiss: () -> Unit) {
                     messenger.show(copiedMessage)
                     onDismiss()
                 },
-            ) { Text(stringResource(R.string.copy_action)) }
+            ) { Text(stringResource(UiR.string.copy)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.done)) }
         },
     )
 }

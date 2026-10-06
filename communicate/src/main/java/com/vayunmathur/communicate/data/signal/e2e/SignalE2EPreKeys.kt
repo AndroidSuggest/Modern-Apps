@@ -1,15 +1,22 @@
 package com.vayunmathur.communicate.data.signal.e2e
 
 import android.util.Log
+import com.vayunmathur.communicate.data.signal.e2e.SignalE2E.Companion.ONE_TIME_PREKEY_BATCH
+import com.vayunmathur.communicate.data.signal.e2e.SignalE2E.Companion.ONE_TIME_PREKEY_FLOOR
+import com.vayunmathur.communicate.data.signal.e2e.SignalE2E.Companion.b64
+import com.vayunmathur.communicate.data.signal.e2e.SignalE2E.Companion.signSignedPreKey
 import kotlinx.coroutines.runBlocking
 import org.signal.libsignal.protocol.ecc.ECKeyPair
 import org.signal.libsignal.protocol.ecc.ECPrivateKey
 import org.signal.libsignal.protocol.ecc.ECPublicKey
+import org.signal.libsignal.protocol.kem.KEMKeyPair
+import org.signal.libsignal.protocol.kem.KEMKeyType
 import org.signal.libsignal.protocol.state.KyberPreKeyRecord
 import org.signal.libsignal.protocol.state.PreKeyRecord
 import org.signal.libsignal.protocol.state.SignedPreKeyRecord
-import org.signal.libsignal.protocol.groups.ratchet.SenderKeyRecord
-import org.whispersystems.signalservice.api.push.PreKeyUpload
+import com.vayunmathur.communicate.data.signal.e2e.SignalE2E.PreKeyUpload
+
+private const val X25519_POINT_LEN = 32
 
 /**
  * Pre-key lifecycle for [SignalE2E] (split for file length).
@@ -45,8 +52,15 @@ internal fun SignalE2E.seedStoredSignedPreKey(id: Int): Boolean {
     }
     return try {
         val privateKey = ECPrivateKey(priv)
-        val derived = privateKey.getPublicKey().serialize()
-        if (!derived.contentEquals(pub)) {
+        val derivedPublic = RustSignalCrypto.publicFromPrivate(priv)
+        if (derivedPublic == null) {
+            Log.w(SignalE2E.TAG, "could not derive public half for signed pre-key $id; rotating")
+            return false
+        }
+        // ECPublicKey.serialize() is 0x05-prefixed (33B) while publicFromPrivate returns the raw
+        // 32B point; compare the trailing point bytes so the two serializations line up.
+        if (!derivedPublic.takeLast(X25519_POINT_LEN).toByteArray()
+                .contentEquals(pub.takeLast(X25519_POINT_LEN).toByteArray())) {
             // The server serves the public half; without the matching private half every inbound
             // pre-key message fails in the key agreement rather than at lookup.
             Log.w(

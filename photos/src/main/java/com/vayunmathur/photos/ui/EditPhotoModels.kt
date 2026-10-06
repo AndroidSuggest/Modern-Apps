@@ -6,7 +6,7 @@ import com.vayunmathur.photos.data.ImageAdjustments
 
 internal enum class ToolCategory(@StringRes val labelRes: Int, @StringRes val descriptionRes: Int) {
     Adjust(R.string.tool_cat_adjust, R.string.tool_cat_desc_adjust),
-    Filters(R.string.tool_cat_filters, R.string.tool_cat_desc_filters),
+    Filters(R.string.tool_filters, R.string.tool_cat_desc_filters),
     Retouch(R.string.tool_cat_retouch, R.string.tool_cat_desc_retouch),
     Select(R.string.tool_cat_select, R.string.tool_cat_desc_select),
     Transform(R.string.tool_cat_transform, R.string.tool_cat_desc_transform),

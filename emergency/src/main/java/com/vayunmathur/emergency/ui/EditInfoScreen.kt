@@ -184,7 +184,7 @@ fun EditInfoScreen(
         item {
             MedicalDropdown(
                 label = stringResource(R.string.field_blood_type),
-                unknownLabel = stringResource(R.string.blood_type_unknown),
+                unknownLabel = stringResource(R.string.organ_donor_unknown),
                 value = bloodType,
                 options = BLOOD_TYPE_OPTIONS,
                 optionLabel = { it },

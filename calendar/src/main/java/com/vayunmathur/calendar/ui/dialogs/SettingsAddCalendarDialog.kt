@@ -78,7 +78,7 @@ fun SettingsAddCalendarDialog(viewModel: CalendarViewModel, backStack: NavBackSt
                 val accessLevel = android.provider.CalendarContract.Calendars.CAL_ACCESS_EDITOR
                 viewModel.createLocalCalendar("Offline Calendar", newDisplayName.ifEmpty { "New Calendar" }, newColor, true, accessLevel)
                 backStack.pop()
-            }) { Text(stringResource(R.string.create)) }
+            }) { Text(stringResource(UiR.string.create)) }
         },
         dismissButton = {
             Button(onClick = { backStack.pop() }) { Text(stringResource(UiR.string.cancel)) }

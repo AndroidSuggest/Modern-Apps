@@ -95,8 +95,9 @@ internal suspend fun OfficeViewModel.fetchMembers(
     for (item in res.items) {
         val sm = runCatching { syncJson.decodeFromString<SignedMember>(item) }.getOrNull()
         // Not signed by the owner -> ignore (client-enforced authority).
-        val ok = sm != null && OfficeSync.verify(ownerKey, memberSigningBytes(docId, sm.member), Base64.decode(sm.sig))
-        if (ok && sm != null) byId[sm.member.id] = sm.member
+        if (sm != null && OfficeSync.verify(ownerKey, memberSigningBytes(docId, sm.member), Base64.decode(sm.sig))) {
+            byId[sm.member.id] = sm.member
+        }
     }
     currentMembers.clear()
     byId.values.forEach { currentMembers[it.id] = it.role }

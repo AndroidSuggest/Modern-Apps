@@ -58,13 +58,8 @@
     </plurals>
 
     <!-- Common actions: generic buttons used across dialogs -->
-    <!-- Generic create action. Verb. Creates new item -->
-    <string name="create">Create</string>
     <!-- Event details: button to add a reminder/notification for event -->
     <string name="add_reminder">Add reminder</string>
-    <!-- Toolbar: search events. Verb. -->
-    <string name="search">Search</string>
-
     <!-- Event display: titles and date formatting -->
     <!-- Shown when event has empty title -->
     <string name="no_title">(No title)</string>
@@ -367,6 +362,5 @@
     <!-- ReminderReceiver: Notification body. %1$s = formatted event start time, e.g. 3:00 PM -->
     <string name="reminder_notification_text">Starts at <xliff:g id="start_time" example="3:00 PM">%1$s</xliff:g></string>
     <!-- Calendar widget day-group headers for the current/next day -->
-    <string name="today">Today</string>
     <string name="tomorrow">Tomorrow</string>
 </resources>

@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -51,6 +50,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.games.voxels.util.VoxelsNative
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.AchievementsManager
 import com.vayunmathur.library.ui.Text
 import kotlin.math.roundToInt
@@ -94,7 +94,7 @@ fun InventoryOverlay(
                 TabButton(stringResource(R.string.outfit), leftTab == 1) { leftTab = 1 }
                 TabButton(stringResource(R.string.inventory), leftTab == 0) { leftTab = 0 }
                 Spacer(Modifier.weight(1f))
-                TabButton(stringResource(R.string.close), false) { onClose() }
+                TabButton(stringResource(UiR.string.close), false) { onClose() }
             }
 
             // Center content.

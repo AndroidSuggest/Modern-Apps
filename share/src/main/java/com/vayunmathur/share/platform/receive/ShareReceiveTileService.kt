@@ -7,6 +7,7 @@ import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import com.vayunmathur.share.MainActivity
 import com.vayunmathur.share.R
+import com.vayunmathur.library.ui.R as UiR
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,7 +60,7 @@ class ShareReceiveTileService : TileService() {
             tile.subtitle = when {
                 !hasPermission -> getString(R.string.share_tile_no_permission)
                 enabled -> ShareReceiveController.localName
-                else -> getString(R.string.share_tile_off)
+                else -> getString(UiR.string.off)
             }
             tile.updateTile()
         }

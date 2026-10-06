@@ -56,6 +56,7 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.util.sharedText
 import android.util.Log
 import com.vayunmathur.fooddelivery.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.fooddelivery.api.BitesOrders
 import com.vayunmathur.fooddelivery.data.Order
 import com.vayunmathur.fooddelivery.data.OrderStage
@@ -333,7 +334,7 @@ private fun CourierCard(order: Order, onCall: (String) -> Unit) {
                 }
                 order.courierPhone?.takeIf { it.isNotBlank() }?.let { phone ->
                     OutlinedButton(onClick = { onCall(phone) }) {
-                        Text(stringResource(R.string.call))
+                        Text(stringResource(UiR.string.call))
                     }
                 }
             }

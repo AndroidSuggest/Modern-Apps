@@ -121,7 +121,7 @@ class EmailWidget : GlanceAppWidget() {
             titleBar = {
                 TitleBar(
                     startIcon = ImageProvider(com.vayunmathur.library.R.drawable.outline_inbox_24),
-                    title = ctx.getString(R.string.unified_inbox),
+                    title = ctx.getString(R.string.unified_inbox_label),
                     actions = {
                         CircleIconButton(
                             imageProvider = ImageProvider(com.vayunmathur.library.R.drawable.edit_24px),

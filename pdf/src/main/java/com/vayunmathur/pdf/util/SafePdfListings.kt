@@ -141,8 +141,6 @@ object SafePdfListings {
         return String(b, Charsets.UTF_8)
     }
 
-    private companion object {
-        private const val STRING_LEN_BYTES = 2
-        private const val U16_MASK = 0xFFFF
-    }
+    private const val STRING_LEN_BYTES = 2
+    private const val U16_MASK = 0xFFFF
 }

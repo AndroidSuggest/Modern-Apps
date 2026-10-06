@@ -14,7 +14,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.vayunmathur.games.pipes.R
 import com.vayunmathur.games.pipes.platform.GameBoardUiState
 import com.vayunmathur.games.pipes.platform.PipesActions
 import com.vayunmathur.library.ui.game.LevelPickerBox
@@ -34,7 +33,7 @@ fun GameBoardScreen(state: GameBoardUiState, actions: PipesActions, onBack: () -
     AppScaffold(title = "", onNavigateBack = onBack, scrollBehavior = appBarScrollBehavior()) { innerPadding ->
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             val infoBoxes = @Composable { LevelPickerBox(levelIndex = state.levelIndex, onLevelChange = onLevelChange, isCompleted = state.isCompleted, maxLevelIndex = state.maxLevelIndex); MovesBox(moves = state.moves, bestScore = state.bestScore, optimalMoves = state.levelData.optimalMoves) }
-            val actionButtons = @Composable { if (!state.isLevelWon) { Button(onClick = { actions.onUndo() }, enabled = state.canUndo) { Text(stringResource(UiR.string.undo)) }; Button(onClick = { actions.onRestart() }, enabled = state.canUndo) { Text(stringResource(R.string.restart)) } } else if (state.levelIndex < state.maxLevelIndex) { Button(onClick = { onLevelChange(state.levelIndex + 1) }) { Text(stringResource(R.string.next_level)) } } }
+            val actionButtons = @Composable { if (!state.isLevelWon) { Button(onClick = { actions.onUndo() }, enabled = state.canUndo) { Text(stringResource(UiR.string.undo)) }; Button(onClick = { actions.onRestart() }, enabled = state.canUndo) { Text(stringResource(UiR.string.restart)) } } else if (state.levelIndex < state.maxLevelIndex) { Button(onClick = { onLevelChange(state.levelIndex + 1) }) { Text(stringResource(UiR.string.next_level)) } } }
             val board = @Composable { boardModifier: Modifier -> GameBoard(levelData = state.levelData, gameState = state.gameState, activeColor = state.activeColor, activePath = state.activePath, onStartDraw = actions::startDraw, onExtendPath = actions::extendPath, onCommitDraw = actions::commitDraw, isLevelWon = state.isLevelWon, colorblind = state.colorblind, modifier = boardModifier) }
             BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
                 if (maxWidth > maxHeight) { Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) { board(Modifier.fillMaxSize()) }; Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) { infoBoxes(); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actionButtons() } } } }

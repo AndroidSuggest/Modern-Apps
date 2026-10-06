@@ -18,6 +18,7 @@ import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.IconArrowDropDown
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.LabeledTextField
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.SelectableDropdownMenuItem
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
@@ -109,7 +110,7 @@ internal fun NameAffixChooser(
     onValueChange: (String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val none = stringResource(R.string.name_affix_none)
+    val none = stringResource(UiR.string.none)
     androidx.compose.foundation.layout.Box(
         if (sharedKey == null) Modifier else Modifier.sharedContainer(sharedKey)
     ) {

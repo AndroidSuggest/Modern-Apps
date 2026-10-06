@@ -5,8 +5,6 @@
     <string name="error_parse_level">Failed to parse level data.</string>
     <!-- WordMakerTopBar: Title in casual mode when level number present. %1$d = level number integer, e.g. 12. Noun phrase -->
     <string name="level_number">Level <xliff:g id="level" example="12">%1$d</xliff:g></string>
-    <!-- WordGameScreen: Primary button to advance to next level after win. Also competitive lobby shows when result exists. Verb phrase CTA -->
-    <string name="next_level">Next Level</string>
     <!-- BonusWordsDialog: Title for dialog listing extra words not in puzzle. Noun phrase -->
     <string name="bonus_words">Bonus Words</string>
     <!-- Settings: Toggle for tap-to-spell input mode. Label -->
@@ -33,12 +31,6 @@
     <string name="mode_casual">Casual</string>
     <!-- GameModeDropdown: Competitive timed mode label. Adjective -->
     <string name="mode_competitive">Competitive</string>
-    <!-- DifficultyDropdown: Easy difficulty. Noun/adjective -->
-    <string name="difficulty_easy">Easy</string>
-    <!-- DifficultyDropdown: Medium difficulty ~45s per level. Noun/adjective -->
-    <string name="difficulty_medium">Medium</string>
-    <!-- DifficultyDropdown: Hard difficulty ~20s per level. Noun/adjective -->
-    <string name="difficulty_hard">Hard</string>
     <!-- CompetitiveLobbyScreen / CompetitiveStatusBar: Score display. %1$d = current competitive score integer, e.g. 150. Noun with number -->
     <string name="competitive_score">Score: <xliff:g id="score" example="150">%1$d</xliff:g></string>
     <!-- CompetitiveLobbyScreen: Primary button before first game to start competitive. Verb -->
@@ -54,8 +46,6 @@
 
     <!-- GameModeDropdown: Daily challenge mode label. One date-seeded puzzle per day. Adjective -->
     <string name="mode_daily">Daily</string>
-    <!-- DailyStatusBar: Title shown above the board in daily mode. Noun phrase -->
-    <string name="daily_challenge">Daily Challenge</string>
     <!-- DailyStatusBar: Consecutive days solved. %1$d = streak length e.g. 5. Noun phrase with number -->
     <string name="daily_streak"><xliff:g id="days" example="5">%1$d</xliff:g> day streak</string>
     <!-- WordGameScreen: Shown after solving the daily, in place of the Next Level button. Sentence -->

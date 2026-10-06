@@ -2,13 +2,11 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="label_description">Popis</string>
     <string name="title_history">Historie</string>
-    <string name="label_search">Hledat</string>
     <string name="subscribers_count"><xliff:g id="count" example="12K">%1$s</xliff:g> odběratelů</string>
     <string name="title_create_subscription_category">Vytvořit kategorii odběrů</string>
     <string name="title_update_subscription_category">Upravit kategorii odběrů</string>
     <string name="label_category_name">Název kategorie</string>
     <string name="label_select_subscriptions">Vybrat odběry:</string>
-    <string name="action_create">Vytvořit</string>
     <string name="action_update">Upravit</string>
     <string name="video_load_error">Problém načítání videa - Youtube vám možná zablokovalo anonymní sledování z této IP adresy</string>
     <string name="action_go_back">Jít zpět</string>
@@ -30,9 +28,7 @@
     <string name="count_b_format"><xliff:g id="number" example="3.4">%1$s</xliff:g>mld</string>
     <string name="action_subscribe">Odebírat</string>
     <string name="action_unsubscribe">Zrušit odbíraní</string>
-    <string name="channel_info"><xliff:g id="count" example="1,2 mil.">%1$s</xliff:g> odběratelů</string>
     <string name="video_stat_format"><xliff:g id="views" example="1 mil.">%1$s</xliff:g> views | <xliff:g id="time" example="3 days ago">%2$s</xliff:g></string>
-    <string name="title_settings">Nastavení</string>
     <string name="label_sponsorblock">SponsorBlock kategorie</string>
     <string name="label_dearrow">Povolit DeArrow</string>
     <string name="label_dearrow_description">Nahradit clickbait názvy a náhledovky za komunitně navrhnuté alternativy</string>
@@ -66,7 +62,6 @@
     <string name="label_hide_live">Skrýt živé přenosy / neznámou délku</string>
     <string name="label_min_duration">Minimální délka (sekundy)</string>
     <string name="label_max_duration">Maximální délka (sekundy)</string>
-    <string name="label_manage_interests">Spravovat zájmy</string>
     <string name="action_reset_algorithm">Resetovat algoritmus</string>
     <string name="preset_discover_more">Objevit více</string>
     <string name="preset_balanced">Vyvážený</string>
@@ -84,39 +79,30 @@
     <string name="label_pinned">Připnuté</string>
     <string name="action_pin">Připnout</string>
     <string name="action_unpin">Odepnout</string>
-    <string name="action_remove">Odebrat</string>
     <string name="action_unblock">Odblokovat</string>
     <string name="action_unmute">Zrušit ztlumení</string>
     <string name="download_options">Možnosti stažení</string>
     <string name="download">Stáhnout</string>
     <string name="resolution">Rozlišení</string>
     <string name="language">Jazyk</string>
-    <string name="off">Vypnuté</string>
     <string name="chapter">Kapitola</string>
     <string name="cc">CC</string>
     <string name="loading_recent_subscriptions">Načítání nedávných odběrů</string>
     <string name="selected_count"><xliff:g id="count" example="3">%1$s</xliff:g> vybraných</string>
     <string name="clear_history">Smazat historii</string>
     <string name="are_you_sure_you_want_to_clear_all_watch">Jste si jistý, že chcete smazat veškerou historii sledování?</string>
-    <string name="selected_1"><xliff:g id="count" example="2">%1$s</xliff:g> Vybraných</string>
     <string name="label_general">Obecné</string>
     <string name="label_default_page">Otevřít na</string>
-    <string name="page_home">Domov</string>
-    <string name="page_downloads">Stažené</string>
-    <string name="page_saved">Uložené</string>
-    <string name="title_saved">Uložené</string>
     <string name="title_downloads">Stažené</string>
     <string name="playlist_watch_later">Přehrát později</string>
     <string name="title_create_playlist">Vytvořit seznam</string>
     <string name="label_playlist_name">Název seznamu</string>
-    <string name="action_create_playlist">Vytvořit</string>
     <string name="add_to_playlist">Přidat do seznamu</string>
     <string name="new_playlist">Nový seznam</string>
     <string name="action_delete_playlist">Smazat seznam</string>
     <string name="playlist_empty">Zatím žádná videa v seznamu</string>
     <string name="adding_to_watch_later">Přidávání do přehrát později…</string>
     <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> videí</string>
-    <string name="label_history">Historie</string>
     <string name="settings_general_content">Obecné a Obsah</string>
     <string name="settings_sponsorblock">SponsorBlock</string>
     <string name="settings_data">Data a Záloha</string>

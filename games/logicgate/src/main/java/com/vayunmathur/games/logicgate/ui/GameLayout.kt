@@ -39,6 +39,7 @@ import com.vayunmathur.games.logicgate.platform.LogicActions
 import com.vayunmathur.games.logicgate.platform.UiState
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import kotlin.math.roundToInt
@@ -255,7 +256,7 @@ internal fun WinDialog(
         confirmButton = {
             if (nextLevelId != null) {
                 Button(onClick = { onOpenLevel(nextLevelId) }) {
-                    Text(stringResource(R.string.next_level), fontWeight = FontWeight.Bold)
+                    Text(stringResource(UiR.string.next_level), fontWeight = FontWeight.Bold)
                 }
             } else {
                 Button(onClick = onBack) {

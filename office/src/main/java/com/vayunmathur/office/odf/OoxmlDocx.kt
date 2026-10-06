@@ -10,14 +10,9 @@ import com.vayunmathur.library.ui.odf.OdfChange
 import com.vayunmathur.library.ui.odf.OdfContentBlock
 import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.library.ui.odf.OdfFootnote
-import com.vayunmathur.library.ui.odf.OdfImage
 import com.vayunmathur.library.ui.odf.OdfPageSetup
 import com.vayunmathur.library.ui.odf.OdfParagraph
 import com.vayunmathur.library.ui.odf.OdfSpan
-import com.vayunmathur.library.ui.odf.OdfTable
-import com.vayunmathur.library.ui.odf.OdfTableCell
-import com.vayunmathur.library.ui.odf.OdfTableColumn
-import com.vayunmathur.library.ui.odf.OdfTableRow
 import com.vayunmathur.library.ui.odf.ParagraphStyle
 import org.xmlpull.v1.XmlPullParser
 
@@ -31,7 +26,7 @@ internal object OoxmlDocx {
 
     private const val LINE_RULE_DIVISOR = 240f
     private const val TWIPS_PER_PT = 20f
-    private const val OOXML_THOUSANDTHS = 100000f
+    internal const val OOXML_THOUSANDTHS = 100000f
     private const val WINGDINGS_MIDDOT = 0xB7
     private const val WINGDINGS_BULLET = 0xA7
     private const val WINGDINGS_PHONE = 0x28
@@ -144,7 +139,7 @@ internal object OoxmlDocx {
         when (parser.name) {
             "body" -> body = true
             "p" -> if (body) parseParagraph(parser, ctx, out)
-            "tbl" -> if (body) out.add(OdfContentBlock.Table(parseTable(parser, ctx)))
+            "tbl" -> if (body) out.add(OdfContentBlock.Table(OoxmlDocxTables.parseTable(parser, ctx)))
             "sectPr" -> if (body && parser.depth <= BODY_DEPTH) {
                 val sect = parseSectPr(parser)
                 ctx.pageSetup = sect.first
@@ -177,7 +172,7 @@ internal object OoxmlDocx {
         var blockStart: Int = 0,
     )
 
-    private fun parseParagraph(parser: XmlPullParser, ctx: DocxCtx, out: MutableList<OdfContentBlock>) {
+    internal fun parseParagraph(parser: XmlPullParser, ctx: DocxCtx, out: MutableList<OdfContentBlock>) {
         val depth = parser.depth
         val acc = ParaAcc(blockStart = ctx.pendingBlocks.size)
         var e = parser.next()
@@ -380,7 +375,7 @@ internal object OoxmlDocx {
         forcedHref: String?, changeKind: String?, changeId: String? = null
     ) {
         val depth = parser.depth
-        val run = RunAcc(ppr = RPr())
+        val run = RunAcc(rpr = RPr())
         var e = parser.next()
         while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "r")) {
             if (e == XmlPullParser.END_DOCUMENT) break
@@ -395,8 +390,9 @@ internal object OoxmlDocx {
         val eff = base.overlay(paraMark).overlay(charStyle).overlay(run.rpr)
 
         if (eff.vanish == true) return
-        if (run.noteCitation != null) {
-            spans.add(OdfSpan(text = run.noteCitation, superscript = true))
+        val citation = run.noteCitation
+        if (citation != null) {
+            spans.add(OdfSpan(text = citation, superscript = true))
             @Suppress("UNUSED_VALUE") run { run.isEndnote = run.isEndnote }
             return
         }
@@ -437,7 +433,7 @@ internal object OoxmlDocx {
                 ctx,
                 ctx.endnotes,
                 OoxmlXml.attr(parser, "id")); run.isEndnote = true }
-            "drawing", "pict" -> parseDrawing(parser, ctx)
+            "drawing", "pict" -> OoxmlDocxDrawings.parseDrawing(parser, ctx)
         }
     }
 
@@ -587,218 +583,7 @@ internal object OoxmlDocx {
 
     // ---- Property parsers/styles/numbering: see OoxmlDocxStyles (split for file length) ----
 
-    // ---- Tables ----
-
-    private class TableAcc(
-        val grid: MutableList<MutableList<OdfTableCell>> = mutableListOf(),
-        val columns: MutableList<OdfTableColumn> = mutableListOf(),
-        var headerRows: Int = 0,
-        var tblBorders: OdfBorders? = null,
-        val vAnchors: HashMap<Int, Pair<Int, Int>> = HashMap(),
-    )
-
-    private fun parseTable(parser: XmlPullParser, ctx: DocxCtx): OdfTable {
-        val depth = parser.depth
-        val acc = TableAcc()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "tbl")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) applyTableTag(parser, ctx, acc)
-            e = parser.next()
-        }
-        return buildTable(acc)
-    }
-
-    private fun applyTableTag(parser: XmlPullParser, ctx: DocxCtx, acc: TableAcc) {
-        when (parser.name) {
-            "gridCol" -> applyGridColTag(parser, acc)
-            "tblBorders" -> acc.tblBorders = OoxmlDocxStyles.parseBorders(parser, "tblBorders")
-            "tr" -> if (parseRow(parser, ctx, acc.grid, acc.vAnchors)) acc.headerRows = acc.grid.size
-        }
-    }
-
-    private fun applyGridColTag(parser: XmlPullParser, acc: TableAcc) {
-        OoxmlXml.attr(
-            parser,
-            "w")?.toIntOrNull()?.let { acc.columns.add(OdfTableColumn(OoxmlUnits.twipsToPx(it))) }
-    }
-
-    private fun buildTable(acc: TableAcc): OdfTable {
-        val borders = acc.tblBorders
-        val rows = acc.grid.map { cells ->
-            val decorated = if (borders != null && !borders.isEmpty()) cells.map { c ->
-                if (c.borders == null && !c.isCovered) c.copy(
-                    borders = borders,
-                    borderColor = OdfBorders.renderColor(borders.top)) else c
-            } else cells
-            OdfTableRow(decorated)
-        }
-        return OdfTable(columns = acc.columns, rows = rows, headerRowCount = acc.headerRows)
-    }
-
-    /** Parses one table row into [grid], resolving vertical merges. Returns true if it's a header row. */
-    private fun parseRow(
-        parser: XmlPullParser, ctx: DocxCtx,
-        grid: MutableList<MutableList<OdfTableCell>>, vAnchors: HashMap<Int, Pair<Int, Int>>
-    ): Boolean {
-        val depth = parser.depth
-        val rowIdx = grid.size
-        val cells = mutableListOf<OdfTableCell>()
-        val row = RowAcc()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "tr")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) applyRowTag(parser, ctx, row, grid, cells, rowIdx, vAnchors)
-            e = parser.next()
-        }
-        grid.add(cells)
-        return row.isHeader
-    }
-
-    /** Row accumulation state. */
-    private class RowAcc(
-        var isHeader: Boolean = false,
-        var colCursor: Int = 0,
-    )
-
-    /** Apply one row child tag. */
-    private fun applyRowTag(
-        parser: XmlPullParser,
-        ctx: DocxCtx,
-        row: RowAcc,
-        grid: MutableList<MutableList<OdfTableCell>>,
-        cells: MutableList<OdfTableCell>,
-        rowIdx: Int,
-        vAnchors: HashMap<Int, Pair<Int, Int>>,
-    ) {
-        when (parser.name) {
-            "tblHeader" -> if (OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))) row.isHeader = true
-            "tc" -> applyTableCell(parser, ctx, row, grid, cells, rowIdx, vAnchors)
-        }
-    }
-
-    /** Apply one table cell with vertical-merge resolution. */
-    private fun applyTableCell(
-        parser: XmlPullParser,
-        ctx: DocxCtx,
-        row: RowAcc,
-        grid: MutableList<MutableList<OdfTableCell>>,
-        cells: MutableList<OdfTableCell>,
-        rowIdx: Int,
-        vAnchors: HashMap<Int, Pair<Int, Int>>,
-    ) {
-        val cell = parseCell(parser, ctx)
-        val span = cell.colSpan
-        if (cell.vMergeContinue) {
-            vAnchors[row.colCursor]?.let { (ar, ac) ->
-                val anchor = grid.getOrNull(ar)?.getOrNull(ac)
-                if (anchor != null) grid[ar][ac] = anchor.copy(rowSpan = anchor.rowSpan + 1)
-            }
-            repeat(span) { cells.add(OdfTableCell(isCovered = true)) }
-        } else {
-            val myCol = cells.size
-            cells.add(cell.toModel())
-            repeat(span - 1) { cells.add(OdfTableCell(isCovered = true)) }
-            if (cell.vMergeRestart) vAnchors[row.colCursor] = rowIdx to myCol else vAnchors.remove(row.colCursor)
-        }
-        row.colCursor += span
-    }
-
-    private class CellAccum(
-        val paragraphs: List<OdfParagraph>,
-        val colSpan: Int,
-        val backgroundColor: Long?,
-        val borders: OdfBorders?,
-        val vAlign: String?,
-        val vMergeRestart: Boolean,
-        val vMergeContinue: Boolean
-    ) {
-        fun toModel() = OdfTableCell(
-            paragraphs = paragraphs.ifEmpty { listOf(OdfParagraph(listOf(OdfSpan("")))) },
-            colSpan = colSpan,
-            backgroundColor = backgroundColor,
-            borders = borders?.takeIf { !it.isEmpty() },
-            borderColor = borders?.let { OdfBorders.renderColor(it.top ?: it.left) },
-            verticalAlign = vAlign
-        )
-    }
-
-    private fun parseCell(parser: XmlPullParser, ctx: DocxCtx): CellAccum {
-        val depth = parser.depth
-        val cell = CellAcc()
-        val dummy = mutableListOf<OdfContentBlock>()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "tc")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) applyCellTag(parser, ctx, cell, dummy)
-            e = parser.next()
-        }
-        return CellAccum(
-            cell.paras, cell.colSpan, cell.bg, cell.borders, cell.vAlign,
-            cell.vMergeRestart, cell.vMergeContinue)
-    }
-
-    /** Cell accumulation state. */
-    private class CellAcc(
-        val paras: MutableList<OdfParagraph> = mutableListOf(),
-        var colSpan: Int = 1,
-        var bg: Long? = null,
-        var borders: OdfBorders? = null,
-        var vAlign: String? = null,
-        var vMergeRestart: Boolean = false,
-        var vMergeContinue: Boolean = false,
-    )
-
-    /** Apply one table-cell child tag. */
-    private fun applyCellTag(
-        parser: XmlPullParser,
-        ctx: DocxCtx,
-        cell: CellAcc,
-        dummy: MutableList<OdfContentBlock>,
-    ) {
-        when (parser.name) {
-            "gridSpan" -> cell.colSpan = OoxmlXml.attr(parser, "val")?.toIntOrNull() ?: 1
-            "shd" -> cell.bg = OoxmlUnits.hexColor(OoxmlXml.attr(parser, "fill")) ?: cell.bg
-            "tcBorders" -> cell.borders = OoxmlDocxStyles.parseBorders(parser, "tcBorders")
-            "vAlign" -> cell.vAlign = vAlignOf(parser)
-            "vMerge" -> applyVMerge(parser, cell)
-            "p" -> applyCellParagraph(parser, ctx, cell, dummy)
-            "tbl" -> applyNestedTable(parser, ctx, cell)
-        }
-    }
-
-    /** Vertical alignment from a w:vAlign tag. */
-    private fun vAlignOf(parser: XmlPullParser): String = when (OoxmlXml.attr(
-        parser,
-        "val")) { "center" -> "middle"; "bottom" -> "bottom"; else -> "top" }
-
-    /** Vertical-merge marker. */
-    private fun applyVMerge(parser: XmlPullParser, cell: CellAcc) {
-        val v = OoxmlXml.attr(
-            parser,
-            "val")
-        if (v == null || v == "continue") cell.vMergeContinue = true else cell.vMergeRestart = true
-    }
-
-    /** Cell paragraph → model paragraphs. */
-    private fun applyCellParagraph(
-        parser: XmlPullParser,
-        ctx: DocxCtx,
-        cell: CellAcc,
-        dummy: MutableList<OdfContentBlock>,
-    ) {
-        val before = dummy.size
-        parseParagraph(parser, ctx, dummy)
-        for (i in before until dummy.size) {
-            (dummy[i] as? OdfContentBlock.Paragraph)?.let { cell.paras.add(it.paragraph) }
-        }
-    }
-
-    /** Nested table → flattened text paragraphs (best-effort). */
-    private fun applyNestedTable(parser: XmlPullParser, ctx: DocxCtx, cell: CellAcc) {
-        val nested = parseTable(parser, ctx)
-        for (r in nested.rows) for (c in r.cells) if (!c.isCovered) cell.paras.addAll(c.paragraphs)
-    }
+    // ---- Tables: see OoxmlDocxTables (split for file length; behavior identical) ----
 
     // ---- Sections / page setup ----
 
@@ -955,130 +740,7 @@ internal object OoxmlDocx {
         return out
     }
 
-    // ---- Drawings / images ----
-
-    private class DrawingAcc(
-        var cx: Long = 0L,
-        var cy: Long = 0L,
-        var embed: String? = null,
-        var title: String? = null,
-        var desc: String? = null,
-        var rot: Int = 0,
-        var chartRid: String? = null,
-        var dmRid: String? = null,
-        var cropL: Float = 0f,
-        var cropT: Float = 0f,
-        var cropR: Float = 0f,
-        var cropB: Float = 0f,
-        val textboxParas: MutableList<OdfParagraph> = mutableListOf(),
-    )
-
-    private fun parseDrawing(parser: XmlPullParser, ctx: DocxCtx) {
-        val depth = parser.depth
-        val endTag = parser.name
-        val acc = DrawingAcc()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == endTag)) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) applyDrawingTag(parser, ctx, acc)
-            e = parser.next()
-        }
-        if (emitDrawingChart(ctx, acc)) return
-        if (emitDrawingImage(ctx, acc)) return
-        emitDrawingFallback(ctx, acc)
-    }
-
-    private fun applyDrawingTag(parser: XmlPullParser, ctx: DocxCtx, acc: DrawingAcc) {
-        if (applyDrawingMediaTag(parser, ctx, acc)) return
-        applyDrawingMetaTag(parser, acc)
-    }
-
-    private fun applyDrawingMediaTag(parser: XmlPullParser, ctx: DocxCtx, acc: DrawingAcc): Boolean {
-        val relsNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-        when (parser.name) {
-            "extent" -> {
-                acc.cx = OoxmlXml.attr(parser, "cx")?.toLongOrNull() ?: 0L
-                acc.cy = OoxmlXml.attr(parser, "cy")?.toLongOrNull() ?: 0L
-            }
-            "blip" -> if (acc.embed == null) acc.embed = OoxmlXml.attrNs(parser, relsNs, "embed") ?: OoxmlXml.attr(
-                parser,
-                "embed")
-            "chart" -> acc.chartRid = OoxmlXml.attrNs(parser, relsNs, "id") ?: OoxmlXml.attr(parser, "id")
-            "txbxContent" -> parseTextboxContent(parser, ctx, acc.textboxParas)
-            else -> return false
-        }
-        return true
-    }
-
-    private fun applyDrawingMetaTag(parser: XmlPullParser, acc: DrawingAcc) {
-        val relsNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-        when (parser.name) {
-            "docPr" -> {
-                acc.title = OoxmlXml.attr(parser, "title") ?: OoxmlXml.attr(parser, "name")
-                acc.desc = OoxmlXml.attr(parser, "descr")
-            }
-            "xfrm" -> OoxmlXml.attr(parser, "rot")?.toIntOrNull()?.let { acc.rot = it }
-            "srcRect" -> applyDrawingCropTag(parser, acc)
-            "relIds" -> acc.dmRid = OoxmlXml.attrNs(parser, relsNs, "dm")
-        }
-    }
-
-    private fun applyDrawingCropTag(parser: XmlPullParser, acc: DrawingAcc) {
-        acc.cropL = (OoxmlXml.attr(parser, "l")?.toIntOrNull() ?: 0) / OOXML_THOUSANDTHS
-        acc.cropT = (OoxmlXml.attr(parser, "t")?.toIntOrNull() ?: 0) / OOXML_THOUSANDTHS
-        acc.cropR = (OoxmlXml.attr(parser, "r")?.toIntOrNull() ?: 0) / OOXML_THOUSANDTHS
-        acc.cropB = (OoxmlXml.attr(parser, "b")?.toIntOrNull() ?: 0) / OOXML_THOUSANDTHS
-    }
-
-    private fun emitDrawingChart(ctx: DocxCtx, acc: DrawingAcc): Boolean {
-        val chartRid = acc.chartRid ?: return false
-        val target = ctx.rels[chartRid]?.target
-        val chartXml = target?.let { ctx.pkg.entries[it] }
-        if (chartXml != null) OoxmlChart.parse(
-            chartXml,
-            ctx.theme)?.let { ctx.pendingBlocks.add(OdfContentBlock.Chart(it)); return true }
-        return false
-    }
-
-    private fun emitDrawingImage(ctx: DocxCtx, acc: DrawingAcc): Boolean {
-        val embed = acc.embed ?: return false
-        val target = ctx.rels[embed]?.target
-        val bytes = target?.let { ctx.pkg.mediaBytes(it) } ?: return false
-        val path = "media/${target.substringAfterLast('/')}"
-        ctx.extraImages[path] = bytes
-        ctx.pendingBlocks.add(OdfContentBlock.Image(OdfImage(
-            path = path, imageData = bytes,
-            width = OoxmlUnits.emuToPx(acc.cx), height = OoxmlUnits.emuToPx(acc.cy),
-            rotationDegrees = OoxmlUnits.angle60000ToDeg(acc.rot),
-            cropLeftPct = acc.cropL, cropTopPct = acc.cropT, cropRightPct = acc.cropR, cropBottomPct = acc.cropB,
-            altTitle = acc.title, altDesc = acc.desc
-        )))
-        return true
-    }
-
-    private fun emitDrawingFallback(ctx: DocxCtx, acc: DrawingAcc) {
-        for (p in acc.textboxParas) ctx.pendingBlocks.add(OdfContentBlock.Paragraph(p))
-        // SmartArt: extract diagram text (best-effort) if no image/chart/textbox.
-        val hasVisual = acc.chartRid != null || acc.embed != null || acc.textboxParas.isNotEmpty()
-        if (!hasVisual && acc.dmRid != null) {
-            val dataPart = ctx.rels[acc.dmRid]?.target
-            for (line in OoxmlDiagram.extractText(ctx.pkg, dataPart)) {
-                ctx.pendingBlocks.add(OdfContentBlock.Paragraph(OdfParagraph(listOf(OdfSpan(line)))))
-            }
-        }
-    }
-
-    private fun parseTextboxContent(parser: XmlPullParser, ctx: DocxCtx, out: MutableList<OdfParagraph>) {
-        val depth = parser.depth
-        val blocks = mutableListOf<OdfContentBlock>()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "txbxContent")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG && parser.name == "p") parseParagraph(parser, ctx, blocks)
-            e = parser.next()
-        }
-        out.addAll(blocks.filterIsInstance<OdfContentBlock.Paragraph>().map { it.paragraph })
-    }
+    // ---- Drawings / images: see OoxmlDocxDrawings (split for file length; behavior identical) ----
 
     // ---- Mapping helpers ----
 

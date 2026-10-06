@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.vayunmathur.health.data.Ingredient
 import com.vayunmathur.health.data.ServingUnit
 import com.vayunmathur.library.ui.AlertDialog
@@ -82,7 +85,7 @@ fun IngredientQuantityDialog(
                         value = selectedUnit.name,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text(stringResource(R.string.unit)) },
+                        label = { Text(stringResource(R.string.field_unit)) },
                         trailingIcon = {
                             IconButton(onClick = { unitExpanded = true }) {
                                 IconArrowDropDown()

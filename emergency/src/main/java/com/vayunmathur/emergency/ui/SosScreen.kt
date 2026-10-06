@@ -144,7 +144,7 @@ fun SosScreen(state: SosUiState, actions: SosActions) {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = stringResource(R.string.sos_title),
+            text = stringResource(R.string.sos_channel_name),
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(16.dp))

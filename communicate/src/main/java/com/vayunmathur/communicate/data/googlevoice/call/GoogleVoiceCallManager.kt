@@ -40,6 +40,10 @@ interface CallConnection {
  */
 object GoogleVoiceCallManager {
 
+    private const val SIP_RINGING = 180
+    private const val SIP_SESSION_PROGRESS = 183
+    private const val REDIAL_DELAY_MS = 50 * 60 * 1000L
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _state = MutableStateFlow(CallState())
@@ -180,11 +184,7 @@ object GoogleVoiceCallManager {
             }
         }
 
-        private const val SIP_RINGING = 180
-    private const val SIP_SESSION_PROGRESS = 183
-    private const val REDIAL_DELAY_MS = 50 * 60 * 1000L
-
-    override fun onProvisional(code: Int) {
+        override fun onProvisional(code: Int) {
             if (code == SIP_RINGING || code == SIP_SESSION_PROGRESS) {
                 _state.value = _state.value.copy(phase = CallPhase.Ringing)
             }

@@ -30,7 +30,6 @@
     <string name="erase_sim_confirm_button">Erase</string>
     <string name="rename_profile_title">Rename profile</string>
     <string name="rename_profile_label">Nickname</string>
-    <string name="save">Save</string>
 
     <!-- Confirmations. %1$s is the carrier being switched to, %2$s the one being left. -->
     <string name="enable_carrier_dialog_title">Switch carrier?</string>
@@ -54,9 +53,6 @@
     <string name="notification_title">%1$d \u00b7 %2$s</string>
     <string name="notification_removed">Notification removed</string>
     <string name="no_notifications">No pending notifications</string>
-    <string name="remove">Remove</string>
-    <string name="copy_action">Copy</string>
-    <string name="unknown">Unknown</string>
 
     <!-- Add SIM -->
     <string name="add_sim_body">Your carrier can give you a QR code, or an activation code to type in.</string>
@@ -73,14 +69,11 @@
     <string name="device_imei_hint">Prefilled from this device. Some carriers bind the profile to it.</string>
     <string name="wizard_confirmation_code_label">Confirmation code (if your carrier gave you one)</string>
     <string name="wizard_confirmation_code_hint">Required when the activation code ends in $1.</string>
-    <string name="continue_button">Continue</string>
-    <string name="cancel">Cancel</string>
     <string name="scan_qr_title">Scan QR code</string>
     <string name="camera_permission_required">Camera permission is required to scan a QR code.</string>
     <string name="camera_permission_rationale">Point the camera at the QR code your carrier gave you to read the activation code.</string>
     <string name="camera_permission_grant">Allow camera</string>
     <string name="camera_permission_settings">Open settings</string>
-    <string name="done">Done</string>
     <string name="try_again">Try again</string>
 
     <!-- Carrier confirmation -->

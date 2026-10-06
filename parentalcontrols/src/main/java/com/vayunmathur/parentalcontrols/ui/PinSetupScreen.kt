@@ -21,6 +21,7 @@ import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.parentalcontrols.R
 
 /** Actions the PIN setup screen can take. */
@@ -79,10 +80,10 @@ fun PinSetupScreen(actions: PinSetupActions) {
                 onClick = { if (actions.onSet(first)) { first = ""; second = "" } },
                 enabled = ready,
             ) {
-                Text(stringResource(R.string.save))
+                Text(stringResource(UiR.string.save))
             }
             TextButton(onClick = actions.onCancel) {
-                Text(stringResource(R.string.cancel))
+                Text(stringResource(UiR.string.cancel))
             }
         }
     }

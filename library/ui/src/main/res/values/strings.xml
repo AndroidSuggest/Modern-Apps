@@ -5,8 +5,6 @@
     <string name="backup_dialog_title_import">Import Password</string>
     <!-- Shared library: UI – BackupButtons: Prompt above password TextField asking user to enter master password for KDBX file -->
     <string name="backup_password_prompt">Enter a master password for the KDBX file:</string>
-    <!-- Shared library: UI – BackupButtons: Confirm button in password dialog, label OK, enabled only when password non-empty -->
-    <string name="backup_dialog_ok">OK</string>
     <!-- Shared library: UI – BackupButtons: Toast shown when KDBX backup export succeeds. Short success feedback -->
     <string name="backup_export_success">Backup exported successfully</string>
     <!-- Shared library: UI – BackupButtons: Toast when export fails. %1$s = raw exception message, do not translate placeholder content -->
@@ -17,10 +15,6 @@
     <string name="backup_import_failed_format">Backup import failed: <xliff:g id="error" example="invalid file">%1$s</xliff:g></string>
     <!-- Shared library: UI – TimePickerDialog: Dialog title for time picker, shown in top of picker. Noun phrase, keep short -->
     <string name="time_picker_title">Select time</string>
-    <!-- Shared library: UI – TimePickerDialog / DatePickerDialog: Generic OK confirm button, enabled conditionally (e.g. selectedDateMillis != null, >= minTime). Keep short -->
-    <string name="dialog_ok">OK</string>
-    <!-- Cancel button label. Verb. Keep short. -->
-    <string name="dialog_cancel">Cancel</string>
     <!-- Shared library: UI – HistoryScrubber: FilterChip label that jumps timeline/slider to present (nowMode). Short noun, chip label -->
     <string name="label_now">Now</string>
     <!-- Shared library: UI – GameCenterScreen: TopAppBar title for achievement game center screen -->
@@ -47,16 +41,10 @@
     <string name="link_field_text">Text</string>
     <!-- Shared library: UI – EditorLink: Label for URL destination field. Includes "(URL)" hint – keep parentheses, translate URL if appropriate -->
     <string name="link_field_url">Link to (URL)</string>
-    <!-- Shared library: UI – EditorLink: Save button when editing existing link, replaces Add. Verb, keep short -->
-    <string name="link_action_save">Save</string>
-    <!-- Shared library: UI – EditorLink: Add button when inserting new link. Verb, keep short -->
-    <string name="link_action_add">Add</string>
     <!-- Shared library: UI – EditorLink: Button to remove hyperlink but keep text, shown only when editing existing link. Verb -->
     <string name="link_action_unlink">Unlink</string>
     <!-- Shared library: UI – EditorLink: Button to open linked URL in browser via LocalUriHandler. Verb -->
     <string name="link_action_open">Open</string>
-    <!-- Shared library: UI – EditorLink / TimePickerDialog / DatePickerDialog / BackupButtons: Generic cancel/dismiss button, reused as single cancel string across modules. Keep short verb -->
-    <string name="link_action_cancel">Cancel</string>
     <!-- Shared library: UI – MarkdownEditor: Toolbar heading dropdown item. %1$s = level number 1-3. Shows in heading selector -->
     <string name="heading">Heading <xliff:g id="level" example="2">%1$s</xliff:g></string>
     <!-- Shared library: UI – AchievementNotification: Banner title shown when achievement unlocked, auto-dismiss 8s swipeable card above achievement name -->
@@ -82,6 +70,76 @@
     <string name="clear">Clear</string>
     <string name="share">Share</string>
     <string name="undo">Undo</string>
+    <!-- Shared across every app. Generic create action. Verb, keep short. -->
+    <string name="create">Create</string>
+    <!-- Shared across every app. Generic search action/label. Keep short. -->
+    <string name="search">Search</string>
+    <!-- Shared across every app. Generic continue action. Verb, keep short. -->
+    <string name="continue_label">Continue</string>
+    <!-- Shared across every app. Retries a failed action. Verb, keep short. -->
+    <string name="retry">Retry</string>
+    <!-- Shared across every app. Generic back navigation. Keep short. -->
+    <string name="back">Back</string>
+    <!-- Shared across every app. Copy to clipboard. Verb, keep short. -->
+    <string name="copy">Copy</string>
+    <!-- Shared across every app. Label for a name field. Noun. -->
+    <string name="name">Name</string>
+    <!-- Shared across every app. Generic open action. Verb, keep short. -->
+    <string name="open">Open</string>
+    <!-- Shared across every app. Generic play action. Verb, keep short. -->
+    <string name="play">Play</string>
+    <!-- Shared across every app. Reset to defaults. Verb, keep short. -->
+    <string name="reset">Reset</string>
+    <!-- Shared across every app. Apply pending changes. Verb, keep short. -->
+    <string name="apply">Apply</string>
+    <!-- Shared across every app. Next step or item. Keep short. -->
+    <string name="next">Next</string>
+    <!-- Shared across every app. Placeholder when a value is not known. Adjective. -->
+    <string name="unknown">Unknown</string>
+    <!-- Shared across every app. Empty-selection label. Pronoun. -->
+    <string name="none">None</string>
+    <!-- Shared across every app. Refers to the current day. Noun. -->
+    <string name="today">Today</string>
+    <!-- Shared across every app. Generic time label. Noun. -->
+    <string name="time">Time</string>
+    <!-- Shared across every app. Generic date label. Noun. -->
+    <string name="date">Date</string>
+    <!-- Shared across every app. Generic location label. Noun. -->
+    <string name="location">Location</string>
+    <!-- Shared across every app. Contacts label. Noun, plural. -->
+    <string name="contacts">Contacts</string>
+    <!-- Shared across every app. Email label. Noun. -->
+    <string name="email">Email</string>
+    <!-- Shared across every app. Phone-call action. Keep short. -->
+    <string name="call">Call</string>
+    <!-- Shared across every app. Generic note label. Noun. -->
+    <string name="note">Note</string>
+    <!-- Shared across every app. Home destination. Noun, keep short. -->
+    <string name="home">Home</string>
+    <!-- Shared across every app. Easy difficulty. Adjective. -->
+    <string name="easy">Easy</string>
+    <!-- Shared across every app. Medium difficulty. Adjective. -->
+    <string name="medium">Medium</string>
+    <!-- Shared across every app. Hard difficulty. Adjective. -->
+    <string name="hard">Hard</string>
+    <!-- Shared across every app. Advances to the next level. Noun phrase. -->
+    <string name="next_level">Next Level</string>
+    <!-- Shared across every app. Opens today\'s challenge. Noun phrase. -->
+    <string name="daily_challenge">Daily Challenge</string>
+    <!-- Shared across every app. Starts a new game. Noun phrase. -->
+    <string name="new_game">New Game</string>
+    <!-- Shared across every app. Restarts the current game or round. Verb, keep short. -->
+    <string name="restart">Restart</string>
+    <!-- Shared across every app. Dismisses a dialog or banner. Verb, keep short. -->
+    <string name="dismiss">Dismiss</string>
+    <!-- Shared across every app. Selects every item. Determiner. -->
+    <string name="all">All</string>
+    <!-- Shared across every app. Stops playback or an ongoing process. Verb, keep short. -->
+    <string name="stop">Stop</string>
+    <!-- Shared across every app. Saved-state confirmation. Adjective. -->
+    <string name="saved">Saved</string>
+    <!-- Shared across every app. Off-state label for toggles. Adjective. -->
+    <string name="off">Off</string>
     <!-- Daily-puzzle reminder settings rows, shared by every game with a daily challenge. -->
     <!-- Settings section header. Noun -->
     <string name="settings_reminders">Reminders</string>
@@ -130,26 +188,104 @@
     <string name="game_daily_challenge">Daily Challenge</string>
     <!-- Shared library: UI - MapUnavailableMessage: shown in place of the map when the graphics renderer could not start on this device. Full sentence, user cannot act on it -->
     <string name="map_unavailable">The map can\'t be displayed on this device.</string>
-    <!-- Shared library: UI – AppPermissionsGate: title over the consolidated blocking permission gate. Shown when at least one requirement is ungranted -->
-    <string name="permission_grant_required_title">Permissions required</string>
-    <!-- Shared library: UI – AppPermissionsGate: primary action on every requirement card. Verb, keep short -->
+    <!-- Shared library: UI – AppPermissionsGate: top-bar title of the consolidated blocking permission gate. Shown when at least one requirement is ungranted -->
+    <string name="permission_gate_title">Grant Required Permissions</string>
+    <!-- Shared library: UI – AppPermissionsGate: primary action on every requirement row. Verb, keep short -->
     <string name="permission_grant">Grant</string>
-    <!-- Shared library: UI – AppPermissionsGate: secondary action opening the app's system settings entry, shown when a runtime batch can be permanently denied. Reuses the shared settings string -->
-    <string name="permission_open_settings">Open settings</string>
-    <!-- Shared library: UI – AppPermissionsGate: rationale under a runtime-permission requirement card -->
-    <string name="permission_runtime_rationale">This app needs these permissions to work. Grant them to continue.</string>
+    <!-- Shared library: UI – AppPermissionsGate: fallback headline when a runtime batch matches no known group. Noun -->
+    <string name="permission_name_other">Permissions</string>
+    <!-- Shared library: UI – AppPermissionsGate: fallback purpose when a runtime batch matches no known group. Noun phrase -->
+    <string name="permission_purpose_other">App features</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a foreground-location runtime row. Noun -->
+    <string name="permission_name_location">Location</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a foreground-location runtime row. Noun phrase, no "required" wording -->
+    <string name="permission_purpose_location">Current position</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a background-location runtime row. Noun phrase -->
+    <string name="permission_name_background_location">Background location</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a background-location runtime row. Noun phrase -->
+    <string name="permission_purpose_background_location">Position while the app is closed</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a Bluetooth runtime row. Noun -->
+    <string name="permission_name_bluetooth">Bluetooth</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a Bluetooth runtime row. Noun phrase -->
+    <string name="permission_purpose_bluetooth">Nearby Bluetooth devices</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a nearby-Wi-Fi runtime row. Noun phrase -->
+    <string name="permission_name_wifi">Nearby Wi-Fi</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a nearby-Wi-Fi runtime row. Noun phrase -->
+    <string name="permission_purpose_wifi">Nearby Wi-Fi devices</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a local-network runtime row. Noun phrase -->
+    <string name="permission_name_local_network">Local network</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a local-network runtime row. Noun phrase -->
+    <string name="permission_purpose_local_network">Devices on the local network</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a camera runtime row. Noun -->
+    <string name="permission_name_camera">Camera</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a camera runtime row. Noun phrase -->
+    <string name="permission_purpose_camera">Photos and video</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a microphone runtime row. Noun -->
+    <string name="permission_name_microphone">Microphone</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a microphone runtime row. Noun phrase -->
+    <string name="permission_purpose_microphone">Audio recording</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a contacts runtime row. Noun -->
+    <string name="permission_name_contacts">Contacts</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a contacts runtime row. Noun phrase -->
+    <string name="permission_purpose_contacts">Contact names and numbers</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a phone-state/call runtime row. Noun -->
+    <string name="permission_name_phone">Phone</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a phone-state/call runtime row. Gerund phrase -->
+    <string name="permission_purpose_phone">Placing calls</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a calendar runtime row. Noun -->
+    <string name="permission_name_calendar">Calendar</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a calendar runtime row. Noun phrase -->
+    <string name="permission_purpose_calendar">Calendar events</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a notifications runtime row. Noun -->
+    <string name="permission_name_notifications">Notifications</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a notifications runtime row. Noun phrase -->
+    <string name="permission_purpose_notifications">Alerts and updates</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a music-audio runtime row. Noun phrase -->
+    <string name="permission_name_audio">Audio files</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a music-audio runtime row. Noun phrase -->
+    <string name="permission_purpose_audio">Music on this device</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a photos/video runtime row. Noun phrase -->
+    <string name="permission_name_photos">Photos and videos</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a photos/video runtime row. Noun phrase -->
+    <string name="permission_purpose_photos">Images and video on this device</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a photos/video runtime row that also reads media locations. Noun phrase -->
+    <string name="permission_purpose_photos_with_location">Images, video, and their locations</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a media-location-only runtime row. Noun phrase -->
+    <string name="permission_name_photo_locations">Photo locations</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a media-location-only runtime row. Noun phrase -->
+    <string name="permission_purpose_photo_locations">Locations saved with photos</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for a storage runtime row. Noun -->
+    <string name="permission_name_storage">Files</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for a storage runtime row. Noun phrase -->
+    <string name="permission_purpose_storage">Files on this device</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for the exact-alarms row. Noun phrase -->
+    <string name="permission_name_exact_alarms">Exact alarms</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for the exact-alarms row. Noun phrase -->
+    <string name="permission_purpose_exact_alarms">Reminders at precise times</string>
     <!-- Shared library: UI – AppPermissionsGate: rationale under the exact-alarms card -->
     <string name="permission_exact_alarms_rationale">Exact alarms are needed for reminders that must fire at a precise time. Open settings to allow them.</string>
-    <!-- Shared library: UI – AppPermissionsGate: rationale under the all-files-access card -->
-    <string name="permission_all_files_rationale">All-files access is needed to browse files outside the media collections. Open settings to allow it.</string>
-    <!-- Shared library: UI – AppPermissionsGate: rationale under the notification-listener card -->
-    <string name="permission_notification_listener_rationale">Notification access is needed to read notifications from other apps. Open settings to allow it.</string>
-    <!-- Shared library: UI – AppPermissionsGate: rationale under the VPN-consent card -->
-    <string name="permission_vpn_rationale">VPN access needs your approval before the app can start. Approve the connection request to continue.</string>
-    <!-- Shared library: UI – AppPermissionsGate: rationale under the full-screen-intent card -->
-    <string name="permission_full_screen_intent_rationale">Full-screen notifications need your permission, e.g. for alarms. Open settings to allow them.</string>
-    <!-- Shared library: UI – AppPermissionsGate: rationale under the manage-media card -->
-    <string name="permission_manage_media_rationale">Media-management access is needed to edit or delete photos and videos. Open settings to allow it.</string>
-    <!-- Shared library: UI – AppPermissionsGate: rationale under the Health Connect card -->
-    <string name="permission_health_connect_rationale">Health data access is needed to read and write your health records. Grant access in Health Connect to continue.</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for the all-files-access row. Noun phrase -->
+    <string name="permission_name_all_files">All files</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for the all-files-access row. Noun phrase -->
+    <string name="permission_purpose_all_files">Files outside the media collections</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for the notification-listener row. Noun phrase -->
+    <string name="permission_name_notification_listener">Notification access</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for the notification-listener row. Noun phrase -->
+    <string name="permission_purpose_notification_listener">Notifications from other apps</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for the VPN-consent row. Noun, keep short -->
+    <string name="permission_name_vpn">VPN</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for the VPN-consent row. Verb phrase -->
+    <string name="permission_purpose_vpn">Approve the VPN connection</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for the full-screen-intent row. Noun phrase -->
+    <string name="permission_name_full_screen_intent">Full-screen alerts</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for the full-screen-intent row. Noun phrase -->
+    <string name="permission_purpose_full_screen_intent">Alarms over the lock screen</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for the manage-media row. Noun phrase -->
+    <string name="permission_name_manage_media">Media management</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for the manage-media row. Gerund phrase -->
+    <string name="permission_purpose_manage_media">Edit and delete photos and videos</string>
+    <!-- Shared library: UI – AppPermissionsGate: headline for the Health Connect row. Noun phrase -->
+    <string name="permission_name_health_connect">Health data</string>
+    <!-- Shared library: UI – AppPermissionsGate: purpose for the Health Connect row. Verb phrase -->
+    <string name="permission_purpose_health_connect">Read and write health records</string>
 </resources>

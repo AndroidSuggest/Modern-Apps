@@ -73,7 +73,7 @@ class SignalE2E(
         }
 
     /** Strip the type prefix from a serialized EC public key, as RingRTC's key derivation requires. */
-    private fun rawPublicKeyBytes(serialized: ByteArray): ByteArray = try {
+    internal fun rawPublicKeyBytes(serialized: ByteArray): ByteArray = try {
         ECPublicKey(serialized).publicKeyBytes
     } catch (_: Throwable) {
         serialized

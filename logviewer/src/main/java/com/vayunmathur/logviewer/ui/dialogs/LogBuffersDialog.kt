@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.ui.AddToListDialog
 import com.vayunmathur.logviewer.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.logviewer.platform.LogcatReader
 
 /**
@@ -25,8 +26,8 @@ internal fun LogBuffersDialog(
         title = stringResource(R.string.log_buffers),
         options = LogcatReader.ALL_BUFFERS,
         itemLabel = { it },
-        confirmLabel = stringResource(R.string.action_apply),
-        dismissLabel = stringResource(R.string.action_cancel),
+        confirmLabel = stringResource(UiR.string.apply),
+        dismissLabel = stringResource(UiR.string.cancel),
         onConfirm = { selected ->
             onDismiss()
             // Re-filtered rather than used as-is: the dialog hands back a Set, and the buffer order

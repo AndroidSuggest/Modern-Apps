@@ -3,8 +3,7 @@
     <string name="app_name" translatable="false">YouPipe</string>
 
     <!-- Search bar placeholder hint. Noun, also tab label for search -->
-    <string name="label_search">Search</string>
-    <!-- Video item: subscriber count under channel name. %1$s = formatted count e.g. 12K. Keep word subscribers lower case -->
+    <!-- Video item + channel header: subscriber count. %1$s = formatted count e.g. 12K. Keep word subscribers lower case -->
     <string name="subscribers_count"><xliff:g id="count" example="12K">%1$s</xliff:g> subscribers</string>
     <!-- Empty state when recommendations empty, prompts user to watch videos to get personalized feed -->
     <string name="empty_recommendations">Watch some videos to get personalized recommendations</string>
@@ -58,7 +57,6 @@
     <!-- Label: language selection for audio/captions. Noun -->
     <string name="language">Language</string>
     <!-- Menu item: captions off. Adjective/state -->
-    <string name="off">Off</string>
     <!-- Menu label: chapter marker in video. Noun -->
     <string name="chapter">Chapter</string>
     <!-- Button: closed captions toggle. Abbreviation CC -->
@@ -76,8 +74,6 @@
     <string name="action_subscribe">Subscribe</string>
     <!-- Button: unsubscribe from channel. Verb with prefix Un -->
     <string name="action_unsubscribe">Unsubscribe</string>
-    <!-- Channel header subtitle. %1$s = formatted subscriber count e.g. 1.2M. Same as subscribers_count but used on channel header -->
-    <string name="channel_info"><xliff:g id="count" example="1.2M">%1$s</xliff:g> subscribers</string>
 
     <!-- TopAppBar title for subscriptions feed. Noun plural -->
     <string name="title_subscriptions">Subscriptions</string>
@@ -98,8 +94,6 @@
     <string name="label_category_name">Category name</string>
     <!-- Field label: multi-select subscriptions to include in category. Verb phrase with colon -->
     <string name="label_select_subscriptions">Select subscriptions:</string>
-    <!-- Button: create category. Verb -->
-    <string name="action_create">Create</string>
     <!-- Button: update category. Verb -->
     <string name="action_update">Update</string>
 
@@ -108,14 +102,7 @@
     <!-- Settings row: choose which screen the app opens to at launch. Verb phrase -->
     <string name="label_default_page">Open to</string>
     <!-- Default-page option: the home/search feed. Noun -->
-    <string name="page_home">Home</string>
-    <!-- Default-page option: the downloads list. Noun plural -->
-    <string name="page_downloads">Downloads</string>
-    <!-- Default-page option and tab label: the Saved library (playlists hub). Noun -->
-    <string name="page_saved">Saved</string>
-
     <!-- TopAppBar title for the Saved playlists hub. Noun -->
-    <string name="title_saved">Saved</string>
     <!-- TopAppBar title for the downloads detail page and the Saved row for it. Noun plural -->
     <string name="title_downloads">Downloads</string>
     <!-- Name of the mandatory, non-deletable Watch later playlist. Noun phrase -->
@@ -124,8 +111,7 @@
     <string name="title_create_playlist">Create playlist</string>
     <!-- Field label: playlist name input. Noun phrase -->
     <string name="label_playlist_name">Playlist name</string>
-    <!-- Button: create playlist. Verb phrase -->
-    <string name="action_create_playlist">Create</string>
+    <!-- Button: create playlist / category. Verb -->
     <!-- Dialog title: add current video to playlists. Verb phrase -->
     <string name="add_to_playlist">Add to playlist</string>
     <!-- Inline field label/hint: create a new playlist. Noun phrase -->
@@ -139,7 +125,7 @@
     <!-- Supporting line under a playlist row: video count. %1$d = number of videos -->
     <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> videos</string>
 
-    <!-- TopAppBar title for watch history. Noun -->
+    <!-- Section header: watch history management in settings. Noun -->
     <string name="title_history">History</string>
     <!-- Selection mode badge: number selected (lowercase s in this variant). %1$s = count e.g. 3 -->
     <string name="selected_count"><xliff:g id="count" example="3">%1$s</xliff:g> selected</string>
@@ -148,11 +134,7 @@
     <!-- Confirmation body text for clearing all watch history -->
     <string name="are_you_sure_you_want_to_clear_all_watch">Are you sure you want to clear all watch history?</string>
 
-    <!-- Selection badge: number selected with capital S (DownloadsPage variant). %1$s = count -->
-    <string name="selected_1"><xliff:g id="count" example="2">%1$s</xliff:g> Selected</string>
-
     <!-- TopAppBar title for settings screen. Noun plural -->
-    <string name="title_settings">Settings</string>
 
     <!-- Section header: recommendation system settings. Noun plural -->
     <!-- Slider label: Familiar vs Discovery trade-off for feed. Noun ↔ Noun with arrow symbol -->
@@ -185,8 +167,6 @@
     <string name="label_min_duration">Min length (seconds)</string>
     <!-- Field label: maximum video length filter input -->
     <string name="label_max_duration">Max length (seconds)</string>
-    <!-- Button/link to manage inferred interests (channels/topics/blocked). Verb phrase -->
-    <string name="label_manage_interests">Manage interests</string>
     <!-- Button: reset recommendation algorithm history and learned interests. Verb phrase -->
     <string name="action_reset_algorithm">Reset algorithm</string>
     <!-- Preset: favor discovery of new content. Verb phrase -->
@@ -231,7 +211,6 @@
     <!-- Button: unpin previously pinned. Verb with Un prefix -->
     <string name="action_unpin">Unpin</string>
     <!-- Button: remove interest/channel. Verb -->
-    <string name="action_remove">Remove</string>
     <!-- Button: unblock channel. Verb -->
     <string name="action_unblock">Unblock</string>
     <!-- Button: unmute keyword. Verb -->
@@ -250,9 +229,6 @@
     <string name="label_youtube_language">Content language</string>
     <!-- Option: system default language entry in dropdown. Noun phrase -->
     <string name="label_system_default">System default</string>
-
-    <!-- Section header: watch history management in settings. Noun -->
-    <string name="label_history">History</string>
 
     <!-- Section header: backup and restore functionality. Noun phrase with ampersand -->
     <string name="label_backup_restore">Backup &amp; Restore</string>
@@ -287,7 +263,6 @@
     <!-- Player controls: checkbox to control pitch independently of tempo (may distort audio). Phrase -->
     <string name="playback_unhook_pitch">Unhook pitch (may distort)</string>
     <!-- Player controls: button that resets tempo and pitch to default. Verb -->
-    <string name="playback_reset">Reset</string>
     <!-- Player controls: content description for the lock-controls button shown in fullscreen. Verb phrase -->
     <string name="lock_controls">Lock controls</string>
     <!-- Player controls: content description for the unlock button shown while controls are locked. Verb phrase -->

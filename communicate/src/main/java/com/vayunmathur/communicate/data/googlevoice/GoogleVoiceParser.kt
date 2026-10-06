@@ -29,6 +29,14 @@ object GoogleVoiceParser {
         isLenient = true
     }
 
+    /** Thread attribute mutations for `thread/batchupdateattributes`. */
+    sealed interface ThreadAction {
+        data object MarkRead : ThreadAction
+        data object MarkUnread : ThreadAction
+        data object Archive : ThreadAction
+        data object Unarchive : ThreadAction
+    }
+
     // ------------------------------------------------------------------
     // Request body builders (documented shapes)
     // ------------------------------------------------------------------
@@ -246,6 +254,8 @@ object GoogleVoiceParser {
         raw >= SECONDS_THRESHOLD -> raw * MILLIS_PER_SECOND
         else -> 0
     }
+
+}
 
 internal fun allStrings(el: JsonElement): List<String> {
     val out = mutableListOf<String>()

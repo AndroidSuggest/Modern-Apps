@@ -6,20 +6,13 @@
     <string name="open_file">Open file</string>
     <string name="find">Find</string>
     <string name="replace">Replace</string>
-    <string name="all">All</string>
     <string name="no_folder_opened">No folder opened</string>
     <string name="open_a_folder_to_browse_your_project_or">Open a folder to browse your project, or open a single file.</string>
     <string name="new_file">New file</string>
     <string name="new_folder">New folder</string>
-    <string name="rename">Rename</string>
-    <string name="delete">Delete</string>
-    <string name="name">Name</string>
-    <string name="create">Create</string>
-    <string name="cancel">Cancel</string>
     <string name="more_actions">More actions</string>
     <string name="delete_title">Delete "%1$s"?</string>
     <string name="delete_message">This cannot be undone.</string>
-    <string name="settings">Settings</string>
     <string name="appearance">Appearance</string>
     <string name="editor">Editor</string>
     <string name="font_size">Font size</string>
@@ -35,7 +28,6 @@
     <string name="auto_close_brackets_desc">Insert the matching closing bracket or quote</string>
     <string name="soft_wrap">Soft wrap</string>
     <string name="soft_wrap_desc">Wrap long lines instead of scrolling</string>
-    <string name="close">Close</string>
     <string name="go_to_line">Go to line</string>
     <string name="line">Line</string>
     <string name="go">Go</string>
@@ -45,7 +37,6 @@
     <string name="use_regex">Regex</string>
     <string name="invalid_regex">Invalid pattern</string>
     <string name="search_in_project">Search in project</string>
-    <string name="search">Search</string>
     <string name="searching">Searching\u2026</string>
     <string name="no_results">No results</string>
     <string name="line_number">Line %1$d</string>
@@ -96,8 +87,6 @@
     <string name="quick_open_hint">Type a file name</string>
     <string name="command_palette">Command palette</string>
     <string name="command_palette_hint">Type a command</string>
-    <string name="save">Save</string>
-    <string name="undo">Undo</string>
     <string name="redo">Redo</string>
     <string name="save_all">Save all</string>
     <string name="disk_changed">This file changed on disk.</string>
@@ -120,7 +109,6 @@
     <string name="side_by_side">Side by side</string>
     <string name="resolve_conflicts">Resolve conflicts</string>
     <string name="no_conflicts">No merge conflicts in this file.</string>
-    <string name="apply">Apply</string>
     <string name="conflict_ours">Current (ours)</string>
     <string name="conflict_theirs">Incoming (theirs)</string>
     <string name="conflict_keep_ours">Ours</string>

@@ -22,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.clock.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.clock.data.Timer
 import com.vayunmathur.clock.platform.TimerActions
 import com.vayunmathur.clock.platform.timerRemaining
@@ -109,7 +110,7 @@ fun TimerCard(timer: Timer, now: kotlin.time.Instant, actions: TimerActions) {
                     if (showReset) Spacer(Modifier.width(8.dp))
                 }
                 if (showReset) {
-                    FilledTonalButton(onClick = { actions.reset(timer) }) { IconRestartAlt(); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.action_reset)) }
+                    FilledTonalButton(onClick = { actions.reset(timer) }) { IconRestartAlt(); Spacer(Modifier.width(4.dp)); Text(stringResource(UiR.string.reset)) }
                     Spacer(Modifier.width(16.dp))
                 } else if (!isCompleted) { Spacer(Modifier.width(16.dp)) } else { Spacer(Modifier.width(16.dp)) }
                 FloatingActionButton(

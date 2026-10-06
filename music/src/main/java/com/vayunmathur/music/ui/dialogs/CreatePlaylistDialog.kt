@@ -2,6 +2,7 @@ package com.vayunmathur.music.ui.dialogs
 import androidx.compose.foundation.layout.fillMaxWidth
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.OutlinedTextField
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import androidx.compose.runtime.Composable
@@ -34,12 +35,12 @@ fun CreatePlaylistDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
                 enabled = name.isNotBlank(),
                 onClick = { onCreate(name.trim()) }
             ) {
-                Text(stringResource(R.string.dialog_create))
+                Text(stringResource(UiR.string.create))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.dialog_cancel))
+                Text(stringResource(UiR.string.cancel))
             }
         }
     )

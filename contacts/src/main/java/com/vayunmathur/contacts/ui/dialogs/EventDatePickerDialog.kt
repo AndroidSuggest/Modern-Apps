@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -69,7 +70,7 @@ fun EventDatePickerDialog(id: String, initialDate: LocalDate?, onDismiss: () -> 
     val months = remember { (1..12).toList() }
     
     var selectedYear by remember { mutableStateOf(baseDate.year) }
-    var selectedMonth by remember { mutableStateOf(baseDate.month.number) }
+    var selectedMonth by remember { mutableStateOf(baseDate.monthNumber) }
     var selectedDay by remember { mutableStateOf(baseDate.day) }
 
     val daysInMonth = remember(selectedMonth, selectedYear) {

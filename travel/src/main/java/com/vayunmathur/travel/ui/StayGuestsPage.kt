@@ -98,7 +98,7 @@ fun StayGuestsPage(
             OutlinedTextField(familyName, { familyName = it }, label = { Text(stringResource(R.string.family_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             DateField(stringResource(R.string.date_of_birth), bornOn, onDate = { bornOn = it }, dateFormat = DateString::monthDayYear)
             OutlinedTextField(
-                email, { email = it }, label = { Text(stringResource(R.string.email)) }, singleLine = true,
+                email, { email = it }, label = { Text(stringResource(UiR.string.email)) }, singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Email),
                 modifier = Modifier.fillMaxWidth(),
             )

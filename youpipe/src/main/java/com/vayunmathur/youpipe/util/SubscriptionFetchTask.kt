@@ -73,13 +73,17 @@ private suspend fun fetchAndStoreChannelVideos(
         }
         repository.upsertSubscriptionVideos(videosFromSub)
     } catch (e: java.nio.channels.UnresolvedAddressException) {
-        throw offlineFetchException(sub.name, e)
+        // UnresolvedAddressException is unchecked (IllegalArgumentException), not an
+        // IOException, so wrap it to reuse the offline retry path.
+        throw offlineFetchException(sub.name, java.io.IOException("Unresolved address for ${sub.name}", e))
     } catch (e: java.net.UnknownHostException) {
         throw offlineFetchException(sub.name, e)
     } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
         // Best-effort per-channel fetch: one channel failing must not abort the rest.
         android.util.Log.e("SubscriptionFetchTask", "Failed to fetch videos for ${sub.name}", e)
     } catch (e: java.io.IOException) {
+        // UnresolvedAddressException extends IOException, so offline DNS failures
+        // land here too; log per-channel, retry at the WorkManager level.
         android.util.Log.e("SubscriptionFetchTask", "Failed to fetch videos for ${sub.name}", e)
     }
 }

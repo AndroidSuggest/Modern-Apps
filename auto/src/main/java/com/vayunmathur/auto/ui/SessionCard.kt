@@ -81,7 +81,7 @@ fun SessionCard(session: SessionSnapshot, modifier: Modifier = Modifier) {
                     headlineContent = { Text(stringResource(R.string.session_ack_mismatch)) },
                     supportingContent = {
                         Text(
-                            stringResource(R.string.session_ack_mismatch_value, session.ackMismatches),
+                            stringResource(R.string.session_stat_value, session.ackMismatches),
                         )
                     },
                 )
@@ -104,8 +104,8 @@ fun SessionCard(session: SessionSnapshot, modifier: Modifier = Modifier) {
                 supportingContent = {
                     Text(
                         session.lastAckSeq?.let {
-                            stringResource(R.string.session_ack_seq_value, it)
-                        } ?: stringResource(R.string.session_ack_seq_none),
+stringResource(R.string.session_stat_value, it)
+                        } ?: stringResource(R.string.session_value_none),
                     )
                 },
             )
@@ -115,14 +115,14 @@ fun SessionCard(session: SessionSnapshot, modifier: Modifier = Modifier) {
                     Text(
                         session.avgEncodeLatencyUs?.let {
                             stringResource(R.string.session_latency_value, it)
-                        } ?: stringResource(R.string.session_latency_none),
+                        } ?: stringResource(R.string.session_value_none),
                     )
                 },
             )
             ListItem(
                 headlineContent = { Text(stringResource(R.string.session_drains)) },
                 supportingContent = {
-                    Text(stringResource(R.string.session_drains_value, session.encoderDrains))
+                    Text(stringResource(R.string.session_stat_value, session.encoderDrains))
                 },
             )
             ListItem(
@@ -171,20 +171,20 @@ fun SessionCard(session: SessionSnapshot, modifier: Modifier = Modifier) {
 private fun InputRow(touches: Long, keys: Long, scrolls: Long, dropped: Long) {
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_input_touches)) },
-        supportingContent = { Text(stringResource(R.string.session_input_touches_value, touches)) },
+        supportingContent = { Text(stringResource(R.string.session_stat_value, touches)) },
     )
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_input_keys)) },
-        supportingContent = { Text(stringResource(R.string.session_input_keys_value, keys)) },
+        supportingContent = { Text(stringResource(R.string.session_stat_value, keys)) },
     )
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_input_scrolls)) },
-        supportingContent = { Text(stringResource(R.string.session_input_scrolls_value, scrolls)) },
+        supportingContent = { Text(stringResource(R.string.session_stat_value, scrolls)) },
     )
     if (dropped > 0) {
         ListItem(
             headlineContent = { Text(stringResource(R.string.session_input_dropped)) },
-            supportingContent = { Text(stringResource(R.string.session_input_dropped_value, dropped)) },
+            supportingContent = { Text(stringResource(R.string.session_stat_value, dropped)) },
         )
     }
 }
@@ -225,15 +225,15 @@ private fun NowPlayingRow(nowPlaying: NowPlayingInfo?) {
 private fun MessagingRow(threads: Long, messages: Long, replies: Long) {
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_messaging_threads)) },
-        supportingContent = { Text(stringResource(R.string.session_messaging_threads_value, threads)) },
+        supportingContent = { Text(stringResource(R.string.session_stat_value, threads)) },
     )
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_messaging_messages)) },
-        supportingContent = { Text(stringResource(R.string.session_messaging_messages_value, messages)) },
+        supportingContent = { Text(stringResource(R.string.session_stat_value, messages)) },
     )
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_messaging_replies)) },
-        supportingContent = { Text(stringResource(R.string.session_messaging_replies_value, replies)) },
+        supportingContent = { Text(stringResource(R.string.session_stat_value, replies)) },
     )
 }
 
@@ -320,7 +320,7 @@ private fun SessionElapsedRow(sessionStartedAt: Long?) {
     // recomposes each second rather than the whole screen.
     tick = now()
     val elapsed = sessionStartedAt?.let { formatElapsed(tick - it) }
-        ?: stringResource(R.string.session_elapsed_none)
+        ?: stringResource(R.string.session_value_none)
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_elapsed)) },
         supportingContent = { Text(elapsed) },

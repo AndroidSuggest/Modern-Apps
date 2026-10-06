@@ -218,7 +218,7 @@ object FoodDatabase {
                     SQLiteDatabase.OPEN_READONLY,
                     null,
                 ).also { handle = it }
-            } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
+            } catch (e: android.database.sqlite.SQLiteException) {
                 android.util.Log.e(TAG, "Failed to open food database: ${e.message}", e)
                 null
             }
@@ -305,7 +305,7 @@ object FoodDatabase {
                     }
                 }
             }
-        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
+        } catch (e: android.database.sqlite.SQLiteException) {
             android.util.Log.e(TAG, "Search Error: ${e.message}", e)
             emptyList()
         }
@@ -329,7 +329,7 @@ object FoodDatabase {
                     if (!cursor.moveToFirst()) return@use null
                     decodeNutrients(if (cursor.isNull(0)) ByteArray(0) else cursor.getBlob(0))
                 }
-        } catch (e: net.zetetic.database.sqlcipher.SQLiteException) {
+        } catch (e: android.database.sqlite.SQLiteException) {
             android.util.Log.e(TAG, "Fetch Data Error: ${e.message}", e)
             null
         }

@@ -141,7 +141,7 @@ fun PasskeyPage(
                         TextButton(onClick = { picking = true }) {
                             IconLink()
                             Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.passkey_connect))
+                            Text(stringResource(R.string.passkey_link_dialog_title))
                         }
                     }
                     if (link is PasskeyLink.Detached) {

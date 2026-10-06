@@ -259,7 +259,7 @@ private fun NonogramControls(
                 Button(
                     onClick = { actions.nextLevel() },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(stringResource(R.string.next_level)) }
+                ) { Text(stringResource(UiR.string.next_level)) }
             }
         }
 
@@ -288,7 +288,7 @@ private fun NonogramControls(
                 )
             }
             OutlinedButton(onClick = { if (hasProgress) confirmRestart = true else actions.restartLevel() }) {
-                Text(stringResource(R.string.restart))
+                Text(stringResource(UiR.string.restart))
             }
         }
     }
@@ -297,7 +297,7 @@ private fun NonogramControls(
         ConfirmDialog(
             title = stringResource(R.string.confirm_restart_title),
             message = stringResource(R.string.confirm_restart_message),
-            confirmLabel = stringResource(R.string.restart),
+            confirmLabel = stringResource(UiR.string.restart),
             dismissLabel = stringResource(UiR.string.cancel),
             destructive = true,
             onConfirm = { actions.restartLevel() },

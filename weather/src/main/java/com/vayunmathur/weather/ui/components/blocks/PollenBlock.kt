@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.weather.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.weather.network.AirQualityCurrent
 
 /**
@@ -36,9 +37,9 @@ fun PollenBlock(air: AirQualityCurrent?) {
         else -> 4
     }
     val labelRes = when (level) {
-        0 -> R.string.level_none
+        0 -> UiR.string.none
         1 -> R.string.level_low
-        2 -> R.string.level_medium
+        2 -> UiR.string.medium
         3 -> R.string.level_high
         else -> R.string.level_severe
     }

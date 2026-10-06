@@ -37,6 +37,7 @@ import com.vayunmathur.library.ui.RangeSlider
 import com.vayunmathur.library.ui.Slider
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.photos.R
 import com.vayunmathur.photos.data.VideoEditState
 import com.vayunmathur.photos.data.VideoFilterPreset
@@ -83,7 +84,7 @@ private fun TrimPanel(vm: VideoEditViewModel, state: VideoEditState) {
 
 @Composable
 private fun CropRotatePanel(vm: VideoEditViewModel, state: VideoEditState) {
-    Text(stringResource(R.string.video_crop_rotate), color = Color.White, style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(R.string.tool_crop_rotate), color = Color.White, style = MaterialTheme.typography.titleSmall)
     Spacer(Modifier.height(8.dp))
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -96,7 +97,7 @@ private fun CropRotatePanel(vm: VideoEditViewModel, state: VideoEditState) {
             IconFlip(tint = if (state.flipHorizontal) MaterialTheme.colorScheme.primary else Color.White)
         }
         Spacer(Modifier.weight(1f))
-        TextButton(onClick = { vm.clearCrop() }) { Text(stringResource(R.string.reset)) }
+        TextButton(onClick = { vm.clearCrop() }) { Text(stringResource(UiR.string.reset)) }
     }
     Text(
         stringResource(R.string.video_crop_hint),
@@ -132,9 +133,9 @@ private fun FiltersPanel(vm: VideoEditViewModel, state: VideoEditState) {
         }
     }
     Spacer(Modifier.height(8.dp))
-    LabeledSlider(stringResource(R.string.video_brightness), state.brightness) { vm.setBrightness(it) }
-    LabeledSlider(stringResource(R.string.video_contrast), state.contrast) { vm.setContrast(it) }
-    LabeledSlider(stringResource(R.string.video_saturation), state.saturation) { vm.setSaturation(it) }
+    LabeledSlider(stringResource(R.string.adj_brightness), state.brightness) { vm.setBrightness(it) }
+    LabeledSlider(stringResource(R.string.adj_contrast), state.contrast) { vm.setContrast(it) }
+    LabeledSlider(stringResource(R.string.adj_saturation), state.saturation) { vm.setSaturation(it) }
 }
 
 @Composable
@@ -170,13 +171,13 @@ internal fun ToolTabs(selected: VideoTool, onSelect: (VideoTool) -> Unit) {
         ToolTab(VideoTool.Trim, selected, onSelect, stringResource(R.string.video_trim)) {
             IconContentCut(tint = it)
         }
-        ToolTab(VideoTool.CropRotate, selected, onSelect, stringResource(R.string.video_crop_rotate)) {
+        ToolTab(VideoTool.CropRotate, selected, onSelect, stringResource(R.string.tool_crop_rotate)) {
             IconCrop(tint = it)
         }
         ToolTab(VideoTool.Audio, selected, onSelect, stringResource(R.string.video_audio)) {
             IconVolumeUp(tint = it)
         }
-        ToolTab(VideoTool.Filters, selected, onSelect, stringResource(R.string.video_filters)) {
+        ToolTab(VideoTool.Filters, selected, onSelect, stringResource(R.string.tool_filters)) {
             IconTune(tint = it)
         }
     }

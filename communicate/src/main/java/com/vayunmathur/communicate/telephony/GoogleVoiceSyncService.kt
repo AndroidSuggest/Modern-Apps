@@ -202,7 +202,7 @@ class GoogleVoiceSyncService : Service() {
     private fun GvMessage.shouldNotify(): Boolean = !outgoing
 
     private fun GvMessage.notificationText(): String = text.ifBlank {
-        if (hasMedia) getString(R.string.gv_media_message) else getString(R.string.new_message)
+        if (hasMedia) getString(R.string.media_message) else getString(R.string.new_message)
     }
 
     private fun startForegroundCompat(notification: Notification) {

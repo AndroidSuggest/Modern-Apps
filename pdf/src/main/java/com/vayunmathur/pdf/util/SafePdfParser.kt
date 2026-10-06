@@ -378,18 +378,16 @@ object SafePdfParser {
         }
     }
 
-    private companion object {
-        private const val BYTE_MASK = 0xFF
-        private const val U16_MASK = 0xFFFF
-        private const val POINT_BYTES = 8
-        private const val CUBIC_BYTES = 24
-        private const val HEADER_MIN_BYTES = 12
-        private const val FULL_HEADER_TAIL_BYTES = 16
-        private const val MAX_PAGE_DIM = 20000f
-        private const val DEFAULT_PAGE_WIDTH = 612f
-        private const val DEFAULT_PAGE_HEIGHT = 792f
-        private const val PRIMITIVE_LIST_HINT = 4096
-    }
+    private const val BYTE_MASK = 0xFF
+    private const val U16_MASK = 0xFFFF
+    private const val POINT_BYTES = 8
+    private const val CUBIC_BYTES = 24
+    private const val HEADER_MIN_BYTES = 12
+    private const val FULL_HEADER_TAIL_BYTES = 16
+    private const val MAX_PAGE_DIM = 20000f
+    private const val DEFAULT_PAGE_WIDTH = 612f
+    private const val DEFAULT_PAGE_HEIGHT = 792f
+    private const val PRIMITIVE_LIST_HINT = 4096
 
     /** Decode the annotation listing buffer from `listAnnotations`. Implemented in [SafePdfListings]. */
     fun parseAnnotations(bytes: ByteArray): List<SafeAnnotation> =

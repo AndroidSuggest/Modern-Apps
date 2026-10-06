@@ -36,6 +36,7 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.taxi.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.taxi.data.ActiveRide
 import com.vayunmathur.taxi.data.CancelResult
 import com.vayunmathur.taxi.data.DriverLocation
@@ -209,7 +210,7 @@ fun RideTrackingScreen(rideId: String) {
             onDismissRequest = { cancelMessage = null },
             title = { Text(message) },
             confirmButton = {
-                TextButton(onClick = { cancelMessage = null }) { Text(stringResource(R.string.close)) }
+                TextButton(onClick = { cancelMessage = null }) { Text(stringResource(UiR.string.close)) }
             },
         )
     }

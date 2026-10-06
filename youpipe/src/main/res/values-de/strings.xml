@@ -2,13 +2,11 @@
 <resources>
     <string name="label_description">Beschreibung</string>
     <string name="title_history">Verlauf</string>
-    <string name="label_search">Suche</string>
     <string name="subscribers_count">%1$s Abbonenten</string>
     <string name="title_create_subscription_category">Erstelle Abonennten Kategorie</string>
     <string name="title_update_subscription_category">Ändere Abonennten Kategorie</string>
     <string name="label_category_name">Kategorie Name</string>
     <string name="label_select_subscriptions">Wähle Abonnements:</string>
-    <string name="action_create">Erstelle</string>
     <string name="video_load_error">Video Ladefehler - YouTube hat vielleicht anonymes streamen von dieser IP blockiert</string>
     <string name="action_go_back">Zurück</string>
     <string name="label_comments">Kommentare</string>
@@ -29,8 +27,6 @@
     <string name="count_b_format">%1$sMrd</string>
     <string name="action_subscribe">Abonniere</string>
     <string name="action_unsubscribe">De-Abonniere</string>
-    <string name="channel_info">%1$s Abonennten</string>
     <string name="video_stat_format">%1$s Aufrufe | %2$s</string>
-    <string name="title_settings">Einstellungen</string>
     <string name="label_sponsorblock">SponsorBlock einschalten</string>
 </resources>

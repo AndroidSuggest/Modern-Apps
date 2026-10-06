@@ -1,7 +1,6 @@
 package com.vayunmathur.camera.util
 
 import android.util.Log
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -29,7 +28,6 @@ import com.vayunmathur.camera.platform.refreshCapabilities
  *   QualitySelector in setupVideoSession/setupPhotoSession). This method's quality selection
  *   only touches the HFR Recorder built here.
  */
-@OptIn(ExperimentalCamera2Interop::class)
 suspend fun CameraViewModel.setupHighSpeedSession(): Boolean {
     return try {
         val session = prepareHighSpeedSession() ?: return false
@@ -62,7 +60,6 @@ private data class HighSpeedPrep(
 )
 
 /** Enforces back camera, builds HFR use cases and resolves the HFR range list. */
-@OptIn(ExperimentalCamera2Interop::class)
 private suspend fun CameraViewModel.prepareHighSpeedSession(): HighSpeedPrep? {
     val provider = ProcessCameraProvider.awaitInstance(app)
     cameraProvider = provider
@@ -154,7 +151,6 @@ private fun CameraViewModel.buildHfrCapture(
  * Queries HFR ranges via a temp config and keeps true-HFR (>=60fps) ones,
  * highest fps first. Null when none are available.
  */
-@OptIn(ExperimentalCamera2Interop::class)
 private fun CameraViewModel.resolveHfrRanges(
     cameraInfo: androidx.camera.core.CameraInfo,
     videoCapture: Pair<Preview, VideoCapture<Recorder>>
@@ -289,6 +285,7 @@ private fun CameraViewModel.tryHfrBind(
 }
 
 /** Sets anti-banding to reduce flicker under artificial light. */
+@Suppress("DEPRECATION")
 private fun CameraViewModel.applyAntiBanding() {
     try {
         val cam2Control = androidx.camera.camera2.interop.Camera2CameraControl.from(

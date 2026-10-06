@@ -40,6 +40,7 @@ import com.vayunmathur.library.ui.IconMail
 import com.vayunmathur.library.ui.IconSms
 import com.vayunmathur.library.ui.IconVideoCamera
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.util.sharedContent
 import com.vayunmathur.library.util.sharedText
@@ -138,7 +139,7 @@ fun ActionButtonsRow(
 
             ActionButton(
                 icon = { IconCall() },
-                label = stringResource(R.string.action_call),
+                label = stringResource(UiR.string.call),
                 action = {
                     if (platforms.hasAnyPlatform) {
                         showCallDropdown = true
@@ -276,7 +277,7 @@ fun ActionButtonsRow(
             }
         }
         if (email != null) {
-            ActionButton(icon = { IconMail() }, label = stringResource(R.string.email)) {
+            ActionButton(icon = { IconMail() }, label = stringResource(UiR.string.email)) {
                 val intent = Intent(Intent.ACTION_SENDTO)
                 intent.data = "mailto:$email".toUri()
                 ExternalIntents.launch(context, intent)

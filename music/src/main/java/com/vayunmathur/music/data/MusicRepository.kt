@@ -46,11 +46,6 @@ import kotlinx.coroutines.sync.withLock
 class MusicRepository private constructor(context: Context) :
     RoomRepository<MusicDatabase>(context, MusicDatabase::class) {
 
-    private companion object {
-        const val STALE_DELETE_BATCH = 900
-        const val TAG_CACHE_UPSERT_BATCH = 200
-    }
-
     private val musicDao get() = db.musicDao()
     private val playlistDao get() = db.playlistDao()
     private val matchingDao get() = db.matchingDao()
@@ -257,6 +252,8 @@ class MusicRepository private constructor(context: Context) :
     suspend fun clearMatchings() = matchingDao.clear()
 
     companion object {
+        private const val STALE_DELETE_BATCH = 900
+        private const val TAG_CACHE_UPSERT_BATCH = 200
         @Volatile private var instance: MusicRepository? = null
         fun get(context: Context): MusicRepository =
             instance ?: synchronized(this) {

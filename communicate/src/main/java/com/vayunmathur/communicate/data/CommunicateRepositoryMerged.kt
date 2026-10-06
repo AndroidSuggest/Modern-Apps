@@ -244,7 +244,7 @@ internal fun GvThread.toSmsThread(context: Context): SmsThread = SmsThread(
     address = phoneNumber,
     displayName = displayName ?: CommunicateRepository.findContactName(context, phoneNumber),
     snippet =
-        snippet.ifBlank { if (messages.any { it.hasMedia }) context.getString(R.string.gv_media_message) else "" },
+        snippet.ifBlank { if (messages.any { it.hasMedia }) context.getString(R.string.media_message) else "" },
     timestampMillis = timestampMillis,
     unreadCount = unreadCount,
     line = CommunicateLine.GoogleVoice,
@@ -255,7 +255,7 @@ internal fun GvMessage.toSmsMessage(threadId: Long, context: Context): SmsMessag
     id = ("$threadId#$id").hashCode().toLong(),
     threadId = threadId,
     address = phoneNumber,
-    body = text.ifBlank { if (hasMedia) context.getString(R.string.gv_media_message) else "" },
+    body = text.ifBlank { if (hasMedia) context.getString(R.string.media_message) else "" },
     timestampMillis = timestampMillis,
     outgoing = outgoing,
     read = read,

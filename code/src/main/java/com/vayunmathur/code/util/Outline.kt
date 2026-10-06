@@ -211,7 +211,7 @@ private val SWIFT_RULES = listOf(
 
 private val C_RULES = listOf(
     OutlineRule(
-        Regex("^\\s*(?:class|struct)\\s+([A-Za-z_][A-Za-z0-9_]*)")),
+        Regex("^\\s*(?:class|struct)\\s+([A-Za-z_][A-Za-z0-9_]*)"),
         SymbolKind.CLASS,
     ),
     OutlineRule(

@@ -131,7 +131,7 @@ object OdfWriter {
         document: OdfDocument,
         zipOut: ZipOutputStream,
         save: SaveAcc,
-        result: SerializeResult,
+        result: OdfSerializer.SerResult,
     ) {
         writeCoreEntries(document, zipOut, save)
         writeImageEntries(zipOut, save, result)
@@ -163,7 +163,7 @@ object OdfWriter {
     }
 
     /** Document + serialized inline images. */
-    private fun writeImageEntries(zipOut: ZipOutputStream, save: SaveAcc, result: SerializeResult) {
+    private fun writeImageEntries(zipOut: ZipOutputStream, save: SaveAcc, result: OdfSerializer.SerResult) {
         // Document images (inserted via the editor) not already in the package. (A6)
         for ((path, bytes) in save.docImages) {
             if (isSkippableImage(path, bytes, save.written)) continue
@@ -178,7 +178,7 @@ object OdfWriter {
     }
 
     /** Embedded chart objects. (A8) */
-    private fun writeObjectEntries(zipOut: ZipOutputStream, save: SaveAcc, result: SerializeResult) {
+    private fun writeObjectEntries(zipOut: ZipOutputStream, save: SaveAcc, result: OdfSerializer.SerResult) {
         for ((path, xml) in result.objects) {
             if (path in save.written) continue
             writeEntry(zipOut, path, xml.toByteArray(Charsets.UTF_8))

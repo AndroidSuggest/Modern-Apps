@@ -7,6 +7,7 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3ExpressiveApi
 import com.vayunmathur.library.ui.IconAlbum
 import com.vayunmathur.library.ui.IconLibraryMusic
 import com.vayunmathur.library.ui.IconPerson
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.BottomNavBarItem
 import com.vayunmathur.music.R
@@ -20,8 +21,8 @@ import com.vayunmathur.music.R
 @Composable
 fun MusicTabsBar(selectedTab: Int, onSelectTab: (Int) -> Unit, modifier: Modifier = Modifier) {
     val tabs = listOf<Triple<String, @Composable () -> Unit, Int>>(
-        Triple(stringResource(R.string.nav_home), { IconLibraryMusic() }, 0),
-        Triple(stringResource(R.string.nav_albums), { IconAlbum() }, 1),
+        Triple(stringResource(UiR.string.home), { IconLibraryMusic() }, 0),
+        Triple(stringResource(R.string.label_albums), { IconAlbum() }, 1),
         Triple(stringResource(R.string.nav_artists), { IconPerson() }, 2),
         Triple(stringResource(R.string.nav_playlists), { IconLibraryMusic() }, 3),
     )

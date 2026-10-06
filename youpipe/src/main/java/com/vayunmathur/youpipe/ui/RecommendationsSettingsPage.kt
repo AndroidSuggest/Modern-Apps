@@ -147,7 +147,7 @@ fun RecommendationsSettingsPage(
             }
 
             SettingsRow(
-                title = stringResource(R.string.label_manage_interests),
+                title = stringResource(R.string.title_manage_interests),
                 onClick = { backStack.add(Route.ManageInterests) },
             )
             Button(

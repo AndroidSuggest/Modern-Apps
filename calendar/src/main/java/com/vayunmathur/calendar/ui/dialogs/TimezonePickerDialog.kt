@@ -62,7 +62,7 @@ fun TimezonePickerDialog(backStack: NavBackStack<com.vayunmathur.calendar.Route>
         text = {
             Column {
                 // Search field
-                OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), label = { Text(stringResource(R.string.search)) })
+                OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), label = { Text(stringResource(UiR.string.search)) })
 
                 // Scrollable list of zones with offsets
                 LazyColumn(modifier = Modifier.height(360.dp)) {

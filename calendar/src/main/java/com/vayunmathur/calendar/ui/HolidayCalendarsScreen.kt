@@ -169,7 +169,7 @@ fun HolidayCalendarsScreen(viewModel: CalendarViewModel, backStack: NavBackStack
                         value = langQuery,
                         onValueChange = { langQuery = it },
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        label = { Text(stringResource(R.string.search)) },
+                        label = { Text(stringResource(UiR.string.search)) },
                         singleLine = true,
                     )
                     LazyColumn(modifier = Modifier.height(360.dp)) {

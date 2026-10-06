@@ -97,7 +97,6 @@
     <string name="bcc">Bcc</string>
     <string name="attachments_1">Attachments (<xliff:g id="size" example="2.3 MB">%1$s</xliff:g>)</string>
     <string name="attachments_2">Attachments:</string>
-    <string name="unified_inbox">Unified Inbox</string>
     <string name="saved_to_downloads">Saved to Downloads</string>
     <string name="saved_to_outbox">Saved to Outbox: <xliff:g id="reason" example="No network">%1$s</xliff:g></string>
     <string name="generating_summary">Generating summary…</string>

@@ -5,6 +5,23 @@ import androidx.compose.ui.geometry.Offset
 /** Heuristic advance per glyph when the wire carries no device-space advance. */
 private const val ADVANCE_PER_GLYPH = 0.5f
 
+private const val BLEND_NORMAL = 0
+private const val BLEND_MULTIPLY = 1
+private const val BLEND_SCREEN = 2
+private const val BLEND_OVERLAY = 3
+private const val BLEND_DARKEN = 4
+private const val BLEND_LIGHTEN = 5
+private const val BLEND_COLOR_DODGE = 6
+private const val BLEND_COLOR_BURN = 7
+private const val BLEND_HARD_LIGHT = 8
+private const val BLEND_SOFT_LIGHT = 9
+private const val BLEND_DIFFERENCE = 10
+private const val BLEND_EXCLUSION = 11
+private const val BLEND_HUE = 12
+private const val BLEND_SATURATION = 13
+private const val BLEND_COLOR = 14
+private const val BLEND_LUMINOSITY = 15
+
 /**
  * A single drawing primitive decoded from the native renderer, in PDF page
  * space (origin bottom-left). [SafePdfViewerScreen] applies the Y-flip and the
@@ -35,22 +52,6 @@ enum class BlendMode(val code: Int) {
     Luminosity(BLEND_LUMINOSITY);
 
     companion object {
-        private const val BLEND_NORMAL = 0
-        private const val BLEND_MULTIPLY = 1
-        private const val BLEND_SCREEN = 2
-        private const val BLEND_OVERLAY = 3
-        private const val BLEND_DARKEN = 4
-        private const val BLEND_LIGHTEN = 5
-        private const val BLEND_COLOR_DODGE = 6
-        private const val BLEND_COLOR_BURN = 7
-        private const val BLEND_HARD_LIGHT = 8
-        private const val BLEND_SOFT_LIGHT = 9
-        private const val BLEND_DIFFERENCE = 10
-        private const val BLEND_EXCLUSION = 11
-        private const val BLEND_HUE = 12
-        private const val BLEND_SATURATION = 13
-        private const val BLEND_COLOR = 14
-        private const val BLEND_LUMINOSITY = 15
         private val CODE_MAP: Map<Int, BlendMode> = entries.associateBy { it.code }
         fun fromCode(c: Int): BlendMode = CODE_MAP[c] ?: Normal
     }

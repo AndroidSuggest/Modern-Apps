@@ -131,7 +131,7 @@ internal data class InboundInvite(
     }
 }
 
-internal fun SipClient.fromUri() = "<sip:$aorUser@$SIP_DOMAIN>"
+internal fun SipClient.fromUri() = "<sip:$aorUser@${SipClient.SIP_DOMAIN}>"
 
 internal fun SipClient.headerLines(message: String, name: String): List<String> {
     val prefix = "$name:"

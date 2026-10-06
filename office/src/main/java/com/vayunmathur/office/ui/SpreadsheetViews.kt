@@ -4,12 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,11 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -33,20 +27,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.MaterialTheme
@@ -55,37 +45,10 @@ import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Tab
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
-import com.vayunmathur.library.ui.TextField
-import com.vayunmathur.library.ui.TextFieldDefaults
 import com.vayunmathur.library.ui.odf.OdfBorders
 import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.office.R
 import com.vayunmathur.office.util.OfficeNative
-
-/**
- * The evaluated text of each cell, i.e. what a formula resolves to. Behind the real
- * spreadsheet this is the native formula engine; the indirection exists so the view can
- * also be rendered from literal values (a `@Preview`, where the engine cannot be loaded).
- */
-interface SpreadsheetValues {
-    fun display(sheet: Int, row: Int, col: Int): String
-    fun isNumeric(sheet: Int, row: Int, col: Int): Boolean
-}
-
-@Composable
-fun rememberNativeSpreadsheetValues(doc: OdfDocument.Spreadsheet): SpreadsheetValues {
-    val handle = remember(doc) { OfficeNative.createWorkbook(doc.sheets, System.currentTimeMillis()) }
-    DisposableEffect(doc) { onDispose { OfficeNative.nativeFree(handle) } }
-    return remember(handle) {
-        object : SpreadsheetValues {
-            override fun display(sheet: Int, row: Int, col: Int): String =
-                OfficeNative.nativeDisplayValue(handle, sheet, row, col) ?: ""
-
-            override fun isNumeric(sheet: Int, row: Int, col: Int): Boolean =
-                OfficeNative.nativeIsNumeric(handle, sheet, row, col)
-        }
-    }
-}
 
 @Composable
 fun SpreadsheetView(
@@ -149,75 +112,30 @@ fun SpreadsheetView(
         }
 
         if (isEditMode && editingCell != null) {
-            val (_, ri, ci) = editingCell!!
-            val focusRequester = remember { FocusRequester() }
-            val rowCount = doc.sheets[selectedSheet].rows.size
-            LaunchedEffect(editingCell) { try { focusRequester.requestFocus() } catch (_: Exception) {} }
-            fun commitAndAdvance() {
-                val (si, r, c) = editingCell!!
-                onCellTextChange(si, r, c, editText.text)
-                if (r + 1 < rowCount) {
-                    editingCell = Triple(si, r + 1, c)
-                    onCellSelected(si, r + 1, c)
-                    val nextText =
-                        doc.sheets[si].rows.getOrNull(r + 1)?.cells?.getOrNull(c)?.let { it.formula ?: it.text } ?: ""
-                    editText = TextFieldValue(nextText, TextRange(0, nextText.length))
-                } else { editingCell = null; onCellSelected(si, -1, -1) }
-            }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "${columnLabel(ci)}${ri + 1}",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(end = 8.dp))
-                TextField(value = editText, onValueChange = { editText = it }, singleLine = true,
-                    modifier = Modifier.weight(1f).focusRequester(focusRequester),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    keyboardActions = KeyboardActions(onNext = { commitAndAdvance() }, onDone = { commitAndAdvance() }),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant))
-                TextButton(onClick = { val (si, r, c) = editingCell!!; onCellTextChange(si, r, c, editText.text); editingCell = null; onCellSelected(si, -1, -1) }) { Text(stringResource(UiR.string.done)) }
-            }
+            SpreadsheetEditBar(
+                doc = doc,
+                selectedSheet = selectedSheet,
+                editingCell = editingCell!!,
+                editText = editText,
+                onEditTextChange = { editText = it },
+                onCommitCell = onCellTextChange,
+                onAdvanceCell = { next, nextText -> editingCell = next; if (nextText != null) editText = nextText },
+                onCellSelected = onCellSelected)
         }
 
         if (isEditMode) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = { val ri = editingCell?.second ?: (doc.sheets[selectedSheet].rows.size - 1); onAddRow(selectedSheet, ri) }) { Text(stringResource(R.string.row_1)) }
-                TextButton(onClick = { onAddColumn(selectedSheet) }) { Text(stringResource(R.string.col_1)) }
-                if (editingCell != null) {
-                    TextButton(onClick = { onDeleteRow(
-                        selectedSheet,
-                        editingCell!!.second); editingCell = null }) { Text(stringResource(R.string.row)) }
-                    TextButton(onClick = { onDeleteColumn(
-                        selectedSheet,
-                        editingCell!!.third); editingCell = null }) { Text(stringResource(R.string.col)) }
-                }
-                TextButton(onClick = { showSortDialog = true }) { Text(stringResource(R.string.sort)) }
-                run {
-                    val sheet0 = doc.sheets[selectedSheet]
-                    val frozen = sheet0.freezeRows > 0 || sheet0.freezeCols > 0
-                    if (frozen) {
-                        TextButton(onClick = { onSetFreeze(
-                            selectedSheet,
-                            0,
-                            0) }) { Text(stringResource(R.string.unfreeze)) }
-                    } else {
-                        TextButton(onClick = {
-                            // Freeze rows above and columns left of the active/editing cell (default: header row).
-                            val r = editingCell?.second ?: 1
-                            val c = editingCell?.third ?: 0
-                            onSetFreeze(selectedSheet, r, c)
-                        }) { Text(stringResource(R.string.freeze)) }
-                    }
-                }
-                Spacer(Modifier.weight(1f))
-                if (doc.sheets.size > 1) TextButton(onClick = { onDeleteSheet(selectedSheet); if (selectedSheet >= doc.sheets.size - 1) selectedSheet = maxOf(0, doc.sheets.size - 2) }) { Text(stringResource(R.string.sheet_1), color = MaterialTheme.colorScheme.error) }
-            }
+            SpreadsheetEditToolbar(
+                doc = doc,
+                selectedSheet = selectedSheet,
+                editingCell = editingCell,
+                onAddRow = onAddRow,
+                onAddColumn = onAddColumn,
+                onDeleteRow = onDeleteRow,
+                onDeleteColumn = onDeleteColumn,
+                onEditingCleared = { editingCell = null },
+                onShowSort = { showSortDialog = true },
+                onSetFreeze = onSetFreeze,
+                onDeleteSheetClick = { onDeleteSheet(selectedSheet); if (selectedSheet >= doc.sheets.size - 1) selectedSheet = maxOf(0, doc.sheets.size - 2) })
         }
 
         val sheet = doc.sheets[selectedSheet]
@@ -378,26 +296,15 @@ fun SpreadsheetView(
         }
     }
 
-    if (showRenameSheet) {
-        AlertDialog(onDismissRequest = { showRenameSheet = false }, title = { Text(stringResource(R.string.rename_sheet)) },
-            text = { TextField(value = renameText, onValueChange = { renameText = it }, singleLine = true) },
-            confirmButton = { TextButton(onClick = { onRenameSheet(
-                selectedSheet,
-                renameText); showRenameSheet = false }) { Text(stringResource(UiR.string.ok)) } },
-            dismissButton =
-                { TextButton(onClick = { showRenameSheet = false }) { Text(stringResource(UiR.string.cancel)) } })
-    }
-    if (showSortDialog) {
-        val maxC = doc.sheets[selectedSheet].rows.maxOfOrNull { it.cells.size } ?: 1
-        SortDialog(
-            maxC,
-            onSort = { col, asc -> onSort(selectedSheet, col, asc) },
-            onDismiss = { showSortDialog = false })
-    }
-}
-
-private fun columnLabel(index: Int): String {
-    val sb = StringBuilder(); var n = index
-    do { sb.insert(0, ('A' + n % 26)); n = n / 26 - 1 } while (n >= 0)
-    return sb.toString()
+    SpreadsheetDialogs(
+        doc = doc,
+        selectedSheet = selectedSheet,
+        showRenameSheet = showRenameSheet,
+        renameText = renameText,
+        onRenameTextChange = { renameText = it },
+        onRenameConfirm = { onRenameSheet(selectedSheet, it); showRenameSheet = false },
+        onRenameDismiss = { showRenameSheet = false },
+        showSortDialog = showSortDialog,
+        onSort = { col, asc -> onSort(selectedSheet, col, asc) },
+        onSortDismiss = { showSortDialog = false })
 }

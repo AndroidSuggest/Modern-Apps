@@ -122,9 +122,7 @@ object BuiltInCatalogs {
         Star(27, 2.3898913, 1.0427, 1.25, 0.0, "Beta Crucis", "Mimosa", "Beta", null, "Cru", 280.0, "B0.5 III"),
     ) + generateFillerStars()
 
-    private companion object {
-        const val FILLER_STAR_COUNT = 4000
-    }
+    private const val FILLER_STAR_COUNT = 4000
 
     private fun generateFillerStars(): List<Star> {
         val rnd = java.util.Random(42)

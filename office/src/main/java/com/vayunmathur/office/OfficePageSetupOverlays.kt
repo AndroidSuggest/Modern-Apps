@@ -64,7 +64,7 @@ internal fun PageSetupOverlays(
                 val m = marginCm * 37.795f
                 viewModel.setPageSetup(OdfPageSetup(wPx, hPx, m, m, m, m))
                 state.showPageSetup = false
-            }) { Text(stringResource(R.string.apply)) }
+            }) { Text(stringResource(UiR.string.apply)) }
         },
         dismissButton =
             { TextButton(onClick = { state.showPageSetup = false }) { Text(stringResource(UiR.string.cancel)) } })

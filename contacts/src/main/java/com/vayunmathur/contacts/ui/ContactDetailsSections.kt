@@ -39,6 +39,7 @@ import com.vayunmathur.library.ui.IconVolumeUp
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.ListItemDefaults
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.ringtoneTitle
 import com.vayunmathur.library.ui.staggeredEntrance
@@ -199,7 +200,7 @@ internal fun DatesSection(contact: Contact, details: ContactDetails) {
 internal fun NoteSection(contact: Contact) {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    GroupedSection(title = stringResource(R.string.note)) {
+    GroupedSection(title = stringResource(UiR.string.note)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()

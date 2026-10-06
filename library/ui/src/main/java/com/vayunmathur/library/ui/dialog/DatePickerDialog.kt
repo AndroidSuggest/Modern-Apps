@@ -80,7 +80,7 @@ fun <T: NavKey> DatePickerDialog(
                     .toLocalDateTime(TimeZone.UTC).date
                 deliver(if (allowClear) DateSelection(result) else result)
             }, enabled = state.selectedDateMillis != null) {
-                Text(stringResource(R.string.dialog_ok))
+                Text(stringResource(R.string.ok))
             }
         },
         dismissButton = {
@@ -91,7 +91,7 @@ fun <T: NavKey> DatePickerDialog(
                     }
                 }
                 TextButton(onClick = { backStack.pop() }) {
-                    Text(stringResource(R.string.link_action_cancel))
+                    Text(stringResource(R.string.cancel))
                 }
             }
         }

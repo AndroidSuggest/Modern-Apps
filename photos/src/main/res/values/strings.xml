@@ -80,13 +80,8 @@
     <string name="people_scanning">Grouping faces… people will appear here as they are found.</string>
     <!-- Linear progress text for face indexing. %1$d = processed, %2$d = total -->
     <string name="face_indexing_progress">Indexing <xliff:g id="processed" example="20">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
-    <!-- Error when mobilefacenet.tflite model missing, instructions to add asset with FaceRecognizer reference -->
-    <string name="people_model_missing">Face grouping needs a MobileFaceNet model. Add a permissively-licensed mobilefacenet.tflite to photos/src/main/assets (see FaceRecognizer).</string>
-    <!-- Subtitle per person grid cell showing photo count. %1$d = count -->
-    <plurals name="people_photo_count">
-        <item quantity="one"><xliff:g id="count" example="12">%1$d</xliff:g> photo</item>
-        <item quantity="other"><xliff:g id="count" example="12">%1$d</xliff:g> photos</item>
-    </plurals>
+    <!-- Empty state when the face-grouping model is not installed. User-facing sentence -->
+    <string name="people_model_missing">Face grouping needs a face model that is not installed.</string>
     <!-- Label under a person grid cell with no name yet; tapping it opens the contact picker. Adjective -->
     <string name="people_unnamed">Unnamed</string>
     <!-- Photo detail badge: number of people in this photo. Plural handling. %1$d = count -->
@@ -95,6 +90,11 @@
         <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> person</item>
         <!-- Plural: multiple people in photo -->
         <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> people</item>
+    </plurals>
+    <!-- Subtitle under a person grid cell showing how many photos feature them. %1$d = count -->
+    <plurals name="people_photo_count">
+        <item quantity="one"><xliff:g id="count" example="12">%1$d</xliff:g> photo</item>
+        <item quantity="other"><xliff:g id="count" example="12">%1$d</xliff:g> photos</item>
     </plurals>
     <!-- Metadata row: capture date label. %1$s = formatted date e.g. Jan 5 2024 -->
     <string name="taken_on">Taken on: <xliff:g id="date" example="Jan 5, 2024">%1$s</xliff:g></string>
@@ -134,20 +134,14 @@
     <string name="action_save_as_copy">Save as Copy</string>
     <!-- Reset all adjustments to default. Verb phrase -->
     <string name="reset_all">Reset All</string>
-    <!-- Reset current tool to default. Verb -->
-    <string name="reset">Reset</string>
     <!-- Export menu: export current image as WebP format. Verb phrase -->
     <string name="export_as_webp">Export as WebP</string>
     <!-- Export menu: export as PNG format. Verb phrase -->
     <string name="export_as_png">Export as PNG</string>
-    <!-- Apply current transformation/adjustment baking it in. Verb -->
-    <string name="apply">Apply</string>
     <!-- TopAppBar title for video editor screen. Verb phrase -->
     <string name="title_edit_video">Edit Video</string>
     <!-- Video editor tool: trim clip length. Verb -->
     <string name="video_trim">Trim</string>
-    <!-- Video editor tool: crop and rotate. Noun phrase -->
-    <string name="video_crop_rotate">Crop &amp; Rotate</string>
     <!-- Hint under crop/rotate tools: drag the corner handles on the preview to crop. Sentence instruction -->
     <string name="video_crop_hint">Drag the corners on the preview to crop.</string>
     <!-- Video editor tool: audio track. Noun -->
@@ -156,8 +150,6 @@
     <string name="video_audio_on">Audio on</string>
     <!-- Button label: audio is currently muted (tap to unmute). Adjective -->
     <string name="video_muted">Muted</string>
-    <!-- Video editor tool: color filters and adjustments. Noun -->
-    <string name="video_filters">Filters</string>
     <!-- Filter preset: no filter. Noun -->
     <string name="video_filter_none">None</string>
     <!-- Filter preset: black &amp; white. Noun -->
@@ -168,16 +160,8 @@
     <string name="video_filter_cool">Cool</string>
     <!-- Filter preset: vivid/saturated. Adjective -->
     <string name="video_filter_vivid">Vivid</string>
-    <!-- Slider label: brightness adjustment. Noun -->
-    <string name="video_brightness">Brightness</string>
-    <!-- Slider label: contrast adjustment. Noun -->
-    <string name="video_contrast">Contrast</string>
-    <!-- Slider label: saturation adjustment. Noun -->
-    <string name="video_saturation">Saturation</string>
     <!-- Save dialog body: ask whether to keep original or overwrite. Question -->
     <string name="video_save_prompt">Save the edited video as a new copy or overwrite the original?</string>
-    <!-- Save dialog button: save as a new copy. Verb phrase -->
-    <string name="video_save_copy">Save as copy</string>
     <!-- Save dialog button: overwrite the original video. Verb -->
     <string name="video_overwrite">Overwrite</string>
     <!-- Progress dialog title while exporting the video. Verb -->
@@ -192,8 +176,6 @@
     <string name="thickness">Thickness</string>
     <!-- Section header: color picker. Noun -->
     <string name="color">Color</string>
-    <!-- Freehand drawing tool. Verb -->
-    <string name="draw">Draw</string>
     <!-- Recent colors section header. Adjective -->
     <string name="recent">Recent</string>
     <!-- Label for aspect ratio lock dropdown. Noun phrase -->
@@ -336,14 +318,10 @@
     <string name="blend_exclusion">Exclusion</string>
     <!-- Blend mode: hue preserves hue of top layer. Noun -->
     <string name="blend_hue">Hue</string>
-    <!-- Blend mode: saturation preserves saturation. Noun -->
-    <string name="blend_saturation">Saturation</string>
     <!-- Blend mode: luminosity preserves brightness. Noun -->
     <string name="blend_luminosity">Luminosity</string>
     <!-- Category: Adjust light &amp; color. Verb -->
     <string name="tool_cat_adjust">Adjust</string>
-    <!-- Category: Filters effects, blur, presets. Noun plural -->
-    <string name="tool_cat_filters">Filters</string>
     <!-- Category: Retouch fix and clean up. Verb/noun -->
     <string name="tool_cat_retouch">Retouch</string>
     <!-- Category: Select area to limit edits. Verb -->

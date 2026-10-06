@@ -2,6 +2,8 @@ package com.vayunmathur.youpipe.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,12 +14,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.CircularProgressIndicator
-import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.ListItemDefaults
 import com.vayunmathur.library.ui.MaterialTheme
+import androidx.compose.material3.ExpandedFullScreenSearchBar
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.rememberSearchBarState
 import com.vayunmathur.library.ui.Scaffold
-import com.vayunmathur.library.ui.SearchBar
 import com.vayunmathur.library.ui.SearchBarDefaults
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.isExpandedWidth
@@ -25,10 +28,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +44,7 @@ import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.library.ui.invisibleClickable
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.youpipe.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.util.SearchActions
 import com.vayunmathur.youpipe.util.SearchResultRow
@@ -53,6 +56,7 @@ import com.vayunmathur.youpipe.util.boostChannel
 import com.vayunmathur.youpipe.util.loadRecommendations
 import com.vayunmathur.youpipe.util.pinChannel
 import com.vayunmathur.youpipe.util.removeInterest
+import kotlinx.coroutines.launch
 
 /**
  * Home: the recommendation feed, with search living in the top app bar.
@@ -159,13 +163,48 @@ fun SearchPage(
  * Everything the user taps inside the screen goes through [actions]. A preview can hand it a
  * freshly-remembered stack.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     state: SearchUiState,
     actions: SearchActions,
 ) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
+    val searchBarState = rememberSearchBarState()
+    val textFieldState = rememberTextFieldState(initialText = state.query)
+    val scope = rememberCoroutineScope()
+
+    fun collapseSearch() {
+        scope.launch { searchBarState.animateToCollapsed() }
+    }
+
+    // Text field -> ViewModel: forward edits. Keyed on the query too so the
+    // comparison never goes stale; the guard drops the initial emission.
+    LaunchedEffect(textFieldState, state.query) {
+        snapshotFlow { textFieldState.text.toString() }.collect { text ->
+            if (text != state.query) actions.setSearchQuery(text)
+        }
+    }
+    // ViewModel -> text field: reflect external query changes.
+    LaunchedEffect(state.query) {
+        if (textFieldState.text.toString() != state.query) {
+            textFieldState.setTextAndPlaceCursorAtEnd(state.query)
+        }
+    }
+
+    val inputField: @Composable () -> Unit = {
+        SearchBarDefaults.InputField(
+            textFieldState = textFieldState,
+            searchBarState = searchBarState,
+            onSearch = { query ->
+                // The field already holds `query`; make sure the ViewModel sees the
+                // exact submitted text before submit reads it.
+                actions.setSearchQuery(query)
+                // Only collapse when the submit actually navigated somewhere — a
+                // plain search has to leave the overlay up to show its results.
+                if (actions.submitSearch()) collapseSearch()
+            },
+            placeholder = { Text(stringResource(UiR.string.search)) },
+        )
+    }
 
     // RAW SCAFFOLD EXCEPTION: the top chrome is a Material3 SearchBar (not a
     // TopAppBar) whose expanded state overlays the whole screen with search
@@ -175,21 +214,13 @@ fun SearchScreen(
     Scaffold(
         topBar = {
             SearchBar(
-                inputField = {
-                    SearchBarDefaults.InputField(
-                        query = state.query,
-                        onQueryChange = { actions.setSearchQuery(it) },
-                        // Only collapse when the submit actually navigated somewhere — a
-                        // plain search has to leave the overlay up to show its results.
-                        onSearch = { if (actions.submitSearch()) expanded = false },
-                        expanded = expanded,
-                        onExpandedChange = { expanded = it },
-                        placeholder = { Text(stringResource(R.string.label_search)) },
-                    )
-                },
-                expanded = expanded,
-                onExpandedChange = { expanded = it },
+                state = searchBarState,
+                inputField = inputField,
                 modifier = Modifier.fillMaxWidth(),
+            )
+            ExpandedFullScreenSearchBar(
+                state = searchBarState,
+                inputField = inputField,
             ) {
                 LazyColumn {
                     if (state.results.isNotEmpty()) {
@@ -203,7 +234,7 @@ fun SearchScreen(
                                 is SearchResultRow.Video -> VideoRow(
                                     row = item.video,
                                     modifier = Modifier.clickable {
-                                        expanded = false
+                                        collapseSearch()
                                         actions.openVideo(item.video.videoID)
                                     },
                                 )
@@ -219,8 +250,9 @@ fun SearchScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
+                                        textFieldState.setTextAndPlaceCursorAtEnd(suggestion)
                                         actions.setSearchQuery(suggestion)
-                                        if (actions.submitSearch()) expanded = false
+                                        if (actions.submitSearch()) collapseSearch()
                                     }
                                     .padding(12.dp)
                             )

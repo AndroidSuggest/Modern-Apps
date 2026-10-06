@@ -383,7 +383,7 @@ class WhatsAppE2E(
         private const val SHIFT_BYTE1 = 8
         private const val SHIFT_BYTE2 = 16
         private const val SHIFT_BYTE3 = 24
-        private const val PREKEY_VERSION_BYTE = 0x05
+        private const val PREKEY_VERSION_BYTE: Byte = 0x05
 
         private fun b64(s: String): ByteArray = Base64.Default.decode(s)
 
@@ -426,7 +426,7 @@ class WhatsAppE2E(
                 shift += VARINT_BITS
                 idx++
             } while (b and VARINT_CONT != 0)
-            return FieldKey((keyVal shr FIELD_SHIFT).toInt(), (keyVal and WIRE_TYPE_MASK).toInt(), idx)
+            return FieldKey((keyVal shr FIELD_SHIFT).toInt(), (keyVal and WIRE_TYPE_MASK.toLong()).toInt(), idx)
         }
 
         /** Read a varint value; null value when truncated. Returns (value, nextPos). */

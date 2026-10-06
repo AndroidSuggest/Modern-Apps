@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import com.vayunmathur.fooddelivery.R
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.fooddelivery.api.BitesAuth
 import com.vayunmathur.fooddelivery.api.BitesCustomers
 import com.vayunmathur.fooddelivery.api.BitesRewards
@@ -227,7 +228,7 @@ fun AccountScreen() {
                         },
                         dismissButton = {
                             TextButton(onClick = { confirmDelete = false }) {
-                                Text(stringResource(R.string.action_cancel))
+                                Text(stringResource(UiR.string.cancel))
                             }
                         },
                     )

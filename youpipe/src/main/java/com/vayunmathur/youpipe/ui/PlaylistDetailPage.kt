@@ -122,7 +122,7 @@ fun PlaylistDetailPage(
     AppScaffold(
         title = {
             if (isSelectionMode) {
-                Text(stringResource(R.string.selected_1, selectedIds.size))
+                Text(stringResource(R.string.selected_count, selectedIds.size))
             } else {
                 Text(title, modifier = Modifier.sharedText("youpipe-playlist-name-$playlistId"))
             }

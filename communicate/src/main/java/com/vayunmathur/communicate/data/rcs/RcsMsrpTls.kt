@@ -332,10 +332,10 @@ object RcsMsrpTls {
     /** Minimal DER primitives for the cert writer above. */
     internal object Der {
         fun sequence(vararg parts: ByteArray): ByteArray =
-            byteArrayOf(ASN1_SEQUENCE) + lengthPrefix(parts.sumOf { it.size }) + parts.reduce { a, b -> a + b }
+            byteArrayOf(ASN1_SEQUENCE.toByte()) + lengthPrefix(parts.sumOf { it.size }) + parts.reduce { a, b -> a + b }
 
         fun set(vararg parts: ByteArray): ByteArray =
-            byteArrayOf(ASN1_SET) + lengthPrefix(parts.sumOf { it.size }) + parts.reduce { a, b -> a + b }
+            byteArrayOf(ASN1_SET.toByte()) + lengthPrefix(parts.sumOf { it.size }) + parts.reduce { a, b -> a + b }
 
         fun explicit(tag: Int, content: ByteArray): ByteArray =
             byteArrayOf((ASN1_CONTEXT_BASE + tag).toByte()) + lengthPrefix(content.size) + content
@@ -345,7 +345,7 @@ object RcsMsrpTls {
             while (start < bytes.size - 1 && bytes[start] == 0.toByte()) start++
             var v = bytes.copyOfRange(start, bytes.size)
             if (v[0].toInt() and ASN1_HIGH_BIT != 0) v = byteArrayOf(0) + v
-            return byteArrayOf(ASN1_INTEGER) + lengthPrefix(v.size) + v
+            return byteArrayOf(ASN1_INTEGER.toByte()) + lengthPrefix(v.size) + v
         }
 
         fun oid(dotted: String): ByteArray {
@@ -353,14 +353,14 @@ object RcsMsrpTls {
             val first = byteArrayOf(((arcs[0] * OID_FIRST_FACTOR + arcs[1]).toByte()))
             val rest = arcs.drop(2).fold(byteArrayOf()) { acc, a -> acc + base128(a) }
             val body = first + rest
-            return byteArrayOf(ASN1_OID) + lengthPrefix(body.size) + body
+            return byteArrayOf(ASN1_OID.toByte()) + lengthPrefix(body.size) + body
         }
 
-        fun nullValue(): ByteArray = byteArrayOf(ASN1_NULL, ASN1_ZERO)
+        fun nullValue(): ByteArray = byteArrayOf(ASN1_NULL.toByte(), ASN1_ZERO.toByte())
 
         fun utf8String(s: String): ByteArray {
             val b = s.toByteArray(Charsets.UTF_8)
-            return byteArrayOf(ASN1_UTF8STRING) + lengthPrefix(b.size) + b
+            return byteArrayOf(ASN1_UTF8STRING.toByte()) + lengthPrefix(b.size) + b
         }
 
         fun utcTime(ms: Long): ByteArray {
@@ -374,11 +374,12 @@ object RcsMsrpTls {
                 cal.get(java.util.Calendar.MINUTE),
                 cal.get(java.util.Calendar.SECOND),
             ).toByteArray(Charsets.US_ASCII)
-            return byteArrayOf(ASN1_UTCTIME) + lengthPrefix(str.size) + str
+            return byteArrayOf(ASN1_UTCTIME.toByte()) + lengthPrefix(str.size) + str
         }
 
         fun bitString(signatureDer: ByteArray): ByteArray =
-            byteArrayOf(ASN1_BITSTRING) + lengthPrefix(signatureDer.size + 1) + byteArrayOf(ASN1_ZERO) + signatureDer
+            byteArrayOf(ASN1_BITSTRING.toByte()) + lengthPrefix(signatureDer.size + 1) +
+                byteArrayOf(ASN1_ZERO.toByte()) + signatureDer
 
         /** Embed already-encoded DER without re-wrapping. */
         fun raw(der: ByteArray): ByteArray = der

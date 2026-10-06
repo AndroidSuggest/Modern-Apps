@@ -31,8 +31,6 @@
     <string name="search_hint">Search in document…</string>
     <!-- Tab title: Document outline/bookmarks. Noun. -->
     <string name="outline">Outline</string>
-    <!-- Button: Reset zoom/font size. Verb. -->
-    <string name="reset">Reset</string>
     <!-- Dialog title: Unsaved changes warning -->
     <string name="unsaved_changes">Unsaved Changes</string>
     <!-- Dialog message: Ask to save before leaving -->
@@ -142,8 +140,6 @@
     <string name="crop">Crop</string>
     <!-- DocumentViews: Menu header & footer dialog -->
     <string name="header_footer_1">Header &amp; Footer</string>
-    <!-- DocumentViews: Field label Name. Noun. -->
-    <string name="name">Name</string>
     <!-- DocumentViews: Field label interval seconds for slide transition -->
     <string name="interval_seconds">Interval (seconds)</string>
     <!-- MainActivity: Label for your device ID. Noun phrase with colon. -->
@@ -206,8 +202,6 @@
     <string name="export">Export ▸</string>
     <!-- MainActivity: Toggle zoom text only. Verb phrase. -->
     <string name="zoom_text">Zoom text</string>
-    <!-- MainActivity: Button copy. Verb. -->
-    <string name="copy">Copy</string>
     <!-- MainActivity: Button make user viewer role. Verb phrase. -->
     <string name="make_viewer">Make viewer</string>
     <!-- MainActivity: Menu share online with ellipsis alternative -->
@@ -286,12 +280,8 @@
     <string name="page_setup_1">Page setup</string>
     <!-- MainActivity: Label cell comment in spreadsheet -->
     <string name="cell_comment">Cell comment</string>
-    <!-- MainActivity: Button Stop presentation. Verb. -->
-    <string name="stop">Stop</string>
     <!-- MainActivity: App description subtitle: ODF Viewer & Editor -->
     <string name="open_document_format_viewer_editor">Open Document Format Viewer &amp; Editor</string>
-    <!-- MainActivity: Filter All. Adjective. -->
-    <string name="all">All</string>
     <!-- MainActivity: Button make user owner. Verb phrase. -->
     <string name="make_owner">Make owner</string>
     <!-- MainActivity: Export format Rich Text RTF with ellipsis -->
@@ -334,10 +324,6 @@
     <string name="no_tracked_changes_in_this_document">No tracked changes in this document.</string>
     <!-- MainActivity: Field label orientation. Noun. -->
     <string name="orientation">Orientation</string>
-    <!-- MainActivity: Button Apply changes. Verb. -->
-    <string name="apply">Apply</string>
-    <!-- MainActivity: Role label editor lowercase -->
-    <string name="editor">editor</string>
     <!-- MainActivity: Security instruction to compare code out-of-band -->
     <string name="compare_with_the_recipient_out_of_band_i">Compare with the recipient out-of-band — it must match on both devices:</string>
     <!-- MainActivity: Menu footnote with ellipsis -->
@@ -370,7 +356,9 @@
     <string name="accept_all">Accept all</string>
     <!-- MainActivity: Menu bookmark. Noun/Verb. -->
     <string name="bookmark">Bookmark</string>
-    <!-- MainActivity: Label presentation timer feature -->
+    <!-- MainActivity: Role label editor lowercase -->
+    <string name="editor">editor</string>
+    <!-- MainActivity: Security instruction to compare code out-of-band -->
     <string name="presentation_timer">Presentation timer</string>
     <!-- MainActivity: Tab label online documents. Noun. -->
     <string name="online">Online</string>
@@ -446,12 +434,8 @@
     <string name="heading_1">Heading 1</string>
     <!-- OfficeBottomBar: Action delete column. Verb phrase. -->
     <string name="delete_column">Delete column</string>
-    <!-- OfficeBottomBar: Number format date -->
-    <string name="date">Date</string>
     <!-- OfficeBottomBar: Number format fraction -->
     <string name="fraction">Fraction</string>
-    <!-- OfficeBottomBar: Number format time / menu time. Noun. -->
-    <string name="time">Time</string>
     <!-- OfficeBottomBar: Menu border. Noun. -->
     <string name="border">Border</string>
     <!-- OfficeBottomBar: Action demote list item (increase indent). Verb phrase. -->
@@ -492,16 +476,11 @@
     <string name="center">Center</string>
     <!-- OfficeViewModel: Toast error when save fails. %1$s=error reason/message -->
     <string name="save_failed">Save failed: <xliff:g id="error" example="Permission denied">%1$s</xliff:g></string>
-    <!-- OfficeViewModel: Toast saved successfully -->
-    <string name="saved">Saved</string>
-
     <!-- MainActivity: Explanation prompting user to enable online sharing for real-time collaboration. Full sentence. -->
     <string name="turn_on_online_sharing_to_collaborate_on">Turn on online sharing to collaborate on documents in real time. This generates your encryption keys and a device id and registers your device so others can share with you. Nothing is created or sent until you enable it.</string>
 
     <!-- MainActivity: Fallback author name Anonymous. Noun. -->
     <string name="anonymous">Anonymous</string>
-    <!-- MainActivity: Fallback author Unknown. Noun. -->
-    <string name="unknown">Unknown</string>
     <!-- MainActivity: Concatenated author and date for annotation. %1$s=author name, %2$s=date suffix " · YYYY-MM-DD" or empty -->
     <string name="annotation_author_date"><xliff:g id="author" example="Anonymous">%1$s</xliff:g><xliff:g id="date_suffix" example=" · 2024-01-01">%2$s</xliff:g></string>
     <!-- MainActivity: Tracked change line. %1$s=change type e.g. "Insertion", %2$s=author e.g. "Unknown", %3$s=date suffix " · 2024-01-01" or empty -->

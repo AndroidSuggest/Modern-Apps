@@ -164,7 +164,7 @@ private fun DeviceIdRow(deviceId: String, onCopy: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(deviceId.ifEmpty { "…" }, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-            OutlinedButton(onClick = onCopy, enabled = deviceId.isNotEmpty()) { Text(stringResource(R.string.copy)) }
+            OutlinedButton(onClick = onCopy, enabled = deviceId.isNotEmpty()) { Text(stringResource(UiR.string.copy)) }
         }
     }
 }

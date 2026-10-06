@@ -2,7 +2,6 @@
     <string name="app_name">Cast</string>
 
     <!-- Device list -->
-    <string name="cast_devices_title">Cast</string>
     <string name="cast_devices_heading">Televisions</string>
     <string name="cast_searching">Searching for televisions.</string>
     <string name="cast_no_devices">No televisions found</string>
@@ -75,11 +74,9 @@
     <string name="cast_notification_title">Casting to %1$s</string>
     <string name="cast_notification_text_connecting">Connecting</string>
     <string name="cast_notification_text_pairing">Waiting for the code on your TV</string>
-    <string name="cast_notification_text_ready">Ready to mirror</string>
     <string name="cast_notification_text_starting">Starting</string>
     <string name="cast_notification_text_mirroring">Mirroring your screen</string>
     <string name="cast_notification_text_failed">Could not start mirroring</string>
-    <string name="cast_notification_action_stop">Stop</string>
 
     <!-- The picker another app launches, and the permission it needs to. The permission's label and
          description are what the system shows in the app's permission list, so they have to read as
@@ -88,7 +85,6 @@
     <string name="cast_stream_content_permission_desc">Allows an app to send its own video and audio to a television you have paired with MA Cast, without pairing separately or seeing your network.</string>
     <string name="cast_picker_title">Cast %1$s to</string>
     <string name="cast_picker_title_generic">Choose a television</string>
-    <string name="cast_picker_cancel">Cancel</string>
 
     <!-- The secondary line on the row in Settings' Cast page. The primary line is the TV's own
          name, so this says what kind of thing it is rather than repeating it. -->

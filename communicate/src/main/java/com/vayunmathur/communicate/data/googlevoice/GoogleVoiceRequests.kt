@@ -87,10 +87,11 @@ internal fun GoogleVoiceParser.buildBatchUpdateBody(
 ): String {
     val id = quote(remoteId)
     return when (action) {
-        ThreadAction.MarkRead -> "[[[[$id,null,null,1],[null,null,null,1],1]]]"
-        ThreadAction.MarkUnread -> "[[[[$id,null,null,0],[null,null,null,1],1]]]"
-        ThreadAction.Archive -> "[[[[$id,null,1],[null,null,1],1]]]"
-        ThreadAction.Unarchive -> "[[[[$id,null,0],[null,null,1],1]]]"
+        GoogleVoiceParser.ThreadAction.MarkRead -> "[[[[$id,null,null,1],[null,null,null,1],1]]]"
+        GoogleVoiceParser.ThreadAction.MarkUnread -> "[[[[$id,null,null,0],[null,null,null,1],1]]]"
+        GoogleVoiceParser.ThreadAction.Archive -> "[[[[$id,null,1],[null,null,1],1]]]"
+        GoogleVoiceParser.ThreadAction.Unarchive -> "[[[[$id,null,0],[null,null,1],1]]]"
+        else -> "[[[[$id,null,null,1],[null,null,null,1],1]]]"
     }
 }
 

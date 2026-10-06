@@ -26,7 +26,7 @@ import com.vayunmathur.music.data.Artist
 @Composable
 fun ArtistsTabContent(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
     val artists by musicViewModel.artists.collectAsState()
-    ListPage<Artist, Route, Route.Song>(backStack, artists, stringResource(R.string.page_title_music), {
+    ListPage<Artist, Route, Route.Song>(backStack, artists, stringResource(R.string.app_name), {
         Text(it.name, modifier = Modifier.sharedText("music-artist-name-${it.id}"))
     }, {
     }, {

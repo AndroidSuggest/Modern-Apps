@@ -24,6 +24,9 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.pdf.R
 import com.vayunmathur.pdf.util.SafeFormField
 import com.vayunmathur.pdf.util.SafePdfDocument
+import com.vayunmathur.pdf.util.setCheckbox
+import com.vayunmathur.pdf.util.setChoiceField
+import com.vayunmathur.pdf.util.setTextField
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 

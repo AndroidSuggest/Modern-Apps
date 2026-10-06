@@ -34,8 +34,6 @@
     <string name="type_to_search">Type at least 2 characters to search</string>
     <!-- SearchPage: Header above the recent-searches list. Noun. -->
     <string name="recent_searches">Recent</string>
-    <!-- SearchPage: Button clearing the recent-searches list. Verb. -->
-    <string name="clear_recents">Clear</string>
     <!-- SearchPage: Quick category chip — eating places. Noun. -->
     <string name="search_category_restaurants">Restaurants</string>
     <!-- SearchPage: Quick category chip — coffee shops. Noun. -->
@@ -80,7 +78,6 @@
     <!-- Button: Add selected place as stop on route -->
     <string name="add_stop_to_route">Add Stop to Route</string>
     <!-- Place sheet action row: call the place's phone number -->
-    <string name="place_action_call">Call</string>
     <!-- Place sheet action row: open the place's website -->
     <string name="place_action_website">Website</string>
     <!-- Country/state/city sheet: open the area's Wikipedia article -->
@@ -88,15 +85,10 @@
     <!-- Place sheet action row: order from this restaurant via the food-delivery app -->
     <string name="place_action_order">Order</string>
     <!-- Place sheet action row: share the place -->
-    <string name="place_action_share">Share</string>
     <!-- Place sheet action row: save the place (bookmark) -->
-    <string name="place_action_save">Save</string>
-    <!-- Place sheet action row: place is already saved -->
-    <string name="place_action_saved">Saved</string>
     <!-- Share sheet body. %1$s=place name, %2$s=maps URL -->
     <string name="place_share_text"><xliff:g id="name" example="Blue Bottle Coffee">%1$s</xliff:g>\n<xliff:g id="url" example="https://maps.google.com/?q=37.0,-122.0">%2$s</xliff:g></string>
     <!-- Label: Place is currently open. Adjective. -->
-    <string name="open_status">Open</string>
     <!-- Label: Place is closed. Adjective. -->
     <string name="closed_status">Closed</string>
     <!-- Label: Closing time. %1$s=time e.g. "9 PM" -->
@@ -109,7 +101,6 @@
          Google product name, so it stays non-translatable. -->
     <string name="street_view" translatable="false">Street View</string>
     <!-- Street View viewer: close button content description. -->
-    <string name="street_view_close">Close</string>
     <!-- Street View viewer: shown while the panorama tiles are downloading. -->
     <string name="street_view_loading">Loading Street View…</string>
     <!-- Street View viewer: shown when no panorama could be loaded for this place. -->
@@ -207,7 +198,6 @@
     <!-- Maneuver: Generic unspecified named. %1$s=road name -->
     <string name="maneuver_unspecified">Continue onto <xliff:g id="road_name" example="Main St">%1$s</xliff:g></string>
     <!-- Maneuver: Generic unspecified unnamed -->
-    <string name="maneuver_unspecified_unnamed">Continue</string>
     <!-- Maneuver: Transit wait step. %1$s=wait duration e.g. "5 min", %2$s=transit line/road name -->
     <string name="maneuver_wait">Wait <xliff:g id="wait_duration" example="5 min">%1$s</xliff:g> for <xliff:g id="line_name" example="N-Judah">%2$s</xliff:g></string>
     <!-- Maneuver: Transit wait at stop. %1$s=duration, %2$s=line, %3$s=stop name/code -->
@@ -221,8 +211,6 @@
     <string name="travel_mode_bicycle">Bicycle</string>
     <!-- Travel mode: Driving. Noun/Verb. -->
     <string name="travel_mode_drive">Drive</string>
-    <!-- Travel mode: Public transit. Noun. -->
-    <string name="travel_mode_transit">Transit</string>
 
     <!-- Route sheet: header of the option to book a taxi/ride for this origin→destination
          via the MA taxi app. -->
@@ -250,8 +238,6 @@
     <string name="nav_status_starting">Starting navigation…</string>
     <!-- Nav status: recalculating after off-route -->
     <string name="nav_status_recalculating">Recalculating route…</string>
-    <!-- Nav status: arrived -->
-    <string name="nav_status_arrived">You have arrived</string>
     <!-- Nav status: failed/stopped -->
     <string name="nav_status_failed">Navigation stopped</string>
     <!-- Button: End navigation. Verb. -->
@@ -283,7 +269,6 @@
     <!-- Notification big title when arrived -->
     <string name="nav_arrived_title">You have arrived</string>
     <!-- Button: Dismiss arrival notification. Verb. -->
-    <string name="nav_arrived_dismiss">Dismiss</string>
     <!-- Nav banner: Off route warning -->
     <string name="nav_off_route">Off route — recalculating…</string>
 
@@ -361,11 +346,8 @@
     <string name="arrive_at">Arrive at <xliff:g id="time" example="09:15">%1$s</xliff:g></string>
 
     <!-- Settings: screen title. Noun. -->
-    <string name="settings_title">Settings</string>
     <!-- Settings: section header for display options. Noun. -->
     <string name="settings_section_display">Display</string>
-    <!-- Settings: section header for navigation options. Noun. -->
-    <string name="settings_section_navigation">Navigation</string>
     <!-- Settings: section header for places and maps entries. Noun. -->
     <string name="settings_section_places">Places &amp; maps</string>
     <!-- Settings: map-theme setting title. Noun. -->
@@ -392,7 +374,6 @@
     <!-- SavedPlacesPage: screen title. Noun. -->
     <string name="saved_places_title">Saved places</string>
     <!-- SavedPlacesPage: section header for the starred list. Noun. -->
-    <string name="saved_list_header">Saved</string>
     <!-- SavedPlacesPage: shown when the starred list is empty. -->
     <string name="saved_list_empty">Places you save appear here</string>
     <!-- SavedPlacesPage: section header for named lists. Noun. -->
@@ -400,7 +381,6 @@
     <!-- SavedPlacesPage: row/action to create a new list. Verb phrase. -->
     <string name="saved_lists_new">New list</string>
     <!-- SavedPlacesPage: confirm button to create a list. Verb. -->
-    <string name="saved_lists_create">Create</string>
     <!-- SavedPlacesPage: number of places in a list. -->
     <plurals name="saved_list_count">
         <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> place</item>
@@ -408,16 +388,11 @@
     </plurals>
     <!-- SavedPlacesPage: rename dialog title. Verb. -->
     <string name="saved_rename_title">Rename place</string>
-    <!-- SavedPlacesPage: rename dialog confirm button. Verb. -->
-    <string name="saved_rename_confirm">Rename</string>
     <!-- SavedPlacesPage: overflow action to rename a saved place. Verb. -->
-    <string name="saved_action_rename">Rename</string>
     <!-- SavedPlacesPage: overflow action to add a saved place to a list. Verb phrase. -->
     <string name="saved_action_add_to_list">Add to list…</string>
     <!-- SavedPlacesPage: overflow action to remove a saved place. Verb. -->
-    <string name="saved_action_remove">Remove</string>
     <!-- SavedPlacesPage: generic cancel button. Verb. -->
-    <string name="saved_cancel">Cancel</string>
 
     <!-- Parking memory (P9): title of the parking sheet and FAB label. Noun. -->
     <string name="parking_title">Parking</string>
@@ -428,15 +403,11 @@
     <!-- Parking sheet: placeholder for the optional note field. -->
     <string name="parking_note_hint">Add a note (level, section…)</string>
     <!-- Parking sheet: clears the saved parking spot. Verb. -->
-    <string name="parking_clear">Clear</string>
 
     <!-- Android Auto (P12) car app strings. -->
-    <string name="car_search_title">Search</string>
-    <string name="car_search_action">Search</string>
     <string name="car_recenter">Recenter</string>
     <string name="car_voice_hint">Tap search, then speak a place or address.</string>
     <string name="car_no_results">No results. Tap search to try again.</string>
     <string name="car_searching">Searching\u2026</string>
     <string name="car_route_failed">Couldn\'t find a route there.</string>
-    <string name="car_continue">Continue</string>
 </resources>

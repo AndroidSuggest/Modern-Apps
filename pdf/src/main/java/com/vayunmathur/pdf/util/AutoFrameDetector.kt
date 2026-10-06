@@ -12,7 +12,7 @@ import kotlin.math.roundToInt
 object AutoFrameDetector {
 
     private const val MAX_DIM = 500
-    internal const val MIN_AREA_FRACTION = 0.05f
+    internal const val MIN_AREA_FRACTION = 0.05
     private const val MIN_SCALED_DIM = 10
     private const val CANNY_HIGH_1 = 75
     private const val CANNY_LOW_1 = 200

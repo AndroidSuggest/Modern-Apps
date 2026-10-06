@@ -88,7 +88,7 @@ private fun CopyDeviceIdButton(
             }
         },
     ) {
-        Text(stringResource(R.string.copy))
+        Text(stringResource(UiR.string.copy))
     }
 }
 

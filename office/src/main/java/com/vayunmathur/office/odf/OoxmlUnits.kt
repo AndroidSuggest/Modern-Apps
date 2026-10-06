@@ -21,7 +21,7 @@ internal object OoxmlUnits {
     private const val ALPHA_SHIFT = 24
     private const val RED_SHIFT = 16
     private const val GREEN_SHIFT = 8
-    private const val BYTE_MASK = 0xFF
+    private const val BYTE_MASK = 0xFFL
     private const val FULL_ALPHA = 0xFF000000L
     private const val HUNDREDTHS_PER_PT = 100f
     private const val CHANNEL_RANGE_MAX = 255

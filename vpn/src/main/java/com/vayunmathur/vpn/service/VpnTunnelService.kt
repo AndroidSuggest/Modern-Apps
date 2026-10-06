@@ -4,8 +4,6 @@ package com.vayunmathur.vpn.service
 
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.concurrent.atomics.load
-import kotlin.concurrent.atomics.store
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -655,3 +653,4 @@ class VpnTunnelService : VpnService() {
             }
         }
     }
+}

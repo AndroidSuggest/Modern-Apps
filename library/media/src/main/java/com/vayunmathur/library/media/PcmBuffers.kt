@@ -18,8 +18,8 @@ internal object PcmBuffers {
     private const val S16_MAX = 32767
     private const val S16_MIN = -32768
     private const val HIGH_BYTE_SHIFT = 8
-    private const val DEFAULT_QUEUE_BYTES = 64
-    private const val BYTES_PER_KB = 1024
+    internal const val DEFAULT_QUEUE_BYTES = 64
+    internal const val BYTES_PER_KB = 1024
 
     /**
      * Reads [buffer] as signed 16-bit little-endian PCM into [out] as floats in -1..1,
@@ -83,7 +83,7 @@ internal object PcmBuffers {
  * remainder between them and hands out only whole frames, which matters because half a
  * frame queued would swap the channels of everything after it.
  */
-internal class PcmQueue(initialCapacity: Int = DEFAULT_QUEUE_BYTES * BYTES_PER_KB) {
+internal class PcmQueue(initialCapacity: Int = PcmBuffers.DEFAULT_QUEUE_BYTES * PcmBuffers.BYTES_PER_KB) {
 
     private var buffer = ByteArray(initialCapacity)
     private var head = 0

@@ -72,10 +72,9 @@ private fun resolveFormatTarget(
         activeRunEnd,
         selStart,
         selEnd)
-    isSpreadsheet && (activeCell?.second ?: -1) >= 0 -> FormatTarget.Cell(
-        activeCell!!.first,
-        activeCell!!.second,
-        activeCell!!.third)
+    isSpreadsheet && (activeCell?.second ?: -1) >= 0 -> activeCell?.let {
+        FormatTarget.Cell(it.first, it.second, it.third)
+    } ?: FormatTarget.None
     isPresentation && activeSlideEl >= 0 -> FormatTarget.Element(activeSlide, activeSlideEl)
     else -> FormatTarget.None
 }

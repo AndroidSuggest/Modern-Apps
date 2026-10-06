@@ -6,7 +6,6 @@
     <string name="city_name_hint">Nome della città</string>
     <string name="weather_title">Meteo</string>
     <string name="add_location">Aggiungi una località</string>
-    <string name="map_time">Tempo</string>
     <string name="weather_widget_description">Ora, data e meteo a colpo d\'occhio — tocca per le previsioni</string>
     <string name="no_locations_yet">Nessuna località</string>
     <string name="add_a_city_or_use_your_current_location">Aggiunti una città o utilizza la posizione attuale per vedere le previsioni.</string>
@@ -23,7 +22,6 @@
     <string name="dew_point">Punto di rugiada</string>
     <string name="from_gusts">Da <xliff:g id="direction" example="NW">%1$s</xliff:g> · Raffiche <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
     <string name="not_enough_data_to_plot">Dati insufficienti per il grafico.</string>
-    <string name="condition_clear">Sereno</string>
     <string name="condition_mostly_clear">Prevalentemente sereno</string>
     <string name="condition_partly_cloudy">Parzialmente nuvoloso</string>
     <string name="condition_cloudy">Nuvoloso</string>
@@ -32,7 +30,6 @@
     <string name="condition_rain">Pioggia</string>
     <string name="condition_snow">Neve</string>
     <string name="condition_thunderstorm">Temporale</string>
-    <string name="condition_unknown">Sconosciuto</string>
     <string name="metric_temperature">Temperatura</string>
     <string name="metric_feels_like">Percepiti</string>
     <string name="metric_humidity">Umidità</string>

@@ -320,6 +320,24 @@ data class Contact(
         }
     }
 
+    private fun handleDetailUpdates(
+        oldDetails: List<ContactDetail<*>>,
+        newDetails: List<ContactDetail<*>>,
+        rawContactId: String
+    ): List<ContentProviderOperation> {
+        val ops = ArrayList<ContentProviderOperation>()
+        val oldById = oldDetails.filter { it.id != 0L }.associateBy { it.id }
+        val newById = newDetails.filter { it.id != 0L }.associateBy { it.id }
+        for ((id, _) in oldById) {
+            if (id !in newById) ops += createDeleteOperation(id)
+        }
+        for (detail in newDetails) {
+            if (detail.id == 0L || detail.id !in oldById) {
+                ops += createInsertOperation(detail, rawContactId)
+            } else {
+                ops += createUpdateOperation(detail)
+            }
+        }
         return ops
     }
 

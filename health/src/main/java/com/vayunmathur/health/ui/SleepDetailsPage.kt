@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import com.vayunmathur.library.ui.DateString
@@ -77,7 +79,7 @@ fun SleepDetailsPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel)
     AppScaffold(
         title = {
             Text(
-                stringResource(R.string.label_sleep),
+                stringResource(R.string.metric_sleep),
                 modifier = Modifier.sharedText("health-metric-label-SLEEP"),
             )
         },
@@ -93,7 +95,7 @@ fun SleepDetailsPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel)
             val selectedDay = remember(pagerState.currentPage) {
                 today.minus(initialPage - pagerState.currentPage, DateTimeUnit.DAY)
             }
-            val headerLabel = if (selectedDay == today) stringResource(R.string.label_today)
+            val headerLabel = if (selectedDay == today) stringResource(R.string.nav_today)
             else selectedDay.displayString()
 
             Row(

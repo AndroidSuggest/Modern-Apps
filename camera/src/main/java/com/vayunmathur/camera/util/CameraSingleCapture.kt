@@ -5,7 +5,6 @@ import android.graphics.BitmapFactory
 import android.graphics.Rect
 import android.net.Uri
 import android.util.Log
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
@@ -15,7 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@OptIn(ExperimentalCamera2Interop::class)
 internal fun CameraViewModel.captureSinglePhoto() {
     val capture = imageCapture ?: return
     isCapturingMutable.value = true
@@ -36,6 +34,7 @@ internal fun CameraViewModel.captureSinglePhoto() {
 }
 
 /** Everything doCapture/runSingleCapture needs, resolved up front. */
+@Suppress("DEPRECATION")
 private data class SingleCapturePlan(
     val capture: ImageCapture,
     val pending: PendingStill,
@@ -55,7 +54,7 @@ private data class SingleCapturePlan(
  * Resolves the capture use cases, night override and preview-effect state.
  * Null when there is no save target (caller clears the in-flight flag).
  */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 private fun CameraViewModel.buildSingleCapturePlan(pending: PendingStill): SingleCapturePlan? {
     val capture = imageCapture ?: return null
     val outputOptions = pending.outputOptions
@@ -98,7 +97,7 @@ private fun CameraViewModel.buildSingleCapturePlan(pending: PendingStill): Singl
 }
 
 /** Applies the transient night exposure, then runs the capture (or the capture directly). */
-@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("DEPRECATION")
 private fun CameraViewModel.applyNightExposureThen(plan: SingleCapturePlan, doCapture: (SingleCapturePlan) -> Unit) {
     try {
         val options = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()

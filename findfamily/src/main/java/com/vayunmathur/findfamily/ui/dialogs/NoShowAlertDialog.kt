@@ -245,7 +245,7 @@ fun NoShowAlertDialog(
                     },
                     enabled = pickerState.selectedDateMillis != null,
                 ) {
-                    Text(stringResource(UiR.string.dialog_ok))
+                    Text(stringResource(UiR.string.ok))
                 }
             },
             dismissButton = {
@@ -273,7 +273,7 @@ fun NoShowAlertDialog(
                         showTimePicker = false
                     },
                 ) {
-                    Text(stringResource(UiR.string.dialog_ok))
+                    Text(stringResource(UiR.string.ok))
                 }
             },
             dismissButton = {

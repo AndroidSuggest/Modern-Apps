@@ -7,8 +7,6 @@ package com.vayunmathur.findfamily.util
 
 import kotlin.uuid.Uuid
 import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.compareAndSet
-import kotlin.concurrent.atomics.load
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build

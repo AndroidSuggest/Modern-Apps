@@ -61,6 +61,7 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.Icon
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
@@ -267,15 +268,15 @@ private fun LearnStatusArea(
                     Text(stringResource(R.string.learn_completed), fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = { viewModel.nextLevel() }) {
-                        Text(stringResource(R.string.learn_next))
+                        Text(stringResource(UiR.string.next))
                     }
                 }
             }
             LearnStatus.Failed -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(stringResource(R.string.learn_failed), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.puzzle_failed), fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = { viewModel.retryLevel() }) {
-                    Text(stringResource(R.string.learn_retry))
+                    Text(stringResource(UiR.string.retry))
                 }
             }
             LearnStatus.Playing -> {}
