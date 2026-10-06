@@ -174,9 +174,6 @@ pub(crate) struct Graph {
 
 impl Graph {
     pub(crate) fn load(dir: &Path) -> Result<Graph> {
-        let map = |name: &str| -> Result<osm_ingest::mem::Mapped> {
-            osm_ingest::mem::Mapped::open(&dir.join(name)).map_err(osm_ingest::proto::Error)
-        };
         let meta = std::fs::read(dir.join("metadata.bin")).map_err(|e| {
             osm_ingest::proto::Error(format!(
                 "cannot read {}: {e}",
@@ -207,7 +204,24 @@ impl Graph {
             ));
         }
 
-        let nodes = map("nodes.bin")?;
+        // The three tables open concurrently: three page-cache faults on
+        // three files, no dependency between them. Metadata validation above
+        // stays serial — it sizes everything below. Small win, almost free.
+        let (nodes, edges, inter) = std::thread::scope(|scope| {
+            let open = |name: &'static str| {
+                scope.spawn(move || {
+                    osm_ingest::mem::Mapped::open(&dir.join(name))
+                        .map_err(osm_ingest::proto::Error)
+                })
+            };
+            let (a, b, c) = (open("nodes.bin"), open("edges.bin"), open("intermediate.bin"));
+            let nodes = a.join().expect("the nodes.bin opener");
+            let edges = b.join().expect("the edges.bin opener");
+            let inter = c.join().expect("the intermediate.bin opener");
+            nodes.and_then(|nodes| edges.map(|edges| (nodes, edges))).and_then(
+                |(nodes, edges)| inter.map(|inter| (nodes, edges, inter)),
+            )
+        })?;
         let want_nodes = (node_count + 1)
             .checked_mul(12)
             .ok_or_else(|| osm_ingest::proto::Error("node table size overflows".to_string()))?;
@@ -219,7 +233,6 @@ impl Graph {
             ));
         }
 
-        let edges = map("edges.bin")?;
         let escape_first_off = align_up8((edge_count as usize) * 7);
         let escape_blocks = edge_count.div_ceil(ESCAPE_BLOCK) + 1;
         let escapes_off = escape_first_off + (escape_blocks as usize) * 4;
@@ -231,7 +244,6 @@ impl Graph {
             ));
         }
 
-        let inter = map("intermediate.bin")?;
         if inter.len() < 8 {
             return err("intermediate.bin is too short to hold its geometry-edge count".to_string());
         }

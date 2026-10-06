@@ -28,6 +28,7 @@ use std::path::Path;
 
 use osm_ingest::proto::{err, Result};
 use tile_build::geom::Geometry;
+use tile_build::progress::Progress;
 use tilecodec::mamaps::dict::LAYER_TRANSIT;
 use tilecodec::mvt::Value;
 
@@ -103,10 +104,18 @@ pub fn stream_routes(
     }
     let mut written = 0u64;
     let mut skipped = 0u64;
+    // File order is feature order and the layer is coalesced, so the push
+    // stays serial; the bar is what keeps a large feed from reading as a
+    // hang. Ticked per line read (not per route kept), so it spans the
+    // whole file even when most of it is outside the extract.
+    let total_lines = text.lines().filter(|line| !line.trim().is_empty()).count();
+    let mut bar =
+        Progress::new("Transit: routes".to_string(), total_lines, "line(s)", true);
     for (line_number, line) in text.lines().enumerate() {
         if line.trim().is_empty() {
             continue;
         }
+        bar.tick("line(s)");
         let at = |what: &str| {
             osm_ingest::proto::Error(format!("{}:{}: {what}", path.display(), line_number + 1))
         };
@@ -151,6 +160,7 @@ pub fn stream_routes(
             path.display(),
         ));
     }
+    bar.finish("line(s)");
     println!("  {written} transit route(s) kept, {skipped} outside the extract");
     Ok(written)
 }

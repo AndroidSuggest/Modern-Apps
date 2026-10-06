@@ -95,6 +95,16 @@ impl ShapeReader {
         self.filter = Some(bbox);
     }
 
+    /// How many records the header declares, for progress sizing: the file
+    /// length in words minus the header, over the 8-byte record header plus
+    /// the smallest a `Polygon` body can be. An underestimate when records
+    /// run large, which a progress bar tolerates (it clamps at 100%) — and
+    /// exact for sizing, never for logic.
+    pub fn records(&self) -> usize {
+        const MIN_RECORD_BYTES: u64 = 8 + 44;
+        (self.remaining / MIN_RECORD_BYTES) as usize
+    }
+
     /// The next record's rings, or `None` at the end of the file.
     ///
     /// Rings come back as `(ring, is_exterior)` in file order, so the caller can group them without

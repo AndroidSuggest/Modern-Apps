@@ -56,7 +56,10 @@ use std::collections::HashMap;
 
 use osm_ingest::proto::Result;
 use osm_ingest::rings::{point_in_ring, ring_area, Polygon};
+use rayon::prelude::*;
 use tile_build::geom::Geometry;
+use tile_build::par;
+use tile_build::progress::Progress;
 use tilecodec::mamaps::body::ID_NONE;
 use tilecodec::mamaps::dict::{KINDS, LAYER_BOUNDARIES, LAYER_PLACES};
 
@@ -403,6 +406,11 @@ pub fn extend_region_links_with(
     }
     boundaries.retain(|b| b.bbox.is_some() && b.area > 0.0);
     let grid = Grid::build(&boundaries);
+    // The `country_zoom` lookup below used to walk `boundaries` linearly per
+    // linked country; indexed by id so it is a hash lookup instead. Built
+    // once — the vec never moves again after this.
+    let boundary_by_id: HashMap<u64, usize> =
+        boundaries.iter().enumerate().map(|(i, b)| (b.id, i)).collect();
 
     // Pass 2: places. Positional, so node, way-centroided and relation-centroided labels all
     // link by the tagged id they already carry — the only path that can link non-node places,
@@ -411,69 +419,142 @@ pub fn extend_region_links_with(
     // so no third pass is needed. The headcount comes from `populations` (relation
     // places, filled by the caller while tags were in hand); absent entries score as
     // unpopulated — Antarctica's case — never as missing.
-    let mut stats = FallbackStats::default();
-    let mut per_kind: HashMap<String, (u64, u64)> = HashMap::new();
-    let mut buf: Vec<&Boundary> = Vec::new();
-    let mut reader = store.reader()?;
-    while let Some(feature) = reader.next()? {
-        if feature.class.layer != LAYER_PLACES {
-            continue;
-        }
-        if feature.id == ID_NONE {
-            continue;
-        }
-        let Geometry::Points(points) = feature.geometry else {
-            continue;
-        };
-        let Some(&point) = points.first() else {
-            continue;
-        };
-        let Some(kind_name) = place_kind_name(feature.class.kind) else {
-            continue;
-        };
-        stats.places_total += 1;
-        let entry = per_kind.entry(kind_name.to_string()).or_insert((0, 0));
-        entry.0 += 1;
-        if region_links.contains_key(&feature.id) {
-            stats.member_linked += 1;
-            entry.1 += 1;
-            continue;
-        }
-        let Some(band) = band_for_place_kind(kind_name) else {
-            continue;
-        };
-        buf.clear();
-        buf.extend(grid.candidates_for(point).map(|i| &boundaries[i]));
-        if let Some(target) = select_link(point, band, &buf) {
-            region_links.insert(feature.id, target);
-            stats.fallback_linked += 1;
-            entry.1 += 1;
-        }
-        // A country label starts at the zoom its footprint earns. The linked
-        // boundary (member half inserted before this pass, fallback half just
-        // above — both visible in `region_links` now) carries the ground area;
-        // the place feature carries the headcount via its population rank... but
-        // the rank buckets are lossy, so read the headcount from the store
-        // feature's own tags is impossible here — instead the population comes
-        // from the place feature's `kind_detail` rank inverted through the same
-        // buckets `schema::places` used. Simpler and exact: keep a place-id →
-        // population map from the pass-2 scan itself (see `populations` below).
-        // Unlinked countries keep the schema floor (z0): a missing link must
-        // never hide a country.
-        if kind_name == "country" {
-            if let Some(target) = region_links.get(&feature.id) {
-                if let Some(boundary) = boundaries.iter().find(|b| b.id == *target) {
-                    let mid_lat = boundary.bbox.map(|(_, y0, _, y1)| (y0 + y1) / 2.0).unwrap_or(0.0);
-                    let population = populations.get(&feature.id).copied().unwrap_or(0);
-                    country_zooms.insert(
-                        feature.id,
-                        country_zoom(boundary.area, mid_lat, population),
-                    );
-                    stats.country_zooms += 1;
-                }
+    //
+    // Collected serially first — the store reader is one sequential cursor —
+    // then linked on the pool: `select_link` is pure per-place work over the
+    // shared grid, and the drain inserts in collection order with member
+    // links winning, exactly as the serial loop did. `select_link` returns
+    // at most one target per place, so the drain cannot double-insert and
+    // the map bytes are identical.
+    struct PlacePoint {
+        id: u64,
+        point: (f64, f64),
+        kind: Band,
+        kind_name: String,
+    }
+    let mut places: Vec<PlacePoint> = Vec::new();
+    {
+        let mut reader = store.reader()?;
+        while let Some(feature) = reader.next()? {
+            if feature.class.layer != LAYER_PLACES {
+                continue;
             }
+            if feature.id == ID_NONE {
+                continue;
+            }
+            let Geometry::Points(points) = feature.geometry else {
+                continue;
+            };
+            let Some(&point) = points.first() else {
+                continue;
+            };
+            let Some(kind_name) = place_kind_name(feature.class.kind) else {
+                continue;
+            };
+            let Some(band) = band_for_place_kind(kind_name) else {
+                continue;
+            };
+            places.push(PlacePoint {
+                id: feature.id,
+                point,
+                kind: band,
+                kind_name: kind_name.to_string(),
+            });
         }
     }
+    let mut stats = FallbackStats::default();
+    let mut per_kind: HashMap<String, (u64, u64)> = HashMap::new();
+    // Member links always win: counted exactly as the serial loop did,
+    // and skipped in the link pass so nothing contends on the map.
+    for place in &places {
+        stats.places_total += 1;
+        let entry = per_kind.entry(place.kind_name.clone()).or_insert((0, 0));
+        entry.0 += 1;
+        if region_links.contains_key(&place.id) {
+            stats.member_linked += 1;
+            entry.1 += 1;
+        }
+    }
+    // Parallel link: one candidate-set build + `select_link` per
+    // member-less place, on the pool; the drain inserts in collection
+    // order, so the map — and the stats — are identical at every thread
+    // count. `select_link` returns at most one target per place, so the
+    // drain cannot double-insert. The bar ticks in the drain per place, so
+    // it spans the whole pass even though the expensive half runs on the
+    // pool.
+    let mut bar =
+        Progress::new("Fallback: places".to_string(), places.len(), "place(s)", true);
+    const FALLBACK_BATCH: usize = 16 * 1024;
+    let mut batch: Vec<usize> = Vec::with_capacity(FALLBACK_BATCH);
+    let mut built: Vec<Option<u64>> = Vec::with_capacity(FALLBACK_BATCH);
+    let mut at = 0usize;
+    while at < places.len() {
+        batch.clear();
+        while at < places.len() && batch.len() < FALLBACK_BATCH {
+            if region_links.contains_key(&places[at].id) {
+                // Member-linked: counted above, nothing to compute. The tick
+                // keeps the bar spanning every place, not just computed ones.
+                bar.tick("place(s)");
+                at += 1;
+                continue;
+            }
+            batch.push(at);
+            at += 1;
+        }
+        if batch.is_empty() {
+            continue;
+        }
+        built.clear();
+        par::install(|| {
+            batch
+                .par_iter()
+                .map(|&pi| {
+                    let place = &places[pi];
+                    let candidates: Vec<&Boundary> = grid
+                        .candidates_for(place.point)
+                        .map(|i| &boundaries[i])
+                        .collect();
+                    select_link(place.point, place.kind, &candidates)
+                })
+                .collect_into_vec(&mut built)
+        });
+        for (&pi, target) in batch.iter().zip(built.drain(..)) {
+            let place = &places[pi];
+            if let Some(target) = target {
+                region_links.insert(place.id, target);
+                stats.fallback_linked += 1;
+                if let Some(entry) = per_kind.get_mut(&place.kind_name) {
+                    entry.1 += 1;
+                }
+            }
+            // A country label starts at the zoom its footprint earns. The
+            // linked boundary (member half inserted before this pass,
+            // fallback half just above — both visible in `region_links`
+            // now) carries the ground area; the headcount comes from
+            // `populations` (relation places, filled by the caller while
+            // tags were in hand); absent entries score as unpopulated —
+            // Antarctica's case — never as missing. Unlinked countries keep
+            // the schema floor (z0): a missing link must never hide a
+            // country.
+            if place.kind_name == "country" {
+                if let Some(target) = region_links.get(&place.id) {
+                    if let Some(&bi) = boundary_by_id.get(target) {
+                        let boundary = &boundaries[bi];
+                        let mid_lat =
+                            boundary.bbox.map(|(_, y0, _, y1)| (y0 + y1) / 2.0).unwrap_or(0.0);
+                        let population = populations.get(&place.id).copied().unwrap_or(0);
+                        country_zooms.insert(
+                            place.id,
+                            country_zoom(boundary.area, mid_lat, population),
+                        );
+                        stats.country_zooms += 1;
+                    }
+                }
+            }
+            bar.tick("place(s)");
+        }
+    }
+    bar.finish("place(s)");
     stats.fallback_missed =
         stats.places_total.saturating_sub(stats.member_linked + stats.fallback_linked);
     let mut kinds: Vec<(String, u64, u64)> = per_kind

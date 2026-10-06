@@ -71,6 +71,46 @@ mod tests {
         (emitted, lines)
     }
 
+    /// **The property the parallel junction streamer exists to keep.** The
+    /// spill is a function of the graph, not of the thread count.
+    ///
+    /// The crossroads fixture is tiny, so this pins the ordering discipline
+    /// (parallel map, serial ordered drain) rather than measuring a speedup:
+    /// 1 thread is the configuration where the pool is degenerate, 3 is the
+    /// awkward one where completion order is guaranteed not to be read
+    /// order. The count and the decoded geometry must agree everywhere —
+    /// `sink.push` order is the spill order is the archive, so any drift
+    /// here is a byte drift downstream.
+    #[test]
+    fn connectors_are_identical_at_every_thread_count() {
+        let outer = crossroads(&[(4u32, vec![LANE_LEFT, LANE_THROUGH, LANE_RIGHT])]);
+        // The tagged north approach keeps left + right (through dropped);
+        // the three untagged approaches keep two turns each: 2 + 6.
+        par::set_threads(1);
+        let (emitted_one, lines_one) = stream(&outer);
+        assert_eq!(emitted_one as usize, lines_one.len());
+        for threads in [2usize, 3, 8] {
+            par::set_threads(threads);
+            // A fresh fixture per count: `stream` spills beside the graph
+            // dir, and reusing one dir would serialize the runs through the
+            // same `features.tmp`.
+            let fixture =
+                crossroads(&[(4u32, vec![LANE_LEFT, LANE_THROUGH, LANE_RIGHT])]);
+            let (emitted, lines) = stream(&fixture);
+            assert_eq!(
+                emitted, emitted_one,
+                "{threads} threads changed the connector count"
+            );
+            assert_eq!(
+                lines, lines_one,
+                "{threads} threads changed the connector bytes"
+            );
+        }
+        par::set_threads(
+            std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
+        );
+    }
+
     /// **A connector must start and end on the asphalt the renderer actually paints.**
     ///
     /// Two defects met here and neither could be fixed alone. The ends disagreed — the approach was

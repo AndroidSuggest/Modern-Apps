@@ -48,6 +48,7 @@ use std::path::Path;
 
 use osm_ingest::proto::{err, Result};
 use tile_build::geom::Geometry;
+use tile_build::progress::Progress;
 use tilecodec::mamaps::dict::LAYER_LANDTYPE;
 
 use super::{kind, Class, TagSource};
@@ -351,7 +352,15 @@ pub fn stream_prepared(
     if is_shapefile {
         let mut reader = crate::shapefile::ShapeReader::open(path)?;
         reader.clip_to(bbox);
+        // The `.shp` cursor is single-threaded by construction — one
+        // sequential record stream — so this stays serial and the bar is
+        // the fix: a planet coastline product is ~1 GB of records with
+        // nothing on stdout today. Ticked per record read, kept or not, so
+        // it spans the whole file.
+        let mut bar =
+            Progress::new("Land: coastline".to_string(), reader.records(), "record(s)", true);
         while let Some(rings) = reader.next()? {
+            bar.tick("record(s)");
             // One mamaps feature per polygon, not per record: a record can hold several islands, and
             // the tessellator wants one exterior with its own holes.
             for polygon in crate::shapefile::group(rings) {
@@ -359,6 +368,7 @@ pub fn stream_prepared(
                 written += 1;
             }
         }
+        bar.finish("record(s)");
         println!(
             "  {} land polygon(s) kept, {} outside the extract",
             written, reader.skipped,
@@ -367,10 +377,18 @@ pub fn stream_prepared(
         let text = std::fs::read_to_string(path).map_err(|e| {
             osm_ingest::proto::Error(format!("cannot read {}: {e}", path.display()))
         })?;
+        // GeoJSON-seq is line-delimited, so the count is known up front and
+        // the bar spans the file. Lines still parse serially in file order:
+        // a malformed line is a fail-fast error naming its line, and
+        // parallel parse would reorder that diagnostic.
+        let total_lines = text.lines().filter(|line| !line.trim().is_empty()).count();
+        let mut bar =
+            Progress::new("Land: coastline".to_string(), total_lines, "line(s)", true);
         for (line_number, line) in text.lines().enumerate() {
             if line.trim().is_empty() {
                 continue;
             }
+            bar.tick("line(s)");
             let Some(feature) = tile_build::geojson::parse_feature(line) else {
                 return err(format!(
                     "{}:{}: not a GeoJSON feature",
@@ -389,6 +407,7 @@ pub fn stream_prepared(
                 written += 1;
             }
         }
+        bar.finish("line(s)");
     }
     if written == 0 {
         return err(format!(

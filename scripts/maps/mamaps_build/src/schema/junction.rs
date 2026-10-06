@@ -188,7 +188,10 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use osm_ingest::proto::{err, Result};
+use rayon::prelude::*;
 use tile_build::geom::Geometry;
+use tile_build::par;
+use tile_build::progress::Progress;
 use tilecodec::mamaps::body::{
     LANE_LEFT, LANE_NONE, LANE_REVERSE, LANE_RIGHT, LANE_SHARP_LEFT, LANE_SHARP_RIGHT,
     LANE_SLIGHT_LEFT, LANE_SLIGHT_RIGHT, LANE_THROUGH,

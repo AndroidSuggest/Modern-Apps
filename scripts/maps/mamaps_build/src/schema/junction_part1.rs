@@ -116,39 +116,163 @@ struct InEdges {
 impl InEdges {
     fn build(graph: &Graph) -> Result<InEdges> {
         let node_count = graph.node_count;
-        let mut start = vec![0u32; node_count as usize + 2];
-        let mut total = 0usize;
-        for n in 0..node_count {
-            for idx in graph.edge_ptr(n)..graph.edge_ptr(n + 1) {
-                if !is_drivable(graph.edge_type(idx)) {
-                    continue;
-                }
-                let target = graph.edge_target(idx, n as u32)?;
-                if u64::from(target) >= node_count {
-                    return err(format!(
-                        "edge {idx} targets node {target}, past the {node_count} in the graph"
-                    ));
-                }
-                // Counted one slot high, so the prefix sum below leaves `start[t]` pointing at
-                // node `t`'s first slot and `start[t + 1]` one past its last.
-                start[target as usize + 1] += 1;
-                total += 1;
-            }
+        // Parallel counting sort, not a naive `par_iter`: the serial
+        // `start[target + 1] += 1` is a cross-iteration hazard, so the count
+        // goes through one shared atomic slot per target instead — spread
+        // over `node_count + 1` slots, so the updates are essentially
+        // uncontended — and the fill through the same slots as cursors.
+        //
+        // Memory is the serial shape, not per-shard histograms (shards x
+        // nodes would be tens of GB at planet scale): one atomic slot per
+        // node plus the edge table itself, the same peak as the serial
+        // `start` + `fill` pair this replaces.
+        //
+        // Order is the serial order: sources are visited `n` ascending,
+        // `edge_ptr` ascending, and each node's slice is restored to
+        // ascending `edge_idx` after the fill, so `incoming.of(n)` holds
+        // exactly what the serial loop built and downstream pairing is
+        // unchanged at every thread count.
+        use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+        use std::sync::Mutex;
+        let slots = node_count as usize + 2;
+        let counts: Vec<AtomicU32> = (0..slots).map(|_| AtomicU32::new(0)).collect();
+        // The first corrupt edge met, serialised: a bounds failure and an
+        // escape-row failure are both fatal, and the message keeps the
+        // serial wording. Checked between phases, so a corrupt graph never
+        // fills (or sorts) a partial index.
+        let first_err: Mutex<Option<osm_ingest::proto::Error>> = Mutex::new(None);
+        let failed = AtomicBool::new(false);
+        // Shards partition the *source* nodes: every edge is visited exactly
+        // once however the ranges fall, so each target's total is exact.
+        let threads = par::threads().max(1);
+        let want_tasks = threads.saturating_mul(4).max(1);
+        let shard_len = ((node_count as usize) / want_tasks).max(1);
+        let mut shards: Vec<std::ops::Range<u64>> = Vec::new();
+        let mut lo = 0u64;
+        while lo < node_count {
+            let hi = (lo + shard_len as u64).min(node_count);
+            shards.push(lo..hi);
+            lo = hi;
         }
-        for i in 1..start.len() {
-            start[i] += start[i - 1];
-        }
-        let mut fill = start.clone();
-        let mut edges = vec![0u32; total];
-        for n in 0..node_count {
-            for idx in graph.edge_ptr(n)..graph.edge_ptr(n + 1) {
-                if !is_drivable(graph.edge_type(idx)) {
-                    continue;
+        // Phase 1: count one slot high, so the prefix sum below leaves
+        // `start[t]` pointing at node `t`'s first slot.
+        par::install(|| {
+            shards.par_iter().for_each(|range| {
+                for n in range.clone() {
+                    // Another shard already found corruption: stop feeding
+                    // counts nobody will read. Checked per node, not per
+                    // edge, so the fast path pays one relaxed load.
+                    if failed.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    for idx in graph.edge_ptr(n)..graph.edge_ptr(n + 1) {
+                        if !is_drivable(graph.edge_type(idx)) {
+                            continue;
+                        }
+                        let target = match graph.edge_target(idx, n as u32) {
+                            Ok(t) => t,
+                            Err(e) => {
+                                failed.store(true, Ordering::Relaxed);
+                                let mut guard = first_err
+                                    .lock()
+                                    .unwrap_or_else(|p| p.into_inner());
+                                if guard.is_none() {
+                                    *guard = Some(e);
+                                }
+                                break;
+                            }
+                        };
+                        if u64::from(target) >= node_count {
+                            failed.store(true, Ordering::Relaxed);
+                            let mut guard =
+                                first_err.lock().unwrap_or_else(|p| p.into_inner());
+                            if guard.is_none() {
+                                *guard = Some(osm_ingest::proto::Error(format!(
+                                    "edge {idx} targets node {target}, past the {node_count} in the graph"
+                                )));
+                            }
+                            break;
+                        }
+                        counts[target as usize + 1].fetch_add(1, Ordering::Relaxed);
+                    }
                 }
-                let target = graph.edge_target(idx, n as u32)? as usize;
-                edges[fill[target] as usize] = idx;
-                fill[target] += 1;
-            }
+            });
+        });
+        if let Some(e) = first_err.lock().unwrap_or_else(|p| p.into_inner()).take() {
+            return Err(e);
+        }
+        // Serial prefix sum, in place: the same array then serves as the
+        // phase-2 fill cursors with no second allocation. The add comes
+        // *before* the snapshot — slot i counts edges targeting node i-1,
+        // so the running total *with* this slot folded in is node i's
+        // block start (slot 0 targets no node and is always empty, pinning
+        // start[0] at 0). Snapshotting before the add shifts every block
+        // one slot down and empties node 0, which is exactly the failure
+        // mode to watch for here.
+        let mut total = 0u32;
+        let mut start = vec![0u32; slots];
+        for (i, slot) in counts.iter().enumerate() {
+            let c = slot.load(Ordering::Relaxed);
+            total = total.checked_add(c).expect(
+                "drivable edges fit u32: Graph::load refuses an edge_count past u32::MAX",
+            );
+            slot.store(total, Ordering::Relaxed);
+            start[i] = total;
+        }
+        // Phase 2: disjoint-slice fill. Every slot written is claimed by
+        // exactly one `fetch_add`, so no two threads share one; phase 1
+        // validated every edge, so the defensive skips below are unreachable
+        // and only guard against filling a corrupt index silently.
+        //
+        // `Vec<AtomicU32>` rather than `&mut Vec<u32>`: the table is shared
+        // across workers, and atomics are `Sync` where a unique borrow is
+        // not. Same 4 bytes a slot, converted back after the join.
+        let edges: Vec<AtomicU32> =
+            std::iter::repeat_with(|| AtomicU32::new(0)).take(total as usize).collect();
+        failed.store(false, Ordering::Relaxed);
+        par::install(|| {
+            shards.par_iter().for_each(|range| {
+                for n in range.clone() {
+                    if failed.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    for idx in graph.edge_ptr(n)..graph.edge_ptr(n + 1) {
+                        if !is_drivable(graph.edge_type(idx)) {
+                            continue;
+                        }
+                        let Ok(target) = graph.edge_target(idx, n as u32) else {
+                            failed.store(true, Ordering::Relaxed);
+                            continue;
+                        };
+                        if u64::from(target) >= node_count {
+                            failed.store(true, Ordering::Relaxed);
+                            continue;
+                        }
+                        let at =
+                            counts[target as usize].fetch_add(1, Ordering::Relaxed) as usize;
+                        // `at` is in-bounds by construction (cursor < start
+                        // + count); the check keeps a logic bug a panic
+                        // rather than memory unsafety.
+                        if let Some(slot) = edges.get(at) {
+                            slot.store(idx, Ordering::Relaxed);
+                        }
+                    }
+                }
+            });
+        });
+        if failed.load(Ordering::Relaxed) {
+            return err(
+                "the graph changed between the junction count and fill passes".to_string(),
+            );
+        }
+        let mut edges: Vec<u32> =
+            edges.into_iter().map(AtomicU32::into_inner).collect();
+        // Restore ascending `edge_idx` within each node: the serial visit
+        // order, and what `incoming.of(n)` has always held. Slices average a
+        // couple of edges, so this pass is a linear walk, not a sort cost.
+        for n in 0..node_count as usize {
+            let (lo, hi) = (start[n] as usize, start[n + 1] as usize);
+            edges[lo..hi].sort_unstable();
         }
         start.truncate(node_count as usize + 1);
         Ok(InEdges { start, edges })
