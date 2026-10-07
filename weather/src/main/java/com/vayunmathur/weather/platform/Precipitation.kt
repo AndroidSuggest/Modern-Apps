@@ -6,7 +6,7 @@ import com.vayunmathur.weather.domain.parseLocalIsoToEpochSec
 import com.vayunmathur.weather.network.Minutely15
 
 /**
- * Short-range precipitation nowcast built from Open-Meteo's 15-minute
+ * Short-range precipitation nowcast built from the bundle's 15-minute
  * [Minutely15] series. Returns a localized string like "Raining now",
  * "Rain in ~30 min", or "No rain in the next 2 hours" — or null when there
  * is no usable data.

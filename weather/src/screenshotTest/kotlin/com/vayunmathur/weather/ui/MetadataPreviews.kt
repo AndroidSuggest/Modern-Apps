@@ -75,8 +75,8 @@ private fun <T> withHistory(sample: List<T>): List<T> {
 
 /**
  * [HISTORY_HOURS] of history followed by 24 hours from [NOW_ISO_HOUR] onwards.
- * Open-Meteo returns local-time ISO strings with no offset — [UTC_OFFSET_SEC]
- * is what turns them back into instants.
+ * The bundle mapper emits local-time ISO strings with no offset —
+ * [UTC_OFFSET_SEC] is what turns them back into instants.
  */
 private val SAMPLE_HOURLY = Hourly(
     time = historyHourLabels() + listOf(
@@ -235,7 +235,7 @@ private val SAMPLE_DAILY = Daily(
     uvIndexMax = listOf(5.9, 6.1, 3.8, 6.6, 6.9, 7.1, 6.2, 6.4, 5.7, 6.8, 7.2, 7.0, 4.4, 5.6),
     precipitationProbabilityMax = listOf(20, 10, 65, 25, 5, 0, 10, 15, 30, 5, 0, 0, 70, 25),
     precipitationSum = listOf(0.2, 0.0, 4.1, 0.5, 0.0, 0.0, 0.1, 0.0, 0.8, 0.0, 0.0, 0.0, 5.4, 0.4),
-    // A real Open-Meteo lunation (waxing gibbous through full), relabelled onto
+    // A real lunation (waxing gibbous through full), relabelled onto
     // the sample fortnight. The moon is a 2%-lit sliver on these actual dates, which
     // would render as an all-but-invisible disc in the store screenshot.
     moonPhase = listOf(
@@ -313,7 +313,7 @@ private val LONDON = SavedLocation(
  *  - Order matters, and it comes from the function names. The generated PNG filenames embed
  *    the function name, so `Preview1Forecast`/`Preview2Hour`/... sort into listing order.
  *    Renumber the functions if you reorder the listing.
- *  - Everything must be a literal. Open-Meteo, the Room cache and the device's regional
+ *  - Everything must be a literal. The bundle API, the Room cache and the device's regional
  *    preferences do not exist here, so the state above is the whole input — which is also
  *    what makes the output reproducible from a clean checkout. Timestamps hang off
  *    [NOW_EPOCH_SEC] rather than the clock for the same reason.

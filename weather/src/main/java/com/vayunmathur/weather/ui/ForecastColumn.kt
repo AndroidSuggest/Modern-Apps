@@ -63,9 +63,15 @@ internal fun ForecastColumn(
     val scrollState = rememberScrollState()
 
     PullToRefreshBox(
-        isRefreshing = state.refreshing,
+        // No pull indicator on first load: the centered LoadingIndicator below
+        // already covers it, and the two spinners stack. Refreshes still show it.
+        isRefreshing = state.refreshing && forecast != null,
         onRefresh = { actions.refreshAll(force = true) },
         modifier = Modifier.fillMaxSize(),
+        // Same spot as the first-load LoadingIndicator (TopCenter + 64.dp):
+        // the default top-center slot overlaps the floating search bar.
+        indicatorAlignment = Alignment.TopCenter,
+        indicatorPadding = PaddingValues(top = 64.dp),
     ) {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(scrollState)) {
             MainSearchBar(

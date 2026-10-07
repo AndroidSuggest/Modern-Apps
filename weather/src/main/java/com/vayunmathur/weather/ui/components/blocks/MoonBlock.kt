@@ -41,7 +41,7 @@ import kotlin.math.sin
  * horizon has elapsed, over a translucent panel of rise / set times. The marker
  * is the moon itself, shaded to the current phase.
  *
- * [moonPhase] is Open-Meteo's `moon_phase` fraction — 0 and 1 are new, 0.25 is
+ * [moonPhase] is the bundle's `moon_phase` fraction — 0 and 1 are new, 0.25 is
  * first quarter, 0.5 is full, 0.75 is last quarter.
  */
 @Composable
@@ -169,7 +169,7 @@ private fun DrawScope.drawMoonDisc(
     }
 }
 
-/** Buckets Open-Meteo's phase fraction into the eight conventional phase names. */
+/** Buckets the moon phase fraction into the eight conventional phase names. */
 @StringRes
 private fun moonPhaseNameRes(phase: Double): Int = when {
     phase < 0.03 || phase > 0.97 -> R.string.moon_phase_new

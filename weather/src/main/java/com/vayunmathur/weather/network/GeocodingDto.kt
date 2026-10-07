@@ -4,8 +4,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Self-hosted geocoding response (`GET /wx/v1/search?name=...`), shape 1:1
- * with the Open-Meteo geocoding API it replaces.
+ * On-device place catalogue response (`GeoDatabase.searchPlaces`), with the
+ * same result fields city search has always shown.
  */
 @Serializable
 data class GeocodingResponse(val results: List<GeocodingResult> = emptyList())

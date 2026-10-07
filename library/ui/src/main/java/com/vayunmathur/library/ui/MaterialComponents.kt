@@ -1095,12 +1095,18 @@ fun Tab(
 /**
  * Shared pull-to-refresh container using the M3 Expressive contained loading
  * indicator (the spinner from the M2 era is gone).
+ *
+ * @param indicatorAlignment where the indicator sits. Default is the M3
+ * top-center slot; pass e.g. [Alignment.TopCenter] with a top padding to
+ * clear a floating bar the default would overlap.
  */
 @Composable
 fun PullToRefreshBox(
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
+    indicatorAlignment: Alignment = Alignment.TopCenter,
+    indicatorPadding: PaddingValues = PaddingValues(),
     content: @Composable BoxScope.() -> Unit,
 ) {
     val state = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
@@ -1110,10 +1116,14 @@ fun PullToRefreshBox(
         modifier = modifier,
         state = state,
         indicator = {
-            androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.LoadingIndicator(
-                state = state,
-                isRefreshing = isRefreshing,
-            )
+            Box(
+                modifier = Modifier.align(indicatorAlignment).padding(indicatorPadding),
+            ) {
+                androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.LoadingIndicator(
+                    state = state,
+                    isRefreshing = isRefreshing,
+                )
+            }
         },
         content = content,
     )

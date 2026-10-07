@@ -23,11 +23,11 @@ enum class WeatherMetric(@StringRes val title: Int) {
 }
 
 /**
- * The Open-Meteo `hourly=` variable name that backs each metric. Used by the
+ * The bundle `hourly` variable name that backs each metric. Used by the
  * map's grid-sampling query so the same measure shown in the graph can be
  * shaded across the area.
  */
-val WeatherMetric.openMeteoHourlyVar: String
+val WeatherMetric.bundleHourlyVar: String
     get() = when (this) {
         WeatherMetric.Temperature -> "temperature_2m"
         WeatherMetric.FeelsLike -> "apparent_temperature"

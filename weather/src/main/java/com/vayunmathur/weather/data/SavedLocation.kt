@@ -8,7 +8,7 @@ import androidx.room3.PrimaryKey
  * search ([isCurrent] = false) or auto-tracked from the device location
  * ([isCurrent] = true, single-row constraint enforced at the DAO level).
  *
- * [latitude] / [longitude] are what the Open-Meteo forecast endpoint accepts
+ * [latitude] / [longitude] are what the bundle endpoint accepts
  * directly. [name] / [country] are what the UI shows; for the current-device
  * row [name] is left blank until reverse geocoding fills it in.
  */

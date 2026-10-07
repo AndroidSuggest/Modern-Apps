@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 /**
  * Golden tests for the self-hosted bundle mapper: wire epochs in, the exact
- * naive-local strings Open-Meteo used to send out. Anchored on Berlin
+ * naive-local strings the domain layer consumes. Anchored on Berlin
  * (CEST, UTC+2 in October): 2026-10-07T01:00Z == "2026-10-07T03:00" local.
  */
 class WxBundleMapperTest {

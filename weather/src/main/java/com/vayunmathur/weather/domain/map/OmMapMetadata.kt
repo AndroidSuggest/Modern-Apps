@@ -2,7 +2,7 @@ package com.vayunmathur.weather.domain.map
 
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.weather.domain.WeatherMetric
-import com.vayunmathur.weather.domain.openMeteoHourlyVar
+import com.vayunmathur.weather.domain.bundleHourlyVar
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -10,7 +10,7 @@ import kotlinx.serialization.json.Json
 /**
  * Metadata for a spatial model, from
  * `https://api.vayunmathur.com/data_spatial/<model>/latest.json` (P1 tiles
- * passthrough; upstream is the Open-Meteo S3 bucket).
+ * passthrough; upstream is the model-data S3 bucket).
  *
  * - [referenceTime] is the model run (drives the `.om` folder path).
  * - [validTimes] are the hourly forecast steps (drive the time slider).
@@ -33,7 +33,7 @@ data class OmMapMetadata(
 
 /** The `.om` variable name backing [WeatherMetric]; identical to the JSON API name. */
 val WeatherMetric.omVariable: String
-    get() = openMeteoHourlyVar
+    get() = bundleHourlyVar
 
 private const val WIND_U = "wind_u_component_10m"
 private const val WIND_V = "wind_v_component_10m"

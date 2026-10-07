@@ -5,10 +5,9 @@ import com.vayunmathur.weather.R
 import com.vayunmathur.library.ui.R as UiR
 
 /**
- * Bucket the WMO weather codes Open-Meteo returns (0..99) into a handful of
- * categories we have icons + labels for. The mapping follows
- * https://open-meteo.com/en/docs#api_form table "Weather variable
- * documentation → weather_code".
+ * Bucket the WMO weather codes the bundle returns (0..99) into a handful of
+ * categories we have icons + labels for. The code table follows the WMO
+ * standard (No. 306, code table 4677).
  *
  * Use [forCode] from anywhere that needs a label / icon for a numeric code.
  */

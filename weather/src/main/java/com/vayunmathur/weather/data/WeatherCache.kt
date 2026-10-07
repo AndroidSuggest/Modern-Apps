@@ -10,7 +10,7 @@ import androidx.room3.Entity
  * Forecast and air quality are cached together under a single
  * [fetchedAtEpochMs] so every piece of weather data for a location shares one
  * "last updated" time and can't drift out of sync. [airQualityJson] is
- * nullable because Open-Meteo's air-quality endpoint can be unavailable for a
+ * nullable because air quality can be unavailable for a
  * point even when the forecast succeeds.
  *
  * Coordinates are rounded to 4 decimals (≈11 m) before insertion so we don't

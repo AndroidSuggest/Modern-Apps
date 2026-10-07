@@ -4,15 +4,14 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Subset of the air-quality response we use. Shape-origin: Open-Meteo's
- * `/v1/air-quality` (now served mapped from the self-hosted `wx/v1/bundle`
- * `aq` section).
+ * Subset of the air-quality response we use, mapped from the self-hosted
+ * `wx/v1/bundle` `aq` section.
  *
  * Provides US AQI (0..500 with 0..50 = good, 51..100 = moderate, …) plus
  * tree/grass/weed/ragweed/birch/olive/mugwort/alder pollen concentrations
  * (grains/m³). We collapse pollens into the standard three "categories"
  * for display: grass, tree (= max of tree species), weed (= max of weed
- * species). Open-Meteo returns nulls outside coverage areas.
+ * species). The section is absent outside coverage areas.
  */
 @Serializable
 data class AirQualityResponse(val current: AirQualityCurrent? = null)

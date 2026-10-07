@@ -16,7 +16,7 @@ import com.vayunmathur.weather.network.AirQualityCurrent
 
 /**
  * Pollen block — added beyond WeatherMaster's set since we already fetch
- * pollen counts from the Open-Meteo Air Quality endpoint. Same square
+ * pollen counts from the bundle's air-quality section. Same square
  * `extraLarge` shell as the other simple blocks.
  */
 @Composable

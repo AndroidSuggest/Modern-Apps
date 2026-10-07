@@ -9,7 +9,7 @@ import kotlinx.datetime.toLocalDateTime
  * [ForecastResponse]/[AirQualityResponse] types.
  *
  * Epoch→local-ISO formatting reproduces exactly the naive-local strings
- * Open-Meteo sends today (`yyyy-MM-dd'T'HH:mm` hourly/current/sun/moon,
+ * the domain layer consumes (`yyyy-MM-dd'T'HH:mm` hourly/current/sun/moon,
  * `yyyy-MM-dd` daily) using the bundle's own `utcOffset` — so
  * [com.vayunmathur.weather.domain.SelectedData] string-matching,
  * `MetricSeries`, the [com.vayunmathur.weather.platform.precipitationNowcast]
@@ -23,7 +23,7 @@ import kotlinx.datetime.toLocalDateTime
 
 private fun epochToNaiveLocal(epochSec: Long, utcOffsetSec: Int): String {
     // Shift by the location's offset, then format the wall clock — exactly
-    // the naive-local strings Open-Meteo sends today.
+    // the naive-local strings the domain layer consumes.
     val ldt = Instant.fromEpochSeconds(epochSec + utcOffsetSec)
         .toLocalDateTime(TimeZone.UTC)
     val d = ldt.date

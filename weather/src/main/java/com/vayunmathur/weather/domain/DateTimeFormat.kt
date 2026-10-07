@@ -109,7 +109,7 @@ private fun parseUtcIsoToEpochSec(iso: String): Long? =
         ?: runCatching { LocalDateTime.parse(iso.removeSuffix("Z")).toInstant(UtcOffset.ZERO).epochSeconds }.getOrNull()
 
 /**
- * Open-Meteo returns local-time ISO strings with no offset (e.g.
+ * The bundle mapper emits local-time ISO strings with no offset (e.g.
  * `2024-05-30T05:42`). Combine with `utc_offset_seconds` from the response to
  * recover a true epoch, falling back to explicit-offset / `Z` strings.
  */

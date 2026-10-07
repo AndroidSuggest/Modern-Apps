@@ -4,8 +4,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Subset of the forecast response we actually use. Shape-origin: Open-Meteo
- * `/v1/forecast` (now served mapped from the self-hosted `wx/v1/bundle`).
+ * Subset of the forecast response we actually use, mapped from the
+ * self-hosted `wx/v1/bundle`.
  *
  * We always request: current weather + hourly arrays + daily arrays in metric
  * units. Unit conversion for the UI happens at display time so swapping
@@ -25,10 +25,10 @@ data class ForecastResponse(
 )
 
 /**
- * Minimal Open-Meteo `/v1/forecast` response used only to resolve the IANA
- * time zone (and its current abbreviation) for a coordinate via
- * `timezone=auto`. Requested with a single trivial variable since the endpoint
- * rejects requests with no weather variables.
+ * Minimal bundle envelope used only to resolve the IANA
+ * time zone (and its current abbreviation) for a coordinate.
+ * Requested with `fields=tz`, which returns the envelope with no weather
+ * data at all.
  */
 @Serializable
 data class RegionTimezone(
@@ -38,9 +38,9 @@ data class RegionTimezone(
 )
 
 /**
- * Minimal Open-Meteo `/v1/forecast` response used to show the current
- * temperature next to a city-search result. Requests only `temperature_2m`
- * so the per-result lookups stay cheap.
+ * Minimal bundle response used to show the current
+ * temperature next to a city-search result. Requests only the `current`
+ * section so the per-result lookups stay cheap.
  */
 @Serializable
 data class CurrentTemperatureResponse(

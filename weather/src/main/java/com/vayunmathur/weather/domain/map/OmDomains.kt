@@ -1,7 +1,7 @@
 package com.vayunmathur.weather.domain.map
 
 /**
- * Grid geometry for an Open-Meteo spatial model, mirroring the relevant fields
+ * Grid geometry for a spatial model, mirroring the relevant fields
  * of `weather-map-layer/src/domains.ts`. A regular lat/lon grid: node `(j, i)`
  * sits at `lat = latMin + dy*j`, `lon = lonMin + dx*i`, with the `.om` array
  * stored `[ny, nx]`.

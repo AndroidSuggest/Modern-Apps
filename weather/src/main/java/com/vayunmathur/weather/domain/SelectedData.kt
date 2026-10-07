@@ -16,7 +16,7 @@ import kotlin.math.sqrt
  * sunrise/sunset ISO strings and the moon fields feed the UV + Sun + Moon
  * blocks.
  *
- * Resolution prefers hourly data for a selected hour (Open-Meteo exposes
+ * Resolution prefers hourly data for a selected hour (the bundle exposes
  * apparent temp, humidity, dew point, wind, pressure, visibility and UV
  * hourly), falls back to the matching day, and finally to `current`.
  */
