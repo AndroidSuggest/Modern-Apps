@@ -46,6 +46,18 @@ class CalculatorViewModel(
     GraphActions by graphActionAdapter(graph),
     UnitConverterActions by converterActionAdapter(converter) {
 
+    /**
+     * Java-visible single-arg constructor for AndroidViewModelFactory: it looks up
+     * `CalculatorViewModel(Application)` via reflection, which Kotlin's default-argument
+     * synthetic constructor does not expose.
+     */
+    constructor(application: Application) : this(
+        application,
+        CalculatorTab(),
+        GraphTab(),
+        UnitConverterTab(application),
+    )
+
     // ---- Shared ----
     var angleMode by mutableStateOf(AngleMode.RADIANS)
         private set
