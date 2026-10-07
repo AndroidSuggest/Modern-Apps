@@ -157,6 +157,7 @@ private fun Loading() {
 internal fun SourceFilter.labelRes(): Int = when (this) {
     SourceFilter.ALL -> R.string.filter_all
     SourceFilter.MODERN_APPS -> R.string.source_chip_modern_apps
+    SourceFilter.PROPRIETARY -> R.string.source_chip_proprietary
     SourceFilter.FDROID -> R.string.source_chip_fdroid
     SourceFilter.GRAPHENEOS -> R.string.source_chip_grapheneos
     SourceFilter.PLAYSTORE -> R.string.source_chip_play

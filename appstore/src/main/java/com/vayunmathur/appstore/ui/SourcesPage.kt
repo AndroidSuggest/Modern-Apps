@@ -54,6 +54,7 @@ fun SourcesPage(
     val autoInstallUpdates by viewModel.autoInstallUpdates.collectAsState()
     val enabledSources by viewModel.enabledSources.collectAsState()
     val fdroid = repos.find { it.url == DefaultRepos.FDROID.url }
+    val proprietary = repos.find { it.url == DefaultRepos.PROPRIETARY.url }
     val noneEnabled = AppSource.TOGGLEABLE.none { it in enabledSources }
     // Sync only refreshes the two offline indexes; with both off it has nothing to fetch.
     val nothingToSync = DefaultRepos.ALL.none { it.source in enabledSources }
@@ -128,6 +129,17 @@ fun SourcesPage(
             lastSync = fdroid?.lastSync ?: 0L,
             enabled = AppSource.FDROID in enabledSources,
             onEnabledChange = { viewModel.setSourceEnabled(AppSource.FDROID, it) },
+        )
+        SourceCard(
+            title = stringResource(R.string.source_chip_proprietary),
+            subtitle = DefaultRepos.PROPRIETARY.url,
+            pinLabel = stringResource(R.string.source_proprietary_pin),
+            pins = setOfNotNull(
+                proprietary?.fingerprint ?: DefaultRepos.PROPRIETARY.pinnedFingerprint
+            ),
+            lastSync = proprietary?.lastSync ?: 0L,
+            enabled = AppSource.PROPRIETARY in enabledSources,
+            onEnabledChange = { viewModel.setSourceEnabled(AppSource.PROPRIETARY, it) },
         )
         SourceCard(
             title = stringResource(R.string.source_play),

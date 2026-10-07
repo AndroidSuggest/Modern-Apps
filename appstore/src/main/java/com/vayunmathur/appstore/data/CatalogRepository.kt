@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 
 /** Which source a sync run is currently working on, for a progress line. */
-enum class SyncStep { FDROID, MODERN_APPS }
+enum class SyncStep { FDROID, MODERN_APPS, PROPRIETARY }
 
 /** What one sync run managed to do, per source. */
 data class SyncReport(
@@ -19,12 +19,14 @@ data class SyncReport(
     /** How many F-Droid apps carry the reproducible badge this sync. */
     val fdroidReproducible: Int = 0,
     val modernCount: Int? = null,
+    val proprietaryCount: Int? = null,
     /** Sources the user has switched off, which this run skipped rather than attempted. */
     val skipped: Set<AppSource> = emptySet(),
 ) {
     val anyFailed: Boolean
         get() = (AppSource.FDROID !in skipped && fdroidCount == null) ||
-            (AppSource.MODERN_APPS !in skipped && modernCount == null)
+            (AppSource.MODERN_APPS !in skipped && modernCount == null) ||
+            (AppSource.PROPRIETARY !in skipped && proprietaryCount == null)
 
     /** True when every offline source is switched off, so there was nothing to sync. */
     val allSkipped: Boolean
@@ -51,6 +53,7 @@ class CatalogRepository(
     private val appContext = context.applicationContext
     private val fdroidProvider = FDroidAppProvider(db, appContext, DefaultRepos.FDROID)
     private val modernProvider = FDroidAppProvider(db, appContext, DefaultRepos.MODERN_APPS)
+    private val proprietaryProvider = FDroidAppProvider(db, appContext, DefaultRepos.PROPRIETARY)
 
     val repos: StateFlow<List<RepoEntity>> =
         db.repoDao().allFlow().stateIn(scope, SharingStarted.Eagerly, emptyList())
@@ -143,12 +146,14 @@ class CatalogRepository(
     }
 
     /**
-     * Refresh both offline sources.
+     * Refresh all offline sources.
      *
      * Order matters: `packageName` is the cache table's primary key, so when a package is
      * published by both sources the *later* upsert wins the row. Modern Apps goes last —
      * every app in this repo is also on F-Droid, and the copy signed with this store's own
-     * key is the one that can be verified end to end.
+     * key is the one that can be verified end to end. Proprietary goes between F-Droid
+     * and Modern Apps: its allowlist is curated to avoid F-Droid overlap, and nothing
+     * outranks a first-party row.
      *
      * Each source is independent: one failing leaves the other's rows updated and its own
      * previous rows untouched, rather than aborting the whole run.
@@ -170,6 +175,13 @@ class CatalogRepository(
             null
         }
 
+        val proprietary = if (DefaultRepos.PROPRIETARY.source in enabled) {
+            onProgress(SyncStep.PROPRIETARY)
+            runCatching { proprietaryProvider.syncIntoDb() }.getOrNull()
+        } else {
+            null
+        }
+
         val modern = if (DefaultRepos.MODERN_APPS.source in enabled) {
             onProgress(SyncStep.MODERN_APPS)
             runCatching { modernProvider.syncIntoDb() }.getOrNull()
@@ -181,6 +193,7 @@ class CatalogRepository(
             fdroidCount = fdroid,
             fdroidReproducible = fdroidProvider.lastReproducibleCount,
             modernCount = modern,
+            proprietaryCount = proprietary,
             skipped = DefaultRepos.ALL.mapNotNullTo(mutableSetOf()) {
                 it.source.takeIf { source -> source !in enabled }
             },

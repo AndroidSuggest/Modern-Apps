@@ -168,6 +168,7 @@ fun AppStoreViewModel.syncSources() {
                 when (step) {
                     SyncStep.FDROID -> R.string.sync_step_fdroid
                     SyncStep.MODERN_APPS -> R.string.sync_step_modern_apps
+                    SyncStep.PROPRIETARY -> R.string.sync_step_proprietary
                 }
             )
         }
@@ -179,11 +180,15 @@ fun AppStoreViewModel.syncSources() {
                 report.allSkipped -> context.getString(R.string.sync_all_sources_off)
                 !report.anyFailed -> context.getString(
                     R.string.sync_done,
-                    (report.fdroidCount ?: 0) + (report.modernCount ?: 0),
+                    (report.fdroidCount ?: 0) + (report.modernCount ?: 0) +
+                        (report.proprietaryCount ?: 0),
                 )
-                report.fdroidCount == null && report.modernCount == null ->
+                report.fdroidCount == null && report.modernCount == null &&
+                    report.proprietaryCount == null ->
                     context.getString(R.string.sync_failed_all)
                 report.fdroidCount == null -> context.getString(R.string.sync_failed_fdroid)
+                report.proprietaryCount == null ->
+                    context.getString(R.string.sync_failed_proprietary)
                 else -> context.getString(R.string.sync_failed_modern_apps)
             }
         )

@@ -26,6 +26,7 @@
     <string name="source_chip_grapheneos">GrapheneOS</string>
     <string name="source_chip_play">Play Store</string>
     <string name="source_chip_accrescent">Accrescent</string>
+    <string name="source_chip_proprietary">Proprietary</string>
     <string name="filter_all">All</string>
     <string name="filter_with_count">%1$s (%2$d)</string>
 
@@ -47,10 +48,12 @@
     <string name="sync_in_progress">Syncing…</string>
     <string name="sync_step_fdroid">Checking F-Droid builds…</string>
     <string name="sync_step_modern_apps">Checking Modern Apps…</string>
+    <string name="sync_step_proprietary">Checking proprietary mirror…</string>
     <string name="sync_done">Catalogue updated — %1$d apps</string>
-    <string name="sync_failed_all">Neither source would sync. Your existing catalogue is unchanged.</string>
+    <string name="sync_failed_all">No source would sync. Your existing catalogue is unchanged.</string>
     <string name="sync_failed_fdroid">F-Droid didn\'t sync. Its existing apps are unchanged.</string>
     <string name="sync_failed_modern_apps">Modern Apps didn\'t sync. Its existing apps are unchanged.</string>
+    <string name="sync_failed_proprietary">The proprietary mirror didn\'t sync. Its existing apps are unchanged.</string>
     <!-- Message after tapping Sync sources with every source switched off. -->
     <string name="sync_all_sources_off">Nothing to sync — every source is switched off.</string>
     <string name="play_unavailable">Play Store results unavailable: %1$s</string>
@@ -236,6 +239,14 @@
     <string name="trust_accrescent_check_min_version">The download\'s version is at or above the minimum the signed list allows</string>
     <string name="trust_accrescent_limits">Accrescent publishes no per-file hashes and no reproducible builds, so the guarantee is the signature and minimum version, not source. Listings come from an ordinary server over gRPC; a bad response can only produce a file that fails these checks. Nobody scans the apps.</string>
 
+    <string name="trust_proprietary_summary">Curated free-but-proprietary apps fetched from Google Play by this store\'s own server and published in a signed index naming each version\'s hash and signing key.</string>
+    <string name="trust_proprietary_practice_curated">Only an explicit allowlist is mirrored, chosen by the store operator</string>
+    <string name="trust_proprietary_practice_signed_index">Versions, file hashes and expected signing keys are published in an index signed with this store\'s release key</string>
+    <string name="trust_proprietary_practice_play_origin">The files are the developers\' own Play builds, fetched unchanged rather than rebuilt</string>
+    <string name="trust_proprietary_check_index_signed">That signed index is checked against a key built into this store</string>
+    <string name="trust_proprietary_check_hash_and_key">Every downloaded file matches the hash and the signing key that index names for it</string>
+    <string name="trust_proprietary_limits">These are closed-source apps fetched by the operator, so you trust the operator to have fetched the genuine file, and there is no source to audit and no reproducible build. Nobody scans the apps.</string>
+
     <!-- Sources page. -->
     <string name="repos_sync_sources">Sync sources</string>
     <string name="source_modern_apps" translatable="false">Modern Apps</string>
@@ -244,4 +255,5 @@
     <string name="source_play">Play Store (anonymous)</string>
     <string name="source_play_pin">Nothing to pin: Google holds the signing key</string>
     <string name="source_accrescent_pin">Pinned to Accrescent\'s repodata signing key (ed25519)</string>
+    <string name="source_proprietary_pin">Pinned to this store\'s Play mirror signing key</string>
 </resources>

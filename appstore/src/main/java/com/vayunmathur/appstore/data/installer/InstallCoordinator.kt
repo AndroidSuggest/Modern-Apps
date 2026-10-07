@@ -171,6 +171,16 @@ class InstallCoordinator(
                         ?.let { mapOf("${app.packageName}.apk" to it) } ?: emptyMap(),
                     signerOrigin = "this store",
                 )
+                // This store's own Play mirror: the same release key signs the index, but
+                // the APKs carry the developers' keys, so the per-version signers from
+                // the signed index are the anchor — not this store's own certificate.
+                AppSource.PROPRIETARY -> InstallRequirement(
+                    expectedPackage = app.packageName,
+                    requiredSigners = app.expectedSigners.toSet(),
+                    expectedSha256 = app.apkSha256
+                        ?.let { mapOf("${app.packageName}.apk" to it) } ?: emptyMap(),
+                    signerOrigin = "this store's Play mirror",
+                )
                 else -> InstallRequirement(
                     expectedPackage = app.packageName,
                     requiredSigners = app.expectedSigners.toSet(),

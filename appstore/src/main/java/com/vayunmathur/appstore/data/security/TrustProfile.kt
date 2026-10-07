@@ -94,7 +94,15 @@ enum class TrustProfile {
      * is the pinned repo signing key and, per app, the signing certificate and minimum version
      * that key vouches for.
      */
-    ACCRESCENT;
+    ACCRESCENT,
+
+    /**
+     * This store's own Play mirror: curated free-but-proprietary APKs fetched from Google
+     * Play by the server and published in a signed F-Droid-format index. Trust is the
+     * pinned repo signing key and, per version, the developer signing certificate and
+     * APK hash that index vouches for.
+     */
+    PROPRIETARY;
 
     @get:StringRes
     val title: Int
@@ -104,6 +112,7 @@ enum class TrustProfile {
             GRAPHENEOS -> R.string.source_chip_grapheneos
             PLAY -> R.string.trust_play_title
             ACCRESCENT -> R.string.source_chip_accrescent
+            PROPRIETARY -> R.string.source_chip_proprietary
         }
 
     /** One line, shown under the heading on the app's page. */
@@ -115,6 +124,7 @@ enum class TrustProfile {
             GRAPHENEOS -> R.string.trust_grapheneos_summary
             PLAY -> R.string.trust_play_summary
             ACCRESCENT -> R.string.trust_accrescent_summary
+            PROPRIETARY -> R.string.trust_proprietary_summary
         }
 
     /** What the source itself does, beyond anything this app can check. */
@@ -144,6 +154,11 @@ enum class TrustProfile {
                 R.string.trust_accrescent_practice_developer_key,
                 R.string.trust_accrescent_practice_signed_list,
                 R.string.trust_accrescent_practice_min_version,
+            )
+            PROPRIETARY -> listOf(
+                R.string.trust_proprietary_practice_curated,
+                R.string.trust_proprietary_practice_signed_index,
+                R.string.trust_proprietary_practice_play_origin,
             )
         }
 
@@ -176,6 +191,10 @@ enum class TrustProfile {
                 R.string.trust_accrescent_check_key,
                 R.string.trust_accrescent_check_min_version,
             )
+            PROPRIETARY -> listOf(
+                R.string.trust_proprietary_check_index_signed,
+                R.string.trust_proprietary_check_hash_and_key,
+            )
         }
 
     /** Where this source is weaker than the others. Every source has one. */
@@ -187,6 +206,7 @@ enum class TrustProfile {
             GRAPHENEOS -> R.string.trust_grapheneos_limits
             PLAY -> R.string.trust_play_limits
             ACCRESCENT -> R.string.trust_accrescent_limits
+            PROPRIETARY -> R.string.trust_proprietary_limits
         }
 
     companion object {
@@ -200,6 +220,9 @@ enum class TrustProfile {
             // Accrescent apps are signed by their developers, not by Accrescent; trust is the
             // ed25519-signed allowlist that pins each app's signing certificate + min version.
             AppSource.ACCRESCENT -> ACCRESCENT
+            // Mirror apps are signed by their developers too; trust is this store's signed
+            // index pinning each version's signing certificate + APK hash.
+            AppSource.PROPRIETARY -> PROPRIETARY
         }
     }
 }

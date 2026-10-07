@@ -24,7 +24,16 @@ enum class AppSource {
      * verify-then-commit path with those values, plus the new min-version gate. See
      * [com.vayunmathur.appstore.data.accrescent.AccrescentRepository].
      */
-    ACCRESCENT;
+    ACCRESCENT,
+
+    /**
+     * This store's own Play mirror: a curated allowlist of free-but-proprietary apps
+     * (e.g. WhatsApp) fetched from Google Play by the server, stored on R2, and published
+     * as a signed F-Droid-format repo. Consumed exactly like the other offline repos —
+     * no Google contact at runtime. Per-version signer keys + APK hashes come from the
+     * signed index, so installs verify end to end.
+     */
+    PROPRIETARY;
 
     companion object {
         /**
@@ -40,7 +49,7 @@ enum class AppSource {
          * signed with this store's own key.
          */
         val PRIORITY: List<AppSource> =
-            listOf(GRAPHENEOS, MODERN_APPS, FDROID, ACCRESCENT, PLAYSTORE)
+            listOf(GRAPHENEOS, MODERN_APPS, PROPRIETARY, FDROID, ACCRESCENT, PLAYSTORE)
 
         /**
          * Sources the user may switch off, in the order the sources screen lists them.
@@ -50,7 +59,7 @@ enum class AppSource {
          * they belong to, and which must never be updated from anywhere else — so a switch
          * would either do nothing or strand three system packages on a stale build.
          */
-        val TOGGLEABLE: List<AppSource> = listOf(MODERN_APPS, FDROID, PLAYSTORE, ACCRESCENT)
+        val TOGGLEABLE: List<AppSource> = listOf(MODERN_APPS, PROPRIETARY, FDROID, PLAYSTORE, ACCRESCENT)
     }
 }
 
@@ -162,6 +171,12 @@ data class RepoDescriptor(
  * check the binary against. The f-droid.org archive is excluded for a different reason:
  * it exists to serve superseded versions, which is the opposite of what we want.
  *
+ * [PROPRIETARY] is the deliberate exception to the no-mirror rule: it is operated by
+ * the same party that ships this store (not a third party), serves only an explicit
+ * allowlist of free-but-proprietary apps that cannot come from source-built repos,
+ * and pins each version's developer signing key + APK hash in the signed index, so
+ * the install still verifies end to end.
+ *
  * Either of these can be switched off (see [AppSource.TOGGLEABLE]); neither can be replaced.
  */
 object DefaultRepos {
@@ -183,7 +198,16 @@ object DefaultRepos {
         supportsReproducibilityFeed = false,
     )
 
-    val ALL: List<RepoDescriptor> = listOf(FDROID, MODERN_APPS)
+    val PROPRIETARY = RepoDescriptor(
+        url = "https://ma.vayunmathur.com/proprietary/repo",
+        displayName = "Proprietary",
+        pinnedFingerprint =
+            "176fcb2525573e5be8e1cb3a496dd97b137e81ca5b887a1d32cb894b4e5717b4",
+        source = AppSource.PROPRIETARY,
+        supportsReproducibilityFeed = false,
+    )
+
+    val ALL: List<RepoDescriptor> = listOf(FDROID, MODERN_APPS, PROPRIETARY)
 
     /** Cache key written by the retired GitHub releases provider. */
     const val LEGACY_MODERN_APPS_REPO_KEY = "https://github.com/vayun-mathur/Modern-Apps"
