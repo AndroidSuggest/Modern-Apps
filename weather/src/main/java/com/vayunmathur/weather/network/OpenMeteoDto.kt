@@ -4,8 +4,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Subset of the Open-Meteo `/v1/forecast` response we actually use.
- * Endpoint: https://api.open-meteo.com/v1/forecast
+ * Subset of the forecast response we actually use. Shape-origin: Open-Meteo
+ * `/v1/forecast` (now served mapped from the self-hosted `wx/v1/bundle`).
  *
  * We always request: current weather + hourly arrays + daily arrays in metric
  * units. Unit conversion for the UI happens at display time so swapping
@@ -91,7 +91,7 @@ data class Hourly(
     @SerialName("visibility") val visibility: List<Double> = emptyList(),
     @SerialName("cloud_cover") val cloudCover: List<Int> = emptyList(),
     @SerialName("wind_gusts_10m") val windGusts: List<Double> = emptyList(),
-    @SerialName("uv_index") val uvIndex: List<Double> = emptyList(),
+    @SerialName("uv_index") val uvIndex: List<Double?> = emptyList(),
     @SerialName("is_day") val isDay: List<Int> = emptyList(),
 )
 
@@ -107,7 +107,7 @@ data class Daily(
     @SerialName("sunset") val sunset: List<String> = emptyList(),
     @SerialName("daylight_duration") val daylightDuration: List<Double> = emptyList(),
     @SerialName("sunshine_duration") val sunshineDuration: List<Double> = emptyList(),
-    @SerialName("uv_index_max") val uvIndexMax: List<Double> = emptyList(),
+    @SerialName("uv_index_max") val uvIndexMax: List<Double?> = emptyList(),
     @SerialName("precipitation_probability_max") val precipitationProbabilityMax: List<Int> = emptyList(),
     @SerialName("precipitation_sum") val precipitationSum: List<Double> = emptyList(),
     // 0/1 = new moon, 0.25 = first quarter, 0.5 = full, 0.75 = last quarter.

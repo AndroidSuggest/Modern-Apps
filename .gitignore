@@ -64,6 +64,12 @@ health/src/main/assets/catalog.db
 health/src/main/assets/catalog.db.br
 health/src/main/assets/catalog.db.meta.json
 
+# Built by scripts/generate_places_db.py from GeoNames cities1000. Same deal
+# as the health catalogue: generated at build time, never committed.
+weather/src/main/assets/places.db
+weather/src/main/assets/places.db.br
+weather/src/main/assets/places.db.meta.json
+
 # Compose preview screenshot rendering (common-conventions-preview-metadata). These PNGs
 # are an intermediate: the `metadata` task copies them into metadata_data/photos/<module>,
 # which is what is committed and what release.sh reads. Committing them too would store

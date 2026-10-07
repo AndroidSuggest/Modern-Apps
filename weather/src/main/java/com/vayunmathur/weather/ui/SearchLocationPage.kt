@@ -44,12 +44,10 @@ import com.vayunmathur.weather.network.GeocodingResult
 import com.vayunmathur.weather.network.WeatherApi
 import com.vayunmathur.weather.platform.WeatherViewModel
 import com.vayunmathur.weather.platform.rememberTempUnit
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.launch
 
 /**
  * Search-location screen registered as a `DialogPage()` route entry.
@@ -91,15 +89,22 @@ fun SearchLocationPage(backStack: NavBackStack<Route>, viewModel: WeatherViewMod
 
     LaunchedEffect(results) {
         temps = emptyMap()
-        coroutineScope {
-            results.forEach { r ->
-                launch {
-                    val temp = runCatching {
-                        WeatherApi.currentTemperature(r.latitude, r.longitude)
-                    }.getOrNull()
-                    temps = temps + (r.id to temp)
-                }
-            }
+        if (results.isEmpty()) return@LaunchedEffect
+        // One batch call for all rows (P4) instead of N parallel
+        // currentTemperature calls. Render path untouched.
+        val batch = runCatching {
+            WeatherApi.currentTemperatures(results.map { it.latitude to it.longitude })
+        }.getOrDefault(emptyMap())
+        temps = results.associate { r ->
+            // Match by coordinate (batch keys are rounded server-side; fall
+            // back to per-point lookup for any row the batch omitted).
+            val t = batch.entries.firstOrNull { (key, _) ->
+                kotlin.math.abs(key.first - r.latitude) < 0.005 &&
+                    kotlin.math.abs(key.second - r.longitude) < 0.005
+            }?.value ?: runCatching {
+                WeatherApi.currentTemperature(r.latitude, r.longitude)
+            }.getOrNull()
+            r.id to t
         }
     }
 

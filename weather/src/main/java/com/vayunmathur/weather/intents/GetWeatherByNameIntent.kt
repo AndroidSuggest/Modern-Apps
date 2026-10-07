@@ -13,7 +13,7 @@ data class LocationQueryInput(val name: String)
 
 /**
  * "Headless" activity launched by OpenAssistant's `get_weather_by_name`
- * tool. Resolves [LocationQueryInput.name] via Open-Meteo's geocoding API,
+ * tool. Resolves [LocationQueryInput.name] via self-hosted geocoding,
  * then fetches a forecast for the first match. Returns [WeatherData] with
  * `error` set if no place matched or the network call failed.
  */

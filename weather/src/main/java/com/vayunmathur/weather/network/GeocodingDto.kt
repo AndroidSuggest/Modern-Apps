@@ -4,8 +4,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Open-Meteo geocoding API response for `/v1/search?name=...`.
- * Endpoint: https://geocoding-api.open-meteo.com/v1/search
+ * Self-hosted geocoding response (`GET /wx/v1/search?name=...`), shape 1:1
+ * with the Open-Meteo geocoding API it replaces.
  */
 @Serializable
 data class GeocodingResponse(val results: List<GeocodingResult> = emptyList())

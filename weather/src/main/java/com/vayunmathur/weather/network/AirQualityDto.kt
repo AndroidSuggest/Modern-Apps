@@ -4,8 +4,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Subset of Open-Meteo's `/v1/air-quality` response we use. Endpoint:
- * https://air-quality-api.open-meteo.com/v1/air-quality
+ * Subset of the air-quality response we use. Shape-origin: Open-Meteo's
+ * `/v1/air-quality` (now served mapped from the self-hosted `wx/v1/bundle`
+ * `aq` section).
  *
  * Provides US AQI (0..500 with 0..50 = good, 51..100 = moderate, …) plus
  * tree/grass/weed/ragweed/birch/olive/mugwort/alder pollen concentrations

@@ -19,9 +19,9 @@ data class LatLonInput(val latitude: Double, val longitude: Double)
 
 /**
  * "Headless" activity launched by OpenAssistant's `get_weather` tool. Fetches
- * a fresh forecast from Open-Meteo for the supplied lat/lon and returns it as
- * a [WeatherData] payload. No UI — the activity finishes immediately as
- * dictated by the [AssistantIntent] base class.
+ * a fresh forecast from the self-hosted bundle for the supplied lat/lon and
+ * returns it as a [WeatherData] payload. No UI — the activity finishes
+ * immediately as dictated by the [AssistantIntent] base class.
  */
 @OptIn(InternalSerializationApi::class)
 class GetWeatherIntent : AssistantIntent<LatLonInput, WeatherData>(

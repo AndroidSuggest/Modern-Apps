@@ -11,6 +11,8 @@ import androidx.work.WorkerParameters
 import com.vayunmathur.weather.widget.glance.WeatherBlobGlanceWidget
 import com.vayunmathur.weather.widget.glance.WeatherGlanceWidget
 import com.vayunmathur.weather.network.WeatherApi
+import com.vayunmathur.weather.network.toAirQuality
+import com.vayunmathur.weather.network.toForecastResponse
 import java.util.concurrent.TimeUnit
 
 class WeatherRefreshWorker(
@@ -27,10 +29,11 @@ class WeatherRefreshWorker(
             val locations = repo.getLocations()
             for (location in locations) {
                 try {
-                    val forecast = WeatherApi.forecast(location.latitude, location.longitude)
-                    val airQuality = runCatching {
-                        WeatherApi.airQuality(location.latitude, location.longitude)
-                    }.getOrNull()
+                    // One bundle call carries forecast + AQ (same object,
+                    // split into the two cache halves below).
+                    val bundle = WeatherApi.bundle(location.latitude, location.longitude)
+                    val forecast = bundle.toForecastResponse()
+                    val airQuality = bundle.toAirQuality()
                     repo.writeForecastCache(location.latitude, location.longitude, forecast, airQuality)
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to refresh weather for ${location.name}: ${e.message}")

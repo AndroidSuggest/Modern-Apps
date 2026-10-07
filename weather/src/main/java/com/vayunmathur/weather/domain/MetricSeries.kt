@@ -182,8 +182,8 @@ fun metricSeries(
 private fun rawSeries(
     hourly: com.vayunmathur.weather.network.Hourly,
     metric: WeatherMetric,
-): List<Double> {
-    val outcome: List<Double> = when (metric) {
+): List<Double?> {
+    val outcome: List<Double?> = when (metric) {
         WeatherMetric.Temperature -> hourly.temperature
         WeatherMetric.FeelsLike -> hourly.apparentTemperature
         WeatherMetric.Humidity -> hourly.relativeHumidity.map { it.toDouble() }
@@ -212,7 +212,7 @@ private fun targetDateFor(
 
 private fun collectDayPoints(
     times: List<String>,
-    raw: List<Double>,
+    raw: List<Double?>,
     targetDate: String,
     utcOffsetSeconds: Int,
 ): List<MetricPoint> {

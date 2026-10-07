@@ -8,8 +8,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Metadata for an Open-Meteo spatial model, from
- * `https://map-tiles.open-meteo.com/data_spatial/<model>/latest.json`.
+ * Metadata for a spatial model, from
+ * `https://api.vayunmathur.com/data_spatial/<model>/latest.json` (P1 tiles
+ * passthrough; upstream is the Open-Meteo S3 bucket).
  *
  * - [referenceTime] is the model run (drives the `.om` folder path).
  * - [validTimes] are the hourly forecast steps (drive the time slider).
@@ -37,7 +38,8 @@ val WeatherMetric.omVariable: String
 private const val WIND_U = "wind_u_component_10m"
 private const val WIND_V = "wind_v_component_10m"
 
-private const val SPATIAL_BASE = "https://map-tiles.open-meteo.com/data_spatial"
+/** Self-hosted tiles origin: axum Range proxy on `api.vayunmathur.com` (P1). */
+private const val SPATIAL_BASE = "https://api.vayunmathur.com/data_spatial"
 
 private val metadataJson = Json { ignoreUnknownKeys = true }
 

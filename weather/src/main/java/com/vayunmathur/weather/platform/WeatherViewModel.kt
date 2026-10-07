@@ -17,8 +17,8 @@ import com.vayunmathur.weather.widget.glance.WeatherGlanceWidget
 import com.vayunmathur.weather.network.AirQualityResponse
 import com.vayunmathur.weather.network.ForecastResponse
 import com.vayunmathur.weather.network.WeatherApi
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import com.vayunmathur.weather.network.toAirQuality
+import com.vayunmathur.weather.network.toForecastResponse
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -144,17 +144,12 @@ class WeatherViewModel(
             val refreshing = prev?.copy(refreshing = true) ?: ForecastUiState(refreshing = true)
             current + (location.id to refreshing)
         }
-        val fetched: FetchResult = coroutineScope {
-            val forecastDeferred = async {
-                runCatching { WeatherApi.forecast(target.latitude, target.longitude) }
-            }
-            val airQualityDeferred = async {
-                runCatching {
-                    WeatherApi.airQuality(target.latitude, target.longitude)
-                }.getOrNull()
-            }
-            FetchResult(forecastDeferred.await(), airQualityDeferred.await())
-        }
+        // One bundle call carries forecast + AQ (same object, zero extra I/O).
+        val bundle = runCatching { WeatherApi.bundle(target.latitude, target.longitude) }
+        val fetched = FetchResult(
+            forecast = bundle.map { it.toForecastResponse() },
+            air = bundle.map { it.toAirQuality() }.getOrNull(),
+        )
         applyFetched(location, target, fetched)
     }
 
