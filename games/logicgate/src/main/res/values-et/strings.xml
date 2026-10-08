@@ -21,4 +21,8 @@
     <string name="hz">%1$s hz</string>
     <string name="expected">Eeldatud: %1$s</string>
     <string name="got_2">Tegelik: %1$s</string>
+    <string name="tick"></string>
+    <string name="sim_speed"></string>
+    <string name="no_chips_all"></string>
+    <string name="app_name" translatable="false"></string>
 </resources>
