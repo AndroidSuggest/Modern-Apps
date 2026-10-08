@@ -118,4 +118,5 @@
     <string name="share_invite_link">Condividi link di invito</string>
     <string name="share_invite_link_chooser">Condividi invito FindFamily</string>
     <string name="security_code">Codice di sicurezza</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
