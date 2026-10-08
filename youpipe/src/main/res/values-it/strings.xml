@@ -128,4 +128,6 @@
     <string name="cast_update_prompt">MA Cast è una versione troppo vecchia per riprodurre video sulla TV. Apertura della pagina dello store per consentirne l\'aggiornamento.</string>
     <string name="cast_failed">Impossibile avviare la trasmissione alla TV</string>
     <string name="app_name" translatable="false"></string>
+    <string name="playback_error"></string>
+    <string name="restore_unsupported_format"></string>
 </resources>
