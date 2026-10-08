@@ -26,4 +26,5 @@
         <item quantity="many">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> zablokowanych receptur.</item>
         <item quantity="other">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> zablokowanych receptur.</item>
     </plurals>
+    <string name="app_name" translatable="false"></string>
 </resources>
