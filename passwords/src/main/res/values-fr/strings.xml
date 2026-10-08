@@ -34,7 +34,7 @@
     <string name="passkey_user_name">Nom d’utilisateur</string>
     <string name="import_source_bitwarden">Bitwarden</string>
     <string name="hide">Masquer</string>
-    <string name="sync_error_generic">Échec de la synchronisation : <xliff:g id="reason" example="Espace insuffisant sur l’appareil">%1$s</xliff:g></string>
+    <string name="sync_error_generic">Échec de la synchronisation : <xliff:g id="reason" example="Espace insuffisant sur l’appareil">%1$s</xliff:g></string>
     <string name="add_password">Ajouter un mot de passe</string>
     <string name="label_password">Mot de passe</string>
     <string name="section_websites">Sites Web</string>
