@@ -56,7 +56,4 @@
     <string name="vibrate">バイブレーション</string>
     <string name="snooze_length">スヌーズの長さ</string>
     <string name="gradually_increase_volume">徐々に音量を上げる</string>
-    <string name="alarm_label_hint"></string>
-    <string name="channel_alarm_playing_name"></string>
-    <string name="channel_alarm_playing_description"></string>
 </resources>
