@@ -116,4 +116,18 @@
     <string name="lock_controls">Verrouiller les commandes</string>
     <string name="unlock_controls">Déverrouiller les commandes</string>
     <string name="app_name" translatable="false"></string>
+    <string name="cast_update_prompt"></string>
+    <string name="playback_error"></string>
+    <string name="cast_failed"></string>
+    <string name="video_stat_paid_format"></string>
+    <string name="cast_stop"></string>
+    <string name="cast_playing_on"></string>
+    <string name="cast_to_tv"></string>
+    <string name="video_info_paid_format"></string>
+    <string name="cast_install_prompt"></string>
+    <string name="label_keep_controls_visible"></string>
+    <string name="label_player"></string>
+    <string name="label_hide_paid"></string>
+    <string name="label_keep_controls_visible_description"></string>
+    <string name="restore_unsupported_format"></string>
 </resources>
