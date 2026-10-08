@@ -82,4 +82,16 @@
     <string name="saf_use_this_folder">Använd den här mappen</string>
     <string name="saf_save">Spara</string>
     <string name="saf_select_count">Välj (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
+    <string name="restored_n"></string>
+    <string name="delete_permanently_title"></string>
+    <string name="trash_request_failed"></string>
+    <string name="trash"></string>
+    <string name="trash_empty"></string>
+    <string name="restore"></string>
+    <string name="trash_auto_delete_note"></string>
+    <string name="delete_permanently_message"></string>
+    <string name="empty_trash"></string>
+    <string name="deleted_forever_n"></string>
+    <string name="delete_forever"></string>
+    <string name="moved_to_trash"></string>
 </resources>
