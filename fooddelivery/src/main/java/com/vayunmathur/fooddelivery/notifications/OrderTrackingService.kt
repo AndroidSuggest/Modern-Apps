@@ -7,7 +7,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationManagerCompat
 import com.vayunmathur.fooddelivery.api.BitesOrders
 import com.vayunmathur.fooddelivery.data.Order
@@ -49,11 +49,11 @@ class OrderTrackingService : Service() {
         try {
             startForegroundCompat(OrderLiveUpdate.build(this, Order(id = orderId)))
         } catch (e: SecurityException) {
-            Log.e(TAG, "startForeground failed", e)
+            Log.error(TAG, "startForeground failed", e)
             stopSelf()
             return START_NOT_STICKY
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "startForeground failed", e)
+            Log.error(TAG, "startForeground failed", e)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -77,16 +77,16 @@ class OrderTrackingService : Service() {
             }.getOrNull()
 
             if (order == null) {
-                Log.d(TAG, "order $orderId not found; stopping")
+                Log.debug(TAG, "order $orderId not found; stopping")
                 finish()
                 return
             }
 
-            Log.d(TAG, "order $orderId stage=${order.stage} eta=${order.etaMillis}")
+            Log.debug(TAG, "order $orderId stage=${order.stage} eta=${order.etaMillis}")
             notify(OrderLiveUpdate.build(this, order))
 
             if (order.isDone) {
-                Log.d(TAG, "order $orderId done; stopping")
+                Log.debug(TAG, "order $orderId done; stopping")
                 // Leave the terminal update visible briefly, then clear it.
                 delay(TERMINAL_LINGER_MS)
                 finish()
@@ -102,7 +102,7 @@ class OrderTrackingService : Service() {
         try {
             NotificationManagerCompat.from(this).notify(OrderLiveUpdate.NOTIFICATION_ID, notification)
         } catch (e: SecurityException) {
-            Log.w(TAG, "notify skipped (no permission)", e)
+            Log.status(TAG, "notify skipped (no permission)", e)
         }
     }
 

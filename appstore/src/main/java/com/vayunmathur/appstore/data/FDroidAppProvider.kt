@@ -1,7 +1,7 @@
 package com.vayunmathur.appstore.data
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -30,10 +30,10 @@ class FDroidAppProvider(
         val result = try {
             fetchVerifiedIndex()
         } catch (expected: Exception) {
-            Log.w(TAG, "sync of ${descriptor.displayName} failed", expected)
+            Log.status(TAG, "sync of ${descriptor.displayName} failed", expected)
             throw expected
         }
-        Log.i(
+        Log.status(
             TAG,
             "sync of ${descriptor.displayName}: fetched ${result.apps.size} " +
                 "apps (signer ${result.signerSha256.take(16)}…)"
@@ -42,7 +42,7 @@ class FDroidAppProvider(
         // previous rows so one bad sync cannot wipe the catalogue (issue: "catalogue
         // updated — 0 apps" left the Modern Apps section empty until the next good sync).
         if (result.apps.isEmpty()) {
-            Log.w(TAG, "sync of ${descriptor.displayName} parsed 0 apps; keeping cached rows")
+            Log.status(TAG, "sync of ${descriptor.displayName} parsed 0 apps; keeping cached rows")
             return@withContext 0
         }
         val repo = db.repoDao().all().find { it.url == descriptor.url }

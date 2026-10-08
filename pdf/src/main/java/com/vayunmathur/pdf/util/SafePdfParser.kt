@@ -1,6 +1,7 @@
 package com.vayunmathur.pdf.util
 
 import androidx.compose.ui.geometry.Offset
+import com.vayunmathur.library.log.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -188,7 +189,7 @@ object SafePdfParser {
         }
         val affine = maxErr <= TRANSFER_FIT_TOLERANCE
         if (!affine) {
-            android.util.Log.w(TAG, "soft-mask /TR is not affine (max err $maxErr), leaving mask untransformed")
+            Log.status(TAG, "soft-mask /TR is not affine (max err $maxErr), leaving mask untransformed")
         }
         return PdfPrimitive.SoftMaskTransfer(gain.toFloat(), bias.toFloat(), affine)
     }
@@ -288,7 +289,7 @@ object SafePdfParser {
         primStart: Int,
         expected: RuntimeException,
     ) {
-        android.util.Log.w(
+        Log.status(
             TAG,
             "primitive $primIndex of $count failed to decode at offset $primStart " +
                 "(wire v${header.wireVersion}), keeping clean prefix",
@@ -325,7 +326,7 @@ object SafePdfParser {
             DEFAULT_PAGE_HEIGHT
         }
         if (width != rawWidth || height != rawHeight) {
-            android.util.Log.w(
+            Log.status(
                 TAG,
                 "page dimensions $rawWidth x $rawHeight out of range, clamped to $width x $height"
             )
@@ -337,7 +338,7 @@ object SafePdfParser {
         val countRaw = rawCount.coerceAtLeast(0)
         val count = countRaw.coerceAtMost(MAX_PRIMITIVES)
         if (count < countRaw) {
-            android.util.Log.w(
+            Log.status(
                 TAG,
                 "primitive count $countRaw exceeds $MAX_PRIMITIVES, rendering the first $count"
             )
@@ -352,7 +353,7 @@ object SafePdfParser {
         // Neither direction throws: a throw here becomes a null page and an indefinite
         // spinner. An older-than-known version degrades the same way a newer one does —
         // parse what the tags allow and drop what they do not.
-        android.util.Log.w(
+        Log.status(
             "SafePdfParser",
             "Wire version $wireVersion outside 1..$WIRE_VERSION, attempting best-effort parse",
         )
@@ -368,10 +369,10 @@ object SafePdfParser {
         val start = decoder.outermostSoftMaskStart
         val dropped = primitives.size - start
         if (start >= primitives.size / 2) {
-            android.util.Log.w(TAG, "page ended inside a soft-mask bracket, dropping $dropped trailing prims")
+            Log.status(TAG, "page ended inside a soft-mask bracket, dropping $dropped trailing prims")
             primitives.subList(start, primitives.size).clear()
         } else {
-            android.util.Log.w(
+            Log.status(
                 TAG,
                 "page ended inside a soft-mask bracket spanning most of the page, keeping it"
             )

@@ -2,7 +2,7 @@ package com.vayunmathur.auto.platform
 
 import android.os.Handler
 import android.os.HandlerThread
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.protocol.AudioCodec
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalMessage
@@ -65,23 +65,23 @@ class MicSourceChannel(
     fun onChannelOpen() {
         open = true
         startMicThread()
-        Log.i(TAG, "mic channel open; acking upstream chunks")
+        Log.status(TAG, "mic channel open; acking upstream chunks")
     }
 
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
+            Log.status(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         if (type == GalMessage.Microphone.REQUEST) {
-            Log.d(TAG, "mic request (${payload.size}B); acking")
+            Log.debug(TAG, "mic request (${payload.size}B); acking")
             ack()
             return
         }
         val chunk = AudioCodec.decodeMicData(type, payload)
         if (chunk == null) {
-            Log.d(TAG, "unhandled mic message 0x${type.toString(HEX_RADIX)}")
+            Log.debug(TAG, "unhandled mic message 0x${type.toString(HEX_RADIX)}")
             return
         }
         val target = handler ?: run {
@@ -109,14 +109,14 @@ class MicSourceChannel(
         val target = handler ?: return
         target.post {
             if (!retentionAllowed()) {
-                Log.w(TAG, "mic turn without permission; retaining nothing")
+                Log.status(TAG, "mic turn without permission; retaining nothing")
                 turnCallback = null
                 retained = null
                 return@post
             }
             retained = ByteArray(0)
             turnCallback = onResult
-            Log.i(TAG, "mic turn started")
+            Log.status(TAG, "mic turn started")
         }
     }
 
@@ -132,7 +132,7 @@ class MicSourceChannel(
                 onEvent(AudioEvent.MicTurn(pcm.size.toLong()))
                 callback(pcm)
             } else {
-                Log.d(TAG, "mic turn ended with ${pcm.size}B; yielding nothing")
+                Log.debug(TAG, "mic turn ended with ${pcm.size}B; yielding nothing")
             }
         }
     }

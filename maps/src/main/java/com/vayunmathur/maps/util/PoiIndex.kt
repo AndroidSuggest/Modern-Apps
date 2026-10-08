@@ -1,7 +1,7 @@
 package com.vayunmathur.maps.util
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteOrder
@@ -399,19 +399,19 @@ object PoiIndex {
         val indexFile = File(dir, INDEX_FILE)
         val namesFile = File(dir, NAMES_FILE)
         if (!indexFile.isFile || !namesFile.isFile) {
-            Log.d(TAG, "POI side files absent (index=${indexFile.exists()} names=${namesFile.exists()})")
+            Log.debug(TAG, "POI side files absent (index=${indexFile.exists()} names=${namesFile.exists()})")
             return false
         }
         return try {
             mapped = PoiIndexSideFiles.mapSideFiles(dir, indexFile, namesFile)
-            Log.d(
+            Log.debug(
                 TAG,
                 "Loaded ${mapped?.count} POI records, names=${mapped?.namesLen}B, " +
                     "grid=${mapped?.cellCount ?: 0} cells, words=${mapped?.entryCount ?: 0}",
             )
             true
         } catch (e: java.io.IOException) {
-            Log.w(TAG, "Failed to map POI side files", e)
+            Log.status(TAG, "Failed to map POI side files", e)
             mapped = null
             false
         }
@@ -426,12 +426,12 @@ object PoiIndex {
 
     private fun readAttrs(buf: MappedByteBuffer, count: Int): Pair<MappedByteBuffer, Int>? {
         if (buf.capacity() < ATTRS_HEADER_BYTES) {
-            Log.w(TAG, "$ATTRS_FILE is truncated")
+            Log.status(TAG, "$ATTRS_FILE is truncated")
             return null
         }
         for (i in ATTRS_MAGIC.indices) {
             if (buf.get(i) != ATTRS_MAGIC[i]) {
-                Log.w(TAG, "$ATTRS_FILE has the wrong magic")
+                Log.status(TAG, "$ATTRS_FILE has the wrong magic")
                 return null
             }
         }
@@ -440,19 +440,19 @@ object PoiIndex {
         // never heard of is worth a line in the log all the same.
         val version = buf.get(ATTRS_VERSION_OFF).toInt()
         if (version != ATTRS_VERSION) {
-            Log.d(TAG, "$ATTRS_FILE is version $version, expected $ATTRS_VERSION")
+            Log.debug(TAG, "$ATTRS_FILE is version $version, expected $ATTRS_VERSION")
         }
         val attrCount = buf.getInt(ATTRS_COUNT_OFF)
         if (attrCount != count) {
-            Log.w(TAG, "$ATTRS_FILE has $attrCount slots but the index has $count; ignoring it")
+            Log.status(TAG, "$ATTRS_FILE has $attrCount slots but the index has $count; ignoring it")
             return null
         }
         val blobStart = ATTRS_HEADER_BYTES + ATTR_OFFSET_BYTES * attrCount
         if (blobStart > buf.capacity()) {
-            Log.w(TAG, "$ATTRS_FILE offset array runs past the file")
+            Log.status(TAG, "$ATTRS_FILE offset array runs past the file")
             return null
         }
-        Log.d(TAG, "Loaded POI attributes for $attrCount record(s)")
+        Log.debug(TAG, "Loaded POI attributes for $attrCount record(s)")
         return buf to blobStart
     }
 
@@ -466,7 +466,7 @@ object PoiIndex {
             is IndexOutOfBoundsException,
             is IllegalArgumentException,
             -> {
-                Log.w(TAG, "Failed to map $file", cause)
+                Log.status(TAG, "Failed to map $file", cause)
                 return null
             }
             else -> throw cause
@@ -494,17 +494,17 @@ object PoiIndex {
         if (buf.capacity() < SPATIAL_HEADER_BYTES) return null
         for (i in SPATIAL_MAGIC.indices) {
             if (buf.get(i) != SPATIAL_MAGIC[i]) {
-                Log.w(TAG, "$SPATIAL_FILE has the wrong magic; ignoring it")
+                Log.status(TAG, "$SPATIAL_FILE has the wrong magic; ignoring it")
                 return null
             }
         }
         if (buf.getInt(SPATIAL_VERSION_OFF) != SPATIAL_VERSION) {
-            Log.w(TAG, "$SPATIAL_FILE version ${buf.getInt(SPATIAL_VERSION_OFF)} unsupported; ignoring it")
+            Log.status(TAG, "$SPATIAL_FILE version ${buf.getInt(SPATIAL_VERSION_OFF)} unsupported; ignoring it")
             return null
         }
         val records = buf.getInt(SPATIAL_COUNT_OFF)
         if (records != count) {
-            Log.w(TAG, "$SPATIAL_FILE covers $records record(s), index has $count; ignoring it")
+            Log.status(TAG, "$SPATIAL_FILE covers $records record(s), index has $count; ignoring it")
             return null
         }
         val cellCount = buf.getInt(SPATIAL_CELL_COUNT_OFF)
@@ -513,7 +513,7 @@ object PoiIndex {
         val need = SPATIAL_HEADER_BYTES + CELL_SLOT_BYTES * cellCount +
             CELL_SLOT_BYTES * (cellCount + 1) + CELL_SLOT_BYTES * count
         if (cellCount < 0 || cols < 0 || need > buf.capacity()) {
-            Log.w(TAG, "$SPATIAL_FILE is truncated; ignoring it")
+            Log.status(TAG, "$SPATIAL_FILE is truncated; ignoring it")
             return null
         }
         return Grid(
@@ -537,17 +537,17 @@ object PoiIndex {
         if (buf.capacity() < NAME_INDEX_HEADER_BYTES) return null
         for (i in NAME_INDEX_MAGIC.indices) {
             if (buf.get(i) != NAME_INDEX_MAGIC[i]) {
-                Log.w(TAG, "$NAME_INDEX_FILE has the wrong magic; ignoring it")
+                Log.status(TAG, "$NAME_INDEX_FILE has the wrong magic; ignoring it")
                 return null
             }
         }
         if (buf.getInt(NAME_INDEX_VERSION_OFF) != NAME_INDEX_VERSION) {
-            Log.w(TAG, "$NAME_INDEX_FILE version ${buf.getInt(NAME_INDEX_VERSION_OFF)} unsupported; ignoring it")
+            Log.status(TAG, "$NAME_INDEX_FILE version ${buf.getInt(NAME_INDEX_VERSION_OFF)} unsupported; ignoring it")
             return null
         }
         val records = buf.getInt(NAME_INDEX_COUNT_OFF)
         if (records != count) {
-            Log.w(
+            Log.status(
                 TAG,
                 "$NAME_INDEX_FILE covers $records record(s), index has $count; ignoring it",
             )
@@ -557,7 +557,7 @@ object PoiIndex {
         if (entries < 0 ||
             NAME_INDEX_HEADER_BYTES + NAME_INDEX_ENTRY_BYTES * entries > buf.capacity().toLong()
         ) {
-            Log.w(TAG, "$NAME_INDEX_FILE is truncated; ignoring it")
+            Log.status(TAG, "$NAME_INDEX_FILE is truncated; ignoring it")
             return null
         }
         return buf to entries
@@ -686,7 +686,7 @@ object PoiIndex {
     ): PoiAttributes? {
         val m = mapped
         if (m?.attrs == null) {
-            Log.d(
+            Log.debug(
                 TAG,
                 "attributesNear: sidecar absent (index loaded=${m != null}); " +
                     "no attrs for \"$name\" at ($lat, $lon)",
@@ -700,7 +700,7 @@ object PoiIndex {
         for (rec in candidates) {
             val attrs = attributesAt(rec.ordinal)
             if (attrs != null) {
-                Log.d(
+                Log.debug(
                     TAG,
                     "attributesNear: \"$name\" at ($lat, $lon) matched nothing by name; " +
                         "using nearest-with-attrs \"${rec.name}\"",
@@ -708,7 +708,7 @@ object PoiIndex {
                 return attrs
             }
         }
-        Log.d(
+        Log.debug(
             TAG,
             "attributesNear: \"$name\" at ($lat, $lon) matched none of " +
                 "${candidates.size} candidate(s) within $maxMeters m",

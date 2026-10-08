@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.service.ProjectionService
 
 /**
@@ -20,7 +20,7 @@ class WirelessStartupReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_WIRELESS_STARTUP) return
-        Log.i(TAG, "wireless startup announced; entering the BT_START chain")
+        Log.status(TAG, "wireless startup announced; entering the BT_START chain")
         context.startForegroundService(
             Intent(context, CarStartupService::class.java)
                 .setAction(CarStartupService.ACTION_BT_START),

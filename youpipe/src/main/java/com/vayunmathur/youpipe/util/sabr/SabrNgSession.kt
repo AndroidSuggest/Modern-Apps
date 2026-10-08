@@ -1,6 +1,6 @@
 package com.vayunmathur.youpipe.util.sabr
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import org.schabi.newpipe.extractor.exceptions.ExtractionException
 import org.schabi.newpipe.extractor.services.youtube.sabrng.YoutubeSabrInfo
 import org.schabi.newpipe.extractor.services.youtube.sabrng.YoutubeSabrRequest
@@ -308,7 +308,7 @@ class SabrNgSession(
         } catch (_: Exception) {
             null
         }
-        Log.d(
+        Log.debug(
             TAG,
             "pump video=${spec.videoId} playhead=${currentPlayheadMs()} " +
                 "supplier=$supplied fallback=$playerTimeMs " +
@@ -327,7 +327,7 @@ class SabrNgSession(
         val now = System.currentTimeMillis()
         if (now - lastDeadSupplierLogMs < DEAD_SUPPLIER_LOG_INTERVAL_MS) return
         lastDeadSupplierLogMs = now
-        Log.w(
+        Log.status(
             TAG,
             "SABR live playhead supplier reads 0 while segment progress is at " +
                 "$playerTimeMs ms for ${spec.videoId}; using segment fallback " +
@@ -342,9 +342,9 @@ class SabrNgSession(
         // dump it in chunks (logcat truncates single messages past ~4KB) so a terminal stall
         // can be diagnosed from logcat without a debugger.
         try {
-            Log.w(TAG, "SABR session failed for ${spec.videoId}: ${error.message}")
+            Log.status(TAG, "SABR session failed for ${spec.videoId}: ${error.message}")
             sessionTrace().chunked(TRACE_CHUNK_CHARS).forEachIndexed { index, chunk ->
-                Log.w(TAG, "SABR trace ${spec.videoId} [$index]: $chunk")
+                Log.status(TAG, "SABR trace ${spec.videoId} [$index]: $chunk")
             }
         } catch (_: Exception) {
         }

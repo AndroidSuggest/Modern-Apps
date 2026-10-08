@@ -6,7 +6,7 @@ import android.content.pm.PackageManager
 import android.provider.ContactsContract
 import android.telephony.TelephonyManager
 import android.util.Base64 as AndroidBase64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import com.vayunmathur.communicate.data.ContactPlatformRows
 import com.vayunmathur.communicate.data.signal.transport.SignalCdsi
@@ -177,7 +177,7 @@ object SignalContactSync {
             )
         }
         db.contactDao().upsertAll(toUpsert)
-        Log.i(
+        Log.status(
             TAG,
             "CDSI sync: device=${device.size} e164=${byE164.size} previous=${lookup.previous.size} " +
                 "new=${lookup.new.size} registered=$onSignal " +
@@ -193,7 +193,7 @@ object SignalContactSync {
                 },
             )
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not publish Signal reachability to contacts", expected)
+            Log.status(TAG, "could not publish Signal reachability to contacts", expected)
         }
         return SyncResult(device.size, byE164.size, onSignal)
     }

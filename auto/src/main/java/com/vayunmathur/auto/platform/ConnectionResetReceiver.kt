@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.service.ProjectionService
 
 /**
@@ -29,7 +29,7 @@ class ConnectionResetReceiver : BroadcastReceiver() {
             ACTION_RESET_ROLES,
             ACTION_RESET_FUNCTION,
             -> {
-                Log.i(TAG, "USB reset ${intent.action}; re-arming the projection listener")
+                Log.status(TAG, "USB reset ${intent.action}; re-arming the projection listener")
                 TransportState.publishRole(MaosRoleStatus.isProjectionRoleHeld(context))
                 ProjectionService.start(context)
             }

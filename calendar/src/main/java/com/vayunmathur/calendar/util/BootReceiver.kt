@@ -4,7 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.UserManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.glance.appwidget.updateAll
 import com.vayunmathur.calendar.glance.CalendarGlanceWidget
 import com.vayunmathur.calendar.glance.CalendarMonthGlanceWidget
@@ -53,9 +53,9 @@ class BootReceiver : BroadcastReceiver() {
     private suspend fun armFromMirror(context: Context, action: String?) {
         try {
             val armed = ReminderScheduler.scheduleFromMirror(context)
-            Log.i(TAG, "$action: armed $armed reminder(s) from the device-protected mirror")
+            Log.status(TAG, "$action: armed $armed reminder(s) from the device-protected mirror")
         } catch (expected: Exception) {
-            Log.e(TAG, "$action: could not arm reminders from the mirror", expected)
+            Log.error(TAG, "$action: could not arm reminders from the mirror", expected)
         }
         // Widgets are deliberately skipped: Glance keeps its state in credential-encrypted
         // storage, and the launcher does not render before the first unlock anyway.
@@ -67,7 +67,7 @@ class BootReceiver : BroadcastReceiver() {
         try {
             ReminderScheduler.reconcileAll(context)
         } catch (expected: Exception) {
-            Log.e(TAG, "$action: could not reschedule reminders from the calendar provider", expected)
+            Log.error(TAG, "$action: could not reschedule reminders from the calendar provider", expected)
         }
         try {
             context.scheduleHourlyUpdate(CalendarGlanceWidget::class)
@@ -75,7 +75,7 @@ class BootReceiver : BroadcastReceiver() {
             CalendarGlanceWidget().updateAll(context)
             CalendarMonthGlanceWidget().updateAll(context)
         } catch (expected: Exception) {
-            Log.e(TAG, "$action: could not refresh widgets", expected)
+            Log.error(TAG, "$action: could not refresh widgets", expected)
         }
     }
 

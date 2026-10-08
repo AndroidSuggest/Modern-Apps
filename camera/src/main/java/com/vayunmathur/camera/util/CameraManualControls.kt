@@ -1,6 +1,6 @@
 package com.vayunmathur.camera.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 fun CameraViewModel.setExposureTimeIndex(index: Int) {
     exposureTimeIndexMutable.value = index.coerceIn(0, CameraViewModel.EXPOSURE_TIME_STOPS.lastIndex)
@@ -19,7 +19,7 @@ internal fun CameraViewModel.camera2ControlOrNull(): androidx.camera.camera2.int
         androidx.camera.camera2.interop.Camera2CameraControl.from(it)
     }
 } catch (e: IllegalArgumentException) {
-    Log.w("CameraViewModel", "Camera2 control unavailable", e)
+    Log.status("CameraViewModel", "Camera2 control unavailable", e)
     null
 }
 
@@ -65,22 +65,22 @@ fun CameraViewModel.applyManualControls() {
         // An empty options set clears any previously-applied manual 3A → full auto.
         cam2.setCaptureRequestOptions(builder.build())
     } catch (e: IllegalStateException) {
-        Log.w("CameraViewModel", "Failed to apply manual controls", e)
+        Log.status("CameraViewModel", "Failed to apply manual controls", e)
     } catch (e: IllegalArgumentException) {
-        Log.w("CameraViewModel", "Failed to apply manual controls", e)
+        Log.status("CameraViewModel", "Failed to apply manual controls", e)
     }
 }
 
 /** Reads the bound sensor's ISO range → stop list for the manual ISO control. */
 @Suppress("DEPRECATION")
 internal fun CameraViewModel.readManualControlRanges() {
-    Log.d(
+    Log.debug(
         "NightPreview",
         "readManualControlRanges() called bound=${boundCamera != null} " +
             "thread=${Thread.currentThread().name}"
     )
     val cam = boundCamera ?: run {
-        Log.w("NightPreview", "readManualControlRanges() no bound camera, returning")
+        Log.status("NightPreview", "readManualControlRanges() no bound camera, returning")
         return
     }
     try {
@@ -88,29 +88,29 @@ internal fun CameraViewModel.readManualControlRanges() {
         val isoRange = info.getCameraCharacteristic(
             android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE
         )
-        Log.d("NightPreview", "readManualControlRanges() isoRange=$isoRange")
+        Log.debug("NightPreview", "readManualControlRanges() isoRange=$isoRange")
         isoStopsMutable.value = if (isoRange != null) {
             val filtered = listOf(50, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
                 .filter { it in isoRange.lower..isoRange.upper }
                 .ifEmpty { listOf(isoRange.lower, isoRange.upper) }
-            Log.d("NightPreview", "readManualControlRanges() filtered stops=$filtered")
+            Log.debug("NightPreview", "readManualControlRanges() filtered stops=$filtered")
             filtered
         } else {
-            Log.w("NightPreview", "readManualControlRanges() isoRange null, emitting emptyList -> ISO bar notAvailable")
+            Log.status("NightPreview", "readManualControlRanges() isoRange null, emitting emptyList -> ISO bar notAvailable")
             emptyList()
         }
         // The stop list is per-lens: a new lens can be shorter, so re-clamp the persisted
         // index instead of pointing past the end (ISO bar read getOrNull → blank label).
         manualIsoIndexMutable.value = manualIsoIndexMutable.value.coerceIn(0, isoStopsMutable.value.size)
     } catch (e: IllegalStateException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "readManualControlRanges() FAILED (was Warn, hidden) – " +
                 "could affect ISO bar + manual controls",
             e
         )
     } catch (e: IllegalArgumentException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "readManualControlRanges() FAILED (was Warn, hidden) – " +
                 "could affect ISO bar + manual controls",

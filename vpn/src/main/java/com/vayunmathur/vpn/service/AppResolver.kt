@@ -5,7 +5,7 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.os.Process
 import android.os.SystemClock
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.net.InetAddress
 import java.net.InetSocketAddress
 
@@ -101,10 +101,10 @@ class AppResolver(private val context: Context) {
 
             if (uid == Process.INVALID_UID || uid < 0) null else uid
         } catch (se: SecurityException) {
-            Log.w(TAG, "SecurityException getConnectionOwnerUid", se)
+            Log.status(TAG, "SecurityException getConnectionOwnerUid", se)
             null
         } catch (expected: IllegalArgumentException) {
-            Log.w(TAG, "bad socket address for getConnectionOwnerUid", expected)
+            Log.status(TAG, "bad socket address for getConnectionOwnerUid", expected)
             null
         }
     }
@@ -113,10 +113,10 @@ class AppResolver(private val context: Context) {
     private fun socketAddress(ip: String, port: Int): InetSocketAddress? = try {
         InetSocketAddress(InetAddress.getByName(ip), port)
     } catch (expected: IllegalArgumentException) {
-        Log.w(TAG, "bad address $ip:$port", expected)
+        Log.status(TAG, "bad address $ip:$port", expected)
         null
     } catch (expected: SecurityException) {
-        Log.w(TAG, "blocked address $ip:$port", expected)
+        Log.status(TAG, "blocked address $ip:$port", expected)
         null
     }
 
@@ -126,14 +126,14 @@ class AppResolver(private val context: Context) {
         val pkg = try {
             packageManager.getPackagesForUid(uid)?.let(::pickPackage)
         } catch (expected: PackageManager.NameNotFoundException) {
-            Log.w(TAG, "packages for uid $uid gone", expected)
+            Log.status(TAG, "packages for uid $uid gone", expected)
             null
         }
         if (pkg != null) {
             val label = try {
                 packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
             } catch (expected: PackageManager.NameNotFoundException) {
-                Log.w(TAG, "label for $pkg gone", expected)
+                Log.status(TAG, "label for $pkg gone", expected)
                 ""
             }
             return ResolvedApp(uid, pkg, label.ifBlank { pkg })
@@ -145,7 +145,7 @@ class AppResolver(private val context: Context) {
         val name = try {
             packageManager.getNameForUid(uid)
         } catch (expected: SecurityException) {
-            Log.w(TAG, "name for uid $uid blocked", expected)
+            Log.status(TAG, "name for uid $uid blocked", expected)
             null
         }
         if (!name.isNullOrBlank()) {

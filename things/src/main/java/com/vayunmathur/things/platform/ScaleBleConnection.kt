@@ -6,7 +6,7 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * The connection half of [ScaleBleManager]: scan, passive watch, GATT open,
@@ -28,14 +28,14 @@ internal fun ScaleBleManager.makeScanCallback(): ScanCallback = object : ScanCal
         result.scanRecord?.manufacturerSpecificData?.let { data ->
             if (data.size() > 0) data.valueAt(0)?.let {
                 manufacturerData[addr] = it
-                Log.d(
+                Log.debug(
                     ScaleBleManager.TAG,
                     "scan $name company=0x${data.keyAt(0).toString(HEX_RADIX)} mfg=${it.toHex()} " +
                         "category=${qnScaleCategory(it)} " +
                         "encryptRes=${qnUsesResistanceEncrypt(qnScaleCategory(it), it)}",
                 )
             }
-        } ?: Log.d(ScaleBleManager.TAG, "scan $name (no manufacturer data)")
+        } ?: Log.debug(ScaleBleManager.TAG, "scan $name (no manufacturer data)")
         if (DeviceController.scaleDevices.none { it.address == addr }) {
             DeviceController.scaleDevices.add(ScaleBleManager.ScaleBleDevice(name ?: "Scale", addr))
         }
@@ -55,13 +55,13 @@ internal fun ScaleBleManager.makeWatchCallback(): ScanCallback = object : ScanCa
         result.scanRecord?.manufacturerSpecificData?.let { data ->
             if (data.size() > 0) data.valueAt(0)?.let { manufacturerData[result.device.address] = it }
         }
-        Log.d(ScaleBleManager.TAG, "scale woke up; connecting")
+        Log.debug(ScaleBleManager.TAG, "scale woke up; connecting")
         stopWatch()
         openGattFor(result.device)
     }
 
     override fun onScanFailed(errorCode: Int) {
-        Log.e(ScaleBleManager.TAG, "watch scan failed error=$errorCode")
+        Log.error(ScaleBleManager.TAG, "watch scan failed error=$errorCode")
         watchAddress = null
         DeviceController.runOnMain {
             DeviceController.scaleConnectionState.value = "Scan failed ($errorCode)"
@@ -109,8 +109,8 @@ internal fun ScaleBleManager.startWatchNow(address: String, watchCallback: ScanC
         .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
         .build()
     runCatching { scanner?.startScan(filters, settings, watchCallback) }
-        .onFailure { Log.e(ScaleBleManager.TAG, "watch scan failed to start", it) }
-    Log.d(ScaleBleManager.TAG, "watching for $address to wake up")
+        .onFailure { Log.error(ScaleBleManager.TAG, "watch scan failed to start", it) }
+    Log.debug(ScaleBleManager.TAG, "watching for $address to wake up")
     DeviceController.scaleLink.value = DeviceController.LinkState.Waiting
     DeviceController.scaleConnectionState.value = SCALE_WAITING_STATE
 }
@@ -139,7 +139,7 @@ internal fun ScaleBleManager.openGattNow(device: BluetoothDevice) {
         useResistanceEncrypt = DeviceController.savedScaleEncryptsResistance()
     }
     isVaScale = scaleCategory in VA_CATEGORIES
-    Log.d(
+    Log.debug(
         ScaleBleManager.TAG,
         "connect $address category=$scaleCategory va=$isVaScale encryptRes=$useResistanceEncrypt",
     )

@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.service.ProjectionService
 
 /**
@@ -20,7 +20,7 @@ class WirelessStartupActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.i(TAG, "wireless startup; entering the BT_START chain")
+        Log.status(TAG, "wireless startup; entering the BT_START chain")
         startForegroundService(
             Intent(this, CarStartupService::class.java)
                 .setAction(CarStartupService.ACTION_BT_START),

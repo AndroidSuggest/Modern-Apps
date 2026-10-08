@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.data.signal
 
 import android.util.Base64 as AndroidBase64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.signal.e2e.remoteRegistrationId
 import com.vayunmathur.communicate.data.signal.e2e.senderRegistrationId
 import com.vayunmathur.communicate.data.signal.transport.SignalPayload
@@ -21,7 +21,7 @@ import signal.proto.chat_websocket.SignalChatWebsocket.WebSocketMessage
 internal suspend fun SignalClient.handleInboundFrame(raw: ByteArray) {
     val wsMessage = SignalProtocol.parseWebSocketMessage(raw)
     if (wsMessage == null) {
-        Log.w(TAG, "unparseable ws frame len=${raw.size}")
+        Log.status(TAG, "unparseable ws frame len=${raw.size}")
         return
     }
     if (wsMessage.type != WebSocketMessage.Type.REQUEST || !wsMessage.hasRequest()) return
@@ -44,7 +44,7 @@ internal suspend fun SignalClient.handleInboundFrame(raw: ByteArray) {
     } catch (expected: Throwable) {
         // Redelivery cannot fix a deterministic failure, and there is no attempt counter, so
         // acking is the lesser evil: not acking would spin on the same envelope forever.
-        Log.e(TAG, "failed to process envelope, acking anyway to avoid a redelivery loop", expected)
+        Log.error(TAG, "failed to process envelope, acking anyway to avoid a redelivery loop", expected)
         true
     }
     // An ack deletes the message from the server's queue, so it is deferred until the envelope has
@@ -53,7 +53,7 @@ internal suspend fun SignalClient.handleInboundFrame(raw: ByteArray) {
     if (handled) {
         ackEnvelope(ackId)
     } else {
-        Log.w(TAG, "not acking envelope; leaving it queued for redelivery")
+        Log.status(TAG, "not acking envelope; leaving it queued for redelivery")
     }
 }
 
@@ -90,13 +90,13 @@ private suspend fun SignalClient.processDecryptedEnvelope(env: SignalProtocol.Si
 
     val content = SignalProtocol.parseContent(plaintext)
     if (content == null) {
-        Log.w(TAG, "parseContent failed for ${env.sourceAci}")
+        Log.status(TAG, "parseContent failed for ${env.sourceAci}")
         return true
     }
     if (env.type == SignalServiceProtos.Envelope.Type.PLAINTEXT_CONTENT &&
         !SignalProtocol.isValidPlaintextContent(content)
     ) {
-        Log.w(TAG, "dropping PLAINTEXT_CONTENT carrying more than a DecryptionErrorMessage from ${env.sourceAci}")
+        Log.status(TAG, "dropping PLAINTEXT_CONTENT carrying more than a DecryptionErrorMessage from ${env.sourceAci}")
         return true
     }
     val parsed = SignalProtocol.classifyContent(content)
@@ -161,10 +161,10 @@ private suspend fun SignalClient.captureSenderKeys(
             env.sourceDevice,
             content.senderKeyDistributionMessage.toByteArray(),
         )
-        Log.i(TAG, "stored a sender key from ${env.sourceAci}:${env.sourceDevice}")
+        Log.status(TAG, "stored a sender key from ${env.sourceAci}:${env.sourceDevice}")
     } catch (expected: Throwable) {
         // Losing this means later group messages from this sender cannot be decrypted.
-        Log.w(TAG, "failed to store sender key distribution from ${env.sourceAci}", expected)
+        Log.status(TAG, "failed to store sender key distribution from ${env.sourceAci}", expected)
     }
 }
 
@@ -198,7 +198,7 @@ private suspend fun SignalClient.sendRetryReceipt(env: SignalProtocol.SignalEnve
         val registrationId = e.senderRegistrationId(env.content)
             ?: e.remoteRegistrationId(sender, env.sourceDevice)
         if (registrationId == null) {
-            Log.w(TAG, "no registration id for $sender:${env.sourceDevice}, cannot send a retry receipt")
+            Log.status(TAG, "no registration id for $sender:${env.sourceDevice}, cannot send a retry receipt")
             return
         }
         val message = SignalPayload.OutgoingPushMessage(
@@ -214,11 +214,11 @@ private suspend fun SignalClient.sendRetryReceipt(env: SignalProtocol.SignalEnve
             urgent = false,
         )
     when (val outcome = putMessages(sender, json, accessKey = null)) {
-            is SignalClient.SendOutcome.Success -> Log.i(TAG, "sent a retry receipt to $sender:${env.sourceDevice}")
-            else -> Log.w(TAG, "could not send a retry receipt to $sender: $outcome")
+            is SignalClient.SendOutcome.Success -> Log.status(TAG, "sent a retry receipt to $sender:${env.sourceDevice}")
+            else -> Log.status(TAG, "could not send a retry receipt to $sender: $outcome")
         }
     } catch (expected: Throwable) {
-        Log.w(TAG, "could not build a retry receipt for $sender", expected)
+        Log.status(TAG, "could not build a retry receipt for $sender", expected)
     }
 }
 
@@ -326,13 +326,13 @@ private suspend fun SignalClient.decryptEnvelope(env: SignalProtocol.SignalEnvel
     if (e == null) {
         // Defensive: start() refuses to connect without a store, so this should be unreachable.
         // Keep the envelope queued rather than acking something we never tried to decrypt.
-        Log.w(TAG, "no protocol store, leaving envelope from ${env.sourceAci} queued")
+        Log.status(TAG, "no protocol store, leaving envelope from ${env.sourceAci} queued")
         return null
     }
     return try {
         // Which identity the sender addressed matters: a message to our PNI must be decrypted with the
         // PNI identity and its own pre-keys, not the ACI ones.
-        Log.i(
+        Log.status(
             TAG,
             "envelope type=${env.type} from=${env.sourceAci}:${env.sourceDevice} " +
                 "destination=${env.destinationAci} ourAci=${authData?.aci} ourPni=${authData?.pni}",
@@ -350,7 +350,7 @@ private suspend fun SignalClient.decryptEnvelope(env: SignalProtocol.SignalEnvel
             else -> throw IllegalArgumentException("unknown envelope type ${env.type}")
         }
     } catch (expected: Throwable) {
-        Log.w(TAG, "decrypt failed for ${env.sourceAci}:${env.sourceDevice}", expected)
+        Log.status(TAG, "decrypt failed for ${env.sourceAci}:${env.sourceDevice}", expected)
         emitDecryptionError(env, expected.message)
         // Ask the sender to rebuild the session; otherwise this fails identically forever.
         if (env.type != SignalServiceProtos.Envelope.Type.PLAINTEXT_CONTENT) sendRetryReceipt(env)
@@ -398,7 +398,7 @@ private suspend fun SignalClient.dispatchParsedContent(
         is SignalProtocol.ParsedContent.Call -> handleCallContent(parsed, dispatch)
         is SignalProtocol.ParsedContent.Sync -> handleSyncContent(parsed, dispatch)
         else -> {
-            Log.i(TAG, "unhandled Content type ${parsed::class.simpleName} from ${dispatch.senderAci}")
+            Log.status(TAG, "unhandled Content type ${parsed::class.simpleName} from ${dispatch.senderAci}")
         }
     }
 }
@@ -547,7 +547,7 @@ private suspend fun SignalClient.handleReceiptContent(
 ) {
     val rm = parsed.receiptMessage
     val isDelivery = rm.type == SignalServiceProtos.ReceiptMessage.Type.DELIVERY
-    Log.i(
+    Log.status(
         TAG,
         "receipt from ${dispatch.env.sourceAci}: type=${rm.type} timestamps=${rm.timestampList}",
     )
@@ -559,7 +559,7 @@ private suspend fun SignalClient.handleReceiptContent(
             db?.cachedMessageDao()?.getOutgoingByTimestamp(tsVal)
         } catch (_: Exception) { null }
         if (cached == null) {
-            Log.w(TAG, "receipt for unknown outgoing message at $tsVal")
+            Log.status(TAG, "receipt for unknown outgoing message at $tsVal")
         }
         eventsMutable.emit(
             SignalEvent.ReadReceipt(

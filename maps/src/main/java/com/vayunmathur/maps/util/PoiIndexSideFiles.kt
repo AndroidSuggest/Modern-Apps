@@ -1,6 +1,6 @@
 package com.vayunmathur.maps.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
@@ -54,7 +54,7 @@ internal object PoiIndexSideFiles {
      */
     private fun openAttrs(file: File, count: Int): Pair<MappedByteBuffer, Int>? {
         if (!file.isFile) {
-            Log.d(TAG, "POI attribute sidecar absent")
+            Log.debug(TAG, "POI attribute sidecar absent")
             return null
         }
         return PoiIndex.attrsFromBuffer(PoiIndex.mapReadOnly(file), count)

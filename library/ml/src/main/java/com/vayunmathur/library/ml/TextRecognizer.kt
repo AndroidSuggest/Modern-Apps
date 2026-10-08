@@ -2,7 +2,7 @@ package com.vayunmathur.library.ml
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * One recognised line of text, in source-bitmap pixel coordinates.
@@ -75,7 +75,7 @@ class TextRecognizer(
                 val keys = assets.open(dictionaryAsset).use { it.readBytes() }.decodeToString()
                 MlNative.createPpocr(detection, recognition, keys)
             } catch (expected: Exception) {
-                Log.e(TAG, "cannot open the PP-OCRv5 assets", expected)
+                Log.error(TAG, "cannot open the PP-OCRv5 assets", expected)
                 0L
             }
         }

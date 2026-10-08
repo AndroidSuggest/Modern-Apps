@@ -1,5 +1,6 @@
 package com.vayunmathur.maps.util
 
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -156,7 +157,7 @@ internal object OfflineRouterTraffic {
                 // local network) hit /traffic/{z}/{x}/{y}.
                 val serverSocket = java.net.ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress())
                 serverPort = serverSocket.localPort
-                android.util.Log.d("OFFLINE_ROUTER", "Tile server started on port $serverPort (loopback only)")
+                Log.debug("OFFLINE_ROUTER", "Tile server started on port $serverPort (loopback only)")
                 // Hand each client to a small pool so a slow tile doesn't block
                 // concurrent tile requests behind the global mutex.
                 val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
@@ -167,7 +168,7 @@ internal object OfflineRouterTraffic {
                     pool.execute { handleClient(client) }
                 }
             } catch (e: java.io.IOException) {
-                android.util.Log.e("OFFLINE_ROUTER", "Tile server error", e)
+                Log.error("OFFLINE_ROUTER", "Tile server error", e)
             }
         }.start()
     }
@@ -176,7 +177,7 @@ internal object OfflineRouterTraffic {
         try {
             serveTile(client)
         } catch (e: java.io.IOException) {
-            android.util.Log.e("OFFLINE_ROUTER", "Error handling client", e)
+            Log.error("OFFLINE_ROUTER", "Error handling client", e)
         } finally {
             client.close()
         }

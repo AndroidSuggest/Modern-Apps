@@ -2,7 +2,7 @@ package com.vayunmathur.youpipe.util
 
 import android.app.Application
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.youpipe.R
@@ -31,9 +31,9 @@ fun YouPipeViewModel.importYouTubeTakeout(uri: Uri) {
         try {
             importTakeoutZip(ctx, uri)
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "Error importing YouTube Takeout", e)
+            Log.error(TAG, "Error importing YouTube Takeout", e)
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "Error importing YouTube Takeout", e)
+            Log.error(TAG, "Error importing YouTube Takeout", e)
         }
         isImportingMutable.value = false
         setupHourlyTask(ctx)
@@ -79,9 +79,9 @@ private suspend fun YouPipeViewModel.importTakeoutSubscriptions(
                     val channelInfo = getChannelInfoFromURL(url)
                     subs.add(channelInfo.toSubscription())
                 } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
-                    Log.e(TAG, "Error fetching channel info for $url", e)
+                    Log.error(TAG, "Error fetching channel info for $url", e)
                 } catch (e: java.io.IOException) {
-                    Log.e(TAG, "Error fetching channel info for $url", e)
+                    Log.error(TAG, "Error fetching channel info for $url", e)
                 }
             }
         }
@@ -99,7 +99,7 @@ private fun importTakeoutJsonHistory(
         try {
             parseTakeoutJsonEntry(element)?.let { history.add(it) }
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "Error parsing history item", e)
+            Log.error(TAG, "Error parsing history item", e)
         }
     }
 }
@@ -148,7 +148,7 @@ private fun importTakeoutHtmlHistory(
         try {
             parseTakeoutHtmlEntry(match)?.let { history.add(it) }
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "Error parsing HTML history item", e)
+            Log.error(TAG, "Error parsing HTML history item", e)
         }
     }
 }
@@ -184,9 +184,9 @@ fun YouPipeViewModel.exportSubscriptions(uri: Uri) {
             val json = Json.encodeToString(subs)
             ctx.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "Error exporting subscriptions", e)
+            Log.error(TAG, "Error exporting subscriptions", e)
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "Error exporting subscriptions", e)
+            Log.error(TAG, "Error exporting subscriptions", e)
         }
     }
 }
@@ -202,17 +202,17 @@ fun YouPipeViewModel.restoreSubscriptions(uri: Uri) {
                 // #565: files shaped like {"version":1,"salt":"..."} are an encrypted/salted
                 // envelope written by another client, not a plain subscription list. There is no
                 // password UI to decrypt with, so report it instead of crashing on the decode.
-                Log.e(TAG, "Unsupported subscription backup format")
+                Log.error(TAG, "Unsupported subscription backup format")
                 AppMessages.show(ctx.getString(R.string.restore_unsupported_format))
             } else {
                 repository.clearAllSubscriptions()
                 repository.upsertSubscriptions(subs)
             }
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "Error restoring subscriptions", e)
+            Log.error(TAG, "Error restoring subscriptions", e)
             AppMessages.show(ctx.getString(R.string.restore_unsupported_format))
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "Error restoring subscriptions", e)
+            Log.error(TAG, "Error restoring subscriptions", e)
             AppMessages.show(ctx.getString(R.string.restore_unsupported_format))
         }
         isImportingMutable.value = false
@@ -251,9 +251,9 @@ fun YouPipeViewModel.importNewPipe(uri: Uri) {
                         val channelInfo = getChannelInfoFromURL(url)
                         subs.add(channelInfo.toSubscription())
                     } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
-                        Log.e(TAG, "Error importing channel", e)
+                        Log.error(TAG, "Error importing channel", e)
                     } catch (e: java.io.IOException) {
-                        Log.e(TAG, "Error importing channel", e)
+                        Log.error(TAG, "Error importing channel", e)
                     }
                     importProgressMutable.value = (index + 1).toFloat() / total
                 }
@@ -261,9 +261,9 @@ fun YouPipeViewModel.importNewPipe(uri: Uri) {
                 repository.upsertSubscriptions(subs)
             }
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "Error importing NewPipe subscriptions", e)
+            Log.error(TAG, "Error importing NewPipe subscriptions", e)
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "Error importing NewPipe subscriptions", e)
+            Log.error(TAG, "Error importing NewPipe subscriptions", e)
         }
         isImportingMutable.value = false
         setupHourlyTask(ctx)

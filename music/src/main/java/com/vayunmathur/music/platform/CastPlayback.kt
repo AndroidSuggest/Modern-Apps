@@ -5,7 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.net.toUri
 import com.vayunmathur.library.media.OpusTranscoder
 import com.vayunmathur.music.data.Music
@@ -187,7 +187,7 @@ object CastPlayback {
                 video = false,
             )
             newClient.onEnded = {
-                Log.i(TAG, "the TV ended the session")
+                Log.status(TAG, "the TV ended the session")
                 clear()
             }
             // The television holds the player, so this is where every position, every play/pause and
@@ -197,10 +197,10 @@ object CastPlayback {
             }
             client = newClient
             _state.value = State.Casting(session.receiverName)
-            Log.i(TAG, "casting to '${session.receiverName}'")
+            Log.status(TAG, "casting to '${session.receiverName}'")
             true
         } catch (e: CastException) {
-            Log.w(TAG, "could not start casting", e)
+            Log.status(TAG, "could not start casting", e)
             newClient.close()
             _state.value = State.Idle
             false
@@ -251,7 +251,7 @@ object CastPlayback {
         val cached = cacheFile(context, song.id)
         val source = withContext(Dispatchers.IO) { readSource(context, uri, cached) }
         if (source == null) {
-            Log.w(TAG, "'${song.title}' could not be read for casting")
+            Log.status(TAG, "'${song.title}' could not be read for casting")
             return
         }
         offered[id] = Prepared(Source.Growing(cached), CONTENT_TYPE)
@@ -300,13 +300,13 @@ object CastPlayback {
                 if (length != null) {
                     // Now a real file with a real length, so the next play of it can be seeked.
                     offered[id] = Prepared(Source.Cached(cached), CONTENT_TYPE)
-                    Log.i(TAG, "encoded '${song.title}' to $length bytes of Opus")
+                    Log.status(TAG, "encoded '${song.title}' to $length bytes of Opus")
                 } else {
                     // A part-written file has no end-of-stream page, so it must not be mistaken for
                     // a cached track on the next cast.
                     offered.remove(id)
                     runCatching { cached.delete() }
-                    Log.w(TAG, "could not encode '${song.title}' for casting")
+                    Log.status(TAG, "could not encode '${song.title}' for casting")
                 }
                 active.resourceComplete(id, length ?: PRODUCER_FAILED)
                 // Compared rather than cleared outright: a later track's transcode may already have
@@ -464,13 +464,13 @@ object CastPlayback {
      */
     private fun alreadyPlayable(context: Context, uri: Uri, song: Music): Prepared? {
         if (isOpus(context, uri)) {
-            Log.i(TAG, "'${song.title}' is already Opus; serving it unchanged")
+            Log.status(TAG, "'${song.title}' is already Opus; serving it unchanged")
             return Prepared(Source.Original(uri), CONTENT_TYPE)
         }
 
         val cached = cacheFile(context, song.id)
         if (cached.length() > 0) {
-            Log.i(TAG, "'${song.title}' was converted on an earlier cast; reusing it")
+            Log.status(TAG, "'${song.title}' was converted on an earlier cast; reusing it")
             return Prepared(Source.Cached(cached), CONTENT_TYPE)
         }
         return null
@@ -502,7 +502,7 @@ object CastPlayback {
      */
     private fun openResource(context: Context, resourceId: String): CastResource? {
         val prepared = offered[resourceId] ?: run {
-            Log.w(TAG, "asked for '$resourceId', which was never offered")
+            Log.status(TAG, "asked for '$resourceId', which was never offered")
             return null
         }
         return runCatching {
@@ -517,7 +517,7 @@ object CastPlayback {
                     // and one the system has reclaimed under storage pressure should be a clean 404
                     // rather than an exception on Cast's own thread.
                     if (!source.file.isFile) {
-                        Log.w(TAG, "'$resourceId' was cached and is no longer on disk")
+                        Log.status(TAG, "'$resourceId' was cached and is no longer on disk")
                         offered.remove(resourceId)
                         return null
                     }
@@ -535,7 +535,7 @@ object CastPlayback {
                     prepared.contentType,
                 )
             }
-        }.onFailure { Log.w(TAG, "could not open '$resourceId'", it) }.getOrNull()
+        }.onFailure { Log.status(TAG, "could not open '$resourceId'", it) }.getOrNull()
     }
 
     /**

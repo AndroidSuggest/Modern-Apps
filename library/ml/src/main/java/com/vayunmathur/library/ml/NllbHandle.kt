@@ -1,7 +1,7 @@
 package com.vayunmathur.library.ml
 
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 import java.text.Normalizer
 
@@ -61,7 +61,7 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
             try {
                 create(directory)
             } catch (expected: Exception) {
-                Log.e(TAG, "cannot open the NLLB model in $directory", expected)
+                Log.error(TAG, "cannot open the NLLB model in $directory", expected)
                 0L
             }
         }

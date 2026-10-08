@@ -10,7 +10,7 @@ import android.os.Message
 import android.os.Messenger
 import android.os.ParcelFileDescriptor
 import android.os.RemoteException
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.platform.CastController
 import com.vayunmathur.cast.platform.ContentSessionResult
 import com.vayunmathur.cast.platform.playMedia
@@ -150,7 +150,7 @@ class ContentCastService : Service() {
 
     private fun openSession(replyTo: Messenger?, data: Bundle?) {
         if (replyTo == null) {
-            Log.w(TAG, "MSG_OPEN_SESSION with no replyTo; there is nowhere to send the surface")
+            Log.status(TAG, "MSG_OPEN_SESSION with no replyTo; there is nowhere to send the surface")
             return
         }
         client = replyTo

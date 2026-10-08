@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal.e2e
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.signal.e2e.SignalE2E.Companion.ONE_TIME_PREKEY_BATCH
 import com.vayunmathur.communicate.data.signal.e2e.SignalE2E.Companion.ONE_TIME_PREKEY_FLOOR
 import com.vayunmathur.communicate.data.signal.e2e.SignalE2E.Companion.b64
@@ -47,14 +47,14 @@ internal fun SignalE2E.seedStoredSignedPreKey(id: Int): Boolean {
     val priv = b64(auth.signedPreKeyPrivate)
     val signature = b64(auth.signedPreKeySignature)
     if (pub.isEmpty() || priv.isEmpty()) {
-        Log.w(SignalE2E.TAG, "no stored signed pre-key material; rotating")
+        Log.status(SignalE2E.TAG, "no stored signed pre-key material; rotating")
         return false
     }
     return try {
         val privateKey = ECPrivateKey(priv)
         val derivedPublic = RustSignalCrypto.publicFromPrivate(priv)
         if (derivedPublic == null) {
-            Log.w(SignalE2E.TAG, "could not derive public half for signed pre-key $id; rotating")
+            Log.status(SignalE2E.TAG, "could not derive public half for signed pre-key $id; rotating")
             return false
         }
         // ECPublicKey.serialize() is 0x05-prefixed (33B) while publicFromPrivate returns the raw
@@ -63,7 +63,7 @@ internal fun SignalE2E.seedStoredSignedPreKey(id: Int): Boolean {
                 .contentEquals(pub.takeLast(X25519_POINT_LEN).toByteArray())) {
             // The server serves the public half; without the matching private half every inbound
             // pre-key message fails in the key agreement rather than at lookup.
-            Log.w(
+            Log.status(
                 SignalE2E.TAG,
                 "stored signed pre-key $id is inconsistent (private half derives a different public key); rotating")
             return false
@@ -71,17 +71,17 @@ internal fun SignalE2E.seedStoredSignedPreKey(id: Int): Boolean {
         val identityOk = signature.isNotEmpty() &&
             ECPublicKey(ownIdentityPublicKey).verifySignature(pub, signature)
         if (!identityOk) {
-            Log.w(SignalE2E.TAG, "stored signed pre-key $id signature does not verify under our identity key; rotating")
+            Log.status(SignalE2E.TAG, "stored signed pre-key $id signature does not verify under our identity key; rotating")
             return false
         }
         protocolStore.storeSignedPreKey(
             id,
             SignedPreKeyRecord(id, System.currentTimeMillis(), ECKeyPair(ECPublicKey(pub), privateKey), signature),
         )
-        Log.i(SignalE2E.TAG, "seeded signed pre-key $id into the protocol store")
+        Log.status(SignalE2E.TAG, "seeded signed pre-key $id into the protocol store")
         true
     } catch (expected: Throwable) {
-        Log.w(SignalE2E.TAG, "could not rebuild signed pre-key $id; rotating", expected)
+        Log.status(SignalE2E.TAG, "could not rebuild signed pre-key $id; rotating", expected)
         false
     }
 }
@@ -95,10 +95,10 @@ internal fun SignalE2E.rotateSignedPreKey(): PreKeyUpload.KeyEntity? = try {
         id,
         SignedPreKeyRecord(id, System.currentTimeMillis(), keyPair, signature),
     )
-    Log.i(SignalE2E.TAG, "rotated signed pre-key to $id; needs registering")
+    Log.status(SignalE2E.TAG, "rotated signed pre-key to $id; needs registering")
     PreKeyUpload.KeyEntity(id, publicKey, signature)
 } catch (expected: Throwable) {
-    Log.e(SignalE2E.TAG, "could not rotate the signed pre-key", expected)
+    Log.error(SignalE2E.TAG, "could not rotate the signed pre-key", expected)
     null
 }
 
@@ -112,10 +112,10 @@ internal fun SignalE2E.ensureLastResortKyberPreKey(): PreKeyUpload.KeyEntity? {
         val id = (runBlocking { db.e2eKyberPreKeyDao().getAll() }.maxOfOrNull { it.id } ?: 0) + 1
         val record = KyberPreKeyRecord(id, System.currentTimeMillis(), keyPair, signature)
         protocolStore.storeKyberPreKey(id, record, lastResort = true)
-        Log.i(SignalE2E.TAG, "generated last-resort Kyber pre-key $id; needs registering")
+        Log.status(SignalE2E.TAG, "generated last-resort Kyber pre-key $id; needs registering")
         PreKeyUpload.KeyEntity(id, publicKey, signature)
     } catch (expected: Throwable) {
-        Log.w(SignalE2E.TAG, "could not generate a last-resort Kyber pre-key", expected)
+        Log.status(SignalE2E.TAG, "could not generate a last-resort Kyber pre-key", expected)
         null
     }
 }
@@ -132,7 +132,7 @@ internal fun SignalE2E.ensureOneTimePreKeys(): List<PreKeyUpload.KeyEntity> {
             protocolStore.storePreKey(id, PreKeyRecord(id, keyPair))
             PreKeyUpload.KeyEntity(id, keyPair.publicKey.serialize())
         } catch (expected: Throwable) {
-            Log.w(SignalE2E.TAG, "could not generate one-time pre-key $id", expected)
+            Log.status(SignalE2E.TAG, "could not generate one-time pre-key $id", expected)
             null
         }
     }

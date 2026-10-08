@@ -3,7 +3,7 @@
 package com.vayunmathur.emergency.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.HealthConnectFeatures
 import androidx.health.connect.client.permission.HealthPermission
@@ -42,7 +42,7 @@ class HealthConnectMedical(context: Context) {
                 null
             }
         }.getOrElse {
-            Log.w(TAG, "Health Connect client unavailable", it)
+            Log.status(TAG, "Health Connect client unavailable", it)
             null
         }
     }
@@ -55,7 +55,7 @@ class HealthConnectMedical(context: Context) {
                 HealthConnectFeatures.FEATURE_PERSONAL_HEALTH_RECORD,
             ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
         }.getOrElse {
-            Log.w(TAG, "Could not query the Personal Health Record feature status", it)
+            Log.status(TAG, "Could not query the Personal Health Record feature status", it)
             false
         }
     }
@@ -107,7 +107,7 @@ class HealthConnectMedical(context: Context) {
         }.getOrElse {
             // Reads can fail when the device is locked (medical data is credential-encrypted) or
             // the permission was revoked; the card just falls back to its own fields.
-            Log.w(TAG, "Could not read medical resources of type $medicalResourceType", it)
+            Log.status(TAG, "Could not read medical resources of type $medicalResourceType", it)
             emptyList()
         }
     }

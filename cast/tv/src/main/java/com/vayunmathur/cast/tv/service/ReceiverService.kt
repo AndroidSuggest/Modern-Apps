@@ -9,7 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import com.vayunmathur.cast.tv.MainActivity
@@ -102,7 +102,7 @@ class ReceiverService : Service() {
      * the sockets cleanly beats being killed with a phone mid-stream.
      */
     override fun onTimeout(startId: Int, fgsType: Int) {
-        Log.w(TAG, "foreground service timed out (type $fgsType)")
+        Log.status(TAG, "foreground service timed out (type $fgsType)")
         ReceiverController.stop()
         stopSelf()
     }
@@ -123,13 +123,13 @@ class ReceiverService : Service() {
         } catch (e: SecurityException) {
             // A background start the platform refuses. The receiver still works; it just will not
             // outlive the Activity.
-            Log.w(TAG, "could not enter the foreground", e)
+            Log.status(TAG, "could not enter the foreground", e)
         } catch (e: IllegalStateException) {
             // Foreground-service start not allowed from the background on newer platforms.
-            Log.w(TAG, "could not enter the foreground", e)
+            Log.status(TAG, "could not enter the foreground", e)
         } catch (e: IllegalArgumentException) {
             // Bad notification or service type on this device.
-            Log.w(TAG, "could not enter the foreground", e)
+            Log.status(TAG, "could not enter the foreground", e)
         }
     }
 

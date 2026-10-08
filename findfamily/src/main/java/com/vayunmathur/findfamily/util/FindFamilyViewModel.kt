@@ -6,7 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.location.LocationManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
@@ -439,7 +439,7 @@ class FindFamilyViewModel(
             // there is nothing to fall back to, so report failure instead of minting a link
             // that can never publish.
             val linkKey = runCatching { Networking.generatePqcLinkKey() }
-                .onFailure { Log.w("FindFamilyViewModel", "createTemporaryLink: PQC keygen failed", it) }
+                .onFailure { Log.status("FindFamilyViewModel", "createTemporaryLink: PQC keygen failed", it) }
                 .getOrNull()
             if (linkKey == null) {
                 withContext(Dispatchers.Main) { onDone(false) }

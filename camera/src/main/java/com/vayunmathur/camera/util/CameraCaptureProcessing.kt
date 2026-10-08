@@ -8,7 +8,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.ImageProxy
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
@@ -119,9 +119,9 @@ internal fun CameraViewModel.writeCaptureExif(
     try {
         writeExifAttributes(uri, sourceJpeg, rotationDegrees, mirrored)
     } catch (e: java.io.IOException) {
-        Log.w("CameraViewModel", "Failed to write EXIF for adjusted capture", e)
+        Log.status("CameraViewModel", "Failed to write EXIF for adjusted capture", e)
     } catch (e: SecurityException) {
-        Log.w("CameraViewModel", "Failed to write EXIF for adjusted capture", e)
+        Log.status("CameraViewModel", "Failed to write EXIF for adjusted capture", e)
     }
 }
 
@@ -202,10 +202,10 @@ internal fun CameraViewModel.stampStillBytes(
         stampTempFile(tmp, effectiveDegrees, loc)
         tmp.readBytes()
     } catch (e: java.io.IOException) {
-        Log.w("CameraViewModel", "Failed to stamp EXIF on still bytes", e)
+        Log.status("CameraViewModel", "Failed to stamp EXIF on still bytes", e)
         jpeg
     } catch (e: SecurityException) {
-        Log.w("CameraViewModel", "Failed to stamp EXIF on still bytes", e)
+        Log.status("CameraViewModel", "Failed to stamp EXIF on still bytes", e)
         jpeg
     } finally {
         try { tmp?.delete() } catch (_: Exception) {}

@@ -10,6 +10,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.MoreExecutors
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.music.data.Music
 import com.vayunmathur.music.data.MusicRepository
 import com.vayunmathur.music.service.PlaybackService
@@ -120,9 +121,9 @@ class PlaybackManager private constructor(context: Context) {
                 _player.value = controller
                 startProgressUpdateLoop()
             } catch (e: IllegalStateException) {
-                android.util.Log.e("PlaybackManager", "Error initializing MediaController", e)
+                Log.error("PlaybackManager", "Error initializing MediaController", e)
             } catch (e: SecurityException) {
-                android.util.Log.e("PlaybackManager", "Error initializing MediaController", e)
+                Log.error("PlaybackManager", "Error initializing MediaController", e)
             }
         }, MoreExecutors.directExecutor())
 

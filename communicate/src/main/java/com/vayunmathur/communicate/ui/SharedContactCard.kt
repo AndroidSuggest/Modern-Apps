@@ -3,7 +3,7 @@ package com.vayunmathur.communicate.ui
 import android.content.Context
 import android.net.Uri
 import android.provider.ContactsContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /** A contact card as picked from the address book, ready to share. */
 data class SharedContactCard(
@@ -85,6 +85,6 @@ fun readSharedContact(context: Context, uri: Uri): SharedContactCard? = try {
         emails = emails,
     )
 } catch (expected: Throwable) {
-    Log.w("SharedContact", "could not read the picked contact", expected)
+    Log.status("SharedContact", "could not read the picked contact", expected)
     null
 }

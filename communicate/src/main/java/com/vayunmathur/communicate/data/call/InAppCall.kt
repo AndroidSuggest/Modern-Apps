@@ -1,6 +1,7 @@
 package com.vayunmathur.communicate.data.call
 
 import com.vayunmathur.communicate.data.CommunicateLine
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -168,7 +169,7 @@ object InAppCallRegistry {
         incoming: Boolean,
         capabilities: CallCapabilities = _state.value.capabilities,
     ) {
-        android.util.Log.i(TAG, "call starting: line=$line incoming=$incoming video=$isVideo peer=$peerId")
+        Log.status(TAG, "call starting: line=$line incoming=$incoming video=$isVideo peer=$peerId")
         _state.value = InAppCallState(
             phase = if (incoming) InAppCallPhase.Incoming else InAppCallPhase.Outgoing,
             line = line,
@@ -186,10 +187,10 @@ object InAppCallRegistry {
     fun onPhase(phase: InAppCallPhase) {
         val current = _state.value
         if (current.phase == InAppCallPhase.Idle && phase != InAppCallPhase.Incoming) {
-            android.util.Log.i(TAG, "ignoring phase $phase while idle")
+            Log.status(TAG, "ignoring phase $phase while idle")
             return
         }
-        if (current.phase != phase) android.util.Log.i(TAG, "phase ${current.phase} -> $phase")
+        if (current.phase != phase) Log.status(TAG, "phase ${current.phase} -> $phase")
         _state.value = current.copy(
             phase = phase,
             // Stamped once, on the transition into Active, so the duration does not restart.
@@ -219,13 +220,13 @@ object InAppCallRegistry {
 
     fun onRemoteVideo(enabled: Boolean) {
         if (_state.value.phase == InAppCallPhase.Idle) return
-        android.util.Log.i(TAG, "remote video enabled=$enabled")
+        Log.status(TAG, "remote video enabled=$enabled")
         _state.value = _state.value.copy(remoteVideoEnabled = enabled)
     }
 
     fun onRemoteScreenShare(enabled: Boolean) {
         if (_state.value.phase == InAppCallPhase.Idle) return
-        android.util.Log.i(TAG, "remote screen share enabled=$enabled")
+        Log.status(TAG, "remote screen share enabled=$enabled")
         _state.value = _state.value.copy(remoteScreenSharing = enabled)
     }
 
@@ -284,17 +285,17 @@ object InAppCallRegistry {
 
     /** [source] is logged so it is clear what ended a call; several paths can. */
     fun answer(source: String = "ui") {
-        android.util.Log.i(TAG, "answer requested by $source")
+        Log.status(TAG, "answer requested by $source")
         controller?.answer()
     }
 
     fun reject(source: String = "ui") {
-        android.util.Log.i(TAG, "reject requested by $source")
+        Log.status(TAG, "reject requested by $source")
         controller?.reject()
     }
 
     fun hangup(source: String = "ui") {
-        android.util.Log.i(TAG, "hangup requested by $source")
+        Log.status(TAG, "hangup requested by $source")
         controller?.hangup()
     }
 

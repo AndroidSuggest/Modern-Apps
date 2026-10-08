@@ -7,7 +7,7 @@ import android.telephony.CarrierConfigManager
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.telephony.ims.ImsManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.ContextCompat
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,13 +87,13 @@ object RcsProvisioning {
 
     private fun checkProvisioning(context: Context, subscriptionId: Int): RcsRegistrationState {
         if (!SubscriptionManager.isValidSubscriptionId(subscriptionId)) {
-            Log.i(TAG, "probe: invalid subId=$subscriptionId")
+            Log.status(TAG, "probe: invalid subId=$subscriptionId")
             return RcsRegistrationState.Unavailable(RcsUnavailableReason.NoSubscription)
         }
         readConfigServerUrl(context, subscriptionId)?.let { return it }
         provisioningGate(context, subscriptionId)?.let { return it }
         singleRegGate(context, subscriptionId)?.let { return it }
-        Log.i(TAG, "probe: AVAILABLE for subId=$subscriptionId")
+        Log.status(TAG, "probe: AVAILABLE for subId=$subscriptionId")
         return RcsRegistrationState.Available
     }
 
@@ -111,7 +111,7 @@ object RcsProvisioning {
                 CarrierConfigManager.KEY_RCS_CONFIG_SERVER_URL_STRING,
             ).getString(CarrierConfigManager.KEY_RCS_CONFIG_SERVER_URL_STRING).orEmpty()
         }.getOrElse {
-            Log.i(TAG, "probe: carrier-config read failed: $it")
+            Log.status(TAG, "probe: carrier-config read failed: $it")
             return RcsRegistrationState.Unavailable(RcsUnavailableReason.ServiceUnavailable)
         }
         lastConfigServerUrl = url.ifEmpty { null }
@@ -122,7 +122,7 @@ object RcsProvisioning {
         // TransportDenied via onFeatureTagStatusChanged). The URL is still
         // recorded for the status screen + TS.43 entitlement.
         if (url.isBlank()) {
-            Log.i(
+            Log.status(
                 "RcsProvisioning",
                 "No carrier RCS config URL; attempting delegate creation anyway",
             )
@@ -145,7 +145,7 @@ object RcsProvisioning {
                 !pm.getRcsProvisioningStatusForCapability(CAPABILITY_TYPE_CALL_COMPOSER, NETWORK_TYPE_LTE)
         }.getOrDefault(false)
         if (provisioningRequired) {
-            Log.i(TAG, "probe: carrier provisioning required (call-composer cap unprovisioned)")
+            Log.status(TAG, "probe: carrier provisioning required (call-composer cap unprovisioned)")
             return RcsRegistrationState.Unavailable(RcsUnavailableReason.ProvisioningRequired)
         }
         return null
@@ -173,7 +173,7 @@ object RcsProvisioning {
                     .getOrNull() ?: tm
                 subTm?.hasCarrierPrivileges() == true
             }.getOrDefault(false)
-            Log.i(TAG, "probe: single-reg verdict=false privileged=$privileged subId=$subscriptionId")
+            Log.status(TAG, "probe: single-reg verdict=false privileged=$privileged subId=$subscriptionId")
             return if (privileged) {
                 RcsRegistrationState.Unavailable(RcsUnavailableReason.NotSupported)
             } else {
@@ -183,7 +183,7 @@ object RcsProvisioning {
         // Single-registration support gate: without it there is no delegate to create.
         // The feature constant is @SystemApi/hidden; the AOSP value is used directly.
         val singleReg = context.packageManager.hasSystemFeature(FEATURE_SINGLE_REG)
-        Log.i(TAG, "probe: singleRegCapable=$singleRegCapable hasFeature=$singleReg")
+        Log.status(TAG, "probe: singleRegCapable=$singleRegCapable hasFeature=$singleReg")
         if (!singleReg) {
             return RcsRegistrationState.Unavailable(RcsUnavailableReason.NotSupported)
         }

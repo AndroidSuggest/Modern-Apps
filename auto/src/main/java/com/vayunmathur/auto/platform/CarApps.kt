@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /** One tile on the car launcher: an icon, a label, and how to open it. */
 data class CarApp(
@@ -33,7 +33,7 @@ object CarApps {
      */
     fun query(context: Context, pinnedOrder: List<String> = emptyList()): List<CarApp> {
         val discovered = runCatching { CarAppDiscovery.query(context) }.getOrElse {
-            Log.w(TAG, "car discovery failed; legacy slots only", it)
+            Log.status(TAG, "car discovery failed; legacy slots only", it)
             emptyList()
         }
         val byId = discovered.associateBy { it.id }
@@ -49,7 +49,7 @@ object CarApps {
         for (slot in SLOTS) {
             runCatching { slot.resolve(context, context.packageManager) }
                 .onSuccess { app -> if (app != null) found += app }
-                .onFailure { Log.w(TAG, "could not resolve car slot ${slot.label}", it) }
+                .onFailure { Log.status(TAG, "could not resolve car slot ${slot.label}", it) }
         }
         return found
     }

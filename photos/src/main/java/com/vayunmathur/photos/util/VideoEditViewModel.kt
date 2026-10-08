@@ -7,7 +7,7 @@ import android.content.IntentSender
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -227,7 +227,7 @@ class VideoEditViewModel(
                     exportResult: ExportResult,
                     exportException: ExportException,
                 ) {
-                    Log.e(TAG, "Export failed", exportException)
+                    Log.error(TAG, "Export failed", exportException)
                     stopProgress()
                     tempFile.delete()
                     _exporting.value = false
@@ -295,7 +295,7 @@ class VideoEditViewModel(
                     _writePermissionRequest.value = result.intentSender
                 }
                 is WriteResult.Error -> {
-                    Log.e(TAG, "Save failed", result.exception)
+                    Log.error(TAG, "Save failed", result.exception)
                     _exporting.value = false
                     onComplete()
                 }
@@ -323,9 +323,9 @@ class VideoEditViewModel(
                     }
                     resolver.update(uri, values, null, null)
                 } catch (e: IOException) {
-                    Log.e(TAG, "Overwrite FAILED after permission grant", e)
+                    Log.error(TAG, "Overwrite FAILED after permission grant", e)
                 } catch (e: SecurityException) {
-                    Log.e(TAG, "Overwrite FAILED after permission grant", e)
+                    Log.error(TAG, "Overwrite FAILED after permission grant", e)
                 } finally {
                     tempFile.delete()
                 }
@@ -430,9 +430,9 @@ class VideoEditViewModel(
                 tempFile.delete()
                 return WriteResult.Success
             } catch (e: IOException) {
-                Log.d(TAG, "Direct write failed, falling back to createWriteRequest", e)
+                Log.debug(TAG, "Direct write failed, falling back to createWriteRequest", e)
             } catch (e: SecurityException) {
-                Log.d(TAG, "Direct write failed, falling back to createWriteRequest", e)
+                Log.debug(TAG, "Direct write failed, falling back to createWriteRequest", e)
             }
             val pendingIntent = MediaStore.createWriteRequest(resolver, listOf(uri))
             return WriteResult.NeedsPermission(pendingIntent.intentSender, tempFile, uri)

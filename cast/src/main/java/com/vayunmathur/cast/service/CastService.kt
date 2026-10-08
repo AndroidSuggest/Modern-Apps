@@ -12,7 +12,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.IntentCompat
 import androidx.core.content.getSystemService
@@ -81,7 +81,7 @@ class CastService : Service() {
      */
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
-            Log.i(TAG, "the projection was stopped from outside the app")
+            Log.status(TAG, "the projection was stopped from outside the app")
             CastController.stopMirroring(this@CastService)
         }
     }
@@ -155,7 +155,7 @@ class CastService : Service() {
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, RESULT_CANCELED_FALLBACK)
         val data = IntentCompat.getParcelableExtra(intent, EXTRA_RESULT_DATA, Intent::class.java)
         if (data == null) {
-            Log.w(TAG, "no consent token in the mirroring request")
+            Log.status(TAG, "no consent token in the mirroring request")
             demoteFromProjection()
             return
         }
@@ -164,14 +164,14 @@ class CastService : Service() {
             manager?.getMediaProjection(resultCode, data)
         } catch (e: SecurityException) {
             // The usual cause is calling this before the service was genuinely in the foreground.
-            Log.w(TAG, "getMediaProjection refused", e)
+            Log.status(TAG, "getMediaProjection refused", e)
             null
         } catch (e: IllegalStateException) {
-            Log.w(TAG, "getMediaProjection refused", e)
+            Log.status(TAG, "getMediaProjection refused", e)
             null
         }
         if (granted == null) {
-            Log.w(TAG, "no projection")
+            Log.status(TAG, "no projection")
             demoteFromProjection()
             return
         }
@@ -212,7 +212,7 @@ class CastService : Service() {
      * cap them, tearing the session down cleanly beats being killed with a socket open.
      */
     override fun onTimeout(startId: Int, fgsType: Int) {
-        Log.w(TAG, "foreground service timed out (type $fgsType)")
+        Log.status(TAG, "foreground service timed out (type $fgsType)")
         CastController.disconnect(this)
     }
 
@@ -242,9 +242,9 @@ class CastService : Service() {
         } catch (e: ForegroundServiceStartNotAllowedException) {
             // A background start the platform refuses. Nothing to recover: the session itself is
             // unaffected, it just will not survive the app being backgrounded.
-            Log.w(TAG, "could not enter the foreground", e)
+            Log.status(TAG, "could not enter the foreground", e)
         } catch (e: SecurityException) {
-            Log.w(TAG, "could not enter the foreground", e)
+            Log.status(TAG, "could not enter the foreground", e)
         }
     }
 

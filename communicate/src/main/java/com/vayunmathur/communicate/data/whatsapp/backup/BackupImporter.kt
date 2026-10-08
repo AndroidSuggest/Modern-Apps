@@ -2,7 +2,7 @@ package com.vayunmathur.communicate.data.whatsapp.backup
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppCachedMessage
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppCachedMessageDao
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppConversation
@@ -41,7 +41,7 @@ object BackupImporter {
         val counts = try {
             importMessages(dbFile, room, errors)
         } catch (expected: Throwable) {
-            Log.e(TAG, "import failed", expected)
+            Log.error(TAG, "import failed", expected)
             errors.add("Import failed: ${expected.message}")
             0 to 0
         } finally {

@@ -1,6 +1,6 @@
 package com.vayunmathur.camera.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.video.FileOutputOptions
@@ -65,7 +65,7 @@ internal fun CameraViewModel.startHighSpeedRecording() {
 
     startRecordingTimer()
 
-    Log.d("SloMo", "Starting high-speed recording at ${sloMoFps}fps")
+    Log.debug("SloMo", "Starting high-speed recording at ${sloMoFps}fps")
 
     highSpeedRecording = videoCapture.output
         .prepareRecording(app, outputOptions)
@@ -73,10 +73,10 @@ internal fun CameraViewModel.startHighSpeedRecording() {
             if (event is VideoRecordEvent.Finalize) {
                 stopRecordingTimer()
                 if (event.hasError()) {
-                    Log.e("SloMo", "Recording error: ${event.error} - ${event.cause?.message}")
+                    Log.error("SloMo", "Recording error: ${event.error} - ${event.cause?.message}")
                     cacheFile.delete()
                 } else {
-                    Log.d("SloMo", "High-speed recording saved: ${event.outputResults.outputUri}")
+                    Log.debug("SloMo", "High-speed recording saved: ${event.outputResults.outputUri}")
                     viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                         if (cacheFile.exists()) {
                             saveVideoStaged(displayName, cacheFile)?.let { setLastCaptureUri(it) }
@@ -194,13 +194,13 @@ private fun remuxTimelapse(cacheFile: java.io.File, timestamp: String): java.io.
     } catch (e: java.io.IOException) {
         // MediaMuxer can reject an av01 track (or an oversized keyframe)
         // on some devices; keep the raw recording rather than crash.
-        Log.e("CameraViewModel", "Timelapse remux failed; saving unprocessed", e)
+        Log.error("CameraViewModel", "Timelapse remux failed; saving unprocessed", e)
         processed.delete()
         cacheFile
     } catch (e: IllegalStateException) {
         // MediaMuxer can reject an av01 track (or an oversized keyframe)
         // on some devices; keep the raw recording rather than crash.
-        Log.e("CameraViewModel", "Timelapse remux failed; saving unprocessed", e)
+        Log.error("CameraViewModel", "Timelapse remux failed; saving unprocessed", e)
         processed.delete()
         cacheFile
     }
@@ -211,7 +211,7 @@ private fun CameraViewModel.applyInitialMicMute() {
     try {
         currentRecording?.mute(micMutedMutable.value)
     } catch (e: IllegalStateException) {
-        Log.w("CameraViewModel", "Failed to apply initial mic mute", e)
+        Log.status("CameraViewModel", "Failed to apply initial mic mute", e)
     }
 }
 
@@ -227,7 +227,7 @@ fun CameraViewModel.togglePauseRecording() {
             recordingPausedMutable.value = true
         }
     } catch (e: IllegalStateException) {
-        Log.w("CameraViewModel", "Failed to pause/resume recording", e)
+        Log.status("CameraViewModel", "Failed to pause/resume recording", e)
     }
 }
 
@@ -237,7 +237,7 @@ fun CameraViewModel.toggleMicMuted() {
     try {
         currentRecording?.mute(micMutedMutable.value)
     } catch (e: IllegalStateException) {
-        Log.w("CameraViewModel", "Failed to toggle mic mute", e)
+        Log.status("CameraViewModel", "Failed to toggle mic mute", e)
     }
     viewModelScope.launch { ds.setString("camera_mic_muted", micMutedMutable.value.toString()) }
 }
@@ -260,7 +260,7 @@ fun CameraViewModel.captureVideoSnapshot() {
                 pending.resolveUri(outputFileResults)?.let { setLastCaptureUri(it) }
             }
             override fun onError(exception: ImageCaptureException) {
-                Log.e("CameraViewModel", "Video snapshot failed", exception)
+                Log.error("CameraViewModel", "Video snapshot failed", exception)
                 pending.closeStream()
             }
         }
@@ -288,17 +288,17 @@ internal fun CameraViewModel.finishPanoramaSweep() {
     viewModelScope.launch {
         val result = panoramaEngine.stitch()
         if (result == null) {
-            android.util.Log.e("CameraViewModel", "Panorama stitch failed – no output (check registration)")
+            Log.error("CameraViewModel", "Panorama stitch failed – no output (check registration)")
         } else {
             val (jpeg, info) = result
-            android.util.Log.i("CameraViewModel", "Panorama stitched ${jpeg.size} bytes, saving")
+            Log.status("CameraViewModel", "Panorama stitched ${jpeg.size} bytes, saving")
             val uri = panoramaEngine.saveToMediaStore(jpeg, info, saveTargetMutable.value)
             if (uri != null) {
-                android.util.Log.i("CameraViewModel", "Panorama saved uri=$uri")
+                Log.status("CameraViewModel", "Panorama saved uri=$uri")
                 scanSafDoc(uri)
                 setLastCaptureUri(uri)
             } else {
-                android.util.Log.e("CameraViewModel", "Panorama MediaStore save returned null")
+                Log.error("CameraViewModel", "Panorama MediaStore save returned null")
             }
         }
         panoramaEngine.reset()

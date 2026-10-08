@@ -1,5 +1,5 @@
 package com.vayunmathur.findfamily.util
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.findfamily.data.LocationValue
 import com.vayunmathur.findfamily.data.TemporaryLink
 import com.vayunmathur.findfamily.data.User
@@ -106,9 +106,9 @@ object Networking {
                 try {
                     pqcIdentity = PqcIdentity.loadOrCreate(DataStoreKeyStore(dataStoreUtils), "ff_pqc")
                     pqcReady = true
-                    Log.d(TAG, "PQC identity ready bundleLen=${pqcIdentity.publicBundle.size}")
+                    Log.debug(TAG, "PQC identity ready bundleLen=${pqcIdentity.publicBundle.size}")
                 } catch (e: Throwable) {
-                    Log.w(TAG, "PQC identity unavailable (native lib load failed)", e)
+                    Log.status(TAG, "PQC identity unavailable (native lib load failed)", e)
                     pqcReady = false
                 }
             }
@@ -161,7 +161,7 @@ object Networking {
                     pqcIdentity = PqcIdentity.loadOrCreate(DataStoreKeyStore(ds), "ff_pqc")
                     pqcReady = true
                 } catch (e: Throwable) {
-                    Log.w(TAG, "direct boot: PQC identity unavailable", e)
+                    Log.status(TAG, "direct boot: PQC identity unavailable", e)
                     pqcReady = false
                 }
             }
@@ -169,7 +169,7 @@ object Networking {
             userid = mirroredId
             directBoot = true
             initialized = true
-            Log.d(TAG, "direct boot init as ${userid.toULong()}")
+            Log.debug(TAG, "direct boot init as ${userid.toULong()}")
             return true
         }
     }
@@ -344,7 +344,7 @@ object Networking {
                         backoff = BACKOFF_INITIAL_MS
                         superviseConnection(connScope, outerScope, onLocations, onUwb)
                     }
-                }.onFailure { Log.w(TAG, "live WS loop error", it) }
+                }.onFailure { Log.status(TAG, "live WS loop error", it) }
                 connScope.cancel()
                 wsSession = null
                 // Fail any awaiting key lookups so their callers don't hang until timeout.
@@ -381,7 +381,7 @@ object Networking {
             raw.copyInto(frame, PUB_PAYLOAD_OFFSET)
             session.send(frame)
             true
-        }.onFailure { Log.w(TAG, "live publish failed", it) }.getOrDefault(false)
+        }.onFailure { Log.status(TAG, "live publish failed", it) }.getOrDefault(false)
     }
 
     /**
@@ -403,7 +403,7 @@ object Networking {
             session.send(req)
             withTimeoutOrNull(GETKEY_TIMEOUT_MS) { deferred.await() }
         } catch (e: Exception) {
-            Log.w(TAG, "wsGetKey failed for ${userId.toULong()}", e)
+            Log.status(TAG, "wsGetKey failed for ${userId.toULong()}", e)
             null
         } finally {
             pendingKeyRequests.remove(userId)
@@ -424,15 +424,15 @@ object Networking {
     suspend fun publishLocation(location: LocationValue, user: User): Boolean {
         val bundle = peerPqcBundle(user)
         if (bundle == null) {
-            Log.w(TAG, "publishLocation: no PQC bundle for ${user.id.toULong()} (${user.name}); peer must update")
+            Log.status(TAG, "publishLocation: no PQC bundle for ${user.id.toULong()} (${user.name}); peer must update")
             return false
         }
         return try {
             val ok = sendLivePublish(user.id, "location", sealLocation(location, bundle))
-            Log.d(TAG, "publishLocation PQC to ${user.id.toULong()} (${user.name}) ok=$ok")
+            Log.debug(TAG, "publishLocation PQC to ${user.id.toULong()} (${user.name}) ok=$ok")
             ok
         } catch (e: Exception) {
-            Log.w(TAG, "publishLocation to ${user.id.toULong()} exception", e)
+            Log.status(TAG, "publishLocation to ${user.id.toULong()} exception", e)
             false
         }
     }
@@ -444,10 +444,10 @@ object Networking {
         return try {
             val bundle = Base64.decode(link.pqcPublicKey)
             val ok = sendLivePublish(link.id, "location", sealLocation(location, bundle))
-            Log.d(TAG, "publishLocation PQC to temp link ${link.id} ok=$ok")
+            Log.debug(TAG, "publishLocation PQC to temp link ${link.id} ok=$ok")
             ok
         } catch (e: Exception) {
-            Log.w(TAG, "publishLocation temp link ${link.id} failed", e)
+            Log.status(TAG, "publishLocation temp link ${link.id} failed", e)
             false
         }
     }
@@ -462,10 +462,10 @@ object Networking {
     suspend fun publishLocation(location: LocationValue, targetId: Long, bundleB64: String): Boolean {
         return try {
             val ok = sendLivePublish(targetId, "location", sealLocation(location, Base64.decode(bundleB64)))
-            Log.d(TAG, "publishLocation PQC to ${targetId.toULong()} (direct boot) ok=$ok")
+            Log.debug(TAG, "publishLocation PQC to ${targetId.toULong()} (direct boot) ok=$ok")
             ok
         } catch (e: Exception) {
-            Log.w(TAG, "publishLocation direct boot to ${targetId.toULong()} failed", e)
+            Log.status(TAG, "publishLocation direct boot to ${targetId.toULong()} failed", e)
             false
         }
     }
@@ -486,16 +486,16 @@ object Networking {
             wsGetKey(recipientUserId)?.takeIf { it.status == WS_KEY_PQC }?.bundle
         }
         if (bundle == null) {
-            Log.w(TAG, "publishUwbMessage: no PQC bundle for ${recipientUserId.toULong()}; peer must update")
+            Log.status(TAG, "publishUwbMessage: no PQC bundle for ${recipientUserId.toULong()}; peer must update")
             return false
         }
         return try {
             val sealed = Pqc.encryptTo(bundle, json.encodeToString(envelope).encodeToByteArray())
             val ok = sendLivePublish(recipientUserId, "uwb", sealed)
-            Log.d(TAG, "publishUwbMessage PQC to ${recipientUserId.toULong()} ok=$ok")
+            Log.debug(TAG, "publishUwbMessage PQC to ${recipientUserId.toULong()} ok=$ok")
             ok
         } catch (e: Exception) {
-            Log.w(TAG, "publishUwbMessage to ${recipientUserId.toULong()} failed", e)
+            Log.status(TAG, "publishUwbMessage to ${recipientUserId.toULong()} failed", e)
             false
         }
     }
@@ -539,7 +539,7 @@ object Networking {
         if (!pqcReady) return null
         return runCatching {
             Base64.UrlSafe.encode(Pqc.inviteFingerprint(userid, pqcIdentity.publicBundle)).trimEnd('=')
-        }.onFailure { Log.w(TAG, "invite fingerprint failed", it) }.getOrNull()
+        }.onFailure { Log.status(TAG, "invite fingerprint failed", it) }.getOrNull()
     }
 
     /**
@@ -617,7 +617,7 @@ object Networking {
     fun signAsMe(data: ByteArray): ByteArray? {
         if (!pqcReady) return null
         return runCatching { pqcIdentity.sign(data) }
-            .onFailure { Log.w(TAG, "signAsMe failed", it) }.getOrNull()
+            .onFailure { Log.status(TAG, "signAsMe failed", it) }.getOrNull()
     }
 
     /** Whether [signature] over [data] was really produced by [userId]'s identity key. */
@@ -667,7 +667,7 @@ object Networking {
                 if (expectedFingerprint == null) return PeerKeyCheck(PeerCrypto.PQC)
                 val bundle = res.bundle ?: return PeerKeyCheck(PeerCrypto.UNKNOWN)
                 if (!fingerprintMatches(userId, bundle, expectedFingerprint)) {
-                    Log.w(TAG, "invite fingerprint mismatch for ${userId.toULong()}")
+                    Log.status(TAG, "invite fingerprint mismatch for ${userId.toULong()}")
                     return PeerKeyCheck(PeerCrypto.KEY_MISMATCH)
                 }
                 PeerKeyCheck(PeerCrypto.PQC, Base64.encode(bundle))

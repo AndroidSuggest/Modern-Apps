@@ -1,7 +1,7 @@
 package com.vayunmathur.findfamily.util
 
 import android.os.BatteryManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.findfamily.data.Coord
 import com.vayunmathur.findfamily.data.LocationValue
 import com.vayunmathur.findfamily.data.UserKind
@@ -32,11 +32,11 @@ internal fun LocationTrackingService.startTrackerScanner() {
                     // Both of these drops used to be silent, which made a stalled
                     // crowd-finding pipeline indistinguishable from one that was
                     // never hearing the beacon at all.
-                    Log.i("FF-Tracker", "sighting dropped: no location fix yet")
+                    Log.status("FF-Tracker", "sighting dropped: no location fix yet")
                     return@collect
                 }
                 if (loc.accuracy > MAX_FIX_ACCURACY_METERS) {
-                    Log.i("FF-Tracker", "sighting dropped: accuracy ${loc.accuracy}m > ${MAX_FIX_ACCURACY_METERS}m")
+                    Log.status("FF-Tracker", "sighting dropped: accuracy ${loc.accuracy}m > ${MAX_FIX_ACCURACY_METERS}m")
                     return@collect
                 }
                 val battery = runCatching {
@@ -51,10 +51,10 @@ internal fun LocationTrackingService.startTrackerScanner() {
                     battery,
                 )
                 runCatching { TrackerReporting.reportSighting(sighting, lv) }
-                    .onSuccess { if (!it) Log.i("FF-Tracker", REPORT_SIGHTING_UNRESOLVED) }
-                    .onFailure { Log.w("FF-Tracker", "reportSighting failed", it) }
+                    .onSuccess { if (!it) Log.status("FF-Tracker", REPORT_SIGHTING_UNRESOLVED) }
+                    .onFailure { Log.status("FF-Tracker", "reportSighting failed", it) }
             }
-        }.onFailure { Log.w("FF-Tracker", "tracker scan collect failed", it) }
+        }.onFailure { Log.status("FF-Tracker", "tracker scan collect failed", it) }
     }
 }
 
@@ -96,14 +96,14 @@ internal fun LocationTrackingService.startPoweredOffScanner() {
                     PoweredOffScanner(this@startPoweredOffScanner).sightings().collect { sighting ->
                         val loc = lastKnownLocation
                         if (loc == null) {
-                            Log.i(LocationTrackingService.TAG_POWERED_OFF, "sighting dropped: no location fix yet")
+                            Log.status(LocationTrackingService.TAG_POWERED_OFF, "sighting dropped: no location fix yet")
                             return@collect
                         }
                         // A sighting is only ever "the finder was near here". Reporting one
                         // from a coarse fix would add noise the owner cannot tell
                         // apart from a good one, so drop it rather than dilute the answer.
                         if (loc.accuracy > MAX_FIX_ACCURACY_METERS) {
-                            Log.i(
+                            Log.status(
                                 LocationTrackingService.TAG_POWERED_OFF,
                                 "sighting dropped: accuracy ${loc.accuracy}m > ${MAX_FIX_ACCURACY_METERS}m"
                             )
@@ -120,9 +120,9 @@ internal fun LocationTrackingService.startPoweredOffScanner() {
                             0f,
                         )
                         runCatching { PoweredOffReporting.reportSighting(sighting, lv) }
-                            .onFailure { Log.w(LocationTrackingService.TAG_POWERED_OFF, "reportSighting failed", it) }
+                            .onFailure { Log.status(LocationTrackingService.TAG_POWERED_OFF, "reportSighting failed", it) }
                     }
-                }.onFailure { Log.w(LocationTrackingService.TAG_POWERED_OFF, "powered-off scan collect failed", it) }
+                }.onFailure { Log.status(LocationTrackingService.TAG_POWERED_OFF, "powered-off scan collect failed", it) }
             }
     }
 }
@@ -150,7 +150,7 @@ internal suspend fun LocationTrackingService.pollPoweredOffSightings() {
             .getOrDefault(emptyList())
     }
     if (locs.isNotEmpty()) {
-        Log.i(LocationTrackingService.TAG_POWERED_OFF, "retrieved ${locs.size} network sighting(s)")
+        Log.status(LocationTrackingService.TAG_POWERED_OFF, "retrieved ${locs.size} network sighting(s)")
         processIncomingLocations(locs)
     }
 }

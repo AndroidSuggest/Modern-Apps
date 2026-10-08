@@ -2,7 +2,7 @@ package com.vayunmathur.taxi.network.lyft
 
 import android.os.Build
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -165,11 +165,11 @@ object LyftAuth {
             ),
             body = body,
         )
-        Log.d(TAG, "POST /v1/phoneauth -> ${resp.status}")
+        Log.debug(TAG, "POST /v1/phoneauth -> ${resp.status}")
         return if (resp.isSuccess) {
             LyftAuthResult.Success(LyftToken(accessToken = ""))
         } else {
-            Log.w(TAG, "phoneauth failed ${resp.status}: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
+            Log.status(TAG, "phoneauth failed ${resp.status}: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
             failure(resp.status, resp.body)
         }
     }
@@ -226,7 +226,7 @@ object LyftAuth {
             ),
             body = formEncode("token" to token),
         )
-        Log.d(TAG, "POST /oauth2/revoke_token -> ${resp.status}")
+        Log.debug(TAG, "POST /oauth2/revoke_token -> ${resp.status}")
         return resp.isSuccess
     }
 
@@ -241,10 +241,10 @@ object LyftAuth {
             ),
             body = form,
         )
-        Log.d(TAG, "POST /oauth2/access_token -> ${resp.status}")
+        Log.debug(TAG, "POST /oauth2/access_token -> ${resp.status}")
         if (!resp.isSuccess) {
             // Body only on failure — a success body carries the tokens.
-            Log.w(TAG, "token failed ${resp.status}: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
+            Log.status(TAG, "token failed ${resp.status}: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
             return failure(resp.status, resp.body)
         }
         val token = runCatching { json.decodeFromString(LyftToken.serializer(), resp.body) }

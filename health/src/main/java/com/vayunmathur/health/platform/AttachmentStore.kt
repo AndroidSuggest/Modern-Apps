@@ -4,7 +4,7 @@ package com.vayunmathur.health.platform
 
 import android.content.Context
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.FileProvider
 import com.vayunmathur.library.util.IntentHelper
 import java.io.File
@@ -59,7 +59,7 @@ object AttachmentStore {
             } ?: return null
             Imported(fileName, displayName, mimeType, dest.length())
         } catch (e: Exception) {
-            Log.e(TAG, "Could not import an attachment", e)
+            Log.error(TAG, "Could not import an attachment", e)
             dest.delete()
             null
         }

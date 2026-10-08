@@ -1,7 +1,7 @@
 package com.vayunmathur.youpipe.util
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.net.toUri
 import androidx.work.CoroutineWorker
 import androidx.work.Data
@@ -103,7 +103,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
                 Result.success()
             } catch (e: java.io.IOException) {
                 // Cleanup on error or cancellation
-                Log.e("DownloadWorker", "Progressive download failed for ${input.videoID}", e)
+                Log.error("DownloadWorker", "Progressive download failed for ${input.videoID}", e)
                 createdFiles.forEach { if (it.exists()) it.delete() }
                 Result.failure()
             } finally {
@@ -162,7 +162,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
         val videoItag = videoUri.getQueryParameter("v")?.toIntOrNull()
         val audioItag = input.audioUrl?.let { it.toUri().getQueryParameter("a")?.toIntOrNull() }
         if (youtubeId.isNullOrEmpty() || videoItag == null || audioItag == null) {
-            Log.e("DownloadWorker", "Malformed SABR request video=${input.videoUrl} audio=${input.audioUrl}")
+            Log.error("DownloadWorker", "Malformed SABR request video=${input.videoUrl} audio=${input.audioUrl}")
             DownloadManager.finishDownload(input.videoID)
             return Result.failure()
         }
@@ -207,11 +207,11 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
             input.repository.upsertDownloadedVideo(download)
             Result.success()
         } catch (e: java.io.IOException) {
-            Log.e("DownloadWorker", "SABR download failed for ${input.videoID}", e)
+            Log.error("DownloadWorker", "SABR download failed for ${input.videoID}", e)
             if (outputFile.exists()) outputFile.delete()
             Result.failure()
         } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
-            Log.e("DownloadWorker", "SABR download failed for ${input.videoID}", e)
+            Log.error("DownloadWorker", "SABR download failed for ${input.videoID}", e)
             if (outputFile.exists()) outputFile.delete()
             Result.failure()
         } finally {
@@ -291,7 +291,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
                 try {
                     fetchChunk(url, file, start, end, downloadedBytes)
                 } catch (e: java.io.IOException) {
-                    Log.e("DownloadWorker", "Error downloading chunk $i", e)
+                    Log.error("DownloadWorker", "Error downloading chunk $i", e)
                 }
             }
         }
@@ -376,7 +376,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
                 }
             }
         } catch (e: java.io.IOException) {
-            Log.e("DownloadWorker", "Error in simple download", e)
+            Log.error("DownloadWorker", "Error in simple download", e)
         }
     }
 

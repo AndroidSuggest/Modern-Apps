@@ -35,13 +35,23 @@ configure<com.android.build.api.dsl.LibraryExtension> {
         // checkDependencies, but failing here gives faster feedback when
         // working inside a library module.
         // FileLength caps Kotlin file size, same as apps: split first.
-        fatal += listOf("ToastUsage", "FileLength")
+        // DirectAndroidLog keeps all logging on the repo facade.
+        fatal += listOf("ToastUsage", "FileLength", "DirectAndroidLog")
     }
 }
 
 dependencies {
     // Repo-specific lint checks (currently: no Toast).
     lintChecks(project(":lint-rules"))
+
+    // Repo-wide logging facade (com.vayunmathur.library.log.Log). Direct
+    // android.util.Log use is banned by the DirectAndroidLog lint check.
+    // Self-excluded: this convention also applies to :library:log itself, and a
+    // module depending on itself is a task-graph cycle (bundleLibCompileToJar
+    // <-> compileJavaWithJavac). Configuration-time branch, cache-safe.
+    if (project.path != ":library:log") {
+        implementation(project(":library:log"))
+    }
 
     // AndroidX Core & Lifecycle
     implementation(libs.kotlinx.datetime)

@@ -1,7 +1,7 @@
 package com.vayunmathur.appstore.data.accrescent
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -83,13 +83,13 @@ class AccrescentRepoDataFetcher(private val context: Context) {
 
             Result.success(repoData)
         } catch (expected: IllegalStateException) {
-            Log.w(TAG, "repodata fetch/verify failed", expected)
+            Log.status(TAG, "repodata fetch/verify failed", expected)
             Result.failure(expected)
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "repodata fetch/verify failed", expected)
+            Log.status(TAG, "repodata fetch/verify failed", expected)
             Result.failure(expected)
         } catch (expected: SecurityException) {
-            Log.w(TAG, "repodata fetch/verify failed", expected)
+            Log.status(TAG, "repodata fetch/verify failed", expected)
             Result.failure(expected)
         }
     }
@@ -98,10 +98,10 @@ class AccrescentRepoDataFetcher(private val context: Context) {
         try {
             context.accrescentDataStore.data.first()[REPODATA_TIMESTAMP_KEY] ?: 0L
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "read stored timestamp", expected)
+            Log.status(TAG, "read stored timestamp", expected)
             0L
         } catch (expected: IllegalStateException) {
-            Log.w(TAG, "read stored timestamp", expected)
+            Log.status(TAG, "read stored timestamp", expected)
             0L
         }
 
@@ -109,7 +109,7 @@ class AccrescentRepoDataFetcher(private val context: Context) {
         try {
             context.accrescentDataStore.edit { it[REPODATA_TIMESTAMP_KEY] = timestamp }
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "persist timestamp", expected)
+            Log.status(TAG, "persist timestamp", expected)
         }
     }
 

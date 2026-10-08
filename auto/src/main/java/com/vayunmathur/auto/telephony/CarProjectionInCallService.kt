@@ -5,7 +5,7 @@ import android.os.IBinder
 import android.telecom.Call
 import android.telecom.InCallService
 import android.telecom.VideoProfile
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.platform.ActiveCallInfo
 import com.vayunmathur.auto.platform.AutoSessionState
 import com.vayunmathur.auto.platform.CallCardPush
@@ -32,7 +32,7 @@ class CarProjectionInCallService : InCallService() {
 
     private val callback = object : Call.Callback() {
         override fun onStateChanged(call: Call, state: Int) {
-            Log.i(TAG, "car-projection call state: $state")
+            Log.status(TAG, "car-projection call state: $state")
             pushSnapshot(call, state)
         }
 
@@ -51,7 +51,7 @@ class CarProjectionInCallService : InCallService() {
         lastAcceptedMs = if (info.acceptedMs > 0L) info.acceptedMs else 0L
         AutoSessionState.onCallAdded(info)
         CallCardPush.push(info)
-        Log.i(TAG, "car-projection call added")
+        Log.status(TAG, "car-projection call added")
     }
 
     override fun onCallRemoved(call: Call) {
@@ -59,13 +59,13 @@ class CarProjectionInCallService : InCallService() {
         lastAcceptedMs = 0L
         AutoSessionState.onCallRemoved()
         CallCardPush.push(null)
-        Log.i(TAG, "car-projection call removed")
+        Log.status(TAG, "car-projection call removed")
     }
 
     override fun onBind(intent: Intent?): IBinder? {
         // The platform binds this only in car mode with the InCall grant;
         // anything else is a misdirected bind and must be safely rejected.
-        Log.i(TAG, "car-projection InCall bound")
+        Log.status(TAG, "car-projection InCall bound")
         current = this
         return super.onBind(intent)
     }
@@ -133,7 +133,7 @@ class CarProjectionInCallService : InCallService() {
             val service = current ?: return
             runCatching {
                 service.calls.firstOrNull()?.disconnect()
-            }.onFailure { Log.w(TAG, "end call failed", it) }
+            }.onFailure { Log.status(TAG, "end call failed", it) }
         }
 
         /** Answers a ringing call, no-op with nothing bound. */
@@ -142,7 +142,7 @@ class CarProjectionInCallService : InCallService() {
             runCatching {
                 service.calls.firstOrNull { it.state == Call.STATE_RINGING }
                     ?.answer(VideoProfile.STATE_AUDIO_ONLY)
-            }.onFailure { Log.w(TAG, "answer call failed", it) }
+            }.onFailure { Log.status(TAG, "answer call failed", it) }
         }
 
         /** Holds or resumes the foreground call, no-op with nothing bound. */
@@ -151,14 +151,14 @@ class CarProjectionInCallService : InCallService() {
             runCatching {
                 val call = service.calls.firstOrNull() ?: return
                 if (call.state == Call.STATE_HOLDING) call.unhold() else call.hold()
-            }.onFailure { Log.w(TAG, "hold toggle failed", it) }
+            }.onFailure { Log.status(TAG, "hold toggle failed", it) }
         }
 
         /** Flips the InCall mute, no-op with nothing bound. */
         fun toggleMute() {
             val service = current ?: return
             runCatching { service.setMuted(!(service.callAudioState?.isMuted ?: false)) }
-                .onFailure { Log.w(TAG, "mute toggle failed", it) }
+                .onFailure { Log.status(TAG, "mute toggle failed", it) }
         }
     }
 }

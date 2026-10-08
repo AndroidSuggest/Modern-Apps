@@ -11,7 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.database.getLongOrNull
 import androidx.core.net.toUri
@@ -115,7 +115,7 @@ suspend fun runFaceIndexing(
     // Return WITHOUT marking photos scanned so they get processed once the
     // model assets are present.
     if (!FaceRecognizer.modelsAvailable(context)) {
-        Log.w("FaceWorker", "Face models missing; skipping face indexing")
+        Log.status("FaceWorker", "Face models missing; skipping face indexing")
         return
     }
 
@@ -137,7 +137,7 @@ suspend fun runFaceIndexing(
         .toMutableList()
 
     val photos = scanRepository.getUnscannedForFaces()
-    Log.i("FaceWorker", "Face indexing start: ${photos.size} photos to scan, ${clusters.size} existing clusters")
+    Log.status("FaceWorker", "Face indexing start: ${photos.size} photos to scan, ${clusters.size} existing clusters")
     var facesTotal = 0
     var photosWithFaces = 0
     var decoded = 0
@@ -166,7 +166,7 @@ suspend fun runFaceIndexing(
                 if (outcome.faces.isNotEmpty()) {
                     photosWithFaces++
                     facesTotal += outcome.faces.size
-                    Log.i("FaceWorker", "photo ${photo.id}: ${outcome.faces.size} face(s) (running total: $facesTotal)")
+                    Log.status("FaceWorker", "photo ${photo.id}: ${outcome.faces.size} face(s) (running total: $facesTotal)")
                 }
                 pendingFaces += outcome.faces
                 delay(FACE_INTER_ITEM_DELAY_MS)
@@ -181,7 +181,7 @@ suspend fun runFaceIndexing(
         withContext(NonCancellable) { runCatching { flush() } }
     }
     val clusterCount = faceRepository.getPersons().size
-    Log.i(
+    Log.status(
         "FaceWorker",
         "Face indexing done: decoded=$decoded/${photos.size}, " +
             "$facesTotal faces in $photosWithFaces photos, $clusterCount clusters",
@@ -211,10 +211,10 @@ private suspend fun scanPhotoFaces(
     val bitmap = try {
         loadBitmapForFaces(context, photo.uri.toUri())
     } catch (e: IOException) {
-        Log.e("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
+        Log.error("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
         null
     } catch (e: SecurityException) {
-        Log.e("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
+        Log.error("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
         null
     } ?: return FaceScanOutcome(false, emptyList())
     // Read before recycle: the box columns are normalised against
@@ -224,10 +224,10 @@ private suspend fun scanPhotoFaces(
     val faces = try {
         FaceRecognizer.detectAndEmbed(context, bitmap)
     } catch (e: IllegalArgumentException) {
-        Log.e("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
+        Log.error("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
         emptyList()
     } catch (e: IllegalStateException) {
-        Log.e("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
+        Log.error("FaceWorker", "Error scanning faces for photo ${photo.id}", e)
         emptyList()
     } finally {
         bitmap.recycle()
@@ -371,10 +371,10 @@ private fun loadBitmapForFaces(context: Context, uri: Uri): Bitmap? {
             }
         }
     } catch (e: IOException) {
-        Log.e("FaceWorker", "Failed to decode $uri for faces", e)
+        Log.error("FaceWorker", "Failed to decode $uri for faces", e)
         null
     } catch (e: SecurityException) {
-        Log.e("FaceWorker", "Failed to decode $uri for faces", e)
+        Log.error("FaceWorker", "Failed to decode $uri for faces", e)
         null
     }
 }

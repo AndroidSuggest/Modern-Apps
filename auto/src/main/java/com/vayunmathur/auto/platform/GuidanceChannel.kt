@@ -1,6 +1,6 @@
 package com.vayunmathur.auto.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.protocol.AudioCodec
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalService
@@ -60,7 +60,7 @@ class GuidanceChannel(
         open = true
         val (type, payload) = AudioCodec.encodeSetup()
         connection.send(channelId, type, payload)
-        Log.i(TAG, "guidance setup requested")
+        Log.status(TAG, "guidance setup requested")
         onEvent(SensorEvent.GuidanceSetup)
         // The TTS session started before ch3 opened: arm the stream now so
         // the CONFIG confirm starts it instead of parking it idle.
@@ -70,7 +70,7 @@ class GuidanceChannel(
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
+            Log.status(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         when (val inbound = AudioCodec.decodeSinkInbound(type, payload)) {
@@ -80,13 +80,13 @@ class GuidanceChannel(
                 // idle: confirmed-but-never-started is the no-TTS state.
                 val pick = selected ?: AudioCodec.selectConfig(service)
                 selected = pick?.let { AudioCodec.confirmConfig(inbound.response, it, service) }
-                Log.i(TAG, "guidance configured (accepted=${selected != null})")
+                Log.status(TAG, "guidance configured (accepted=${selected != null})")
                 onEvent(SensorEvent.GuidanceConfigured(accepted = selected != null))
                 if (startRequested && selected != null) startStream(sessionId.coerceAtLeast(0))
             }
-            is InboundAudio.Ack -> Log.d(TAG, "guidance ack (no stream running)")
-            is InboundAudio.Sync -> Log.d(TAG, "guidance sync pulse")
-            is InboundAudio.Observed -> Log.d(TAG, "unhandled guidance message 0x${type.toString(HEX_RADIX)}")
+            is InboundAudio.Ack -> Log.debug(TAG, "guidance ack (no stream running)")
+            is InboundAudio.Sync -> Log.debug(TAG, "guidance sync pulse")
+            is InboundAudio.Observed -> Log.debug(TAG, "unhandled guidance message 0x${type.toString(HEX_RADIX)}")
         }
     }
 
@@ -100,13 +100,13 @@ class GuidanceChannel(
     fun startStream(sessionId: Int = 0) {
         startRequested = true
         val config = selected ?: run {
-            Log.i(TAG, "guidance start armed; starts on CONFIG confirm")
+            Log.status(TAG, "guidance start armed; starts on CONFIG confirm")
             return
         }
         this.sessionId = sessionId
         val (type, payload) = AudioCodec.encodeStart(sessionId, config.index)
         connection.send(channelId, type, payload)
-        Log.i(TAG, "guidance stream started (session $sessionId, config ${config.index})")
+        Log.status(TAG, "guidance stream started (session $sessionId, config ${config.index})")
     }
 
     /**
@@ -120,7 +120,7 @@ class GuidanceChannel(
         val (type, payload) = AudioCodec.encodeStop()
         connection.send(channelId, type, payload)
         sessionId = -1
-        Log.i(TAG, "guidance stream stopped")
+        Log.status(TAG, "guidance stream stopped")
     }
 
     fun release() {

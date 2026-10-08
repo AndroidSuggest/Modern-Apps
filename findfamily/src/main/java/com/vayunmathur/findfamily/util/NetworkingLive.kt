@@ -1,6 +1,6 @@
 package com.vayunmathur.findfamily.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.findfamily.data.LocationValue
 import com.vayunmathur.findfamily.data.LocationValueCompatible
 import com.vayunmathur.findfamily.uwb.UwbEnvelope
@@ -34,7 +34,7 @@ internal suspend fun WsSession.sendSubscribe() {
     Networking.putU64Be(sub, 1, Networking.userid.toULong())
     bundle.copyInto(sub, Networking.BUNDLE_FIELD_OFFSET)
     send(sub)
-    Log.d(Networking.TAG, "live WS connected as ${Networking.userid.toULong()} bundleLen=${bundle.size}")
+    Log.debug(Networking.TAG, "live WS connected as ${Networking.userid.toULong()} bundleLen=${bundle.size}")
 }
 
 /**
@@ -76,7 +76,7 @@ internal suspend fun WsSession.superviseConnection(
             delay(Networking.PING_INTERVAL_MS)
             val idle = System.currentTimeMillis() - lastInboundMs.get()
             if (idle > Networking.LIVENESS_TIMEOUT_MS) {
-                Log.w(Networking.TAG, "no inbound for ${idle}ms; socket half-open, reconnecting")
+                Log.status(Networking.TAG, "no inbound for ${idle}ms; socket half-open, reconnecting")
                 break
             }
         }
@@ -116,7 +116,7 @@ private suspend fun handleLiveMsg(
     val raw = buf.copyOfRange(Networking.MSG_PAYLOAD_OFFSET, buf.size)
     if (!isUwb) {
         val decoded = runCatching { decryptLocationPqcBytes(raw) }
-            .onFailure { Log.w(Networking.TAG, "live location decrypt fail", it) }.getOrNull() ?: return
+            .onFailure { Log.status(Networking.TAG, "live location decrypt fail", it) }.getOrNull() ?: return
         val (loc, platform) = decoded
         if (platform != null) runCatching { Networking.repository.setPlatform(loc.userid, platform) }
         runCatching { onLocations(listOf(loc)) }
@@ -124,7 +124,7 @@ private suspend fun handleLiveMsg(
         val env = runCatching {
             val plain = Networking.pqcIdentity.decrypt(raw)
             Networking.json.decodeFromString<UwbEnvelope>(plain.decodeToString())
-        }.onFailure { Log.w(Networking.TAG, "live uwb decrypt fail", it) }.getOrNull() ?: return
+        }.onFailure { Log.status(Networking.TAG, "live uwb decrypt fail", it) }.getOrNull() ?: return
         runCatching { onUwb(listOf(env)) }
     }
 }

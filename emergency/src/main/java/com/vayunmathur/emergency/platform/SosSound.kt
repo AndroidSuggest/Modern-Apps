@@ -3,7 +3,7 @@ package com.vayunmathur.emergency.platform
 import android.content.Context
 import android.media.AudioManager
 import android.media.ToneGenerator
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 
 private const val TAG = "EmergencySosSound"
@@ -50,7 +50,7 @@ class SosSound(private val context: Context) {
                 it.startTone(ToneGenerator.TONE_CDMA_EMERGENCY_RINGBACK)
             }
         }.onFailure {
-            Log.w(TAG, "could not start the SOS warning tone", it)
+            Log.status(TAG, "could not start the SOS warning tone", it)
             tone?.release()
             tone = null
         }
@@ -68,7 +68,7 @@ class SosSound(private val context: Context) {
             val audio = context.getSystemService<AudioManager>()
             runCatching {
                 audio?.setStreamVolume(AudioManager.STREAM_ALARM, savedVolume, 0)
-            }.onFailure { Log.w(TAG, "could not restore the alarm volume", it) }
+            }.onFailure { Log.status(TAG, "could not restore the alarm volume", it) }
             resetNeeded = false
         }
     }

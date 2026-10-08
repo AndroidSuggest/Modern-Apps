@@ -1,5 +1,6 @@
 package com.vayunmathur.weather.ui
 
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.map.GeoBounds
 import com.vayunmathur.weather.domain.map.DwdIconGlobal
 import com.vayunmathur.weather.domain.map.OmMapMetadata
@@ -99,7 +100,7 @@ internal fun WeatherMapMetadataEffect(state: WeatherMapState, isoTime: String?) 
     LaunchedEffect(state.domain) {
         val meta = fetchOmMapMetadata(state.domain)
         state.metadata = meta
-        android.util.Log.i(
+        Log.status(
             "OmMap",
             if (meta == null) "metadata NULL (fetch failed)"
             else "metadata ok ref=${meta.referenceTime} times=${meta.validTimes.size} vars=${meta.variables.size} native=${OmTilesNative.isAvailable}",
@@ -175,7 +176,7 @@ internal fun WeatherMapDecodeEffect(state: WeatherMapState) {
                 val meta = req.meta ?: return@collectLatest
                 val validTime = meta.validTimes.getOrNull(req.timeIndex) ?: return@collectLatest
                 if (!meta.supports(req.metric) || !OmTilesNative.isAvailable) {
-                    android.util.Log.w(
+                    Log.status(
                         "OmMap",
                         "skip decode: supports=${meta.supports(req.metric)} native=${OmTilesNative.isAvailable} metric=${req.metric}",
                     )
@@ -202,10 +203,10 @@ internal fun WeatherMapDecodeEffect(state: WeatherMapState) {
                             w, h,
                         )
                         if (values == null) {
-                            android.util.Log.w("OmMap", "decodeRegion null for $variable $validTime")
+                            Log.status("OmMap", "decodeRegion null for $variable $validTime")
                             return@withContext null
                         }
-                        android.util.Log.i(
+                        Log.status(
                             "OmMap",
                             "decoded $variable $validTime ${w}x$h in ${System.currentTimeMillis() - t0}ms",
                         )

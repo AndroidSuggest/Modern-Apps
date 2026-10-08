@@ -3,7 +3,7 @@ package com.vayunmathur.cast.platform.mirror
 import android.content.Context
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Surface
 import com.vayunmathur.cast.platform.remotedisplay.CastSystemDisplay
 import com.vayunmathur.cast.network.CastUdpTransport
@@ -338,7 +338,7 @@ class MirrorEngine(
     }
 
     private fun logStreamStart() {
-        Log.i(
+        Log.status(
             TAG,
             "streaming ${videoCodec.label} ${geometry.width}x${geometry.height} " +
                 "@ ${geometry.bitRate / BITS_PER_MEGABIT} Mbit/s" +
@@ -379,7 +379,7 @@ class MirrorEngine(
         ) {
             return false
         }
-        Log.w(
+        Log.status(
             TAG,
             "${videoCodec.label} has produced ${CODEC_CONFIG_TIMEOUT_MS}ms of frames " +
                 "and no codec config; the TV can never start its decoder",
@@ -420,7 +420,7 @@ class MirrorEngine(
             ) {
                 return false
             }
-            Log.w(
+            Log.status(
                 TAG,
                 "${videoCodec.label} produced no output at all in " +
                     "${NO_VIDEO_OUTPUT_TIMEOUT_MS}ms; either the encoder is wedged or " +
@@ -442,7 +442,7 @@ class MirrorEngine(
                 val pipe = try {
                     ParcelFileDescriptor.createPipe()
                 } catch (e: IOException) {
-                    Log.w(TAG, "could not create the PCM pipe", e)
+                    Log.status(TAG, "could not create the PCM pipe", e)
                     return false
                 }
                 audioWriteEnd = pipe[PIPE_WRITE_INDEX]
@@ -486,7 +486,7 @@ class MirrorEngine(
                 // forever hides the failure from the user behind a notification that says
                 // "Mirroring your screen".
                 if (udp.receiverGone) {
-                    Log.w(TAG, "the receiver stopped listening; ending the mirror")
+                    Log.status(TAG, "the receiver stopped listening; ending the mirror")
                     onStopped(MirrorStopReason.ReceiverGone)
                     return@launch
                 }
@@ -544,7 +544,7 @@ class MirrorEngine(
         val summary = senders.entries.joinToString(" ") { (kind, sender) ->
             "$kind=${sender.stats.packets}pkt/${sender.stats.octets}B"
         }
-        Log.i(
+        Log.status(
             TAG,
             "$summary feedback=$feedbackPackets unmatchedRtcp=$unmatchedPackets " +
                 "sendFailures=${udp.sendFailures}" +
@@ -602,7 +602,7 @@ class MirrorEngine(
     ) {
         feedbackPackets++
         if (hexDump) {
-            Log.i(
+            Log.status(
                 TAG,
                 "${stream.kind} feedback checkpoint=${feedback.checkpoint} " +
                     "nacks=${feedback.nacks.size} acks=${feedback.ackedFrames.size} " +
@@ -631,7 +631,7 @@ class MirrorEngine(
         val now = System.currentTimeMillis()
         if (now - lastKeyFrameRequest >= KEY_FRAME_REQUEST_INTERVAL_MS) {
             lastKeyFrameRequest = now
-            Log.i(TAG, "key frame requested (pli=$pictureLoss)")
+            Log.status(TAG, "key frame requested (pli=$pictureLoss)")
             videoEncoder?.requestKeyFrame()
         } else {
             coalescedKeyFrameRequests++

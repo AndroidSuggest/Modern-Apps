@@ -1,7 +1,7 @@
 package com.vayunmathur.everysync.provider.impl
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import com.vayunmathur.everysync.auth.AccountConfig
 import com.vayunmathur.everysync.auth.OAuthConfig
@@ -39,7 +39,7 @@ class GoogleProvider : SyncProvider {
         val account = config.accountName
         val email = fetchEmail(token) ?: emailFromAccountName(account)
         if (email == null) {
-            Log.e(TAG, "sync: could not resolve Google account email for '$account'")
+            Log.error(TAG, "sync: could not resolve Google account email for '$account'")
             return
         }
 
@@ -75,7 +75,7 @@ class GoogleProvider : SyncProvider {
         (JSON.parseToJsonElement(resp.body) as? JsonObject)
             ?.get("email")?.jsonPrimitive?.content?.ifBlank { null }
     } catch (expected: Exception) {
-        Log.e(TAG, "fetchEmail failed", expected)
+        Log.error(TAG, "fetchEmail failed", expected)
         null
     }
 

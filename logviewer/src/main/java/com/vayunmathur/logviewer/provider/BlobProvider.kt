@@ -9,7 +9,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.util.LruCache
 import com.vayunmathur.logviewer.BuildConfig
 import com.vayunmathur.logviewer.domain.LogDocument
@@ -43,7 +43,7 @@ class BlobProvider : ContentProvider(), ContentProvider.PipeDataWriter<ByteArray
      */
     @Throws(FileNotFoundException::class)
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
-        Log.d(TAG, "openFile $uri, mode $mode, caller $callingPackage")
+        Log.debug(TAG, "openFile $uri, mode $mode, caller $callingPackage")
         val entry = entryFor(uri) ?: throw FileNotFoundException()
         return openPipeHelper(uri, LogDocument.MIME_TYPE, null, entry.gzipped, this)
     }
@@ -62,7 +62,7 @@ class BlobProvider : ContentProvider(), ContentProvider.PipeDataWriter<ByteArray
             }
         } catch (e: IOException) {
             // Normal: the reader is free to stop early, which closes its end of the pipe.
-            Log.d(TAG, "pipe closed while writing $uri", e)
+            Log.debug(TAG, "pipe closed while writing $uri", e)
         }
     }
 
@@ -79,7 +79,7 @@ class BlobProvider : ContentProvider(), ContentProvider.PipeDataWriter<ByteArray
         selectionArgs: Array<out String>?,
         sortOrder: String?,
     ): Cursor? {
-        Log.d(TAG, "query $uri, caller $callingPackage")
+        Log.debug(TAG, "query $uri, caller $callingPackage")
         val entry = entryFor(uri) ?: return null
         val columns = projection
             ?: arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)

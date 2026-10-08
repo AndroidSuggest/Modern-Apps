@@ -180,7 +180,7 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
         // FileLength caps Kotlin file size (350 ui / 800 elsewhere): oversized
         // screen files hide brace-imbalance breakage and rot into helper
         // grab-bags. Split first — the build fails until each file fits.
-        fatal += listOf("ToastUsage", "DirectComposeAnimation", "FileLength")
+        fatal += listOf("ToastUsage", "DirectComposeAnimation", "FileLength", "DirectAndroidLog")
     }
 
     // Every app declares the same res/resources.properties (unqualifiedResLocale) for
@@ -346,6 +346,9 @@ dependencies {
 
     implementation(project(":library"))
     implementation(project(":library:ui"))
+    // Repo-wide logging facade (com.vayunmathur.library.log.Log). Direct
+    // android.util.Log use is banned by the DirectAndroidLog lint check.
+    implementation(project(":library:log"))
 
     // Repo-specific lint checks (currently: no Toast).
     lintChecks(project(":lint-rules"))

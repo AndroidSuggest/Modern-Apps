@@ -1,6 +1,7 @@
 package com.vayunmathur.pdf.util
 
 import androidx.compose.ui.geometry.Offset
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.pdf.util.SafePdfParser.orIfNonFinite
 import java.nio.ByteBuffer
 
@@ -63,7 +64,7 @@ internal class PrimitiveDecoder(
                 // random data — which decodes into plausible-looking garbage primitives.
                 // Kotlin knows all 14 tags Rust emits, so an unknown tag means the stream
                 // has desynced: keep what decoded cleanly and stop.
-                android.util.Log.w(
+                Log.status(
                     TAG,
                     "unknown tag $tag at offset ${buf.position()} (wire v$wireVersion), " +
                         "prim $primIndex of $count — wire desync, truncating page",
@@ -126,7 +127,7 @@ internal class PrimitiveDecoder(
         // been consumed, so dropping it leaves the stream in sync, and Text
         // carries no bracket that a later primitive is paired with.
         if (!x.isFinite() || !y.isFinite()) {
-            android.util.Log.w(TAG, "text primitive has a non-finite origin, dropping it")
+            Log.status(TAG, "text primitive has a non-finite origin, dropping it")
             return
         }
         out.add(
@@ -265,7 +266,7 @@ internal class PrimitiveDecoder(
             // bytes to step over — so this resyncs. Throwing instead would break
             // out of the loop and discard every LATER primitive too, blanking the
             // rest of the page below a single over-sized JPEG or inline image.
-            android.util.Log.w(
+            Log.status(
                 TAG,
                 "image payload $len exceeds ${SafePdfImages.MAX_IMAGE_DATA_BYTES}, dropping this " +
                     "image and continuing the page",
@@ -363,7 +364,7 @@ internal class PrimitiveDecoder(
         // the buffer ended, so keep the prefix that decoded rather than throwing
         // and losing the whole page over the last primitive.
         if (buf.remaining() < SafePdfParser.TRANSFER_LUT_SIZE) {
-            android.util.Log.w(TAG, "SoftMaskTransfer truncated, truncating page")
+            Log.status(TAG, "SoftMaskTransfer truncated, truncating page")
             return false
         }
         val lut = ByteArray(SafePdfParser.TRANSFER_LUT_SIZE)
@@ -389,7 +390,7 @@ internal class PrimitiveDecoder(
         if (len < 0) throw IllegalArgumentException("Negative ImageTiled data length $len")
         if (buf.remaining() < len) throw IllegalArgumentException("ImageTiled data truncated")
         if (SafePdfImages.imageTooLarge(len)) {
-            android.util.Log.w(
+            Log.status(
                 TAG,
                 "tiling cell payload $len exceeds ${SafePdfImages.MAX_IMAGE_DATA_BYTES}, dropping " +
                     "this pattern and continuing the page",

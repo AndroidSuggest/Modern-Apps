@@ -2,7 +2,7 @@ package com.vayunmathur.openassistant.util
 
 import android.app.Application
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
@@ -133,7 +133,7 @@ class AssistantViewModel(
             _recordedAudioPath.value = file.absolutePath
             _isRecording.value = true
         } catch (expected: Exception) {
-            Log.e(TAG, "Failed to start recording", expected)
+            Log.error(TAG, "Failed to start recording", expected)
             audioRecorder = null
             _recordedAudioPath.value = null
             _isRecording.value = false
@@ -163,7 +163,7 @@ class AssistantViewModel(
         val written = recorder.finish()
         audioRecorder = null
         if (written == null) {
-            Log.w(TAG, "recording produced no file: ${_recordedAudioPath.value}")
+            Log.status(TAG, "recording produced no file: ${_recordedAudioPath.value}")
             _recordedAudioPath.value = null
         }
         return _recordedAudioPath.value
@@ -216,11 +216,11 @@ class AssistantViewModel(
                 val legacyModelFiles = listOf("gemma4.litertlm", "gemma4-4b.litertlm")
                 for (name in legacyModelFiles) {
                     if (File(externalDir, name).delete()) {
-                        Log.i(TAG, "Deleted legacy model file $name")
+                        Log.status(TAG, "Deleted legacy model file $name")
                     }
                 }
             } catch (expected: Exception) {
-                Log.e(TAG, "Error cleaning up legacy model file", expected)
+                Log.error(TAG, "Error cleaning up legacy model file", expected)
             }
         }
     }
@@ -258,7 +258,7 @@ class AssistantViewModel(
                 }
                 ds.setLong("siglip_model_version", SiglipEmbedder.MODEL_VERSION.toLong())
             } catch (expected: Exception) {
-                Log.e(TAG, "Error cleaning up stale SigLIP2 model files", expected)
+                Log.error(TAG, "Error cleaning up stale SigLIP2 model files", expected)
             }
         }
     }

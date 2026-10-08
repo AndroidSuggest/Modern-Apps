@@ -7,7 +7,7 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -49,7 +49,7 @@ class PoweredOffScanner(private val context: Context) {
         val adapter = manager?.adapter
         val scanner = adapter?.bluetoothLeScanner
         if (adapter == null || scanner == null) {
-            Log.i(TAG, "no BLE scanner (adapter off or unavailable)")
+            Log.status(TAG, "no BLE scanner (adapter off or unavailable)")
             close()
             return@callbackFlow
         }
@@ -69,19 +69,19 @@ class PoweredOffScanner(private val context: Context) {
             }
 
             override fun onScanFailed(errorCode: Int) {
-                Log.w(TAG, "scan failed: $errorCode")
+                Log.status(TAG, "scan failed: $errorCode")
             }
         }
 
         try {
             scanner.startScan(PoweredOffBle.scanFilters(), scanSettings(adapter), callback)
-            Log.i(TAG, "powered-off beacon scan started")
+            Log.status(TAG, "powered-off beacon scan started")
         } catch (e: SecurityException) {
-            Log.w(TAG, "startScan denied (missing BLUETOOTH_SCAN)", e)
+            Log.status(TAG, "startScan denied (missing BLUETOOTH_SCAN)", e)
             close(e)
             return@callbackFlow
         } catch (e: Exception) {
-            Log.w(TAG, "startScan failed", e)
+            Log.status(TAG, "startScan failed", e)
             close(e)
             return@callbackFlow
         }
@@ -105,7 +105,7 @@ class PoweredOffScanner(private val context: Context) {
                 .setMatchMode(ScanSettings.MATCH_MODE_STICKY)
                 .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
         } else {
-            Log.i(TAG, "no offloaded filtering; falling back to all-matches and software dedup")
+            Log.status(TAG, "no offloaded filtering; falling back to all-matches and software dedup")
         }
         return builder.build()
     }

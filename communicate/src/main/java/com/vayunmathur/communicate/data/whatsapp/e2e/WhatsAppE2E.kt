@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.whatsapp.e2e
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppAuthData
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppDatabase
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppE2EPreKey
@@ -302,7 +302,7 @@ class WhatsAppE2E(
     fun parsePreKeyBundleNode(deviceId: Int, userNode: WhatsAppProtocol.Node): ParsedPreKeyBundle? {
         return try {
             if (userNode.getChildByTag("error") != null) {
-                Log.w(TAG, "prekey response error for device $deviceId")
+                Log.status(TAG, "prekey response error for device $deviceId")
                 return null
             }
             val registrationId = readRegistrationId(userNode) ?: return null
@@ -321,7 +321,7 @@ class WhatsAppE2E(
                 identityKey = identityRaw,
             )
         } catch (expected: Exception) {
-            Log.w(TAG, "Failed to parse prekey bundle", expected)
+            Log.status(TAG, "Failed to parse prekey bundle", expected)
             null
         }
     }

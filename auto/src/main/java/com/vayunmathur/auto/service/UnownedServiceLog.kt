@@ -1,6 +1,6 @@
 package com.vayunmathur.auto.service
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.protocol.GalService
 import com.vayunmathur.auto.protocol.gal.Service
 
@@ -20,7 +20,7 @@ internal fun observeUnownedService(service: Service) {
         // methods -- and ch9 traffic stays ignored.
         GalService.BLUETOOTH.id -> if (service.hasBluetooth()) {
             val bt = service.bluetooth
-            Log.i(
+            Log.status(
                 TAG,
                 "head-unit bluetooth ${bt.carAddress} " +
                     "(${bt.supportedPairingMethodsCount} pairing methods); no owner yet",
@@ -29,15 +29,15 @@ internal fun observeUnownedService(service: Service) {
         // Phone status: control 24 carries the call verdict into
         // session.callAvailable; the ch13 descriptor and traffic stay
         // observed until an InCall owner needs more.
-        GalService.PHONE_STATUS.id -> Log.i(TAG, "head-unit phone-status advertised; no owner yet")
+        GalService.PHONE_STATUS.id -> Log.status(TAG, "head-unit phone-status advertised; no owner yet")
         // Radio: opaque descriptor bytes (no typed decode recovered), no
         // owner; the tuner stays a head-unit affair.
-        GalService.RADIO.id -> Log.i(TAG, "head-unit radio advertised; no owner yet")
+        GalService.RADIO.id -> Log.status(TAG, "head-unit radio advertised; no owner yet")
         // Vendor extension ("vcar" slot): typed DTO, no owner; the name
         // and allowlist size say who is extending, nothing more.
         GalService.VENDOR_EXTENSION.id -> if (service.hasVendorExtension()) {
             val vendor = service.vendorExtension
-            Log.i(
+            Log.status(
                 TAG,
                 "head-unit vendor extension ${vendor.name} " +
                     "(${vendor.packageAllowlistCount} packages); no owner yet",
@@ -47,14 +47,14 @@ internal fun observeUnownedService(service: Service) {
         // it lands (see CarCompanionDeviceService); until then the BSSID
         // hint is the value and ch17/18 traffic stays ignored.
         GalService.WIFI_PROJECTION.id -> if (service.hasWifiProjection()) {
-            Log.i(
+            Log.status(
                 TAG,
                 "head-unit wifi-projection advertised " +
                     "(bssid=${service.wifiProjection.carWifiBssid}); no owner yet",
             )
         }
         GalService.WIFI_DISCOVERY.id ->
-            Log.i(TAG, "head-unit wifi-discovery advertised; no owner yet")
+            Log.status(TAG, "head-unit wifi-discovery advertised; no owner yet")
         // Car-control family: descriptor payloads are generic bytes
         // (control.proto f15-18, per-service mapping unrecovered), so
         // there is nothing typed to observe -- open generically, ignore
@@ -63,7 +63,7 @@ internal fun observeUnownedService(service: Service) {
         GalService.CAR_LOCAL_MEDIA.id,
         GalService.BUFFERED_MEDIA_SINK.id,
         GalService.CAR_INTENT.id,
-        -> Log.i(TAG, "head-unit car service ${service.id} advertised; no owner yet")
+        -> Log.status(TAG, "head-unit car service ${service.id} advertised; no owner yet")
         // Owned services and the control channel need no observation.
         else -> Unit
     }

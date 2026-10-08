@@ -1,7 +1,7 @@
 package com.vayunmathur.appstore.data.installer
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.aurora.gplayapi.data.models.PlayFile
 import java.io.File
 import java.net.HttpURLConnection
@@ -78,10 +78,10 @@ class PlayDownloader(
 
             Result.success(localFiles)
         } catch (expected: java.io.IOException) {
-            Log.e(TAG, "downloadFiles failed: ${expected.message}", expected)
+            Log.error(TAG, "downloadFiles failed: ${expected.message}", expected)
             Result.failure(expected)
         } catch (expected: SecurityException) {
-            Log.e(TAG, "downloadFiles failed: ${expected.message}", expected)
+            Log.error(TAG, "downloadFiles failed: ${expected.message}", expected)
             Result.failure(expected)
         }
     }

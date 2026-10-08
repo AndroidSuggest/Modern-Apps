@@ -1,7 +1,7 @@
 package com.vayunmathur.library.ml
 
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 
 /**
@@ -62,7 +62,7 @@ class Gemma4AudioHandle private constructor(private val file: File) : AutoClosea
     fun encode(samples: FloatArray): FloatArray? {
         if (handle == 0L) return null
         if (samples.size < MIN_SAMPLES) {
-            Log.w(TAG, "${samples.size} samples is under the $MIN_SAMPLES the band needs")
+            Log.status(TAG, "${samples.size} samples is under the $MIN_SAMPLES the band needs")
             return null
         }
         return MlNative.encodeAudioGemma4(handle, samples)
@@ -160,14 +160,14 @@ class Gemma4AudioHandle private constructor(private val file: File) : AutoClosea
          */
         private fun create(file: File): Long {
             if (!file.isFile) {
-                Log.w(TAG, "${file.name} is missing")
+                Log.status(TAG, "${file.name} is missing")
                 return 0L
             }
             val fd = runCatching {
                 ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
                     .use { it.detachFd() }
             }.getOrElse {
-                Log.w(TAG, "cannot open ${file.name}: $it")
+                Log.status(TAG, "cannot open ${file.name}: $it")
                 return 0L
             }
             var handed = false

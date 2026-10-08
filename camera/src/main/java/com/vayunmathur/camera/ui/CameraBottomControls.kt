@@ -5,7 +5,7 @@ import android.content.ClipData
 import android.content.Intent
 import android.graphics.Bitmap
 import android.provider.MediaStore
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import com.vayunmathur.camera.Route
@@ -73,7 +73,7 @@ internal fun CameraBottomControls(
                 }
                 ExternalIntents.launch(context, Intent.createChooser(fallback, null))
             }
-        }.onFailure { Log.w("CameraScreen", "Could not open image viewer", it) }
+        }.onFailure { Log.status("CameraScreen", "Could not open image viewer", it) }
     }
     val onPickerChanged: (Boolean) -> Unit = { photo ->
         if (photo) {

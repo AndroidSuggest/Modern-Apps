@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ml.ClipHandle
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -112,20 +112,20 @@ object ClipEmbedder {
             val app = context.applicationContext
             val tok = ClipTokenizer.load(app)
             if (tok == null) {
-                Log.e(TAG, "CLIP merges asset missing")
+                Log.error(TAG, "CLIP merges asset missing")
                 return false
             }
             // Construction never throws: an absent, compressed or malformed asset, a missing
             // `libmodelrunner.so` and a device without fp16 compute all come back unavailable.
             val handle = ClipHandle.inAssets(app.assets)
             if (!handle.isAvailable) {
-                Log.e(TAG, "cannot bring up $handle")
+                Log.error(TAG, "cannot bring up $handle")
                 handle.close()
                 return false
             }
             clip = handle
             tokenizer = tok
-            Log.i(TAG, "TinyCLIP embedder ready (dim=${ClipHandle.DIMENSION})")
+            Log.status(TAG, "TinyCLIP embedder ready (dim=${ClipHandle.DIMENSION})")
             return true
         }
     }
@@ -197,10 +197,10 @@ object ClipEmbedder {
         }
         resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
     } catch (t: IOException) {
-        Log.w(TAG, "decode failed for $uri", t)
+        Log.status(TAG, "decode failed for $uri", t)
         null
     } catch (t: SecurityException) {
-        Log.w(TAG, "decode failed for $uri", t)
+        Log.status(TAG, "decode failed for $uri", t)
         null
     }
 

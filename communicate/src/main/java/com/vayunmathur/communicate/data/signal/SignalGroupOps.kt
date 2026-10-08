@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.signal.transport.SignalGroupsApi
 import kotlinx.coroutines.launch
 import org.signal.storageservice.storage.protos.groups.GroupChange
@@ -41,7 +41,7 @@ suspend fun SignalClient.createGroup(subject: String, contacts: List<String>): S
                 groupRevision = 0,
             ),
         )
-        Log.i(TAG, "createGroup $groupId (PUT /v2/groups/ ${if (ok) "ok" else "failed"})")
+        Log.status(TAG, "createGroup $groupId (PUT /v2/groups/ ${if (ok) "ok" else "failed"})")
     } catch (_: Exception) {}
     return groupId
 }
@@ -52,7 +52,7 @@ suspend fun SignalClient.setGroupName(conversationId: String, name: String): Boo
     if (masterKey == null) {
         // Previously this generated a fresh random master key per rename, which described an
         // unrelated group rather than this one.
-        Log.w(TAG, "no stored master key for $conversationId, cannot rename the group")
+        Log.status(TAG, "no stored master key for $conversationId, cannot rename the group")
         return false
     }
     val revision = existing.groupRevision + 1
@@ -62,7 +62,7 @@ suspend fun SignalClient.setGroupName(conversationId: String, name: String): Boo
     if (!accepted) {
         // The local name is not updated on rejection: claiming success for a change the server refused is
         // how the group drifts out of step with everyone else's view of it.
-        Log.w(TAG, "the server rejected renaming $conversationId")
+        Log.status(TAG, "the server rejected renaming $conversationId")
         return false
     }
     eventsMutable.emit(SignalEvent.ConversationNameChanged(conversationId = conversationId, newName = name))
@@ -94,7 +94,7 @@ private suspend fun SignalClient.groupChange(
         val authorization = SignalGroupsApi.authorizationFor(auth, secretParams, credential) ?: return false
         SignalGroupsApi.patchGroup(authorization, actions, signalTls())
     } catch (expected: Throwable) {
-        Log.w(TAG, "could not submit a group change", expected)
+        Log.status(TAG, "could not submit a group change", expected)
         false
     }
 }
@@ -106,7 +106,7 @@ suspend fun SignalClient.updateGroupParticipants(
     val existing = try { db?.conversationDao()?.getConversation(conversationId) } catch (_: Exception) { null }
     val masterKey = existing?.groupMasterKey
     if (masterKey == null) {
-        Log.w(TAG, "no stored master key for $conversationId, cannot change membership")
+        Log.status(TAG, "no stored master key for $conversationId, cannot change membership")
         return false
     }
     val revision = existing.groupRevision + 1
@@ -116,12 +116,12 @@ suspend fun SignalClient.updateGroupParticipants(
         }
         else -> {
             // Removal needs DeleteMemberAction, which is not built yet; refuse rather than pretend.
-            Log.w(TAG, "removing members from a Signal group is not implemented")
+            Log.status(TAG, "removing members from a Signal group is not implemented")
             false
         }
     }
     if (!accepted) {
-        Log.w(TAG, "the server rejected the membership change for $conversationId")
+        Log.status(TAG, "the server rejected the membership change for $conversationId")
         return false
     }
     for (pid in participantIds) {
@@ -155,14 +155,14 @@ suspend fun SignalClient.refreshGroup(conversationId: String): Boolean {
                 groupRevision = state.revision,
             ),
         )
-        Log.i(
+        Log.status(
             TAG,
             "refreshed $conversationId: \"${state.title}\" revision=${state.revision} " +
                 "members=${state.memberAcis.size} pending=${state.pendingCount}",
         )
         true
     } catch (expected: Throwable) {
-        Log.w(TAG, "could not refresh the group $conversationId", expected)
+        Log.status(TAG, "could not refresh the group $conversationId", expected)
         false
     }
 }
@@ -240,6 +240,6 @@ internal suspend fun SignalClient.rememberInboundGroup(
         // message is already usable with what we learned from the envelope.
         scope.launch { refreshGroup(conversationId) }
     } catch (expected: Throwable) {
-        Log.w(TAG, "could not record the group behind $conversationId", expected)
+        Log.status(TAG, "could not record the group behind $conversationId", expected)
     }
 }

@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.rcs
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -86,7 +86,7 @@ suspend fun RcsSessionManager.hostGroupFocus(
         focusMembersMap.remove(focusUri)
         return null
     }
-    Log.i(TAG, "Hosting focus $focusUri for $conversationId (${distinct.size} invited)")
+    Log.status(TAG, "Hosting focus $focusUri for $conversationId (${distinct.size} invited)")
     return focusUri
 }
 

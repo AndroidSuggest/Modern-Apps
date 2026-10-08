@@ -64,6 +64,7 @@
          and it is inert for a non-system install (the branch above is only reached for a system
          app), where the reflection simply keeps degrading to omitted lines. -->
     <application
+        android:name=".LogviewerApplication"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:largeHeap="true"

@@ -3,7 +3,7 @@ package com.vayunmathur.openassistant.util
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.net.toUri
 import com.vayunmathur.library.intents.calendar.EventData
 import com.vayunmathur.library.intents.clock.SetAlarmData
@@ -51,7 +51,7 @@ internal class AssistantToolIntents(private val context: Context) {
     }
 
     fun handleMissingApp(packageName: String): String {
-        Log.d("AssistantToolSet", "Handling missing app: $packageName")
+        Log.debug("AssistantToolSet", "Handling missing app: $packageName")
         return getMissingAppMessage(packageName) +
             " Try to help the user with your own knowledge instead."
     }

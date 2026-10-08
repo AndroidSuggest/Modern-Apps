@@ -10,7 +10,7 @@ import com.vayunmathur.communicate.data.whatsapp.expandAppStateKeys
 import com.vayunmathur.communicate.data.whatsapp.extractMessageBody
 import com.vayunmathur.communicate.data.whatsapp.generateMessageId
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.edit
 import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppAppStateProto
 import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto
@@ -356,7 +356,7 @@ internal suspend fun WhatsAppClient.handleHistorySync(
         WhatsAppDiag.log(TAG, "history sync: emitted $emitted message(s)")
     } catch (expected: Exception) {
         WhatsAppDiag.log(TAG, "history sync failed: ${expected.javaClass.simpleName}: ${expected.message}")
-        Log.e(TAG, "history sync failed", expected)
+        Log.error(TAG, "history sync failed", expected)
     }
     // Acknowledge the chunk so the phone advances to the next one and finishes "syncing".
     sendHistorySyncReceipt(msgId)

@@ -2,7 +2,7 @@ package com.vayunmathur.library.ml
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * Face detection and face embedding, for `:photos`'s people clustering.
@@ -62,7 +62,7 @@ class FaceDetector(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
         try {
             MlNative.createScrfd(context.assets.open(assetName).use { it.readBytes() })
         } catch (expected: Exception) {
-            Log.e(TAG, "cannot load $assetName", expected)
+            Log.error(TAG, "cannot load $assetName", expected)
             0L
         }
     }
@@ -109,7 +109,7 @@ class FaceDetector(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
     /** Nine floats per face; see `MlNative.detectFaces` for the order. */
     private fun unpack(flat: FloatArray): List<DetectedFaceBox> {
         if (flat.size % FLOATS_PER_FACE != 0) {
-            Log.e(TAG, "${flat.size} floats is not a whole number of faces")
+            Log.error(TAG, "${flat.size} floats is not a whole number of faces")
             return emptyList()
         }
         val out = ArrayList<DetectedFaceBox>(flat.size / FLOATS_PER_FACE)
@@ -177,7 +177,7 @@ class FaceEmbedder(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
     fun embed(bitmap: Bitmap): FloatArray? {
         val result = native.segment(bitmap) ?: return null
         if (result.mask.size != EMBEDDING_LENGTH) {
-            Log.e(TAG, "a ${result.mask.size}-value embedding, expected $EMBEDDING_LENGTH")
+            Log.error(TAG, "a ${result.mask.size}-value embedding, expected $EMBEDDING_LENGTH")
             return null
         }
         return result.mask

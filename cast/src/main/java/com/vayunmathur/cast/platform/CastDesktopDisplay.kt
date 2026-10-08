@@ -2,7 +2,7 @@ package com.vayunmathur.cast.platform
 
 import android.content.Context
 import android.hardware.display.DisplayManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Display
 import com.vayunmathur.cast.R
 import com.vayunmathur.cast.domain.ClientPhase
@@ -111,7 +111,7 @@ private suspend fun CastController.renegotiateDesktopMode(
     val activeClient = client ?: return
     val device = deviceMutable.value ?: return
     val codec = activeCodec ?: return
-    Log.i(
+    Log.status(
         TAG,
         "the user chose ${target.width}x${target.height}@${target.frameRate}; " +
             "re-negotiating from ${running.width}x${running.height}@${running.frameRate}",
@@ -134,7 +134,7 @@ private suspend fun CastController.renegotiateDesktopMode(
     }
     val ready = outcome as? HandshakeOutcome.Ready
     if (ready == null) {
-        Log.w(TAG, "the TV would not agree the new mode: $outcome")
+        Log.status(TAG, "the TV would not agree the new mode: $outcome")
         abandonMirroring(
             context,
             null,

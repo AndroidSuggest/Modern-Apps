@@ -6,7 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import com.vayunmathur.library.ml.DetectedFaceBox
@@ -110,7 +110,7 @@ object FaceRecognizer {
             // GPU-only: a device without Vulkan fp16 compute reports unavailable rather
             // than throwing, so the constructors succeeding is not enough.
             if (!newDetector.isAvailable || !newEmbedder.isAvailable) {
-                Log.w(TAG, "no Vulkan fp16 compute; face clustering is off")
+                Log.status(TAG, "no Vulkan fp16 compute; face clustering is off")
                 newDetector.close()
                 newEmbedder.close()
                 initFailed = true
@@ -120,14 +120,14 @@ object FaceRecognizer {
             embedder = newEmbedder
             true
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "Face models unavailable", e)
+            Log.error(TAG, "Face models unavailable", e)
             closeQuietly()
             detector = null
             embedder = null
             initFailed = true
             false
         } catch (e: IOException) {
-            Log.e(TAG, "Face models unavailable", e)
+            Log.error(TAG, "Face models unavailable", e)
             closeQuietly()
             detector = null
             embedder = null
@@ -148,11 +148,11 @@ object FaceRecognizer {
         val faces = try {
             det.detect(argb)
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "Face detection failed", e)
+            Log.error(TAG, "Face detection failed", e)
             if (argb != bitmap) argb.recycle()
             return emptyList()
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "Face detection failed", e)
+            Log.error(TAG, "Face detection failed", e)
             if (argb != bitmap) argb.recycle()
             return emptyList()
         }
@@ -173,7 +173,7 @@ object FaceRecognizer {
             // Null means the inference failed on this crop; the others may still be
             // fine, so skip this face rather than abandoning the photo.
             val raw = emb.embed(aligned) ?: run {
-                Log.e(TAG, "Face embedding failed")
+                Log.error(TAG, "Face embedding failed")
                 return null
             }
             return DetectedFace(

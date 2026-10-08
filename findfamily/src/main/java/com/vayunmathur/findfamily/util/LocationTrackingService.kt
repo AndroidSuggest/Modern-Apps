@@ -28,7 +28,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
 import android.os.UserManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellationException
@@ -357,7 +357,7 @@ class LocationTrackingService : Service(), SensorEventListener {
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        Log.w(TAG_DIRECT_BOOT, "mirror seed failed", e)
+                        Log.status(TAG_DIRECT_BOOT, "mirror seed failed", e)
                     }
                     if (BuildConfig.DEV_BUILD) runCatching { pollTrackerReports() }
                     runCatching { pollPoweredOffSightings() }
@@ -488,7 +488,7 @@ class LocationTrackingService : Service(), SensorEventListener {
                 when (watchdogVerdict()) {
                     WatchdogVerdict.STOP -> break
                     WatchdogVerdict.ASSIST -> {
-                        Log.i(
+                        Log.status(
                             TAG_NETWORK_ASSIST,
                             "no network fix for ${NETWORK_NO_LOCK_TIMEOUT_MS}ms, starting GPS in parallel"
                         )

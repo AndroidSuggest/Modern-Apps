@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.data.signal.transport
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.security.KeyStore
 import java.security.cert.CertificateException
 import java.security.cert.CertificateFactory
@@ -61,7 +61,7 @@ object SignalTrust {
             val ks = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
             val loaded = loadBundledRoots(context, cf, ks)
             if (loaded == 0) {
-                Log.e(TAG, "No Signal CAs loaded (checked ${CA_ASSETS.size}" +
+                Log.error(TAG, "No Signal CAs loaded (checked ${CA_ASSETS.size}" +
                     "assets) — Signal TLS will fail (trust anchor not found)")
                 return null
             }
@@ -69,7 +69,7 @@ object SignalTrust {
             val bundledTm = trustManagerFor(ks)
             val systemTm = trustManagerFor(null)
             if (bundledTm == null) {
-                Log.e(TAG, "No X509TrustManager for bundled Signal roots")
+                Log.error(TAG, "No X509TrustManager for bundled Signal roots")
                 return null
             }
 
@@ -77,10 +77,10 @@ object SignalTrust {
             val sslContext = SSLContext.getInstance("TLS").apply {
                 init(null, arrayOf<javax.net.ssl.TrustManager>(union), null)
             }
-            Log.i(TAG, "Signal trust ready: $loaded bundled root(s) + system defaults")
+            Log.status(TAG, "Signal trust ready: $loaded bundled root(s) + system defaults")
             sslContext.socketFactory
         } catch (expected: Exception) {
-            Log.e(TAG, "Failed to build Signal SSLSocketFactory", expected)
+            Log.error(TAG, "Failed to build Signal SSLSocketFactory", expected)
             null
         }
     }
@@ -109,12 +109,12 @@ object SignalTrust {
                     ks.setCertificateEntry("signal-ca-$idx", cert)
                     true
                 } else {
-                    Log.w(TAG, "Asset $path did not decode to X509Certificate")
+                    Log.status(TAG, "Asset $path did not decode to X509Certificate")
                     false
                 }
             }
         } catch (expected: Exception) {
-            Log.w(TAG, "Failed to load Signal CA asset $path: ${expected.message}")
+            Log.status(TAG, "Failed to load Signal CA asset $path: ${expected.message}")
             false
         }
     }

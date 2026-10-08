@@ -1,7 +1,7 @@
 package com.vayunmathur.everysync.provider.impl
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import com.vayunmathur.everysync.auth.AccountConfig
 import com.vayunmathur.everysync.auth.OAuthConfig
@@ -43,7 +43,7 @@ class GoogleHealthProvider : SyncProvider {
                 ?.get("email")?.jsonPrimitive?.content
             if (!email.isNullOrBlank()) "$email (Google Health)" else "Google Health"
         } catch (expected: Exception) {
-            Log.e(TAG, "resolveAccountName failed", expected)
+            Log.error(TAG, "resolveAccountName failed", expected)
             "Google Health"
         }
     }
@@ -60,7 +60,7 @@ class GoogleHealthProvider : SyncProvider {
         val watermark = SyncState.get(context, account, KEY_WATERMARK)?.toLongOrNull()
         val recentFrom = (watermark?.minus(RECENT_OVERLAP_MILLIS) ?: (now - RECENT_SEED_DAYS * DAY_MILLIS))
             .coerceAtLeast(0)
-        Log.i(TAG, "sync $account: recent window [$recentFrom, $now]")
+        Log.status(TAG, "sync $account: recent window [$recentFrom, $now]")
         HealthSink.upsert(context, client.getMeasurements(recentFrom, now))
         SyncState.set(context, account, KEY_WATERMARK, now.toString())
 
@@ -73,12 +73,12 @@ class GoogleHealthProvider : SyncProvider {
             ?: (now - RECENT_SEED_DAYS * DAY_MILLIS)
         while (cursor > floor) {
             val chunkStart = maxOf(cursor - BACKFILL_CHUNK_DAYS * DAY_MILLIS, floor)
-            Log.i(TAG, "sync $account: backfill chunk [$chunkStart, $cursor]")
+            Log.status(TAG, "sync $account: backfill chunk [$chunkStart, $cursor]")
             HealthSink.upsert(context, client.getMeasurements(chunkStart, cursor))
             cursor = chunkStart
             SyncState.set(context, account, KEY_BACKFILL_CURSOR, cursor.toString())
         }
-        Log.i(TAG, "sync $account: complete (backfilled to $cursor)")
+        Log.status(TAG, "sync $account: complete (backfilled to $cursor)")
     }
 
     companion object {

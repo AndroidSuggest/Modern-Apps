@@ -5,7 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.util.Patterns
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -165,10 +165,10 @@ internal fun QrResultOverlay(text: String, onDismiss: () -> Unit, context: Conte
                         context.startActivity(view)
                         onDismiss()
                     } catch (e: ActivityNotFoundException) {
-                        Log.w("CameraOverlays", "No app to handle eSIM provisioning", e)
+                        Log.status("CameraOverlays", "No app to handle eSIM provisioning", e)
                         AppMessages.show(context.getString(R.string.no_app_to_add_esim))
                     } catch (e: SecurityException) {
-                        Log.w("CameraOverlays", "No app to handle eSIM provisioning", e)
+                        Log.status("CameraOverlays", "No app to handle eSIM provisioning", e)
                         AppMessages.show(context.getString(R.string.no_app_to_add_esim))
                     }
                 }) {
@@ -181,7 +181,7 @@ internal fun QrResultOverlay(text: String, onDismiss: () -> Unit, context: Conte
                     try {
                         context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                     } catch (e: ActivityNotFoundException) {
-                        Log.w("CameraOverlays", "No app to open URL", e)
+                        Log.status("CameraOverlays", "No app to open URL", e)
                         AppMessages.show(context.getString(R.string.no_app_to_open_url))
                     }
                 }) {

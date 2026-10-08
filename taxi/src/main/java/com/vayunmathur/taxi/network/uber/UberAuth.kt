@@ -1,7 +1,7 @@
 package com.vayunmathur.taxi.network.uber
 
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -97,12 +97,12 @@ object UberAuth {
             headers = headers(),
             body = body,
         )
-        Log.d(TAG, "POST /rt/silk-screen/submit-form -> ${resp.status}")
+        Log.debug(TAG, "POST /rt/silk-screen/submit-form -> ${resp.status}")
         if (!resp.isSuccess) {
-            Log.w(TAG, "submit-form ${resp.status}: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
+            Log.status(TAG, "submit-form ${resp.status}: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
             return UberAuthResult.Failed("HTTP ${resp.status}: ${resp.body.take(ERROR_BODY_PREVIEW_MAX)}")
         }
-        Log.d(TAG, "submit-form ok: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
+        Log.debug(TAG, "submit-form ok: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
         val container = runCatching {
             json.decodeFromString(FormContainer.serializer(), resp.body)
         }.getOrElse { return UberAuthResult.Failed("Unreadable silkscreen response") }

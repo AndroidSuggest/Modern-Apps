@@ -1,7 +1,7 @@
 package com.vayunmathur.appstore.data.play
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -99,9 +99,9 @@ class PlayRepository(private val context: Context) {
                 invalidate()
             }
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "restore auth failed", expected)
+            Log.status(TAG, "restore auth failed", expected)
         } catch (expected: IllegalStateException) {
-            Log.w(TAG, "restore auth failed", expected)
+            Log.status(TAG, "restore auth failed", expected)
         }
     }
 
@@ -122,9 +122,9 @@ class PlayRepository(private val context: Context) {
         } catch (e: CancellationException) {
             throw e
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "Play call failed; cycling anonymous account", expected)
+            Log.status(TAG, "Play call failed; cycling anonymous account", expected)
         } catch (expected: IllegalStateException) {
-            Log.w(TAG, "Play call failed; cycling anonymous account", expected)
+            Log.status(TAG, "Play call failed; cycling anonymous account", expected)
         }
 
         invalidate()
@@ -134,10 +134,10 @@ class PlayRepository(private val context: Context) {
         } catch (e: CancellationException) {
             throw e
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "Play call failed again after cycling", expected)
+            Log.status(TAG, "Play call failed again after cycling", expected)
             null
         } catch (expected: IllegalStateException) {
-            Log.w(TAG, "Play call failed again after cycling", expected)
+            Log.status(TAG, "Play call failed again after cycling", expected)
             null
         }
     }
@@ -247,7 +247,7 @@ class PlayRepository(private val context: Context) {
                 prefs.remove(PLAY_AUTH_DISPENSED_AT_KEY)
             }
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "invalidate auth failed", expected)
+            Log.status(TAG, "invalidate auth failed", expected)
         }
     }
 
@@ -259,7 +259,7 @@ class PlayRepository(private val context: Context) {
                 prefs[PLAY_AUTH_DISPENSED_AT_KEY] = dispensedAt
             }
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "persist auth failed", expected)
+            Log.status(TAG, "persist auth failed", expected)
         }
     }
 

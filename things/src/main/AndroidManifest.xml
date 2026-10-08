@@ -26,6 +26,7 @@
     <uses-permission android:name="android.permission.health.WRITE_BASAL_METABOLIC_RATE" />
 
     <application
+        android:name=".ThingsApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"

@@ -2,7 +2,7 @@ package com.vayunmathur.health.data
 
 import android.content.Context
 import android.os.storage.StorageManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.room.loadSqlCipher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -215,7 +215,7 @@ object ReferenceCatalog {
                 }
             }
         } catch (e: android.database.sqlite.SQLiteException) {
-            Log.e(TAG, "Ingredient search failed", e)
+            Log.error(TAG, "Ingredient search failed", e)
             emptyList()
         }
     }
@@ -235,7 +235,7 @@ object ReferenceCatalog {
                 arrayOf(ingredient),
             ).use { cursor -> cursor.readMedications() }
         } catch (e: android.database.sqlite.SQLiteException) {
-            Log.e(TAG, "Product lookup failed", e)
+            Log.error(TAG, "Product lookup failed", e)
             emptyList()
         }
     }
@@ -257,7 +257,7 @@ object ReferenceCatalog {
                 arrayOf(match),
             ).use { cursor -> cursor.readMedications() }
         } catch (e: android.database.sqlite.SQLiteException) {
-            Log.e(TAG, "Product search failed", e)
+            Log.error(TAG, "Product search failed", e)
             emptyList()
         }
     }
@@ -290,7 +290,7 @@ object ReferenceCatalog {
                 }
             }
         } catch (e: android.database.sqlite.SQLiteException) {
-            Log.e(TAG, "Allergen search failed", e)
+            Log.error(TAG, "Allergen search failed", e)
             emptyList()
         }
     }
@@ -338,7 +338,7 @@ object ReferenceCatalog {
                 }
             }
         } catch (e: android.database.sqlite.SQLiteException) {
-            Log.e(TAG, "Lab search failed", e)
+            Log.error(TAG, "Lab search failed", e)
             emptyList()
         }
     }
@@ -374,7 +374,7 @@ object ReferenceCatalog {
                 }
             }
         } catch (e: android.database.sqlite.SQLiteException) {
-            Log.e(TAG, "Condition search failed", e)
+            Log.error(TAG, "Condition search failed", e)
             emptyList()
         }
     }
@@ -476,7 +476,7 @@ object ReferenceCatalog {
                 Result.success(asset)
             } catch (e: Exception) {
                 partDbFile.delete()
-                Log.e(TAG, "Unpack failed", e)
+                Log.error(TAG, "Unpack failed", e)
                 if (e is kotlinx.coroutines.CancellationException) {
                     _status.value = installedMeta()?.let { Status.Ready(it) } ?: Status.Absent
                     throw e
@@ -521,10 +521,10 @@ object ReferenceCatalog {
             json.decodeFromString<Meta>(it.readText())
         }
     } catch (e: IOException) {
-        Log.i(TAG, "No bundled medical catalogue asset: ${e.message}")
+        Log.status(TAG, "No bundled medical catalogue asset: ${e.message}")
         null
     } catch (e: IllegalArgumentException) {
-        Log.i(TAG, "No bundled medical catalogue asset: ${e.message}")
+        Log.status(TAG, "No bundled medical catalogue asset: ${e.message}")
         null
     }
 
@@ -534,10 +534,10 @@ object ReferenceCatalog {
             val meta = json.decodeFromString<Meta>(metaFile.readText())
             if (meta.schemaVersion == SUPPORTED_SCHEMA_VERSION) meta else null
         } catch (e: IOException) {
-            Log.e(TAG, "Unreadable unpacked metadata", e)
+            Log.error(TAG, "Unreadable unpacked metadata", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "Unreadable unpacked metadata", e)
+            Log.error(TAG, "Unreadable unpacked metadata", e)
             null
         }
     }
@@ -557,7 +557,7 @@ object ReferenceCatalog {
                     null,
                 ).also { handle = it }
             } catch (e: android.database.sqlite.SQLiteException) {
-                Log.e(TAG, "Failed to open the medical catalogue", e)
+                Log.error(TAG, "Failed to open the medical catalogue", e)
                 null
             }
         }

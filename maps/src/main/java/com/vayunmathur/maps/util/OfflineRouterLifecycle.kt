@@ -1,7 +1,7 @@
 package com.vayunmathur.maps.util
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * Lifecycle (init state, base path, reload) for [OfflineRouter].
@@ -29,10 +29,10 @@ internal object OfflineRouterLifecycle {
         if (isInitialized) return
         val path = context.getExternalFilesDir(null)?.absolutePath ?: return
         OfflineRouter.basePath = path
-        Log.d("OfflineRouter", "Initializing with path: $path")
+        Log.debug("OfflineRouter", "Initializing with path: $path")
 
         isInitialized = OfflineRouter.initGraph(path)
-        Log.d("OfflineRouter", "Initialization result: $isInitialized")
+        Log.debug("OfflineRouter", "Initialization result: $isInitialized")
     }
 
     /**

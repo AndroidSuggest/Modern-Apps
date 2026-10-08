@@ -5,7 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.net.toUri
 import com.vayunmathur.photos.data.Photo
 
@@ -58,9 +58,9 @@ object AlbumMediaStore {
                     moved += photo.id
                 }
             } catch (e: SecurityException) {
-                Log.e(TAG, "Failed to move photo ${photo.id} to album=$album", e)
+                Log.error(TAG, "Failed to move photo ${photo.id} to album=$album", e)
             } catch (e: IllegalArgumentException) {
-                Log.e(TAG, "Failed to move photo ${photo.id} to album=$album", e)
+                Log.error(TAG, "Failed to move photo ${photo.id} to album=$album", e)
             }
         }
         return moved

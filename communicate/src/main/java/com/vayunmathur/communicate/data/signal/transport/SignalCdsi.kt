@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal.transport
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -56,17 +56,17 @@ object SignalCdsi {
                 sslSocketFactory = sslSocketFactory,
             )
         } catch (expected: Throwable) {
-            Log.w(TAG, "CDSI auth fetch failed", expected)
+            Log.status(TAG, "CDSI auth fetch failed", expected)
             return null
         }
         if (!resp.isSuccess) {
-            Log.w(TAG, "CDSI auth fetch failed: ${resp.status} ${resp.statusMessage}")
+            Log.status(TAG, "CDSI auth fetch failed: ${resp.status} ${resp.statusMessage}")
             return null
         }
         return parseCredentials(resp.text)
     }
 
-    internal fun parseCredentials(body: String, warn: (String) -> Unit = { Log.w(TAG, it) }): Credentials? {
+    internal fun parseCredentials(body: String, warn: (String) -> Unit = { Log.status(TAG, it) }): Credentials? {
         val root = try {
             json.parseToJsonElement(body).jsonObject
         } catch (expected: Exception) {
@@ -101,15 +101,15 @@ object SignalCdsi {
             val cause =
                 if (expected1 is java.util.concurrent.ExecutionException) expected1.cause ?: expected1 else expected1
             if (cause is CdsiInvalidTokenException && token != null) {
-                Log.i(TAG, "CDSI token no longer valid, retrying as a full lookup")
+                Log.status(TAG, "CDSI token no longer valid, retrying as a full lookup")
                 try {
                     performLookup(credentials, emptySet(), previousE164s + newE164s, null)
                 } catch (expected: Throwable) {
-                    Log.w(TAG, "CDSI lookup failed", expected)
+                    Log.status(TAG, "CDSI lookup failed", expected)
                     null
                 }
             } else {
-                Log.w(TAG, "CDSI lookup failed", cause)
+                Log.status(TAG, "CDSI lookup failed", cause)
                 null
             }
         }
@@ -141,7 +141,7 @@ object SignalCdsi {
                 pni = entry.pni?.toServiceIdString(),
             )
         }
-        Log.i(TAG, "CDSI returned ${discovered.size} entries (permits used ${response.debugPermitsUsed})")
+        Log.status(TAG, "CDSI returned ${discovered.size} entries (permits used ${response.debugPermitsUsed})")
         return LookupResult(discovered, issuedToken ?: token)
     }
 }

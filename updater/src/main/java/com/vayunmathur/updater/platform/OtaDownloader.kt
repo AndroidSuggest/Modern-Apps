@@ -2,7 +2,7 @@ package com.vayunmathur.updater.platform
 
 import android.content.Context
 import android.os.storage.StorageManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.updater.domain.OtaDownloadPlan
@@ -99,7 +99,7 @@ object OtaDownloader {
             // The partial file and the remembered name both stay, so the next run resumes.
             throw e
         } catch (e: Exception) {
-            Log.w(TAG, "download failed", e)
+            Log.status(TAG, "download failed", e)
             Result.Failed("the update could not be downloaded")
         }
     }
@@ -165,7 +165,7 @@ object OtaDownloader {
         val firstCode = first.responseCode
         if (firstCode == HTTP_RANGE_NOT_SATISFIABLE) {
             first.disconnect()
-            Log.i(TAG, "${target.wanted} was already downloaded")
+            Log.status(TAG, "${target.wanted} was already downloaded")
             return ArtifactRequest.Complete(target.wanted)
         }
         val fallback = maybeFallbackToFull(first, firstCode, artifacts, target)
@@ -192,7 +192,7 @@ object OtaDownloader {
         if (code != HttpURLConnection.HTTP_NOT_FOUND || target.wanted == artifacts.full) return null
         connection.errorStream?.close()
         connection.disconnect()
-        Log.i(TAG, "${target.wanted} is not published; falling back to ${artifacts.full}")
+        Log.status(TAG, "${target.wanted} is not published; falling back to ${artifacts.full}")
         UPDATE_PATH.delete()
         val retry = open(artifacts.full, 0L)
         val retryCode = retry.responseCode
@@ -338,6 +338,6 @@ object OtaDownloader {
                     Int::class.javaPrimitiveType,
                 )
                 .invoke(storage, uuid, bytes, flag)
-        }.onFailure { Log.i(TAG, "could not reserve $bytes bytes; continuing anyway", it) }
+        }.onFailure { Log.status(TAG, "could not reserve $bytes bytes; continuing anyway", it) }
     }
 }

@@ -3,7 +3,7 @@ package com.vayunmathur.calculator.widget
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,13 +73,13 @@ class UnitsGlanceWidget : GlanceAppWidget() {
         val state = try {
             loadState(context)
         } catch (t: Throwable) {
-            Log.e(TAG, "Failed to read converter selection", t)
+            Log.error(TAG, "Failed to read converter selection", t)
             defaultState()
         }
         val expanded = try {
             getAppWidgetState(context, PreferencesGlanceStateDefinition, id)[EXPANDED] == true
         } catch (t: Throwable) {
-            Log.e(TAG, "Failed to read widget state", t)
+            Log.error(TAG, "Failed to read widget state", t)
             false
         }
 
@@ -90,7 +90,7 @@ class UnitsGlanceWidget : GlanceAppWidget() {
                 }
             }
         } catch (t: Throwable) {
-            Log.e(TAG, "provideContent failed", t)
+            Log.error(TAG, "provideContent failed", t)
         }
     }
 
@@ -105,7 +105,7 @@ class UnitsGlanceWidget : GlanceAppWidget() {
                 }
             }
         } catch (t: Throwable) {
-            Log.e(TAG, "providePreview failed", t)
+            Log.error(TAG, "providePreview failed", t)
             try {
                 provideContent {
                     Box(

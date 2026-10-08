@@ -5,7 +5,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.UserManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.logviewer.R
 import com.vayunmathur.logviewer.domain.LogDocument
 import com.vayunmathur.logviewer.domain.LogKind
@@ -71,24 +71,24 @@ internal object LogcatReader {
             targetAppInfo = try {
                 context.packageManager.getApplicationInfo(request.targetPackage, 0)
             } catch (e: PackageManager.NameNotFoundException) {
-                Log.d(TAG, "unknown package ${request.targetPackage}", e)
+                Log.debug(TAG, "unknown package ${request.targetPackage}", e)
                 return LogLoadResult.Unavailable()
             }
             command += "--uid=${targetAppInfo.uid}"
         }
 
-        Log.d(TAG, "command: " + command.joinToString(" "))
+        Log.debug(TAG, "command: " + command.joinToString(" "))
 
         val logcatBytes = try {
             val process = ProcessBuilder(command).start()
             val bytes = process.inputStream.use { it.readBytes() }
-            Log.d(TAG, "logcat return code: " + process.waitFor())
+            Log.debug(TAG, "logcat return code: " + process.waitFor())
             bytes
         } catch (e: IOException) {
-            Log.e(TAG, "logcat failed", e)
+            Log.error(TAG, "logcat failed", e)
             return LogLoadResult.Unavailable()
         } catch (e: InterruptedException) {
-            Log.e(TAG, "logcat interrupted", e)
+            Log.error(TAG, "logcat interrupted", e)
             return LogLoadResult.Unavailable()
         }
 

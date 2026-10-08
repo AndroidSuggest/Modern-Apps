@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.data.call
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import org.webrtc.NativeLibraryLoader
 import org.webrtc.PeerConnectionFactory
 import java.util.concurrent.atomic.AtomicBoolean
@@ -37,7 +37,7 @@ object WebRtcInit {
         } catch (expected: Throwable) {
             // Let the next attempt retry rather than leaving the flag set on a half-initialized stack.
             initialized.set(false)
-            Log.e(TAG, "WebRTC initialization failed", expected)
+            Log.error(TAG, "WebRTC initialization failed", expected)
             throw expected
         }
     }

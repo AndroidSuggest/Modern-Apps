@@ -1,7 +1,7 @@
 package com.vayunmathur.things.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
@@ -71,9 +71,9 @@ object HealthConnectHelper {
                 metadata = Metadata.manualEntry(),
             )
             client.insertRecords(listOf(record))
-            Log.i("HealthConnectHelper", "Wrote HydrationRecord ${volumeLiters}L")
+            Log.status("HealthConnectHelper", "Wrote HydrationRecord ${volumeLiters}L")
         } catch (e: Exception) {
-            Log.e("HealthConnectHelper", "Failed to write HydrationRecord", e)
+            Log.error("HealthConnectHelper", "Failed to write HydrationRecord", e)
         }
     }
 
@@ -207,9 +207,9 @@ object HealthConnectHelper {
             )
             val records = buildBodyRecords(instant, off, values)
             client.insertRecords(records)
-            Log.i("HealthConnectHelper", "Wrote ${records.size} body records")
+            Log.status("HealthConnectHelper", "Wrote ${records.size} body records")
         } catch (e: Exception) {
-            Log.e("HealthConnectHelper", "Failed to write body composition", e)
+            Log.error("HealthConnectHelper", "Failed to write body composition", e)
         }
     }
 }

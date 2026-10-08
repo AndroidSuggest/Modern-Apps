@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ml.SubjectSegmenter
 import com.vayunmathur.photos.data.Selection
 
@@ -31,7 +31,7 @@ import com.vayunmathur.photos.data.Selection
 fun segmentSubject(context: Context, bitmap: Bitmap, onResult: (Selection?) -> Unit) {
     Thread {
         val sel = runCatching { runSegmenter(context, bitmap) }
-            .getOrElse { Log.e("MlSegmentation", "segmentation failed", it); null }
+            .getOrElse { Log.error("MlSegmentation", "segmentation failed", it); null }
         Handler(Looper.getMainLooper()).post { onResult(sel) }
     }.start()
 }
@@ -61,7 +61,7 @@ private fun runSegmenter(context: Context, bitmap: Bitmap): Selection? {
     val result = synchronized(segLock) {
         SubjectSegmenter(context.applicationContext).use { seg ->
             if (!seg.isAvailable) {
-                Log.e("MlSegmentation", "U\u00b2-Net unavailable; see the ModelRunner log tag")
+                Log.error("MlSegmentation", "U\u00b2-Net unavailable; see the ModelRunner log tag")
                 return null
             }
             // HARDWARE and unknown bitmap configs are handled inside SubjectSegmenter,

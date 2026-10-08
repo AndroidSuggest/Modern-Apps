@@ -3,7 +3,7 @@ import android.content.ContentProviderOperation
 import android.content.ContentUris
 import android.content.Context
 import android.provider.ContactsContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.database.getStringOrNull
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -306,16 +306,16 @@ data class Contact(
             context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
             true
         } catch (e: android.content.OperationApplicationException) {
-            Log.e("Contact", "Error saving contact", e)
+            Log.error("Contact", "Error saving contact", e)
             false
         } catch (e: android.os.RemoteException) {
-            Log.e("Contact", "Error saving contact", e)
+            Log.error("Contact", "Error saving contact", e)
             false
         } catch (e: SecurityException) {
-            Log.e("Contact", "Error saving contact", e)
+            Log.error("Contact", "Error saving contact", e)
             false
         } catch (e: IllegalArgumentException) {
-            Log.e("Contact", "Error saving contact", e)
+            Log.error("Contact", "Error saving contact", e)
             false
         }
     }
@@ -588,11 +588,11 @@ data class Contact(
                 // edit to it silently fails to persist.
                 queryRawContacts(contentResolver, contactId, projection, rawContacts)
             } catch (e: android.database.SQLException) {
-                Log.e("Contact", "Error querying contacts", e)
+                Log.error("Contact", "Error querying contacts", e)
             } catch (e: IllegalArgumentException) {
-                Log.e("Contact", "Error querying contacts", e)
+                Log.error("Contact", "Error querying contacts", e)
             } catch (e: SecurityException) {
-                Log.e("Contact", "Error querying contacts", e)
+                Log.error("Contact", "Error querying contacts", e)
             }
 
             if (rawContacts.isEmpty()) return emptyList()

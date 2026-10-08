@@ -1,6 +1,6 @@
 package com.vayunmathur.camera.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.core.content.ContextCompat
@@ -33,7 +33,7 @@ fun CameraViewModel.onViewfinderZoomRatio(ratio: Float) {
 fun CameraViewModel.setZoomRatio(ratio: Float) {
     val cam = boundCamera
     val zs = cam?.cameraInfo?.zoomState?.value
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setZoomRatio() requested=$ratio clamped? min=${zs?.minZoomRatio} max=${zs?.maxZoomRatio} " +
             "current=${zs?.zoomRatio} nightPreviewActive=${nightPreviewActiveMutable.value} " +
@@ -43,7 +43,7 @@ fun CameraViewModel.setZoomRatio(ratio: Float) {
         ratio.coerceIn(it.minZoomRatio, it.maxZoomRatio)
     } ?: ratio
     if (clamped != ratio) {
-        Log.w(
+        Log.status(
             "NightPreview",
             "setZoomRatio() CLAMPED $ratio -> $clamped due to zoomState min/max – " +
                 "vendor NIGHT often reports max=1x, causing bar to show only 1x"
@@ -54,9 +54,9 @@ fun CameraViewModel.setZoomRatio(ratio: Float) {
     try {
         cam?.cameraControl?.setZoomRatio(clamped)
     } catch (e: IllegalStateException) {
-        Log.e("NightPreview", "setZoomRatio() setZoomRatio() threw (was hidden before)", e)
+        Log.error("NightPreview", "setZoomRatio() setZoomRatio() threw (was hidden before)", e)
     } catch (e: IllegalArgumentException) {
-        Log.e("NightPreview", "setZoomRatio() setZoomRatio() threw (was hidden before)", e)
+        Log.error("NightPreview", "setZoomRatio() setZoomRatio() threw (was hidden before)", e)
     }
 }
 
@@ -72,14 +72,14 @@ internal fun CameraViewModel.restoreZoom(minZoom: Float, maxZoom: Float) {
     try {
         boundCamera?.cameraControl?.setZoomRatio(desired)
     } catch (e: IllegalStateException) {
-        Log.e("NightPreview", "restoreZoom() setZoomRatio() threw", e)
+        Log.error("NightPreview", "restoreZoom() setZoomRatio() threw", e)
     } catch (e: IllegalArgumentException) {
-        Log.e("NightPreview", "restoreZoom() setZoomRatio() threw", e)
+        Log.error("NightPreview", "restoreZoom() setZoomRatio() threw", e)
     }
 }
 
 fun CameraViewModel.updateZoomLevels(minZoom: Float, maxZoom: Float) {
-    Log.d(
+    Log.debug(
         "NightPreview",
         "updateZoomLevels() min=$minZoom max=$maxZoom " +
             "nightPreviewActive=${nightPreviewActiveMutable.value} " +
@@ -95,7 +95,7 @@ fun CameraViewModel.updateZoomLevels(minZoom: Float, maxZoom: Float) {
     for (tele in TELE_ZOOM_LEVELS) {
         if (tele <= maxZoom + TELE_ZOOM_TOLERANCE) levels.add(formatZoomLabel(tele) to tele)
     }
-    Log.d(
+    Log.debug(
         "NightPreview",
         "updateZoomLevels() emitting levels=$levels – if min=1f max=1f, only [1x] will show, " +
             "explaining 'all zoom levels also disappear'"

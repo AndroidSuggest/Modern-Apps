@@ -3,7 +3,7 @@ package com.vayunmathur.cast.platform.discovery
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.domain.CastDevice
 import com.vayunmathur.cast.protocol.MACAST_SERVICE_TYPE
 import kotlinx.coroutines.channels.awaitClose
@@ -57,7 +57,7 @@ class CastDiscoveryManager(context: Context) {
      */
     fun discover(): Flow<CastDevice> = callbackFlow {
         val manager = nsdManager ?: run {
-            Log.w(TAG, "NsdManager unavailable - cannot browse for receivers")
+            Log.status(TAG, "NsdManager unavailable - cannot browse for receivers")
             close()
             return@callbackFlow
         }
@@ -70,7 +70,7 @@ class CastDiscoveryManager(context: Context) {
                 try {
                     manager.resolveService(service, object : NsdManager.ResolveListener {
                         override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) {
-                            Log.w(TAG, "resolve failed for ${info.serviceName}: $errorCode")
+                            Log.status(TAG, "resolve failed for ${info.serviceName}: $errorCode")
                         }
 
                         override fun onServiceResolved(info: NsdServiceInfo) {
@@ -82,9 +82,9 @@ class CastDiscoveryManager(context: Context) {
                         }
                     })
                 } catch (e: SecurityException) {
-                    Log.w(TAG, "resolveService threw for ${service.serviceName}", e)
+                    Log.status(TAG, "resolveService threw for ${service.serviceName}", e)
                 } catch (e: IllegalArgumentException) {
-                    Log.w(TAG, "resolveService threw for ${service.serviceName}", e)
+                    Log.status(TAG, "resolveService threw for ${service.serviceName}", e)
                 }
             }
 
@@ -98,12 +98,12 @@ class CastDiscoveryManager(context: Context) {
             override fun onDiscoveryStopped(serviceType: String) = Unit
 
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-                Log.w(TAG, "startDiscovery failed: $errorCode")
+                Log.status(TAG, "startDiscovery failed: $errorCode")
                 close()
             }
 
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
-                Log.w(TAG, "stopDiscovery failed: $errorCode")
+                Log.status(TAG, "stopDiscovery failed: $errorCode")
             }
         }
         discoveryListener = listener
@@ -112,13 +112,13 @@ class CastDiscoveryManager(context: Context) {
         } catch (e: SecurityException) {
             // Android 16+ Local Network Protections. Nothing is wrong with the request; the
             // OS blocks mDNS outright until ACCESS_LOCAL_NETWORK is granted.
-            Log.e(TAG, "mDNS browse blocked - ACCESS_LOCAL_NETWORK not granted", e)
+            Log.error(TAG, "mDNS browse blocked - ACCESS_LOCAL_NETWORK not granted", e)
             _localNetworkBlocked.value = true
             discoveryListener = null
             close()
             return@callbackFlow
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "discoverServices threw", e)
+            Log.status(TAG, "discoverServices threw", e)
             discoveryListener = null
             close(e)
             return@callbackFlow

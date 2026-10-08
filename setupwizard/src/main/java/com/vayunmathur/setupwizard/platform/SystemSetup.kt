@@ -18,7 +18,7 @@ import android.os.UserManager
 import android.provider.Settings
 import android.telecom.TelecomManager
 import android.telephony.TelephonyManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.lang.reflect.InvocationTargetException
 import java.util.Locale
 
@@ -186,12 +186,12 @@ class SystemSetup(context: Context) {
         } catch (e: InvocationTargetException) {
             val cause = e.cause
             if (cause is SecurityException && !isOemUnlockAllowed(oemLock)) {
-                Log.d(TAG, "setOemUnlockAllowedByUser($allowed): unlocking is not allowed", cause)
+                Log.debug(TAG, "setOemUnlockAllowedByUser($allowed): unlocking is not allowed", cause)
             } else {
-                Log.e(TAG, "setOemUnlockAllowedByUser($allowed) failed", cause ?: e)
+                Log.error(TAG, "setOemUnlockAllowedByUser($allowed) failed", cause ?: e)
             }
         } catch (e: ReflectiveOperationException) {
-            Log.w(TAG, "OemLockManager.setOemUnlockAllowedByUser unavailable on this build", e)
+            Log.status(TAG, "OemLockManager.setOemUnlockAllowedByUser unavailable on this build", e)
         }
     }
 
@@ -262,7 +262,7 @@ class SystemSetup(context: Context) {
         runCatching {
             Settings.Global.putInt(appContext.contentResolver, Settings.Global.AUTO_TIME, 1)
             Settings.Global.putInt(appContext.contentResolver, Settings.Global.AUTO_TIME_ZONE, 1)
-        }.onFailure { Log.w(TAG, "could not enable automatic time", it) }
+        }.onFailure { Log.status(TAG, "could not enable automatic time", it) }
     }
 
     // ---- displays -------------------------------------------------------------------------
@@ -287,7 +287,7 @@ class SystemSetup(context: Context) {
                 return@runCatching
             }
             Settings.Secure.putInt(resolver, SETTING_MIRROR_BUILT_IN_DISPLAY, 1)
-        }.onFailure { Log.w(TAG, "could not seed display mirroring", it) }
+        }.onFailure { Log.status(TAG, "could not seed display mirroring", it) }
     }
 
     // ---- emergency dialer -----------------------------------------------------------------
@@ -372,6 +372,6 @@ class SystemSetup(context: Context) {
 private inline fun <T> hidden(what: String, fallback: T, block: () -> T): T = try {
     block()
 } catch (e: ReflectiveOperationException) {
-    Log.w(TAG, "$what unavailable or failed on this build", e)
+    Log.status(TAG, "$what unavailable or failed on this build", e)
     fallback
 }

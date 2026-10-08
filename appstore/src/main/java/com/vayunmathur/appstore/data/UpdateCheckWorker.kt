@@ -9,7 +9,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -68,13 +68,13 @@ class UpdateCheckWorker(
         }
         Result.success()
     } catch (expected: java.io.IOException) {
-        Log.w(TAG, "Update check failed", expected)
+        Log.status(TAG, "Update check failed", expected)
         Result.retry()
     } catch (expected: IllegalStateException) {
-        Log.w(TAG, "Update check failed", expected)
+        Log.status(TAG, "Update check failed", expected)
         Result.retry()
     } catch (expected: SecurityException) {
-        Log.w(TAG, "Update check failed", expected)
+        Log.status(TAG, "Update check failed", expected)
         Result.retry()
     }
 

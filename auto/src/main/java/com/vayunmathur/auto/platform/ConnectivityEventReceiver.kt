@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * Connectivity-event receiver, mirroring gearhead's
@@ -29,12 +29,12 @@ class ConnectivityEventReceiver : BroadcastReceiver() {
         if (intent.action != ConnectivityManager.CONNECTIVITY_ACTION) return
         val connectivity = context.getSystemService(ConnectivityManager::class.java) ?: return
         val network = connectivity.activeNetwork ?: run {
-            Log.i(TAG, "connectivity lost; wireless bring-up (if any) is stale")
+            Log.status(TAG, "connectivity lost; wireless bring-up (if any) is stale")
             return
         }
         val caps = connectivity.getNetworkCapabilities(network) ?: return
         if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-            Log.d(TAG, "active network is not WiFi; wireless bring-up unaffected")
+            Log.debug(TAG, "active network is not WiFi; wireless bring-up unaffected")
         }
     }
 

@@ -12,7 +12,7 @@ import kotlin.uuid.Uuid
 import android.app.Application
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -362,7 +362,7 @@ class HealthViewModel(
             try {
                 repository.deleteIngredient(ingredient)
             } catch (e: android.database.sqlite.SQLiteConstraintException) {
-                Log.w(TAG, "Failed to delete ingredient ${ingredient.id}: ${e.message}")
+                Log.status(TAG, "Failed to delete ingredient ${ingredient.id}: ${e.message}")
             }
         }
     }

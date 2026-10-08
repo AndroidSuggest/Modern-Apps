@@ -1,6 +1,7 @@
 package com.vayunmathur.youpipe
 
 import android.app.Application
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.util.DataStoreUtils
@@ -18,6 +19,7 @@ class YouPipeApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.init(BuildConfig.DEV_BUILD)
         // Reduced CA set: FIRST_PARTY = ISRG X1/X2 + GTS R1-R4 covers api.vayunmathur.com + YouTube (GTS)
         NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         appContext = applicationContext

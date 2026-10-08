@@ -7,7 +7,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.database.Cursor
 import android.provider.ContactsContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * Publishes "reachable on WhatsApp / reachable on Signal" into the system contacts provider.
@@ -51,7 +51,7 @@ object ContactPlatformRows {
         if (context.checkSelfPermission(android.Manifest.permission.WRITE_CONTACTS) !=
             android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
-            Log.i(TAG, "no WRITE_CONTACTS; not publishing platform rows")
+            Log.status(TAG, "no WRITE_CONTACTS; not publishing platform rows")
             return
         }
         if (!ensureAccount(context)) return
@@ -85,9 +85,9 @@ object ContactPlatformRows {
 
         try {
             context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
-            Log.i(TAG, "published $rows platform rows for ${reachable.size} contacts")
+            Log.status(TAG, "published $rows platform rows for ${reachable.size} contacts")
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not publish platform rows", expected)
+            Log.status(TAG, "could not publish platform rows", expected)
         }
     }
 
@@ -138,7 +138,7 @@ object ContactPlatformRows {
             )
             id
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not create a raw contact for $e164", expected)
+            Log.status(TAG, "could not create a raw contact for $e164", expected)
             null
         }
     }
@@ -152,7 +152,7 @@ object ContactPlatformRows {
             null,
         )?.use { cursor: Cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
     } catch (expected: Throwable) {
-        Log.w(TAG, "could not look up our raw contact for $e164", expected)
+        Log.status(TAG, "could not look up our raw contact for $e164", expected)
         null
     }
 
@@ -175,7 +175,7 @@ object ContactPlatformRows {
         true
     } catch (expected: Throwable) {
         // Adding an account of another app's type needs a matching signature; log rather than fail the sync.
-        Log.i(TAG, "could not ensure the contacts account exists: ${expected.message}")
+        Log.status(TAG, "could not ensure the contacts account exists: ${expected.message}")
         false
     }
 }

@@ -2,6 +2,7 @@
 
 package com.vayunmathur.games.voxels.network
 
+import com.vayunmathur.library.log.Log
 import kotlin.uuid.Uuid
 import android.content.Context
 import com.vayunmathur.e2ee.E2ee
@@ -333,7 +334,7 @@ object VoxelsSync {
             // Best-effort poll: any failure mode means "no response" and the
             // next tick retries. Cancellation is rethrown above so this never
             // swallows structured-concurrency signals.
-            android.util.Log.w("VoxelsSync", "request failed: $path", e)
+            Log.status("VoxelsSync", "request failed: $path", e)
             null
         }
 

@@ -3,7 +3,7 @@ package com.vayunmathur.openassistant.util
 import android.content.Context
 import android.os.Bundle
 import android.os.ResultReceiver
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.downloadservice.ModelUrls
 import com.vayunmathur.library.downloadservice.downloadModels
 import com.vayunmathur.library.util.DataStoreUtils
@@ -69,7 +69,7 @@ internal class InferenceEmbeddingHandler(
                 },
             )
         } catch (ignored: Exception) {
-            Log.e("InferenceService", "Failed to report embedding error", ignored)
+            Log.error("InferenceService", "Failed to report embedding error", ignored)
         }
     }
 
@@ -87,7 +87,7 @@ internal class InferenceEmbeddingHandler(
     private fun sendText(job: InferenceService.InferenceJobPublic.Embedding) {
         val t0 = System.currentTimeMillis()
         val emb = SiglipEmbedder.textEmbedding(context, job.userText)
-        Log.i(
+        Log.status(
             "InferenceService",
             "Text embed (${emb?.size ?: 0}d) in " +
                 "${System.currentTimeMillis() - t0}ms ok=${emb != null}",
@@ -99,7 +99,7 @@ internal class InferenceEmbeddingHandler(
         val path = job.imagePath
         val t0 = System.currentTimeMillis()
         val emb = if (path != null) SiglipEmbedder.imageEmbedding(context, File(path)) else null
-        Log.i(
+        Log.status(
             "InferenceService",
             "Image embed (${emb?.size ?: 0}d) in " +
                 "${System.currentTimeMillis() - t0}ms ok=${emb != null} path=$path",
@@ -139,7 +139,7 @@ internal class InferenceEmbeddingHandler(
                 val ds = DataStoreUtils.getInstance(context)
                 downloadModels(context, ds, ModelUrls.SIGLIP)
             } catch (expected: Exception) {
-                Log.e("InferenceService", "SigLIP2 model download failed", expected)
+                Log.error("InferenceService", "SigLIP2 model download failed", expected)
             }
         }
     }

@@ -1,7 +1,7 @@
 package com.vayunmathur.appstore.data.grapheneos
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -90,13 +90,13 @@ class GrapheneOSRepository(private val context: Context) {
             cached = parsed
             Result.success(parsed)
         } catch (expected: IllegalStateException) {
-            Log.w(TAG, "index fetch/verify failed", expected)
+            Log.status(TAG, "index fetch/verify failed", expected)
             Result.failure(expected)
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "index fetch/verify failed", expected)
+            Log.status(TAG, "index fetch/verify failed", expected)
             Result.failure(expected)
         } catch (expected: SecurityException) {
-            Log.w(TAG, "index fetch/verify failed", expected)
+            Log.status(TAG, "index fetch/verify failed", expected)
             Result.failure(expected)
         }
     }
@@ -120,10 +120,10 @@ class GrapheneOSRepository(private val context: Context) {
     private suspend fun readStoredTimestamp(): Long = try {
         context.grapheneOSDataStore.data.first()[INDEX_TIMESTAMP_KEY] ?: 0L
     } catch (expected: java.io.IOException) {
-        Log.w(TAG, "read stored timestamp", expected)
+        Log.status(TAG, "read stored timestamp", expected)
         0L
     } catch (expected: IllegalStateException) {
-        Log.w(TAG, "read stored timestamp", expected)
+        Log.status(TAG, "read stored timestamp", expected)
         0L
     }
 
@@ -131,7 +131,7 @@ class GrapheneOSRepository(private val context: Context) {
         try {
             context.grapheneOSDataStore.edit { it[INDEX_TIMESTAMP_KEY] = timestamp }
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "persist timestamp", expected)
+            Log.status(TAG, "persist timestamp", expected)
         }
     }
 

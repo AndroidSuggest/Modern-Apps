@@ -1,6 +1,6 @@
 package com.vayunmathur.auto.network
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.Closeable
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -30,17 +30,17 @@ class HeadUnitServer(private val port: Int = DHU_PORT) : Closeable {
         // would expose the socket only to the phone itself either way.
         val socket = server ?: tryIpv4Loopback() ?: ServerSocket(port, BACKLOG)
             .also {
-                Log.w(TAG, "IPv4 loopback bind failed; listening dual-stack instead")
+                Log.status(TAG, "IPv4 loopback bind failed; listening dual-stack instead")
             }
             .also {
                 server = it
-                Log.i(TAG, "listening for a head unit on ${it.inetAddress.hostAddress}:$port")
+                Log.status(TAG, "listening for a head unit on ${it.inetAddress.hostAddress}:$port")
             }
         return socket.accept().apply {
             // Projection is latency-sensitive and its writes are small and frequent; Nagle
             // would coalesce frames and add a visible stutter.
             tcpNoDelay = true
-            Log.i(TAG, "head unit connected from $remoteSocketAddress")
+            Log.status(TAG, "head unit connected from $remoteSocketAddress")
         }
     }
 

@@ -6,6 +6,7 @@
         android:protectionLevel="signature" />
 
     <application
+        android:name=".NotesApplication"
         android:allowBackup="true"
         android:backupAgent=".util.AppBackupAgent"
         android:dataExtractionRules="@xml/data_extraction_rules"

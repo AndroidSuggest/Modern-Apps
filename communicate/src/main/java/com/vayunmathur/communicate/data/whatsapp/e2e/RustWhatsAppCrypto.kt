@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.whatsapp.e2e
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * JNI wrapper around `libwhatsapp_signal.so` (Rust crate `whatsapp_signal`).
@@ -18,10 +18,10 @@ object RustWhatsAppCrypto {
 
     val isAvailable: Boolean = try {
         System.loadLibrary("communicate_signal")
-        Log.i(TAG, "libwhatsapp_signal loaded")
+        Log.status(TAG, "libwhatsapp_signal loaded")
         true
     } catch (expected: Throwable) {
-        Log.e(TAG, "System.loadLibrary(communicate_signal) failed", expected)
+        Log.error(TAG, "System.loadLibrary(communicate_signal) failed", expected)
         false
     }
 

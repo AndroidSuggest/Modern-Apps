@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
@@ -108,7 +108,7 @@ internal fun createBrowserWebViewClient(
                     val cookieCount = cookies?.split(";")?.count { it.isNotBlank() } ?: 0
                     view.evalJsForStorageInfo(origin, cookieCount, viewModel)
                 }.onFailure { e ->
-                    Log.w(WEB_VIEW_BROWSER_TAG, "storage snapshot failed", e)
+                    Log.status(WEB_VIEW_BROWSER_TAG, "storage snapshot failed", e)
                 }
                 // PWA / Add-to-Home detection: probe for manifest + best icon + theme-color
                 runCatching {
@@ -120,7 +120,7 @@ internal fun createBrowserWebViewClient(
                         // no need to keep raw json
                     }
                 }.onFailure { e ->
-                    Log.w(WEB_VIEW_BROWSER_TAG, "pwa probe failed", e)
+                    Log.status(WEB_VIEW_BROWSER_TAG, "pwa probe failed", e)
                 }
             }
         }

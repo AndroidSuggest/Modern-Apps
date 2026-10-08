@@ -2,6 +2,7 @@ package com.vayunmathur.maps.ui.theme
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.maps.BuildConfig
 
 /**
@@ -328,7 +329,7 @@ object BasemapPalette {
     private fun warnUnmatched(id: String) {
         if (!BuildConfig.DEBUG) return
         if (warned.add(id)) {
-            android.util.Log.w(
+            Log.status(
                 "BasemapPalette",
                 "no role for style layer '$id'; it will be recoloured as Other. " +
                     "Add it to BasemapPalette.fillRoles.",

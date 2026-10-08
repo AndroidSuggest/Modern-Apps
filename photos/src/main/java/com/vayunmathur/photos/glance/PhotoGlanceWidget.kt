@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,10 +76,10 @@ class PhotoGlanceWidget : GlanceAppWidget() {
                 }
             }
         } catch (e: IllegalStateException) {
-            Log.e("PhotoWidget", "providePreview failed", e)
+            Log.error("PhotoWidget", "providePreview failed", e)
             providePreviewFallback(context)
         } catch (e: IllegalArgumentException) {
-            Log.e("PhotoWidget", "providePreview failed", e)
+            Log.error("PhotoWidget", "providePreview failed", e)
             providePreviewFallback(context)
         }
     }
@@ -149,10 +149,10 @@ fun getResizedBitmap(context: Context, uri: Uri, maxSize: Int = 600): Bitmap? {
             BitmapFactory.decodeStream(it, null, options)
         }
     } catch (e: IOException) {
-        Log.e("PhotoWidget", "getResizedBitmap failed for $uri", e)
+        Log.error("PhotoWidget", "getResizedBitmap failed for $uri", e)
         null
     } catch (e: SecurityException) {
-        Log.e("PhotoWidget", "getResizedBitmap failed for $uri", e)
+        Log.error("PhotoWidget", "getResizedBitmap failed for $uri", e)
         null
     }
 }

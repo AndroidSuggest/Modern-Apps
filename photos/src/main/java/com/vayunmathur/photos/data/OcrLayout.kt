@@ -1,6 +1,6 @@
 package com.vayunmathur.photos.data
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -54,7 +54,7 @@ fun parseOcrLayout(json: String?): OcrLayout? {
     return try {
         ocrJson.decodeFromString<OcrLayout>(json).takeIf { it.w > 0 && it.h > 0 }
     } catch (e: IllegalArgumentException) {
-        Log.w("OcrLayout", "Failed to parse stored OCR layout", e)
+        Log.status("OcrLayout", "Failed to parse stored OCR layout", e)
         null
     }
 }

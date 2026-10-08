@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.data.signal.call
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.call.WebRtcInit
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.coroutines.CoroutineScope
@@ -100,11 +100,11 @@ class SignalCallManager(
         val iceServers = try {
             signaling.iceServers()
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not fetch ICE servers; the call will likely fail behind NAT", expected)
+            Log.status(TAG, "could not fetch ICE servers; the call will likely fail behind NAT", expected)
             emptyList()
         }
         if (iceServers.isEmpty()) {
-            Log.w(TAG, "proceeding with no ICE servers; expect connection failure unless both ends are local")
+            Log.status(TAG, "proceeding with no ICE servers; expect connection failure unless both ends are local")
         }
         val cameraControl = camera ?: SignalCamera(appContext, egl).also { camera = it }
         try {
@@ -125,7 +125,7 @@ class SignalCallManager(
                 mediaType.isVideo(),
                 null,
             )
-            Log.i(
+            Log.status(
                 TAG,
                 "proceed ok for call $callId with ${iceServers.size} ICE servers, " +
                     "camera=${cameraControl.hasCapturer()} video=${mediaType.isVideo()}",
@@ -135,7 +135,7 @@ class SignalCallManager(
             // sending video and shows nothing. The public setVideoEnable is what emits the sender status.
             if (mediaType.isVideo()) assertOutgoingVideo(true)
         } catch (expected: Throwable) {
-            Log.w(TAG, "proceed failed for call $callId", expected)
+            Log.status(TAG, "proceed failed for call $callId", expected)
         }
     }
 
@@ -155,13 +155,13 @@ class SignalCallManager(
 
     override fun onCallEnded(remote: Remote?, reason: CallManager.CallEndReason, summary: CallSummary) {
         val aci = (remote as? SignalRemote)?.aci ?: return
-        Log.i(TAG, "call with $aci ended: $reason")
+        Log.status(TAG, "call with $aci ended: $reason")
         signaling.onCallStateChanged(aci, 0, CallState.Ended, false)
     }
 
     override fun onCallEvent(remote: Remote?, event: CallManager.CallEvent?) {
         val aci = (remote as? SignalRemote)?.aci ?: return
-        Log.i(TAG, "call event for $aci: $event")
+        Log.status(TAG, "call event for $aci: $event")
         // Media-state events change what the UI renders without changing the call phase.
         when (event) {
             CallManager.CallEvent.REMOTE_VIDEO_ENABLE -> {
@@ -320,10 +320,10 @@ class SignalCallManager(
             val ok = try {
                 signaling.sendCallMessage(aci, deviceId, message, urgent)
             } catch (expected: Throwable) {
-                Log.w(TAG, "call signaling send failed", expected)
+                Log.status(TAG, "call signaling send failed", expected)
                 false
             }
-            Log.i(
+            Log.status(
                 TAG,
                 "sent ${message::class.simpleName} callId=$callId to $aci device=${deviceId ?: "all"} " +
                     "urgent=$urgent ok=$ok" +
@@ -343,7 +343,7 @@ class SignalCallManager(
         try {
             if (ok) manager.messageSent(CallId(callId)) else manager.messageSendFailure(CallId(callId))
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not report the signaling send result", expected)
+            Log.status(TAG, "could not report the signaling send result", expected)
         }
     }
 
@@ -373,7 +373,7 @@ class SignalCallManager(
                 )
                 manager.receivedHttpResponse(requestId, resp.status, resp.bytes)
             } catch (expected: Throwable) {
-                Log.w(TAG, "RingRTC HTTP request failed", expected)
+                Log.status(TAG, "RingRTC HTTP request failed", expected)
                 try { manager.httpRequestFailed(requestId) } catch (_: Throwable) {}
             }
         }
@@ -386,7 +386,7 @@ class SignalCallManager(
         message: ByteArray,
         urgency: CallManager.CallMessageUrgency,
     ) {
-        Log.w(TAG, "onSendCallMessage is only used by group calling, which is not implemented")
+        Log.status(TAG, "onSendCallMessage is only used by group calling, which is not implemented")
     }
 
     override fun onSendCallMessageToGroup(
@@ -395,7 +395,7 @@ class SignalCallManager(
         urgency: CallManager.CallMessageUrgency,
         overrideRecipients: List<UUID>,
     ) {
-        Log.w(TAG, "group calling is not implemented")
+        Log.status(TAG, "group calling is not implemented")
     }
 
     override fun onSendCallMessageToAdhocGroup(
@@ -404,7 +404,7 @@ class SignalCallManager(
         expiration: Instant,
         recipientsToEndorsements: Map<UUID, ByteArray>,
     ) {
-        Log.w(TAG, "ad-hoc call groups are not implemented")
+        Log.status(TAG, "ad-hoc call groups are not implemented")
     }
 
     override fun onGroupCallRingUpdate(
@@ -413,7 +413,7 @@ class SignalCallManager(
         sender: UUID,
         update: CallManager.RingUpdate?,
     ) {
-        Log.w(TAG, "group call ring updates are not implemented")
+        Log.status(TAG, "group call ring updates are not implemented")
     }
 
     internal inline fun withManager(what: String, block: (CallManager) -> Unit): Boolean {
@@ -422,7 +422,7 @@ class SignalCallManager(
             block(manager)
             true
         } catch (expected: Throwable) {
-            Log.w(TAG, "$what failed", expected)
+            Log.status(TAG, "$what failed", expected)
             false
         }
     }

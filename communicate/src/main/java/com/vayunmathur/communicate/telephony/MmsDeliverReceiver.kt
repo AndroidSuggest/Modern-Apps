@@ -8,7 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Telephony
 import android.telephony.SmsManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.notifications.ConversationSpace
@@ -35,7 +35,7 @@ class MmsDeliverReceiver : BroadcastReceiver() {
         runCatching {
             val notif = MmsPduReader.parseNotification(pdu)
             val location = notif.contentLocation ?: run {
-                Log.w(TAG, "MMS push had no content-location"); return
+                Log.status(TAG, "MMS push had no content-location"); return
             }
             val dir = File(context.cacheDir, "mms").apply { mkdirs() }
             val file = File(dir, "in_${System.currentTimeMillis()}.pdu")
@@ -58,11 +58,11 @@ class MmsDeliverReceiver : BroadcastReceiver() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
             )
             val sms = context.getSystemService(SmsManager::class.java) ?: run {
-                Log.w(TAG, "no SmsManager"); return
+                Log.status(TAG, "no SmsManager"); return
             }
             sms.downloadMultimediaMessage(context, location, contentUri, null, pi)
-            Log.d(TAG, "MMS download triggered for $location")
-        }.onFailure { Log.e(TAG, "handlePush failed", it) }
+            Log.debug(TAG, "MMS download triggered for $location")
+        }.onFailure { Log.error(TAG, "handlePush failed", it) }
     }
 
     private fun handleDownloaded(context: Context, intent: Intent) {
@@ -73,8 +73,8 @@ class MmsDeliverReceiver : BroadcastReceiver() {
                 val bytes = File(path).readBytes()
                 val msg = MmsPduReader.parseRetrieved(bytes)
                 insertInboundMms(context, msg)
-                Log.d(TAG, "MMS stored from=${msg.from} parts=${msg.parts.size}")
-            }.onFailure { Log.e(TAG, "handleDownloaded failed", it) }
+                Log.debug(TAG, "MMS stored from=${msg.from} parts=${msg.parts.size}")
+            }.onFailure { Log.error(TAG, "handleDownloaded failed", it) }
             runCatching { File(path).delete() }
             pending.finish()
         }.start()

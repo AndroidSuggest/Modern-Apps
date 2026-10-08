@@ -1,7 +1,7 @@
 package com.vayunmathur.library.ml
 
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 
 /**
@@ -59,7 +59,7 @@ class MadladHandle private constructor(private val directory: File) : AutoClosea
             try {
                 create(directory)
             } catch (expected: Exception) {
-                Log.e(TAG, "cannot open the MADLAD model in $directory", expected)
+                Log.error(TAG, "cannot open the MADLAD model in $directory", expected)
                 0L
             }
         }

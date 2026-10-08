@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -51,7 +51,7 @@ class MediaPlaybackMonitor(
     fun start() {
         mainHandler.post {
             val component = resolveMediaSession() ?: run {
-                Log.w(TAG, "no media browser service; now-playing stays empty")
+                Log.status(TAG, "no media browser service; now-playing stays empty")
                 return@post
             }
             val future =
@@ -109,7 +109,7 @@ class MediaPlaybackMonitor(
 
     private fun onConnected(connected: MediaController?) {
         if (connected == null) {
-            Log.w(TAG, "media controller connect failed; now-playing stays empty")
+            Log.status(TAG, "media controller connect failed; now-playing stays empty")
             return
         }
         connected.addListener(listener)

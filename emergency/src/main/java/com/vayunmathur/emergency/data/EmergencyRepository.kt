@@ -6,7 +6,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.UserManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.edit
 import com.vayunmathur.emergency.platform.ContactReader
 import kotlinx.coroutines.Dispatchers
@@ -101,7 +101,7 @@ class EmergencyRepository private constructor(private val app: Context) {
         // means the stored value predates the `|` format and is ignored.
         val serialized = runCatching { prefs.getString(EmergencyKeys.CONTACTS, "") }
             .getOrElse {
-                Log.w(TAG, "ignoring legacy contact storage", it)
+                Log.status(TAG, "ignoring legacy contact storage", it)
                 ""
             }.orEmpty()
         val uris = parseContactUris(serialized)
@@ -160,7 +160,7 @@ class EmergencyRepository private constructor(private val app: Context) {
                 state,
                 PackageManager.DONT_KILL_APP,
             )
-        }.onFailure { Log.w(TAG, "could not update the settings suggestion state", it) }
+        }.onFailure { Log.status(TAG, "could not update the settings suggestion state", it) }
     }
 
     companion object {

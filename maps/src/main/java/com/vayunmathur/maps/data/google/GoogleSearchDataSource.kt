@@ -1,6 +1,6 @@
 package com.vayunmathur.maps.data.google
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -73,7 +73,7 @@ object GoogleSearchDataSource {
     suspend fun search(query: String, nearLat: Double, nearLon: Double): List<GoogleSearchResult> {
         if (query.isBlank()) return emptyList()
         val results = runCatching { fetchSearch(query, nearLat, nearLon) }.getOrDefault(emptyList())
-        Log.i(
+        Log.status(
             TAG,
             "search \"$query\" near $nearLat,$nearLon -> ${results.size} results" +
                 (results.firstOrNull()?.let { " first=\"${it.name}\"@${it.lat},${it.lng}" } ?: ""),

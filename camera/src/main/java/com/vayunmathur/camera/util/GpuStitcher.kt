@@ -10,7 +10,7 @@ import android.opengl.EGLSurface
 import android.opengl.GLES20
 import android.opengl.GLES30
 import android.opengl.GLUtils
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.graphics.createBitmap
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -114,10 +114,10 @@ object GpuStitcher {
             }
             Estimate(canvasW, canvasH, u0, v0, scale, cams)
         } catch (t: java.nio.BufferUnderflowException) {
-            Log.e(TAG, "parseEstimate failed", t)
+            Log.error(TAG, "parseEstimate failed", t)
             null
         } catch (t: IllegalArgumentException) {
-            Log.e(TAG, "parseEstimate failed", t)
+            Log.error(TAG, "parseEstimate failed", t)
             null
         }
     }
@@ -133,15 +133,15 @@ object GpuStitcher {
         return try {
             gl = GlEnv.create()
             if (gl == null) {
-                Log.w(TAG, "EGL/GLES init failed or float FBO unsupported; cannot composite")
+                Log.status(TAG, "EGL/GLES init failed or float FBO unsupported; cannot composite")
                 return null
             }
             gl.render(estimate, frames)
         } catch (t: IllegalStateException) {
-            Log.e(TAG, "composite failed", t)
+            Log.error(TAG, "composite failed", t)
             null
         } catch (t: IllegalArgumentException) {
-            Log.e(TAG, "composite failed", t)
+            Log.error(TAG, "composite failed", t)
             null
         } finally {
             gl?.release()
@@ -208,7 +208,7 @@ object GpuStitcher {
             GLES30.glGetIntegerv(GLES30.GL_MAX_TEXTURE_SIZE, maxTex, 0)
             val cap = maxTex[0].coerceAtLeast(GL_MIN_TEXTURE_CAP)
             if (est.canvasW > cap || est.canvasH > cap) {
-                Log.w(TAG, "canvas ${est.canvasW}x${est.canvasH} exceeds GL_MAX_TEXTURE_SIZE $cap")
+                Log.status(TAG, "canvas ${est.canvasW}x${est.canvasH} exceeds GL_MAX_TEXTURE_SIZE $cap")
                 return null
             }
             return cap
@@ -224,7 +224,7 @@ object GpuStitcher {
             )
             accumFbo = genFbo(accumTex)
             if (GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER) != GLES30.GL_FRAMEBUFFER_COMPLETE) {
-                Log.w(TAG, "RGBA16F FBO incomplete (no color-buffer-float support)")
+                Log.status(TAG, "RGBA16F FBO incomplete (no color-buffer-float support)")
                 return false
             }
 
@@ -344,7 +344,7 @@ object GpuStitcher {
             )
             outFbo = genFbo(outTex)
             if (GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER) != GLES30.GL_FRAMEBUFFER_COMPLETE) {
-                Log.w(TAG, "output FBO incomplete")
+                Log.status(TAG, "output FBO incomplete")
                 return false
             }
             GLES30.glViewport(0, 0, est.canvasW, est.canvasH)
@@ -491,7 +491,7 @@ object GpuStitcher {
             GLES30.glDeleteShader(v)
             GLES30.glDeleteShader(f)
             if (status[0] == 0) {
-                Log.e(TAG, "program link failed: ${GLES30.glGetProgramInfoLog(p)}")
+                Log.error(TAG, "program link failed: ${GLES30.glGetProgramInfoLog(p)}")
                 GLES30.glDeleteProgram(p)
                 return null
             }
@@ -505,7 +505,7 @@ object GpuStitcher {
             val status = IntArray(1)
             GLES30.glGetShaderiv(s, GLES30.GL_COMPILE_STATUS, status, 0)
             if (status[0] == 0) {
-                Log.e(TAG, "shader compile failed: ${GLES30.glGetShaderInfoLog(s)}")
+                Log.error(TAG, "shader compile failed: ${GLES30.glGetShaderInfoLog(s)}")
                 GLES30.glDeleteShader(s)
                 return null
             }
@@ -530,12 +530,12 @@ object GpuStitcher {
             fun create(): GlEnv? {
                 val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
                 if (display == EGL14.EGL_NO_DISPLAY) {
-                    Log.w(TAG, "eglGetDisplay: no display")
+                    Log.status(TAG, "eglGetDisplay: no display")
                     return null
                 }
                 val ver = IntArray(2)
                 if (!EGL14.eglInitialize(display, ver, 0, ver, 1)) {
-                    Log.w(TAG, "eglInitialize failed")
+                    Log.status(TAG, "eglInitialize failed")
                     return null
                 }
                 return createOnDisplay(display)
@@ -550,7 +550,7 @@ object GpuStitcher {
                 // Require float color-buffer support up front (FBO completeness
                 // is re-checked at render time as a backstop).
                 if (!hasColorBufferFloat()) {
-                    Log.w(TAG, "no GL_EXT_color_buffer_float; falling back to CPU")
+                    Log.status(TAG, "no GL_EXT_color_buffer_float; falling back to CPU")
                     val env = GlEnv(display, context, surface)
                     env.release()
                     return null
@@ -574,7 +574,7 @@ object GpuStitcher {
                 if (!EGL14.eglChooseConfig(display, cfgAttr, 0, configs, 0, 1, numConfig, 0) ||
                     numConfig[0] == 0 || configs[0] == null
                 ) {
-                    Log.w(TAG, "eglChooseConfig failed (no ES3 pbuffer config)")
+                    Log.status(TAG, "eglChooseConfig failed (no ES3 pbuffer config)")
                     EGL14.eglTerminate(display)
                     return null
                 }
@@ -586,7 +586,7 @@ object GpuStitcher {
                 val ctxAttr = intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 3, EGL14.EGL_NONE)
                 val context = EGL14.eglCreateContext(display, config, EGL14.EGL_NO_CONTEXT, ctxAttr, 0)
                 if (context == EGL14.EGL_NO_CONTEXT) {
-                    Log.w(TAG, "eglCreateContext failed")
+                    Log.status(TAG, "eglCreateContext failed")
                     EGL14.eglTerminate(display)
                     return null
                 }
@@ -602,7 +602,7 @@ object GpuStitcher {
                 val surfAttr = intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE)
                 val surface = EGL14.eglCreatePbufferSurface(display, config, surfAttr, 0)
                 if (surface == EGL14.EGL_NO_SURFACE) {
-                    Log.w(TAG, "eglCreatePbufferSurface failed")
+                    Log.status(TAG, "eglCreatePbufferSurface failed")
                     EGL14.eglDestroyContext(display, context)
                     EGL14.eglTerminate(display)
                     return null
@@ -617,7 +617,7 @@ object GpuStitcher {
                 context: EGLContext
             ): Boolean {
                 if (!EGL14.eglMakeCurrent(display, surface, surface, context)) {
-                    Log.w(TAG, "eglMakeCurrent failed")
+                    Log.status(TAG, "eglMakeCurrent failed")
                     EGL14.eglDestroySurface(display, surface)
                     EGL14.eglDestroyContext(display, context)
                     EGL14.eglTerminate(display)

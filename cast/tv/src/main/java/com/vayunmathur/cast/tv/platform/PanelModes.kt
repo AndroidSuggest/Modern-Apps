@@ -2,7 +2,7 @@ package com.vayunmathur.cast.tv.platform
 
 import android.content.Context
 import android.hardware.display.DisplayManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Display
 import com.vayunmathur.cast.protocol.DisplayMode
 
@@ -26,7 +26,7 @@ object PanelModes {
         val display = context.getSystemService(DisplayManager::class.java)
             ?.getDisplay(Display.DEFAULT_DISPLAY)
         if (display == null) {
-            Log.w(TAG, "no default display; the sender will fall back to phone geometry")
+            Log.status(TAG, "no default display; the sender will fall back to phone geometry")
             return emptyList()
         }
         val modes = display.supportedModes
@@ -40,7 +40,7 @@ object PanelModes {
             // stays because a panel may genuinely list the same mode twice.
             .distinct()
             .sortedWith(compareByDescending<DisplayMode> { it.area }.thenByDescending { it.refreshRate })
-        Log.i(
+        Log.status(
             TAG,
             "panel offers ${modes.joinToString { "${it.width}x${it.height}@${it.refreshRate}" }}",
         )

@@ -5,7 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -55,7 +55,7 @@ fun Navigation(viewModel: SetupViewModel) {
         try {
             (activity ?: context).startActivity(intent)
         } catch (e: ActivityNotFoundException) {
-            Log.w("SetupNavigation", "nothing handled ${intent.action}", e)
+            Log.status("SetupNavigation", "nothing handled ${intent.action}", e)
         }
     }
 
@@ -230,7 +230,7 @@ private fun GesturesStep(onDone: (Route) -> Unit) {
             try {
                 launcher.launch(tutorial)
             } catch (e: ActivityNotFoundException) {
-                Log.w("SetupNavigation", "no gesture tutorial on this image", e)
+                Log.status("SetupNavigation", "no gesture tutorial on this image", e)
                 onDone(Route.Gestures)
             }
         },

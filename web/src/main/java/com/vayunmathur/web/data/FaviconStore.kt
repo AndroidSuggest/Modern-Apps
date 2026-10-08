@@ -3,7 +3,7 @@ package com.vayunmathur.web.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.mutableStateMapOf
 import com.vayunmathur.web.platform.BrowserUtils
 import kotlinx.coroutines.CoroutineScope
@@ -87,7 +87,7 @@ object FaviconStore {
             runCatching {
                 file.parentFile?.mkdirs()
                 file.outputStream().use { scaled.compress(Bitmap.CompressFormat.WEBP_LOSSY, QUALITY, it) }
-            }.onFailure { Log.w(TAG, "favicon write failed", it) }
+            }.onFailure { Log.status(TAG, "favicon write failed", it) }
         }
     }
 

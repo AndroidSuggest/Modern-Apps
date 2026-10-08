@@ -2,7 +2,7 @@ package com.vayunmathur.communicate.data.whatsapp.registration
 
 import android.content.Context
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.e2e.RustWhatsAppCrypto
 import java.security.MessageDigest
 import javax.crypto.Cipher
@@ -144,7 +144,7 @@ object RegistrationAttestation {
             val ct = cipher.doFinal(queryString.toByteArray(Charsets.UTF_8))
             Base64.encodeToString(eph.publicKey + ct, Base64.NO_WRAP)
         } catch (expected: Throwable) {
-            Log.w(TAG, "encryptQueryString failed; falling back to plain", expected)
+            Log.status(TAG, "encryptQueryString failed; falling back to plain", expected)
             null
         }
     }

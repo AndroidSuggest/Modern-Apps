@@ -8,7 +8,7 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.ParcelUuid
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -32,7 +32,7 @@ class TrackerBeaconScanner(private val context: Context) {
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val scanner = manager?.adapter?.bluetoothLeScanner
         if (scanner == null) {
-            Log.i(TAG, "sightings: no BLE scanner (adapter off or unavailable)")
+            Log.status(TAG, "sightings: no BLE scanner (adapter off or unavailable)")
             close()
             return@callbackFlow
         }
@@ -46,7 +46,7 @@ class TrackerBeaconScanner(private val context: Context) {
                 val battery = if (serviceData.size > TrackerProtocol.EPOCH_ID_LEN) {
                     serviceData[TrackerProtocol.EPOCH_ID_LEN].toInt() and 0xFF
                 } else -1
-                Log.i(
+                Log.status(
                     TAG,
                     "sighting: epochId=${epochId.joinToString("") { "%02x".format(it) }} " +
                         "battery=$battery rssi=${result.rssi}"
@@ -55,7 +55,7 @@ class TrackerBeaconScanner(private val context: Context) {
             }
 
             override fun onScanFailed(errorCode: Int) {
-                Log.w(TAG, "BLE scan failed: $errorCode")
+                Log.status(TAG, "BLE scan failed: $errorCode")
             }
         }
 
@@ -73,13 +73,13 @@ class TrackerBeaconScanner(private val context: Context) {
 
         try {
             scanner.startScan(listOf(filter), settings, callback)
-            Log.i(TAG, "tracker beacon scan started")
+            Log.status(TAG, "tracker beacon scan started")
         } catch (e: SecurityException) {
-            Log.w(TAG, "startScan denied (missing BLUETOOTH_SCAN)", e)
+            Log.status(TAG, "startScan denied (missing BLUETOOTH_SCAN)", e)
             close(e)
             return@callbackFlow
         } catch (e: Exception) {
-            Log.w(TAG, "startScan failed", e)
+            Log.status(TAG, "startScan failed", e)
             close(e)
             return@callbackFlow
         }

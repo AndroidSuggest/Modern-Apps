@@ -5,7 +5,7 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -42,13 +42,13 @@ object OpusRemuxer {
             input.writeBytes(webmOpus)
             if (muxToOgg(input, output)) {
                 output.readBytes().takeIf { it.isNotEmpty() }
-                    .also { Log.i(TAG, "remux ok: in=${webmOpus.size} out=${it?.size ?: 0}") }
+                    .also { Log.status(TAG, "remux ok: in=${webmOpus.size} out=${it?.size ?: 0}") }
             } else {
-                Log.w(TAG, "remux failed: muxToOgg returned false (in=${webmOpus.size})")
+                Log.status(TAG, "remux failed: muxToOgg returned false (in=${webmOpus.size})")
                 null
             }
         } catch (expected: IOException) {
-            Log.w(TAG, "remux threw: ${expected.javaClass.simpleName}: ${expected.message}", expected)
+            Log.status(TAG, "remux threw: ${expected.javaClass.simpleName}: ${expected.message}", expected)
             null
         } finally {
             input.delete()
@@ -63,7 +63,7 @@ object OpusRemuxer {
             extractor = MediaExtractor().apply { setDataSource(input.absolutePath) }
 
             val track = findAudioTrack(extractor) ?: run {
-                Log.w(TAG, "remux: no audio track found in ${extractor.trackCount} tracks")
+                Log.status(TAG, "remux: no audio track found in ${extractor.trackCount} tracks")
                 return false
             }
             muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_OGG)
@@ -72,10 +72,10 @@ object OpusRemuxer {
             extractor.selectTrack(track.index)
 
             val samples = copySamples(extractor, muxer, muxerTrack)
-            Log.i(TAG, "remux: copied $samples samples")
+            Log.status(TAG, "remux: copied $samples samples")
             return true
         } catch (expected: IOException) {
-            Log.w(TAG, "remux muxToOgg threw: ${expected.javaClass.simpleName}: ${expected.message}", expected)
+            Log.status(TAG, "remux muxToOgg threw: ${expected.javaClass.simpleName}: ${expected.message}", expected)
             return false
         } finally {
             runCatching { extractor?.release() }
@@ -92,7 +92,7 @@ object OpusRemuxer {
         }
         for ((i, candidate) in candidates) {
             val mime = mimeOf(candidate) ?: continue
-            Log.i(TAG, "remux track $i mime=$mime")
+            Log.status(TAG, "remux track $i mime=$mime")
             if (isAudioMime(mime)) return AudioTrack(i, candidate)
         }
         return null

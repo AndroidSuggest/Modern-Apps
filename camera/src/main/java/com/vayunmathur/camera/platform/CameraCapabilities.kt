@@ -1,6 +1,6 @@
 package com.vayunmathur.camera.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.Camera
 import com.vayunmathur.camera.domain.LensSelectionLogic
 import com.vayunmathur.camera.util.CameraViewModel
@@ -71,7 +71,7 @@ suspend fun CameraViewModel.refreshCapabilities(bound: Camera, lensId: String?) 
         exposureCompRange = expRange ?: lensCapabilitiesMutable.value?.exposureCompRange,
         nightExtensionUsable = nightExtensionUsableMutable.value,
     )
-    Log.d("LensSelector", "Refreshed capabilities lens=$lensId zoom=[$minZoom,$maxZoom] flash=$hasFlash")
+    Log.debug("LensSelector", "Refreshed capabilities lens=$lensId zoom=[$minZoom,$maxZoom] flash=$hasFlash")
 }
 
 /** Zoom bounds off the bound camera; unity defaults when unreadable. */
@@ -79,10 +79,10 @@ private fun CameraViewModel.readZoomBounds(bound: Camera): Pair<Float, Float> {
     val zs = try {
         bound.cameraInfo.zoomState.value
     } catch (e: IllegalStateException) {
-        Log.w("LensSelector", "Could not read zoom state", e)
+        Log.status("LensSelector", "Could not read zoom state", e)
         null
     } catch (e: IllegalArgumentException) {
-        Log.w("LensSelector", "Could not read zoom state", e)
+        Log.status("LensSelector", "Could not read zoom state", e)
         null
     }
     return (zs?.minZoomRatio ?: 1f) to (zs?.maxZoomRatio ?: 1f)
@@ -97,16 +97,16 @@ private fun CameraViewModel.reapplyCaptureControls() {
     try {
         applyManualControls()
     } catch (e: IllegalStateException) {
-        Log.w("LensSelector", "Could not re-apply manual controls", e)
+        Log.status("LensSelector", "Could not re-apply manual controls", e)
     } catch (e: IllegalArgumentException) {
-        Log.w("LensSelector", "Could not re-apply manual controls", e)
+        Log.status("LensSelector", "Could not re-apply manual controls", e)
     }
     try {
         applyExposureCompensation(exposureCompensationMutable.value)
     } catch (e: IllegalStateException) {
-        Log.w("LensSelector", "Could not re-apply exposure compensation", e)
+        Log.status("LensSelector", "Could not re-apply exposure compensation", e)
     } catch (e: IllegalArgumentException) {
-        Log.w("LensSelector", "Could not re-apply exposure compensation", e)
+        Log.status("LensSelector", "Could not re-apply exposure compensation", e)
     }
 }
 
@@ -115,10 +115,10 @@ private fun CameraViewModel.readFlashUnit(bound: Camera): Boolean {
     return try {
         bound.cameraInfo.hasFlashUnit()
     } catch (e: IllegalStateException) {
-        Log.w("LensSelector", "Could not query flash unit", e)
+        Log.status("LensSelector", "Could not query flash unit", e)
         hasFlashUnitMutable.value
     } catch (e: IllegalArgumentException) {
-        Log.w("LensSelector", "Could not query flash unit", e)
+        Log.status("LensSelector", "Could not query flash unit", e)
         hasFlashUnitMutable.value
     }
 }
@@ -129,10 +129,10 @@ private fun CameraViewModel.readExposureRange(bound: Camera): ClosedRange<Float>
         val r = bound.cameraInfo.exposureState.exposureCompensationRange
         r.lower.toFloat()..r.upper.toFloat()
     } catch (e: IllegalStateException) {
-        Log.w("LensSelector", "Could not query exposure-compensation range", e)
+        Log.status("LensSelector", "Could not query exposure-compensation range", e)
         null
     } catch (e: IllegalArgumentException) {
-        Log.w("LensSelector", "Could not query exposure-compensation range", e)
+        Log.status("LensSelector", "Could not query exposure-compensation range", e)
         null
     }
 }

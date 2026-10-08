@@ -12,7 +12,7 @@ import android.net.Uri
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import com.vayunmathur.health.R
 import com.vayunmathur.health.notifications.DOSE_RINGING_CHANNEL_ID
@@ -91,7 +91,7 @@ class DoseSoundService : Service() {
                 getSystemService(NotificationManager::class.java)
                     ?.cancel(DOSE_REMINDER_NOTIFICATION_ID)
             } else {
-                Log.e(TAG, "No ringtone played; leaving the insistent notification up")
+                Log.error(TAG, "No ringtone played; leaving the insistent notification up")
             }
         }
 
@@ -104,7 +104,7 @@ class DoseSoundService : Service() {
             ?: return false
         val playing = runCatching { start(uri) }
             .onFailure {
-                Log.e(TAG, "Ringtone $uri failed to play", it)
+                Log.error(TAG, "Ringtone $uri failed to play", it)
                 release()
             }
             .getOrDefault(false)

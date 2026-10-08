@@ -4,7 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -63,7 +63,7 @@ class ShareSaveActivity : ComponentActivity() {
         index = savedInstanceState?.getInt(STATE_INDEX) ?: 0
         saved = savedInstanceState?.getInt(STATE_SAVED) ?: 0
         if (uris().isEmpty()) {
-            Log.w(TAG, "no URIs to save")
+            Log.status(TAG, "no URIs to save")
             finish()
             return
         }
@@ -130,7 +130,7 @@ class ShareSaveActivity : ComponentActivity() {
             contentResolver.openOutputStream(destination)?.use { output -> input.copyTo(output) }
         } != null
     } catch (e: Exception) {
-        Log.w(TAG, "save failed for $source", e)
+        Log.status(TAG, "save failed for $source", e)
         false
     }
 

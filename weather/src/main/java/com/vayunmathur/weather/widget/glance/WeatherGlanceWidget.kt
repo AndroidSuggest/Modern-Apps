@@ -3,7 +3,7 @@ package com.vayunmathur.weather.widget.glance
 import com.vayunmathur.library.util.DateNameStyle
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.widget.RemoteViews
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
@@ -87,7 +87,7 @@ class WeatherGlanceWidget : GlanceAppWidget() {
                 }
             }
         } catch (e: Exception) {
-            Log.e("WeatherWidget", "providePreview failed", e)
+            Log.error("WeatherWidget", "providePreview failed", e)
             try {
                 provideContent {
                     DynamicThemeGlance(context) {
@@ -137,7 +137,7 @@ class WeatherGlanceWidget : GlanceAppWidget() {
                 isDay = current.isDay != 0,
             )
         } catch (e: Exception) {
-            Log.d("WeatherWidget", "no cached snapshot yet", e)
+            Log.debug("WeatherWidget", "no cached snapshot yet", e)
             null
         }
     }

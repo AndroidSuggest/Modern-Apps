@@ -2,7 +2,7 @@ package com.vayunmathur.communicate.data.signal.call
 
 import android.content.Context
 import android.media.projection.MediaProjection
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import org.signal.ringrtc.CameraControl
 import org.webrtc.Camera2Capturer
 import org.webrtc.Camera2Enumerator
@@ -52,7 +52,7 @@ class SignalCamera(
             surfaceHelper = helper
             capturer.initialize(helper, appContext, observer)
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not initialize the camera capturer", expected)
+            Log.status(TAG, "could not initialize the camera capturer", expected)
         }
     }
 
@@ -69,7 +69,7 @@ class SignalCamera(
                 capturing = false
             }
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not ${if (enable) "start" else "stop"} video capture", expected)
+            Log.status(TAG, "could not ${if (enable) "start" else "stop"} video capture", expected)
         }
     }
 
@@ -82,7 +82,7 @@ class SignalCamera(
      */
     fun setScreenShare(enabled: Boolean, permission: android.content.Intent?): Boolean {
         val observer = this.observer ?: run {
-            Log.w(TAG, "no capturer observer yet; cannot share the screen")
+            Log.status(TAG, "no capturer observer yet; cannot share the screen")
             return false
         }
         return if (enabled) startScreenShare(observer, permission) else stopScreenShare()
@@ -101,7 +101,7 @@ class SignalCamera(
                 permission,
                 object : MediaProjection.Callback() {
                     override fun onStop() {
-                        Log.i(TAG, "screen capture stopped by the system")
+                        Log.status(TAG, "screen capture stopped by the system")
                     }
                 },
             )
@@ -110,10 +110,10 @@ class SignalCamera(
             val metrics = appContext.resources.displayMetrics
             capturer.startCapture(metrics.widthPixels, metrics.heightPixels, SCREEN_FPS)
             screenCapturer = capturer
-            Log.i(TAG, "sharing the screen at ${metrics.widthPixels}x${metrics.heightPixels}")
+            Log.status(TAG, "sharing the screen at ${metrics.widthPixels}x${metrics.heightPixels}")
             true
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not start screen capture", expected)
+            Log.status(TAG, "could not start screen capture", expected)
             screenCapturer = null
             false
         }
@@ -127,7 +127,7 @@ class SignalCamera(
             screenCapturer = null
             true
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not stop screen capture", expected)
+            Log.status(TAG, "could not stop screen capture", expected)
             screenCapturer = null
             false
         }
@@ -138,7 +138,7 @@ class SignalCamera(
         try {
             capturer?.switchCamera(this)
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not switch camera", expected)
+            Log.status(TAG, "could not switch camera", expected)
         }
     }
 
@@ -162,29 +162,29 @@ class SignalCamera(
     }
 
     override fun onCameraSwitchError(error: String?) {
-        Log.w(TAG, "camera switch failed: $error")
+        Log.status(TAG, "camera switch failed: $error")
     }
 
     private fun createCapturer(): CameraVideoCapturer? {
         if (!Camera2Enumerator.isSupported(appContext)) {
-            Log.w(TAG, "Camera2 unsupported; calls will negotiate without video")
+            Log.status(TAG, "Camera2 unsupported; calls will negotiate without video")
             return null
         }
         val enumerator = Camera2Enumerator(appContext)
         val names = try { enumerator.deviceNames } catch (expected: Throwable) {
-            Log.w(TAG, "could not enumerate cameras", expected)
+            Log.status(TAG, "could not enumerate cameras", expected)
             return null
         }
         // Front first, since that is what a video call would use; any camera is enough to negotiate.
         val preferred = names.firstOrNull { enumerator.isFrontFacing(it) } ?: names.firstOrNull()
         if (preferred == null) {
-            Log.w(TAG, "no camera on this device; calls will negotiate without video")
+            Log.status(TAG, "no camera on this device; calls will negotiate without video")
             return null
         }
         return try {
             Camera2Capturer(appContext, preferred, null)
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not create a camera capturer for $preferred", expected)
+            Log.status(TAG, "could not create a camera capturer for $preferred", expected)
             null
         }
     }

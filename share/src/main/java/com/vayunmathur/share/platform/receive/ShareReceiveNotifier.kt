@@ -8,7 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.getSystemService
@@ -253,7 +253,7 @@ class ShareReceiveNotifier(
         } catch (e: SecurityException) {
             // POST_NOTIFICATIONS revoked mid-transfer. Nothing to fall back to — the tile
             // refuses to enable without it — so record it rather than crashing the pump.
-            Log.w(TAG, "cannot post notification $id", e)
+            Log.status(TAG, "cannot post notification $id", e)
         }
     }
 
@@ -411,7 +411,7 @@ class ShareReceiveNotifier(
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
         }
     } catch (e: Exception) {
-        Log.w(TAG, "cannot decode preview for ${image.name}", e)
+        Log.status(TAG, "cannot decode preview for ${image.name}", e)
         null
     }
 
@@ -525,7 +525,7 @@ class ShareReceiveNotifier(
                     .filter { it.notification.group == GROUP_KEY }
                     .forEach { nm.cancel(it.id) }
             } catch (e: Exception) {
-                Log.w(TAG, "could not enumerate active notifications", e)
+                Log.status(TAG, "could not enumerate active notifications", e)
             }
         }
     }

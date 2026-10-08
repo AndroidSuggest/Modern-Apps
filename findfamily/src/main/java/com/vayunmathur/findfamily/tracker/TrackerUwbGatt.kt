@@ -9,7 +9,7 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.annotation.RequiresApi
 import com.vayunmathur.findfamily.uwb.RangingSample
 import com.vayunmathur.findfamily.uwb.UwbController
@@ -99,7 +99,7 @@ object TrackerUwbGatt {
         secret: ByteArray,
     ): Flow<RangingSample>? {
         val info = ctrl.openController().getOrElse {
-            Log.e(TAG, "openController failed", it)
+            Log.error(TAG, "openController failed", it)
             return null
         }
         val params = SessionParams(
@@ -109,7 +109,7 @@ object TrackerUwbGatt {
             preambleIndex = info.preambleIndex,
         )
         if (!writeSessionParams(context, bleAddress, encodeSessionParams(params))) {
-            Log.w(TAG, "could not hand session params to tracker at $bleAddress")
+            Log.status(TAG, "could not hand session params to tracker at $bleAddress")
             return null
         }
         // Both ends derive these from the beacon secret rather than exchanging them.
@@ -153,7 +153,7 @@ object TrackerUwbGatt {
              */
             adapter?.getRemoteLeDevice(bleAddress, BluetoothDevice.ADDRESS_TYPE_RANDOM)
         } catch (e: Exception) {
-            Log.w(TAG, "getRemoteLeDevice($bleAddress) failed", e); null
+            Log.status(TAG, "getRemoteLeDevice($bleAddress) failed", e); null
         }
         if (device == null) { cont.resume(false); return@suspendCancellableCoroutine }
 
@@ -170,30 +170,30 @@ object TrackerUwbGatt {
         val callback = object : BluetoothGattCallback() {
             override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    Log.i(TAG, "connected to tracker (status=$status); discovering services")
+                    Log.status(TAG, "connected to tracker (status=$status); discovering services")
                     runCatching { g.discoverServices() }
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     // status 133 is the catch-all GATT error, and normally means the
                     // connection was never established rather than that it dropped.
-                    Log.w(TAG, "disconnected before the params write completed (status=$status)")
+                    Log.status(TAG, "disconnected before the params write completed (status=$status)")
                     finish(false)
                 }
             }
 
             override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
                 if (status != BluetoothGatt.GATT_SUCCESS) {
-                    Log.w(TAG, "service discovery failed: $status")
+                    Log.status(TAG, "service discovery failed: $status")
                     finish(false); return
                 }
                 val service = g.getService(TrackerBle.UNPROVISIONED_SERVICE_UUID)
                 if (service == null) {
-                    Log.w(TAG, "service ${TrackerBle.UNPROVISIONED_SERVICE_UUID} not found; " +
+                    Log.status(TAG, "service ${TrackerBle.UNPROVISIONED_SERVICE_UUID} not found; " +
                         "discovered=${g.services.map { it.uuid }}")
                     finish(false); return
                 }
                 val ch = service.getCharacteristic(TrackerBle.UWB_SESSION_CHARACTERISTIC_UUID)
                 if (ch == null) {
-                    Log.w(TAG, "UWB characteristic not found; service has " +
+                    Log.status(TAG, "UWB characteristic not found; service has " +
                         "${service.characteristics.map { it.uuid }}")
                     finish(false); return
                 }
@@ -207,22 +207,22 @@ object TrackerUwbGatt {
                         g.writeCharacteristic(ch)
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "writeCharacteristic failed", e); false
+                    Log.status(TAG, "writeCharacteristic failed", e); false
                 }
                 if (!ok) finish(false)
             }
 
             @Deprecated("compat shim for API < 33")
             override fun onCharacteristicWrite(g: BluetoothGatt, ch: BluetoothGattCharacteristic, status: Int) {
-                Log.i(TAG, "session params write completed with status=$status")
+                Log.status(TAG, "session params write completed with status=$status")
                 finish(status == BluetoothGatt.GATT_SUCCESS)
             }
         }
-        Log.i(TAG, "connecting to tracker at $bleAddress to hand over session params")
+        Log.status(TAG, "connecting to tracker at $bleAddress to hand over session params")
         gatt = try {
             device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
         } catch (e: Exception) {
-            Log.w(TAG, "connectGatt failed", e); null
+            Log.status(TAG, "connectGatt failed", e); null
         }
         if (gatt == null) { finish(false); return@suspendCancellableCoroutine }
 

@@ -1,7 +1,7 @@
 package com.vayunmathur.music.service
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -154,7 +154,7 @@ class CastQueue(context: Context, private val local: ExoPlayer) {
             // The transition this causes is what issues the next `PLAY_MEDIA`; nothing is sent here.
             local.seekToNextMediaItem()
         } else {
-            Log.i(TAG, "the queue is finished; the television stays where it is")
+            Log.status(TAG, "the queue is finished; the television stays where it is")
         }
     }
 
@@ -168,7 +168,7 @@ class CastQueue(context: Context, private val local: ExoPlayer) {
         val resourceId = item?.mediaId ?: return
         val song = resourceId.toLongOrNull()?.let { library[it] }
         if (song == null) {
-            Log.w(TAG, "nothing in the library for '$resourceId'; the TV was not told to play")
+            Log.status(TAG, "nothing in the library for '$resourceId'; the TV was not told to play")
             return
         }
         offered = resourceId

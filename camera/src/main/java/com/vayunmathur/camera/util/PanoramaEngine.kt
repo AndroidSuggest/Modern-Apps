@@ -8,6 +8,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -379,40 +380,40 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
     suspend fun stitch(): Pair<ByteArray, PanoInfo>? {
         val handle = nativeHandle
         if (handle == 0L || _frameCount.value < 2) {
-            android.util.Log.w("PanoramaEngine", "stitch skipped: handle=$handle frames=${_frameCount.value}")
+            Log.status("PanoramaEngine", "stitch skipped: handle=$handle frames=${_frameCount.value}")
             return null
         }
         _isStitching.value = true
         return withContext(Dispatchers.IO) {
             try {
-                android.util.Log.i("PanoramaEngine", "stitch start: frames=${_frameCount.value} sphere=$sphereMode")
+                Log.status("PanoramaEngine", "stitch start: frames=${_frameCount.value} sphere=$sphereMode")
                 val gpu = gpuStitch(handle)
                 if (gpu != null) {
                     gpu
                 } else {
-                    android.util.Log.w("PanoramaEngine", "GPU path failed; falling back to CPU stitch")
+                    Log.status("PanoramaEngine", "GPU path failed; falling back to CPU stitch")
                     cpuStitch(handle)
                 }
             } catch (e: IllegalStateException) {
-                android.util.Log.e("PanoramaEngine", "GPU stitch threw; falling back to CPU", e)
+                Log.error("PanoramaEngine", "GPU stitch threw; falling back to CPU", e)
                 try {
                     cpuStitch(handle)
                 } catch (e2: IllegalStateException) {
-                    android.util.Log.e("PanoramaEngine", "CPU stitch also failed", e2)
+                    Log.error("PanoramaEngine", "CPU stitch also failed", e2)
                     null
                 } catch (e2: IllegalArgumentException) {
-                    android.util.Log.e("PanoramaEngine", "CPU stitch also failed", e2)
+                    Log.error("PanoramaEngine", "CPU stitch also failed", e2)
                     null
                 }
             } catch (e: IllegalArgumentException) {
-                android.util.Log.e("PanoramaEngine", "GPU stitch threw; falling back to CPU", e)
+                Log.error("PanoramaEngine", "GPU stitch threw; falling back to CPU", e)
                 try {
                     cpuStitch(handle)
                 } catch (e2: IllegalStateException) {
-                    android.util.Log.e("PanoramaEngine", "CPU stitch also failed", e2)
+                    Log.error("PanoramaEngine", "CPU stitch also failed", e2)
                     null
                 } catch (e2: IllegalArgumentException) {
-                    android.util.Log.e("PanoramaEngine", "CPU stitch also failed", e2)
+                    Log.error("PanoramaEngine", "CPU stitch also failed", e2)
                     null
                 }
             } finally {
@@ -426,16 +427,16 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
         val t0 = System.currentTimeMillis()
         val blob = StitchNative.estimate(handle)
         if (blob == null) {
-            android.util.Log.w("PanoramaEngine", "estimate returned null (registration failed)")
+            Log.status("PanoramaEngine", "estimate returned null (registration failed)")
             return null
         }
         val estimate = GpuStitcher.parseEstimate(blob)
         if (estimate == null) {
-            android.util.Log.w("PanoramaEngine", "parseEstimate returned null (bad blob, ${blob.size} bytes)")
+            Log.status("PanoramaEngine", "parseEstimate returned null (bad blob, ${blob.size} bytes)")
             return null
         }
         val tReg = System.currentTimeMillis()
-        android.util.Log.i(
+        Log.status(
             "PanoramaEngine",
             "estimate ok in ${tReg - t0}ms: " +
                 "canvas=${estimate.canvasW}x${estimate.canvasH} " +
@@ -443,7 +444,7 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
         )
         val result = GpuStitcher.composite(estimate, capturedFrames)
         if (result == null) {
-            android.util.Log.w("PanoramaEngine", "GpuStitcher.composite returned null")
+            Log.status("PanoramaEngine", "GpuStitcher.composite returned null")
             return null
         }
         val tComp = System.currentTimeMillis()
@@ -464,7 +465,7 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
             croppedLeft = result.croppedLeft,
             croppedTop = result.croppedTop,
         )
-        android.util.Log.i(
+        Log.status(
             "PanoramaEngine",
             "GPU stitch: estimate=${tReg - t0}ms composite=${tComp - tReg}ms -> ${cw}x$ch"
         )
@@ -476,7 +477,7 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
         val t0 = System.currentTimeMillis()
         val jpeg = StitchNative.stitch(handle)
         if (jpeg == null) {
-            android.util.Log.e("PanoramaEngine", "CPU stitch returned null (registration/stitch failed)")
+            Log.error("PanoramaEngine", "CPU stitch returned null (registration/stitch failed)")
             return null
         }
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -484,7 +485,7 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
         val w = opts.outWidth
         val h = opts.outHeight
         if (w <= 0 || h <= 0) return null
-        android.util.Log.i("PanoramaEngine", "CPU stitch ok in ${System.currentTimeMillis() - t0}ms -> ${w}x$h")
+        Log.status("PanoramaEngine", "CPU stitch ok in ${System.currentTimeMillis() - t0}ms -> ${w}x$h")
         val info = PanoInfo(
             projectionType = if (sphereMode) "equirectangular" else "cylindrical",
             fullWidth = w,
@@ -510,18 +511,18 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
             val doc = SafDocuments.createImageDoc(context.contentResolver, treeUri, name)
             if (doc != null) {
                 MediaStoreSaver.saveJpegBytesToUri(context.contentResolver, doc, tagged)?.let { uri ->
-                    android.util.Log.i("PanoramaEngine", "Saved $prefix to $uri ${tagged.size} bytes")
+                    Log.status("PanoramaEngine", "Saved $prefix to $uri ${tagged.size} bytes")
                     return uri
                 }
-                android.util.Log.w("PanoramaEngine", "SAF save failed for $prefix; using MediaStore")
+                Log.status("PanoramaEngine", "SAF save failed for $prefix; using MediaStore")
             }
         }
         val contentValues = MediaStoreSaver.imageValues(name)
         return MediaStoreSaver.saveJpegBytes(context.contentResolver, contentValues, tagged).also { uri ->
             if (uri == null) {
-                android.util.Log.e("PanoramaEngine", "MediaStore save failed for $prefix")
+                Log.error("PanoramaEngine", "MediaStore save failed for $prefix")
             } else {
-                android.util.Log.i("PanoramaEngine", "Saved $prefix to $uri ${tagged.size} bytes")
+                Log.status("PanoramaEngine", "Saved $prefix to $uri ${tagged.size} bytes")
             }
         }
     }

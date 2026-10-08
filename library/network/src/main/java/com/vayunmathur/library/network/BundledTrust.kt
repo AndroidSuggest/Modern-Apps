@@ -1,7 +1,7 @@
 package com.vayunmathur.library.network
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.IOException
 import java.security.GeneralSecurityException
 import java.security.KeyStore
@@ -34,17 +34,17 @@ object BundledTrust {
 
         val assetPaths = bundle.assetPaths()
         if (assetPaths.isEmpty()) {
-            Log.w(TAG, "Bundle $bundle has no asset paths")
+            Log.status(TAG, "Bundle $bundle has no asset paths")
             return null
         }
 
         return try {
             buildFactory(context, bundle, assetPaths)
         } catch (e: GeneralSecurityException) {
-            Log.e(TAG, "Failed to create factory for bundle $bundle", e)
+            Log.error(TAG, "Failed to create factory for bundle $bundle", e)
             null
         } catch (e: IOException) {
-            Log.e(TAG, "Failed to create factory for bundle $bundle", e)
+            Log.error(TAG, "Failed to create factory for bundle $bundle", e)
             null
         }
     }
@@ -60,7 +60,7 @@ object BundledTrust {
         val loaded = seedSystemIssuers(ks, bundle) + loadBundledAssets(context, cf, ks, assetPaths)
 
         if (loaded == 0) {
-            Log.w(
+            Log.status(
                 TAG,
                 "No CAs loaded for bundle $bundle (checked ${assetPaths.size} assets)" +
                     " — falling back to system trust",
@@ -73,7 +73,7 @@ object BundledTrust {
         }
         val trustManager = tmf.trustManagers.firstOrNull { it is X509TrustManager } as? X509TrustManager
         if (trustManager == null) {
-            Log.e(TAG, "No X509TrustManager found for bundle $bundle")
+            Log.error(TAG, "No X509TrustManager found for bundle $bundle")
             return null
         }
 
@@ -83,7 +83,7 @@ object BundledTrust {
 
         val pair = sslContext.socketFactory to trustManager
         cache = cache + (bundle to pair)
-        Log.i(TAG, "Bundle $bundle loaded $loaded roots")
+        Log.status(TAG, "Bundle $bundle loaded $loaded roots")
         return pair
     }
 
@@ -130,13 +130,13 @@ object BundledTrust {
                     ks.setCertificateEntry("ca-$idx-${path.hashCode()}", cert)
                     return true
                 }
-                Log.w(TAG, "Asset $path did not decode to X509Certificate")
+                Log.status(TAG, "Asset $path did not decode to X509Certificate")
             }
         } catch (e: IOException) {
             // Missing asset is expected during early dev before DERs are bundled.
-            Log.w(TAG, "Failed to load CA asset $path: ${e.message}")
+            Log.status(TAG, "Failed to load CA asset $path: ${e.message}")
         } catch (e: GeneralSecurityException) {
-            Log.w(TAG, "Failed to load CA asset $path: ${e.message}")
+            Log.status(TAG, "Failed to load CA asset $path: ${e.message}")
         }
         return false
     }

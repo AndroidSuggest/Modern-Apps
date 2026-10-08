@@ -7,7 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import com.vayunmathur.clock.data.ClockRepository
 import kotlinx.coroutines.CoroutineScope
@@ -21,7 +21,7 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         createNotificationChannels(context)
         val alarmId = intent.getLongExtra("ALARM_ID", -1L)
-        Log.i(TAG, "Alarm $alarmId fired (snooze=${intent.getBooleanExtra("IS_SNOOZE", false)})")
+        Log.status(TAG, "Alarm $alarmId fired (snooze=${intent.getBooleanExtra("IS_SNOOZE", false)})")
 
         // 1. Create the Intent for your "Ringing" Activity
         val ringIntent = Intent(context, AlarmActivity::class.java).apply {
@@ -97,7 +97,7 @@ class AlarmReceiver : BroadcastReceiver() {
         ) {
             // Without it the ringing screen can only appear if the background activity start
             // below happens to be allowed, which off-screen it is not.
-            Log.w(
+            Log.status(
                 TAG,
                 "Alarm $alarmId: USE_FULL_SCREEN_INTENT not granted; ringing UI may not appear",
             )
@@ -119,7 +119,7 @@ class AlarmReceiver : BroadcastReceiver() {
                     AlarmScheduler.schedule(context, alarm)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Alarm $alarmId: could not reschedule", e)
+                Log.error(TAG, "Alarm $alarmId: could not reschedule", e)
             } finally {
                 pendingResult.finish()
             }
@@ -136,9 +136,9 @@ class AlarmReceiver : BroadcastReceiver() {
         } catch (e: SecurityException) {
             // Losing this used to throw out of onReceive, which took the notification's
             // rescheduling and the activity start below down with it.
-            Log.e(TAG, "Alarm $alarmId: could not start AlarmSoundService", e)
+            Log.error(TAG, "Alarm $alarmId: could not start AlarmSoundService", e)
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "Alarm $alarmId: could not start AlarmSoundService", e)
+            Log.error(TAG, "Alarm $alarmId: could not start AlarmSoundService", e)
         }
     }
 
@@ -147,13 +147,13 @@ class AlarmReceiver : BroadcastReceiver() {
         try {
             context.startActivity(ringIntent)
         } catch (e: SecurityException) {
-            Log.w(
+            Log.status(
                 TAG,
                 "Alarm $alarmId: background activity start refused; relying on full-screen intent",
                 e,
             )
         } catch (e: ActivityNotFoundException) {
-            Log.w(
+            Log.status(
                 TAG,
                 "Alarm $alarmId: background activity start refused; relying on full-screen intent",
                 e,

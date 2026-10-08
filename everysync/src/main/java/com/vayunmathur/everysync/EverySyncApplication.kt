@@ -2,6 +2,7 @@ package com.vayunmathur.everysync
 
 import android.app.Application
 import com.vayunmathur.everysync.sync.SyncScheduler
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 
@@ -13,6 +14,7 @@ import com.vayunmathur.library.network.TrustBundle
 class EverySyncApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        Log.init(BuildConfig.DEV_BUILD)
         // EXTENDED covers Google GTS (accounts.google.com, apis) + Apple roots (caldav.icloud.com)
         NetworkClient.init(this, TrustBundle.EXTENDED)
         SyncScheduler.schedulePeriodic(this)

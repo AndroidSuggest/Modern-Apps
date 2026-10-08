@@ -2,7 +2,7 @@ package com.vayunmathur.library.ml
 
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.graphics.scale
 import java.io.File
 
@@ -53,7 +53,7 @@ class Gemma4VisionHandle private constructor(private val file: File) : AutoClose
         if (handle == 0L) return null
         val size = MlNative.gemma4VisionSize(image.width, image.height, softTokens)
         if (size == null || size.size != 2) {
-            Log.w(TAG, "no vision grid for ${image.width}x${image.height} at $softTokens")
+            Log.status(TAG, "no vision grid for ${image.width}x${image.height} at $softTokens")
             return null
         }
         val (width, height) = size
@@ -61,7 +61,7 @@ class Gemma4VisionHandle private constructor(private val file: File) : AutoClose
         val scaled = runCatching {
             image.scale(width, height).copy(Bitmap.Config.ARGB_8888, false)
         }.getOrElse {
-            Log.w(TAG, "cannot resize to ${width}x$height: $it")
+            Log.status(TAG, "cannot resize to ${width}x$height: $it")
             return null
         }
         val pixels = IntArray(width * height)
@@ -113,14 +113,14 @@ class Gemma4VisionHandle private constructor(private val file: File) : AutoClose
          */
         private fun create(file: File): Long {
             if (!file.isFile) {
-                Log.w(TAG, "${file.name} is missing")
+                Log.status(TAG, "${file.name} is missing")
                 return 0L
             }
             val fd = runCatching {
                 ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
                     .use { it.detachFd() }
             }.getOrElse {
-                Log.w(TAG, "cannot open ${file.name}: $it")
+                Log.status(TAG, "cannot open ${file.name}: $it")
                 return 0L
             }
             var handed = false

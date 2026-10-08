@@ -1,7 +1,7 @@
 package com.vayunmathur.library.network
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.DeserializationStrategy
@@ -159,15 +159,15 @@ object NetworkClient {
         currentBundle = bundle
         if (bundle == TrustBundle.SYSTEM) {
             defaultSslSocketFactory = null
-            Log.i(TAG, "Initialized with SYSTEM bundle (platform default trust)")
+            Log.status(TAG, "Initialized with SYSTEM bundle (platform default trust)")
             return
         }
         val result = BundledTrust.createFactory(appCtx, bundle)
         defaultSslSocketFactory = result?.first
         if (defaultSslSocketFactory == null) {
-            Log.w(TAG, "Bundle $bundle produced no factory (missing DERs?), falling back to system trust")
+            Log.status(TAG, "Bundle $bundle produced no factory (missing DERs?), falling back to system trust")
         } else {
-            Log.i(TAG, "Initialized with bundle $bundle")
+            Log.status(TAG, "Initialized with bundle $bundle")
         }
     }
 

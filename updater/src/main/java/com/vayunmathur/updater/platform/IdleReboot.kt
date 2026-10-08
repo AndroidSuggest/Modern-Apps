@@ -7,7 +7,7 @@ import android.app.job.JobService
 import android.content.ComponentName
 import android.content.Context
 import android.os.PowerManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 
 private const val TAG = "IdleReboot"
@@ -50,7 +50,7 @@ class IdleReboot : JobService() {
                     .setMinimumLatency(MIN_LATENCY_MILLIS)
                     .build(),
             )
-            if (result == JobScheduler.RESULT_FAILURE) Log.e(TAG, "could not schedule the reboot")
+            if (result == JobScheduler.RESULT_FAILURE) Log.error(TAG, "could not schedule the reboot")
         }
 
         fun cancel(context: Context) {
@@ -61,16 +61,16 @@ class IdleReboot : JobService() {
         fun reboot(context: Context) {
             val power = context.getSystemService<PowerManager>()
             if (power == null) {
-                Log.e(TAG, "no PowerManager; cannot reboot")
+                Log.error(TAG, "no PowerManager; cannot reboot")
                 return
             }
             try {
-                Log.i(TAG, "rebooting into the updated slot")
+                Log.status(TAG, "rebooting into the updated slot")
                 power.reboot(null)
             } catch (e: SecurityException) {
                 // SecurityException when REBOOT is not actually granted, which is what a
                 // mismatched privapp-permissions entry looks like from here.
-                Log.e(TAG, "reboot refused", e)
+                Log.error(TAG, "reboot refused", e)
             }
         }
     }

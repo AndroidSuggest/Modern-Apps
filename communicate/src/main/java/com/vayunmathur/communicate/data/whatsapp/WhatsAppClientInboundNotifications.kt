@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.whatsapp
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager
 import com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallSignaling
 import com.vayunmathur.communicate.data.whatsapp.encodeNode
@@ -107,7 +107,7 @@ internal suspend fun WhatsAppClient.handleCallNotification(node: WhatsAppProtoco
         val callTimestamp = node.attrs["t"]?.toLongOrNull() ?: (System.currentTimeMillis() / 1000)
         val ageSeconds = (System.currentTimeMillis() / 1000) - callTimestamp
         if (ageSeconds > STALE_CALL_SECONDS) {
-            Log.d(TAG, "Ignoring old call notification (${ageSeconds}s old)")
+            Log.debug(TAG, "Ignoring old call notification (${ageSeconds}s old)")
             return
         }
 

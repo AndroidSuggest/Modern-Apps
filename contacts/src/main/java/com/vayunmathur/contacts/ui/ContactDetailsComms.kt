@@ -18,6 +18,7 @@ import androidx.core.net.toUri
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.util.ContactPlatforms
 import com.vayunmathur.contacts.util.PackageUtils
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExternalIntents
@@ -93,13 +94,13 @@ internal fun handleCommunication(
     try {
         context.startActivity(intent)
     } catch (e: android.content.ActivityNotFoundException) {
-        android.util.Log.w("ContactDetailsComms", "SMS handler missing", e)
+        Log.status("ContactDetailsComms", "SMS handler missing", e)
         fallbackToSystemSms(context, number, type, packageName)
     } catch (e: SecurityException) {
-        android.util.Log.w("ContactDetailsComms", "SMS handler missing", e)
+        Log.status("ContactDetailsComms", "SMS handler missing", e)
         fallbackToSystemSms(context, number, type, packageName)
     } catch (e: Exception) {
-        android.util.Log.w("ContactDetailsComms", "SMS handler missing", e)
+        Log.status("ContactDetailsComms", "SMS handler missing", e)
         fallbackToSystemSms(context, number, type, packageName)
     }
 }
@@ -199,11 +200,11 @@ internal fun launchPlatformAction(context: android.content.Context, dataRowId: L
         val uri = ContentUris.withAppendedId(ContactsContract.Data.CONTENT_URI, dataRowId)
         context.startActivity(Intent(Intent.ACTION_VIEW, uri))
     } catch (e: android.content.ActivityNotFoundException) {
-        android.util.Log.w("ContactDetailsComms", "Platform action handler missing", e)
+        Log.status("ContactDetailsComms", "Platform action handler missing", e)
     } catch (e: SecurityException) {
-        android.util.Log.w("ContactDetailsComms", "Platform action handler missing", e)
+        Log.status("ContactDetailsComms", "Platform action handler missing", e)
     } catch (e: Exception) {
-        android.util.Log.w("ContactDetailsComms", "Platform action handler missing", e)
+        Log.status("ContactDetailsComms", "Platform action handler missing", e)
     }
 }
 
@@ -218,10 +219,10 @@ internal fun launchGoogleMeet(context: android.content.Context, number: String) 
         }
         context.startActivity(intent)
     } catch (e: android.content.ActivityNotFoundException) {
-        android.util.Log.w("ContactDetailsComms", "Meet handler missing", e)
+        Log.status("ContactDetailsComms", "Meet handler missing", e)
     } catch (e: SecurityException) {
-        android.util.Log.w("ContactDetailsComms", "Meet handler missing", e)
+        Log.status("ContactDetailsComms", "Meet handler missing", e)
     } catch (e: Exception) {
-        android.util.Log.w("ContactDetailsComms", "Meet handler missing", e)
+        Log.status("ContactDetailsComms", "Meet handler missing", e)
     }
 }

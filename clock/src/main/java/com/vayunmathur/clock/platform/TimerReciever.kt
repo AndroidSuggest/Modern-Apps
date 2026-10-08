@@ -3,7 +3,7 @@ import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import com.vayunmathur.clock.data.ClockRepository
 import com.vayunmathur.clock.data.Timer
@@ -51,7 +51,7 @@ class TimerReceiver : BroadcastReceiver() {
                     )
                     repository.upsertTimer(completed)
                 } catch (e: Exception) {
-                    Log.w(TAG, "could not load timer $id; writing minimal completed row", e)
+                    Log.status(TAG, "could not load timer $id; writing minimal completed row", e)
                     // Fallback: upsert a minimal completed timer if get fails
                     val completedFallback = Timer(
                         isRunning = false,
@@ -69,7 +69,7 @@ class TimerReceiver : BroadcastReceiver() {
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "could not complete timer $id", e)
+                Log.error(TAG, "could not complete timer $id", e)
             } finally {
                 pendingResult.finish()
             }

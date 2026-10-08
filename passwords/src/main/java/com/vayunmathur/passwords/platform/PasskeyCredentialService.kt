@@ -4,7 +4,7 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.os.CancellationSignal
 import android.os.OutcomeReceiver
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.credentials.exceptions.ClearCredentialException
 import androidx.credentials.exceptions.CreateCredentialException
 import androidx.credentials.exceptions.GetCredentialException
@@ -68,7 +68,7 @@ class PasskeyCredentialService : CredentialProviderService() {
                 )
                 callback.onResult(response)
             } catch (expected: IllegalStateException) {
-                Log.e(TAG, "onBeginGetCredentialRequest failed, falling back to unlock", expected)
+                Log.error(TAG, "onBeginGetCredentialRequest failed, falling back to unlock", expected)
                 closeCachedDatabase<PasswordDatabase>()
                 DatabaseHelper(applicationContext).deleteKey()
                 callback.onResult(buildUnlockResponse())
@@ -106,7 +106,7 @@ class PasskeyCredentialService : CredentialProviderService() {
                 callback.onResult(BeginCreateCredentialResponse.Builder().build())
             }
         } catch (expected: IllegalArgumentException) {
-            Log.e(TAG, "onBeginCreateCredentialRequest failed", expected)
+            Log.error(TAG, "onBeginCreateCredentialRequest failed", expected)
             callback.onError(CreateCredentialUnknownException())
         }
     }

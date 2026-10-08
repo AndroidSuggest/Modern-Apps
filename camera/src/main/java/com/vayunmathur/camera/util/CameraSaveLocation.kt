@@ -5,7 +5,7 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.net.toUri
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
@@ -40,7 +40,7 @@ internal fun CameraViewModel.loadSaveTarget() {
     if (uri != null && SafDocuments.hasPersistedPermission(app.contentResolver, uri)) {
         saveTargetMutable.value = SaveTarget.SafTree(uri)
     } else {
-        Log.w("CameraViewModel", "SAF save folder grant missing; falling back to DCIM/Camera")
+        Log.status("CameraViewModel", "SAF save folder grant missing; falling back to DCIM/Camera")
         saveTargetMutable.value = SaveTarget.MediaStoreDefault
         viewModelScope.launch {
             ds.setString(KEY_SAVE_MODE, MODE_MEDIA_STORE)
@@ -81,7 +81,7 @@ object SafDocuments {
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
         } catch (e: SecurityException) {
-            Log.w("SafDocuments", "takePersistableUriPermission failed for $treeUri", e)
+            Log.status("SafDocuments", "takePersistableUriPermission failed for $treeUri", e)
         }
     }
 
@@ -105,10 +105,10 @@ object SafDocuments {
     ): Uri? = try {
         DocumentsContract.createDocument(resolver, treeUri, mimeType, displayName)
     } catch (e: IllegalArgumentException) {
-        Log.w("SafDocuments", "createDocument failed for $displayName", e)
+        Log.status("SafDocuments", "createDocument failed for $displayName", e)
         null
     } catch (e: java.io.FileNotFoundException) {
-        Log.w("SafDocuments", "createDocument failed for $displayName", e)
+        Log.status("SafDocuments", "createDocument failed for $displayName", e)
         null
     }
 
@@ -118,10 +118,10 @@ object SafDocuments {
             if (c.moveToFirst()) c.getString(0) else null
         }
     } catch (e: SecurityException) {
-        Log.w("SafDocuments", "displayName query failed for $treeUri", e)
+        Log.status("SafDocuments", "displayName query failed for $treeUri", e)
         null
     } catch (e: IllegalArgumentException) {
-        Log.w("SafDocuments", "displayName query failed for $treeUri", e)
+        Log.status("SafDocuments", "displayName query failed for $treeUri", e)
         null
     }
 

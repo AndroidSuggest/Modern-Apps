@@ -4,7 +4,7 @@ import android.content.Context
 import android.telephony.ims.ImsManager
 import android.telephony.ims.ImsException
 import android.telephony.ims.SipDelegateManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * Reflection bridge over the `@SystemApi`/`@hide` members of otherwise-public
@@ -33,7 +33,7 @@ internal object RcsHiddenApi {
             val method = ims.javaClass.getMethod("getSipDelegateManager", Int::class.javaPrimitiveType)
             method.invoke(ims, subId) as? SipDelegateManager
         }.getOrElse {
-            Log.w(TAG, "getSipDelegateManager failed", it)
+            Log.status(TAG, "getSipDelegateManager failed", it)
             null
         }
     }
@@ -69,7 +69,7 @@ internal object RcsHiddenApi {
             // InvocationTargetException wraps the framework's ImsException /
             // SecurityException — unwrap one level for the caller's catch.
             val cause = (it as? java.lang.reflect.InvocationTargetException)?.cause ?: it
-            Log.w(TAG, "requestCapabilities failed", cause)
+            Log.status(TAG, "requestCapabilities failed", cause)
             if (cause is SecurityException) throw cause
             if (cause is ImsException) throw cause
             false
@@ -141,7 +141,7 @@ internal object RcsHiddenApi {
             true
         }.getOrElse {
             val cause = (it as? java.lang.reflect.InvocationTargetException)?.cause ?: it
-            Log.w(TAG, "requestAvailability failed", cause)
+            Log.status(TAG, "requestAvailability failed", cause)
             if (cause is SecurityException) throw cause
             if (cause is ImsException) throw cause
             false
@@ -190,7 +190,7 @@ internal object RcsHiddenApi {
             val factory = pmClass.getMethod("createForSubscriptionId", Int::class.javaPrimitiveType)
             factory.invoke(null, subId)
         }.getOrElse {
-            Log.w(TAG, "createForSubscriptionId failed", it)
+            Log.status(TAG, "createForSubscriptionId failed", it)
             null
         }
     }
@@ -206,7 +206,7 @@ internal object RcsHiddenApi {
             val method = provisioningManager.javaClass.getMethod("isRcsVolteSingleRegistrationCapable")
             method.invoke(provisioningManager) as? Boolean
         }.getOrElse {
-            Log.w(TAG, "isRcsVolteSingleRegistrationCapable failed", it)
+            Log.status(TAG, "isRcsVolteSingleRegistrationCapable failed", it)
             null
         }
     }
@@ -246,7 +246,7 @@ internal object RcsHiddenApi {
                 }
 
                 override fun onAutoConfigurationErrorReceived(errorCode: Int, errorString: String) {
-                    Log.w(TAG, "RCS auto-config error $errorCode: $errorString")
+                    Log.status(TAG, "RCS auto-config error $errorCode: $errorString")
                 }
 
                 override fun onConfigurationReset() {
@@ -265,7 +265,7 @@ internal object RcsHiddenApi {
             true
         }.getOrElse {
             val cause = (it as? java.lang.reflect.InvocationTargetException)?.cause ?: it
-            Log.w(TAG, "registerRcsProvisioningCallback failed", cause)
+            Log.status(TAG, "registerRcsProvisioningCallback failed", cause)
             false
         }
     }

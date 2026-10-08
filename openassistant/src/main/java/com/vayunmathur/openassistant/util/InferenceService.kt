@@ -10,7 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.os.ResultReceiver
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.IntentCompat
 import com.google.ai.edge.litertlm.Backend
@@ -159,7 +159,7 @@ class InferenceService : Service() {
             try {
                 ensureEngineInitialized()
             } catch (expected: Exception) {
-                Log.e("InferenceService", "Error pre-warming engine", expected)
+                Log.error("InferenceService", "Error pre-warming engine", expected)
             }
         }
     }
@@ -176,7 +176,7 @@ class InferenceService : Service() {
                 } catch (e: CancellationException) {
                     throw e
                 } catch (expected: Exception) {
-                    Log.e("InferenceService", "Critical error in job processor loop", expected)
+                    Log.error("InferenceService", "Critical error in job processor loop", expected)
                 }
             }
         }
@@ -207,7 +207,7 @@ class InferenceService : Service() {
                 } catch (e: CancellationException) {
                     throw e
                 } catch (expected: Exception) {
-                    Log.e("InferenceService", "Error processing embedding job", expected)
+                    Log.error("InferenceService", "Error processing embedding job", expected)
                     embeddingHandler.reportError(job, expected)
                 }
             }
@@ -215,7 +215,7 @@ class InferenceService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d("InferenceService", "onStartCommand received intent")
+        Log.debug("InferenceService", "onStartCommand received intent")
         if (intent == null) return START_STICKY
         intent.setExtrasClassLoader(SecureResultReceiver::class.java.classLoader)
 
@@ -238,7 +238,7 @@ class InferenceService : Service() {
 
             if (embedMode != null && receiver != null) {
                 // Embedding request from another app (photos): text/image/info.
-                Log.i("InferenceService", "Queueing Embedding request mode=$embedMode")
+                Log.status("InferenceService", "Queueing Embedding request mode=$embedMode")
                 embeddingQueue.trySend(
                     InferenceJobPublic.Embedding(
                         embedMode,
@@ -248,10 +248,10 @@ class InferenceService : Service() {
                     ),
                 )
             } else if (receiver != null && schema != null) {
-                Log.i("InferenceService", "Queueing Intent Inference request")
+                Log.status("InferenceService", "Queueing Intent Inference request")
                 intentQueue.trySend(InferenceJob.Intent(userText, imagePaths, schema, receiver))
             } else if (conversationId != -1L) {
-                Log.d("InferenceService", "Queueing standard inference for conversation: $conversationId")
+                Log.debug("InferenceService", "Queueing standard inference for conversation: $conversationId")
                 standardQueue.trySend(InferenceJob.Standard(conversationId, userText, imagePaths, audioPath))
             }
         }
@@ -293,7 +293,7 @@ class InferenceService : Service() {
 
     private suspend fun executeIntentInference(job: InferenceJob.Intent) {
         try {
-            Log.d("InferenceService", "Executing Intent Inference")
+            Log.debug("InferenceService", "Executing Intent Inference")
             ensureEngineInitialized()
 
             currentConversation?.close()
@@ -306,16 +306,16 @@ class InferenceService : Service() {
                 runIntentInferenceLoop(job.userText, job.imagePaths, job.schema, job.receiver)
             }
         } catch (e: TimeoutCancellationException) {
-            Log.e("InferenceService", "Intent inference timed out after 45 seconds")
+            Log.error("InferenceService", "Intent inference timed out after 45 seconds")
             job.receiver.send(
                 EMBEDDING_ERROR_CODE,
                 Bundle().apply { putString("error", getString(R.string.error_inference_timeout)) },
             )
         } catch (e: CancellationException) {
             if (e.message != "HALT") throw e
-            Log.i("InferenceService", "Intent inference halted successfully via schema match.")
+            Log.status("InferenceService", "Intent inference halted successfully via schema match.")
         } catch (expected: Exception) {
-            Log.e("InferenceService", "Error during intent inference", expected)
+            Log.error("InferenceService", "Error during intent inference", expected)
             job.receiver.send(
                 EMBEDDING_ERROR_CODE,
                 Bundle().apply {
@@ -334,7 +334,7 @@ class InferenceService : Service() {
 
     private suspend fun processIntentJob(job: InferenceJob.Intent) {
         if (System.currentTimeMillis() - job.enqueuedTime > INTENT_QUEUE_TTL_MILLIS) {
-            Log.w("InferenceService", "Intent job expired in queue, discarding.")
+            Log.status("InferenceService", "Intent job expired in queue, discarding.")
             job.receiver.send(
                 EMBEDDING_ERROR_CODE,
                 Bundle().apply { putString("error", getString(R.string.error_request_expired)) },
@@ -369,9 +369,9 @@ class InferenceService : Service() {
             runInferenceLoop(job.conversationId, job.userText, job.imagePaths, job.audioPath)
         } catch (e: CancellationException) {
             if (e.message != "HALT") throw e
-            Log.i("InferenceService", "Standard inference halted successfully.")
+            Log.status("InferenceService", "Standard inference halted successfully.")
         } catch (expected: Exception) {
-            Log.e("InferenceService", "Inference failed, resetting engine for retry", expected)
+            Log.error("InferenceService", "Inference failed, resetting engine for retry", expected)
             retryStandardInference(job, expected)
         }
     }
@@ -387,7 +387,7 @@ class InferenceService : Service() {
             resetConversation(job.conversationId, job.userText)
             runInferenceLoop(job.conversationId, job.userText, job.imagePaths, job.audioPath)
         } catch (retryExpected: IllegalStateException) {
-            Log.e("InferenceService", "Retry also failed", retryExpected)
+            Log.error("InferenceService", "Retry also failed", retryExpected)
             val detail = retryExpected.localizedMessage ?: ""
             upsertMessageToDb(
                 DbMessage(
@@ -444,7 +444,7 @@ class InferenceService : Service() {
         val nextMessage = com.google.ai.edge.litertlm.Message.user(Contents.of(initialContents))
 
         var fullResponseText = ""
-        Log.d(
+        Log.debug(
             "InferenceService",
             "Sending intent inference request (Streaming mode for safe interruption)",
         )
@@ -465,7 +465,7 @@ class InferenceService : Service() {
                     schema,
                 )
                 if (validationError == null) {
-                    Log.i(
+                    Log.status(
                         "InferenceService",
                         "Valid JSON extracted and verified against schema. Halting.",
                     )
@@ -487,12 +487,12 @@ class InferenceService : Service() {
                     EMBEDDING_OK_CODE,
                     Bundle().apply { putString("json_result", finalJson) },
                 )
-                Log.d("InferenceService", "AI produced output: $finalJson")
+                Log.debug("InferenceService", "AI produced output: $finalJson")
                 return
             }
         }
 
-        Log.e("InferenceService", "AI finished generation without providing a schema-matching JSON.")
+        Log.error("InferenceService", "AI finished generation without providing a schema-matching JSON.")
         receiver.send(
             EMBEDDING_ERROR_CODE,
             Bundle().apply { putString("error", getString(R.string.error_ai_json_schema_mismatch)) },
@@ -577,7 +577,7 @@ class InferenceService : Service() {
         val stream = conv.sendMessageAsync(com.google.ai.edge.litertlm.Message.user(Contents.of(contents)))
 
         stream.catch { e ->
-            Log.d("InferenceService", "Caught inference error: ${e::class.simpleName}", e)
+            Log.debug("InferenceService", "Caught inference error: ${e::class.simpleName}", e)
             if (isBenignInterruption(e)) {
                 halt = false
                 messageDao.deleteById(aiMsgId)

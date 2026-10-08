@@ -1,7 +1,7 @@
 package com.vayunmathur.email.data
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -36,7 +36,7 @@ object PeekContentBackfill {
                 }
                 batch = dao.getRowsWithEmptyPeek()
             }
-            if (fixed > 0) Log.d("PeekContentBackfill", "Backfilled $fixed row(s)")
+            if (fixed > 0) Log.debug("PeekContentBackfill", "Backfilled $fixed row(s)")
         }
     }
 }

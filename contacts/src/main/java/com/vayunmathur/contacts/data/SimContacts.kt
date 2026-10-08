@@ -6,7 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.telephony.SubscriptionManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.ContextCompat
 import com.vayunmathur.contacts.R
 
@@ -75,7 +75,7 @@ object SimContactsDataSource {
             val list = querySubscriptionInfoList(subMgr)
             list?.mapNotNull { it.subscriptionId } ?: emptyList()
         } catch (e: Exception) {
-            Log.w(TAG, "getActiveSubscriptionIds failed", e)
+            Log.status(TAG, "getActiveSubscriptionIds failed", e)
             emptyList()
         }
     }
@@ -90,10 +90,10 @@ object SimContactsDataSource {
         return try {
             subMgr.activeSubscriptionInfoList
         } catch (e: SecurityException) {
-            Log.w(TAG, "No permission for activeSubscriptionInfoList", e)
+            Log.status(TAG, "No permission for activeSubscriptionInfoList", e)
             null
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to get active subscriptions", e)
+            Log.status(TAG, "Failed to get active subscriptions", e)
             null
         }
     }
@@ -115,7 +115,7 @@ object SimContactsDataSource {
                 collectSimContactsFromUri(context, uri, subId, result)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "listSimContacts failed", e)
+            Log.status(TAG, "listSimContacts failed", e)
         }
         // Deduplicate by (subId, name, number, emails)
         return result.distinctBy { "${it.subscriptionId}|${it.name}|${it.number}|${it.emails}" }
@@ -140,9 +140,9 @@ object SimContactsDataSource {
                 }
             }
         } catch (e: SecurityException) {
-            Log.w(TAG, "SecurityException querying $uri", e)
+            Log.status(TAG, "SecurityException querying $uri", e)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed querying $uri", e)
+            Log.status(TAG, "Failed querying $uri", e)
         }
     }
 
@@ -190,7 +190,7 @@ object SimContactsDataSource {
                 subscriptionId = subId
             )
         } catch (e: Exception) {
-            Log.w(TAG, "Skipping SIM row", e)
+            Log.status(TAG, "Skipping SIM row", e)
             null
         }
     }
@@ -242,10 +242,10 @@ object SimContactsDataSource {
             val inserted = context.contentResolver.insert(uri, values)
             inserted != null
         } catch (e: SecurityException) {
-            Log.e(TAG, "SecurityException inserting SIM contact", e)
+            Log.error(TAG, "SecurityException inserting SIM contact", e)
             false
         } catch (e: Exception) {
-            Log.e(TAG, "insertSimContact failed", e)
+            Log.error(TAG, "insertSimContact failed", e)
             false
         }
     }
@@ -288,10 +288,10 @@ object SimContactsDataSource {
             }
             context.contentResolver.update(uri, values, null, null) > 0
         } catch (e: SecurityException) {
-            Log.e(TAG, "SecurityException updating SIM contact", e)
+            Log.error(TAG, "SecurityException updating SIM contact", e)
             false
         } catch (e: Exception) {
-            Log.e(TAG, "updateSimContact failed", e)
+            Log.error(TAG, "updateSimContact failed", e)
             false
         }
     }
@@ -304,7 +304,7 @@ object SimContactsDataSource {
         return try {
             deleteSimContactInternal(context, simContact)
         } catch (e: Exception) {
-            Log.e(TAG, "deleteSimContact failed", e)
+            Log.error(TAG, "deleteSimContact failed", e)
             false
         }
     }
@@ -396,7 +396,7 @@ object SimContactsDataSource {
                 readSubscriptionInfo(info)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "getSimSubscriptionInfos failed", e)
+            Log.status(TAG, "getSimSubscriptionInfos failed", e)
             emptyList()
         }
     }

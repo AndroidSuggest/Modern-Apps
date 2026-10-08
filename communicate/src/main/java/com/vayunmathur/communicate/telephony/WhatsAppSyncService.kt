@@ -9,7 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.vayunmathur.communicate.MainActivity
@@ -92,7 +92,7 @@ class WhatsAppSyncService : Service() {
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
-        Log.w(TAG, "FGS timeout for type=$fgsType; leaving foreground to avoid crash")
+        Log.status(TAG, "FGS timeout for type=$fgsType; leaving foreground to avoid crash")
         stopForeground(STOP_FOREGROUND_DETACH)
     }
 

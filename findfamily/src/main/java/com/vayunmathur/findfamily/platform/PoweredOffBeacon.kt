@@ -5,7 +5,7 @@ package com.vayunmathur.findfamily.platform
 import android.content.Context
 import android.nearby.NearbyManager
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.e2ee.E2eeKeyStore
 import com.vayunmathur.findfamily.BuildConfig
 import com.vayunmathur.findfamily.data.DirectBootStore
@@ -205,7 +205,7 @@ object PoweredOffBeacon {
     private suspend fun provisionKeys(context: Context) {
         val userId = Networking.userid
         if (userId == 0L) {
-            Log.i(TAG, "no identity yet, deferring key provisioning")
+            Log.status(TAG, "no identity yet, deferring key provisioning")
             return
         }
         val store = keys(context)
@@ -238,7 +238,7 @@ object PoweredOffBeacon {
         val userId = Networking.userid
         if (userId == 0L) return false
         val secret = keys(context).secret(userId) ?: run {
-            Log.i(TAG, "no beacon secret yet, cannot grant recovery")
+            Log.status(TAG, "no beacon secret yet, cannot grant recovery")
             return false
         }
         val distribution = recovery(context).grant(peerId)
@@ -289,7 +289,7 @@ object PoweredOffBeacon {
                 poweredOffGrantSigningBytes(owner, peer, distribution.epoch, secret, distribution.kemPrivate)
             )
             if (signature == null) {
-                Log.w(TAG, "cannot sign recovery grant, not delivering to ${peer.toULong()}")
+                Log.status(TAG, "cannot sign recovery grant, not delivering to ${peer.toULong()}")
                 allOk = false
                 continue
             }
@@ -303,7 +303,7 @@ object PoweredOffBeacon {
             // Pqc.encryptTo before the frame reaches the socket, so the relay only ever forwards
             // bytes it has no key for.
             val ok = Networking.publishUwbMessage(grantEnvelope(grant), peer)
-            if (!ok) Log.w(TAG, "could not deliver recovery keys to ${peer.toULong()}")
+            if (!ok) Log.status(TAG, "could not deliver recovery keys to ${peer.toULong()}")
             allOk = allOk && ok
         }
         return allOk
@@ -341,7 +341,7 @@ object PoweredOffBeacon {
         val userId = Networking.userid
         if (userId == 0L) return null
         val secret = keys(context).secret(userId) ?: run {
-            Log.i(TAG, "no beacon secret, not armed")
+            Log.status(TAG, "no beacon secret, not armed")
             return null
         }
 
@@ -361,13 +361,13 @@ object PoweredOffBeacon {
         // trap `revokeRecovery` guards against.
         keys(context).save(userId, secret, recoveryKeys.kemPrivate)
         if (!Networking.registerPoweredOffEids(userId, eids, recoveryKeys.publicBundle)) {
-            Log.i(TAG, "relay did not accept the EID list, not arming")
+            Log.status(TAG, "relay did not accept the EID list, not arming")
             return null
         }
 
         val manager = manager(context)
         if (manager == null) {
-            Log.i(TAG, "no NearbyManager on this build")
+            Log.status(TAG, "no NearbyManager on this build")
             return null
         }
 
@@ -375,32 +375,32 @@ object PoweredOffBeacon {
             manager.setPoweredOffFindingEphemeralIds(eids)
             if (ARM_CONTROLLER) {
                 manager.setPoweredOffFindingMode(NearbyManager.POWERED_OFF_FINDING_MODE_ENABLED)
-                Log.i(TAG, "armed ${eids.size} EIDs (~3 days)")
+                Log.status(TAG, "armed ${eids.size} EIDs (~3 days)")
             } else {
-                Log.i(TAG, "loaded ${eids.size} EIDs; controller NOT enabled (release build)")
+                Log.status(TAG, "loaded ${eids.size} EIDs; controller NOT enabled (release build)")
             }
             eids.size
         } catch (e: UnsupportedOperationException) {
             // Neither ro. nor persist.bluetooth.finder.supported is set. There is no public
             // predicate to ask first, so catching this is the supported way to feature-detect.
-            Log.i(TAG, "powered-off finding unsupported on this device", e)
+            Log.status(TAG, "powered-off finding unsupported on this device", e)
             null
         } catch (e: SecurityException) {
             // BLUETOOTH_PRIVILEGED is signature|privileged. findfamily only holds it when it is
             // installed as a MAOS priv-app with a privapp-permissions entry, which as of today it
             // is not — vendor/modern-apps/Android.bp declares it an ordinary user app.
-            Log.i(TAG, "BLUETOOTH_PRIVILEGED not held, beacon not armed", e)
+            Log.status(TAG, "BLUETOOTH_PRIVILEGED not held, beacon not armed", e)
             null
         } catch (e: IllegalStateException) {
             // setPoweredOffFindingMode(ENABLED) requires Bluetooth and location both on. The EIDs
             // are already in the controller but will not be advertised, which is correct: the
             // user turned a radio off.
-            Log.i(TAG, "Bluetooth or location is off, beacon not armed", e)
+            Log.status(TAG, "Bluetooth or location is off, beacon not armed", e)
             null
         } catch (e: Exception) {
             // Vendor HAL boundary: the controller call above crosses into the Bluetooth
             // stack, whose failures surface as undocumented runtime exceptions.
-            Log.w(TAG, "arming failed", e)
+            Log.status(TAG, "arming failed", e)
             null
         }
     }
@@ -409,6 +409,6 @@ object PoweredOffBeacon {
         val manager = manager(context) ?: return
         runCatching {
             manager.setPoweredOffFindingMode(NearbyManager.POWERED_OFF_FINDING_MODE_DISABLED)
-        }.onFailure { Log.i(TAG, "disarm skipped: ${it.javaClass.simpleName}") }
+        }.onFailure { Log.status(TAG, "disarm skipped: ${it.javaClass.simpleName}") }
     }
 }

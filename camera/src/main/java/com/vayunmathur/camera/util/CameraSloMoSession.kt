@@ -1,6 +1,6 @@
 package com.vayunmathur.camera.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -36,10 +36,10 @@ suspend fun CameraViewModel.setupHighSpeedSession(): Boolean {
         finishHighSpeedSession()
         true
     } catch (e: IllegalStateException) {
-        Log.e("SloMo", "Failed to set up high-speed session", e)
+        Log.error("SloMo", "Failed to set up high-speed session", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e("SloMo", "Failed to set up high-speed session", e)
+        Log.error("SloMo", "Failed to set up high-speed session", e)
         false
     }
 }
@@ -79,7 +79,7 @@ private suspend fun CameraViewModel.prepareHighSpeedSession(): HighSpeedPrep? {
     val cameraInfo = provider.getCameraInfo(selector)
     val capabilities = Recorder.getHighSpeedVideoCapabilities(cameraInfo)
         ?: run {
-            Log.d("SloMo", "High-speed video not supported on back camera on this device")
+            Log.debug("SloMo", "High-speed video not supported on back camera on this device")
             sloMoSupportedMutable.value = false
             return null
         }
@@ -110,10 +110,10 @@ private fun CameraViewModel.resolveHfrQualities(
     val supportedQualities = capabilities.getSupportedQualities(
         androidx.camera.core.DynamicRange.SDR
     )
-    Log.d("SloMo", "High-speed supported qualities (back): $supportedQualities")
+    Log.debug("SloMo", "High-speed supported qualities (back): $supportedQualities")
 
     if (supportedQualities.isEmpty()) {
-        Log.e("SloMo", "High-speed reports no supported qualities")
+        Log.error("SloMo", "High-speed reports no supported qualities")
         sloMoSupportedMutable.value = false
         return null
     }
@@ -161,10 +161,10 @@ private fun CameraViewModel.resolveHfrRanges(
         .setSlowMotionEnabled(true)
         .build()
     val ranges = queryHfrRanges(cameraInfo, tempConfig)
-    Log.d("SloMo", "High-speed supported frame rate ranges: $ranges")
+    Log.debug("SloMo", "High-speed supported frame rate ranges: $ranges")
 
     if (ranges.isEmpty()) {
-        Log.e("SloMo", "No high-speed frame rate ranges available")
+        Log.error("SloMo", "No high-speed frame rate ranges available")
         sloMoSupportedMutable.value = false
         return null
     }
@@ -173,7 +173,7 @@ private fun CameraViewModel.resolveHfrRanges(
     // No normal-speed (<=30fps) fallbacks allowed; only true HFR >= 60fps.
     val hfrRanges = ranges.filter { it.upper >= HFR_MIN_FPS }.sortedByDescending { it.upper }
     if (hfrRanges.isEmpty()) {
-        Log.e("SloMo", "No true HFR (>=60fps) ranges found")
+        Log.error("SloMo", "No true HFR (>=60fps) ranges found")
         sloMoSupportedMutable.value = false
         return null
     }
@@ -188,10 +188,10 @@ private fun CameraViewModel.queryHfrRanges(
     return try {
         cameraInfo.getSupportedFrameRateRanges(tempConfig).toList()
     } catch (e: IllegalStateException) {
-        Log.w("SloMo", "Failed to query HFR ranges", e)
+        Log.status("SloMo", "Failed to query HFR ranges", e)
         emptyList()
     } catch (e: IllegalArgumentException) {
-        Log.w("SloMo", "Failed to query HFR ranges", e)
+        Log.status("SloMo", "Failed to query HFR ranges", e)
         emptyList()
     }
 }
@@ -224,7 +224,7 @@ private fun CameraViewModel.bindHfrLadder(session: HighSpeedPrep): Boolean {
     }
 
     if (!bound) {
-        Log.e("SloMo", "All HFR ranges failed, last error: $lastError")
+        Log.error("SloMo", "All HFR ranges failed, last error: $lastError")
         sloMoSupportedMutable.value = false
         return false
     }
@@ -263,7 +263,7 @@ private fun CameraViewModel.tryHfrBind(
             configBuilder.build()
         )
         sloMoFps = range.upper
-        Log.d(
+        Log.debug(
             "SloMo",
             "High-speed session bound at ${range.upper}fps (range=$range) " +
                 "lens=${candidate?.labelKey}, quality=${session.orderedQualities}"
@@ -271,13 +271,13 @@ private fun CameraViewModel.tryHfrBind(
         return true
     } catch (e: IllegalStateException) {
         hfrLastError = e
-        Log.w("SloMo", "Failed to bind HFR at $range lens=${candidate?.labelKey}, trying next", e)
+        Log.status("SloMo", "Failed to bind HFR at $range lens=${candidate?.labelKey}, trying next", e)
         sessionLifecycleOwner?.destroy()
         sessionLifecycleOwner = null
         false
     } catch (e: IllegalArgumentException) {
         hfrLastError = e
-        Log.w("SloMo", "Failed to bind HFR at $range lens=${candidate?.labelKey}, trying next", e)
+        Log.status("SloMo", "Failed to bind HFR at $range lens=${candidate?.labelKey}, trying next", e)
         sessionLifecycleOwner?.destroy()
         sessionLifecycleOwner = null
         false
@@ -300,14 +300,14 @@ private fun CameraViewModel.applyAntiBanding() {
                 .build()
         )
     } catch (e: IllegalArgumentException) {
-        Log.w("SloMo", "Could not set anti-banding", e)
+        Log.status("SloMo", "Could not set anti-banding", e)
     }
 }
 
 /** Refreshes capabilities and marks the high-speed session active. */
 private suspend fun CameraViewModel.finishHighSpeedSession() {
     val zoomAfter = boundCamera?.cameraInfo?.zoomState?.value
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setupHighSpeedSession() after levels=${availableZoomLevelsMutable.value} " +
             "ratio=${zoomRatioMutable.value} min=${zoomAfter?.minZoomRatio} max=${zoomAfter?.maxZoomRatio}"

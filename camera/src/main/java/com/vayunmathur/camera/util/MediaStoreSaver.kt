@@ -1,5 +1,6 @@
 package com.vayunmathur.camera.util
 
+import com.vayunmathur.library.log.Log
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDateTime
@@ -55,13 +56,13 @@ object MediaStoreSaver {
                 bitmap.compress(Bitmap.CompressFormat.JPEG, quality, os)
             } ?: false
         } catch (e: java.io.FileNotFoundException) {
-            android.util.Log.w("MediaStoreSaver", "saveBitmap write failed for $uri", e)
+            Log.status("MediaStoreSaver", "saveBitmap write failed for $uri", e)
             false
         } catch (e: java.io.IOException) {
-            android.util.Log.w("MediaStoreSaver", "saveBitmap write failed for $uri", e)
+            Log.status("MediaStoreSaver", "saveBitmap write failed for $uri", e)
             false
         } catch (e: SecurityException) {
-            android.util.Log.w("MediaStoreSaver", "saveBitmap write failed for $uri", e)
+            Log.status("MediaStoreSaver", "saveBitmap write failed for $uri", e)
             false
         }
         // A failed write must not leave a 0-byte ghost row that becomes the gallery thumbnail.
@@ -85,13 +86,13 @@ object MediaStoreSaver {
             }
             true
         } catch (e: java.io.FileNotFoundException) {
-            android.util.Log.w("MediaStoreSaver", "saveJpegBytes write failed for $uri", e)
+            Log.status("MediaStoreSaver", "saveJpegBytes write failed for $uri", e)
             false
         } catch (e: java.io.IOException) {
-            android.util.Log.w("MediaStoreSaver", "saveJpegBytes write failed for $uri", e)
+            Log.status("MediaStoreSaver", "saveJpegBytes write failed for $uri", e)
             false
         } catch (e: SecurityException) {
-            android.util.Log.w("MediaStoreSaver", "saveJpegBytes write failed for $uri", e)
+            Log.status("MediaStoreSaver", "saveJpegBytes write failed for $uri", e)
             false
         }
         if (!ok) {
@@ -113,13 +114,13 @@ object MediaStoreSaver {
         }
         dest
     } catch (e: java.io.FileNotFoundException) {
-        android.util.Log.w("MediaStoreSaver", "saveBitmapToUri failed for $dest", e)
+        Log.status("MediaStoreSaver", "saveBitmapToUri failed for $dest", e)
         null
     } catch (e: java.io.IOException) {
-        android.util.Log.w("MediaStoreSaver", "saveBitmapToUri failed for $dest", e)
+        Log.status("MediaStoreSaver", "saveBitmapToUri failed for $dest", e)
         null
     } catch (e: SecurityException) {
-        android.util.Log.w("MediaStoreSaver", "saveBitmapToUri failed for $dest", e)
+        Log.status("MediaStoreSaver", "saveBitmapToUri failed for $dest", e)
         null
     }
 
@@ -134,13 +135,13 @@ object MediaStoreSaver {
         }
         dest
     } catch (e: java.io.FileNotFoundException) {
-        android.util.Log.w("MediaStoreSaver", "saveJpegBytesToUri failed for $dest", e)
+        Log.status("MediaStoreSaver", "saveJpegBytesToUri failed for $dest", e)
         null
     } catch (e: java.io.IOException) {
-        android.util.Log.w("MediaStoreSaver", "saveJpegBytesToUri failed for $dest", e)
+        Log.status("MediaStoreSaver", "saveJpegBytesToUri failed for $dest", e)
         null
     } catch (e: SecurityException) {
-        android.util.Log.w("MediaStoreSaver", "saveJpegBytesToUri failed for $dest", e)
+        Log.status("MediaStoreSaver", "saveJpegBytesToUri failed for $dest", e)
         null
     }
 
@@ -151,13 +152,13 @@ object MediaStoreSaver {
         }
         dest
     } catch (e: java.io.FileNotFoundException) {
-        android.util.Log.w("MediaStoreSaver", "saveVideoFileToUri failed for $dest", e)
+        Log.status("MediaStoreSaver", "saveVideoFileToUri failed for $dest", e)
         null
     } catch (e: java.io.IOException) {
-        android.util.Log.w("MediaStoreSaver", "saveVideoFileToUri failed for $dest", e)
+        Log.status("MediaStoreSaver", "saveVideoFileToUri failed for $dest", e)
         null
     } catch (e: SecurityException) {
-        android.util.Log.w("MediaStoreSaver", "saveVideoFileToUri failed for $dest", e)
+        Log.status("MediaStoreSaver", "saveVideoFileToUri failed for $dest", e)
         null
     }
 
@@ -169,13 +170,13 @@ object MediaStoreSaver {
             }
             true
         } catch (e: java.io.FileNotFoundException) {
-            android.util.Log.w("MediaStoreSaver", "saveVideoFile write failed for $uri", e)
+            Log.status("MediaStoreSaver", "saveVideoFile write failed for $uri", e)
             false
         } catch (e: java.io.IOException) {
-            android.util.Log.w("MediaStoreSaver", "saveVideoFile write failed for $uri", e)
+            Log.status("MediaStoreSaver", "saveVideoFile write failed for $uri", e)
             false
         } catch (e: SecurityException) {
-            android.util.Log.w("MediaStoreSaver", "saveVideoFile write failed for $uri", e)
+            Log.status("MediaStoreSaver", "saveVideoFile write failed for $uri", e)
             false
         }
         if (!ok) {

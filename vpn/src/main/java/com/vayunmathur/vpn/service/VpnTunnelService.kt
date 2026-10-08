@@ -13,7 +13,7 @@ import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import com.vayunmathur.vpn.R
 import com.vayunmathur.vpn.data.VpnConfig
@@ -97,9 +97,9 @@ class VpnTunnelService : VpnService() {
         try {
             VpnNative.init()
         } catch (expected: UnsatisfiedLinkError) {
-            Log.e(TAG, "native lib missing", expected)
+            Log.error(TAG, "native lib missing", expected)
         } catch (expected: SecurityException) {
-            Log.e(TAG, "native lib blocked", expected)
+            Log.error(TAG, "native lib blocked", expected)
         }
         val nm = getSystemService(NotificationManager::class.java)
         nm?.createNotificationChannel(
@@ -113,24 +113,24 @@ class VpnTunnelService : VpnService() {
                 // Null intent/action = system start (Always-On VPN, or sticky restart).
                 // Go foreground straight away — the config lookup below is async and the
                 // system will not wait for it before enforcing the background-start timeout.
-                Log.i(TAG, "onStartCommand system start — attempting Always-On restore")
+                Log.status(TAG, "onStartCommand system start — attempting Always-On restore")
                 goForeground(notification("VPN (WireGuard/gotatun)", "Connecting…"))
                 scope.launch {
                     try {
                         val all = VpnDatabase.get(this@VpnTunnelService).vpnConfigDao().getAll()
                         val lastUsed = all.maxByOrNull { it.lastUsed }
                         if (lastUsed != null) {
-                            Log.i(TAG, "Always-On restoring ${lastUsed.name}")
+                            Log.status(TAG, "Always-On restoring ${lastUsed.name}")
                             startVpn(lastUsed.toModel())
                         } else {
-                            Log.i(TAG, "Always-On restore: no configs found")
+                            Log.status(TAG, "Always-On restore: no configs found")
                             stopVpn()
                         }
                     } catch (expected: SQLiteException) {
-                        Log.e(TAG, "Always-On restore failed", expected)
+                        Log.error(TAG, "Always-On restore failed", expected)
                         stopVpn()
                     } catch (expected: IllegalStateException) {
-                        Log.e(TAG, "Always-On restore failed", expected)
+                        Log.error(TAG, "Always-On restore failed", expected)
                         stopVpn()
                     }
                 }
@@ -150,7 +150,7 @@ class VpnTunnelService : VpnService() {
     }
 
     override fun onDestroy() { stopVpn(); super.onDestroy() }
-    override fun onRevoke() { Log.i(TAG, "onRevoke"); stopVpn() }
+    override fun onRevoke() { Log.status(TAG, "onRevoke"); stopVpn() }
 
     private fun notification(title: String, text: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -164,9 +164,9 @@ class VpnTunnelService : VpnService() {
                 startForeground(NOTIFICATION_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
             } else startForeground(NOTIFICATION_ID, notif)
         } catch (expected: SecurityException) {
-            Log.e(TAG, "foreground", expected)
+            Log.error(TAG, "foreground", expected)
         } catch (expected: IllegalStateException) {
-            Log.e(TAG, "foreground", expected)
+            Log.error(TAG, "foreground", expected)
         }
     }
 
@@ -188,7 +188,7 @@ class VpnTunnelService : VpnService() {
         try {
             tunPfd?.close()
         } catch (expected: IOException) {
-            Log.w(TAG, "close tun", expected)
+            Log.status(TAG, "close tun", expected)
         }
         tunPfd = null
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -202,7 +202,7 @@ class VpnTunnelService : VpnService() {
             config.privateKey, config.peerPublicKey, config.peerPresharedKey, config.peerKeepalive
         )
         if (handle <= 0) {
-            Log.e(TAG, "newTunnel failed $handle")
+            Log.error(TAG, "newTunnel failed $handle")
             stopVpn()
             return
         }
@@ -225,7 +225,7 @@ class VpnTunnelService : VpnService() {
         suspend fun run() {
             val pfd = buildTun()
             if (pfd == null) {
-                Log.e(TAG, "establish null")
+                Log.error(TAG, "establish null")
                 stopVpn()
                 return
             }
@@ -273,19 +273,19 @@ class VpnTunnelService : VpnService() {
             try {
                 b.setUnderlyingNetworks(null)
             } catch (expected: IllegalArgumentException) {
-                Log.w(TAG, "setUnderlyingNetworks", expected)
+                Log.status(TAG, "setUnderlyingNetworks", expected)
             }
             applyBypassList(b)
             return try {
                 b.establish()
             } catch (expected: IllegalArgumentException) {
-                Log.e(TAG, "establish", expected)
+                Log.error(TAG, "establish", expected)
                 null
             } catch (expected: SecurityException) {
-                Log.e(TAG, "establish", expected)
+                Log.error(TAG, "establish", expected)
                 null
             } catch (expected: IllegalStateException) {
-                Log.e(TAG, "establish", expected)
+                Log.error(TAG, "establish", expected)
                 null
             }
         }
@@ -295,9 +295,9 @@ class VpnTunnelService : VpnService() {
                 try {
                     b.addAddress(ip, mask)
                 } catch (expected: IllegalArgumentException) {
-                    Log.w(TAG, "addr $ip/$mask", expected)
+                    Log.status(TAG, "addr $ip/$mask", expected)
                 } catch (expected: SecurityException) {
-                    Log.w(TAG, "addr $ip/$mask", expected)
+                    Log.status(TAG, "addr $ip/$mask", expected)
                 }
             }
         }
@@ -318,7 +318,7 @@ class VpnTunnelService : VpnService() {
             val hasV6Route = allowed.any { (ip, _) -> ip.contains(':') }
             val hasV4Default = allowed.any { (ip, mask) -> mask == DEFAULT_ROUTE_MASK && !ip.contains(':') }
             if (hasV4Default && !hasV6Route) {
-                Log.i(TAG, "AllowedIPs has no IPv6 route; adding ::/0 to guard IPv6 leaks")
+                Log.status(TAG, "AllowedIPs has no IPv6 route; adding ::/0 to guard IPv6 leaks")
                 routes.add(IPV6_DEFAULT_ROUTE to DEFAULT_ROUTE_MASK)
             }
             return routes
@@ -329,9 +329,9 @@ class VpnTunnelService : VpnService() {
                 try {
                     b.addRoute(ip, mask)
                 } catch (expected: IllegalArgumentException) {
-                    Log.w(TAG, "route $ip/$mask", expected)
+                    Log.status(TAG, "route $ip/$mask", expected)
                 } catch (expected: SecurityException) {
-                    Log.w(TAG, "route $ip/$mask", expected)
+                    Log.status(TAG, "route $ip/$mask", expected)
                 }
             }
         }
@@ -342,7 +342,7 @@ class VpnTunnelService : VpnService() {
                 try {
                     b.addDnsServer(d)
                 } catch (expected: IllegalArgumentException) {
-                    Log.w(TAG, "dns $d", expected)
+                    Log.status(TAG, "dns $d", expected)
                 }
             }
         }
@@ -355,11 +355,11 @@ class VpnTunnelService : VpnService() {
                 try {
                     b.addDisallowedApplication(pkg)
                 } catch (expected: PackageManager.NameNotFoundException) {
-                    Log.w(TAG, "bypass: $pkg not installed, skipping")
+                    Log.status(TAG, "bypass: $pkg not installed, skipping")
                 } catch (expected: IllegalArgumentException) {
-                    Log.w(TAG, "bypass: $pkg", expected)
+                    Log.status(TAG, "bypass: $pkg", expected)
                 } catch (expected: SecurityException) {
-                    Log.w(TAG, "bypass: $pkg", expected)
+                    Log.status(TAG, "bypass: $pkg", expected)
                 }
             }
         }
@@ -368,7 +368,7 @@ class VpnTunnelService : VpnService() {
             val host = config.endpointHost()
             val port = config.endpointPort()
             if (host.isEmpty()) {
-                Log.e(TAG, "no endpoint")
+                Log.error(TAG, "no endpoint")
                 return null
             }
             return InetSocketAddress(host, port)
@@ -381,18 +381,18 @@ class VpnTunnelService : VpnService() {
                 try {
                     protect(ch.socket())
                 } catch (expected: IllegalStateException) {
-                    Log.w(TAG, "protect socket", expected)
+                    Log.status(TAG, "protect socket", expected)
                 }
                 ch.connect(endpoint)
                 ch
             } catch (expected: IOException) {
-                Log.e(TAG, "UDP connect $endpoint", expected)
+                Log.error(TAG, "UDP connect $endpoint", expected)
                 null
             } catch (expected: SecurityException) {
-                Log.e(TAG, "UDP connect $endpoint", expected)
+                Log.error(TAG, "UDP connect $endpoint", expected)
                 null
             } catch (expected: IllegalArgumentException) {
-                Log.e(TAG, "UDP connect $endpoint", expected)
+                Log.error(TAG, "UDP connect $endpoint", expected)
                 null
             }
         }
@@ -406,9 +406,9 @@ class VpnTunnelService : VpnService() {
                     try {
                         flushOnce()
                     } catch (expected: SQLiteException) {
-                        Log.w(TAG, "flush logs", expected)
+                        Log.status(TAG, "flush logs", expected)
                     } catch (expected: IllegalStateException) {
-                        Log.w(TAG, "flush logs", expected)
+                        Log.status(TAG, "flush logs", expected)
                     }
                 }
             }
@@ -454,7 +454,7 @@ class VpnTunnelService : VpnService() {
             val parsed = try {
                 PacketInspector.parse(ipBytes) ?: return
             } catch (expected: IllegalArgumentException) {
-                Log.w(TAG, "logging parse", expected)
+                Log.status(TAG, "logging parse", expected)
                 return
             }
             try {
@@ -471,9 +471,9 @@ class VpnTunnelService : VpnService() {
                     appLabel = resolved.appLabel,
                 )
             } catch (expected: IllegalArgumentException) {
-                Log.w(TAG, "logging parse", expected)
+                Log.status(TAG, "logging parse", expected)
             } catch (expected: IllegalStateException) {
-                Log.w(TAG, "logging parse", expected)
+                Log.status(TAG, "logging parse", expected)
             }
         }
 
@@ -484,7 +484,7 @@ class VpnTunnelService : VpnService() {
             try {
                 dnsCache.onPacket(parsed, ipBytes)
             } catch (expected: IllegalArgumentException) {
-                Log.w(TAG, "dns snoop", expected)
+                Log.status(TAG, "dns snoop", expected)
             }
         }
 
@@ -533,7 +533,7 @@ class VpnTunnelService : VpnService() {
         fun sendHandshakeInit(channel: DatagramChannel, endpoint: InetSocketAddress) {
             VpnNative.formatHandshakeInit(handle)?.let { hs ->
                 writeUdp(channel, hs)
-                Log.i(TAG, "Sent HandshakeInit ${hs.size} to $endpoint (gotatun)")
+                Log.status(TAG, "Sent HandshakeInit ${hs.size} to $endpoint (gotatun)")
             }
         }
 
@@ -553,9 +553,9 @@ class VpnTunnelService : VpnService() {
                     }
                 }
             } catch (expected: IOException) {
-                if (!stopFlag.load()) Log.w(TAG, "tun read", expected)
+                if (!stopFlag.load()) Log.status(TAG, "tun read", expected)
             } catch (expected: IllegalStateException) {
-                if (!stopFlag.load()) Log.w(TAG, "tun read", expected)
+                if (!stopFlag.load()) Log.status(TAG, "tun read", expected)
             }
         }
 
@@ -570,9 +570,9 @@ class VpnTunnelService : VpnService() {
                     routeIncoming(wg, channel, tunOut)
                 }
             } catch (expected: IOException) {
-                if (!stopFlag.load()) Log.w(TAG, "udp read", expected)
+                if (!stopFlag.load()) Log.status(TAG, "udp read", expected)
             } catch (expected: IllegalStateException) {
-                if (!stopFlag.load()) Log.w(TAG, "udp read", expected)
+                if (!stopFlag.load()) Log.status(TAG, "udp read", expected)
             }
         }
 
@@ -594,7 +594,7 @@ class VpnTunnelService : VpnService() {
             try {
                 tunOut.write(ByteBuffer.wrap(payload))
             } catch (expected: IOException) {
-                if (!stopFlag.load()) Log.w(TAG, "tun write", expected)
+                if (!stopFlag.load()) Log.status(TAG, "tun write", expected)
             }
         }
 
@@ -602,7 +602,7 @@ class VpnTunnelService : VpnService() {
             try {
                 channel.write(ByteBuffer.wrap(bytes))
             } catch (expected: IOException) {
-                Log.w(TAG, "udp write", expected)
+                Log.status(TAG, "udp write", expected)
             }
         }
 
@@ -616,7 +616,7 @@ class VpnTunnelService : VpnService() {
                     if (p.isNotEmpty()) writeUdp(channel, p)
                 }
             } catch (expected: IllegalStateException) {
-                Log.w(TAG, "timer", expected)
+                Log.status(TAG, "timer", expected)
             }
             return now
         }
@@ -626,9 +626,9 @@ class VpnTunnelService : VpnService() {
                 val finalBatch = tracker.drainDirty()
                 if (finalBatch.isNotEmpty()) logDao.upsertAll(finalBatch)
             } catch (expected: SQLiteException) {
-                Log.w(TAG, "final flush", expected)
+                Log.status(TAG, "final flush", expected)
             } catch (expected: IllegalStateException) {
-                Log.w(TAG, "final flush", expected)
+                Log.status(TAG, "final flush", expected)
             }
             sessionFlushJob?.cancel()
             sessionFlushJob = null
@@ -639,7 +639,7 @@ class VpnTunnelService : VpnService() {
             try {
                 getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
             } catch (expected: SecurityException) {
-                Log.w(TAG, "cancel notification", expected)
+                Log.status(TAG, "cancel notification", expected)
             }
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -649,7 +649,7 @@ class VpnTunnelService : VpnService() {
             try {
                 c.close()
             } catch (expected: IOException) {
-                Log.w(TAG, "close", expected)
+                Log.status(TAG, "close", expected)
             }
         }
     }

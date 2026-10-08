@@ -1,6 +1,6 @@
 package com.vayunmathur.maps.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -31,7 +31,7 @@ internal object OfflineRouterTrafficFetch {
         packedSquare: Int,
         forceAsync: Boolean,
     ) {
-        Log.d(
+        Log.debug(
             "TRAFFIC_DATA",
             "fetchTrafficData START: bbox ($minLat,$minLon)-($maxLat,$maxLon) " +
                 "packed=$packedSquare forceAsync=$forceAsync",
@@ -43,10 +43,10 @@ internal object OfflineRouterTrafficFetch {
                     ?: return@block
                 processTrafficPayload(payload, packedSquare)
             } catch (_: Exception) {
-                Log.e("TRAFFIC_DATA", "fetchTrafficData ERROR")
+                Log.error("TRAFFIC_DATA", "fetchTrafficData ERROR")
                 OfflineRouter.finishTrafficFetch(packedSquare)
             }
-            Log.d("TRAFFIC_DATA", "fetchTrafficData END: packed=$packedSquare")
+            Log.debug("TRAFFIC_DATA", "fetchTrafficData END: packed=$packedSquare")
         }
 
         if (forceAsync) {
@@ -79,7 +79,7 @@ internal object OfflineRouterTrafficFetch {
             url = "https://api.vayunmathur.com/maps/traffic" +
                 "?min_lat=$minLat&min_lon=$minLon&max_lat=$maxLat&max_lon=$maxLon",
         )
-        Log.d(
+        Log.debug(
             "TRAFFIC_DATA",
             "fetchTrafficData NETWORK DONE: status=$status, size=${bytes.size}",
         )
@@ -92,7 +92,7 @@ internal object OfflineRouterTrafficFetch {
         // updateTrafficNative exactly as before; the component level is kept in
         // Kotlin and pushed to the renderer as an id->colour table.
         if (status != TRAFFIC_HTTP_OK || bytes.size < TRAFFIC_HEADER_BYTES) {
-            Log.w("TRAFFIC_DATA", "fetchTrafficData NO DATA: status=$status")
+            Log.status("TRAFFIC_DATA", "fetchTrafficData NO DATA: status=$status")
             OfflineRouter.finishTrafficFetch(packedSquare)
             return null
         }
@@ -106,7 +106,7 @@ internal object OfflineRouterTrafficFetch {
         val nComponent = buffer.int.toLong() and U32_MASK
         val expected = TRAFFIC_HEADER_BYTES + TRAFFIC_RECORD_BYTES * (nBig + nComponent)
         if (bytes.size.toLong() != expected) {
-            Log.w(
+            Log.status(
                 "TRAFFIC_DATA",
                 "fetchTrafficData SIZE MISMATCH: got ${bytes.size}, " +
                     "expected $expected (n_big=$nBig n_component=$nComponent)",
@@ -134,7 +134,7 @@ internal object OfflineRouterTrafficFetch {
             compRatios[i] = buffer.get()
         }
 
-        Log.d(
+        Log.debug(
             "TRAFFIC_DATA",
             "fetchTrafficData PROCESSING: $nBigI big edges, $nComponentI components",
         )

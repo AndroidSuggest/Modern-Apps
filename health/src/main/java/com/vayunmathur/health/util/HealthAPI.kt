@@ -5,7 +5,7 @@ package com.vayunmathur.health.util
 import kotlin.uuid.Uuid
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.records.BodyFatRecord
 import androidx.health.connect.client.records.BodyWaterMassRecord
@@ -83,7 +83,7 @@ object HealthAPI {
                 )
             }
         } catch (e: Exception) {
-            Log.e("HealthAPI", "Failed to delete record from Health Connect", e)
+            Log.error("HealthAPI", "Failed to delete record from Health Connect", e)
         }
     }
 
@@ -99,7 +99,7 @@ object HealthAPI {
     // The SDK throws undocumented RuntimeExceptions, not just declared ones.
     @Suppress("TooGenericExceptionCaught")
     suspend fun writeHealthRecord(record: Record) {
-        Log.d("HealthAPI", "writeHealthRecord: type=${record.type}, metadata=${record.metadata}")
+        Log.debug("HealthAPI", "writeHealthRecord: type=${record.type}, metadata=${record.metadata}")
         val hcRecord: androidx.health.connect.client.records.Record = when (record.type) {
             RecordType.Nutrition -> nutritionRecord(record) ?: return
             RecordType.Hydration -> hydrationRecord(record)
@@ -116,14 +116,14 @@ object HealthAPI {
             val response = healthConnectClient.insertRecords(listOf(hcRecord))
             val newId = response.recordIdsList.firstOrNull()
             if (newId != null) {
-                Log.i("HealthAPI", "Successfully wrote record to Health Connect with ID: $newId")
+                Log.status("HealthAPI", "Successfully wrote record to Health Connect with ID: $newId")
                 // Remove old local record and replace with one containing HC ID
                 repo().deleteByIds(listOf(record.primaryKey))
                 val updatedRecord = record.copy(id = newId, primaryKey = "$newId-${record.index}")
                 repo().upsert(listOf(updatedRecord))
             }
         } catch (e: Exception) {
-            Log.e("HealthAPI", "Failed to write record to Health Connect", e)
+            Log.error("HealthAPI", "Failed to write record to Health Connect", e)
         }
     }
 

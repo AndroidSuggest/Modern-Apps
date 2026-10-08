@@ -5,7 +5,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 import java.nio.ByteBuffer
 
@@ -51,13 +51,13 @@ object MotionPhotoEncoder {
             muxerStarted = pump.muxerStarted
             return true
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "Motion Photo MP4 encode failed", e)
+            Log.error(TAG, "Motion Photo MP4 encode failed", e)
             return false
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "Motion Photo MP4 encode failed", e)
+            Log.error(TAG, "Motion Photo MP4 encode failed", e)
             return false
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "Motion Photo MP4 encode failed", e)
+            Log.error(TAG, "Motion Photo MP4 encode failed", e)
             return false
         } finally {
             try { codec?.stop() } catch (_: Exception) {}

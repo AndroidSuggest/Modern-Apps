@@ -6,7 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
 import android.os.Process
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.appstore.data.security.InstallRequirement
 import com.vayunmathur.appstore.data.security.InstallVerifier
 import com.vayunmathur.appstore.data.security.VerificationResult
@@ -38,13 +38,13 @@ class SessionInstaller(
         totalSize: Long = -1L
     ): Outcome {
         if (files.isEmpty()) {
-            Log.w(TAG, "No files to install for $packageName")
+            Log.status(TAG, "No files to install for $packageName")
             return Outcome(false, VerificationResult.Rejected("nothing was downloaded"))
         }
 
         val verification = InstallVerifier.verify(context, files, requirement)
         if (verification is VerificationResult.Rejected) {
-            Log.e(TAG, "Refusing to install $packageName: ${verification.reason}")
+            Log.error(TAG, "Refusing to install $packageName: ${verification.reason}")
             files.forEach { runCatching { it.delete() } }
             return Outcome(false, verification)
         }
@@ -79,22 +79,22 @@ class SessionInstaller(
             try {
                 writeFiles(session, files)
             } catch (expected: java.io.IOException) {
-                Log.e(TAG, "Write failed for $packageName: ${expected.message}", expected)
+                Log.error(TAG, "Write failed for $packageName: ${expected.message}", expected)
                 abandonQuietly(session)
                 return false
             }
 
             commitSession(session, sessionId, packageName)
-            Log.i(TAG, "Commit started for $packageName sessionId=$sessionId")
+            Log.status(TAG, "Commit started for $packageName sessionId=$sessionId")
             true
         } catch (expected: SecurityException) {
-            Log.e(TAG, "Install failed for $packageName: ${expected.message}", expected)
+            Log.error(TAG, "Install failed for $packageName: ${expected.message}", expected)
             false
         } catch (expected: java.io.IOException) {
-            Log.e(TAG, "Install failed for $packageName: ${expected.message}", expected)
+            Log.error(TAG, "Install failed for $packageName: ${expected.message}", expected)
             false
         } catch (expected: IllegalStateException) {
-            Log.e(TAG, "Install failed for $packageName: ${expected.message}", expected)
+            Log.error(TAG, "Install failed for $packageName: ${expected.message}", expected)
             false
         }
     }
@@ -110,11 +110,11 @@ class SessionInstaller(
                     try {
                         installer.abandonSession(it.sessionId)
                     } catch (expected: SecurityException) {
-                        Log.w(TAG, "abandon ${it.sessionId}", expected)
+                        Log.status(TAG, "abandon ${it.sessionId}", expected)
                     }
                 }
         } catch (expected: SecurityException) {
-            Log.w(TAG, "list sessions", expected)
+            Log.status(TAG, "list sessions", expected)
         }
     }
 
@@ -162,7 +162,7 @@ class SessionInstaller(
         try {
             session.abandon()
         } catch (expected: SecurityException) {
-            Log.w(TAG, "abandon session", expected)
+            Log.status(TAG, "abandon session", expected)
         }
     }
 
@@ -182,7 +182,7 @@ class SessionInstaller(
             session.commit(pendingIntent.intentSender)
             session.close()
         } catch (expected: SecurityException) {
-            Log.e(TAG, "commit failed for $packageName", expected)
+            Log.error(TAG, "commit failed for $packageName", expected)
             abandonQuietly(session)
             throw expected
         }

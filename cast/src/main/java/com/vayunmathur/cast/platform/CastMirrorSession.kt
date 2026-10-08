@@ -2,7 +2,7 @@ package com.vayunmathur.cast.platform
 
 import android.content.Context
 import android.media.projection.MediaProjection
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.R
 import com.vayunmathur.cast.domain.ClientPhase
 import com.vayunmathur.cast.platform.mirror.CaptureGeometry
@@ -68,7 +68,7 @@ internal fun CastController.startSession(
         val activeClient = client
         val device = deviceMutable.value
         if (activeClient == null || device == null) {
-            Log.w(TAG, "asked to mirror with no session")
+            Log.status(TAG, "asked to mirror with no session")
             stopProjection(projection)
             return@launch
         }
@@ -104,7 +104,7 @@ private suspend fun CastController.startNegotiatedSession(
     val geometry = sessionGeometry(appContext, source, codec, activeClient)
     val ready = negotiateSessionStream(activeClient, geometry, codec)
     if (ready == null) {
-        Log.w(TAG, "the TV would not agree a stream")
+        Log.status(TAG, "the TV would not agree a stream")
         abandonMirroring(
             appContext,
             projection,
@@ -159,7 +159,7 @@ private suspend fun CastController.chooseSessionCodec(
     return when (retry) {
         is CodecOutcome.Chosen -> retry
         is CodecOutcome.Refused -> {
-            Log.w(TAG, "refusing to mirror: ${retry.message}")
+            Log.status(TAG, "refusing to mirror: ${retry.message}")
             retry
         }
     }
@@ -215,7 +215,7 @@ private suspend fun CastController.negotiateSessionStream(
         )
     }
     val ready = outcome as? HandshakeOutcome.Ready
-    if (ready == null) Log.w(TAG, "the TV would not agree a stream: $outcome")
+    if (ready == null) Log.status(TAG, "the TV would not agree a stream: $outcome")
     return ready
 }
 

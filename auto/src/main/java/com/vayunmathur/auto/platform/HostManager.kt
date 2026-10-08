@@ -2,7 +2,7 @@ package com.vayunmathur.auto.platform
 
 import android.content.ComponentName
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Surface
 import com.vayunmathur.library.carhost.HostAction
 import com.vayunmathur.library.carhost.HostNavState
@@ -77,7 +77,7 @@ class HostManager(private val context: Context) {
         if (previous == component) return
         if (previous != null) {
             runCatching { sessions[previous]?.clearSurface() }
-                .onFailure { Log.w(TAG, "clearSurface failed for $previous", it) }
+                .onFailure { Log.status(TAG, "clearSurface failed for $previous", it) }
         }
         _focused.value = component
         pendingSurface?.let { (surface, w, h) ->
@@ -135,7 +135,7 @@ class HostManager(private val context: Context) {
         val session = sessions[component] ?: return
         kotlin.concurrent.thread(name = "ma-auto-carhost-reset", isDaemon = true) {
             runCatching { session.unbind() }
-                .onFailure { Log.w(TAG, "reset unbind failed for $component", it) }
+                .onFailure { Log.status(TAG, "reset unbind failed for $component", it) }
             session.bind()
             if (component == _focused.value) {
                 pendingSurface?.let { (surface, w, h) ->

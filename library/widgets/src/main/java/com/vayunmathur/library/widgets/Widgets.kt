@@ -2,7 +2,7 @@ package com.vayunmathur.library.widgets
 
 import android.content.Context
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -35,7 +35,7 @@ class GenericWidgetWorker(
     override suspend fun doWork(): Result {
         val className = inputData.getString(ARG_WIDGET_CLASS)
         if (className == null) {
-            Log.e(TAG, "Missing widget class name in input data")
+            Log.error(TAG, "Missing widget class name in input data")
             return Result.failure()
         }
 
@@ -45,10 +45,10 @@ class GenericWidgetWorker(
             val widget = kClass.java.getDeclaredConstructor().newInstance() as GlanceAppWidget
 
             widget.updateAll(context)
-            Log.d(TAG, "Successfully updated widget: $className")
+            Log.debug(TAG, "Successfully updated widget: $className")
             Result.success()
         } catch (reflect: ReflectiveOperationException) {
-            Log.e(TAG, "Failed to update widget: $className", reflect)
+            Log.error(TAG, "Failed to update widget: $className", reflect)
             Result.failure()
         }
     }
@@ -110,30 +110,30 @@ class WidgetPreviewWorker(
 
     override suspend fun doWork(): Result {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-            Log.d(TAG, "Previews require API 35+, current API is ${Build.VERSION.SDK_INT}, skipping")
+            Log.debug(TAG, "Previews require API 35+, current API is ${Build.VERSION.SDK_INT}, skipping")
             return Result.success()
         }
         val className = inputData.getString(ARG_RECEIVER_CLASS)
         if (className == null) {
-            Log.e(TAG, "Missing receiver class name in input data")
+            Log.error(TAG, "Missing receiver class name in input data")
             return Result.failure()
         }
         return try {
             @Suppress("UNCHECKED_CAST")
             val receiverClass = Class.forName(className).kotlin as KClass<out GlanceAppWidgetReceiver>
-            Log.d(TAG, "Setting widget previews for $className (SDK=${Build.VERSION.SDK_INT})")
+            Log.debug(TAG, "Setting widget previews for $className (SDK=${Build.VERSION.SDK_INT})")
             when (GlanceAppWidgetManager(applicationContext).setWidgetPreviews(receiverClass)) {
                 GlanceAppWidgetManager.SET_WIDGET_PREVIEWS_RESULT_RATE_LIMITED -> {
-                    Log.w(TAG, "Rate limited setting widget previews for $className, will retry")
+                    Log.status(TAG, "Rate limited setting widget previews for $className, will retry")
                     Result.retry()
                 }
                 else -> {
-                    Log.d(TAG, "Successfully set widget previews for $className")
+                    Log.debug(TAG, "Successfully set widget previews for $className")
                     Result.success()
                 }
             }
         } catch (reflect: ReflectiveOperationException) {
-            Log.e(TAG, "Failed to set widget previews for $className", reflect)
+            Log.error(TAG, "Failed to set widget previews for $className", reflect)
             Result.failure()
         }
     }
@@ -155,11 +155,11 @@ class WidgetPreviewWorker(
  */
 fun <T : GlanceAppWidgetReceiver> Context.updateWidgetPreviews(receiverClass: KClass<T>) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-        Log.d("WidgetPreview", "Skipping preview update on API ${Build.VERSION.SDK_INT}: $receiverClass")
+        Log.debug("WidgetPreview", "Skipping preview update on API ${Build.VERSION.SDK_INT}: $receiverClass")
         return
     }
     val className = receiverClass.qualifiedName ?: return
-    Log.d("WidgetPreview", "Enqueueing preview update for $className")
+    Log.debug("WidgetPreview", "Enqueueing preview update for $className")
 
     val inputData = workDataOf(WidgetPreviewWorker.ARG_RECEIVER_CLASS to className)
 
@@ -241,7 +241,7 @@ internal fun <V> decodeWidgetState(serializer: KSerializer<V>, json: String, key
     return try {
         Json.decodeFromString(serializer, json)
     } catch (expected: IllegalArgumentException) {
-        Log.w(TAG, "Failed to decode widget state for key $key", expected)
+        Log.status(TAG, "Failed to decode widget state for key $key", expected)
         null
     }
 }

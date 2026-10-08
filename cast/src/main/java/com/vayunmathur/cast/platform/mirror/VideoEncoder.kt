@@ -3,7 +3,7 @@ package com.vayunmathur.cast.platform.mirror
 import android.media.MediaCodec
 import android.media.MediaFormat
 import android.os.SystemClock
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Surface
 import com.vayunmathur.cast.protocol.VideoCodec
 import java.io.IOException
@@ -110,7 +110,7 @@ class VideoEncoder(
     fun start(): Boolean {
         val name = EncoderSupport.videoEncoderName(codec)
         if (name == null) {
-            Log.w(TAG, "no hardware ${codec.mimeType} encoder taking COLOR_FormatSurface")
+            Log.status(TAG, "no hardware ${codec.mimeType} encoder taking COLOR_FormatSurface")
             return false
         }
         return try {
@@ -151,7 +151,7 @@ class VideoEncoder(
             inputSurface = created.createInputSurface()
             created.start()
             mediaCodec = created
-            Log.i(TAG, "encoding ${codec.label} at ${width}x$height @ ${frameRate}fps on $name")
+            Log.status(TAG, "encoding ${codec.label} at ${width}x$height @ ${frameRate}fps on $name")
             true
         } catch (e: IllegalStateException) {
             failStart(e)
@@ -163,7 +163,7 @@ class VideoEncoder(
     }
 
     private fun failStart(e: Exception): Boolean {
-        Log.w(TAG, "could not start the ${codec.label} encoder", e)
+        Log.status(TAG, "could not start the ${codec.label} encoder", e)
         release()
         return false
     }
@@ -181,7 +181,7 @@ class VideoEncoder(
             val index = try {
                 active.dequeueOutputBuffer(bufferInfo, TIMEOUT_US)
             } catch (e: IllegalStateException) {
-                Log.w(TAG, "encoder went away mid-drain", e)
+                Log.status(TAG, "encoder went away mid-drain", e)
                 return out
             }
             if (index < 0) return out
@@ -234,7 +234,7 @@ class VideoEncoder(
                     putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
                 },
             )
-        }.onFailure { Log.w(TAG, "could not request a key frame", it) }
+        }.onFailure { Log.status(TAG, "could not request a key frame", it) }
         // The new key frame needs its parameter sets in front of it too: a receiver asking for one is
         // a receiver that may never have seen the originals.
         sentParameterSets = false
@@ -256,7 +256,7 @@ class VideoEncoder(
     /** Not a frame: the parameter sets, cached and - for AV1 - sent on at once. */
     private fun onCodecConfigBuffer(bytes: ByteArray) {
         parameterSets = bytes
-        Log.i(
+        Log.status(
             TAG,
             "${codec.label} codec config: ${bytes.size} bytes, ${bytes.hexPreview()}" +
                 if (codec.needsCodecConfig) " - sending it to the TV" else " - riding in-band",

@@ -7,7 +7,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.util.StringBuilderPrinter
 import androidx.core.content.IntentCompat
 import androidx.core.os.BundleCompat
@@ -109,7 +109,7 @@ internal object ErrorReportReader {
         return try {
             GZIPInputStream(ByteArrayInputStream(gzipped)).use { it.readBytes() }
         } catch (e: IOException) {
-            Log.d(TAG, "corrupt gzipped message", e)
+            Log.debug(TAG, "corrupt gzipped message", e)
             null
         }
     }
@@ -167,7 +167,7 @@ internal object ErrorReportReader {
             String(bytes, Charsets.UTF_8)
         } else {
             createBody(report) ?: run {
-                Log.e(TAG, "invalid ApplicationErrorReport")
+                Log.error(TAG, "invalid ApplicationErrorReport")
                 return LogLoadResult.Unavailable()
             }
         }
@@ -360,7 +360,7 @@ internal object ErrorReportReader {
         val file = File(path)
         val lastModified = file.lastModified()
         if (expected != lastModified) {
-            Log.e(TAG, "lastModified mismatch: expected $expected, got $lastModified")
+            Log.error(TAG, "lastModified mismatch: expected $expected, got $lastModified")
             return null
         }
         return TimestampedFile(file, lastModified)
@@ -388,7 +388,7 @@ internal object ErrorReportReader {
         val bytes = try {
             Files.readAllBytes(file.toPath())
         } catch (e: IOException) {
-            Log.e(TAG, "unable to read tombstone $file", e)
+            Log.error(TAG, "unable to read tombstone $file", e)
             return null
         }
         // Rechecked after the read: the ring may have recycled the file mid-read, and half of one

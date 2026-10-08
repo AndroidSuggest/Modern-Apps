@@ -1,6 +1,7 @@
 package com.vayunmathur.code.util
 
 import com.vayunmathur.code.syntax.Language
+import com.vayunmathur.library.log.Log
 
 /** A tree-sitter capture kind, aligned 1:1 (by ordinal) with the Rust side's enum. */
 enum class TsKind { KEYWORD, STRING, NUMBER, COMMENT, ANNOTATION, FUNCTION, TYPE, PROPERTY }
@@ -24,10 +25,10 @@ object TreeSitterNative {
             System.loadLibrary("code_ts")
             true
         } catch (e: UnsatisfiedLinkError) {
-            android.util.Log.w("TreeSitter", "native lib missing, using regex highlighting", e)
+            Log.status("TreeSitter", "native lib missing, using regex highlighting", e)
             false
         } catch (e: SecurityException) {
-            android.util.Log.w("TreeSitter", "native lib blocked, using regex highlighting", e)
+            Log.status("TreeSitter", "native lib blocked, using regex highlighting", e)
             false
         }
 

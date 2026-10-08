@@ -14,6 +14,7 @@ import com.vayunmathur.email.data.EmailSyncWorker
 import com.vayunmathur.email.data.OutboxEntry
 import com.vayunmathur.email.platform.MessageListActions
 import com.vayunmathur.email.platform.MessageThreadActions
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -189,7 +190,7 @@ class EmailViewModel(application: Application) :
                     uid = uid,
                 )
             } catch (_: Exception) {
-                android.util.Log.w("EmailViewModel", "Failed to delete message on server")
+                Log.status("EmailViewModel", "Failed to delete message on server")
             }
         }
     }
@@ -217,7 +218,7 @@ class EmailViewModel(application: Application) :
                     seen = isRead,
                 )
             } catch (_: Exception) {
-                android.util.Log.w("EmailViewModel", "Failed to sync read status to server")
+                Log.status("EmailViewModel", "Failed to sync read status to server")
             }
         }
     }
@@ -295,7 +296,7 @@ class EmailViewModel(application: Application) :
                     if (attachments.isNotEmpty()) messagesDao.insertAttachments(attachments)
                 }
             } catch (_: Exception) {
-                android.util.Log.w("EmailViewModel", "fetchBodyIfNeeded for ${message.id} failed")
+                Log.status("EmailViewModel", "fetchBodyIfNeeded for ${message.id} failed")
             }
         }
     }
@@ -317,7 +318,7 @@ class EmailViewModel(application: Application) :
                 uid = message.id,
             )
         } catch (_: Exception) {
-            android.util.Log.w("EmailViewModel", "loadCidMap failed")
+            Log.status("EmailViewModel", "loadCidMap failed")
             emptyMap()
         }
     }
@@ -345,7 +346,7 @@ class EmailViewModel(application: Application) :
                         connection.disconnect()
                     }
                 } catch (_: Exception) {
-                    android.util.Log.w("EmailViewModel", "one-click unsubscribe failed")
+                    Log.status("EmailViewModel", "one-click unsubscribe failed")
                     false
                 }
             }
@@ -410,7 +411,7 @@ class EmailViewModel(application: Application) :
                 }
                 withContext(Dispatchers.Main) { onResult(true, null) }
             } catch (ignored: Exception) {
-                android.util.Log.w("EmailViewModel", "exportEml failed", ignored)
+                Log.status("EmailViewModel", "exportEml failed", ignored)
                 withContext(Dispatchers.Main) { onResult(false, ignored.message ?: ignored.javaClass.simpleName) }
             }
         }

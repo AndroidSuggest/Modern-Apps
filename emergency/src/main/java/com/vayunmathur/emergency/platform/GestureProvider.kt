@@ -9,7 +9,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 private const val TAG = "EmergencyGestureProvider"
 
@@ -91,7 +91,7 @@ class GestureProvider : ContentProvider() {
                 ))
             }
             else -> {
-                Log.w(TAG, "unknown gesture method $method from $authority")
+                Log.status(TAG, "unknown gesture method $method from $authority")
                 return null
             }
         }
@@ -123,7 +123,7 @@ class GestureProvider : ContentProvider() {
             }
             true
         }.getOrElse {
-            Log.w(TAG, "cannot write $key; is WRITE_SECURE_SETTINGS held?", it)
+            Log.status(TAG, "cannot write $key; is WRITE_SECURE_SETTINGS held?", it)
             false
         }
     }

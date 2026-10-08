@@ -5,7 +5,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 import java.util.Locale
 import java.util.UUID
@@ -57,7 +57,7 @@ class CarTts(
                     engine?.language = Locale.getDefault()
                     engine?.setOnUtteranceProgressListener(progressListener)
                 } else {
-                    Log.w(TAG, "tts engine unavailable (status $status)")
+                    Log.status(TAG, "tts engine unavailable (status $status)")
                 }
             }
         }
@@ -92,12 +92,12 @@ class CarTts(
     private fun synthesize(text: String) {
         val tts = engine
         if (!engineReady || tts == null) {
-            Log.d(TAG, "dropping ${text.length} chars; tts not ready")
+            Log.debug(TAG, "dropping ${text.length} chars; tts not ready")
             onEvent(AudioEvent.TtsDropped("engine-unready"))
             return
         }
         val sink = systemSink() ?: run {
-            Log.d(TAG, "dropping ${text.length} chars; no system sink")
+            Log.debug(TAG, "dropping ${text.length} chars; no system sink")
             onEvent(AudioEvent.TtsDropped("no-sink"))
             return
         }
@@ -105,7 +105,7 @@ class CarTts(
         val utteranceId = file.name
         val queued = tts.synthesizeToFile(text, null, file, utteranceId)
         if (queued != TextToSpeech.SUCCESS) {
-            Log.w(TAG, "tts synthesize failed ($queued)")
+            Log.status(TAG, "tts synthesize failed ($queued)")
             runCatching { file.delete() }
             onEvent(AudioEvent.TtsDropped("synthesize-failed"))
             return
@@ -139,7 +139,7 @@ class CarTts(
             synchronized(pending) { pending.remove(utteranceId) }?.let {
                 runCatching { it.file.delete() }
             }
-            Log.w(TAG, "tts utterance $utteranceId failed")
+            Log.status(TAG, "tts utterance $utteranceId failed")
             onEvent(AudioEvent.TtsDropped("utterance-error"))
         }
     }

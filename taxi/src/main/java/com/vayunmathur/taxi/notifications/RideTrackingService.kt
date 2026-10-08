@@ -7,7 +7,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationManagerCompat
 import com.vayunmathur.taxi.data.ActiveRide
 import com.vayunmathur.taxi.data.RideStatus
@@ -50,11 +50,11 @@ class RideTrackingService : Service() {
         try {
             startForegroundCompat(RideLiveUpdate.build(this, placeholder(rideId)))
         } catch (e: SecurityException) {
-            Log.e(TAG, "startForeground failed", e)
+            Log.error(TAG, "startForeground failed", e)
             stopSelf()
             return START_NOT_STICKY
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "startForeground failed", e)
+            Log.error(TAG, "startForeground failed", e)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -83,7 +83,7 @@ class RideTrackingService : Service() {
                     byId?.ride
                 }
                 is RideStatusResult.Failed -> {
-                    Log.w(TAG, "activeRide failed: ${result.message}")
+                    Log.status(TAG, "activeRide failed: ${result.message}")
                     null // transient; keep the last notification and retry
                 }
                 RideStatusResult.Unsupported -> {
@@ -93,16 +93,16 @@ class RideTrackingService : Service() {
             }
 
             if (ended) {
-                Log.d(TAG, "ride $rideId gone; stopping")
+                Log.debug(TAG, "ride $rideId gone; stopping")
                 finish()
                 return
             }
 
             if (ride != null) {
-                Log.d(TAG, "ride $rideId status=${ride.status} eta=${ride.pickupEtaSeconds}")
+                Log.debug(TAG, "ride $rideId status=${ride.status} eta=${ride.pickupEtaSeconds}")
                 notify(RideLiveUpdate.build(this, ride))
                 if (ride.status.isTerminal) {
-                    Log.d(TAG, "ride $rideId terminal; stopping")
+                    Log.debug(TAG, "ride $rideId terminal; stopping")
                     // Leave the terminal update visible briefly, then clear it.
                     delay(TERMINAL_LINGER_MS)
                     finish()
@@ -119,7 +119,7 @@ class RideTrackingService : Service() {
         try {
             NotificationManagerCompat.from(this).notify(RideLiveUpdate.NOTIFICATION_ID, notification)
         } catch (e: SecurityException) {
-            Log.w(TAG, "notify skipped (no permission)", e)
+            Log.status(TAG, "notify skipped (no permission)", e)
         }
     }
 

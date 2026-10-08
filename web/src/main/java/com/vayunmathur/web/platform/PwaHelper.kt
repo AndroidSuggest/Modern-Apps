@@ -6,7 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
@@ -206,7 +206,7 @@ object PwaHelper {
                 val bitmap = (result as? ImageResult.Success)?.bitmap ?: return@runCatching null
                 bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: bitmap
             }.onFailure { e ->
-                Log.w(TAG, "loadIconBitmap failed $iconUrl", e)
+                Log.status(TAG, "loadIconBitmap failed $iconUrl", e)
             }.getOrNull()
         }
     }
@@ -272,7 +272,7 @@ object PwaHelper {
 
                 ShortcutManagerCompat.requestPinShortcut(context, info, null)
             }.onFailure { e ->
-                Log.e(TAG, "requestPinShortcut failed", e)
+                Log.error(TAG, "requestPinShortcut failed", e)
             }.getOrDefault(false)
         }
     }

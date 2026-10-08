@@ -3,7 +3,7 @@ package com.vayunmathur.cast
 import android.app.Application
 import android.content.ComponentName
 import android.content.pm.PackageManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 private const val TAG = "CastApplication"
 
@@ -23,6 +23,7 @@ private const val LAUNCHER_ALIAS = "com.vayunmathur.cast.LauncherAlias"
 class CastApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        Log.init(BuildConfig.DEV_BUILD)
         if (!isSystemCastProvider()) return
         val alias = ComponentName(this, LAUNCHER_ALIAS)
         // Idempotent: only the first launch on MAOS actually flips it; the setting then persists.
@@ -37,7 +38,7 @@ class CastApplication : Application() {
                 PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                 PackageManager.DONT_KILL_APP,
             )
-        }.onFailure { Log.w(TAG, "could not hide the launcher icon", it) }
+        }.onFailure { Log.status(TAG, "could not hide the launcher icon", it) }
     }
 
     /**

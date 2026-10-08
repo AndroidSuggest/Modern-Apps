@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.data.rcs
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -109,7 +109,7 @@ object RcsMsrp {
                 }
                 true
             }.getOrElse {
-                Log.w(TAG, "MSRP chunk send failed", it)
+                Log.status(TAG, "MSRP chunk send failed", it)
                 false
             }
         }
@@ -241,7 +241,7 @@ object RcsMsrp {
             // Peer connects to us, but we have no listen socket — nothing to do.
             // (When listening, the accept loop owns this direction; connect-out
             // is skipped and the session completes on accept.)
-            Log.w(TAG, "Peer is active and no listen socket; cannot establish media")
+            Log.status(TAG, "Peer is active and no listen socket; cannot establish media")
             return@withContext null
         }
         if (session.msrpSetup == MsrpSetup.ACTIVE) {
@@ -261,7 +261,7 @@ object RcsMsrp {
                     RcsMsrpTls.clientSocket(context, host, port, peerFp)
                         ?: return@runCatching null
                 } else {
-                    Log.w(TAG, "Secure session without peer fingerprint; downgrading to plaintext")
+                    Log.status(TAG, "Secure session without peer fingerprint; downgrading to plaintext")
                     RcsImsNetwork.createSocket(context, host, port) ?: return@runCatching null
                 }
             } else {
@@ -274,7 +274,7 @@ object RcsMsrp {
             conn.launchKeepalive()
             conn
         }.getOrElse {
-            Log.w(TAG, "MSRP connect failed", it)
+            Log.status(TAG, "MSRP connect failed", it)
             null
         }
     }
@@ -527,7 +527,7 @@ object RcsMsrp {
             out.write(RcsMsrpFraming.buildErrorResponse(toPath, txid, STATUS_NOT_IMPLEMENTED, "Not Implemented"))
             out.flush()
         }
-        Log.i(TAG, "Rejected MSRP AUTH with 501 (tx=$txid)")
+        Log.status(TAG, "Rejected MSRP AUTH with 501 (tx=$txid)")
     }
 
     /** Minimal byte buffer (avoids java.io.ByteArrayOutputStream import weight). */
@@ -598,7 +598,7 @@ object RcsMsrp {
                 true
             }
         }.getOrElse {
-            Log.w(TAG, "MSRP send failed", it)
+            Log.status(TAG, "MSRP send failed", it)
             false
         }
     }

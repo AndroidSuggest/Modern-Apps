@@ -3,29 +3,29 @@ package com.vayunmathur.communicate.data.signal.call
 import org.signal.ringrtc.CallManager
 import org.signal.ringrtc.CameraControl
 import org.webrtc.CapturerObserver
-import android.util.Log as AndroidLog
+import com.vayunmathur.library.log.Log as AndroidLog
 import org.signal.ringrtc.Log as RingRtcLog
 
 /** Routes RingRTC's internal logging into logcat. */
 class SignalRingRtcLogger : RingRtcLog.Logger {
     override fun v(tag: String?, message: String?, t: Throwable?) {
-        AndroidLog.v(tag ?: TAG, message ?: "", t)
+        AndroidLog.debug(tag ?: TAG, message ?: "", t)
     }
 
     override fun d(tag: String?, message: String?, t: Throwable?) {
-        AndroidLog.d(tag ?: TAG, message ?: "", t)
+        AndroidLog.debug(tag ?: TAG, message ?: "", t)
     }
 
     override fun i(tag: String?, message: String?, t: Throwable?) {
-        AndroidLog.i(tag ?: TAG, message ?: "", t)
+        AndroidLog.status(tag ?: TAG, message ?: "", t)
     }
 
     override fun w(tag: String?, message: String?, t: Throwable?) {
-        AndroidLog.w(tag ?: TAG, message ?: "", t)
+        AndroidLog.status(tag ?: TAG, message ?: "", t)
     }
 
     override fun e(tag: String?, message: String?, t: Throwable?) {
-        AndroidLog.e(tag ?: TAG, message ?: "", t)
+        AndroidLog.error(tag ?: TAG, message ?: "", t)
     }
 
     private companion object {

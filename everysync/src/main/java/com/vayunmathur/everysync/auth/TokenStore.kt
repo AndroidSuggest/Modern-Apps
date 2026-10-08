@@ -3,7 +3,7 @@ package com.vayunmathur.everysync.auth
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.util.DataStoreUtils
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -104,7 +104,7 @@ class TokenStore private constructor(context: Context) {
         try {
             ds.setByteArray(key, encrypt(value.toByteArray()))
         } catch (expected: Exception) {
-            Log.e(TAG, "Failed to store secret", expected)
+            Log.error(TAG, "Failed to store secret", expected)
         }
     }
 
@@ -114,7 +114,7 @@ class TokenStore private constructor(context: Context) {
         return try {
             String(decrypt(blob))
         } catch (expected: Exception) {
-            Log.e(TAG, "Failed to load secret", expected)
+            Log.error(TAG, "Failed to load secret", expected)
             null
         }
     }

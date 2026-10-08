@@ -7,7 +7,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.network.HeadUnitServer
 import com.vayunmathur.auto.network.TransportIntake
 import com.vayunmathur.auto.platform.AudioSinkChannel
@@ -113,7 +113,7 @@ class ProjectionService : Service() {
                     if (!running) return
                     if (failed) {
                         val delayMs = reconnectBackoff.onFailure()
-                        Log.i(TAG, "session failed; retrying in ${delayMs}ms")
+                        Log.status(TAG, "session failed; retrying in ${delayMs}ms")
                         sleepInterruptibly(delayMs)
                     } else {
                         reconnectBackoff.onSuccess()
@@ -147,7 +147,7 @@ class ProjectionService : Service() {
                     // close it here so a stillborn intake leaks nothing. A
                     // live session's transport closes with its connection.
                     runCatching { pending.transport.close() }
-                    if (running) Log.e(TAG, "projection session ended", it)
+                    if (running) Log.error(TAG, "projection session ended", it)
                 }
             return failed
         }
@@ -155,7 +155,7 @@ class ProjectionService : Service() {
         runCatching { session(server) }
             .onFailure {
                 failed = true
-                if (running) Log.e(TAG, "projection session ended", it)
+                if (running) Log.error(TAG, "projection session ended", it)
             }
         return failed
     }
@@ -218,7 +218,7 @@ class ProjectionService : Service() {
             deviceModel = Build.MODEL,
             deviceManufacturer = Build.MANUFACTURER,
             onChannelMessage = { message -> routeChannelMessage(message) },
-            trace = { Log.d(TAG, it) },
+            trace = { Log.debug(TAG, it) },
         )
 
         // The session owns focus arbitration; mirror accepted changes to the
@@ -252,7 +252,7 @@ class ProjectionService : Service() {
             // GAL 11/12 gap: the channel message IDs are unmapped, so
             // these are observed and ignored, never answered. Now-playing
             // rides the ch2 video stream instead.
-            Log.d(TAG, "ignoring media-browser message on ch${message.channelId}")
+            Log.debug(TAG, "ignoring media-browser message on ch${message.channelId}")
         } else if (message.channelId == GalService.NOTIFICATION.id) {
             messaging?.onMessage(message.channelId, message.type, message.payload)
         } else if (message.channelId == inputChannelId) {
@@ -272,7 +272,7 @@ class ProjectionService : Service() {
         } else if (message.channelId == GalService.VIDEO_SINK.id) {
             video?.onMessage(message.channelId, message.type, message.payload)
         } else {
-            Log.d(
+            Log.debug(
                 TAG,
                 "ignoring message on unowned service ch${message.channelId} " +
                     "(0x${message.type.toString(HEX_RADIX)}); no owner",
@@ -286,7 +286,7 @@ class ProjectionService : Service() {
             // Input traffic with no owner: the input entry opened
             // but binding has not run yet. Log, don't crash -- the
             // owner binds on its grant once advertised.
-            Log.w(
+            Log.status(
                 TAG,
                 "ch$inputChannelId input traffic with no input owner " +
                     "(0x${message.type.toString(HEX_RADIX)}); dropping",
@@ -384,7 +384,7 @@ class ProjectionService : Service() {
      * sees the failure.
      */
     private fun tearDownSession(connection: GalConnection) {
-        Log.i(TAG, "head unit disconnected: ${connection.session.failure ?: "cleanly"}")
+        Log.status(TAG, "head unit disconnected: ${connection.session.failure ?: "cleanly"}")
         AutoSessionState.onSessionEnd(connection.session.failure)
         // Park the connection's I/O thread first: closing the socket
         // unblocks the pump read, and late sends drop rather than racing
@@ -678,7 +678,7 @@ class ProjectionService : Service() {
         }.onSuccess { certPem ->
             AutoSessionState.onCredentialExpiry(GalCredential.daysRemaining(certPem))
         }.onFailure {
-            Log.w(TAG, "could not read GAL leaf expiry", it)
+            Log.status(TAG, "could not read GAL leaf expiry", it)
         }
     }
 

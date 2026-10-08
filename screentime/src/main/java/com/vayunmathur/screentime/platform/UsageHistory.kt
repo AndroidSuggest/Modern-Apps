@@ -3,7 +3,7 @@ package com.vayunmathur.screentime.platform
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 import com.vayunmathur.screentime.domain.HourBuckets
 import java.time.LocalDate
@@ -134,7 +134,7 @@ class UsageHistory(private val context: Context) {
                 .mapValues { (_, stats) -> stats.totalTimeInForeground }
                 .filterValues { it > 0 }
         }.getOrElse {
-            Log.w(TAG, "no usage stats for $day; is PACKAGE_USAGE_STATS granted?", it)
+            Log.status(TAG, "no usage stats for $day; is PACKAGE_USAGE_STATS granted?", it)
             emptyMap()
         }
     }
@@ -147,7 +147,7 @@ class UsageHistory(private val context: Context) {
         end: Long,
     ): List<Triple<String, Long, Long>> {
         val events = runCatching { usage.queryEvents(start, end) }.getOrElse {
-            Log.w(TAG, "no usage events; is PACKAGE_USAGE_STATS granted?", it)
+            Log.status(TAG, "no usage events; is PACKAGE_USAGE_STATS granted?", it)
             return emptyList()
         }
         val open = HashMap<String, Long>()

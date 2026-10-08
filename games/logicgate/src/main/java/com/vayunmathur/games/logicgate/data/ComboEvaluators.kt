@@ -1,6 +1,7 @@
 package com.vayunmathur.games.logicgate.data
 
 import com.vayunmathur.games.logicgate.data.CircuitEvaluator.ComboEval
+import com.vayunmathur.library.log.Log
 
 /**
  * Combo-evaluation strategies for [CircuitEvaluator].
@@ -22,7 +23,7 @@ internal object ComboShared {
             return try {
                 ChipLibrary.get(chipId)
             } catch (e: Exception) {
-                android.util.Log.d(TAG, "unknown chip $chipId", e)
+                Log.debug(TAG, "unknown chip $chipId", e)
                 null
             }
         }
@@ -170,7 +171,7 @@ internal object ComboIterative {
             return try {
                 def.eval(flatIn)
             } catch (e: Exception) {
-                android.util.Log.d(TAG, "chip ${def.id} eval failed; skipping update", e)
+                Log.debug(TAG, "chip ${def.id} eval failed; skipping update", e)
                 null
             }
         }

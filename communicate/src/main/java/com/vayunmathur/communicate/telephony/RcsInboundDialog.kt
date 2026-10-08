@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.telephony
 
 import android.telephony.ims.SipMessage
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.rcs.RcsConferenceEvents
@@ -90,7 +90,7 @@ internal suspend fun RcsSyncService.handleInboundBye(message: SipMessage) {
     RcsSessionManager.onSipRequest("BYE", callId, "", null, "")
     // Close connections whose sessions went away.
     closeDeadMsrpConnections()
-    Log.i(RcsSyncService.TAG, "BYE processed callId=$callId")
+    Log.status(RcsSyncService.TAG, "BYE processed callId=$callId")
 }
 
 /** Close MSRP connections whose sessions went away (+ drop listen paths). */
@@ -132,7 +132,7 @@ internal fun RcsSyncService.onMsrpAccepted(
         serviceScope.launch { handleMsrpChunk(conversationId, session, contentType, body) }
     }
     msrpConnections[conversationId] = conn
-    Log.i(RcsSyncService.TAG, "Passive MSRP accepted for $conversationId")
+    Log.status(RcsSyncService.TAG, "Passive MSRP accepted for $conversationId")
 }
 
 /**
@@ -155,7 +155,7 @@ internal suspend fun RcsSyncService.handleInboundRefer(message: SipMessage) {
     if (joined) {
         RcsSessionManager.subscribeConferenceEvents(referTo, conversationId)
     }
-    Log.i(RcsSyncService.TAG, "REFER accepted, joining focus callId=${message.getCallIdParameter()}")
+    Log.status(RcsSyncService.TAG, "REFER accepted, joining focus callId=${message.getCallIdParameter()}")
 }
 
 /**
@@ -212,11 +212,11 @@ internal suspend fun RcsSyncService.handleInboundNotify(message: SipMessage) {
         val conversationId = "conf:${from.hashCode()}"
         val (added, removed) = RcsSessionManager.onConferenceNotify(conversationId, body)
         if (added.isNotEmpty() || removed.isNotEmpty()) {
-            Log.i(RcsSyncService.TAG, "Conference update +${added.size}/-${removed.size} for $conversationId")
+            Log.status(RcsSyncService.TAG, "Conference update +${added.size}/-${removed.size} for $conversationId")
         }
     } else if (event.equals("refer", ignoreCase = true)) {
         RcsConferenceEvents.parseSipfrag(body)?.let { (code, reason) ->
-            Log.i(RcsSyncService.TAG, "Referral status $code $reason from $from")
+            Log.status(RcsSyncService.TAG, "Referral status $code $reason from $from")
         }
     }
     sendNotifyResponse(message)
@@ -264,7 +264,7 @@ internal suspend fun RcsSyncService.handleInboundSubscribe(message: SipMessage) 
     if (conversationId != null) {
         RcsSessionManager.publishConferenceInfo(to)
     }
-    Log.i(RcsSyncService.TAG, "Focus SUBSCRIBE accepted for $to")
+    Log.status(RcsSyncService.TAG, "Focus SUBSCRIBE accepted for $to")
 }
 
 /** Minimal final response to a SUBSCRIBE. */

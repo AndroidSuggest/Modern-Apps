@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
@@ -42,7 +42,7 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
         if (mgr == null) {
             // Unreachable in practice: entry is gated by isNightExtensionAvailable(), which
             // already resolved the manager. Bail out; finally restores the normal session.
-            Log.w("CameraViewModel", "ExtensionsManager missing at night capture; skipping")
+            Log.status("CameraViewModel", "ExtensionsManager missing at night capture; skipping")
             return
         }
         provider.unbindAll()
@@ -70,7 +70,7 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
 
         val pending = prepareStillSave("IMG_${MediaStoreSaver.timestamp()}.jpg")
         if (pending == null) {
-            Log.w("CameraViewModel", "Night extension capture skipped: no save target")
+            Log.status("CameraViewModel", "Night extension capture skipped: no save target")
             return
         }
         val outputOptions = pending.outputOptions
@@ -85,7 +85,7 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
                         cont.resume(pending.resolveUri(outputFileResults))
                     }
                     override fun onError(exception: ImageCaptureException) {
-                        Log.e("CameraViewModel", "Night extension capture failed", exception)
+                        Log.error("CameraViewModel", "Night extension capture failed", exception)
                         pending.closeStream()
                         cont.resume(null)
                     }
@@ -94,9 +94,9 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
         }
         if (savedUri != null) setLastCaptureUri(savedUri)
     } catch (e: IllegalStateException) {
-        Log.e("CameraViewModel", "Night extension capture path failed", e)
+        Log.error("CameraViewModel", "Night extension capture path failed", e)
     } catch (e: IllegalArgumentException) {
-        Log.e("CameraViewModel", "Night extension capture path failed", e)
+        Log.error("CameraViewModel", "Night extension capture path failed", e)
     } finally {
         // Rebind the normal 3-stream session; sets photoSessionActiveMutable=true so the UI re-attaches
         // PhotoAnalyzer. If teardown interrupted us, this is superseded by the lifecycle rebind.
@@ -123,7 +123,7 @@ internal fun CameraViewModel.captureNightPhotoCustom() {
 /** Handles the finished night burst: merges + saves, or falls back to single capture. */
 private fun CameraViewModel.onNightBurstDone(frames: List<Bitmap>) {
     if (frames.isEmpty()) {
-        Log.w("CameraViewModel", "Night burst produced no frames; falling back to single capture")
+        Log.status("CameraViewModel", "Night burst produced no frames; falling back to single capture")
         stopLongExposureCountdown()
         captureSinglePhoto()
         return
@@ -135,7 +135,7 @@ private fun CameraViewModel.onNightBurstDone(frames: List<Bitmap>) {
         if (uri != null) {
             finishNightMerge(uri)
         } else {
-            Log.w("CameraViewModel", "Night merge failed; falling back to single capture")
+            Log.status("CameraViewModel", "Night merge failed; falling back to single capture")
             stopLongExposureCountdown()
             captureSinglePhoto()
         }
@@ -197,7 +197,7 @@ private fun CameraViewModel.camera2ControlQuietly():
             androidx.camera.camera2.interop.Camera2CameraControl.from(it)
         }
     } catch (e: IllegalArgumentException) {
-        Log.w("CameraViewModel", "Camera2 control unavailable", e)
+        Log.status("CameraViewModel", "Camera2 control unavailable", e)
         null
     }
 }
@@ -238,9 +238,9 @@ private class NightBurstDriver(
                         .build()
                 )
             } catch (e: IllegalStateException) {
-                Log.w("CameraViewModel", "Failed to restore auto 3A after night burst", e)
+                Log.status("CameraViewModel", "Failed to restore auto 3A after night burst", e)
             } catch (e: IllegalArgumentException) {
-                Log.w("CameraViewModel", "Failed to restore auto 3A after night burst", e)
+                Log.status("CameraViewModel", "Failed to restore auto 3A after night burst", e)
             }
         }
     }
@@ -274,7 +274,7 @@ private class NightBurstDriver(
                 }
 
                 override fun onError(exception: ImageCaptureException) {
-                    Log.w("CameraViewModel", "Night frame capture failed, continuing", exception)
+                    Log.status("CameraViewModel", "Night frame capture failed, continuing", exception)
                     takeNext()
                 }
             }
@@ -297,9 +297,9 @@ private class NightBurstDriver(
             if (upright !== raw) raw.recycle()
             collected.add(upright)
         } catch (e: IllegalStateException) {
-            Log.w("CameraViewModel", "Failed to convert night frame", e)
+            Log.status("CameraViewModel", "Failed to convert night frame", e)
         } catch (e: IllegalArgumentException) {
-            Log.w("CameraViewModel", "Failed to convert night frame", e)
+            Log.status("CameraViewModel", "Failed to convert night frame", e)
         } finally {
             image.close()
         }
@@ -334,10 +334,10 @@ private fun CameraViewModel.lockNightExposure(
         cam2Control.setCaptureRequestOptions(optsBuilder.build())
             .addListener({ onLocked() }, ContextCompat.getMainExecutor(app))
     } catch (e: IllegalStateException) {
-        Log.w("CameraViewModel", "Failed to set night exposure for burst", e)
+        Log.status("CameraViewModel", "Failed to set night exposure for burst", e)
         onLocked()
     } catch (e: IllegalArgumentException) {
-        Log.w("CameraViewModel", "Failed to set night exposure for burst", e)
+        Log.status("CameraViewModel", "Failed to set night exposure for burst", e)
         onLocked()
     }
 }
@@ -372,7 +372,7 @@ internal fun CameraViewModel.computeNightExposure(
         }
         NightExposure(nanos, iso)
     } catch (e: IllegalArgumentException) {
-        Log.w("CameraViewModel", "Failed to read sensor ranges for night mode", e)
+        Log.status("CameraViewModel", "Failed to read sensor ranges for night mode", e)
         fallback
     }
 }

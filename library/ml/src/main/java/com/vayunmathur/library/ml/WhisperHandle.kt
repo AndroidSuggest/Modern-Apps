@@ -2,7 +2,7 @@ package com.vayunmathur.library.ml
 
 import android.content.res.AssetManager
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * On-device speech recognition in ~99 languages: whisper-base on the Vulkan compute runtime.
@@ -116,14 +116,14 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
             val instance = WhisperHandle("the APK's $path")
             instance.handle = if (!MlNative.isAvailable || special.size != SPECIAL_IDS) {
                 if (special.size != SPECIAL_IDS) {
-                    Log.e(TAG, "${special.size} special ids, not $SPECIAL_IDS")
+                    Log.error(TAG, "${special.size} special ids, not $SPECIAL_IDS")
                 }
                 0L
             } else {
                 try {
                     create(assets, path, special, languages, suppress, suppressAtBegin)
                 } catch (expected: Exception) {
-                    Log.e(TAG, "cannot open $path", expected)
+                    Log.error(TAG, "cannot open $path", expected)
                     0L
                 }
             }

@@ -5,7 +5,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.notifications.ConversationSpace
@@ -24,7 +24,7 @@ class SmsDeliverReceiver : BroadcastReceiver() {
         if (intent.action != Telephony.Sms.Intents.SMS_DELIVER_ACTION) return
         val parts = runCatching { Telephony.Sms.Intents.getMessagesFromIntent(intent) }
             .getOrNull()?.takeIf { it.isNotEmpty() } ?: run {
-            Log.w(TAG, "SMS_DELIVER with no parsable messages")
+            Log.status(TAG, "SMS_DELIVER with no parsable messages")
             return
         }
         // Present for multi-SIM; absent on single-SIM devices.
@@ -32,7 +32,7 @@ class SmsDeliverReceiver : BroadcastReceiver() {
         val pending = goAsync()
         Thread {
             runCatching { insertInboundSms(context, parts, subscriptionId) }
-                .onFailure { Log.e(TAG, "failed to store inbound SMS", it) }
+                .onFailure { Log.error(TAG, "failed to store inbound SMS", it) }
             pending.finish()
         }.start()
     }
@@ -64,7 +64,7 @@ class SmsDeliverReceiver : BroadcastReceiver() {
             if (subscriptionId >= 0) put(Telephony.Sms.SUBSCRIPTION_ID, subscriptionId)
         }
         context.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, values)
-        Log.d(TAG, "stored inbound SMS parts=${parts.size} thread=$threadId")
+        Log.debug(TAG, "stored inbound SMS parts=${parts.size} thread=$threadId")
 
         if (address != null) {
             ConversationSpace.ensureIncomingChannel(

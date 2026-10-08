@@ -1,6 +1,6 @@
 package com.vayunmathur.fooddelivery.api
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.fooddelivery.data.Customer
 import com.vayunmathur.fooddelivery.data.CustomerSavings
 import com.vayunmathur.fooddelivery.data.Referral
@@ -55,10 +55,10 @@ object BitesCustomers {
                     BitesCore.unwrap(resp.body, Customer.serializer())
                 }
             } catch (e: java.io.IOException) {
-                Log.e(TAG, "createOrUpdateCustomer failed", e)
+                Log.error(TAG, "createOrUpdateCustomer failed", e)
                 null
             } catch (e: IllegalArgumentException) {
-                Log.e(TAG, "createOrUpdateCustomer failed", e)
+                Log.error(TAG, "createOrUpdateCustomer failed", e)
                 null
             }
         }
@@ -67,10 +67,10 @@ object BitesCustomers {
     suspend fun deleteCustomer(): Boolean = try {
         BitesCore.authenticatedRequest("${BitesCore.API}/customers/me", "DELETE").isSuccess
     } catch (e: java.io.IOException) {
-        Log.e(TAG, "deleteCustomer failed", e)
+        Log.error(TAG, "deleteCustomer failed", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e(TAG, "deleteCustomer failed", e)
+        Log.error(TAG, "deleteCustomer failed", e)
         false
     }
 
@@ -82,10 +82,10 @@ object BitesCustomers {
             "{\"token\":\"$token\",\"uuid\":\"$uuid\"}",
         ).isSuccess
     } catch (e: java.io.IOException) {
-        Log.e(TAG, "registerPushNotification failed", e)
+        Log.error(TAG, "registerPushNotification failed", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e(TAG, "registerPushNotification failed", e)
+        Log.error(TAG, "registerPushNotification failed", e)
         false
     }
 
@@ -96,10 +96,10 @@ object BitesCustomers {
             "{\"uuid\":\"$uuid\",\"orderId\":$orderId}",
         ).isSuccess
     } catch (e: java.io.IOException) {
-        Log.e(TAG, "createReferral failed", e)
+        Log.error(TAG, "createReferral failed", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e(TAG, "createReferral failed", e)
+        Log.error(TAG, "createReferral failed", e)
         false
     }
 
@@ -116,10 +116,10 @@ object BitesCustomers {
             "{\"email\":\"$email\"}",
         ).isSuccess
     } catch (e: java.io.IOException) {
-        Log.e(TAG, "sendEmailVerification failed", e)
+        Log.error(TAG, "sendEmailVerification failed", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e(TAG, "sendEmailVerification failed", e)
+        Log.error(TAG, "sendEmailVerification failed", e)
         false
     }
 
@@ -130,10 +130,10 @@ object BitesCustomers {
             "{}",
         ).isSuccess
     } catch (e: java.io.IOException) {
-        Log.e(TAG, "verifyEmailToken failed", e)
+        Log.error(TAG, "verifyEmailToken failed", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e(TAG, "verifyEmailToken failed", e)
+        Log.error(TAG, "verifyEmailToken failed", e)
         false
     }
 
@@ -148,10 +148,10 @@ object BitesCustomers {
             "{\"inviteCode\":\"$inviteCode\",\"merchantId\":$merchantId}",
         ).isSuccess
     } catch (e: java.io.IOException) {
-        Log.e(TAG, "createCustomerMerchantLoyalty failed", e)
+        Log.error(TAG, "createCustomerMerchantLoyalty failed", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e(TAG, "createCustomerMerchantLoyalty failed", e)
+        Log.error(TAG, "createCustomerMerchantLoyalty failed", e)
         false
     }
 
@@ -163,10 +163,10 @@ object BitesCustomers {
             "{\"merchantId\":$merchantId}",
         ).isSuccess
     } catch (e: java.io.IOException) {
-        Log.e(TAG, "deleteCustomerMerchantLoyalty failed", e)
+        Log.error(TAG, "deleteCustomerMerchantLoyalty failed", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e(TAG, "deleteCustomerMerchantLoyalty failed", e)
+        Log.error(TAG, "deleteCustomerMerchantLoyalty failed", e)
         false
     }
 

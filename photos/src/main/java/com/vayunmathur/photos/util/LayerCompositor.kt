@@ -3,7 +3,7 @@ package com.vayunmathur.photos.util
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Matrix
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import com.vayunmathur.photos.data.AdjustmentLayer
@@ -445,7 +445,7 @@ class LayerCompositor {
         try {
             if (!isRecycled) recycle()
         } catch (e: IllegalStateException) {
-            Log.w("LayerCompositor", "Failed to recycle bitmap", e)
+            Log.status("LayerCompositor", "Failed to recycle bitmap", e)
         }
     }
 }

@@ -1,7 +1,7 @@
 package com.vayunmathur.youpipe.util.sabr
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.services.youtube.sabrng.YoutubeSabrFormatTimeline
 import org.schabi.newpipe.extractor.services.youtube.sabrng.YoutubeSabrInfo
@@ -83,7 +83,7 @@ internal object SabrNgDownloadHelper {
 
     @Throws(IOException::class)
     private fun cleanupAfterFailure(outputFile: File, videoId: String, cause: Throwable): IOException {
-        Log.e(TAG, "SABR download failed for $videoId", cause)
+        Log.error(TAG, "SABR download failed for $videoId", cause)
         if (outputFile.exists()) {
             outputFile.delete()
         }

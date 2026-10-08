@@ -1,7 +1,7 @@
 package com.vayunmathur.camera.util
 
 import android.graphics.Bitmap
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.annotation.OptIn
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
@@ -56,7 +56,7 @@ class PhotoAnalyzer(
             emitMotionFrame(imageProxy)
             decodeQr(frame, imageProxy, startMs)
         } catch (e: IllegalStateException) {
-            Log.e(
+            Log.error(
                 "NightPreview",
                 "PhotoAnalyzer analyze() OUTER threw – was not logged, " +
                     "causes black preview and only 1x zoom because analyzer crashes",
@@ -64,7 +64,7 @@ class PhotoAnalyzer(
             )
             closeQuietly(imageProxy, "outer close() also failed (double hidden)")
         } catch (e: IllegalArgumentException) {
-            Log.e(
+            Log.error(
                 "NightPreview",
                 "PhotoAnalyzer analyze() OUTER threw – was not logged, " +
                     "causes black preview and only 1x zoom because analyzer crashes",
@@ -87,7 +87,7 @@ class PhotoAnalyzer(
         try {
             buffer.get(bytes)
         } catch (e: java.nio.BufferUnderflowException) {
-            Log.e(
+            Log.error(
                 "NightPreview",
                 "PhotoAnalyzer buffer.get() threw (swallowed before) " +
                     "plane0Remaining? ${buffer.remaining()}",
@@ -112,11 +112,11 @@ class PhotoAnalyzer(
                 i += LUMA_STRIDE_PX
             }
         } catch (e: ArithmeticException) {
-            Log.e("NightPreview", "PhotoAnalyzer luma loop threw (hidden)", e)
+            Log.error("NightPreview", "PhotoAnalyzer luma loop threw (hidden)", e)
         }
         if (count > 0) {
             val avg = sum.toFloat() / count
-            Log.d(
+            Log.debug(
                 "NightPreview",
                 "PhotoAnalyzer luma avg=$avg sum=$sum count=$count bytesSize=${frame.bytes.size} " +
                     "width=${imageProxy.width} height=${imageProxy.height} rowStride=${frame.rowStride} " +
@@ -127,12 +127,12 @@ class PhotoAnalyzer(
             try {
                 onLuminance(avg)
             } catch (e: IllegalStateException) {
-                Log.e("NightPreview", "PhotoAnalyzer onLuminance callback threw (was hidden)", e)
+                Log.error("NightPreview", "PhotoAnalyzer onLuminance callback threw (was hidden)", e)
             } catch (e: IllegalArgumentException) {
-                Log.e("NightPreview", "PhotoAnalyzer onLuminance callback threw (was hidden)", e)
+                Log.error("NightPreview", "PhotoAnalyzer onLuminance callback threw (was hidden)", e)
             }
         } else {
-            Log.w(
+            Log.status(
                 "NightPreview",
                 "PhotoAnalyzer count=0, no luma callback – preview may be black? " +
                     "bytesSize=${frame.bytes.size}"
@@ -148,25 +148,25 @@ class PhotoAnalyzer(
             val bmp = try {
                 imageProxy.toBitmap()
             } catch (e: IllegalStateException) {
-                Log.e("NightPreview", "PhotoAnalyzer toBitmap() for Motion-Photo threw (hidden before)", e)
+                Log.error("NightPreview", "PhotoAnalyzer toBitmap() for Motion-Photo threw (hidden before)", e)
                 null
             } catch (e: IllegalArgumentException) {
-                Log.e("NightPreview", "PhotoAnalyzer toBitmap() for Motion-Photo threw (hidden before)", e)
+                Log.error("NightPreview", "PhotoAnalyzer toBitmap() for Motion-Photo threw (hidden before)", e)
                 null
             }
             if (bmp != null) {
                 try {
                     emit(bmp, imageProxy.imageInfo.timestamp, imageProxy.imageInfo.rotationDegrees)
                 } catch (e: IllegalStateException) {
-                    Log.e("NightPreview", "PhotoAnalyzer onMotionFrame emit threw (hidden)", e)
+                    Log.error("NightPreview", "PhotoAnalyzer onMotionFrame emit threw (hidden)", e)
                 } catch (e: IllegalArgumentException) {
-                    Log.e("NightPreview", "PhotoAnalyzer onMotionFrame emit threw (hidden)", e)
+                    Log.error("NightPreview", "PhotoAnalyzer onMotionFrame emit threw (hidden)", e)
                 }
             }
         } catch (e: IllegalStateException) {
-            Log.e("NightPreview", "PhotoAnalyzer Motion-Photo outer threw (hidden)", e)
+            Log.error("NightPreview", "PhotoAnalyzer Motion-Photo outer threw (hidden)", e)
         } catch (e: IllegalArgumentException) {
-            Log.e("NightPreview", "PhotoAnalyzer Motion-Photo outer threw (hidden)", e)
+            Log.error("NightPreview", "PhotoAnalyzer Motion-Photo outer threw (hidden)", e)
         }
     }
 
@@ -197,7 +197,7 @@ class PhotoAnalyzer(
 
         try {
             val result = reader.decodeWithState(bitmap)
-            Log.d(
+            Log.debug(
                 "NightPreview",
                 "PhotoAnalyzer QR decoded text=${result.text} " +
                     "width=${imageProxy.width} height=${imageProxy.height}"
@@ -205,20 +205,20 @@ class PhotoAnalyzer(
             try {
                 onQrDetected(result.text)
             } catch (e: IllegalStateException) {
-                Log.e("NightPreview", "PhotoAnalyzer onQrDetected threw (hidden)", e)
+                Log.error("NightPreview", "PhotoAnalyzer onQrDetected threw (hidden)", e)
             } catch (e: IllegalArgumentException) {
-                Log.e("NightPreview", "PhotoAnalyzer onQrDetected threw (hidden)", e)
+                Log.error("NightPreview", "PhotoAnalyzer onQrDetected threw (hidden)", e)
             }
         } catch (_: NotFoundException) {
             // expected – no QR in frame, NOT an error
         } catch (e: com.google.zxing.ChecksumException) {
-            Log.e(
+            Log.error(
                 "NightPreview",
                 "PhotoAnalyzer ZXing decodeWithState threw OTHER than NotFound (was swallowed)",
                 e
             )
         } catch (e: com.google.zxing.FormatException) {
-            Log.e(
+            Log.error(
                 "NightPreview",
                 "PhotoAnalyzer ZXing decodeWithState threw OTHER than NotFound (was swallowed)",
                 e
@@ -233,17 +233,17 @@ class PhotoAnalyzer(
         try {
             reader.reset()
         } catch (e: IllegalStateException) {
-            Log.e("NightPreview", "PhotoAnalyzer reader.reset() threw (hidden)", e)
+            Log.error("NightPreview", "PhotoAnalyzer reader.reset() threw (hidden)", e)
         }
         try {
             imageProxy.close()
-            Log.d(
+            Log.debug(
                 "NightPreview",
                 "PhotoAnalyzer imageProxy.close() took=${System.currentTimeMillis() - startMs}ms " +
                     "total – if not closed, pipeline stalls -> black preview!"
             )
         } catch (e: IllegalStateException) {
-            Log.e(
+            Log.error(
                 "NightPreview",
                 "PhotoAnalyzer imageProxy.close() threw – pipeline stall -> black preview root!",
                 e
@@ -256,7 +256,7 @@ class PhotoAnalyzer(
         try {
             imageProxy.close()
         } catch (e2: IllegalStateException) {
-            Log.e("NightPreview", "PhotoAnalyzer $context", e2)
+            Log.error("NightPreview", "PhotoAnalyzer $context", e2)
         }
     }
 }

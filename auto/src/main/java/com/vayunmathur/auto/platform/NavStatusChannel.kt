@@ -1,6 +1,6 @@
 package com.vayunmathur.auto.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalService
 import com.vayunmathur.auto.protocol.NavStatusCodec
@@ -42,17 +42,17 @@ class NavStatusChannel(
         lastPosted = NavStatusUpdate(guidanceActive = false)
         val (type, payload) = NavStatusCodec.encodeInactive()
         connection.send(channelId, type, payload)
-        Log.i(TAG, "nav-status posted: no guidance")
+        Log.status(TAG, "nav-status posted: no guidance")
         onEvent(SensorEvent.NavStatusPosted)
     }
 
     /** One message for this channel; the head unit sends nothing normative, so all inbound is observed. */
     fun onMessage(channelId: Int, type: Int) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
+            Log.status(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
-        Log.d(TAG, "unhandled nav-status message 0x${type.toString(HEX_RADIX)}")
+        Log.debug(TAG, "unhandled nav-status message 0x${type.toString(HEX_RADIX)}")
     }
 
     /**

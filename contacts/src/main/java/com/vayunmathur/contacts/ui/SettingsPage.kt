@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ui.R as UiR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -108,13 +109,13 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
                             VcfUtils.exportContacts(exportList, outputStream)
                         }
                     } catch (e: java.io.FileNotFoundException) {
-                        android.util.Log.e("SettingsPage", "Error exporting contacts", e)
+                        Log.error("SettingsPage", "Error exporting contacts", e)
                     } catch (e: SecurityException) {
-                        android.util.Log.e("SettingsPage", "Error exporting contacts", e)
+                        Log.error("SettingsPage", "Error exporting contacts", e)
                     } catch (e: java.io.IOException) {
-                        android.util.Log.e("SettingsPage", "Error exporting contacts", e)
+                        Log.error("SettingsPage", "Error exporting contacts", e)
                     } catch (e: Exception) {
-                        android.util.Log.e("SettingsPage", "Error exporting contacts", e)
+                        Log.error("SettingsPage", "Error exporting contacts", e)
                     }
                 }
             }

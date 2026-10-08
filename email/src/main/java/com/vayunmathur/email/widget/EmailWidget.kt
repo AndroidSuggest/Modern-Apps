@@ -4,7 +4,7 @@ import androidx.compose.ui.res.stringResource
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -61,7 +61,7 @@ class EmailWidget : GlanceAppWidget() {
             try {
                 EmailRepository.get(context).getDatabase().queryDao().getRecentUnifiedPreview()
             } catch (ignored: Exception) {
-                Log.e("EmailWidget", "DB fail", ignored)
+                Log.error("EmailWidget", "DB fail", ignored)
                 emptyList()
             }
         }
@@ -73,7 +73,7 @@ class EmailWidget : GlanceAppWidget() {
                 }
             }
         } catch (ignored: Exception) {
-            Log.e("EmailWidget", "provideContent failed", ignored)
+            Log.error("EmailWidget", "provideContent failed", ignored)
         }
     }
 
@@ -102,7 +102,7 @@ class EmailWidget : GlanceAppWidget() {
                 }
             }
         } catch (ignored: Exception) {
-            Log.e("EmailWidget", "providePreview failed", ignored)
+            Log.error("EmailWidget", "providePreview failed", ignored)
             try {
                 provideContent {
                     Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {

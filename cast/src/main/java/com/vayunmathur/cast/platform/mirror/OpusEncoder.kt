@@ -2,7 +2,7 @@ package com.vayunmathur.cast.platform.mirror
 
 import android.media.MediaCodec
 import android.media.MediaFormat
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.protocol.StreamConstants
 import java.io.IOException
 
@@ -34,7 +34,7 @@ class OpusEncoder {
     fun start(): Boolean {
         val name = EncoderSupport.audioEncoderName()
         if (name == null) {
-            Log.w(TAG, "no ${EncoderSupport.AUDIO_MIME} encoder on this device")
+            Log.status(TAG, "no ${EncoderSupport.AUDIO_MIME} encoder on this device")
             return false
         }
         return try {
@@ -60,7 +60,7 @@ class OpusEncoder {
     }
 
     private fun failStart(e: Exception): Boolean {
-        Log.w(TAG, "could not start the Opus encoder", e)
+        Log.status(TAG, "could not start the Opus encoder", e)
         release()
         return false
     }
@@ -76,7 +76,7 @@ class OpusEncoder {
             val index = try {
                 active.dequeueInputBuffer(TIMEOUT_US)
             } catch (e: IllegalStateException) {
-                Log.w(TAG, "audio encoder went away", e)
+                Log.status(TAG, "audio encoder went away", e)
                 return emptyList()
             }
             if (index >= 0) {
@@ -92,7 +92,7 @@ class OpusEncoder {
             val index = try {
                 active.dequeueOutputBuffer(bufferInfo, 0)
             } catch (e: IllegalStateException) {
-                Log.w(TAG, "audio encoder went away mid-drain", e)
+                Log.status(TAG, "audio encoder went away mid-drain", e)
                 return out
             }
             if (index < 0) return out

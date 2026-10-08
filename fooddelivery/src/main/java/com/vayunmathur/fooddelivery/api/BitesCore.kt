@@ -1,6 +1,6 @@
 package com.vayunmathur.fooddelivery.api
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.fooddelivery.BuildConfig
 import com.vayunmathur.fooddelivery.data.AuthToken
 import com.vayunmathur.library.network.NetworkClient
@@ -59,7 +59,7 @@ internal object BitesCore {
     private val refreshMutex = Mutex()
 
     internal inline fun logd(message: () -> String) {
-        if (BuildConfig.DEV_BUILD) Log.d(TAG, message())
+        if (BuildConfig.DEV_BUILD) Log.debug(TAG, message())
     }
 
     /**
@@ -147,10 +147,10 @@ internal object BitesCore {
             logd { "refreshToken -> ${resp.status}" }
             if (resp.isSuccess) json.decodeFromString<AuthToken>(resp.body) else null
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "refreshToken failed", e)
+            Log.error(TAG, "refreshToken failed", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "refreshToken failed", e)
+            Log.error(TAG, "refreshToken failed", e)
             null
         }
     }
@@ -174,10 +174,10 @@ internal object BitesCore {
             val resp = authenticatedRequest(url)
             if (!resp.isSuccess) null else unwrap(resp.body, serializer)
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "GET $url failed", e)
+            Log.error(TAG, "GET $url failed", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "GET $url failed", e)
+            Log.error(TAG, "GET $url failed", e)
             null
         }
     }
@@ -194,10 +194,10 @@ internal object BitesCore {
                 unwrap(resp.body, ListSerializer(serializer)) ?: emptyList()
             }
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "GET $url failed", e)
+            Log.error(TAG, "GET $url failed", e)
             emptyList()
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "GET $url failed", e)
+            Log.error(TAG, "GET $url failed", e)
             emptyList()
         }
     }

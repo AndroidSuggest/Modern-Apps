@@ -1,7 +1,7 @@
 package com.vayunmathur.fooddelivery.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.edit
 import com.vayunmathur.fooddelivery.api.BitesAuth
 import com.vayunmathur.library.network.NetworkClient
@@ -47,9 +47,9 @@ object AppInit {
                 // Amazon roots.
                 NetworkClient.init(appCtx, TrustBundle.STANDARD)
             } catch (e: IllegalStateException) {
-                Log.w("AppInit", "network warm-up failed", e)
+                Log.status("AppInit", "network warm-up failed", e)
             } catch (e: SecurityException) {
-                Log.w("AppInit", "network warm-up failed", e)
+                Log.status("AppInit", "network warm-up failed", e)
             }
             try {
                 val prefs = appCtx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -59,9 +59,9 @@ object AppInit {
                 }
                 prefs.getString(KEY_TOKEN, null)?.let { BitesAuth.restoreToken(it) }
             } catch (e: SecurityException) {
-                Log.w("AppInit", "token warm-up failed", e)
+                Log.status("AppInit", "token warm-up failed", e)
             } catch (e: IllegalArgumentException) {
-                Log.w("AppInit", "token warm-up failed", e)
+                Log.status("AppInit", "token warm-up failed", e)
             }
             ready.complete(Unit)
         }

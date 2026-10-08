@@ -3,7 +3,7 @@ package com.vayunmathur.cast.service
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.android.media.remotedisplay.RemoteDisplayProvider
 import com.vayunmathur.cast.platform.remotedisplay.MaRemoteDisplayProvider
 
@@ -28,24 +28,24 @@ class CastRemoteDisplayService : Service() {
     private var provider: MaRemoteDisplayProvider? = null
 
     override fun onBind(intent: Intent?): IBinder? {
-        Log.i(TAG, "onBind called action=${intent?.action}")
+        Log.status(TAG, "onBind called action=${intent?.action}")
         if (intent?.action != RemoteDisplayProvider.SERVICE_INTERFACE) {
-            Log.w(TAG, "onBind: action mismatch (want ${RemoteDisplayProvider.SERVICE_INTERFACE}), returning null")
+            Log.status(TAG, "onBind: action mismatch (want ${RemoteDisplayProvider.SERVICE_INTERFACE}), returning null")
             return null
         }
         val existing = provider ?: try {
             MaRemoteDisplayProvider(this).also { provider = it }
         } catch (e: NoClassDefFoundError) {
-            Log.e(TAG, "onBind: failed to construct MaRemoteDisplayProvider", e)
+            Log.error(TAG, "onBind: failed to construct MaRemoteDisplayProvider", e)
             return null
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "onBind: failed to construct MaRemoteDisplayProvider", e)
+            Log.error(TAG, "onBind: failed to construct MaRemoteDisplayProvider", e)
             return null
         } catch (e: SecurityException) {
-            Log.e(TAG, "onBind: failed to construct MaRemoteDisplayProvider", e)
+            Log.error(TAG, "onBind: failed to construct MaRemoteDisplayProvider", e)
             return null
         }
-        Log.i(TAG, "onBind: returning provider binder=${existing.binder}")
+        Log.status(TAG, "onBind: returning provider binder=${existing.binder}")
         return existing.binder
     }
 

@@ -1,6 +1,6 @@
 package com.vayunmathur.everysync.network.remote
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.everysync.auth.DavCredentials
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.SimpleResponse
@@ -69,9 +69,9 @@ class DavClient(private val authHeader: () -> String) {
             homeSet?.let { out += listCollectionsUnder(it, isCalendar) }
             if (out.isEmpty()) out += listCollectionsUnder(baseUrl, isCalendar)
         } catch (expected: Exception) {
-            Log.e(TAG, "discoverCollections failed", expected)
+            Log.error(TAG, "discoverCollections failed", expected)
         }
-        Log.i(
+        Log.status(
             TAG,
             "discoverCollections(isCalendar=$isCalendar) base=$baseUrl -> " +
                 "${out.size} collection(s): ${out.map { it.url }}",
@@ -125,7 +125,7 @@ class DavClient(private val authHeader: () -> String) {
                 }
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "listCollectionsUnder failed", expected)
+            Log.error(TAG, "listCollectionsUnder failed", expected)
         }
         return out
     }
@@ -160,7 +160,7 @@ class DavClient(private val authHeader: () -> String) {
             if (hrefs.length == 0) return null
             hrefs.item(0).textContent?.trim()?.ifBlank { null }?.let { resolve(url, it) }
         } catch (expected: Exception) {
-            Log.e(TAG, "firstHref($propLocalName) failed", expected)
+            Log.error(TAG, "firstHref($propLocalName) failed", expected)
             null
         }
     }
@@ -181,7 +181,7 @@ class DavClient(private val authHeader: () -> String) {
                 .filter { !isSelf(it.href, collectionUrl) && it.etag != null }
                 .map { DavResource(resolve(collectionUrl, it.href), it.etag) }
         } catch (expected: Exception) {
-            Log.e(TAG, "listResources failed", expected)
+            Log.error(TAG, "listResources failed", expected)
             emptyList()
         }
     }
@@ -189,7 +189,7 @@ class DavClient(private val authHeader: () -> String) {
     private fun isSelf(href: String, collectionUrl: String): Boolean = try {
         href.trimEnd('/').equals(URI(collectionUrl).path.trimEnd('/'))
     } catch (expected: Exception) {
-        Log.e(TAG, "isSelf failed", expected)
+        Log.error(TAG, "isSelf failed", expected)
         false
     }
 
@@ -215,7 +215,7 @@ class DavClient(private val authHeader: () -> String) {
                 DavResource(resolve(collectionUrl, it.href), it.etag, it.data)
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "multiget failed", expected)
+            Log.error(TAG, "multiget failed", expected)
             emptyList()
         }
     }
@@ -235,7 +235,7 @@ class DavClient(private val authHeader: () -> String) {
             val resp = request(url, "PUT", headers, body)
             resp.headers["ETag"]?.firstOrNull() ?: resp.headers["Etag"]?.firstOrNull()
         } catch (expected: Exception) {
-            Log.e(TAG, "put failed", expected)
+            Log.error(TAG, "put failed", expected)
             null
         }
     }
@@ -247,7 +247,7 @@ class DavClient(private val authHeader: () -> String) {
         try {
             request(url, "DELETE", headers, null)
         } catch (expected: Exception) {
-            Log.e(TAG, "delete failed", expected)
+            Log.error(TAG, "delete failed", expected)
         }
     }
 
@@ -274,7 +274,7 @@ class DavClient(private val authHeader: () -> String) {
                 parseOne(responses.item(i) as? Element)?.let { out += it }
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "parseResponses failed", expected)
+            Log.error(TAG, "parseResponses failed", expected)
         }
         return out
     }
@@ -315,7 +315,7 @@ class DavClient(private val authHeader: () -> String) {
         val hex = value.trim().removePrefix("#").take(COLOR_HEX_LEN)
         COLOR_ALPHA or hex.toInt(HEX_RADIX)
     } catch (expected: Exception) {
-        Log.e(TAG, "parseColor failed", expected)
+        Log.error(TAG, "parseColor failed", expected)
         null
     }
 

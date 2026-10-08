@@ -1,7 +1,7 @@
 package com.vayunmathur.taxi.network.lyft
 
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.taxi.data.Place
 import kotlinx.serialization.json.buildJsonObject
@@ -56,7 +56,7 @@ internal class LyftExploratoryApi(
             method = "GET",
             headers = session.authHeaders(token),
         )
-        Log.d(TAG, "GET $path -> ${resp.status}")
+        Log.debug(TAG, "GET $path -> ${resp.status}")
         return if (resp.isSuccess) resp.text.take(RAW_PREVIEW_MAX) else null
     }
 
@@ -68,7 +68,7 @@ internal class LyftExploratoryApi(
             headers = session.authJsonHeaders(token),
             body = body,
         )
-        Log.d(TAG, "POST $path -> ${resp.status}")
+        Log.debug(TAG, "POST $path -> ${resp.status}")
         return if (resp.isSuccess) resp.text.take(RAW_PREVIEW_MAX) else null
     }
 

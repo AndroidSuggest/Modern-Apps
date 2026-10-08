@@ -1,7 +1,7 @@
 package com.vayunmathur.contacts.util
 
 import android.app.Application
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.data.SIM_ACCOUNT_TYPE
 import com.vayunmathur.contacts.data.SimContactsDataSource
@@ -20,14 +20,14 @@ internal suspend fun ContactViewModel.persistSimContact(
     val number = contact.details.phoneNumbers.firstOrNull()?.number?.trim() ?: ""
     val email = contact.details.emails.firstOrNull()?.address?.trim()?.takeIf { it.isNotEmpty() }
     if (name.isBlank() && number.isBlank()) {
-        Log.w("ContactViewModel", "SIM save skipped: name and number empty")
+        Log.status("ContactViewModel", "SIM save skipped: name and number empty")
         return false
     }
     if (contact.id < 0) {
         updateExistingSimContact(contact, name, number, email, subId)?.let { return it }
     }
     val ok = SimContactsDataSource.insertSimContact(getApplication(), name, number, email, subId)
-    if (!ok) Log.e("ContactViewModel", "Failed to insert SIM contact")
+    if (!ok) Log.error("ContactViewModel", "Failed to insert SIM contact")
     syncFromSystem()
     return ok
 }

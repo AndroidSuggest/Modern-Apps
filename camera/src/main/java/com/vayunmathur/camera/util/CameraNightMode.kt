@@ -1,6 +1,6 @@
 package com.vayunmathur.camera.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.extensions.ExtensionMode
 import androidx.camera.extensions.ExtensionsManager
@@ -97,7 +97,7 @@ fun CameraViewModel.onLuminance(avg: Float) {
     if (nightIndicatorSupported) return
     val beforeLow = lowLightDetectedMutable.value
     val beforeOff = nightModeOverriddenOffMutable.value
-    Log.d(
+    Log.debug(
         "NightPreview",
         "onLuminance() avg=$avg lowLightBefore=$beforeLow overriddenOff=$beforeOff " +
             "lowFrames=$lowLumaFrames highFrames=$highLumaFrames " +
@@ -110,7 +110,7 @@ fun CameraViewModel.onLuminance(avg: Float) {
         trackDarkening(avg)
     }
     if (beforeLow != lowLightDetectedMutable.value || beforeOff != nightModeOverriddenOffMutable.value) {
-        Log.d(
+        Log.debug(
             "NightPreview",
             "onLuminance() STATE CHANGE low $beforeLow -> ${lowLightDetectedMutable.value} " +
                 "off $beforeOff -> ${nightModeOverriddenOffMutable.value} nightActive ${nightModeActive.value}"
@@ -122,7 +122,7 @@ fun CameraViewModel.onLuminance(avg: Float) {
 private fun CameraViewModel.trackBrightening(avg: Float) {
     if (avg <= CameraViewModel.NIGHT_DISENGAGE_LUMA) {
         if (highLumaFrames != 0) {
-            Log.d(
+            Log.debug(
                 "NightPreview",
                 "onLuminance() resetting highFrames 0 (avg=$avg still below disengage)"
             )
@@ -132,14 +132,14 @@ private fun CameraViewModel.trackBrightening(avg: Float) {
     }
     highLumaFrames++
     lowLumaFrames = 0
-    Log.d(
+    Log.debug(
         "NightPreview",
         "onLuminance() currently in low-light, avg $avg > disengage " +
             "${CameraViewModel.NIGHT_DISENGAGE_LUMA}, " +
             "highFrames=$highLumaFrames/${CameraViewModel.NIGHT_DEBOUNCE_FRAMES}"
     )
     if (highLumaFrames >= CameraViewModel.NIGHT_DEBOUNCE_FRAMES) {
-        Log.d(
+        Log.debug(
             "NightPreview",
             "onLuminance() DISENGAGING night – high luma for " +
                 "${CameraViewModel.NIGHT_DEBOUNCE_FRAMES} frames, lowLight=true->false"
@@ -147,7 +147,7 @@ private fun CameraViewModel.trackBrightening(avg: Float) {
         lowLightDetectedMutable.value = false
         nightModeOverriddenOffMutable.value = false
         highLumaFrames = 0
-        Log.d(
+        Log.debug(
             "NightPreview",
             "onLuminance() after DISENGAGE lowLight=${lowLightDetectedMutable.value} " +
                 "nightActive=${nightModeActive.value} – triggers teardown->setupPhotoSession() rebind"
@@ -159,27 +159,27 @@ private fun CameraViewModel.trackBrightening(avg: Float) {
 private fun CameraViewModel.trackDarkening(avg: Float) {
     if (avg >= CameraViewModel.NIGHT_ENGAGE_LUMA) {
         if (lowLumaFrames != 0) {
-            Log.d("NightPreview", "onLuminance() resetting lowFrames 0 (avg=$avg above engage)")
+            Log.debug("NightPreview", "onLuminance() resetting lowFrames 0 (avg=$avg above engage)")
         }
         lowLumaFrames = 0
         return
     }
     lowLumaFrames++
     highLumaFrames = 0
-    Log.d(
+    Log.debug(
         "NightPreview",
         "onLuminance() avg $avg < engage ${CameraViewModel.NIGHT_ENGAGE_LUMA}, " +
             "lowFrames=$lowLumaFrames/${CameraViewModel.NIGHT_DEBOUNCE_FRAMES}"
     )
     if (lowLumaFrames >= CameraViewModel.NIGHT_DEBOUNCE_FRAMES) {
-        Log.d(
+        Log.debug(
             "NightPreview",
             "onLuminance() ENGAGING night – low luma for " +
                 "${CameraViewModel.NIGHT_DEBOUNCE_FRAMES} frames, lowLight=false->true"
         )
         lowLightDetectedMutable.value = true
         lowLumaFrames = 0
-        Log.d(
+        Log.debug(
             "NightPreview",
             "onLuminance() after ENGAGE lowLight=${lowLightDetectedMutable.value} " +
                 "nightActive=${nightModeActive.value} " +
@@ -193,7 +193,7 @@ private fun CameraViewModel.trackDarkening(avg: Float) {
 fun CameraViewModel.toggleNightModeOverride() {
     val before = nightModeOverriddenOffMutable.value
     nightModeOverriddenOffMutable.value = !nightModeOverriddenOffMutable.value
-    Log.d(
+    Log.debug(
         "NightPreview",
         "toggleNightModeOverride() CLICK moon button beforeOff=$before " +
             "afterOff=${nightModeOverriddenOffMutable.value} lowLight=${lowLightDetectedMutable.value} " +
@@ -213,14 +213,14 @@ internal fun CameraViewModel.resetNightModeDetection() {
 
 /** Obtains (and caches) the ExtensionsManager bound to [provider]. Null if unavailable. */
 internal suspend fun CameraViewModel.getExtensionsManager(provider: ProcessCameraProvider): ExtensionsManager? {
-    Log.d(
+    Log.debug(
         "NightPreview",
         "getExtensionsManager() called providerHash=${provider.hashCode()} " +
             "cachedExists=${extensionsManager != null} thread=${Thread.currentThread().name} " +
             "startMs=${System.currentTimeMillis()}"
     )
     extensionsManager?.let {
-        Log.d(
+        Log.debug(
             "NightPreview",
             "getExtensionsManager() returning CACHED manager providerHash=${provider.hashCode()} " +
                 "manager=$it – NOTE: cached across provider instances, " +
@@ -230,14 +230,14 @@ internal suspend fun CameraViewModel.getExtensionsManager(provider: ProcessCamer
     }
     return try {
         val mgr = awaitExtensionsManager(provider)
-        Log.d(
+        Log.debug(
             "NightPreview",
             "getExtensionsManager() obtained mgr=$mgr caching for providerHash=${provider.hashCode()}"
         )
         extensionsManager = mgr
         mgr
     } catch (e: IllegalStateException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "getExtensionsManager() EXCEPTION – ExtensionsManager unavailable (was hidden as Warn), " +
                 "root cause of black preview if NIGHT needed",
@@ -245,7 +245,7 @@ internal suspend fun CameraViewModel.getExtensionsManager(provider: ProcessCamer
         )
         null
     } catch (e: IllegalArgumentException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "getExtensionsManager() EXCEPTION – ExtensionsManager unavailable (was hidden as Warn), " +
                 "root cause of black preview if NIGHT needed",
@@ -261,7 +261,7 @@ private suspend fun CameraViewModel.awaitExtensionsManager(
 ): ExtensionsManager {
     val start = System.currentTimeMillis()
     return suspendCancellableCoroutine<ExtensionsManager> { cont ->
-        Log.d(
+        Log.debug(
             "NightPreview",
             "getExtensionsManager() creating async instance for providerHash=${provider.hashCode()}"
         )
@@ -280,14 +280,14 @@ private fun CameraViewModel.resolveManagerFuture(
 ) {
     try {
         val res = future.get()
-        Log.d(
+        Log.debug(
             "NightPreview",
             "getExtensionsManager() future.get() SUCCESS res=$res " +
                 "elapsed=${System.currentTimeMillis() - start}ms"
         )
         cont.resume(res)
     } catch (e: java.util.concurrent.ExecutionException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "getExtensionsManager() future.get() FAILED " +
                 "elapsed=${System.currentTimeMillis() - start}ms – " +
@@ -296,7 +296,7 @@ private fun CameraViewModel.resolveManagerFuture(
         )
         cont.cancel(e)
     } catch (e: InterruptedException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "getExtensionsManager() future.get() FAILED " +
                 "elapsed=${System.currentTimeMillis() - start}ms – " +
@@ -310,7 +310,7 @@ private fun CameraViewModel.resolveManagerFuture(
 /** Whether the CameraX NIGHT extension is available on the current lens. */
 suspend fun CameraViewModel.isNightExtensionAvailable(): Boolean {
     val startMs = System.currentTimeMillis()
-    Log.d(
+    Log.debug(
         "NightPreview",
         "isNightExtensionAvailable() START lensFacing=${lensFacingMutable.value} " +
             "thread=${Thread.currentThread().name}"
@@ -318,7 +318,7 @@ suspend fun CameraViewModel.isNightExtensionAvailable(): Boolean {
     return try {
         probeNightExtension(startMs)
     } catch (e: IllegalStateException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "isNightExtensionAvailable() OUTER EXCEPTION – returning false, " +
                 "totalTook=${System.currentTimeMillis() - startMs}ms",
@@ -326,7 +326,7 @@ suspend fun CameraViewModel.isNightExtensionAvailable(): Boolean {
         )
         false
     } catch (e: IllegalArgumentException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "isNightExtensionAvailable() OUTER EXCEPTION – returning false, " +
                 "totalTook=${System.currentTimeMillis() - startMs}ms",
@@ -339,19 +339,19 @@ suspend fun CameraViewModel.isNightExtensionAvailable(): Boolean {
 /** Resolves the provider + manager and probes NIGHT support on the current lens. */
 private suspend fun CameraViewModel.probeNightExtension(startMs: Long): Boolean {
     val provider = ProcessCameraProvider.awaitInstance(app)
-    Log.d(
+    Log.debug(
         "NightPreview",
         "isNightExtensionAvailable() got providerHash=${provider.hashCode()} " +
             "elapsed=${System.currentTimeMillis() - startMs}ms"
     )
     val mgr = getExtensionsManager(provider)
-    Log.d(
+    Log.debug(
         "NightPreview",
         "isNightExtensionAvailable() ExtensionsManager=${mgr != null} " +
             "elapsed=${System.currentTimeMillis() - startMs}ms"
     )
     if (mgr == null) {
-        Log.w(
+        Log.status(
             "NightPreview",
             "isNightExtensionAvailable() manager NULL after ${System.currentTimeMillis() - startMs}ms, " +
                 "returning false -> moon button may show but useNightPreview false, so no visible transition"
@@ -360,7 +360,7 @@ private suspend fun CameraViewModel.probeNightExtension(startMs: Long): Boolean 
     }
     val selector = lensSelector(lensFacingMutable.value, selectedLensMutable.value)
     if (!mgr.isExtensionAvailable(selector, ExtensionMode.NIGHT)) {
-        Log.d(
+        Log.debug(
             "NightPreview",
             "isNightExtensionAvailable() isExtensionAvailable(NIGHT)=false " +
                 "lens=${lensFacingMutable.value}"
@@ -390,13 +390,13 @@ private fun CameraViewModel.querySessionConfigSupport(
     val supported = try {
         cameraInfo.isSessionConfigSupported(nightConfig)
     } catch (e: IllegalStateException) {
-        Log.w("NightPreview", "isNightExtensionAvailable() isSessionConfigSupported threw", e)
+        Log.status("NightPreview", "isNightExtensionAvailable() isSessionConfigSupported threw", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.w("NightPreview", "isNightExtensionAvailable() isSessionConfigSupported threw", e)
+        Log.status("NightPreview", "isNightExtensionAvailable() isSessionConfigSupported threw", e)
         false
     }
-    Log.d(
+    Log.debug(
         "NightPreview",
         "isNightExtensionAvailable() isSessionConfigSupported(NIGHT)=$supported " +
             "lens=${lensFacingMutable.value} total=${System.currentTimeMillis() - startMs}ms"

@@ -3,7 +3,7 @@ package com.vayunmathur.email.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.edit
 import com.vayunmathur.email.data.EmailSyncWorker
 import com.vayunmathur.email.data.ImapIdleService
@@ -36,7 +36,7 @@ class BootReceiver : BroadcastReceiver() {
                 val appContext = context.applicationContext
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        Log.d(TAG, "Boot (${intent.action}): restarting hourly + one-off + outbox")
+                        Log.debug(TAG, "Boot (${intent.action}): restarting hourly + one-off + outbox")
                         EmailSyncWorker.scheduleHourlyNonInboxSync(appContext)
                         EmailSyncWorker.runOneOffSync(appContext)
                         OutboxSendWorker.runNow(appContext)
@@ -45,11 +45,11 @@ class BootReceiver : BroadcastReceiver() {
                         // ForegroundServiceStartNotAllowedException for dataSync.
                         appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                             .edit { putBoolean(KEY_PENDING, true) }
-                        Log.d(TAG, "Boot: deferred IDLE start, set $KEY_PENDING=true")
+                        Log.debug(TAG, "Boot: deferred IDLE start, set $KEY_PENDING=true")
                     } catch (t: SecurityException) {
-                        Log.w(TAG, "BootReceiver failed: ${t.message}", t)
+                        Log.status(TAG, "BootReceiver failed: ${t.message}", t)
                     } catch (t: IllegalStateException) {
-                        Log.w(TAG, "BootReceiver failed: ${t.message}", t)
+                        Log.status(TAG, "BootReceiver failed: ${t.message}", t)
                     } finally {
                         pending.finish()
                     }

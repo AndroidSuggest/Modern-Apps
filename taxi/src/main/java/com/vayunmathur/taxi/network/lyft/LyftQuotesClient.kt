@@ -1,6 +1,6 @@
 package com.vayunmathur.taxi.network.lyft
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.taxi.data.Place
 import com.vayunmathur.taxi.data.QuoteResult
@@ -84,7 +84,7 @@ internal class LyftQuotesClient(private val session: LyftApiSession) {
             body = body,
         )
         val contentType = resp.header("Content-Type")?.lowercase().orEmpty()
-        Log.d(TAG, "POST $url -> ${resp.status} ($contentType, ${resp.bytes.size} bytes)")
+        Log.debug(TAG, "POST $url -> ${resp.status} ($contentType, ${resp.bytes.size} bytes)")
         if (!resp.isSuccess) {
             // Error bodies come back as JSON regardless of Accept; surface the reason.
             return QuoteResult.Failed(session.httpError(resp))
@@ -93,7 +93,7 @@ internal class LyftQuotesClient(private val session: LyftApiSession) {
         val isProto = contentType.contains("protobuf") || contentType.contains("octet-stream")
         var parsed = runCatching {
             if (isProto) offersParser.parseProto(resp.bytes) else offersParser.parseJson(resp.text)
-        }.onFailure { Log.w(TAG, "primary parse failed (proto=$isProto)", it) }.getOrDefault(ParsedOffers.EMPTY)
+        }.onFailure { Log.status(TAG, "primary parse failed (proto=$isProto)", it) }.getOrDefault(ParsedOffers.EMPTY)
         // Content-Type can lie or be absent; fall back to the other codec before giving up.
         if (parsed.quotes.isEmpty()) {
             parsed = runCatching {

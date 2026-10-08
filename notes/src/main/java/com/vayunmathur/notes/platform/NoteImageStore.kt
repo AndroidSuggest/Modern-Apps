@@ -5,7 +5,7 @@ package com.vayunmathur.notes.platform
 import kotlin.uuid.Uuid
 import android.content.Context
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 
 /**
@@ -34,7 +34,7 @@ object NoteImageStore {
             } ?: return null
             fileName
         } catch (e: Exception) {
-            Log.w(TAG, "import failed for $uri", e)
+            Log.status(TAG, "import failed for $uri", e)
             dest.delete()
             null
         }

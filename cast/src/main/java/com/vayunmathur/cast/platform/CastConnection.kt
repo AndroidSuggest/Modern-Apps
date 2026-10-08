@@ -1,7 +1,7 @@
 package com.vayunmathur.cast.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.R
 import com.vayunmathur.cast.domain.CastDevice
 import com.vayunmathur.cast.domain.ClientFailure
@@ -185,7 +185,7 @@ private fun CastController.failConnect(
     device: CastDevice,
     e: Exception,
 ) {
-    Log.w(TAG, "could not open a control channel to ${device.host}:${device.port}", e)
+    Log.status(TAG, "could not open a control channel to ${device.host}:${device.port}", e)
     isConnectingMutable.value = false
     deviceMutable.value = null
     sessionStateMutable.value = ClientState()

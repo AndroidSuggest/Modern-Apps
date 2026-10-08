@@ -4,7 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.CalendarContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.database.getStringOrNull
 import com.vayunmathur.everysync.auth.AccountStore
 import com.vayunmathur.everysync.data.RemoteEvent
@@ -67,7 +67,7 @@ object CalendarSink {
                 "${CalendarContract.Calendars._ID} ASC",
             )?.use { while (it.moveToNext()) existing += it.getLong(CURSOR_INDEX_FIRST) }
         } catch (expected: Exception) {
-            Log.e(TAG, "query calendar failed", expected)
+            Log.error(TAG, "query calendar failed", expected)
         }
         if (existing.isNotEmpty()) {
             // Delete any duplicates created by earlier races; keep the first.
@@ -78,7 +78,7 @@ object CalendarSink {
                         "${CalendarContract.Calendars._ID} = ?", arrayOf(dupId.toString()),
                     )
                 } catch (expected: Exception) {
-                    Log.e(TAG, "delete duplicate calendar failed", expected)
+                    Log.error(TAG, "delete duplicate calendar failed", expected)
                 }
             }
             return existing.first()
@@ -107,7 +107,7 @@ object CalendarSink {
                 CalendarContract.Calendars.CONTENT_URI.asSyncAdapter(accountName), values,
             )?.lastPathSegment?.toLong() ?: -1L
         } catch (expected: Exception) {
-            Log.e(TAG, "create calendar failed", expected)
+            Log.error(TAG, "create calendar failed", expected)
             -1L
         }
     }
@@ -131,7 +131,7 @@ object CalendarSink {
                 }
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "localUidToEtag failed", expected)
+            Log.error(TAG, "localUidToEtag failed", expected)
         }
         return out
     }
@@ -146,7 +146,7 @@ object CalendarSink {
                 null,
             )?.use { if (it.moveToFirst()) it.getLong(CURSOR_INDEX_FIRST) else null }
         } catch (expected: Exception) {
-            Log.e(TAG, "eventId failed", expected)
+            Log.error(TAG, "eventId failed", expected)
             null
         }
 
@@ -193,7 +193,7 @@ object CalendarSink {
                 )
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "upsertEvent failed", expected)
+            Log.error(TAG, "upsertEvent failed", expected)
         }
     }
 
@@ -205,7 +205,7 @@ object CalendarSink {
                 "${CalendarContract.Events._ID} = ?", arrayOf(id.toString()),
             )
         } catch (expected: Exception) {
-            Log.e(TAG, "deleteEvent failed", expected)
+            Log.error(TAG, "deleteEvent failed", expected)
         }
     }
 
@@ -223,7 +223,7 @@ object CalendarSink {
                 arrayOf(accountName, ACCOUNT_TYPE),
             )
         } catch (expected: Exception) {
-            Log.e(TAG, "purge failed", expected)
+            Log.error(TAG, "purge failed", expected)
         }
     }
 
@@ -239,7 +239,7 @@ object CalendarSink {
                 null,
             )?.use { c -> while (c.moveToNext()) ids += c.getLong(CURSOR_INDEX_FIRST) }
         } catch (expected: Exception) {
-            Log.e(TAG, "localCalendars failed", expected)
+            Log.error(TAG, "localCalendars failed", expected)
         }
         return ids
     }
@@ -276,7 +276,7 @@ object CalendarSink {
                 }
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "getLocalChanges failed", expected)
+            Log.error(TAG, "getLocalChanges failed", expected)
         }
         return changes
     }
@@ -319,7 +319,7 @@ object CalendarSink {
                 "${CalendarContract.Events._ID} = ?", arrayOf(eventId.toString()),
             )
         } catch (expected: Exception) {
-            Log.e(TAG, "clearDirty failed", expected)
+            Log.error(TAG, "clearDirty failed", expected)
         }
     }
 }

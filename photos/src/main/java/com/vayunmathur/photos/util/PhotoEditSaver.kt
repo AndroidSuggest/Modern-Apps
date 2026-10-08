@@ -7,7 +7,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.net.toUri
 import com.vayunmathur.library.ink.SerializedStroke
 import com.vayunmathur.photos.data.Photo
@@ -62,7 +62,7 @@ class PhotoEditSaver(private val vm: PhotoEditViewModel) {
                     _writePermissionRequest.value = result.intentSender
                 }
                 is WriteResult.Error -> {
-                    Log.e(TAG, "Save failed", result.exception)
+                    Log.error(TAG, "Save failed", result.exception)
                     onComplete()
                 }
             }
@@ -103,9 +103,9 @@ class PhotoEditSaver(private val vm: PhotoEditViewModel) {
                     }
                     resolver.update(uri, values, null, null)
                 } catch (e: IOException) {
-                    Log.e(TAG, "Overwrite FAILED after permission grant", e)
+                    Log.error(TAG, "Overwrite FAILED after permission grant", e)
                 } catch (e: SecurityException) {
-                    Log.e(TAG, "Overwrite FAILED after permission grant", e)
+                    Log.error(TAG, "Overwrite FAILED after permission grant", e)
                 }
             }
             onComplete()
@@ -166,9 +166,9 @@ class PhotoEditSaver(private val vm: PhotoEditViewModel) {
             resolver.update(uri, values, null, null)
             return WriteResult.Success
         } catch (e: IOException) {
-            Log.d(TAG, "Direct write failed, falling back to createWriteRequest", e)
+            Log.debug(TAG, "Direct write failed, falling back to createWriteRequest", e)
         } catch (e: SecurityException) {
-            Log.d(TAG, "Direct write failed, falling back to createWriteRequest", e)
+            Log.debug(TAG, "Direct write failed, falling back to createWriteRequest", e)
         }
         val pendingIntent = MediaStore.createWriteRequest(resolver, listOf(uri))
         return WriteResult.NeedsPermission(pendingIntent.intentSender, bytes, uri)

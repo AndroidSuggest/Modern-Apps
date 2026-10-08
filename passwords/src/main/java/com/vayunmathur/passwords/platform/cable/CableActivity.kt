@@ -5,7 +5,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -35,7 +35,7 @@ class CableActivity : FragmentActivity() {
 
         val uri = intent?.data?.toString() ?: intent?.getStringExtra(CableService.EXTRA_FIDO_URI)
         if (uri == null || !looksLikeFido(uri)) {
-            Log.e(TAG, "No FIDO caBLE URI in intent")
+            Log.error(TAG, "No FIDO caBLE URI in intent")
             finish()
             return
         }
@@ -51,7 +51,7 @@ class CableActivity : FragmentActivity() {
         val canAuth = BiometricManager.from(this)
             .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
-            Log.e(TAG, "Strong biometric unavailable: $canAuth")
+            Log.error(TAG, "Strong biometric unavailable: $canAuth")
             finish()
             return
         }
@@ -65,7 +65,7 @@ class CableActivity : FragmentActivity() {
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    Log.d(TAG, "Biometric error $errorCode: $errString")
+                    Log.debug(TAG, "Biometric error $errorCode: $errString")
                     finish()
                 }
             },

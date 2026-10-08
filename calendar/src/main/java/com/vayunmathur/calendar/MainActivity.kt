@@ -5,7 +5,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.CalendarContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -182,7 +182,7 @@ class MainActivity : ComponentActivity() {
                         parseICSFile(iS).isNotEmpty()
                     } == true
                 } catch (expected: Exception) {
-                    Log.e("MainActivity", "Error reading ICS file: $uri", expected)
+                    Log.error("MainActivity", "Error reading ICS file: $uri", expected)
                     false
                 }
             }

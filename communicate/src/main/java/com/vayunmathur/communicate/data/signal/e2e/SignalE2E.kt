@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal.e2e
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.signal.SignalAuthData
 import com.vayunmathur.communicate.data.signal.SignalDatabase
 import com.vayunmathur.communicate.data.signal.SignalE2EPreKey
@@ -182,7 +182,7 @@ class SignalE2E(
             val message = PreKeySignalMessage(ciphertext)
             // Which of our keys the sender used. A decryption failure here is almost always a mismatch
             // between these ids and what the store holds, so name them rather than guessing later.
-            Log.i(
+            Log.status(
                 TAG,
                 "inbound prekey message from $aci:$deviceId " +
                     "signedPreKeyId=${message.signedPreKeyId} " +

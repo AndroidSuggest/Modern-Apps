@@ -3,6 +3,7 @@ package com.vayunmathur.communicate.data.googlevoice.call
 import android.content.Context
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceClient
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceSession
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -92,7 +93,7 @@ object GoogleVoiceCallManager {
                     s.register()
                 }
             }.onFailure {
-                android.util.Log.e("GoogleVoiceCall", "placeCall setup failed", it)
+                Log.error("GoogleVoiceCall", "placeCall setup failed", it)
                 fail(it.message ?: "call setup failed")
             }
         }
@@ -111,7 +112,7 @@ object GoogleVoiceCallManager {
                 s.connect()
                 s.register()
             }.onFailure { reason ->
-                android.util.Log.e("GoogleVoiceCall", "registration failed", reason)
+                Log.error("GoogleVoiceCall", "registration failed", reason)
                 stopRegistration()
             }
         }
@@ -237,7 +238,7 @@ object GoogleVoiceCallManager {
     }
 
     private fun fail(reason: String) {
-        android.util.Log.e("GoogleVoiceCall", "call failed: $reason")
+        Log.error("GoogleVoiceCall", "call failed: $reason")
         cleanupCall()
         _state.value = CallState(phase = CallPhase.Ended, remoteNumber = remoteNumber)
         connection?.onCallEnded()
@@ -264,7 +265,7 @@ object GoogleVoiceCallManager {
             delay(REDIAL_DELAY_MS)
             registered = false
             runCatching { sip?.register() }.onFailure {
-                android.util.Log.e("GoogleVoiceCall", "registration refresh failed", it)
+                Log.error("GoogleVoiceCall", "registration refresh failed", it)
                 stopRegistration()
             }
         }

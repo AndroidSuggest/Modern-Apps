@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.ServiceId
 import org.signal.libsignal.protocol.fingerprint.NumericFingerprintGenerator
@@ -30,7 +30,7 @@ object SignalSafetyNumber {
         localIdentityKey: ByteArray,
         remoteAci: String,
         remoteIdentityKey: ByteArray,
-        warn: (String) -> Unit = { Log.w(TAG, it) },
+        warn: (String) -> Unit = { Log.status(TAG, it) },
     ): String? = try {
         val generator = NumericFingerprintGenerator(ITERATIONS)
         val fingerprint = generator.createFor(

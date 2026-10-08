@@ -1,4 +1,5 @@
 package com.vayunmathur.pdf.util
+import com.vayunmathur.library.log.Log
 
 /**
  * The raster half of [SafePdfParser]: image payload decoding and its budgets.
@@ -85,22 +86,22 @@ object SafePdfImages {
                 else -> {
                     // Rust returns no image at all for a format it could not produce, so an
                     // unknown format here is a wire mismatch, not a failed decode to paper over.
-                    android.util.Log.w("SafePdfParser", "Unknown bitmap format $format")
+                    Log.status("SafePdfParser", "Unknown bitmap format $format")
                     null
                 }
             }
         } catch (expected: IllegalArgumentException) {
-            android.util.Log.w("SafePdfParser", "decodeBitmap failed w=$w h=$h format=$format", expected)
+            Log.status("SafePdfParser", "decodeBitmap failed w=$w h=$h format=$format", expected)
             null
         } catch (expected: OutOfMemoryError) {
-            android.util.Log.w("SafePdfParser", "decodeBitmap OOM w=$w h=$h format=$format", expected)
+            Log.status("SafePdfParser", "decodeBitmap OOM w=$w h=$h format=$format", expected)
             null
         }
     }
 
     private fun decodeJpeg(w: Int, h: Int, data: ByteArray): android.graphics.Bitmap? {
         if (data.size > MAX_IMAGE_DATA_BYTES) {
-            android.util.Log.w("SafePdfParser", "JPEG too large ${data.size}")
+            Log.status("SafePdfParser", "JPEG too large ${data.size}")
             return null
         }
         // Subsample instead of dropping. Rust hands the JPEG over at full

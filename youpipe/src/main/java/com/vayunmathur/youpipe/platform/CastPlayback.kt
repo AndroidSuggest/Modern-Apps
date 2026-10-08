@@ -3,7 +3,7 @@ package com.vayunmathur.youpipe.platform
 import android.content.Context
 import android.media.AudioManager
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Surface
 import androidx.annotation.OptIn
 import androidx.compose.runtime.getValue
@@ -189,7 +189,7 @@ object CastPlayback {
         orphanJob?.cancel()
         orphanJob = scope.launch {
             delay(ORPHAN_GRACE_MS)
-            Log.i(TAG, "nothing drew into the cast for ${ORPHAN_GRACE_MS}ms; ending it")
+            Log.status(TAG, "nothing drew into the cast for ${ORPHAN_GRACE_MS}ms; ending it")
             close()
         }
     }
@@ -239,20 +239,20 @@ object CastPlayback {
             val session = newClient.openSession(width, height, wantAudio = true)
             client = newClient
             newClient.onEnded = { reason ->
-                Log.i(TAG, "the cast session ended (reason $reason)")
+                Log.status(TAG, "the cast session ended (reason $reason)")
                 close()
             }
             CastAudioTap.attach(session.audio)
             newClient.onCommand = { command -> apply(command) }
             startReporting(newClient)
             if (session.width != width || session.height != height) {
-                Log.i(
+                Log.status(
                     TAG,
                     "asked ${width}x$height, granted ${session.width}x${session.height} " +
                         "@ ${session.frameRate}fps on '${session.receiverName}'",
                 )
             } else {
-                Log.i(TAG, "casting ${width}x$height @ ${session.frameRate}fps as asked")
+                Log.status(TAG, "casting ${width}x$height @ ${session.frameRate}fps as asked")
             }
             _state.value = State.Casting(
                 surface = session.surface,
@@ -458,7 +458,7 @@ object CastPlayback {
         }.onFailure {
             // A device with a volume policy that refuses the write - a work profile, a restriction.
             // Nothing to report: the level the TV asked for simply does not take.
-            Log.w(TAG, "could not set the media volume", it)
+            Log.status(TAG, "could not set the media volume", it)
         }
     }
 
@@ -555,7 +555,7 @@ object CastAudioTap : TeeAudioProcessor.AudioBufferSink {
         // interleaved 16-bit is refused rather than sent as noise.
         supported = encoding == ENCODING_PCM_16BIT && sampleRateHz > 0 && channelCount > 0
         if (!supported) {
-            Log.w(TAG, "cannot tap audio at ${sampleRateHz}Hz, $channelCount ch, encoding $encoding")
+            Log.status(TAG, "cannot tap audio at ${sampleRateHz}Hz, $channelCount ch, encoding $encoding")
         }
         queue.clear()
     }
@@ -583,7 +583,7 @@ object CastAudioTap : TeeAudioProcessor.AudioBufferSink {
             } catch (e: java.io.IOException) {
                 // The Cast side closed the pipe; there is nothing to recover and nothing to say to
                 // the user, because the session teardown already will.
-                Log.i(TAG, "the PCM pipe closed", e)
+                Log.status(TAG, "the PCM pipe closed", e)
                 return
             }
         }

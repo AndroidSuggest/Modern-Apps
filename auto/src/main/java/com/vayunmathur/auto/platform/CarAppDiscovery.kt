@@ -4,7 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.car.app.CarAppService
 
 /**
@@ -44,7 +44,7 @@ object CarAppDiscovery {
             val found = runCatching {
                 pm.queryIntentServices(intent, PackageManager.GET_META_DATA)
             }.getOrElse {
-                Log.w(TAG, "could not query car apps for $category", it)
+                Log.status(TAG, "could not query car apps for $category", it)
                 emptyList()
             }
             for (info in found) {
@@ -62,7 +62,7 @@ object CarAppDiscovery {
                     categories = categories,
                 )
             }.getOrElse {
-                Log.w(TAG, "could not load car app $component", it)
+                Log.status(TAG, "could not load car app $component", it)
                 null
             }
         }.sortedBy { it.label.toString().lowercase() }
@@ -109,7 +109,7 @@ object CarAppDiscovery {
                     categories = categories,
                 )
             }.getOrElse {
-                Log.w(TAG, "first-party car app not installed: $packageName", it)
+                Log.status(TAG, "first-party car app not installed: $packageName", it)
                 null
             }
         }

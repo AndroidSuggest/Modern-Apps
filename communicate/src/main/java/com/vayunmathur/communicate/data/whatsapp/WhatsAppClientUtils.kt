@@ -6,7 +6,7 @@ import com.vayunmathur.communicate.data.whatsapp.decryptMedia
 import com.vayunmathur.communicate.data.whatsapp.encodeNode
 import com.vayunmathur.communicate.data.whatsapp.generateMessageId
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto
 import kotlinx.coroutines.Dispatchers
@@ -60,7 +60,7 @@ private fun collectUserDevices(list: WhatsAppProtocol.Node): List<String> {
 internal fun WhatsAppClient.trackUndecryptable(node: WhatsAppProtocol.Node) {
     val from = node.attrs["from"] ?: return
     val count = undecryptableTracker.merge(from, 1) { old, new -> old + new } ?: 1
-    Log.w(TAG, "Undecryptable message from $from (count: $count)")
+    Log.status(TAG, "Undecryptable message from $from (count: $count)")
 }
 
 /**
@@ -156,14 +156,14 @@ suspend fun WhatsAppClient.downloadMedia(
             readTimeoutMs = MEDIA_READ_TIMEOUT_MS,
         )
         if (!response.isSuccess) {
-            Log.e(TAG, "Media download failed: HTTP ${response.status}")
+            Log.error(TAG, "Media download failed: HTTP ${response.status}")
             return@withContext null
         }
         val encrypted = response.bytes
         if (encrypted.isEmpty()) return@withContext null
         WhatsAppProtocol.decryptMedia(encrypted, mediaKey, mediaType)
     } catch (expected: Exception) {
-        Log.e(TAG, "Media download/decrypt failed", expected)
+        Log.error(TAG, "Media download/decrypt failed", expected)
         null
     }
 }
@@ -287,7 +287,7 @@ private fun WhatsAppClient.cacheIncomingMedia(
             height = spec.height,
         )
     } catch (expected: Exception) {
-        Log.w(TAG, "Failed to cache incoming media for $msgId", expected)
+        Log.status(TAG, "Failed to cache incoming media for $msgId", expected)
         null
     }
 }
@@ -319,7 +319,7 @@ fun WhatsAppClient.logoutRemote() {
             try {
                 ws.send(WhatsAppProtocol.encodeNode(logoutNode))
             } catch (expected: Exception) {
-                Log.e(TAG, "Failed to send logout", expected)
+                Log.error(TAG, "Failed to send logout", expected)
             }
         }
         stop()

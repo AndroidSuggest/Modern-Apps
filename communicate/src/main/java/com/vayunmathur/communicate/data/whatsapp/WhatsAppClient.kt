@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.buildMediaConnQuery
 import com.vayunmathur.communicate.data.whatsapp.buildMexQuery
 import com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager
@@ -163,7 +163,7 @@ object WhatsAppClient {
         appContext = context.applicationContext as Application
         db = WhatsAppDatabase.getDatabase(appContext)
         WhatsAppCallManager.init(appContext, callBridge)
-        Log.i(TAG, "init")
+        Log.status(TAG, "init")
         runBlocking {
             val auth = WhatsAppAuthData.load(appContext)
             if (auth != null) {
@@ -196,7 +196,7 @@ object WhatsAppClient {
         // Never touch appContext / DAOs before init(); the sync service + MainActivity can call
         // stop() at startup (waSignedIn=false) before the client was ever initialized.
         if (!initialized.load()) return
-        Log.i(TAG, "stop — disconnecting WhatsApp session")
+        Log.status(TAG, "stop — disconnecting WhatsApp session")
         backfillJob?.cancel()
         qrJob?.cancel()
         qrRotateJob?.cancel()
@@ -234,7 +234,7 @@ object WhatsAppClient {
             try {
                 connect(auth)
             } catch (expected: Exception) {
-                Log.e(TAG, "forceResync connect failed", expected)
+                Log.error(TAG, "forceResync connect failed", expected)
                 scheduleReconnect()
             }
         }
@@ -252,7 +252,7 @@ object WhatsAppClient {
             // shift can't overflow/wrap once attempts grow large.
             val shift = reconnectAttempts.coerceAtMost(16)
             val delayMs = minOf(INITIAL_RECONNECT_DELAY_MS shl shift, MAX_RECONNECT_DELAY_MS)
-            Log.i(TAG, "Reconnecting in ${delayMs}ms (attempt ${reconnectAttempts + 1})")
+            Log.status(TAG, "Reconnecting in ${delayMs}ms (attempt ${reconnectAttempts + 1})")
             stateMutable.value = State.Connecting
             delay(delayMs)
             reconnectAttempts++
@@ -260,7 +260,7 @@ object WhatsAppClient {
             try {
                 connect(auth)
             } catch (expected: Exception) {
-                Log.e(TAG, "Reconnection failed", expected)
+                Log.error(TAG, "Reconnection failed", expected)
                 scheduleReconnect()
             }
         }
@@ -286,7 +286,7 @@ object WhatsAppClient {
                     try {
                         connect(auth)
                     } catch (expected: Exception) {
-                        Log.e(TAG, "reconnect on network-available failed", expected)
+                        Log.error(TAG, "reconnect on network-available failed", expected)
                         scheduleReconnect()
                     }
                 }
@@ -296,7 +296,7 @@ object WhatsAppClient {
         try {
             cm.registerDefaultNetworkCallback(cb)
         } catch (expected: Exception) {
-            Log.e(TAG, "registerDefaultNetworkCallback failed", expected)
+            Log.error(TAG, "registerDefaultNetworkCallback failed", expected)
             connectivityCallback = null
         }
     }
@@ -308,7 +308,7 @@ object WhatsAppClient {
             (appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)
                 ?.unregisterNetworkCallback(cb)
         } catch (expected: Exception) {
-            Log.e(TAG, "unregisterNetworkCallback failed", expected)
+            Log.error(TAG, "unregisterNetworkCallback failed", expected)
         }
     }
 
@@ -463,7 +463,7 @@ object WhatsAppClient {
             crypto.processPreKeyBundle(jid, bundle)
             true
         } catch (expected: Exception) {
-            Log.e(TAG, "Failed to process prekey bundle for $jid", expected)
+            Log.error(TAG, "Failed to process prekey bundle for $jid", expected)
             false
         }
     }
@@ -641,7 +641,7 @@ object WhatsAppClient {
             return try {
                 crypto.decryptDM(senderJid, isPreKey = encType == "pkmsg", ciphertext = ciphertext)
             } catch (expected: Exception) {
-                Log.w(TAG, "call key decrypt failed from $senderJid", expected)
+                Log.status(TAG, "call key decrypt failed from $senderJid", expected)
                 null
             }
         }

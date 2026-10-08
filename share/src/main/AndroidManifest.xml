@@ -44,6 +44,7 @@
     <uses-feature android:name="android.hardware.wifi" android:required="false" />
 
     <application
+        android:name=".ShareApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"

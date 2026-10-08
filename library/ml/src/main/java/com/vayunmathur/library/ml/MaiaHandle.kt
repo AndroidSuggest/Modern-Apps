@@ -2,7 +2,7 @@ package com.vayunmathur.library.ml
 
 import android.content.res.AssetManager
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * On-device human-move prediction for chess: Maia3-5M on the Vulkan compute runtime.
@@ -125,7 +125,7 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
                 try {
                     create(assets, path)
                 } catch (expected: Exception) {
-                    Log.e(TAG, "cannot open $path", expected)
+                    Log.error(TAG, "cannot open $path", expected)
                     0L
                 }
             }

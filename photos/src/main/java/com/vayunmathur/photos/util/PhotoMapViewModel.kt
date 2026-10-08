@@ -2,7 +2,7 @@ package com.vayunmathur.photos.util
 
 import android.app.Application
 import android.location.Geocoder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -92,10 +92,10 @@ class PhotoMapViewModel(application: Application) : AndroidViewModel(application
                 try {
                     geocoder.getFromLocation(lat, long, 1)?.firstOrNull()?.countryName ?: "Unknown"
                 } catch (e: IOException) {
-                    Log.e(TAG, "geocoder failed", e)
+                    Log.error(TAG, "geocoder failed", e)
                     "Unknown"
                 } catch (e: IllegalArgumentException) {
-                    Log.e(TAG, "geocoder failed", e)
+                    Log.error(TAG, "geocoder failed", e)
                     "Unknown"
                 }
             }

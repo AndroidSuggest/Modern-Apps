@@ -3,7 +3,7 @@ package com.vayunmathur.photos.ui
 import android.content.Context
 import android.net.Uri
 import android.provider.ContactsContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.res.pluralStringResource
@@ -125,10 +125,10 @@ private fun contactDisplayName(context: Context, uri: Uri): String? = try {
         if (cursor.moveToFirst()) cursor.getString(0)?.takeIf { it.isNotBlank() } else null
     }
 } catch (e: SecurityException) {
-    Log.w("PeoplePage", "Could not read the picked contact's name", e)
+    Log.status("PeoplePage", "Could not read the picked contact's name", e)
     null
 } catch (e: IllegalArgumentException) {
-    Log.w("PeoplePage", "Could not read the picked contact's name", e)
+    Log.status("PeoplePage", "Could not read the picked contact's name", e)
     null
 }
 

@@ -2,7 +2,7 @@ package com.vayunmathur.camera.util
 
 import android.hardware.Sensor
 import android.hardware.SensorManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.util.Rational
 import androidx.camera.core.CameraSelector
 import androidx.lifecycle.viewModelScope
@@ -60,7 +60,7 @@ internal fun CameraViewModel.startDebugLogging() {
         var last: List<Pair<String, Float>> = emptyList()
         availableZoomLevels.collect { levels ->
             if (levels != last) {
-                Log.d(
+                Log.debug(
                     "NightPreview",
                     "CameraViewModel availableZoomLevels FLOW emitted=$levels previous=$last " +
                         "nightPreviewActive=${nightPreviewActiveMutable.value} " +
@@ -76,7 +76,7 @@ internal fun CameraViewModel.startDebugLogging() {
         surfaceRequest.collect { req ->
             val res = req?.resolution
             if (res != lastRes) {
-                Log.d(
+                Log.debug(
                     "NightPreview",
                     "CameraViewModel surfaceRequest FLOW emitted res=$res previous=$lastRes " +
                         "nightPreviewActive=${nightPreviewActiveMutable.value} " +
@@ -89,7 +89,7 @@ internal fun CameraViewModel.startDebugLogging() {
     }
     viewModelScope.launch {
         nightModeActive.collect { active ->
-            Log.d(
+            Log.debug(
                 "NightPreview",
                 "CameraViewModel nightModeActive FLOW=$active " +
                     "lowLight=${lowLightDetectedMutable.value} " +

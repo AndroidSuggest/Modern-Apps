@@ -1,5 +1,6 @@
 // PACKAGE STRUCTURE EXCEPTION (JNI): FQN frozen for native RegisterNatives/symbol mangling
 package com.vayunmathur.vpn.util
+import com.vayunmathur.library.log.Log
 
 /**
  * JNI bridge to the native `vpn_wireguard` Rust library.
@@ -14,7 +15,7 @@ object VpnNative {
         try {
             System.loadLibrary("vpn_wireguard")
         } catch (expected: UnsatisfiedLinkError) {
-            android.util.Log.e("VpnNative", "System.loadLibrary(vpn_wireguard) failed", expected)
+            Log.error("VpnNative", "System.loadLibrary(vpn_wireguard) failed", expected)
             throw expected
         }
     }

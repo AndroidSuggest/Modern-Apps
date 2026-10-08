@@ -2,7 +2,7 @@ package com.vayunmathur.calculator.widget
 
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -106,7 +106,7 @@ class CalculatorGlanceWidget : GlanceAppWidget() {
                 }
             }
         } catch (t: Throwable) {
-            Log.e(TAG, "providePreview failed", t)
+            Log.error(TAG, "providePreview failed", t)
             try {
                 provideContent {
                     DynamicThemeGlance(context) {

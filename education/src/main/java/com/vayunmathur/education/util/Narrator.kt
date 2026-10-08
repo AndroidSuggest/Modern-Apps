@@ -3,7 +3,7 @@ package com.vayunmathur.education.util
 import android.content.Context
 import android.media.MediaPlayer
 import android.speech.tts.TextToSpeech
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -59,7 +59,7 @@ class Narrator(context: Context) {
         }
         true
     } catch (e: Exception) {
-        Log.w(TAG, "could not play bundled clip $path", e)
+        Log.status(TAG, "could not play bundled clip $path", e)
         false
     }
 

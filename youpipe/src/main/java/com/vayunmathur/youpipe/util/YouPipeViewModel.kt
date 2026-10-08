@@ -2,7 +2,7 @@ package com.vayunmathur.youpipe.util
 
 import android.app.Application
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -286,9 +286,9 @@ class YouPipeViewModel(
                     emptyList()
                 }
             } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
-                Log.e(TAG, "Suggestion error", e)
+                Log.error(TAG, "Suggestion error", e)
             } catch (e: java.io.IOException) {
-                Log.e(TAG, "Suggestion error", e)
+                Log.error(TAG, "Suggestion error", e)
             }
         }
     }
@@ -323,9 +323,9 @@ class YouPipeViewModel(
                 fetchDeArrowForVideos(results.filterIsInstance<VideoInfo>().map { it.videoID })
                 _suggestions.value = emptyList()
             } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
-                Log.e(TAG, "Search error", e)
+                Log.error(TAG, "Search error", e)
             } catch (e: java.io.IOException) {
-                Log.e(TAG, "Search error", e)
+                Log.error(TAG, "Search error", e)
             }
         }
     }
@@ -357,9 +357,9 @@ class YouPipeViewModel(
                 }
                 fetchDeArrowForVideos(channelVideos.map { it.videoID })
             } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
-                Log.e(TAG, "Channel load error", e)
+                Log.error(TAG, "Channel load error", e)
             } catch (e: java.io.IOException) {
-                Log.e(TAG, "Channel load error", e)
+                Log.error(TAG, "Channel load error", e)
             }
         }
     }

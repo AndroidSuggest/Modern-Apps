@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.data.rcs
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -123,7 +123,7 @@ object RcsMsrpTls {
             cached = fresh
             fresh
         }.getOrElse {
-            Log.w(TAG, "TLS identity unavailable", it)
+            Log.status(TAG, "TLS identity unavailable", it)
             null
         }
     }
@@ -143,7 +143,7 @@ object RcsMsrpTls {
     ): SSLSocket? = withContext(Dispatchers.IO) {
         if (!RcsFeature.enabled) return@withContext null
         if (expectedFingerprint.isNullOrBlank()) {
-            Log.w(TAG, "No peer fingerprint — refusing TLS without pinning")
+            Log.status(TAG, "No peer fingerprint — refusing TLS without pinning")
             return@withContext null
         }
         val identity = ensureIdentity(context) ?: return@withContext null
@@ -163,10 +163,10 @@ object RcsMsrpTls {
                     "MSRP fingerprint mismatch (SNI-less DANE-less pinning)",
                 )
             }
-            Log.i(TAG, "TLS client established to $host:$port (pinned)")
+            Log.status(TAG, "TLS client established to $host:$port (pinned)")
             ssl
         }.getOrElse {
-            Log.w(TAG, "TLS client handshake failed", it)
+            Log.status(TAG, "TLS client handshake failed", it)
             runCatching { tcp.close() }
             null
         }
@@ -195,7 +195,7 @@ object RcsMsrpTls {
                 init(kmf.keyManagers, arrayOf<TrustManager>(PermissiveTrustManager), SecureRandom())
             }
         }.getOrElse {
-            Log.w(TAG, "TLS server context failed", it)
+            Log.status(TAG, "TLS server context failed", it)
             null
         }
     }
@@ -281,7 +281,7 @@ object RcsMsrpTls {
             )
             Identity(certDer, fingerprintOf(certDer), kp.private)
         }.getOrElse {
-            Log.w(TAG, "TLS identity generation failed", it)
+            Log.status(TAG, "TLS identity generation failed", it)
             null
         }
     }

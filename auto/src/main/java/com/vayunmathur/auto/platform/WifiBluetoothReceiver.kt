@@ -5,7 +5,7 @@ import android.bluetooth.BluetoothDevice
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.network.WifiDirectConnector
 
 /**
@@ -30,19 +30,19 @@ class WifiBluetoothReceiver : BroadcastReceiver() {
                 val device: BluetoothDevice? =
                     intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
                 val mac = device?.address ?: return
-                Log.i(TAG, "BT ACL connected to $mac during wireless setup")
+                Log.status(TAG, "BT ACL connected to $mac during wireless setup")
                 // Re-arm only: the CDM association (or the tap) owns the
                 // trigger decision. Reporting the MAC here would start a
                 // bring-up the user never consented to.
             }
             BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
-                Log.i(TAG, "BT ACL disconnected; cancelling wireless bring-up")
+                Log.status(TAG, "BT ACL disconnected; cancelling wireless bring-up")
                 WifiDirectConnector.cancel()
             }
             BluetoothAdapter.ACTION_STATE_CHANGED -> {
                 val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)
                 if (state == BluetoothAdapter.STATE_OFF) {
-                    Log.i(TAG, "Bluetooth off; cancelling wireless bring-up")
+                    Log.status(TAG, "Bluetooth off; cancelling wireless bring-up")
                     WifiDirectConnector.cancel()
                 }
             }

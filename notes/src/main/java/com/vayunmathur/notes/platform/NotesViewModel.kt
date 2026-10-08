@@ -2,7 +2,7 @@ package com.vayunmathur.notes.platform
 
 import android.app.Application
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -152,7 +152,7 @@ class NotesViewModel(
                         repository.upsert(Note(0, name, content))
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error importing file: $uri", e)
+                    Log.error(TAG, "Error importing file: $uri", e)
                 }
             }
         }
@@ -204,7 +204,7 @@ class NotesViewModel(
             val name = IntentHelper.getFileName(ctx, uri) ?: "Untitled"
             ExternalNoteContent(name.removeSuffix(".markdown").removeSuffix(".md"), content)
         } catch (e: Exception) {
-            Log.e(TAG, "Error reading external note: $uriString", e)
+            Log.error(TAG, "Error reading external note: $uriString", e)
             null
         }
     }
@@ -222,7 +222,7 @@ class NotesViewModel(
                     } ?: return@withContext false
                     true
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error saving external note: $uriString", e)
+                    Log.error(TAG, "Error saving external note: $uriString", e)
                     false
                 }
             }

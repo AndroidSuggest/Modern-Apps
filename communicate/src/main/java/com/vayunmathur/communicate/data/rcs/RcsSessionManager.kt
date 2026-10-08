@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.rcs
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -432,7 +432,7 @@ object RcsSessionManager {
                 established.msrpLocalPath?.contains("msrp://") == true &&
                 RcsMsrpListen.isListening()
             )
-        Log.i(TAG, "Session established ${session.dialogId} setup=$setup usable=$usable")
+        Log.status(TAG, "Session established ${session.dialogId} setup=$setup usable=$usable")
         if (!usable) {
             sessionsMutable.value = sessionsMutable.value + (key to
                 (sessionsMutable.value[key] ?: established).copy(msrpRemotePath = null))
@@ -447,7 +447,7 @@ object RcsSessionManager {
         }.getOrDefault(false)
         sessionsMutable.value = sessionsMutable.value + (key to
             ((sessionsMutable.value[key] ?: established).copy(confirmed = true)))
-        if (!acked) Log.w(TAG, "ACK not accepted for $callId (dialog unconfirmed at SIP layer)")
+        if (!acked) Log.status(TAG, "ACK not accepted for $callId (dialog unconfirmed at SIP layer)")
     }
 
     /**
@@ -462,7 +462,7 @@ object RcsSessionManager {
             sessionsMutable.value = sessionsMutable.value - entry.key
             RcsMsrpListen.dropPending(entry.key)
             backoffUntil[entry.key] = System.currentTimeMillis() + DIALOG_ERROR_BACKOFF_MS
-            Log.w(TAG, "Dialog error $statusCode for ${entry.key}; backing off")
+            Log.status(TAG, "Dialog error $statusCode for ${entry.key}; backing off")
         }
         pendingOffersMutable.remove(callId)
         answerFingerprintsMutable.remove(callId)
@@ -576,7 +576,7 @@ object RcsSessionManager {
             msrpSecure = secure,
             msrpLocalPath = localPath ?: session.msrpLocalPath,
         ))
-        Log.i(TAG, "Re-INVITE applied for ${entry.key} setup=$setup secure=$secure")
+        Log.status(TAG, "Re-INVITE applied for ${entry.key} setup=$setup secure=$secure")
     }
 
     /**

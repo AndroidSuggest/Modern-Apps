@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,7 +42,7 @@ class SignalEventProcessor(private val db: SignalDatabase) {
                 try {
                     handle(event)
                 } catch (expected: Throwable) {
-                    Log.e(TAG, "failed to process ${event::class.simpleName}", expected)
+                    Log.error(TAG, "failed to process ${event::class.simpleName}", expected)
                 }
             }
         }

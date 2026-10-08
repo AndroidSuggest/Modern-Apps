@@ -1,6 +1,6 @@
 package com.vayunmathur.cast.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.protocol.EphemeralTls
 import com.vayunmathur.cast.protocol.ExchangeOutcome
 import com.vayunmathur.cast.protocol.MediaProxyExchange
@@ -131,7 +131,7 @@ class MediaProxyServer(
             val socket = ServerSocket(0, MAX_CONNECTIONS, InetAddress.getByName("0.0.0.0"))
             server = socket
             val boundAddresses = addresses.joinToString { it.hostAddress ?: "?" }
-            Log.i(TAG, "media proxy listening on ${socket.localPort} for $boundAddresses")
+            Log.status(TAG, "media proxy listening on ${socket.localPort} for $boundAddresses")
             accept(socket)
             Endpoint(socket.localPort, credentials.fingerprint)
         } catch (e: IOException) {
@@ -146,7 +146,7 @@ class MediaProxyServer(
     }
 
     private fun failStart(e: Exception): Endpoint? {
-        Log.w(TAG, "could not start the media proxy", e)
+        Log.status(TAG, "could not start the media proxy", e)
         stop()
         return null
     }
@@ -203,12 +203,12 @@ class MediaProxyServer(
 
     private fun CoroutineScope.failAccept(e: Exception): Socket? {
         // A failed accept after [stop] closed the server socket is the teardown itself, not news.
-        if (isActive) Log.w(TAG, "accept failed", e)
+        if (isActive) Log.status(TAG, "accept failed", e)
         return null
     }
 
     private fun refuseClient(client: Socket) {
-        Log.w(TAG, "refusing a connection: already serving $MAX_CONNECTIONS")
+        Log.status(TAG, "refusing a connection: already serving $MAX_CONNECTIONS")
         connections.decrementAndGet()
         runCatching { client.close() }
     }
@@ -265,21 +265,21 @@ class MediaProxyServer(
     private fun endConnection(client: Socket, e: Exception) {
         // A player that has finished with a range simply closes, so this is the ordinary end
         // of a connection as often as it is a fault.
-        Log.d(TAG, "connection from ${client.inetAddress?.hostAddress} ended: ${e.javaClass.simpleName}")
+        Log.debug(TAG, "connection from ${client.inetAddress?.hostAddress} ended: ${e.javaClass.simpleName}")
     }
 
     private fun report(outcome: ExchangeOutcome, client: Socket) {
         val peer = client.inetAddress?.hostAddress
         when (outcome) {
             is ExchangeOutcome.Served ->
-                Log.d(TAG, "served ${outcome.resourceId} ${outcome.bytes} bytes to $peer")
+                Log.debug(TAG, "served ${outcome.resourceId} ${outcome.bytes} bytes to $peer")
             is ExchangeOutcome.Rejected ->
                 // Logged as a warning because on a pinned, tokenised connection there is no
                 // legitimate source of a rejected request: it is either a bug at our end or a
                 // peer that should not be talking to us.
-                Log.w(TAG, "refused $peer with ${outcome.status}: ${outcome.detail}")
+                Log.status(TAG, "refused $peer with ${outcome.status}: ${outcome.detail}")
             is ExchangeOutcome.Truncated ->
-                Log.w(
+                Log.status(
                     TAG,
                     "${outcome.resourceId} gave ${outcome.actual} of ${outcome.expected} bytes; " +
                         "closing so the player sees a short body rather than a stall",

@@ -7,7 +7,7 @@ import android.content.ContentUris
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.provider.ContactsContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.collection.LruCache
 import androidx.core.graphics.scale
 import androidx.lifecycle.AndroidViewModel
@@ -326,7 +326,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         try {
             refreshContactsFromSystem()
         } catch (e: Exception) {
-            Log.e("ContactViewModel", "Error loading contacts", e)
+            Log.error("ContactViewModel", "Error loading contacts", e)
         } finally {
             _hasLoadedContacts.value = true
         }
@@ -453,7 +453,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
                 photoCache.put(base64, it)
             }
         } catch (e: IllegalArgumentException) {
-            Log.e("ContactViewModel", "Error decoding contact photo", e)
+            Log.error("ContactViewModel", "Error decoding contact photo", e)
             null
         }
     }

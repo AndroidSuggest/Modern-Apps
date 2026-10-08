@@ -1,7 +1,7 @@
 package com.vayunmathur.passwords.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.credentials.provider.CallingAppInfo
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -63,11 +63,11 @@ object PasskeyUtils {
                 .bufferedReader().use { it.readText() }
             val origin = callingAppInfo.getOrigin(allowList)
             if (!origin.isNullOrEmpty()) {
-                Log.d(TAG, "Resolved privileged browser origin: $origin")
+                Log.debug(TAG, "Resolved privileged browser origin: $origin")
                 origin.removeSuffix("/")
             } else null
         } catch (expected: IllegalArgumentException) {
-            Log.d(TAG, "No privileged browser match: ${expected.message}")
+            Log.debug(TAG, "No privileged browser match: ${expected.message}")
             null
         }
     }

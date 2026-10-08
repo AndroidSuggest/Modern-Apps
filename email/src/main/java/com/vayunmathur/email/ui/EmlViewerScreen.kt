@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -232,7 +233,7 @@ private fun openEmlAttachment(context: Context, att: EmlAttachment, onResult: (B
             onResult(true)
         } catch (_: Exception) { onResult(false) }
     } catch (ignored: Exception) {
-        android.util.Log.w("EmlViewer", "open attachment failed: ${ignored.message}")
+        Log.status("EmlViewer", "open attachment failed: ${ignored.message}")
         onResult(false)
     }
 }

@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.googlevoice.call
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.googlevoice.GvSipRegisterInfo
 import com.vayunmathur.library.network.WebSocketClient
 import kotlinx.coroutines.CoroutineScope
@@ -189,12 +189,12 @@ class SipClient(
     // ------------------------------------------------------------------
 
     private suspend fun send(message: String) {
-        Log.d(TAG, "SIP >>\n$message")
+        Log.debug(TAG, "SIP >>\n$message")
         socket?.send(message)
     }
 
     private fun handleIncoming(message: String) {
-        Log.d(TAG, "SIP <<\n$message")
+        Log.debug(TAG, "SIP <<\n$message")
         val firstLine = message.lineSequence().firstOrNull()?.trim().orEmpty()
         val headers = parseHeaders(message)
         headers["to"]?.let { extractTag(it)?.let { t -> toTag = t } }

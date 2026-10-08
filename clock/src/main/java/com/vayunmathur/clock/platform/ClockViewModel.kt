@@ -3,7 +3,7 @@ package com.vayunmathur.clock.platform
 import android.app.Application
 import android.content.Intent
 import android.provider.AlarmClock
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -302,7 +302,7 @@ class ClockViewModel(
             val map = try {
                 ctx.assets.open("cities.bin").use { parseCitiesBin(it) }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to load cities.bin", e)
+                Log.error(TAG, "Failed to load cities.bin", e)
                 emptyMap()
             }
             _cities.value = map

@@ -22,6 +22,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <application
+        android:name=".PhotosApplication"
         android:allowBackup="true"
         android:backupAgent=".util.AppBackupAgent"
         android:dataExtractionRules="@xml/data_extraction_rules"

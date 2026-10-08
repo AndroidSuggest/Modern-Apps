@@ -4,7 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.os.Environment
 import android.provider.MediaStore
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.email.data.Attachment
 import com.vayunmathur.email.data.EmailFolder
 import com.vayunmathur.email.platform.EmailManager
@@ -80,14 +80,14 @@ object ImapClient {
                     conn.startTls()
                     caps = conn.capability()
                 } catch (e: IOException) {
-                    Log.w(TAG, "STARTTLS failed ${server.host}: ${e.message}")
+                    Log.status(TAG, "STARTTLS failed ${server.host}: ${e.message}")
                 }
             } else if (!server.useSsl && caps.has("LOGINDISABLED")) {
                 try {
                     conn.startTls()
                     caps = conn.capability()
                 } catch (e: IOException) {
-                    Log.w(TAG, "STARTTLS required failed: ${e.message}")
+                    Log.status(TAG, "STARTTLS required failed: ${e.message}")
                 }
             }
 
@@ -103,7 +103,7 @@ object ImapClient {
                             try {
                                 conn.authenticatePlain(user, auth.value)
                             } catch (fallbackError: IOException) {
-                                Log.w(TAG, "PLAIN fallback failed: ${fallbackError.message}")
+                                Log.status(TAG, "PLAIN fallback failed: ${fallbackError.message}")
                                 throw e
                             }
                         } else throw e
@@ -266,7 +266,7 @@ object ImapClient {
         try {
             MimeParser.parseMessage(bytes, uid, user, canonicalizeMailbox(folderName), context)
         } catch (_: Exception) {
-            Log.w(TAG, "parse failed UID $uid")
+            Log.status(TAG, "parse failed UID $uid")
             Triple(null, false, emptyList())
         }
     }
@@ -293,7 +293,7 @@ object ImapClient {
                 context.applicationContext,
             )
         } catch (_: Exception) {
-            Log.w(TAG, "full parse fail UID $uid")
+            Log.status(TAG, "full parse fail UID $uid")
             Triple<String?, Boolean, List<Attachment>>(null, false, emptyList())
         }
         EmailManager.FullFetchResult(triple)

@@ -5,7 +5,7 @@ import android.telephony.IccOpenLogicalChannelResponse
 import android.telephony.TelephonyManager
 import android.telephony.UiccCardInfo
 import android.telephony.UiccPortInfo
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.euicc.EuiccNative
 import java.lang.reflect.Method
 
@@ -65,7 +65,7 @@ class EuiccChannelManager(context: Context) {
         if (slotIndex < 0) throw EuiccException("eUICC reports no physical slot index")
 
         val resolved = EuiccTarget(slotIndex, port?.portIndex ?: 0)
-        Log.i(TAG, "eUICC at slot ${resolved.slotIndex} port ${resolved.portIndex}")
+        Log.status(TAG, "eUICC at slot ${resolved.slotIndex} port ${resolved.portIndex}")
         return resolved
     }
 

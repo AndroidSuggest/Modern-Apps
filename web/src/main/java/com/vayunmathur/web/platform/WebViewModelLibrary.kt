@@ -1,6 +1,6 @@
 package com.vayunmathur.web.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.web.data.Bookmark
 import com.vayunmathur.web.data.BookmarkFolder
 import com.vayunmathur.web.data.HistoryEntry
@@ -15,7 +15,7 @@ fun WebViewModel.recordHistoryVisit(url: String, title: String) {
     if (activeTab?.isPrivate == true) return
     scope.launch {
         runCatching { repository.history.upsert(HistoryEntry(url = url, title = title)) }
-            .onFailure { Log.e(TAG, "recordHistory", it) }
+            .onFailure { Log.error(TAG, "recordHistory", it) }
     }
 }
 

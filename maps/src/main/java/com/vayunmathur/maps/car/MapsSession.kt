@@ -2,7 +2,7 @@ package com.vayunmathur.maps.car
 
 import android.Manifest
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.car.app.Screen
 import androidx.car.app.Session
 import androidx.car.app.navigation.NavigationManager
@@ -90,7 +90,7 @@ class MapsSession : Session() {
                             .build()
                     )
                 }
-            }.onFailure { Log.w(TAG, "setVoiceAssistantCapabilities failed", it) }
+            }.onFailure { Log.status(TAG, "setVoiceAssistantCapabilities failed", it) }
         }
 
         // Mirror the existing session state into the host's NavigationManager.
@@ -116,7 +116,7 @@ class MapsSession : Session() {
             val intent = Intent(carContext, NavigationService::class.java)
                 .apply { action = NavigationService.ACTION_STOP }
             carContext.startService(intent)
-        }.onFailure { Log.w(TAG, "stopExistingNavigation failed", it) }
+        }.onFailure { Log.status(TAG, "stopExistingNavigation failed", it) }
     }
 
     private companion object {

@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.companion.AssociationInfo
 import android.companion.CompanionDeviceService
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.annotation.RequiresApi
 import com.vayunmathur.auto.network.WifiDirectConnector
 
@@ -33,9 +33,9 @@ class CarCompanionDeviceService : CompanionDeviceService() {
         // trigger path. Display name is for the trace only -- the MAC is the
         // identity the RFCOMM fallback dials.
         val mac = associationInfo.deviceMacAddress?.toString()
-        Log.i(TAG, "companion head unit appeared: ${associationInfo.displayName} ($mac)")
+        Log.status(TAG, "companion head unit appeared: ${associationInfo.displayName} ($mac)")
         if (mac.isNullOrBlank()) {
-            Log.w(TAG, "companion association without a MAC; wireless trigger skipped")
+            Log.status(TAG, "companion association without a MAC; wireless trigger skipped")
             return
         }
         WifiDirectConnector.startFromAssociation(this, mac)
@@ -43,7 +43,7 @@ class CarCompanionDeviceService : CompanionDeviceService() {
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onDeviceDisappeared(associationInfo: AssociationInfo) {
-        Log.i(TAG, "companion head unit disappeared: ${associationInfo.displayName}")
+        Log.status(TAG, "companion head unit disappeared: ${associationInfo.displayName}")
         WifiDirectConnector.cancel()
     }
 

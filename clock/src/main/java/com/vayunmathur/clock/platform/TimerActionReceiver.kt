@@ -6,7 +6,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import com.vayunmathur.clock.R
 import com.vayunmathur.clock.data.ClockRepository
@@ -31,7 +31,7 @@ class TimerActionReceiver : BroadcastReceiver() {
             try {
                 handleAction(context, action, timerId)
             } catch (e: Exception) {
-                Log.e(TAG, "Timer $timerId: action $action failed", e)
+                Log.error(TAG, "Timer $timerId: action $action failed", e)
             } finally {
                 pendingResult.finish()
             }

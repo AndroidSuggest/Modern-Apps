@@ -1,7 +1,7 @@
 package com.vayunmathur.appstore.data.installer
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.appstore.data.AppDatabase
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.PinnedStampEntity
@@ -142,7 +142,7 @@ class InstallCoordinator(
     }
 
     private fun failInstall(packageName: String, e: Exception): SessionInstaller.Outcome {
-        Log.e(TAG, "Install failed for $packageName", e)
+        Log.error(TAG, "Install failed for $packageName", e)
         stage(packageName, InstallStage.Failed(e.message ?: "download failed"))
         return SessionInstaller.Outcome(false, VerificationResult.Rejected(e.message ?: "download failed"))
     }
@@ -349,7 +349,7 @@ class InstallCoordinator(
             val splits = try {
                 accrescent.downloadInfo(app.packageName)
             } catch (expected: IncompatibleDeviceException) {
-                Log.w(TAG, "no Accrescent build for ${app.packageName}", expected)
+                Log.status(TAG, "no Accrescent build for ${app.packageName}", expected)
                 return@withContext SessionInstaller.Outcome(
                     false, VerificationResult.Rejected("this app has no build for your device")
                 )
@@ -481,9 +481,9 @@ class InstallCoordinator(
                 )
             )
         } catch (expected: android.database.sqlite.SQLiteException) {
-            Log.w(TAG, "pin stamp for $packageName", expected)
+            Log.status(TAG, "pin stamp for $packageName", expected)
         } catch (expected: IllegalStateException) {
-            Log.w(TAG, "pin stamp for $packageName", expected)
+            Log.status(TAG, "pin stamp for $packageName", expected)
         }
     }
 

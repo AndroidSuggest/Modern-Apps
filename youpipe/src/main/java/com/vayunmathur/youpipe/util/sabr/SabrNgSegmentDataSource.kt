@@ -7,6 +7,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
+import com.vayunmathur.library.log.Log
 import java.io.IOException
 import java.io.InputStream
 
@@ -137,7 +138,7 @@ class SabrNgSegmentDataSource(
         try {
             closeStream()
         } catch (e: IOException) {
-            android.util.Log.w(TAG, "Failed to close segment stream", e)
+            Log.status(TAG, "Failed to close segment stream", e)
         }
     }
 

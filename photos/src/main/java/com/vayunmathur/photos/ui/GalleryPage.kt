@@ -18,6 +18,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.photos.Route
 import com.vayunmathur.photos.util.GalleryActions
@@ -115,12 +116,12 @@ fun GalleryPage(
                                     IntentSenderRequest.Builder(pendingIntent.intentSender).build()
                                 )
                             } catch (e: SecurityException) {
-                                android.util.Log.e("GalleryPage", "MediaStore delete request failed", e)
+                                Log.error("GalleryPage", "MediaStore delete request failed", e)
                                 // Fallback: clear selection and refresh anyway
                                 galleryViewModel.clearSelection()
                                 galleryViewModel.runSync()
                             } catch (e: ActivityNotFoundException) {
-                                android.util.Log.e("GalleryPage", "MediaStore delete request failed", e)
+                                Log.error("GalleryPage", "MediaStore delete request failed", e)
                                 // Fallback: clear selection and refresh anyway
                                 galleryViewModel.clearSelection()
                                 galleryViewModel.runSync()

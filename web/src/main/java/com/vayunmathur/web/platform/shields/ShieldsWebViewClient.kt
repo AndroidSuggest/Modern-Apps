@@ -3,7 +3,7 @@ package com.vayunmathur.web.platform.shields
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -87,7 +87,7 @@ open class ShieldsWebViewClient(
             farbleHandle?.remove()
             farbleHandle = WebViewCompat.addDocumentStartJavaScript(view, script, setOf("*"))
             installedFarbling = script
-        }.onFailure { Log.w(TAG, "farbling script rejected", it) }
+        }.onFailure { Log.status(TAG, "farbling script rejected", it) }
     }
 
     // ---------------------------------------------------------------- network
@@ -193,7 +193,7 @@ open class ShieldsWebViewClient(
                 { _, message, _, isMainFrame, reply -> onCosmeticQuery(message, isMainFrame, reply) },
             )
             cosmeticChannelInstalled = true
-        }.onFailure { Log.w(TAG, "cosmetic channel unavailable", it) }
+        }.onFailure { Log.status(TAG, "cosmetic channel unavailable", it) }
     }
 
     private fun onCosmeticQuery(

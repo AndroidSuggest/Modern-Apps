@@ -4,7 +4,7 @@ package com.vayunmathur.web.platform
 
 import android.content.Context
 import android.content.pm.PackageManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.ContextCompat
 import com.vayunmathur.web.data.StorageInfo
 import com.vayunmathur.web.data.TabThumbnailStore
@@ -211,6 +211,6 @@ fun WebViewModel.clearLocalNetworkPrompt(denied: Boolean) {
         runCatching {
             context.getSharedPreferences("web_prefs", Context.MODE_PRIVATE)
                 .edit().putBoolean(P_LOCAL_NETWORK_DENIED, true).apply()
-        }.onFailure { Log.e(TAG, "persist local network denial failed", it) }
+        }.onFailure { Log.error(TAG, "persist local network denial failed", it) }
     }
 }

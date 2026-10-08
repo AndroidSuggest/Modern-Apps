@@ -2,6 +2,7 @@ package com.vayunmathur.pdf.util
 
 import android.content.Context
 import android.net.Uri
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -89,18 +90,18 @@ class SafePdfDocument private constructor(
         // catch_unwind boundary in jni_bindings.rs), and a corrupt wire buffer
         // could throw during parse. Degrade either to a failed page.
         val rendered = runCatching { PdfNative.renderPage(documentHandle, index) }
-            .onFailure { android.util.Log.w(TAG, "native renderPage threw for page $index", it) }
+            .onFailure { Log.status(TAG, "native renderPage threw for page $index", it) }
         rendered.exceptionOrNull()?.let {
             return@withContext PageLoad.Failed("native renderer failed: ${it.javaClass.simpleName}")
         }
         val bytes = rendered.getOrNull()
         if (bytes == null) {
-            android.util.Log.w(TAG, "native renderPage returned no data for page $index")
+            Log.status(TAG, "native renderPage returned no data for page $index")
             return@withContext PageLoad.Failed("native renderer returned no data")
         }
         val parsed = runCatching { SafePdfParser.parse(bytes) }
             .onFailure {
-                android.util.Log.w(TAG, "wire parse failed for page $index (${bytes.size} bytes)", it)
+                Log.status(TAG, "wire parse failed for page $index (${bytes.size} bytes)", it)
             }
         val page = parsed.getOrNull()
             ?: return@withContext PageLoad.Failed(
@@ -171,7 +172,7 @@ class SafePdfDocument private constructor(
         if (bytes == null) return emptyList()
         return runCatching { decode(bytes) }
             .onFailure {
-                android.util.Log.w(TAG, "$what listing failed to decode for page $index", it)
+                Log.status(TAG, "$what listing failed to decode for page $index", it)
             }
             .getOrDefault(emptyList())
     }

@@ -13,7 +13,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.maps.R
 import com.vayunmathur.maps.util.RouteService.Step
 import java.util.Locale
@@ -78,9 +78,9 @@ object NavigationTts {
                     override fun onError(utteranceId: String?) { onUtteranceFinished() }
                     override fun onError(utteranceId: String?, errorCode: Int) { onUtteranceFinished() }
                 })
-                Log.i(TAG, "TTS initialized")
+                Log.status(TAG, "TTS initialized")
             } else {
-                Log.w(TAG, "TTS init failed: status=$status")
+                Log.status(TAG, "TTS init failed: status=$status")
             }
         }
     }

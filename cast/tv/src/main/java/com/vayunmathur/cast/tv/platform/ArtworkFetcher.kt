@@ -2,7 +2,7 @@ package com.vayunmathur.cast.tv.platform
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.protocol.ContentSession
 import com.vayunmathur.cast.protocol.EphemeralTls
 import com.vayunmathur.cast.protocol.MediaProxy
@@ -41,7 +41,7 @@ class ArtworkFetcher(private val session: ContentSession) {
     /** Blocking. Call it off the main thread. */
     fun fetch(resourceId: String): Bitmap? {
         val factory = socketFactory ?: run {
-            Log.w(TAG, "no usable certificate fingerprint, so no artwork will be fetched")
+            Log.status(TAG, "no usable certificate fingerprint, so no artwork will be fetched")
             return null
         }
         val url = MediaProxy.url(session.host, session.port, session.token, resourceId)
@@ -52,7 +52,7 @@ class ArtworkFetcher(private val session: ContentSession) {
             connection.readTimeout = READ_TIMEOUT_MS
             try {
                 if (connection.responseCode != HttpsURLConnection.HTTP_OK) {
-                    Log.w(TAG, "the proxy answered ${connection.responseCode} for '$resourceId'")
+                    Log.status(TAG, "the proxy answered ${connection.responseCode} for '$resourceId'")
                     return@runCatching null
                 }
                 // Read whole, then decode: the phone bounds a cover to 1280px on its longest edge,
@@ -62,7 +62,7 @@ class ArtworkFetcher(private val session: ContentSession) {
             } finally {
                 connection.disconnect()
             }
-        }.onFailure { Log.w(TAG, "could not fetch artwork '$resourceId'", it) }.getOrNull()
+        }.onFailure { Log.status(TAG, "could not fetch artwork '$resourceId'", it) }.getOrNull()
     }
 
     private companion object {

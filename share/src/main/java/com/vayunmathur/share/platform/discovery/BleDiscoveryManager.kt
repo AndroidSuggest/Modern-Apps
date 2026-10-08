@@ -18,7 +18,7 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.ParcelUuid
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.ContextCompat
 import com.vayunmathur.share.protocol.EndpointInfoFields
 import com.vayunmathur.share.protocol.ShareNativeDiscovery
@@ -102,7 +102,7 @@ class BleDiscoveryManager(private val context: Context) {
         // `data` nests the Sharing blob inside the Nearby Connections envelope; the
         // envelope is what carries the peer's endpoint id.
         val endpointInfo = ShareNativeDiscovery.nativeParseBleEndpointInfo(data) ?: run {
-            Log.d(
+            Log.debug(
                 TAG,
                 "skipping $addr: not a NearbySharing endpoint payload (" +
                     data.joinToString("") { "%02x".format(it) } + ")",
@@ -110,7 +110,7 @@ class BleDiscoveryManager(private val context: Context) {
             return null
         }
         val fields = ShareNativeDiscovery.parseEndpointInfo(endpointInfo) ?: run {
-            Log.d(
+            Log.debug(
                 TAG,
                 "skipping $addr: endpoint info not parseable (" +
                     endpointInfo.joinToString("") { "%02x".format(it) } + ")",
@@ -124,7 +124,7 @@ class BleDiscoveryManager(private val context: Context) {
         return try {
             ShareNativeDiscovery.nativeParseBleAdvertisement(serviceData)
         } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "libshare_nearby unavailable — cannot parse advertisements", e)
+            Log.error(TAG, "libshare_nearby unavailable — cannot parse advertisements", e)
             null
         }
     }
@@ -134,19 +134,19 @@ class BleDiscoveryManager(private val context: Context) {
 
     private fun advertiserOrNull(): BluetoothLeAdvertiser? {
         if (!hasPermission(Manifest.permission.BLUETOOTH_ADVERTISE)) {
-            Log.w(TAG, "missing BLUETOOTH_ADVERTISE")
+            Log.status(TAG, "missing BLUETOOTH_ADVERTISE")
             return null
         }
         val btAdapter = adapter ?: run {
-            Log.w(TAG, "no BluetoothAdapter")
+            Log.status(TAG, "no BluetoothAdapter")
             return null
         }
         if (!btAdapter.isEnabled) {
-            Log.w(TAG, "Bluetooth disabled")
+            Log.status(TAG, "Bluetooth disabled")
             return null
         }
         return btAdapter.bluetoothLeAdvertiser ?: run {
-            Log.w(TAG, "bluetoothLeAdvertiser null")
+            Log.status(TAG, "bluetoothLeAdvertiser null")
             null
         }
     }
@@ -185,11 +185,11 @@ class BleDiscoveryManager(private val context: Context) {
         val payload = try {
             ShareNativeDiscovery.nativeBuildBleEndpointPayload(endpointId, endpointInfo)
         } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "libshare_nearby unavailable — refusing to advertise a guessed format", e)
+            Log.error(TAG, "libshare_nearby unavailable — refusing to advertise a guessed format", e)
             return false
         }
         if (payload == null) {
-            Log.w(TAG, "could not wrap endpointInfo for endpointId '$endpointId'")
+            Log.status(TAG, "could not wrap endpointInfo for endpointId '$endpointId'")
             return false
         }
         val extendedSupported = adapter?.isLeExtendedAdvertisingSupported == true
@@ -204,11 +204,11 @@ class BleDiscoveryManager(private val context: Context) {
         val serviceData = try {
             ShareNativeDiscovery.nativeBuildBleAdvertisement(payload, deviceToken, fast)
         } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "libshare_nearby unavailable — refusing to advertise a guessed format", e)
+            Log.error(TAG, "libshare_nearby unavailable — refusing to advertise a guessed format", e)
             return null
         }
         if (serviceData == null || serviceData.isEmpty()) {
-            Log.w(
+            Log.status(
                 TAG,
                 "BleAdvertisement did not fit (${payload.size}B payload, fast=$fast)",
             )
@@ -255,12 +255,12 @@ class BleDiscoveryManager(private val context: Context) {
         val callback = object : AdvertisingSetCallback() {
             override fun onAdvertisingSetStarted(set: AdvertisingSet?, txPower: Int, status: Int) {
                 if (status == ADVERTISE_SUCCESS) {
-                    Log.i(TAG, "BLE extended advertising started (0xFEF3, ${serviceData.size}B)")
+                    Log.status(TAG, "BLE extended advertising started (0xFEF3, ${serviceData.size}B)")
                     return
                 }
                 // The failure is asynchronous, so this is the only place a fallback can
                 // happen — returning early from startAdvertisingSet tells us nothing.
-                Log.w(TAG, "BLE extended advertising failed ($status) — trying fast legacy mode")
+                Log.status(TAG, "BLE extended advertising failed ($status) — trying fast legacy mode")
                 advertisingSetCallback = null
                 startLegacyFast(adv, payload, deviceToken)
             }
@@ -270,7 +270,7 @@ class BleDiscoveryManager(private val context: Context) {
             adv.startAdvertisingSet(params, advertiseData(serviceData), null, null, null, callback)
             true
         } catch (e: Exception) {
-            Log.w(TAG, "startAdvertisingSet threw", e)
+            Log.status(TAG, "startAdvertisingSet threw", e)
             advertisingSetCallback = null
             false
         }
@@ -288,14 +288,14 @@ class BleDiscoveryManager(private val context: Context) {
         val serviceData = serviceData(payload, deviceToken, fast = true) ?: return false
         val callback = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-                Log.i(TAG, "BLE legacy advertising started (0xFEF3, ${serviceData.size}B)")
+                Log.status(TAG, "BLE legacy advertising started (0xFEF3, ${serviceData.size}B)")
             }
 
             override fun onStartFailure(errorCode: Int) {
                 // ADVERTISE_FAILED_DATA_TOO_LARGE (1) means the blob outgrew the 31-byte
                 // legacy budget, which a device name longer than about four characters
                 // does. Extended advertising is the only way out.
-                Log.w(TAG, "BLE legacy advertising failed: $errorCode")
+                Log.status(TAG, "BLE legacy advertising failed: $errorCode")
             }
         }
         advertiseCallback = callback
@@ -309,7 +309,7 @@ class BleDiscoveryManager(private val context: Context) {
             )
             true
         } catch (e: Exception) {
-            Log.w(TAG, "startAdvertising threw", e)
+            Log.status(TAG, "startAdvertising threw", e)
             advertiseCallback = null
             false
         }
@@ -331,10 +331,10 @@ class BleDiscoveryManager(private val context: Context) {
         val serviceData = try {
             ShareNativeDiscovery.nativeFastInitiationServiceData(metadata)
         } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "libshare_nearby unavailable — cannot build FastInitiation data", e)
+            Log.error(TAG, "libshare_nearby unavailable — cannot build FastInitiation data", e)
             return false
         } ?: run {
-            Log.w(TAG, "FastInitiation metadata must be exactly 2 bytes")
+            Log.status(TAG, "FastInitiation metadata must be exactly 2 bytes")
             return false
         }
         stopFastInitiation()
@@ -346,11 +346,11 @@ class BleDiscoveryManager(private val context: Context) {
             .build()
         val callback = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-                Log.i(TAG, "FastInitiation beacon started (0xFE2C)")
+                Log.status(TAG, "FastInitiation beacon started (0xFE2C)")
             }
 
             override fun onStartFailure(errorCode: Int) {
-                Log.w(TAG, "FastInitiation beacon failed: $errorCode")
+                Log.status(TAG, "FastInitiation beacon failed: $errorCode")
             }
         }
         fastInitAdvertiseCallback = callback
@@ -359,7 +359,7 @@ class BleDiscoveryManager(private val context: Context) {
             adv.startAdvertising(lowLatencySettings(connectable = false), data, callback)
             true
         } catch (e: Exception) {
-            Log.w(TAG, "FastInitiation startAdvertising threw", e)
+            Log.status(TAG, "FastInitiation startAdvertising threw", e)
             fastInitAdvertiseCallback = null
             false
         }
@@ -375,7 +375,7 @@ class BleDiscoveryManager(private val context: Context) {
             } catch (_: Exception) {
             }
             advertisingSetCallback = null
-            Log.d(TAG, "BLE extended advertising stopped")
+            Log.debug(TAG, "BLE extended advertising stopped")
         }
         advertiseCallback?.let { cb ->
             try {
@@ -383,7 +383,7 @@ class BleDiscoveryManager(private val context: Context) {
             } catch (_: Exception) {
             }
             advertiseCallback = null
-            Log.d(TAG, "BLE legacy advertising stopped")
+            Log.debug(TAG, "BLE legacy advertising stopped")
         }
     }
 
@@ -444,7 +444,7 @@ class BleDiscoveryManager(private val context: Context) {
     @Suppress("TooGenericExceptionCaught")
     fun scan(): Flow<NearbyDevice> = callbackFlow {
         if (!hasPermission(Manifest.permission.BLUETOOTH_SCAN)) {
-            Log.w(TAG, "scan denied: missing BLUETOOTH_SCAN")
+            Log.status(TAG, "scan denied: missing BLUETOOTH_SCAN")
             close()
             return@callbackFlow
         }
@@ -457,7 +457,7 @@ class BleDiscoveryManager(private val context: Context) {
             return@callbackFlow
         }
         val scanner = btAdapter.bluetoothLeScanner ?: run {
-            Log.w(TAG, "bluetoothLeScanner null")
+            Log.status(TAG, "bluetoothLeScanner null")
             close()
             return@callbackFlow
         }
@@ -491,7 +491,7 @@ class BleDiscoveryManager(private val context: Context) {
             }
 
             override fun onScanFailed(errorCode: Int) {
-                Log.w(TAG, "BLE scan failed: $errorCode")
+                Log.status(TAG, "BLE scan failed: $errorCode")
                 close()
             }
         }
@@ -501,7 +501,7 @@ class BleDiscoveryManager(private val context: Context) {
             fun doStart() = scanner.startScan(filters, settings, callback)
             doStart()
         } catch (e: Exception) {
-            Log.w(TAG, "startScan threw", e)
+            Log.status(TAG, "startScan threw", e)
             close(e)
             return@callbackFlow
         }
@@ -518,7 +518,7 @@ class BleDiscoveryManager(private val context: Context) {
             }
             stopIfPermitted()
             scanCallback = null
-            Log.d(TAG, "BLE scan stopped")
+            Log.debug(TAG, "BLE scan stopped")
         }
     }
 

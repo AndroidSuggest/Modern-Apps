@@ -5,7 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.vayunmathur.library.util.ensureNotificationChannel
@@ -147,7 +147,7 @@ object UpdateNotifications {
             NotificationManagerCompat.from(context).notify(id, notification)
         } catch (e: SecurityException) {
             // POST_NOTIFICATIONS was refused. The update itself is unaffected.
-            Log.w(TAG, "cannot post notification $id", e)
+            Log.status(TAG, "cannot post notification $id", e)
         }
     }
 }

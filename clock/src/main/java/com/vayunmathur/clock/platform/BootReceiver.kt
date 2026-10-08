@@ -3,7 +3,7 @@ package com.vayunmathur.clock.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.clock.data.ClockRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,13 +25,13 @@ class BootReceiver : BroadcastReceiver() {
                     try {
                         val enabled = repository.getAllAlarms().filter { it.enabled }
                         enabled.forEach { AlarmScheduler.schedule(context, it) }
-                        Log.i(TAG, "${intent.action}: rescheduled ${enabled.size} alarm(s)")
+                        Log.status(TAG, "${intent.action}: rescheduled ${enabled.size} alarm(s)")
                     } catch (e: Exception) {
                         // Not expected at either action: ClockRepository is built with
                         // useDeviceProtectedStorage = true precisely so the alarm database is
                         // readable while the device is still locked. A failure here means no
                         // alarm survives the reboot.
-                        Log.e(TAG, "${intent.action}: could not reschedule alarms", e)
+                        Log.error(TAG, "${intent.action}: could not reschedule alarms", e)
                     } finally {
                         pendingResult.finish()
                     }

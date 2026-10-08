@@ -1,7 +1,7 @@
 package com.vayunmathur.cast.platform.mirror
 
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.FileInputStream
 import java.io.IOException
 
@@ -46,7 +46,7 @@ class PcmAudioEncoder(private val readEnd: ParcelFileDescriptor) : AudioStream {
     }
 
     private fun failStart(e: Exception): Boolean {
-        Log.w(TAG, "could not open the PCM pipe", e)
+        Log.status(TAG, "could not open the PCM pipe", e)
         release()
         return false
     }
@@ -66,7 +66,7 @@ class PcmAudioEncoder(private val readEnd: ParcelFileDescriptor) : AudioStream {
     private fun pipeAvailable(stream: FileInputStream): Int? = try {
         stream.available()
     } catch (e: IOException) {
-        Log.w(TAG, "the PCM pipe went away", e)
+        Log.status(TAG, "the PCM pipe went away", e)
         null
     }
 
@@ -75,7 +75,7 @@ class PcmAudioEncoder(private val readEnd: ParcelFileDescriptor) : AudioStream {
         // `available` is positive here, and `minOf` keeps `off + len` inside the frame.
         stream.read(frame, filled, minOf(frame.size - filled, available))
     } catch (e: IOException) {
-        Log.w(TAG, "PCM read failed", e)
+        Log.status(TAG, "PCM read failed", e)
         EMPTY_READ
     }
 

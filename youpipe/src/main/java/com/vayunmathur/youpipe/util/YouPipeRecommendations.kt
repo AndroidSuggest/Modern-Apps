@@ -1,6 +1,6 @@
 package com.vayunmathur.youpipe.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.youpipe.data.ChannelPreference
 import com.vayunmathur.youpipe.data.HistoryVideo
@@ -88,11 +88,11 @@ fun YouPipeViewModel.loadRecommendations() {
             recordImpressions(ranked, now)
             fetchDeArrowForVideos(ranked.map { it.video.videoID })
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "Recommendation error", e)
+            Log.error(TAG, "Recommendation error", e)
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "Recommendation error", e)
+            Log.error(TAG, "Recommendation error", e)
         } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
-            Log.e(TAG, "Recommendation error", e)
+            Log.error(TAG, "Recommendation error", e)
         }
         recommendationsLoadingMutable.value = false
     }
@@ -106,9 +106,9 @@ internal suspend fun YouPipeViewModel.recordImpressions(ranked: List<RankedVideo
             )
         }
     } catch (e: IllegalStateException) {
-        Log.e(TAG, "Impression record error", e)
+        Log.error(TAG, "Impression record error", e)
     } catch (e: android.database.sqlite.SQLiteException) {
-        Log.e(TAG, "Impression record error", e)
+        Log.error(TAG, "Impression record error", e)
     }
 }
 
@@ -176,18 +176,18 @@ internal suspend fun YouPipeViewModel.loadRelatedCandidates(
         )
     }
 } catch (e: IllegalStateException) {
-    Log.e(TAG, "Related candidates error", e); emptyList()
+    Log.error(TAG, "Related candidates error", e); emptyList()
 } catch (e: android.database.sqlite.SQLiteException) {
-    Log.e(TAG, "Related candidates error", e); emptyList()
+    Log.error(TAG, "Related candidates error", e); emptyList()
 }
 
 /** Trending candidates; a network failure here must not blank the feed. */
 internal suspend fun YouPipeViewModel.loadTrendingCandidates(): List<Candidate> = try {
     cachedTrending().map { Candidate(it, RecSource.TRENDING) }
 } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
-    Log.e(TAG, "Trending candidates error", e); emptyList()
+    Log.error(TAG, "Trending candidates error", e); emptyList()
 } catch (e: java.io.IOException) {
-    Log.e(TAG, "Trending candidates error", e); emptyList()
+    Log.error(TAG, "Trending candidates error", e); emptyList()
 }
 
 /** Top-channel candidates; one failing channel must not blank the feed. */
@@ -210,9 +210,9 @@ internal suspend fun YouPipeViewModel.loadTopChannelCandidates(
             }
         }.awaitAll().flatten()
     } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
-        Log.e(TAG, "Top-channel candidates error", e); emptyList()
+        Log.error(TAG, "Top-channel candidates error", e); emptyList()
     } catch (e: java.io.IOException) {
-        Log.e(TAG, "Top-channel candidates error", e); emptyList()
+        Log.error(TAG, "Top-channel candidates error", e); emptyList()
     }
 }
 
@@ -227,9 +227,9 @@ internal suspend fun YouPipeViewModel.loadSearchCandidates(
             }
         }.awaitAll().flatten()
     } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
-        Log.e(TAG, "Search candidates error", e); emptyList()
+        Log.error(TAG, "Search candidates error", e); emptyList()
     } catch (e: java.io.IOException) {
-        Log.e(TAG, "Search candidates error", e); emptyList()
+        Log.error(TAG, "Search candidates error", e); emptyList()
     }
 }
 /** Trending results from the TTL cache, refetching only when stale. */
@@ -272,10 +272,10 @@ internal suspend fun resolveChannelId(authorName: String, subs: List<Subscriptio
             ?.let { channelURLtoID(it.url) }
     } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
         // Best-effort fallback: no channel id simply means no top-channel candidates.
-        Log.w(TAG, "Channel search failed for $authorName", e)
+        Log.status(TAG, "Channel search failed for $authorName", e)
         null
     } catch (e: java.io.IOException) {
-        Log.w(TAG, "Channel search failed for $authorName", e)
+        Log.status(TAG, "Channel search failed for $authorName", e)
         null
     }
 }

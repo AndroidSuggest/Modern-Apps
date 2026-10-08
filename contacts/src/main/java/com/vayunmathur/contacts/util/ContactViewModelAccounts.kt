@@ -3,7 +3,7 @@ package com.vayunmathur.contacts.util
 import android.app.Application
 import android.content.ContentProviderOperation
 import android.provider.ContactsContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.data.LOCAL_ACCOUNT_TYPE
@@ -116,11 +116,11 @@ private suspend fun ContactViewModel.queryProviderAccounts(
             }
         }
     } catch (e: android.database.SQLException) {
-        Log.e("ContactViewModel", "Error querying raw contacts for accounts", e)
+        Log.error("ContactViewModel", "Error querying raw contacts for accounts", e)
     } catch (e: SecurityException) {
-        Log.e("ContactViewModel", "Error querying raw contacts for accounts", e)
+        Log.error("ContactViewModel", "Error querying raw contacts for accounts", e)
     } catch (e: IllegalArgumentException) {
-        Log.e("ContactViewModel", "Error querying raw contacts for accounts", e)
+        Log.error("ContactViewModel", "Error querying raw contacts for accounts", e)
     }
     return accountSet
 }
@@ -302,11 +302,11 @@ private suspend fun ContactViewModel.renameLocalAccountInternal(
         )
         resolver.applyBatch(ContactsContract.AUTHORITY, ops)
     } catch (e: android.content.OperationApplicationException) {
-        Log.e("ContactViewModel", "Error renaming local account", e)
+        Log.error("ContactViewModel", "Error renaming local account", e)
     } catch (e: android.os.RemoteException) {
-        Log.e("ContactViewModel", "Error renaming local account", e)
+        Log.error("ContactViewModel", "Error renaming local account", e)
     } catch (e: Exception) {
-        Log.e("ContactViewModel", "Error renaming local account", e)
+        Log.error("ContactViewModel", "Error renaming local account", e)
     }
     migrateRenamedAccountRefs(account, trimmed)
 }
@@ -390,11 +390,11 @@ private suspend fun ContactViewModel.deleteLocalAccountRows(account: ContactAcco
         val (sel, args) = accountSelection(account.type, account.name)
         resolver.delete(uri, sel, args)
     } catch (e: android.database.SQLException) {
-        Log.e("ContactViewModel", "Error deleting local account", e)
+        Log.error("ContactViewModel", "Error deleting local account", e)
     } catch (e: SecurityException) {
-        Log.e("ContactViewModel", "Error deleting local account", e)
+        Log.error("ContactViewModel", "Error deleting local account", e)
     } catch (e: Exception) {
-        Log.e("ContactViewModel", "Error deleting local account", e)
+        Log.error("ContactViewModel", "Error deleting local account", e)
     }
 }
 

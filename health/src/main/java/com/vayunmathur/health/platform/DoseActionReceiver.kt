@@ -5,7 +5,7 @@ package com.vayunmathur.health.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.health.data.DoseEvent
 import com.vayunmathur.health.data.HealthRepository
 import com.vayunmathur.health.domain.FhirRecords
@@ -39,7 +39,7 @@ class DoseActionReceiver : BroadcastReceiver() {
             ACTION_TAKEN -> recordTaken(context, medicationId)
             ACTION_SNOOZE -> {
                 DoseScheduler.armSnooze(context, scheduleId, medicationId, SNOOZE_MS)
-                Log.i(TAG, "Dose for $medicationId snoozed for ${SNOOZE_MS / MS_PER_MINUTE} minutes")
+                Log.status(TAG, "Dose for $medicationId snoozed for ${SNOOZE_MS / MS_PER_MINUTE} minutes")
             }
         }
     }
@@ -66,7 +66,7 @@ class DoseActionReceiver : BroadcastReceiver() {
                     takenAt = Instant.now(),
                 )
                 repository.upsertDoseEvent(event)
-                Log.i(TAG, "Dose taken for $medicationId")
+                Log.status(TAG, "Dose taken for $medicationId")
 
                 val medication = repository.getMedication(medicationId) ?: return@launch
                 val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return@launch
@@ -78,7 +78,7 @@ class DoseActionReceiver : BroadcastReceiver() {
                     event.copy(fhirResourceId = written, dataSourceId = dataSourceId)
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "Could not record the dose for $medicationId", e)
+                Log.error(TAG, "Could not record the dose for $medicationId", e)
             } finally {
                 pendingResult.finish()
             }
@@ -94,7 +94,7 @@ class DoseActionReceiver : BroadcastReceiver() {
         try {
             context.stopService(Intent(context, DoseSoundService::class.java))
         } catch (e: Exception) {
-            Log.w(TAG, "Could not stop DoseSoundService", e)
+            Log.status(TAG, "Could not stop DoseSoundService", e)
         }
     }
 

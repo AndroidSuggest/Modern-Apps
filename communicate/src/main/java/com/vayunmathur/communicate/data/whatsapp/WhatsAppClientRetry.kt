@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.whatsapp
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.e2e.WhatsAppE2E
 import com.vayunmathur.communicate.data.whatsapp.transport.WhatsAppSocket
 
@@ -16,17 +16,17 @@ internal suspend fun WhatsAppClient.sendRetryReceipt(node: WhatsAppProtocol.Node
     val msgId = node.attrs["id"] ?: return
     val count = undecryptableTracker.merge("retry:$msgId", 1) { a, b -> a + b } ?: 1
     if (count > MAX_RETRY_RECEIPTS) {
-        Log.w(TAG, "Not sending more retry receipts for $msgId")
+        Log.status(TAG, "Not sending more retry receipts for $msgId")
         return
     }
     val keysNode = if (count > 1) {
         try { crypto.buildRetryReceiptKeysNode(accountDeviceIdentity()) } catch (expected: Exception) {
-            Log.w(TAG, "Failed to build retry keys node", expected); null
+            Log.status(TAG, "Failed to build retry keys node", expected); null
         }
     } else null
     val receipt = WhatsAppProtocol.buildRetryReceipt(node, auth.registrationId, count, keysNode)
     ws.send(WhatsAppProtocol.encodeNode(receipt))
-    Log.d(TAG, "Sent retry receipt #$count for $msgId")
+    Log.debug(TAG, "Sent retry receipt #$count for $msgId")
 }
 
 /**

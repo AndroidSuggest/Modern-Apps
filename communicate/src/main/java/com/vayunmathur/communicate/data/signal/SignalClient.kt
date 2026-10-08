@@ -2,7 +2,7 @@ package com.vayunmathur.communicate.data.signal
 
 import android.content.Context
 import android.util.Base64 as AndroidBase64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.signal.e2e.SignalE2E
 import com.vayunmathur.communicate.data.signal.e2e.callIdentityKey
 import com.vayunmathur.communicate.data.CommunicateLine
@@ -150,7 +150,7 @@ object SignalClient {
             db = SignalDatabase.getDatabase(context.applicationContext)
             if (auth != null) e2e = SignalE2E(db!!, auth)
         } catch (expected: Throwable) {
-            Log.w(TAG, "db/e2e init failed", expected)
+            Log.status(TAG, "db/e2e init failed", expected)
         }
         stateMutable.value = if (auth?.registered == true) State.Connecting else State.NeedsSetup
         try {
@@ -159,7 +159,7 @@ object SignalClient {
                 processor = SignalEventProcessor(database).also { it.start(events) }
             }
         } catch (expected: Throwable) {
-            Log.w(TAG, "processor start failed", expected)
+            Log.status(TAG, "processor start failed", expected)
         }
     }
 
@@ -190,7 +190,7 @@ object SignalClient {
         if (e2e == null && db != null) try {
             e2e = SignalE2E(db!!, auth) { peerAci, newKey -> reportIdentityChange(peerAci, newKey) }
         } catch (expected: Throwable) {
-            Log.e(TAG, "could not build the protocol store", expected)
+            Log.error(TAG, "could not build the protocol store", expected)
         }
         if (e2e == null) {
             // Connecting without a protocol store would pull messages we cannot decrypt and, since
@@ -246,7 +246,7 @@ object SignalClient {
         socketJobs.add(scope.launch {
             unauthSock.connectionState.collect { cs ->
                 if (cs is SignalSocket.ConnectionState.Disconnected) {
-                    Log.i(TAG, "unauthenticated socket down (${cs.reason}); sealed sends will go authenticated")
+                    Log.status(TAG, "unauthenticated socket down (${cs.reason}); sealed sends will go authenticated")
                 }
             }
         })
@@ -258,7 +258,7 @@ object SignalClient {
         // have no ACI and cannot be sent to at all. Deliberately not in socketJobs: those are cancelled on
         // every reconnect, which would kill a discovery request mid-flight.
         scope.launch { runContactDiscovery(ctx) }
-        Log.i(TAG, "start: socket connecting for ${auth.phoneNumber.takeLast(PHONE_SUFFIX_LENGTH)}" +
+        Log.status(TAG, "start: socket connecting for ${auth.phoneNumber.takeLast(PHONE_SUFFIX_LENGTH)}" +
             " host=${SignalSocket.DEFAULT_HOST}")
     }
 
@@ -420,7 +420,7 @@ object SignalClient {
                     val local = e.ownIdentityPublicKey
                     // Logged because a size or encoding mismatch here yields SRTP keys that differ from the
                     // peer's, which looks like a connected call that never progresses.
-                    Log.i(
+                    Log.status(
                         TAG,
                         "call identity keys for $aci:" +
                             "local=${local.size}B(0x${"%02x".format(local.firstOrNull() ?: 0)}) " +
@@ -488,11 +488,11 @@ object SignalClient {
         override fun answer() {
             val id = pendingIncomingCallId
             if (id == null) {
-                Log.w(TAG, "answer with no pending call id; the caller will keep ringing")
+                Log.status(TAG, "answer with no pending call id; the caller will keep ringing")
                 return
             }
             val accepted = callManager?.accept(id)
-            Log.i(TAG, "accepted call $id: $accepted")
+            Log.status(TAG, "accepted call $id: $accepted")
         }
 
         override fun reject() {
@@ -563,7 +563,7 @@ object SignalClient {
                         InAppCallRegistry.onPhase(
                             if (joined) InAppCallPhase.Active else InAppCallPhase.Connecting,
                         )
-                        Log.i(TAG, "group call $conversationId joined=$joined participants=$participants")
+                        Log.status(TAG, "group call $conversationId joined=$joined participants=$participants")
                     }
                 }
 

@@ -54,7 +54,7 @@ import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.util.sharedText
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.fooddelivery.R
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.fooddelivery.api.BitesOrders
@@ -94,7 +94,7 @@ fun OrderTrackingScreen(orderId: Int, onBack: () -> Unit) {
         while (true) {
             val found = BitesOrders.getOrders().firstOrNull { it.id == orderId }
             order = found
-            Log.d("Tracking", "order=${found?.id} stage=${found?.stage} " +
+            Log.debug("Tracking", "order=${found?.id} stage=${found?.stage} " +
                 "driver=${found?.driverPosition} eta=${found?.etaMillis}")
             loading = false
             // Stop polling once it's done; nothing more will change.

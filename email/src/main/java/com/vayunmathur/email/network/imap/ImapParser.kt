@@ -1,6 +1,6 @@
 package com.vayunmathur.email.network.imap
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * Parser helpers for IMAP LIST and FETCH.
@@ -67,7 +67,7 @@ object ImapParser {
             // UTF-16BE
             String(bytes, Charsets.UTF_16BE)
         } catch (_: IllegalArgumentException) {
-            Log.w(TAG, "UTF7 decode failed for $b64Section")
+            Log.status(TAG, "UTF7 decode failed for $b64Section")
             "&$b64Section-"
         }
     }
@@ -185,7 +185,7 @@ object ImapParser {
 
             ImapListEntry(flags, delimiter, mailbox)
         } catch (ignored: Exception) {
-            Log.w(TAG, "parseList failed for: $line: ${ignored.message}")
+            Log.status(TAG, "parseList failed for: $line: ${ignored.message}")
             null
         }
     }

@@ -1,7 +1,7 @@
 package com.vayunmathur.everysync.sync
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.everysync.auth.AccountStore
 import com.vayunmathur.everysync.provider.ProviderRegistry
 import com.vayunmathur.everysync.provider.SyncDirection
@@ -41,7 +41,7 @@ object SyncEngine {
                     ),
                 )
             } catch (expected: Exception) {
-                Log.e(TAG, "Sync failed for $accountName", expected)
+                Log.error(TAG, "Sync failed for $accountName", expected)
                 store.upsert(
                     config.copy(
                         lastSyncEpochMs = System.currentTimeMillis(),

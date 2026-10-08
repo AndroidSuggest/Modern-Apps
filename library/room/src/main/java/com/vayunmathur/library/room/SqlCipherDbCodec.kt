@@ -1,7 +1,7 @@
 package com.vayunmathur.library.room
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.util.DbBackupCodec
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import java.io.File
@@ -19,7 +19,7 @@ object SqlCipherDbCodec : DbBackupCodec {
         loadSqlCipher()
         val dbFile = context.getDatabasePath(dbName)
         if (!dbFile.exists()) {
-            Log.w(TAG, "exportDatabase: Database file does not exist!")
+            Log.status(TAG, "exportDatabase: Database file does not exist!")
             return
         }
 

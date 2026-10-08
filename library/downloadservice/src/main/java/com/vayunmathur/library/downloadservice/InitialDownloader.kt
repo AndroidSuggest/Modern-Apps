@@ -2,7 +2,7 @@ package com.vayunmathur.library.downloadservice
 
 import android.app.DownloadManager
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -312,7 +312,7 @@ private suspend fun downloadSpec(
                 return true
             }
             // Corrupt/tampered copy — drop the partial and re-fetch from scratch.
-            Log.w(TAG, "checksum mismatch for ${spec.fileName}; refetching")
+            Log.status(TAG, "checksum mismatch for ${spec.fileName}; refetching")
             partFile.delete()
         } catch (e: CancellationException) {
             // Cooperative cancellation (worker stopped): keep the `.part` so the
@@ -320,11 +320,11 @@ private suspend fun downloadSpec(
             throw e
         } catch (expected: IOException) {
             // Transient network error — keep the `.part` for resume and back off.
-            Log.w(TAG, "attempt ${attempt + 1}/$MAX_ATTEMPTS failed for ${spec.fileName}", expected)
+            Log.status(TAG, "attempt ${attempt + 1}/$MAX_ATTEMPTS failed for ${spec.fileName}", expected)
             if (attempt < MAX_ATTEMPTS - 1) delay(RETRY_DELAY_MS)
         }
     }
-    Log.e(TAG, "giving up on ${spec.fileName} after $MAX_ATTEMPTS attempts")
+    Log.error(TAG, "giving up on ${spec.fileName} after $MAX_ATTEMPTS attempts")
     return false
 }
 

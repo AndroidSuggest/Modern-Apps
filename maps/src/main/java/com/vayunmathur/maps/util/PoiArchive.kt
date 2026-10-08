@@ -1,6 +1,6 @@
 package com.vayunmathur.maps.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
@@ -90,7 +90,7 @@ object PoiArchive {
             is IndexOutOfBoundsException,
             is IllegalArgumentException,
             -> {
-                Log.w(TAG, "Failed to map POI sections from archive", cause)
+                Log.status(TAG, "Failed to map POI sections from archive", cause)
                 return null
             }
             else -> throw cause
@@ -101,15 +101,15 @@ object PoiArchive {
         whole.order(ByteOrder.LITTLE_ENDIAN)
         val sections = parseSections(whole) ?: return null
         val indexBuf = slice(whole, sections, KIND_INDEX) ?: run {
-            Log.w(TAG, "archive carries no POI index section")
+            Log.status(TAG, "archive carries no POI index section")
             return null
         }
         val namesBuf = slice(whole, sections, KIND_NAMES) ?: run {
-            Log.w(TAG, "archive carries a POI index but no POI names")
+            Log.status(TAG, "archive carries a POI index but no POI names")
             return null
         }
         if (indexBuf.capacity() == 0 || namesBuf.capacity() == 0) {
-            Log.w(TAG, "archive POI index or names section is empty")
+            Log.status(TAG, "archive POI index or names section is empty")
             return null
         }
         return mappedFromSections(whole, sections, indexBuf, namesBuf)
@@ -142,7 +142,7 @@ object PoiArchive {
             entryCount = words?.second ?: 0,
             archive = whole,
         ).also {
-            Log.d(
+            Log.debug(
                 TAG,
                 "Loaded $count POI records from archive, " +
                     "grid=${grid?.cellCount ?: 0} cells, words=${words?.second ?: 0}",
@@ -197,19 +197,19 @@ object PoiArchive {
         val buildId = whole.getLong(HEADER_BUILD_ID_OFF)
         val fileLen = whole.getLong(HEADER_FILE_LEN_OFF)
         if (fileLen != whole.capacity().toLong()) {
-            Log.w(TAG, "archive declares $fileLen bytes but is ${whole.capacity()}")
+            Log.status(TAG, "archive declares $fileLen bytes but is ${whole.capacity()}")
             return false
         }
         val footerAt = whole.capacity() - FOOTER_LEN
         for (i in FOOTER_MAGIC.indices) {
             if (whole.get(footerAt + i) != FOOTER_MAGIC[i]) {
-                Log.d(TAG, "not a single archive (bad MAMA8 magic)")
+                Log.debug(TAG, "not a single archive (bad MAMA8 magic)")
                 return false
             }
         }
         val footerBuild = whole.getLong(footerAt + FOOTER_BUILD_OFF)
         if (footerBuild != buildId) {
-            Log.w(TAG, "archive footer build disagrees with its header")
+            Log.status(TAG, "archive footer build disagrees with its header")
             return false
         }
         return true

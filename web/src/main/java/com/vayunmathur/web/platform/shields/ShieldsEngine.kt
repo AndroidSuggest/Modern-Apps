@@ -1,7 +1,7 @@
 package com.vayunmathur.web.platform.shields
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.web.shields.ShieldsNative
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -78,7 +78,7 @@ object ShieldsEngine {
                 var built = 0L
                 if (cache.isFile && cachedVersion.isFile && cachedVersion.readText().trim() == version) {
                     built = ShieldsNative.nativeCreateFromCache(cache.readBytes(), resources)
-                    if (built == 0L) Log.w(TAG, "engine cache rejected, reparsing lists")
+                    if (built == 0L) Log.status(TAG, "engine cache rejected, reparsing lists")
                 }
                 if (built == 0L) {
                     built = ShieldsNative.nativeCreate(readBrotliAsset(app, "filters.txt"), resources)
@@ -87,7 +87,7 @@ object ShieldsEngine {
                 handle = built
             }
         }.onFailure { e ->
-            Log.e(TAG, "load failed — shields stay open", e)
+            Log.error(TAG, "load failed — shields stay open", e)
         }
         loading = false
     }
@@ -99,7 +99,7 @@ object ShieldsEngine {
             cache.writeBytes(snapshot)
             versionFile.writeText(version)
         }.onFailure { e ->
-            Log.w(TAG, "could not cache engine snapshot", e)
+            Log.status(TAG, "could not cache engine snapshot", e)
         }
     }
 

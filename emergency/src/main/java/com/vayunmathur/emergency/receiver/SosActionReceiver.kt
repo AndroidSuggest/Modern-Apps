@@ -7,7 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.telecom.TelecomManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 import com.vayunmathur.emergency.platform.EmergencyNumberLookup
 import com.vayunmathur.emergency.platform.GestureProvider
@@ -37,15 +37,15 @@ class SosActionReceiver : BroadcastReceiver() {
         val app = context.applicationContext
         when (intent.action) {
             ACTION_MAKE_CALL -> {
-                Log.i(TAG, "SOS countdown finished; placing the emergency call")
+                Log.status(TAG, "SOS countdown finished; placing the emergency call")
                 placeCall(app)
                 stopCountdown(app)
             }
             ACTION_CANCEL_COUNTDOWN -> {
-                Log.i(TAG, "SOS countdown cancelled; stopping the service")
+                Log.status(TAG, "SOS countdown cancelled; stopping the service")
                 stopCountdown(app)
             }
-            else -> Log.w(TAG, "unknown SOS action ${intent.action}; ignoring")
+            else -> Log.status(TAG, "unknown SOS action ${intent.action}; ignoring")
         }
     }
 
@@ -69,7 +69,7 @@ class SosActionReceiver : BroadcastReceiver() {
             // A null bundle means "no provider answered"; any bundle means Settings took it.
             result != null
         }.getOrElse {
-            Log.w(TAG, "Settings emergency provider did not take the call", it)
+            Log.status(TAG, "Settings emergency provider did not take the call", it)
             false
         }
 
@@ -79,7 +79,7 @@ class SosActionReceiver : BroadcastReceiver() {
             .policeNumber(GestureProvider.numberOverrideStatic(app))
         val telecom = app.getSystemService<TelecomManager>()
         if (telecom == null) {
-            Log.w(TAG, "no TelecomManager; cannot place the emergency call")
+            Log.status(TAG, "no TelecomManager; cannot place the emergency call")
             return
         }
         // Intent.ACTION_CALL_EMERGENCY as a literal: the constant is hidden in this SDK's
@@ -91,7 +91,7 @@ class SosActionReceiver : BroadcastReceiver() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         runCatching { app.startActivity(intent) }
-            .onFailure { Log.w(TAG, "could not place the emergency call to $number", it) }
+            .onFailure { Log.status(TAG, "could not place the emergency call to $number", it) }
     }
 
     companion object {

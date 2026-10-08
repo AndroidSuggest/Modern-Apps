@@ -5,7 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.FileProvider
 import androidx.core.graphics.scale
 import com.vayunmathur.library.ink.SerializedStroke
@@ -73,7 +73,7 @@ private fun imageMarkdown(context: Context, block: NoteBlock.Image): String {
     val bytes = try {
         downscaledJpegBytes(NoteImageStore.fileFor(context, block.fileName))
     } catch (e: Exception) {
-        Log.w(TAG, "omitting undecodable image ${block.fileName}", e)
+        Log.status(TAG, "omitting undecodable image ${block.fileName}", e)
         return ""
     } ?: return ""
     val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)

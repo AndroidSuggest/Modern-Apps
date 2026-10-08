@@ -2,7 +2,7 @@ package com.vayunmathur.library.util
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -56,7 +56,7 @@ abstract class AssistantIntent<Input : Any, Output : Any>(
         val input = try {
             inputString?.let { Json.decodeFromString(inputSerializer, it) }
         } catch (expected: IllegalArgumentException) {
-            Log.e(TAG, "Failed to decode input for ${javaClass.name}", expected)
+            Log.error(TAG, "Failed to decode input for ${javaClass.name}", expected)
             null
         }
 
@@ -73,7 +73,7 @@ abstract class AssistantIntent<Input : Any, Output : Any>(
                     putString("RESPONSE_DATA", responseData)
                 })
             } catch (expected: RuntimeException) {
-                Log.e(TAG, "performCalculation failed for ${javaClass.name}", expected)
+                Log.error(TAG, "performCalculation failed for ${javaClass.name}", expected)
                 receiver?.send(Activity.RESULT_CANCELED, Bundle())
             }
         }
@@ -165,10 +165,10 @@ class IntentLauncher(private val activity: ComponentActivity) {
                     try {
                         activity.startActivity(intent)
                     } catch (security: SecurityException) {
-                        Log.e(INTENT_TAG, "Failed to launch $className in $packageName", security)
+                        Log.error(INTENT_TAG, "Failed to launch $className in $packageName", security)
                         if (cont.isActive) cont.resumeWithException(security)
                     } catch (notFound: ActivityNotFoundException) {
-                        Log.e(INTENT_TAG, "Failed to launch $className in $packageName", notFound)
+                        Log.error(INTENT_TAG, "Failed to launch $className in $packageName", notFound)
                         if (cont.isActive) cont.resumeWithException(notFound)
                     }
                 }

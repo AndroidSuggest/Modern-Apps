@@ -2,7 +2,7 @@ package com.vayunmathur.email.network.smtp
 
 import android.content.Context
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.email.platform.EmailManager
 import com.vayunmathur.email.platform.ServerConfig
 import com.vayunmathur.email.ui.composer.InlineAttachment
@@ -82,7 +82,7 @@ object SmtpClient {
         try {
             conn.authXoauth2(user, token)
         } catch (e: IOException) {
-            Log.e(TAG, "XOAUTH2 SMTP failed", e)
+            Log.error(TAG, "XOAUTH2 SMTP failed", e)
             throw e
         }
     }

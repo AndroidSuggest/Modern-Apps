@@ -7,7 +7,7 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -51,10 +51,10 @@ class CableService : Service() {
                 val session = CableSession(qr, processor, advertiser) { updateNotification(it) }
                 withTimeoutOrNull(SESSION_TIMEOUT_MS) { session.run() } ?: false
             }.getOrElse {
-                Log.e(TAG, "caBLE session failed", it)
+                Log.error(TAG, "caBLE session failed", it)
                 false
             }
-            Log.d(TAG, "caBLE session finished, success=$ok")
+            Log.debug(TAG, "caBLE session finished, success=$ok")
             stopSelf()
         }
 

@@ -7,7 +7,7 @@ import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 private const val TAG = "AudioEncoder"
 
@@ -79,7 +79,7 @@ class AudioEncoder(private val projection: MediaProjection?) : AudioStream {
             }
             val created = builder.build()
             if (created.state != AudioRecord.STATE_INITIALIZED) {
-                Log.w(TAG, "AudioRecord did not initialise")
+                Log.status(TAG, "AudioRecord did not initialise")
                 created.release()
                 release()
                 return false
@@ -99,7 +99,7 @@ class AudioEncoder(private val projection: MediaProjection?) : AudioStream {
     }
 
     private fun failStart(e: Exception): Boolean {
-        Log.w(TAG, "could not start audio capture", e)
+        Log.status(TAG, "could not start audio capture", e)
         release()
         return false
     }
@@ -111,10 +111,10 @@ class AudioEncoder(private val projection: MediaProjection?) : AudioStream {
         val read = try {
             active.read(pcm, 0, pcm.size)
         } catch (e: IllegalStateException) {
-            Log.w(TAG, "audio read failed", e)
+            Log.status(TAG, "audio read failed", e)
             return emptyList()
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "audio read failed", e)
+            Log.status(TAG, "audio read failed", e)
             return emptyList()
         }
         return opus.encode(pcm, read.coerceAtLeast(0))

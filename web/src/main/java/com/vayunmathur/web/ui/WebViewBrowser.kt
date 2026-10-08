@@ -4,7 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
@@ -186,7 +186,7 @@ fun WebViewBrowser(
 
                 setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
                     val fileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
-                    Log.d(WEB_VIEW_BROWSER_TAG, "Download: $fileName $url")
+                    Log.debug(WEB_VIEW_BROWSER_TAG, "Download: $fileName $url")
                     viewModel.addDownload(url, fileName, mimeType, contentLength)
                     runCatching {
                         val dm = ctx.getSystemService(android.app.DownloadManager::class.java)
@@ -205,7 +205,7 @@ fun WebViewBrowser(
                         }
                         dm.enqueue(request)
                     }.onFailure { e ->
-                        Log.e(WEB_VIEW_BROWSER_TAG, "Download enqueue failed", e)
+                        Log.error(WEB_VIEW_BROWSER_TAG, "Download enqueue failed", e)
                         runCatching {
                             val fallback = android.content.Intent(
                                 android.content.Intent.ACTION_VIEW,

@@ -1,6 +1,6 @@
 package com.vayunmathur.maps.data
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.maps.util.PoiIndex
 import com.vayunmathur.maps.util.Wikidata
@@ -156,7 +156,7 @@ suspend fun parse(feature: Feature1): SpecificFeature? {
     // The baked link: the tagged relation id of the boundary this label names, stamped at
     // build time (`region_links`). `0` is REGION_NONE — unlinked, mask nothing.
     val regionId = properties["regionId"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
-    Log.d("RegionDbg", "parse kind=${properties.string("kind")} name=$name regionId=$regionId")
+    Log.debug("RegionDbg", "parse kind=${properties.string("kind")} name=$name regionId=$regionId")
     return when (properties.string("kind")) {
         "country" -> SpecificFeature.Admin0Label(
             iso = wiki?.getProperty("P297"),

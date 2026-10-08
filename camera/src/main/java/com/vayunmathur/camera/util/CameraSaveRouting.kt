@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.provider.MediaStore
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.ImageCapture
 import androidx.core.content.ContextCompat
 import java.io.OutputStream
@@ -45,14 +45,14 @@ internal fun CameraViewModel.prepareStillSave(displayName: String): PendingStill
                         .setMetadata(metadata).build()
                     return PendingStill(options, doc, stream, displayName)
                 }
-                Log.w("CameraViewModel", "Could not open SAF doc for $displayName; using MediaStore")
+                Log.status("CameraViewModel", "Could not open SAF doc for $displayName; using MediaStore")
             } catch (e: java.io.FileNotFoundException) {
-                Log.w("CameraViewModel", "SAF still save failed for $displayName; using MediaStore", e)
+                Log.status("CameraViewModel", "SAF still save failed for $displayName; using MediaStore", e)
             } catch (e: SecurityException) {
-                Log.w("CameraViewModel", "SAF still save failed for $displayName; using MediaStore", e)
+                Log.status("CameraViewModel", "SAF still save failed for $displayName; using MediaStore", e)
             }
         } else {
-            Log.w("CameraViewModel", "SAF doc creation failed for $displayName; using MediaStore")
+            Log.status("CameraViewModel", "SAF doc creation failed for $displayName; using MediaStore")
         }
         // Fall through to MediaStore so the shot is never lost.
     }
@@ -89,7 +89,7 @@ internal fun CameraViewModel.saveStillBytes(displayName: String, bytes: ByteArra
                 scanSafDoc(doc)
                 return it
             }
-            Log.w("CameraViewModel", "SAF bytes save failed for $displayName; using MediaStore")
+            Log.status("CameraViewModel", "SAF bytes save failed for $displayName; using MediaStore")
         }
     }
     return MediaStoreSaver.saveJpegBytes(
@@ -107,7 +107,7 @@ internal fun CameraViewModel.saveStillBitmap(displayName: String, bitmap: Bitmap
                 scanSafDoc(doc)
                 return it
             }
-            Log.w("CameraViewModel", "SAF bitmap save failed for $displayName; using MediaStore")
+            Log.status("CameraViewModel", "SAF bitmap save failed for $displayName; using MediaStore")
         }
     }
     return MediaStoreSaver.saveBitmap(
@@ -125,7 +125,7 @@ internal fun CameraViewModel.saveVideoStaged(displayName: String, file: java.io.
                 scanSafDoc(doc)
                 return it
             }
-            Log.w("CameraViewModel", "SAF video save failed for $displayName; using MediaStore")
+            Log.status("CameraViewModel", "SAF video save failed for $displayName; using MediaStore")
         }
     }
     return MediaStoreSaver.saveVideoFile(
@@ -149,7 +149,7 @@ internal fun CameraViewModel.scanSafDoc(docUri: Uri) {
     try {
         MediaScannerConnection.scanFile(app, arrayOf("$base/$name"), null, null)
     } catch (e: IllegalStateException) {
-        Log.w("CameraViewModel", "Media scan failed for $name", e)
+        Log.status("CameraViewModel", "Media scan failed for $name", e)
     }
 }
 

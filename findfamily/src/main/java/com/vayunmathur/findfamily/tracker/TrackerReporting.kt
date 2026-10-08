@@ -1,6 +1,6 @@
 package com.vayunmathur.findfamily.tracker
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.findfamily.data.LocationValue
 import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.data.UserKind
@@ -42,7 +42,7 @@ object TrackerReporting {
         val bundle = Networking.resolveTrackerBundle(sighting.epochId) ?: return false
         val ct = TrackerProtocol.sealReport(bundle, finderLocation)
         val ok = Networking.uploadTrackerReport(sighting.epochId, ct)
-        if (ok) Log.i(TAG, "uploaded sighting (rssi=${sighting.rssi}, battery=${sighting.battery})")
+        if (ok) Log.status(TAG, "uploaded sighting (rssi=${sighting.rssi}, battery=${sighting.battery})")
         return ok
     }
 
@@ -60,7 +60,7 @@ object TrackerReporting {
         if (cts.isEmpty()) return emptyList()
         return cts.mapNotNull { ct ->
             runCatching { TrackerProtocol.openReport(priv, ct, tracker.id) }
-                .onFailure { Log.w(TAG, "openReport failed for tracker ${tracker.id}", it) }
+                .onFailure { Log.status(TAG, "openReport failed for tracker ${tracker.id}", it) }
                 .getOrNull()
         }
     }

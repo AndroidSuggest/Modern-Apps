@@ -2,7 +2,7 @@ package com.vayunmathur.library.ml
 
 import android.content.res.AssetManager
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.Closeable
 import java.io.File
 import java.text.Normalizer
@@ -73,7 +73,7 @@ class SupertonicSynthesizer private constructor(
             try {
                 create(bundle, voice)
             } catch (expected: Exception) {
-                Log.e(TAG, "cannot open the Supertonic bundle in $bundle", expected)
+                Log.error(TAG, "cannot open the Supertonic bundle in $bundle", expected)
                 0L
             }
         }
@@ -93,7 +93,7 @@ class SupertonicSynthesizer private constructor(
         return try {
             MlNative.setSupertonicVoice(handle, bundle.read(styleName(name)))
         } catch (expected: Exception) {
-            Log.e(TAG, "cannot read the voice $name in $bundle", expected)
+            Log.error(TAG, "cannot read the voice $name in $bundle", expected)
             false
         }
     }

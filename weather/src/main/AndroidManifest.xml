@@ -19,6 +19,7 @@
     </queries>
 
     <application
+        android:name=".WeatherApplication"
         android:allowBackup="true"
         android:backupAgent=".platform.AppBackupAgent"
         android:dataExtractionRules="@xml/data_extraction_rules"

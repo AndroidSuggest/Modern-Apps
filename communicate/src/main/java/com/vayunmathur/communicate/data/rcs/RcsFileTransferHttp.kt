@@ -2,7 +2,7 @@ package com.vayunmathur.communicate.data.rcs
 
 import android.content.Context
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.net.toUri
 import com.vayunmathur.communicate.data.CommunicateAttachment
 import com.vayunmathur.communicate.data.CommunicateRepository
@@ -168,7 +168,7 @@ object RcsFileTransferHttp {
             file.writeBytes(bytes)
             file
         }.getOrElse {
-            Log.w(TAG, "FT download failed", it)
+            Log.status(TAG, "FT download failed", it)
             null
         }
     }

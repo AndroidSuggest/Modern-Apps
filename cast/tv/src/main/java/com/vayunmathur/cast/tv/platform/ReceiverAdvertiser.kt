@@ -3,7 +3,7 @@ package com.vayunmathur.cast.tv.platform
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.protocol.DecoderLimits
 import com.vayunmathur.cast.protocol.MACAST_SERVICE_TYPE
 import com.vayunmathur.cast.protocol.PROTOCOL_VERSION
@@ -87,7 +87,7 @@ class ReceiverAdvertiser(context: Context) {
      */
     fun advertise(friendlyName: String, deviceId: String, port: Int, limits: DecoderLimits) {
         val manager = nsdManager ?: run {
-            Log.w(TAG, "NsdManager unavailable - this TV cannot announce itself")
+            Log.status(TAG, "NsdManager unavailable - this TV cannot announce itself")
             return
         }
         unadvertise()
@@ -121,7 +121,7 @@ class ReceiverAdvertiser(context: Context) {
             override fun onServiceRegistered(info: NsdServiceInfo) {
                 registeredName = info.serviceName
                 localNetworkBlocked = false
-                Log.i(
+                Log.status(
                     TAG,
                     "advertised $MACAST_SERVICE_TYPE as ${info.serviceName} on port $port " +
                         "(decoding ${(limits.codecs.map { it.label } + limits.audioCodecs.map { it.label })
@@ -133,7 +133,7 @@ class ReceiverAdvertiser(context: Context) {
                 registeredName = null
                 if (issuedAt != generation) return
                 if (attempt >= MAX_NAME_ATTEMPTS) {
-                    Log.w(
+                    Log.status(
                         TAG,
                         "registration failed: $errorCode - gave up after $attempt names, " +
                             "so this TV is invisible",
@@ -142,14 +142,14 @@ class ReceiverAdvertiser(context: Context) {
                     return
                 }
                 val next = instanceLabel(friendlyName, attempt + 1)
-                Log.w(TAG, "registration failed: $errorCode for '$instanceName', retrying as '$next'")
+                Log.status(TAG, "registration failed: $errorCode for '$instanceName', retrying as '$next'")
                 register(manager, friendlyName, deviceId, port, limits, attempt + 1)
             }
 
             override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) = Unit
 
             override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                Log.w(TAG, "unregistration failed: $errorCode")
+                Log.status(TAG, "unregistration failed: $errorCode")
             }
         }
         listener = registration
@@ -159,14 +159,14 @@ class ReceiverAdvertiser(context: Context) {
             // Android 16+ Local Network Protections. Nothing about the record is wrong; the OS
             // blocks mDNS outright until ACCESS_LOCAL_NETWORK is granted, and until then this TV is
             // simply not on anybody's list.
-            Log.e(TAG, "mDNS blocked - ACCESS_LOCAL_NETWORK not granted, so this TV is invisible", e)
+            Log.error(TAG, "mDNS blocked - ACCESS_LOCAL_NETWORK not granted, so this TV is invisible", e)
             localNetworkBlocked = true
             listener = null
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "registerService threw", e)
+            Log.status(TAG, "registerService threw", e)
             listener = null
         } catch (e: IllegalStateException) {
-            Log.w(TAG, "registerService threw", e)
+            Log.status(TAG, "registerService threw", e)
             listener = null
         }
     }

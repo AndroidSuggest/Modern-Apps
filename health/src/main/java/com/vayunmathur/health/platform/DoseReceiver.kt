@@ -3,7 +3,7 @@ package com.vayunmathur.health.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.health.data.HealthRepository
 import com.vayunmathur.health.notifications.DoseNotification
 import com.vayunmathur.health.service.DoseSoundService
@@ -27,7 +27,7 @@ class DoseReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val scheduleId = intent.getStringExtra(DoseScheduler.EXTRA_SCHEDULE_ID) ?: return
         val medicationId = intent.getStringExtra(DoseScheduler.EXTRA_MEDICATION_ID) ?: return
-        Log.i(TAG, "Dose due for medication $medicationId (schedule $scheduleId)")
+        Log.status(TAG, "Dose due for medication $medicationId (schedule $scheduleId)")
 
         val repository = HealthRepository.get(context)
         val pendingResult = goAsync()
@@ -46,7 +46,7 @@ class DoseReceiver : BroadcastReceiver() {
 
                 startSound(context, scheduleId, medicationId, name)
             } catch (e: Exception) {
-                Log.e(TAG, "Could not handle the dose for $medicationId", e)
+                Log.error(TAG, "Could not handle the dose for $medicationId", e)
             } finally {
                 pendingResult.finish()
             }
@@ -72,7 +72,7 @@ class DoseReceiver : BroadcastReceiver() {
         try {
             context.startForegroundService(serviceIntent)
         } catch (e: Exception) {
-            Log.e(TAG, "Could not start DoseSoundService", e)
+            Log.error(TAG, "Could not start DoseSoundService", e)
         }
     }
 

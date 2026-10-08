@@ -3,7 +3,7 @@ package com.vayunmathur.screentime.platform
 import android.app.AppOpsManager
 import android.content.Context
 import android.os.Process
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 
 private const val TAG = "ScreenTimeUsageAccess"
@@ -33,7 +33,7 @@ object UsageAccess {
         val mode = runCatching {
             appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, uid, pkg)
         }.getOrElse {
-            Log.w(TAG, "could not check the usage-stats op", it)
+            Log.status(TAG, "could not check the usage-stats op", it)
             return Status.DENIED
         }
         if (mode == AppOpsManager.MODE_ALLOWED) return Status.GRANTED
@@ -47,7 +47,7 @@ object UsageAccess {
             setUidMode.invoke(appOps, AppOpsManager.OPSTR_GET_USAGE_STATS, uid, AppOpsManager.MODE_ALLOWED)
             appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, uid, pkg)
         }.getOrElse {
-            Log.w(TAG, "could not self-grant the usage-stats op", it)
+            Log.status(TAG, "could not self-grant the usage-stats op", it)
             return Status.DENIED
         }
         return if (granted == AppOpsManager.MODE_ALLOWED) Status.GRANTED else Status.DENIED

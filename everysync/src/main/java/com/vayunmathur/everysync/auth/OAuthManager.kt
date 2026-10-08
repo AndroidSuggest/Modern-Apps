@@ -2,7 +2,7 @@ package com.vayunmathur.everysync.auth
 
 import android.content.Context
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.net.toUri
 import com.vayunmathur.everysync.provider.ProviderRegistry
@@ -63,7 +63,7 @@ object OAuthManager {
         try {
             customTabs.launchUrl(context, url)
         } catch (expected: Exception) {
-            Log.e(TAG, "Failed to launch OAuth Custom Tab", expected)
+            Log.error(TAG, "Failed to launch OAuth Custom Tab", expected)
         }
     }
 
@@ -75,7 +75,7 @@ object OAuthManager {
         val config = provider?.oauthConfig()
         if (!isResolvable(pending, code, provider, config)) return null
         if (redirect.getQueryParameter("state") != pending?.state) {
-            Log.e(TAG, "OAuth state mismatch")
+            Log.error(TAG, "OAuth state mismatch")
             return null
         }
 
@@ -105,7 +105,7 @@ object OAuthManager {
     ): String = try {
         provider.resolveAccountName(context, tokens)
     } catch (expected: Exception) {
-        Log.e(TAG, "resolveAccountName failed", expected)
+        Log.error(TAG, "resolveAccountName failed", expected)
         "${provider.displayName} account"
     }
 
@@ -208,7 +208,7 @@ object OAuthManager {
                 },
             )
         } catch (expected: Exception) {
-            Log.e(TAG, "token endpoint call failed", expected)
+            Log.error(TAG, "token endpoint call failed", expected)
             null
         }
     }

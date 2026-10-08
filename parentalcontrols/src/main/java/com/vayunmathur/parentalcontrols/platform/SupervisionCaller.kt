@@ -3,7 +3,7 @@ package com.vayunmathur.parentalcontrols.platform
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Process
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 private const val TAG = "ParentalControlsIpc"
 
@@ -29,7 +29,7 @@ class SupervisionCaller(context: Context) {
     /** The Settings uid, resolved once; uids do not change while the system is running. */
     private val settingsUid: Int? = runCatching {
         packageManager.getPackageUid(SETTINGS_PACKAGE, PackageManager.PackageInfoFlags.of(0))
-    }.onFailure { Log.w(TAG, "could not resolve $SETTINGS_PACKAGE", it) }.getOrNull()
+    }.onFailure { Log.status(TAG, "could not resolve $SETTINGS_PACKAGE", it) }.getOrNull()
 
     fun isSettings(uid: Int): Boolean {
         // The system itself is allowed: Settings runs as the system uid on some configurations,

@@ -1,7 +1,7 @@
 package com.vayunmathur.education.content
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.serialization.json.Json
 
 /**
@@ -104,7 +104,7 @@ class ContentRepository(val packs: List<ContentPack>) {
             val files = try {
                 assets.list(ASSET_DIR)?.filter { it.endsWith(".json") } ?: emptyList()
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to list content assets", e)
+                Log.error(TAG, "Failed to list content assets", e)
                 emptyList()
             }
             val packs = files.mapNotNull { name ->
@@ -112,7 +112,7 @@ class ContentRepository(val packs: List<ContentPack>) {
                     val text = assets.open("$ASSET_DIR/$name").bufferedReader().use { it.readText() }
                     json.decodeFromString<ContentPack>(text)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to parse content pack: $name", e)
+                    Log.error(TAG, "Failed to parse content pack: $name", e)
                     null
                 }
             }

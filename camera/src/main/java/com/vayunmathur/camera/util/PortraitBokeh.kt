@@ -19,7 +19,7 @@ import android.graphics.Shader
 import android.hardware.HardwareBuffer
 import android.media.ImageReader
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import com.vayunmathur.library.ml.SelfieSegmenter
@@ -288,10 +288,10 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
         return try {
             buildMask(src, rotationDegrees)
         } catch (e: IllegalStateException) {
-            Log.e("StillBokeh", "segmentation failed", e)
+            Log.error("StillBokeh", "segmentation failed", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e("StillBokeh", "segmentation failed", e)
+            Log.error("StillBokeh", "segmentation failed", e)
             null
         }
     }
@@ -301,10 +301,10 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
         return try {
             blurBackground(src, mask, strength)
         } catch (e: IllegalStateException) {
-            Log.e("StillBokeh", "blur pass failed", e)
+            Log.error("StillBokeh", "blur pass failed", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e("StillBokeh", "blur pass failed", e)
+            Log.error("StillBokeh", "blur pass failed", e)
             null
         }
     }
@@ -320,10 +320,10 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
         return try {
             compositeFrame(src, background, warmth, shadows, mirror)
         } catch (e: IllegalStateException) {
-            Log.e("StillBokeh", "composite failed", e)
+            Log.error("StillBokeh", "composite failed", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e("StillBokeh", "composite failed", e)
+            Log.error("StillBokeh", "composite failed", e)
             null
         }
     }

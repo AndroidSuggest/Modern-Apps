@@ -9,7 +9,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.location.Location
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Camera
 import androidx.camera.core.ImageAnalysis
@@ -353,7 +353,7 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
     internal var extensionCameraStateLiveData: androidx.lifecycle.LiveData<androidx.camera.core.CameraState>? = null
     internal val extensionCameraStateObserver = androidx.lifecycle.Observer<androidx.camera.core.CameraState> { st ->
         val err = st.error ?: return@Observer
-        Log.w(
+        Log.status(
             "NightPreview",
             "night extension camera error type=${st.type} code=${err.code} – " +
                 "disabling night extension (cached)"

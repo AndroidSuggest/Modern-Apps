@@ -3,7 +3,7 @@ package com.vayunmathur.parentalcontrols.platform
 import android.app.PendingIntent
 import android.app.usage.UsageStatsManager
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 import com.vayunmathur.parentalcontrols.data.AppRule
 import com.vayunmathur.parentalcontrols.data.BonusGrant
@@ -85,7 +85,7 @@ class AppLimits(private val context: Context) {
         val stats = runCatching {
             usage.queryAndAggregateUsageStats(midnightMillis(), System.currentTimeMillis())
         }.getOrElse {
-            Log.w(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
+            Log.status(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
             return Duration.ZERO
         }
         val millis = stats[packageName]?.totalTimeInForeground ?: 0L
@@ -103,7 +103,7 @@ class AppLimits(private val context: Context) {
         val stats = runCatching {
             usage.queryAndAggregateUsageStats(midnightMillis(), System.currentTimeMillis())
         }.getOrElse {
-            Log.w(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
+            Log.status(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
             return Duration.ZERO
         }
         return Duration.ofMillis(stats.values.sumOf { it.totalTimeInForeground })
@@ -116,7 +116,7 @@ class AppLimits(private val context: Context) {
         val usage = usage ?: return
         val method = unregisterMethod ?: return
         runCatching { method.invoke(usage, observerId(packageName)) }
-            .onFailure { Log.w(TAG, "could not unregister the observer for $packageName", it) }
+            .onFailure { Log.status(TAG, "could not unregister the observer for $packageName", it) }
     }
 
     private fun register(usage: UsageStatsManager, packageName: String, minutes: Int) {
@@ -144,7 +144,7 @@ class AppLimits(private val context: Context) {
                 used,
                 pending,
             )
-        }.onFailure { Log.w(TAG, "could not register an observer for $packageName", it) }
+        }.onFailure { Log.status(TAG, "could not register an observer for $packageName", it) }
     }
 
     /**
@@ -167,7 +167,7 @@ class AppLimits(private val context: Context) {
 
         fun systemApi(name: String, vararg params: Class<*>): Method? =
             runCatching { UsageStatsManager::class.java.getMethod(name, *params) }
-                .onFailure { Log.w(TAG, "UsageStatsManager.$name is unreachable", it) }
+                .onFailure { Log.status(TAG, "UsageStatsManager.$name is unreachable", it) }
                 .getOrNull()
     }
 }

@@ -7,7 +7,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
 import android.telephony.SubscriptionManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -85,7 +85,7 @@ object RcsImsNetwork {
                             .apply { isAccessible = true }
                         builder.setNetworkSpecifier(ctor.newInstance(subId) as android.net.NetworkSpecifier)
                     }.onFailure {
-                        Log.w(TAG, "TelephonyNetworkSpecifier unavailable", it)
+                        Log.status(TAG, "TelephonyNetworkSpecifier unavailable", it)
                     }
                 }
                 val request = builder.build()
@@ -143,7 +143,7 @@ object RcsImsNetwork {
             val bound = runCatching {
                 val factory = ims.getSocketFactory()
                 val local = lastLocalIp?.let { runCatching { InetAddress.getByName(it) }.getOrNull() }
-                Log.i(TAG, "IMS socket to $host:$port via ${ims} local=$local")
+                Log.status(TAG, "IMS socket to $host:$port via ${ims} local=$local")
                 val socket = if (local != null) {
                     factory.createSocket(host, port, local, 0)
                 } else {
@@ -155,14 +155,14 @@ object RcsImsNetwork {
                 socket
             }
             val socket = bound.getOrElse {
-                Log.w(TAG, "IMS socket bind failed to $host:$port", it)
+                Log.status(TAG, "IMS socket bind failed to $host:$port", it)
                 null
             }
             if (socket != null && socket.isConnected) return socket
             runCatching { socket?.close() }
             // IMS network went stale — drop it so the next call re-requests.
             cached = null
-            Log.w(TAG, "IMS socket bind failed; falling back to plain socket")
+            Log.status(TAG, "IMS socket bind failed; falling back to plain socket")
         }
         // Plain fallback (v1 behavior).
         return runCatching {
@@ -221,7 +221,7 @@ object RcsImsNetwork {
             val ip = localIp.hostAddress ?: return null
             ListenSocket(server = server, localIp = ip, localPort = port)
         }.getOrElse {
-            Log.w(TAG, "IMS listen bind failed", it)
+            Log.status(TAG, "IMS listen bind failed", it)
             null
         }
     }

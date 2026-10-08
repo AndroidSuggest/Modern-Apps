@@ -7,7 +7,7 @@ import android.net.Network
 import android.os.Build
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.net.Inet6Address
 import java.net.InetSocketAddress
 import java.util.UUID
@@ -102,7 +102,7 @@ object RcsDirectSip {
         val ok = runCatching {
             connectAndRegister(conn.app, conn.tm, conn.pcscfAddr)
         }.getOrElse {
-            Log.w(TAG, "Direct SIP start failed", it)
+            Log.status(TAG, "Direct SIP start failed", it)
             false
         }
         if (!ok) stop()
@@ -121,11 +121,11 @@ object RcsDirectSip {
         if (!SubscriptionManager.isValidSubscriptionId(subId)) return null
         val app = context.applicationContext
         val network = RcsImsNetwork.imsNetwork(app, subId) ?: run {
-            Log.w(TAG, "No IMS network for direct SIP")
+            Log.status(TAG, "No IMS network for direct SIP")
             return null
         }
         val pcscfAddr = pcscfAddress(app, network) ?: run {
-            Log.w(TAG, "No P-CSCF address on IMS network")
+            Log.status(TAG, "No P-CSCF address on IMS network")
             return null
         }
         val tm = app.getSystemService(TelephonyManager::class.java)?.let { base ->
@@ -208,7 +208,7 @@ object RcsDirectSip {
         // Unauthenticated REGISTER → 401 with nonce → AKA → REGISTER w/auth.
         val first = buildRegister(publicIdentity, localContact, pcscfAddr, REGISTER_EXPIRES)
         val challenge = transact(first, "REGISTER") ?: run {
-            Log.w(TAG, "No response to initial REGISTER")
+            Log.status(TAG, "No response to initial REGISTER")
             return false
         }
         if (challenge.statusCode == SIP_OK) {
@@ -216,7 +216,7 @@ object RcsDirectSip {
             return true
         }
         if (challenge.statusCode != SIP_UNAUTHORIZED && challenge.statusCode != SIP_PROXY_AUTH_REQUIRED) {
-            Log.w(TAG, "REGISTER rejected: ${challenge.statusCode} ${challenge.reason}")
+            Log.status(TAG, "REGISTER rejected: ${challenge.statusCode} ${challenge.reason}")
             return false
         }
         return finishRegistration(tm, challenge)
@@ -226,11 +226,11 @@ object RcsDirectSip {
     private suspend fun finishRegistration(tm: TelephonyManager, challenge: SipResponse): Boolean {
         val authed = buildAuthedRegister(tm, challenge) ?: return false
         val final = transact(authed, "REGISTER") ?: run {
-            Log.w(TAG, "No response to authed REGISTER")
+            Log.status(TAG, "No response to authed REGISTER")
             return false
         }
         if (final.statusCode != SIP_OK) {
-            Log.w(TAG, "Authed REGISTER rejected: ${final.statusCode} ${final.reason}")
+            Log.status(TAG, "Authed REGISTER rejected: ${final.statusCode} ${final.reason}")
             return false
         }
         onRegistered(final)
@@ -241,7 +241,7 @@ object RcsDirectSip {
         registeredExpires = resp.expires ?: REGISTER_EXPIRES
         // Our Contact (for inbound routing correlation + re-REGISTER).
         resp.contact?.let { localContact = it }
-        Log.i(TAG, "Direct SIP REGISTERed (expires=$registeredExpires)")
+        Log.status(TAG, "Direct SIP REGISTERed (expires=$registeredExpires)")
         // Refresh at half-life.
         scope.launch {
             while (running) {
@@ -259,7 +259,7 @@ object RcsDirectSip {
         if (resp.statusCode == SIP_UNAUTHORIZED || resp.statusCode == SIP_PROXY_AUTH_REQUIRED) {
             // Re-auth on refresh challenge (nonce rotation); needs TM — the
             // sync-service path re-runs start() instead. Report failure.
-            Log.w(TAG, "Refresh challenged; full re-register required")
+            Log.status(TAG, "Refresh challenged; full re-register required")
             return false
         }
         if (resp.statusCode == SIP_OK) {
@@ -338,7 +338,7 @@ object RcsDirectSip {
                 nonce,
             )
         }.getOrNull()?.takeIf { it.isNotBlank() } ?: run {
-            Log.w(TAG, "ISIM AKA challenge failed (no ISIM app?)")
+            Log.status(TAG, "ISIM AKA challenge failed (no ISIM app?)")
             return null
         }
         // akaRes is base64 RES||CK||IK per 3GPP TS 31.102; the Digest
@@ -432,7 +432,7 @@ object RcsDirectSip {
             // Socket closed — loop exits.
         } finally {
             if (running) {
-                Log.w(TAG, "Direct SIP read loop ended unexpectedly")
+                Log.status(TAG, "Direct SIP read loop ended unexpectedly")
                 running = false
             }
         }

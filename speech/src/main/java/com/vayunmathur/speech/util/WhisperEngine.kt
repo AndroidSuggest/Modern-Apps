@@ -1,7 +1,7 @@
 package com.vayunmathur.speech.util
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ml.WhisperHandle
 import org.json.JSONObject
 
@@ -108,7 +108,7 @@ class WhisperEngine(context: Context) {
             cfg.suppressAtBegin,
         )
         if (!handle.isAvailable) {
-            Log.e(TAG, "cannot bring up $handle")
+            Log.error(TAG, "cannot bring up $handle")
             handle.close()
             return false
         }
@@ -116,7 +116,7 @@ class WhisperEngine(context: Context) {
         tokenizer = tok
         config = cfg
         loadFailed = false
-        Log.i(TAG, "whisper-base ready (${cfg.langToId.size} languages)")
+        Log.status(TAG, "whisper-base ready (${cfg.langToId.size} languages)")
         return true
     }
 
@@ -133,7 +133,7 @@ class WhisperEngine(context: Context) {
             ),
         )
     } catch (e: Exception) {
-        Log.e(TAG, "cannot read $GEN_CONFIG", e)
+        Log.error(TAG, "cannot read $GEN_CONFIG", e)
         null
     }
 
@@ -141,7 +141,7 @@ class WhisperEngine(context: Context) {
     private fun loadTokenizer(): WhisperTokenizer? = try {
         app.assets.open("${WhisperModel.DIR}/$VOCAB").use { WhisperTokenizer.load(it) }
     } catch (e: Exception) {
-        Log.e(TAG, "cannot read $VOCAB", e)
+        Log.error(TAG, "cannot read $VOCAB", e)
         null
     }
 
@@ -162,7 +162,7 @@ class WhisperEngine(context: Context) {
                 ?: return null
             tok.decode(ids.toList())
         } catch (e: Exception) {
-            Log.e(TAG, "transcribe failed", e)
+            Log.error(TAG, "transcribe failed", e)
             null
         }
     }
@@ -177,7 +177,7 @@ class WhisperEngine(context: Context) {
         val code = requested?.substringBefore('-')?.lowercase()
         if (code == null || code == "auto") return DETECT
         cfg.langToId[code]?.let { return it }
-        Log.w(TAG, "no Whisper language token for '$requested', detecting instead")
+        Log.status(TAG, "no Whisper language token for '$requested', detecting instead")
         return DETECT
     }
 

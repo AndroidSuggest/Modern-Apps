@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
@@ -116,11 +116,11 @@ class CastViewModel(application: Application) : AndroidViewModel(application), C
             try {
                 discovery.discover().collect { }
             } catch (e: SecurityException) {
-                Log.w(TAG, "discovery ended", e)
+                Log.status(TAG, "discovery ended", e)
             } catch (e: IllegalStateException) {
-                Log.w(TAG, "discovery ended", e)
+                Log.status(TAG, "discovery ended", e)
             } catch (e: IllegalArgumentException) {
-                Log.w(TAG, "discovery ended", e)
+                Log.status(TAG, "discovery ended", e)
             }
             _isScanning.value = false
         }

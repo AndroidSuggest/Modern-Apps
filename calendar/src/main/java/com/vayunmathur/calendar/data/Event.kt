@@ -2,7 +2,7 @@ package com.vayunmathur.calendar.data
 import android.content.ContentValues
 import android.content.Context
 import android.provider.CalendarContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.database.getIntOrNull
 import androidx.core.database.getStringOrNull
 import kotlinx.datetime.LocalDate
@@ -132,7 +132,7 @@ data class Event(
                 val cursor = context.contentResolver.query(uri, projection, null, null, null)
                 cursor?.use { drainEvents(it, remindersByEvent, events) }
             } catch (expected: Exception) {
-                Log.e("Event", "Error querying events", expected)
+                Log.error("Event", "Error querying events", expected)
             }
 
             return events
@@ -151,7 +151,7 @@ data class Event(
                         events.add(event)
                     }
                 } catch (expected: Exception) {
-                    Log.e("Event", "Error constructing event from cursor", expected)
+                    Log.error("Event", "Error constructing event from cursor", expected)
                 }
             }
         }
@@ -268,7 +268,7 @@ data class Event(
                         map.getOrPut(c.getLong(eIdx)) { mutableListOf() }.add(minutes)
                     }
                 }
-            }.onFailure { Log.e("Event", "Error querying reminders", it) }
+            }.onFailure { Log.error("Event", "Error querying reminders", it) }
             return map
         }
     }

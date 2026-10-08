@@ -3,7 +3,7 @@ package com.vayunmathur.parentalcontrols.platform
 import android.app.AppOpsManager
 import android.content.Context
 import android.os.Process
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 
 private const val TAG = "ParentalControlsUsageAccess"
@@ -65,7 +65,7 @@ object UsageAccess {
         val current = runCatching {
             ops.unsafeCheckOpNoThrow(OPSTR_GET_USAGE_STATS, uid, packageName)
         }.getOrElse {
-            Log.w(TAG, "could not read the usage-stats op", it)
+            Log.status(TAG, "could not read the usage-stats op", it)
             return Status.DENIED
         }
         if (current == MODE_ALLOWED) return Status.GRANTED
@@ -78,7 +78,7 @@ object UsageAccess {
                 Int::class.javaPrimitiveType,
             )
         }.getOrElse {
-            Log.w(TAG, "AppOpsManager.setUidMode is unreachable", it)
+            Log.status(TAG, "AppOpsManager.setUidMode is unreachable", it)
             return Status.DENIED
         }
 
@@ -89,14 +89,14 @@ object UsageAccess {
             // SecurityException when MANAGE_APP_OPS_MODES is not held, which happens if the
             // role is unheld or the manifest declaration was dropped. Limits still work from
             // the moment they are armed; only the mid-day resume is lost.
-            Log.w(TAG, "could not grant the usage-stats op; limits will not survive a reboot", it)
+            Log.status(TAG, "could not grant the usage-stats op; limits will not survive a reboot", it)
             return Status.DENIED
         }
         return if (granted == MODE_ALLOWED) {
-            Log.i(TAG, "granted the usage-stats op to ourselves")
+            Log.status(TAG, "granted the usage-stats op to ourselves")
             Status.GRANTED
         } else {
-            Log.w(TAG, "usage-stats op still denied after self-grant; limits will not survive a reboot")
+            Log.status(TAG, "usage-stats op still denied after self-grant; limits will not survive a reboot")
             Status.DENIED
         }
     }

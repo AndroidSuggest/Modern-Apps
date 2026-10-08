@@ -2,7 +2,7 @@
 
 package com.vayunmathur.communicate.data.whatsapp.transport
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppAuthData
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppDiag
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol
@@ -311,7 +311,7 @@ class WhatsAppSocket(
                     try {
                         _messages.emit(s.decrypt(frame))
                     } catch (expected: Exception) {
-                        Log.e(TAG, "frame decrypt failed", expected)
+                        Log.error(TAG, "frame decrypt failed", expected)
                     }
                 }
             }
@@ -329,7 +329,7 @@ class WhatsAppSocket(
             }
             true
         } catch (expected: Exception) {
-            Log.e(TAG, "writeRaw failed", expected)
+            Log.error(TAG, "writeRaw failed", expected)
             false
         }
     }
@@ -347,7 +347,7 @@ class WhatsAppSocket(
                 writeRaw(WhatsAppProtocol.buildFramedMessage(encrypted, null))
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "send failed", expected)
+            Log.error(TAG, "send failed", expected)
             false
         }
     }

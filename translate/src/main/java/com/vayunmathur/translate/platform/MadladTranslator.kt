@@ -1,7 +1,7 @@
 package com.vayunmathur.translate.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ml.MadladHandle
 import com.vayunmathur.translate.domain.TranslationEngine
 import kotlinx.coroutines.Dispatchers
@@ -56,7 +56,7 @@ class MadladTranslator(private val context: Context) : TranslationEngine {
                 try {
                     handle.translate(text, tag)?.ifBlank { null }
                 } catch (e: Exception) {
-                    Log.e(TAG, "translate failed", e)
+                    Log.error(TAG, "translate failed", e)
                     null
                 }
             }

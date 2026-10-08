@@ -1,6 +1,6 @@
 package com.vayunmathur.camera.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import com.vayunmathur.camera.platform.lensSelector
@@ -20,11 +20,11 @@ internal fun CameraViewModel.attachAeSnapshot(
     try {
         androidx.camera.camera2.interop.Camera2Interop.Extender(previewBuilder)
             .setSessionCaptureCallback(aeSnapshotCallback)
-        Log.d("NightPreview", "$tag attached AE snapshot callback")
+        Log.debug("NightPreview", "$tag attached AE snapshot callback")
     } catch (e: IllegalStateException) {
-        Log.e("NightPreview", "$tag Could not attach AE snapshot callback (was hidden as Warn)", e)
+        Log.error("NightPreview", "$tag Could not attach AE snapshot callback (was hidden as Warn)", e)
     } catch (e: IllegalArgumentException) {
-        Log.e("NightPreview", "$tag Could not attach AE snapshot callback (was hidden as Warn)", e)
+        Log.error("NightPreview", "$tag Could not attach AE snapshot callback (was hidden as Warn)", e)
     }
 }
 
@@ -39,13 +39,13 @@ internal fun CameraViewModel.probeUltraHdr(
         val caps = androidx.camera.core.ImageCapture.getImageCaptureCapabilities(cameraInfo)
             .supportedOutputFormats
             .contains(androidx.camera.core.ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
-        Log.d("NightPreview", "setupPhotoSession() ultraHdrSupported=$caps lens=${requestedLens?.labelKey}")
+        Log.debug("NightPreview", "setupPhotoSession() ultraHdrSupported=$caps lens=${requestedLens?.labelKey}")
         caps
     } catch (e: IllegalStateException) {
-        Log.e("NightPreview", "setupPhotoSession() Could not query Ultra HDR support (was hidden as Warn)", e)
+        Log.error("NightPreview", "setupPhotoSession() Could not query Ultra HDR support (was hidden as Warn)", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e("NightPreview", "setupPhotoSession() Could not query Ultra HDR support (was hidden as Warn)", e)
+        Log.error("NightPreview", "setupPhotoSession() Could not query Ultra HDR support (was hidden as Warn)", e)
         false
     }
 }
@@ -57,13 +57,13 @@ internal suspend fun CameraViewModel.recoverFromFallbackFailure(
     ultraHdrSupported: Boolean,
     secondTry: suspend (Boolean) -> androidx.camera.core.Camera
 ): androidx.camera.core.Camera {
-    Log.e(
+    Log.error(
         "NightPreview",
         "setupPhotoSession() default-res ultraHdr=$ultraHdrSupported bind FAILED (was hidden)",
         e2
     )
     if (!ultraHdrSupported) throw e2
-    Log.e(
+    Log.error(
         "NightPreview",
         "setupPhotoSession() Ultra HDR bind failed (was Warn), " +
             "falling back to plain JPEG – lower quality path"

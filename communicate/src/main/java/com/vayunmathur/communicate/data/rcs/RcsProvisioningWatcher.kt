@@ -2,7 +2,7 @@ package com.vayunmathur.communicate.data.rcs
 
 import android.content.Context
 import android.telephony.SubscriptionManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,7 +49,7 @@ object RcsProvisioningWatcher {
         if (subId == watchingSubId && manager != null) return
         unwatch()
         val pm = RcsHiddenApi.provisioningManager(subId) ?: run {
-            Log.i(TAG, "No provisioning manager for subId=$subId (no privilege or unsupported)")
+            Log.status(TAG, "No provisioning manager for subId=$subId (no privilege or unsupported)")
             return
         }
         val app = context.applicationContext
@@ -65,7 +65,7 @@ object RcsProvisioningWatcher {
 
                 override fun onConfigurationReset() {
                     scope.launch {
-                        Log.i(TAG, "Provisioning config reset for subId=$subId")
+                        Log.status(TAG, "Provisioning config reset for subId=$subId")
                         RcsFileTransferHttp.contentServerUri = null
                         RcsProvisioning.probe(app, subId)
                     }
@@ -73,7 +73,7 @@ object RcsProvisioningWatcher {
 
                 override fun onRemoved() {
                     scope.launch {
-                        Log.i(TAG, "Provisioning removed for subId=$subId")
+                        Log.status(TAG, "Provisioning removed for subId=$subId")
                         RcsFileTransferHttp.contentServerUri = null
                         RcsProvisioning.probe(app, subId)
                     }
@@ -83,7 +83,7 @@ object RcsProvisioningWatcher {
         if (ok) {
             manager = pm
             watchingSubId = subId
-            Log.i(TAG, "Watching provisioning for subId=$subId")
+            Log.status(TAG, "Watching provisioning for subId=$subId")
         }
     }
 
@@ -98,7 +98,7 @@ object RcsProvisioningWatcher {
         if (!RcsFeature.enabled || configXml.isEmpty()) return
         RcsFileTransferHttp.parseContentServer(configXml)?.let { uri ->
             if (RcsFileTransferHttp.contentServerUri != uri) {
-                Log.i(TAG, "FT content server configured for subId=$subId")
+                Log.status(TAG, "FT content server configured for subId=$subId")
                 RcsFileTransferHttp.contentServerUri = uri
             }
         }

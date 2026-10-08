@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.ContextCompat
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.share.network.transport.Connection
@@ -143,7 +143,7 @@ object ShareReceiveController {
     fun endpointInfo(): ByteArray? = try {
         ShareNativeDiscovery.nativeBuildEndpointInfo(localName, ShareNative.DEVICE_TYPE_PHONE)
     } catch (e: UnsatisfiedLinkError) {
-        Log.e(TAG, "libshare_nearby unavailable — cannot build endpoint info", e)
+        Log.error(TAG, "libshare_nearby unavailable — cannot build endpoint info", e)
         null
     }
 
@@ -232,7 +232,7 @@ object ShareReceiveController {
         val endpointInfo = endpointInfo()
         if (endpointInfo == null) {
             // A random blob is worse than silence: peers would list us and then fail to connect.
-            Log.w(TAG, "refusing to advertise without an endpoint info blob")
+            Log.status(TAG, "refusing to advertise without an endpoint info blob")
             return
         }
         // Under `lock`, not just a volatile check-then-set: `start` runs on the service's main
@@ -244,7 +244,7 @@ object ShareReceiveController {
             advertising = true
             ShareReceiveNotifier.cancelStale(app)
             val swept = p.store.gcOrphans(ORPHAN_MAX_AGE_MS)
-            if (swept > 0) Log.i(TAG, "swept $swept orphaned staged file(s)")
+            if (swept > 0) Log.status(TAG, "swept $swept orphaned staged file(s)")
             // Before listen(), so a socket accepted immediately announces the identity we are
             // about to advertise rather than the transport's construction-time one.
             p.transport.setLocalIdentity(localName, endpointInfo, p.endpointId)
@@ -254,7 +254,7 @@ object ShareReceiveController {
             p.nsd.advertise(p.endpointId, endpointInfo, port)
             // The same blob inside a Nearby Connections BleAdvertisement under 0xFEF3.
             p.ble.startAdvertising(p.endpointId, endpointInfo)
-            Log.i(TAG, "receiving as \"$localName\" on port $port")
+            Log.status(TAG, "receiving as \"$localName\" on port $port")
         }
     }
 
@@ -273,7 +273,7 @@ object ShareReceiveController {
             p.ble.stopAdvertising()
             p.transport.stopListening()
         }
-        Log.i(TAG, "stopped receiving")
+        Log.status(TAG, "stopped receiving")
     }
 
     /** Suspend until no session is still moving bytes. */

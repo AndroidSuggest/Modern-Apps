@@ -4,7 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -163,10 +163,10 @@ class MainActivity : ComponentActivity() {
         val data = intent.dataString ?: return
         val link = MapLinkParser.parse(data)
         if (link == null) {
-            Log.i(TAG, "ACTION_VIEW ignored (unparseable): $data")
+            Log.status(TAG, "ACTION_VIEW ignored (unparseable): $data")
             return
         }
-        Log.i(TAG, "ACTION_VIEW routed data=$data -> $link")
+        Log.status(TAG, "ACTION_VIEW routed data=$data -> $link")
         if (link.navigate) navigateTo(link) else openPlace(link)
     }
 
@@ -195,7 +195,7 @@ class MainActivity : ComponentActivity() {
                 val near = biasPosition()
                 searchVm.searchAndSelectFirst(query, near.latitude, near.longitude) { first ->
                     if (first != null) selectedVm.selectAndFocus(searchVm.toFeature(first), link.zoom)
-                    else Log.i(TAG, "openPlace: no search result for \"$query\"")
+                    else Log.status(TAG, "openPlace: no search result for \"$query\"")
                 }
             }
         }
@@ -221,7 +221,7 @@ class MainActivity : ComponentActivity() {
                 destName = getString(R.string.dropped_pin)
             }
             if (destPos == null) {
-                Log.i(TAG, "navigateTo: could not resolve destination for $link")
+                Log.status(TAG, "navigateTo: could not resolve destination for $link")
                 return@launch
             }
 
@@ -240,7 +240,7 @@ class MainActivity : ComponentActivity() {
             if (origin == null) {
                 // No fix yet: fall back to opening the destination place + pane so the
                 // user can hit Start Navigation manually (which waits for location).
-                Log.i(TAG, "navigateTo: no location fix; opening destination place instead")
+                Log.status(TAG, "navigateTo: no location fix; opening destination place instead")
                 selectedVm.selectAndFocus(destFeature)
                 return@launch
             }
@@ -248,10 +248,10 @@ class MainActivity : ComponentActivity() {
             val computed = try {
                 OfflineRouterRoadRoutes.getRouteForMode(applicationContext, route, origin, mode)
             } catch (_: Exception) {
-                Log.w(TAG, "navigateTo: routing failed"); null
+                Log.status(TAG, "navigateTo: routing failed"); null
             }
             if (computed == null) {
-                Log.i(TAG, "navigateTo: no route ($mode) to $destName; opening place instead")
+                Log.status(TAG, "navigateTo: no route ($mode) to $destName; opening place instead")
                 selectedVm.selectAndFocus(destFeature)
                 return@launch
             }
@@ -264,7 +264,7 @@ class MainActivity : ComponentActivity() {
                 destination = destPos,
                 destinationLabel = destName,
             )
-            Log.i(TAG, "navigateTo: started $mode navigation to $destName")
+            Log.status(TAG, "navigateTo: started $mode navigation to $destName")
         }
     }
 

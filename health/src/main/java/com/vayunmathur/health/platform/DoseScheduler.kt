@@ -4,7 +4,7 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.health.data.MedicationSchedule
 import com.vayunmathur.health.domain.DoseSchedule
 import kotlin.time.Clock
@@ -42,7 +42,7 @@ object DoseScheduler {
             next.toEpochMilliseconds(),
             pendingIntent(context, schedule.id, schedule.medicationId, PendingIntent.FLAG_UPDATE_CURRENT),
         )
-        Log.i(TAG, "Schedule ${schedule.id}: next dose at $next")
+        Log.status(TAG, "Schedule ${schedule.id}: next dose at $next")
     }
 
     /** Arms an alarm [delayMillis] from now for a snoozed dose, leaving the schedule alone. */

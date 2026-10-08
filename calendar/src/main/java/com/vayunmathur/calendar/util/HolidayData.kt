@@ -1,7 +1,7 @@
 package com.vayunmathur.calendar.util
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -79,7 +79,7 @@ object HolidayData {
                 }
             }
             json.decodeFromString<List<HolidayEntry>>(text)
-        }.onFailure { Log.e("HolidayData", "Failed reading $key.json", it) }
+        }.onFailure { Log.error("HolidayData", "Failed reading $key.json", it) }
             .getOrDefault(emptyList())
         holidaysCache[key] = loaded
         return loaded
@@ -107,7 +107,7 @@ object HolidayData {
         return try {
             context.assets.open(assetPath).bufferedReader().use { it.readText() }
         } catch (expected: Exception) {
-            Log.e("HolidayData", "Failed reading $logName", expected)
+            Log.error("HolidayData", "Failed reading $logName", expected)
             null
         }
     }

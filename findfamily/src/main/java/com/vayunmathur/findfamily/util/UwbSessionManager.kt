@@ -10,7 +10,7 @@ import kotlin.concurrent.atomics.AtomicBoolean
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.annotation.RequiresApi
 import com.vayunmathur.findfamily.data.FindFamilyRepository
 import com.vayunmathur.findfamily.data.UserKind
@@ -120,9 +120,9 @@ object UwbSessionManager {
      * multiple times — only the first call has effect.
      */
     fun init(context: Context, repository: FindFamilyRepository) {
-        if (!isSupportedSdk) { Log.i(TAG, "init: SDK ${Build.VERSION.SDK_INT} < 36, UWB disabled"); return }
-        if (!initialized.compareAndSet(false, true)) { Log.i(TAG, "init: already initialized"); return }
-        Log.i(TAG, "init: hooking up UwbInbox subscriber")
+        if (!isSupportedSdk) { Log.status(TAG, "init: SDK ${Build.VERSION.SDK_INT} < 36, UWB disabled"); return }
+        if (!initialized.compareAndSet(false, true)) { Log.status(TAG, "init: already initialized"); return }
+        Log.status(TAG, "init: hooking up UwbInbox subscriber")
         appContext = context.applicationContext
         UwbSessionManager.repository = repository
 
@@ -157,7 +157,7 @@ object UwbSessionManager {
     // -----------------------------------------------------------------
 
     fun startAsInitiator(peerUserId: Long) {
-        Log.i(
+        Log.status(
             TAG,
             "startAsInitiator(peer=$peerUserId) entered. " +
                 "isSupportedSdk=$isSupportedSdk initialized=${initialized.load()} state=${_state.value}"
@@ -168,11 +168,11 @@ object UwbSessionManager {
             return
         }
         if (!initialized.load()) {
-            Log.w(TAG, "startAsInitiator: NOT INITIALIZED — service hasn't called init() yet")
+            Log.status(TAG, "startAsInitiator: NOT INITIALIZED — service hasn't called init() yet")
             return
         }
         if (_state.value !is UwbSessionState.Idle) {
-            Log.i(TAG, "startAsInitiator: not idle, skipping")
+            Log.status(TAG, "startAsInitiator: not idle, skipping")
             return
         }
         _state.value = UwbSessionState.Starting
@@ -192,9 +192,9 @@ object UwbSessionManager {
         peerUserId: Long,
         sessionId: String,
     ) {
-        Log.i(TAG, "startAsInitiator: launched coroutine, loading peer from DB")
+        Log.status(TAG, "startAsInitiator: launched coroutine, loading peer from DB")
         val peerUser = repository.getUser(peerUserId)
-        Log.i(TAG, "startAsInitiator: peerUser=${peerUser?.name} platform=${peerUser?.platform}")
+        Log.status(TAG, "startAsInitiator: peerUser=${peerUser?.name} platform=${peerUser?.platform}")
         if (peerUser == null) {
             _state.value = UwbSessionState.Failed("Unknown peer")
             stopLocal()
@@ -211,13 +211,13 @@ object UwbSessionManager {
 
         val ctrl = UwbController(appContext)
         controller = ctrl
-        Log.i(TAG, "startAsInitiator: opening controller")
+        Log.status(TAG, "startAsInitiator: opening controller")
         val info = ctrl.openController().getOrElse {
-            Log.e(TAG, "openController failed", it)
+            Log.error(TAG, "openController failed", it)
             _state.value = UwbSessionState.Unsupported(it.message ?: "UWB not available on this device")
             return
         }
-        Log.i(
+        Log.status(
             TAG,
             "startAsInitiator: controller opened " +
                 "(addr=${info.localAddress.joinToString(":") { "%02x".format(it) }} " +
@@ -238,7 +238,7 @@ object UwbSessionManager {
             )
         )
         val ok = publish(envelope, peerUserId)
-        Log.i(TAG, "startAsInitiator: publishUwbMessage returned $ok")
+        Log.status(TAG, "startAsInitiator: publishUwbMessage returned $ok")
         if (!ok) {
             _state.value = UwbSessionState.Failed("Could not reach peer")
             stopLocal()
@@ -254,7 +254,7 @@ object UwbSessionManager {
     /** Park waiting for the peer's ACK, then start the ranging stream. */
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     private suspend fun awaitAckAndRange(ctrl: UwbController, info: UwbController.ControllerInfo, sessionId: String) {
-        Log.i(TAG, "startAsInitiator: parked waiting for ACK on sessionId=$sessionId")
+        Log.status(TAG, "startAsInitiator: parked waiting for ACK on sessionId=$sessionId")
         val ack = waitForEnvelope(sessionId, TIMEOUT_MS) { env ->
             env.kind == UwbEnvelopeKind.ACK || env.kind == UwbEnvelopeKind.CANCEL
         }
@@ -364,7 +364,7 @@ object UwbSessionManager {
         val secret = store.secret(trackerUserId)
         val bleAddress = store.bleAddress(trackerUserId)
         if (secret == null || bleAddress == null) {
-            Log.w(TAG, "beginTrackerFind: tracker $trackerUserId has no stored secret/address")
+            Log.status(TAG, "beginTrackerFind: tracker $trackerUserId has no stored secret/address")
             _state.value = UwbSessionState.Failed("This tracker isn't bound on this device")
             stopLocal()
             return
@@ -478,7 +478,7 @@ object UwbSessionManager {
                 UwbBytes.from(shareable.payload!!.shareableConfigDataB64!!)
             )
         } catch (e: Throwable) {
-            Log.e(TAG, "Failed to parse shareable config data", e)
+            Log.error(TAG, "Failed to parse shareable config data", e)
             _state.value = UwbSessionState.Failed(e.message ?: "Could not parse iOS config")
             stopLocal()
             return
@@ -539,7 +539,7 @@ object UwbSessionManager {
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Exception in startRangingStream", e)
+                Log.error(TAG, "Exception in startRangingStream", e)
                 _state.value = UwbSessionState.Failed("Ranging stream failed: ${e.message}")
                 stopLocal()
             }
@@ -584,13 +584,13 @@ object UwbSessionManager {
         val peer = try {
             repository.getUser(peerId)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to lookup peer user", e)
+            Log.error(TAG, "Failed to lookup peer user", e)
             null
         }
         return try {
             Networking.publishUwbMessage(envelope, peerId, peer)
         } catch (e: Exception) {
-            Log.e(TAG, "publishUwbMessage threw exception", e)
+            Log.error(TAG, "publishUwbMessage threw exception", e)
             false
         }
     }

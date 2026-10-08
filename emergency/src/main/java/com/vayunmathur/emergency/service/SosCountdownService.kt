@@ -11,7 +11,7 @@ import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.telecom.TelecomManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 import com.vayunmathur.emergency.notifications.SosNotifications
 import com.vayunmathur.emergency.platform.EmergencyNumberLookup
@@ -45,19 +45,19 @@ class SosCountdownService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val remainingMs = intent?.getLongExtra(EXTRA_REMAINING_MS, -1) ?: -1
         if (remainingMs <= 0) {
-            Log.w(TAG, "invalid remaining countdown time; nothing to do")
+            Log.status(TAG, "invalid remaining countdown time; nothing to do")
             stopSelf()
             return START_NOT_STICKY
         }
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)) {
-            Log.w(TAG, "no telephony on this device; nothing to do")
+            Log.status(TAG, "no telephony on this device; nothing to do")
             stopSelf()
             return START_NOT_STICKY
         }
         // Touching TelecomManager here (instead of only in the receiver) fails fast when the
         // telecom stack is missing, the way GrapheneOS's onCreate null-check does.
         if (getSystemService<TelecomManager>() == null) {
-            Log.w(TAG, "no TelecomManager; nothing to do")
+            Log.status(TAG, "no TelecomManager; nothing to do")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -97,7 +97,7 @@ class SosCountdownService : Service() {
                 System.currentTimeMillis() + remainingMs,
                 SosActionReceiver.makeCallPendingIntent(this),
             )
-        }.onFailure { Log.w(TAG, "could not schedule the SOS call alarm", it) }
+        }.onFailure { Log.status(TAG, "could not schedule the SOS call alarm", it) }
     }
 
     companion object {
@@ -116,7 +116,7 @@ class SosCountdownService : Service() {
             val intent = Intent(context, SosCountdownService::class.java)
                 .putExtra(EXTRA_REMAINING_MS, remainingMs)
             runCatching { context.startForegroundService(intent) }
-                .onFailure { Log.w(TAG, "could not start the SOS countdown service", it) }
+                .onFailure { Log.status(TAG, "could not start the SOS countdown service", it) }
         }
 
         /** Cancels the scheduled call and stops the service. */

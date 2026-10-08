@@ -8,7 +8,7 @@ import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.os.ParcelUuid
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.UUID
 
 /**
@@ -56,12 +56,12 @@ class CableAdvertiser(context: Context) {
 
         val cb = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-                Log.d(TAG, "caBLE advertising started")
+                Log.debug(TAG, "caBLE advertising started")
                 onResult(true)
             }
 
             override fun onStartFailure(errorCode: Int) {
-                Log.e(TAG, "caBLE advertising failed: $errorCode")
+                Log.error(TAG, "caBLE advertising failed: $errorCode")
                 onResult(false)
             }
         }

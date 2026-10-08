@@ -2,7 +2,7 @@ package com.vayunmathur.photos.util
 
 import android.app.Application
 import android.graphics.Bitmap
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
@@ -195,7 +195,7 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
                         try {
                             bmp.recycle()
                         } catch (e: IllegalStateException) {
-                            Log.w(TAG, "Failed to recycle duplicate thumbnail", e)
+                            Log.status(TAG, "Failed to recycle duplicate thumbnail", e)
                         }
                         published = existing
                     } else {
@@ -209,9 +209,9 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
                     thumbStates[thumbnailPath]?.value = published
                 }
             } catch (e: IOException) {
-                Log.e(TAG, "decryptThumbnail failed for $thumbnailPath", e)
+                Log.error(TAG, "decryptThumbnail failed for $thumbnailPath", e)
             } catch (e: IllegalArgumentException) {
-                Log.e(TAG, "decryptThumbnail failed for $thumbnailPath", e)
+                Log.error(TAG, "decryptThumbnail failed for $thumbnailPath", e)
             }
         }
     }
@@ -246,9 +246,9 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
                 }
                 clearSelection()
             } catch (e: SecurityException) {
-                Log.e(TAG, "restorePhotos failed", e)
+                Log.error(TAG, "restorePhotos failed", e)
             } catch (e: IllegalArgumentException) {
-                Log.e(TAG, "restorePhotos failed", e)
+                Log.error(TAG, "restorePhotos failed", e)
             }
         }
     }
@@ -292,9 +292,9 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
                         collected.add(photo.uri.toUri())
                         sourceRepository.delete(photo)
                     } catch (e: IOException) {
-                        Log.e(TAG, "encryptAndMove failed for ${photo.uri}", e)
+                        Log.error(TAG, "encryptAndMove failed for ${photo.uri}", e)
                     } catch (e: GeneralSecurityException) {
-                        Log.e(TAG, "encryptAndMove failed for ${photo.uri}", e)
+                        Log.error(TAG, "encryptAndMove failed for ${photo.uri}", e)
                     }
                 }
                 collected
@@ -315,7 +315,7 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
                 try {
                     if (!bmp.isRecycled) bmp.recycle()
                 } catch (e: IllegalStateException) {
-                    Log.w(TAG, "Failed to recycle thumbnail on clear", e)
+                    Log.status(TAG, "Failed to recycle thumbnail on clear", e)
                 }
             }
             thumbCache.clear()

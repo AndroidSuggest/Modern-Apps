@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.telephony
 
 import android.telephony.ims.SipMessage
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.applyRcsDeliveryReport
 import com.vayunmathur.communicate.data.rcs.RcsDatabase
@@ -81,7 +81,7 @@ internal fun RcsSyncService.parseEnvelope(message: SipMessage): Envelope? {
         var headers = message.getHeaderSection()
         if (headers.startsWith("ia:")) {
             headers = "V$headers"
-            Log.w(RcsSyncService.TAG, "Repaired malformed Via header")
+            Log.status(RcsSyncService.TAG, "Repaired malformed Via header")
         }
         val from = headerValue(headers, "From:")?.substringAfter("<")?.substringBefore(">")
             ?.substringAfter("sip:")?.substringBefore("@")

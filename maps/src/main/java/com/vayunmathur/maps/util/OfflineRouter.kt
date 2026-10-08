@@ -1,7 +1,7 @@
 package com.vayunmathur.maps.util
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.annotation.Keep
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.data.transit.Departure
@@ -464,11 +464,11 @@ object OfflineRouter {
         mode: RouteService.TravelMode,
     ): RouteService.Route =
         withContext(Dispatchers.Default) {
-            Log.d("OfflineRouter", "getRoute: mode=$mode, start=$start, end=$end")
+            Log.debug("OfflineRouter", "getRoute: mode=$mode, start=$start, end=$end")
             if (!OfflineRouterLifecycle.isInitialized) {
                 OfflineRouterLifecycle.initialize(context)
             }
-            Log.d("OfflineRouter", "isInitialized=${OfflineRouterLifecycle.isInitialized}")
+            Log.debug("OfflineRouter", "isInitialized=${OfflineRouterLifecycle.isInitialized}")
 
             val rawSteps =
                 findRouteNative(

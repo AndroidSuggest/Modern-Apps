@@ -1,6 +1,6 @@
 package com.vayunmathur.auto.service
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.platform.AudioSinkChannel
 import com.vayunmathur.auto.platform.AutoSessionState
 import com.vayunmathur.auto.platform.GuidanceChannel
@@ -44,7 +44,7 @@ internal fun ProjectionService.openNext(connection: GalConnection) {
             it.id !in session.refusedChannels
     } ?: return
     connection.send(session.openChannel(next))
-    Log.i(TAG, "requesting channel open for service ${next.id}")
+    Log.status(TAG, "requesting channel open for service ${next.id}")
     maybeCreateVideoSink(next, connection)
     maybeCreateMessaging(next, connection)
     maybeCreateInput(next, connection)
@@ -110,7 +110,7 @@ private fun ProjectionService.maybeCreateMessaging(next: GalServiceProto, connec
         ),
         onEvent = AutoSessionState::onMessagingEvent,
         onReply = { threadId, text ->
-            Log.i(TAG, "head-unit reply for $threadId (${text.length} chars)")
+            Log.status(TAG, "head-unit reply for $threadId (${text.length} chars)")
         },
         context = { this },
     )

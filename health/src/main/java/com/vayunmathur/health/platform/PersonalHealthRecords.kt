@@ -4,7 +4,7 @@ package com.vayunmathur.health.platform
 
 import android.content.Context
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.health.connect.client.HealthConnectClient
@@ -88,7 +88,7 @@ object PersonalHealthRecords {
         client.features.getFeatureStatus(HealthConnectFeatures.FEATURE_PERSONAL_HEALTH_RECORD) ==
             HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
     } catch (e: Exception) {
-        Log.w(TAG, "Could not query the Personal Health Record feature status", e)
+        Log.status(TAG, "Could not query the Personal Health Record feature status", e)
         false
     }
 
@@ -128,7 +128,7 @@ object PersonalHealthRecords {
                 upsert(created.id, FhirRecords.patientJson())
                 created.id
             } catch (e: Exception) {
-                Log.e(TAG, "Could not resolve a medical data source", e)
+                Log.error(TAG, "Could not resolve a medical data source", e)
                 null
             }
         }
@@ -148,7 +148,7 @@ object PersonalHealthRecords {
             listOf(UpsertMedicalResourceRequest(dataSourceId, FHIR_VERSION, data))
         ).firstOrNull()?.id?.fhirResourceId
     } catch (e: Exception) {
-        Log.e(TAG, "Could not write a medical resource", e)
+        Log.error(TAG, "Could not write a medical resource", e)
         null
     }
 
@@ -162,7 +162,7 @@ object PersonalHealthRecords {
                 listOf(MedicalResourceId(dataSourceId, fhirResourceType, fhirResourceId))
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Could not delete a medical resource", e)
+            Log.error(TAG, "Could not delete a medical resource", e)
         }
     }
 
@@ -202,7 +202,7 @@ object PersonalHealthRecords {
             }
             all.map { RawResource(it.dataSourceId, it.fhirResource.data) }
         } catch (e: Exception) {
-            Log.e(TAG, "Could not read medical resources of type $medicalResourceType", e)
+            Log.error(TAG, "Could not read medical resources of type $medicalResourceType", e)
             emptyList()
         }
     }

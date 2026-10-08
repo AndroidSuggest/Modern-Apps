@@ -11,7 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.database.getLongOrNull
 import androidx.core.net.toUri
@@ -291,9 +291,9 @@ private fun processCursor(cursor: android.database.Cursor, isVideo: Boolean, sco
         try {
             readCursorRow(cursor, cols, isVideo, baseUri, scope)
         } catch (e: CursorIndexOutOfBoundsException) {
-            Log.e("SyncWorker", "Error processing photo/video from cursor", e)
+            Log.error("SyncWorker", "Error processing photo/video from cursor", e)
         } catch (e: IllegalStateException) {
-            Log.e("SyncWorker", "Error processing photo/video from cursor", e)
+            Log.error("SyncWorker", "Error processing photo/video from cursor", e)
         }
     }
 }
@@ -355,9 +355,9 @@ private fun queryMediaStore(
         }
         context.contentResolver.query(uri, projection, bundle, null)?.use { processCursor(it, isVideo, scope) }
     } catch (e: SecurityException) {
-        Log.e("SyncWorker", "Error querying MediaStore for $kind", e)
+        Log.error("SyncWorker", "Error querying MediaStore for $kind", e)
     } catch (e: IllegalArgumentException) {
-        Log.e("SyncWorker", "Error querying MediaStore for $kind", e)
+        Log.error("SyncWorker", "Error querying MediaStore for $kind", e)
     }
 }
 
@@ -379,16 +379,16 @@ private fun collectIdsInto(context: Context, baseUri: Uri, ids: MutableSet<Long>
                 try {
                     ids.add(cursor.getLong(idCol))
                 } catch (e: CursorIndexOutOfBoundsException) {
-                    Log.e("SyncWorker", "Error reading ID from MediaStore cursor", e)
+                    Log.error("SyncWorker", "Error reading ID from MediaStore cursor", e)
                 } catch (e: IllegalStateException) {
-                    Log.e("SyncWorker", "Error reading ID from MediaStore cursor", e)
+                    Log.error("SyncWorker", "Error reading ID from MediaStore cursor", e)
                 }
             }
         }
     } catch (e: SecurityException) {
-        Log.e("SyncWorker", "Error querying MediaStore for IDs: $baseUri", e)
+        Log.error("SyncWorker", "Error querying MediaStore for IDs: $baseUri", e)
     } catch (e: IllegalArgumentException) {
-        Log.e("SyncWorker", "Error querying MediaStore for IDs: $baseUri", e)
+        Log.error("SyncWorker", "Error querying MediaStore for IDs: $baseUri", e)
     }
 }
 
@@ -503,7 +503,7 @@ private const val EXIF_CHUNK = 50
  */
 internal suspend fun coolDownBetweenBatches(processed: Int, tag: String) {
     if (processed > 0 && processed % BATCH_COOLDOWN_EVERY == 0) {
-        Log.i(tag, "Cooling break after $processed items: pausing ${BATCH_COOLDOWN_MS}ms to let the device cool")
+        Log.status(tag, "Cooling break after $processed items: pausing ${BATCH_COOLDOWN_MS}ms to let the device cool")
         delay(BATCH_COOLDOWN_MS)
     }
 }
@@ -520,7 +520,7 @@ suspend fun runOCR(scanRepository: PhotoScanRepository, context: Context) = coro
     val ocrEngine = OcrEngine(context)
     // Inert (but no crash) if the OCR model assets can't be loaded.
     if (!ocrEngine.isAvailable()) {
-        Log.w("OCRWorker", "OCR models unavailable; skipping OCR")
+        Log.status("OCRWorker", "OCR models unavailable; skipping OCR")
         return@coroutineScope
     }
 
@@ -569,10 +569,10 @@ suspend fun runOCR(scanRepository: PhotoScanRepository, context: Context) = coro
                     null
                 }
             } catch (e: IOException) {
-                Log.e("OCRWorker", "Error running OCR for photo ${photo.id}", e)
+                Log.error("OCRWorker", "Error running OCR for photo ${photo.id}", e)
                 null
             } catch (e: IllegalStateException) {
-                Log.e("OCRWorker", "Error running OCR for photo ${photo.id}", e)
+                Log.error("OCRWorker", "Error running OCR for photo ${photo.id}", e)
                 null
             }
 
@@ -584,7 +584,7 @@ suspend fun runOCR(scanRepository: PhotoScanRepository, context: Context) = coro
                 boxes = result?.takeIf { it.boxes.isNotEmpty() }?.toJson(),
             )
             if (pendingResults.size >= INDEX_FLUSH_EVERY) flush()
-            Log.i("OCRWorker", "OCR for ${photo.id}: ${text?.take(OCR_LOG_PREVIEW_CHARS)?.replace("\n", " ")}")
+            Log.status("OCRWorker", "OCR for ${photo.id}: ${text?.take(OCR_LOG_PREVIEW_CHARS)?.replace("\n", " ")}")
 
             // Short pause between images keeps sustained CPU/battery use low.
             delay(OCR_INTER_ITEM_DELAY_MS)

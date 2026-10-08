@@ -1,7 +1,7 @@
 package com.vayunmathur.cast.platform.remotedisplay
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.android.media.remotedisplay.RemoteDisplay
 import com.android.media.remotedisplay.RemoteDisplayProvider
 import com.vayunmathur.cast.R
@@ -84,13 +84,13 @@ class MaRemoteDisplayProvider(context: Context) : RemoteDisplayProvider(context)
     private var pairTimeoutJob: Job? = null
 
     init {
-        Log.i(TAG, "MaRemoteDisplayProvider constructed")
+        Log.status(TAG, "MaRemoteDisplayProvider constructed")
         scope.launch { CastController.mirrorPhase.collect { onMirrorPhase(it) } }
         scope.launch { CastController.sessionState.collect { onSessionState(it) } }
     }
 
     override fun onDiscoveryModeChanged(mode: Int) {
-        Log.i(TAG, "onDiscoveryModeChanged mode=$mode")
+        Log.status(TAG, "onDiscoveryModeChanged mode=$mode")
         if (mode == RemoteDisplayProvider.DISCOVERY_MODE_NONE) {
             discoveryJob?.cancel()
             discoveryJob = null
@@ -112,7 +112,7 @@ class MaRemoteDisplayProvider(context: Context) : RemoteDisplayProvider(context)
         val id = display.id ?: return
         val device = devices[id]
         if (device == null) {
-            Log.w(TAG, "asked to connect to a route with no device behind it: $id")
+            Log.status(TAG, "asked to connect to a route with no device behind it: $id")
             display.status = RemoteDisplay.STATUS_NOT_AVAILABLE
             updateDisplay(display)
             return
@@ -192,7 +192,7 @@ class MaRemoteDisplayProvider(context: Context) : RemoteDisplayProvider(context)
             val route = displays.firstOrNull { it.id == id } ?: return@startDesktopMode
             route.presentationDisplayId = displayId
             updateDisplay(route)
-            Log.i(TAG, "published system display $displayId for route $id")
+            Log.status(TAG, "published system display $displayId for route $id")
         }
     }
 
@@ -203,7 +203,7 @@ class MaRemoteDisplayProvider(context: Context) : RemoteDisplayProvider(context)
         pairTimeoutJob?.cancel()
         pairTimeoutJob = scope.launch {
             delay(PAIR_PROMPT_TIMEOUT_MS)
-            Log.i(TAG, "no pair code arrived for $id; giving the route up")
+            Log.status(TAG, "no pair code arrived for $id; giving the route up")
             // Dropped before [giveUpRoute], which clears the prompt - and clearing the prompt
             // cancels this job, which is the one currently running.
             pairTimeoutJob = null
@@ -250,7 +250,7 @@ class MaRemoteDisplayProvider(context: Context) : RemoteDisplayProvider(context)
     }
 
     private fun syncRoutes(found: List<CastDevice>) {
-        Log.i(TAG, "syncRoutes: ${found.size} device(s): ${found.map { it.friendlyName }}")
+        Log.status(TAG, "syncRoutes: ${found.size} device(s): ${found.map { it.friendlyName }}")
         val seen = found.associateBy { it.id }
         devices.clear()
         devices.putAll(seen)

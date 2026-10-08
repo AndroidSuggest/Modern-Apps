@@ -1,7 +1,7 @@
 package com.vayunmathur.openassistant.util
 import android.annotation.SuppressLint
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.google.ai.edge.litertlm.Tool
 import com.google.ai.edge.litertlm.ToolParam
 import com.google.ai.edge.litertlm.ToolSet

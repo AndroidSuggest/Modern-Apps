@@ -3,7 +3,7 @@
 @file:Suppress("InvalidPackageDeclaration")
 package com.vayunmathur.games.voxels.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Surface
 
 // JNI bridge: one extern fun per native entry point (count is inherent to the
@@ -12,10 +12,10 @@ import android.view.Surface
 object VoxelsNative {
     val isAvailable: Boolean = try {
         System.loadLibrary("voxels_engine")
-        Log.i("VoxelsNative", "libvoxels_engine loaded")
+        Log.status("VoxelsNative", "libvoxels_engine loaded")
         true
     } catch (t: Throwable) {
-        Log.e("VoxelsNative", "System.loadLibrary(voxels_engine) failed", t)
+        Log.error("VoxelsNative", "System.loadLibrary(voxels_engine) failed", t)
         false
     }
     external fun nativeInit(filesDir: String, seed: Int): Boolean

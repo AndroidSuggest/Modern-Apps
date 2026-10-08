@@ -15,7 +15,7 @@ import android.bluetooth.le.ScanSettings
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.UUID
 
 /**
@@ -224,7 +224,7 @@ class ScaleBleManager {
 
     internal val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
-            Log.d(TAG, "onConnectionStateChange status=$status newState=$newState")
+            Log.debug(TAG, "onConnectionStateChange status=$status newState=$newState")
             DeviceController.runOnMain {
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
@@ -281,7 +281,7 @@ class ScaleBleManager {
                 notifyChar = ch.uuid
                 configChar = if (holtek) CHAR_FFF2 else CHAR_FFE3
                 bleWriteChar = if (!holtek && svc.getCharacteristic(CHAR_FFE4) != null) CHAR_FFE4 else configChar
-                Log.d(
+                Log.debug(
                     TAG,
                     "service=$serviceUuid holtek=$holtek notify=$notifyChar " +
                         "config=$configChar bleWrite=$bleWriteChar",
@@ -291,7 +291,7 @@ class ScaleBleManager {
                 g.setCharacteristicNotification(ch, true)
                 val cccd = ch.getDescriptor(CCCD_UUID)
                 if (cccd == null) {
-                    Log.w(TAG, "notify char $notifyChar has no CCCD; notifications cannot be enabled")
+                    Log.status(TAG, "notify char $notifyChar has no CCCD; notifications cannot be enabled")
                     DeviceController.scaleConnectionState.value = "Scale CCCD not found"
                 } else {
                     descriptorQueue.addLast(cccd to BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
@@ -313,7 +313,7 @@ class ScaleBleManager {
         }
 
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            Log.d(TAG, "onDescriptorWrite ${descriptor.characteristic.uuid} status=$status")
+            Log.debug(TAG, "onDescriptorWrite ${descriptor.characteristic.uuid} status=$status")
             DeviceController.runOnMain {
                 if (descriptorQueue.isNotEmpty()) {
                     writeNextDescriptor(g)
@@ -326,7 +326,7 @@ class ScaleBleManager {
         }
 
         override fun onCharacteristicWrite(g: BluetoothGatt, char: BluetoothGattCharacteristic, status: Int) {
-            Log.d(TAG, "onCharacteristicWrite ${char.uuid} status=$status")
+            Log.debug(TAG, "onCharacteristicWrite ${char.uuid} status=$status")
             DeviceController.runOnMain {
                 writing = false
                 writeNext()
@@ -338,7 +338,7 @@ class ScaleBleManager {
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
-            Log.d(TAG, "<- ${characteristic.uuid.short()} ${value.toHex()}")
+            Log.debug(TAG, "<- ${characteristic.uuid.short()} ${value.toHex()}")
             if (characteristic.uuid != notifyChar && characteristic.uuid != indicateChar) return
             if (value.isEmpty()) return
             DeviceController.runOnMain { dispatch(value) }
@@ -379,7 +379,7 @@ class ScaleBleManager {
         val cmd = commandQueue.removeFirst()
         val ch = g.getService(serviceUuid)?.getCharacteristic(cmd.char)
         if (ch == null) {
-            Log.w(TAG, "write char ${cmd.char} not found; dropping ${cmd.bytes.toHex()}")
+            Log.status(TAG, "write char ${cmd.char} not found; dropping ${cmd.bytes.toHex()}")
             writing = false
             return
         }
@@ -389,7 +389,7 @@ class ScaleBleManager {
         } else {
             BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         }
-        Log.d(TAG, "-> ${cmd.char.short()} ${cmd.bytes.toHex()} type=$writeType")
+        Log.debug(TAG, "-> ${cmd.char.short()} ${cmd.bytes.toHex()} type=$writeType")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             g.writeCharacteristic(ch, cmd.bytes, writeType)
         } else {
@@ -402,10 +402,10 @@ class ScaleBleManager {
     /** Dump the discovered GATT table once, so an unexpected layout is visible in a bug report. */
     private fun logGatt(g: BluetoothGatt) {
         for (svc in g.services) {
-            Log.d(TAG, "svc ${svc.uuid.short()}")
+            Log.debug(TAG, "svc ${svc.uuid.short()}")
             for (c in svc.characteristics) {
                 val descriptors = c.descriptors.joinToString(",") { it.uuid.short() }
-                Log.d(TAG, "  chr ${c.uuid.short()} props=0x${c.properties.toString(HEX_RADIX)} desc=[$descriptors]")
+                Log.debug(TAG, "  chr ${c.uuid.short()} props=0x${c.properties.toString(HEX_RADIX)} desc=[$descriptors]")
             }
         }
     }

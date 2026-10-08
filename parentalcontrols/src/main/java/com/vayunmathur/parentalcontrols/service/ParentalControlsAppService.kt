@@ -2,7 +2,7 @@ package com.vayunmathur.parentalcontrols.service
 
 import android.app.supervision.Policy
 import android.app.supervision.SupervisionAppService
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.parentalcontrols.platform.Enforcer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,7 +33,7 @@ class ParentalControlsAppService : SupervisionAppService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onSupervisionEnabled() {
-        Log.i(TAG, "supervision enabled")
+        Log.status(TAG, "supervision enabled")
         reconcile()
     }
 
@@ -42,14 +42,14 @@ class ParentalControlsAppService : SupervisionAppService() {
         // (clearAllDevicePoliciesAndSuspendedPackages / clearAllPolicies), so re-applying or
         // explicitly allowing would race that cleanup. The stored rules stay, so re-enabling
         // supervision restores the parent's configuration rather than starting blank.
-        Log.i(TAG, "supervision disabled; platform is clearing policy state")
+        Log.status(TAG, "supervision disabled; platform is clearing policy state")
     }
 
     override fun onPolicyChanged(policy: Policy) {
         // Policies can be changed by something other than us. Re-deriving from our own rules is
         // the honest response: if an external change disagrees with what the parent configured,
         // the parent's configuration is the one that should survive.
-        Log.i(TAG, "policy changed: ${runCatching { policy.identifier }.getOrNull()}")
+        Log.status(TAG, "policy changed: ${runCatching { policy.identifier }.getOrNull()}")
         reconcile()
     }
 
@@ -61,7 +61,7 @@ class ParentalControlsAppService : SupervisionAppService() {
     private fun reconcile() {
         scope.launch {
             runCatching { Enforcer(applicationContext).reconcile() }
-                .onFailure { Log.e(TAG, "reconcile failed", it) }
+                .onFailure { Log.error(TAG, "reconcile failed", it) }
         }
     }
 }

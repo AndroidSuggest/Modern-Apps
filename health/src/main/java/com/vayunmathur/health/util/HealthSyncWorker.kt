@@ -1,6 +1,6 @@
 package com.vayunmathur.health.util
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.changes.DeletionChange
 import androidx.health.connect.client.changes.UpsertionChange
@@ -73,7 +73,7 @@ class HealthSyncWorker(
             sync()
             Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "Health sync failed", e)
+            Log.error(TAG, "Health sync failed", e)
             Result.retry()
         }
     }

@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.service.ProjectionService
 
 /**
@@ -21,10 +21,10 @@ class CarChimeraService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_START) {
-            Log.i(TAG, "chimera START; funneling into the projection service")
+            Log.status(TAG, "chimera START; funneling into the projection service")
             ProjectionService.start(this)
         } else {
-            Log.d(TAG, "chimera start without START action; ignoring")
+            Log.debug(TAG, "chimera start without START action; ignoring")
         }
         return START_NOT_STICKY
     }
@@ -33,7 +33,7 @@ class CarChimeraService : Service() {
         // Explicit no-op-with-comment: GMS-compat clients bind for START,
         // not for a GAL interface -- there is no binder to hand out, and a
         // head-unit bind expecting one must be safely rejected, never crash.
-        Log.i(TAG, "chimera bind rejected (START-action service, no binder)")
+        Log.status(TAG, "chimera bind rejected (START-action service, no binder)")
         return null
     }
 

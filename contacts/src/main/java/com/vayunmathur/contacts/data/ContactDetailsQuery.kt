@@ -6,7 +6,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.provider.ContactsContract
 import android.provider.ContactsContract.Profile
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.database.getBlobOrNull
 import androidx.core.database.getStringOrNull
 import kotlinx.datetime.LocalDate
@@ -137,11 +137,11 @@ fun getDetailsInternal(
             }
         }
     } catch (e: android.database.SQLException) {
-        Log.e("Contact", "Error querying contact details", e)
+        Log.error("Contact", "Error querying contact details", e)
     } catch (e: IllegalArgumentException) {
-        Log.e("Contact", "Error querying contact details", e)
+        Log.error("Contact", "Error querying contact details", e)
     } catch (e: SecurityException) {
-        Log.e("Contact", "Error querying contact details", e)
+        Log.error("Contact", "Error querying contact details", e)
     }
     return accumulator.toDetails()
 }
@@ -281,7 +281,7 @@ private fun DetailsAccumulator.addPhoto(
     try {
         photosMap.getOrPut(rawId) { mutableListOf() }.add(Photo(dataId, Base64.encode(photoBytes)))
     } catch (e: IllegalArgumentException) {
-        Log.e("Contact", "Error reading contact photo", e)
+        Log.error("Contact", "Error reading contact photo", e)
     }
 }
 

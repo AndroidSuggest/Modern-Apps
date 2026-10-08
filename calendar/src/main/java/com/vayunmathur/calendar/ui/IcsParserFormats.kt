@@ -1,6 +1,6 @@
 package com.vayunmathur.calendar.ui
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.calendar.util.AllDayFormat
 import com.vayunmathur.calendar.util.BasicIsoInstantFormat
 import kotlinx.datetime.LocalDate
@@ -84,7 +84,7 @@ internal fun parseICSTime(propLeft: String?, value: String?): Triple<Long?, Bool
             }
         }
     } catch (expected: Exception) {
-        Log.e("IcsImport", "Error parsing ICS time: $value", expected)
+        Log.error("IcsImport", "Error parsing ICS time: $value", expected)
         Triple(null, false, null)
     }
 }

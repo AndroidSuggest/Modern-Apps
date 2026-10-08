@@ -4,7 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.edit
 import java.security.KeyStore
 import java.security.KeyStoreException
@@ -36,7 +36,7 @@ open class DatabaseHelper(val context: Context) {
             try {
                 keyStore.deleteEntry(keyStoreAlias)
             } catch (expected: KeyStoreException) {
-                Log.w(TAG, "Failed to delete orphaned key", expected)
+                Log.status(TAG, "Failed to delete orphaned key", expected)
             }
             return false
         }
@@ -49,7 +49,7 @@ open class DatabaseHelper(val context: Context) {
             keyStore.load(null)
             keyStore.deleteEntry(keyStoreAlias)
         } catch (expected: KeyStoreException) {
-            Log.w(TAG, "Failed to delete key", expected)
+            Log.status(TAG, "Failed to delete key", expected)
         }
         // Also clear the SharedPreferences
         val prefs = context.getSharedPreferences(sharedPrefsName, Context.MODE_PRIVATE)

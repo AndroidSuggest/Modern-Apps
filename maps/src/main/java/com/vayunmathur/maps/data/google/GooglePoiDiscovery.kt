@@ -1,6 +1,6 @@
 package com.vayunmathur.maps.data.google
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -154,7 +154,7 @@ object GooglePoiDiscovery {
         synchronized(cache) { cache[key]?.let { return it.take(maxPins) } }
         val pins = runCatching { fetch(lat, lon, span) }.getOrDefault(emptyList())
         synchronized(cache) { cache[key] = pins }
-        Log.i(
+        Log.status(
             TAG,
             "nearby lat=$lat lon=$lon span=${span.toInt()}m terms=${FANOUT_TERMS.size} " +
                 "pool=${pins.size} returned=${minOf(pins.size, maxPins)} (cap=$maxPins)",

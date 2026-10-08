@@ -1,7 +1,7 @@
 package com.vayunmathur.library.util
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -77,7 +77,7 @@ object BackupHelper {
         stageExtraFiles(extraFiles, tempDir, filesToZip)
 
         if (filesToZip.isEmpty()) {
-            Log.e(TAG, "performFullBackup: NO FILES TO BACKUP!")
+            Log.error(TAG, "performFullBackup: NO FILES TO BACKUP!")
         }
 
         zipFiles(filesToZip, tempDir, outputStream)
@@ -128,14 +128,14 @@ object BackupHelper {
     }
 
     private fun warnBackupSkipped() {
-        Log.w(
+        Log.status(
             TAG,
             "performFullBackup: dbConfigs provided but no DbBackupCodec; skipping database export"
         )
     }
 
     private fun warnRestoreSkipped() {
-        Log.w(
+        Log.status(
             TAG,
             "performFullRestore: dbConfigs provided but no DbBackupCodec; skipping database import"
         )
@@ -155,7 +155,7 @@ object BackupHelper {
             if (plainDbFile.exists() && plainDbFile.length() > 0) {
                 filesToZip.add(plainDbFile)
             } else {
-                Log.w(TAG, "performFullBackup: Database export failed or file is empty: $dbName")
+                Log.status(TAG, "performFullBackup: Database export failed or file is empty: $dbName")
             }
         }
     }
@@ -204,7 +204,7 @@ object BackupHelper {
     ) {
         extraFiles.forEach { file ->
             if (!file.exists()) {
-                Log.w(TAG, "performFullBackup: Extra file does not exist: ${file.absolutePath}")
+                Log.status(TAG, "performFullBackup: Extra file does not exist: ${file.absolutePath}")
                 return@forEach
             }
             val targetFile = File(tempDir, file.name)

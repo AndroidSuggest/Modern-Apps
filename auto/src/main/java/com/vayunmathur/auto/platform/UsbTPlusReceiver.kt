@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.network.UsbConnector
 
 /**
@@ -24,7 +24,7 @@ class UsbTPlusReceiver : BroadcastReceiver() {
         ) {
             return
         }
-        Log.i(TAG, "TPlus accessory event ${intent.action}; entering the USB attach path")
+        Log.status(TAG, "TPlus accessory event ${intent.action}; entering the USB attach path")
         if (!UsbConnector.onAccessoryIntent(context, intent)) {
             // Not a stock accessory extra: re-drive as a force-start so the
             // last accessory still brings up without a replug.

@@ -1,6 +1,6 @@
 package com.vayunmathur.appstore.data.play
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.aurora.gplayapi.data.models.AuthData
 import com.aurora.gplayapi.helpers.AuthHelper
 import kotlinx.coroutines.Dispatchers
@@ -163,7 +163,7 @@ class AnonymousAuthRepository {
                 val auth = json.decodeFromString(AuthResponse.serializer(), responseBody)
                 Result.success(auth)
             } catch (expected: IllegalArgumentException) {
-                Log.w(TAG, "Parse auth failed: ${expected.message}")
+                Log.status(TAG, "Parse auth failed: ${expected.message}")
                 Result.failure(AuthError.Unknown(code, responseBody))
             }
         } catch (expected: java.io.IOException) {
@@ -192,10 +192,10 @@ class AnonymousAuthRepository {
                 )
             Result.success(authData)
         } catch (expected: IllegalStateException) {
-            Log.w(TAG, "buildAuthData failed: ${expected.message}", expected)
+            Log.status(TAG, "buildAuthData failed: ${expected.message}", expected)
             Result.failure(expected)
         } catch (expected: IllegalArgumentException) {
-            Log.w(TAG, "buildAuthData failed: ${expected.message}", expected)
+            Log.status(TAG, "buildAuthData failed: ${expected.message}", expected)
             Result.failure(expected)
         }
     }
@@ -230,7 +230,7 @@ class AnonymousAuthRepository {
                     val error = credResult.exceptionOrNull()
                     lastError = error
                     if (error != null && !isTransient(error)) {
-                        Log.w(TAG, "Dispenser $url rejected us permanently: $error")
+                        Log.status(TAG, "Dispenser $url rejected us permanently: $error")
                         break
                     }
                 }
@@ -238,7 +238,7 @@ class AnonymousAuthRepository {
                 if (attempt < MAX_ATTEMPTS - 1) {
                     val backoff = BASE_BACKOFF_MS shl attempt
                     val wait = backoff + Random.nextLong((backoff / 2).coerceAtLeast(1))
-                    Log.w(TAG, "Dispenser $url attempt ${attempt + 1} failed ($lastError), " +
+                    Log.status(TAG, "Dispenser $url attempt ${attempt + 1} failed ($lastError), " +
                         "retrying in ${wait}ms")
                     delay(wait)
                 }

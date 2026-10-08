@@ -1,7 +1,7 @@
 package com.vayunmathur.auto.service
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.platform.AudioEvent
 import com.vayunmathur.auto.platform.CarTts
 import com.vayunmathur.auto.platform.MessagingAudio
@@ -39,20 +39,20 @@ class CarMessagingAudio(
 
     override fun beginVoiceReply(threadId: String, onResult: (String) -> Unit) {
         val channel = mic() ?: run {
-            Log.w(TAG, "voice reply for $threadId with no mic channel")
+            Log.status(TAG, "voice reply for $threadId with no mic channel")
             return
         }
         channel.beginTurn { pcm ->
             if (pcm.isEmpty()) {
-                Log.d(TAG, "mic turn for $threadId yielded nothing")
+                Log.debug(TAG, "mic turn for $threadId yielded nothing")
                 return@beginTurn
             }
             transcribe(pcm) { text ->
                 if (text.isNotBlank()) {
-                    Log.i(TAG, "mic turn for $threadId transcribed ${text.length} chars")
+                    Log.status(TAG, "mic turn for $threadId transcribed ${text.length} chars")
                     onResult(text)
                 } else {
-                    Log.d(TAG, "mic turn for $threadId transcribed nothing")
+                    Log.debug(TAG, "mic turn for $threadId transcribed nothing")
                 }
             }
             // The turn stays open until the head unit ends it; the service

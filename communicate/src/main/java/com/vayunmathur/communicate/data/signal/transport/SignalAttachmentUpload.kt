@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal.transport
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
@@ -46,17 +46,17 @@ object SignalAttachmentUpload {
                 sslSocketFactory = sslSocketFactory,
             )
         } catch (expected: Throwable) {
-            Log.w(TAG, "upload form fetch failed", expected)
+            Log.status(TAG, "upload form fetch failed", expected)
             return null
         }
         if (!resp.isSuccess) {
-            Log.w(TAG, "upload form fetch failed: ${resp.status} ${resp.statusMessage}")
+            Log.status(TAG, "upload form fetch failed: ${resp.status} ${resp.statusMessage}")
             return null
         }
         return parseForm(resp.text)
     }
 
-    internal fun parseForm(body: String, warn: (String) -> Unit = { Log.w(TAG, it) }): UploadForm? {
+    internal fun parseForm(body: String, warn: (String) -> Unit = { Log.status(TAG, it) }): UploadForm? {
         val root = try {
             json.parseToJsonElement(body).jsonObject
         } catch (expected: Exception) {
@@ -90,7 +90,7 @@ object SignalAttachmentUpload {
         sslSocketFactory: SSLSocketFactory?,
     ): Boolean {
         if (form.cdn != CDN3) {
-            Log.w(TAG, "unsupported CDN version ${form.cdn}, not uploading")
+            Log.status(TAG, "unsupported CDN version ${form.cdn}, not uploading")
             return false
         }
         val headers = buildMap {
@@ -108,10 +108,10 @@ object SignalAttachmentUpload {
                 body = blob,
                 sslSocketFactory = sslSocketFactory,
             )
-            if (!resp.isSuccess) Log.w(TAG, "attachment upload rejected: ${resp.status} ${resp.statusMessage}")
+            if (!resp.isSuccess) Log.status(TAG, "attachment upload rejected: ${resp.status} ${resp.statusMessage}")
             resp.isSuccess
         } catch (expected: Throwable) {
-            Log.w(TAG, "attachment upload failed", expected)
+            Log.status(TAG, "attachment upload failed", expected)
             false
         }
     }

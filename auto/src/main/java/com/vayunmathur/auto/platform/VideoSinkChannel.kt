@@ -5,7 +5,7 @@ import android.media.MediaCodec
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Choreographer
 import android.view.Surface
 import com.vayunmathur.auto.BuildConfig
@@ -159,7 +159,7 @@ class VideoSinkChannel(
      */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
+            Log.status(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         when (type) {
@@ -170,8 +170,8 @@ class VideoSinkChannel(
             // semantics were recovered (see VideoCodec), so it is observed like
             // the 0x800B sync pulse -- never answered, never fatal.
             GalMessage.Video.UPDATE_UI_CONFIG_REQUEST ->
-                Log.d(TAG, "update-ui-config response (${payload.size}B); observed")
-            else -> Log.d(TAG, "unhandled video message 0x${type.toString(HEX_RADIX)}")
+                Log.debug(TAG, "update-ui-config response (${payload.size}B); observed")
+            else -> Log.debug(TAG, "unhandled video message 0x${type.toString(HEX_RADIX)}")
         }
     }
 
@@ -187,13 +187,13 @@ class VideoSinkChannel(
         if (accepted != null) {
             configuration = accepted
         } else {
-            Log.w(
+            Log.status(
                 TAG,
                 "head unit accepted video config index $configurationIndex " +
                     "of ${offered.size}; keeping entry 0",
             )
         }
-        Log.i(TAG, "head unit accepted video, config index $configurationIndex")
+        Log.status(TAG, "head unit accepted video, config index $configurationIndex")
 
         // Step 3: ask for the screen before starting the stream.
         connection.send(
@@ -215,11 +215,11 @@ class VideoSinkChannel(
         // input/audio gates.
         connection.session.onVideoFocusIndication(indication)
         if (!indication.hasMode()) {
-            Log.w(TAG, "video focus indication with no mode; arbitration unchanged")
+            Log.status(TAG, "video focus indication with no mode; arbitration unchanged")
             return
         }
         val mode = indication.mode
-        Log.i(TAG, "video focus is now $mode")
+        Log.status(TAG, "video focus is now $mode")
         onEvent(VideoEvent.FocusChanged(mode.name))
         // Regaining the screen needs a fresh keyframe; the head unit has nothing to decode
         // against otherwise and would show garbage until the next scheduled one.
@@ -232,7 +232,7 @@ class VideoSinkChannel(
         // counter plus field3 entries are the sender-side sequence track of the stream.
         val ack = MediaAck.parseFrom(payload)
         if (ack.sessionId != sessionId) {
-            Log.w(TAG, "ack for session ${ack.sessionId}, expected $sessionId")
+            Log.status(TAG, "ack for session ${ack.sessionId}, expected $sessionId")
             onEvent(VideoEvent.AckMismatch(expected = sessionId, actual = ack.sessionId))
         } else {
             onEvent(
@@ -253,7 +253,7 @@ class VideoSinkChannel(
         val frameRate = negotiateFrameRate(config)
         val density = config?.density?.takeIf { it > 0 } ?: DEFAULT_DENSITY
 
-        Log.i(TAG, "starting video ${width}x$height @${frameRate} dpi $density")
+        Log.status(TAG, "starting video ${width}x$height @${frameRate} dpi $density")
         onEvent(VideoEvent.Setup(VideoInfo(width, height, frameRate, configurationIndex)))
 
         sessionId = 0
@@ -309,11 +309,11 @@ class VideoSinkChannel(
     private fun sendUpdateUiConfig() {
         val (type, payload) = runCatching { VideoCodec.encodeUpdateUiConfig() }.getOrNull()
             ?: run {
-                Log.d(TAG, "update-ui-config stub; skipping 0x800A")
+                Log.debug(TAG, "update-ui-config stub; skipping 0x800A")
                 return
             }
         runCatching { connection.send(channelId, type, payload) }
-            .onFailure { Log.d(TAG, "update-ui-config send dropped", it) }
+            .onFailure { Log.debug(TAG, "update-ui-config send dropped", it) }
     }
 
     /**
@@ -327,7 +327,7 @@ class VideoSinkChannel(
     private fun startVsyncDrain(negotiatedFps: Int) {
         val choreographer = Choreographer.getInstance()
         this.choreographer = choreographer
-        Log.i(TAG, "draining encoder at vsync cadence for ${negotiatedFps}fps video")
+        Log.status(TAG, "draining encoder at vsync cadence for ${negotiatedFps}fps video")
         choreographer.postFrameCallback(vsyncCallback)
     }
 
@@ -345,7 +345,7 @@ class VideoSinkChannel(
      */
     private fun dumpSurfaces(width: Int, height: Int, density: Int, surface: Surface) {
         if (!BuildConfig.DEV_BUILD) return
-        Log.i(
+        Log.status(
             TAG,
             "render pair up: virtual display ${width}x$height dpi $density, " +
                 "encoder input surface valid=${surface.isValid}",
@@ -448,11 +448,11 @@ class VideoSinkChannel(
         accepted?.frameRate?.takeIf { it >= MIN_SANE_FPS }?.let { return it }
         val sibling = service.mediaSink.videoConfigsList.firstOrNull { it.frameRate == DEFAULT_FRAME_RATE }
         if (sibling != null) {
-            Log.i(TAG, "accepted config reports no usable rate; using offered 30fps entry")
+            Log.status(TAG, "accepted config reports no usable rate; using offered 30fps entry")
             configuration = sibling
             return DEFAULT_FRAME_RATE
         }
-        Log.i(
+        Log.status(
             TAG,
             "accepted config reports rate ${accepted?.frameRate}; forcing 30fps " +
                 "(no 30fps sibling offered)",
@@ -471,7 +471,7 @@ class VideoSinkChannel(
             "$index:${config.codecResolution}:@${config.frameRate}:dpi${config.density}" +
                 if (index == accepted) "*" else ""
         }
-        Log.i(TAG, "offered video configs [${entries.joinToString(", ")}]")
+        Log.status(TAG, "offered video configs [${entries.joinToString(", ")}]")
     }
 
     private fun VideoResolution?.dimensions(): Pair<Int, Int> = when (this) {

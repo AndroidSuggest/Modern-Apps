@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * Setup handshake service, mirroring gearhead's `CarSetupServiceImpl`
@@ -20,7 +20,7 @@ class CarSetupService : Service() {
         // Explicit no-op-with-comment: the HU setup-handshake bind is safely
         // rejected (null) -- MA setup is the pairing screen, not a bound
         // handshake, and claiming one would stall first-time setup.
-        Log.i(TAG, "car-setup bind rejected (pairing-screen model)")
+        Log.status(TAG, "car-setup bind rejected (pairing-screen model)")
         return null
     }
 

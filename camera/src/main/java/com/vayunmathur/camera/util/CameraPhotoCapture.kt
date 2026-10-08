@@ -2,7 +2,7 @@ package com.vayunmathur.camera.util
 
 import android.graphics.Bitmap
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
@@ -109,7 +109,7 @@ fun CameraViewModel.startBurst() {
                     shootNext(n + 1)
                 }
                 override fun onError(exception: ImageCaptureException) {
-                    Log.e("CameraViewModel", "Burst frame $n failed", exception)
+                    Log.error("CameraViewModel", "Burst frame $n failed", exception)
                     pending.closeStream()
                     shootNext(n + 1)
                 }
@@ -183,7 +183,7 @@ internal fun CameraViewModel.captureMotionPhoto() {
                 }
             }
             override fun onError(exception: ImageCaptureException) {
-                Log.e("CameraViewModel", "Motion Photo capture failed; falling back to still", exception)
+                Log.error("CameraViewModel", "Motion Photo capture failed; falling back to still", exception)
                 isCapturingMutable.value = false
                 captureSinglePhoto()
             }

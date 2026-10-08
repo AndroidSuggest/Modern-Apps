@@ -1,7 +1,7 @@
 package com.vayunmathur.cast.tv.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.protocol.Bye
 import com.vayunmathur.cast.protocol.ContentEnded
 import com.vayunmathur.cast.protocol.ContentReady
@@ -63,7 +63,7 @@ internal suspend fun ReceiverController.serveContent(
     if (!session.video && AudioPlayer.limits().isEmpty()) {
         // The failure that used to be silence. A TV with no Opus decoder and no picture to fall
         // back on has to say so, and the phone has to be told rather than left streaming into it.
-        Log.w(TAG, "refusing an audio-only session: this TV has no Opus decoder")
+        Log.status(TAG, "refusing an audio-only session: this TV has no Opus decoder")
         channel.send(ContentReady(accepted = false, detail = "this TV has no Opus decoder"))
         mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.NoAudioDecoder)) }
         return false
@@ -96,7 +96,7 @@ internal suspend fun ReceiverController.serveContent(
             artwork = artworkFetcher,
         )
     }
-    Log.i(TAG, "serving content from ${session.host}:${session.port} for '${session.appLabel}'")
+    Log.status(TAG, "serving content from ${session.host}:${session.port} for '${session.appLabel}'")
 
     // A third writer on this channel, alongside the ping echo and this coroutine's own sends.
     // Nothing guards it here because nothing needs to: `ControlChannel.send` encodes and writes
@@ -132,7 +132,7 @@ private suspend fun ReceiverController.prepareContentPlayer(
 ): ContentPlayer? {
     val player = withContext(Dispatchers.Main) { ContentPlayer(context, session) }
     val started = withContext(Dispatchers.Main) {
-        player.start { detail -> Log.w(TAG, "the served stream failed: $detail") }
+        player.start { detail -> Log.status(TAG, "the served stream failed: $detail") }
     }
     if (started) return player
     channel.send(ContentReady(accepted = false, detail = "the player could not be built"))
@@ -156,14 +156,14 @@ private suspend fun ReceiverController.serveLoop(
         val next = channel.receive() ?: return false
         when (val message = next.message) {
             is Bye -> {
-                Log.i(TAG, "'$senderName' said goodbye")
+                Log.status(TAG, "'$senderName' said goodbye")
                 return false
             }
             // The phone is done casting but not done with us. Distinct from a `Bye`, and the
             // difference is the pairing: this leaves the TV connected and ready for the next
             // cast rather than back at its idle screen waiting to be picked again.
             is ContentEnded -> {
-                Log.i(TAG, "'$senderName' ended the content session")
+                Log.status(TAG, "'$senderName' ended the content session")
                 return true
             }
             is PlayMedia -> {
@@ -238,5 +238,5 @@ internal suspend fun ReceiverController.report(player: ContentPlayer, channel: C
 internal fun ReceiverController.publish(snapshot: PlaybackState, channel: ControlChannel) {
     onPlaybackState(snapshot)
     runCatching { channel.send(snapshot) }
-        .onFailure { Log.w(TAG, "could not report playback", it) }
+        .onFailure { Log.status(TAG, "could not report playback", it) }
 }

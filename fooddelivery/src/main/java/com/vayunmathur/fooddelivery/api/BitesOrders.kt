@@ -1,6 +1,6 @@
 package com.vayunmathur.fooddelivery.api
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.fooddelivery.data.CheckoutRequest
 import com.vayunmathur.fooddelivery.data.CheckoutResponse
 import com.vayunmathur.fooddelivery.data.Feedback
@@ -24,10 +24,10 @@ object BitesOrders {
                 emptyList()
             }
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "getOrders failed", e)
+            Log.error(TAG, "getOrders failed", e)
             emptyList()
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "getOrders failed", e)
+            Log.error(TAG, "getOrders failed", e)
             emptyList()
         }
     }
@@ -38,10 +38,10 @@ object BitesOrders {
             "${BitesCore.API}/orders/pickUpOrder/$orderUuid",
         ).isSuccess
     } catch (e: java.io.IOException) {
-        Log.e(TAG, "pickUpOrder failed", e)
+        Log.error(TAG, "pickUpOrder failed", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e(TAG, "pickUpOrder failed", e)
+        Log.error(TAG, "pickUpOrder failed", e)
         false
     }
 
@@ -51,10 +51,10 @@ object BitesOrders {
             val resp = BitesCore.authenticatedRequest("${BitesCore.API}/orders/email/$token")
             if (!resp.isSuccess) null else BitesCore.unwrap(resp.body, Order.serializer())
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "getOrderByEmail failed", e)
+            Log.error(TAG, "getOrderByEmail failed", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "getOrderByEmail failed", e)
+            Log.error(TAG, "getOrderByEmail failed", e)
             null
         }
     }
@@ -76,10 +76,10 @@ object BitesOrders {
                     BitesCore.unwrap(resp.body, OrderRewards.serializer())
                 }
             } catch (e: java.io.IOException) {
-                Log.e(TAG, "getOrderRewards failed", e)
+                Log.error(TAG, "getOrderRewards failed", e)
                 null
             } catch (e: IllegalArgumentException) {
-                Log.e(TAG, "getOrderRewards failed", e)
+                Log.error(TAG, "getOrderRewards failed", e)
                 null
             }
         }
@@ -95,10 +95,10 @@ object BitesOrders {
                 BitesCore.json.encodeToString(FeedbackRequest.serializer(), request),
             ).isSuccess
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "submitFeedback failed", e)
+            Log.error(TAG, "submitFeedback failed", e)
             false
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "submitFeedback failed", e)
+            Log.error(TAG, "submitFeedback failed", e)
             false
         }
     }
@@ -127,10 +127,10 @@ object BitesOrders {
                 null
             }
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "checkout failed", e)
+            Log.error(TAG, "checkout failed", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "checkout failed", e)
+            Log.error(TAG, "checkout failed", e)
             null
         }
     }

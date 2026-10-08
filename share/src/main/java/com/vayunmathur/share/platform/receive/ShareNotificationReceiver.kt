@@ -4,7 +4,7 @@ import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 import com.vayunmathur.share.platform.transfer.ShareTransferService
 
@@ -28,13 +28,13 @@ class ShareNotificationReceiver : BroadcastReceiver() {
         val handle = intent.getLongExtra(ShareTransferService.EXTRA_SESSION_HANDLE, 0L)
         val notifId = intent.getIntExtra(ShareTransferService.EXTRA_NOTIF_ID, -1)
         if (handle == 0L) {
-            Log.w(TAG, "$action with no session handle")
+            Log.status(TAG, "$action with no session handle")
             return
         }
         if (ShareReceiveController.connectionFor(context, handle) == null) {
             // The process died between posting the notification and this tap, so the socket
             // and the native session are both gone. Say so instead of silently doing nothing.
-            Log.w(TAG, "no live session $handle for $action; clearing notification $notifId")
+            Log.status(TAG, "no live session $handle for $action; clearing notification $notifId")
             if (notifId >= 0) context.getSystemService<NotificationManager>()?.cancel(notifId)
             return
         }

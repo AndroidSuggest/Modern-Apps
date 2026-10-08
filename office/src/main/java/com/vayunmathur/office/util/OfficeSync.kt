@@ -4,7 +4,7 @@ package com.vayunmathur.office.util
 
 import kotlin.uuid.Uuid
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.e2ee.E2ee
 import com.vayunmathur.e2ee.E2eeKeyStore
 import com.vayunmathur.e2ee.Pqc
@@ -238,7 +238,7 @@ object OfficeSync {
         } catch (e: CancellationException) {
             throw e
         } catch (expected: Exception) {
-            Log.w(TAG, "request failed: ${expected.message}")
+            Log.status(TAG, "request failed: ${expected.message}")
             null
         }
 

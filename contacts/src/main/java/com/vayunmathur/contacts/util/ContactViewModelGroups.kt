@@ -3,7 +3,7 @@ package com.vayunmathur.contacts.util
 import android.app.Application
 import android.content.ContentProviderOperation
 import android.provider.ContactsContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.data.isSimAccountType
@@ -65,11 +65,11 @@ private fun ContactViewModel.applyGroupBatch(
     try {
         resolver.applyBatch(ContactsContract.AUTHORITY, ops)
     } catch (e: android.content.OperationApplicationException) {
-        Log.e("ContactViewModel", errorMessage, e)
+        Log.error("ContactViewModel", errorMessage, e)
     } catch (e: android.os.RemoteException) {
-        Log.e("ContactViewModel", errorMessage, e)
+        Log.error("ContactViewModel", errorMessage, e)
     } catch (e: Exception) {
-        Log.e("ContactViewModel", errorMessage, e)
+        Log.error("ContactViewModel", errorMessage, e)
     }
 }
 

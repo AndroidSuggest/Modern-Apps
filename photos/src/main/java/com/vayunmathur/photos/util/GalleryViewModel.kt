@@ -3,7 +3,7 @@ package com.vayunmathur.photos.util
 import android.app.Application
 import android.database.sqlite.SQLiteException
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -289,7 +289,7 @@ class GalleryViewModel(
                     val results = withContext(Dispatchers.IO) {
                         combinedSearch(query)
                     }
-                    Log.d(TAG, "Search '$query' returned ${results.size} photos")
+                    Log.debug(TAG, "Search '$query' returned ${results.size} photos")
                     _searchResults.value = results
                 }
         }
@@ -318,7 +318,7 @@ class GalleryViewModel(
         val ocrHits = try {
             repository.searchPhotos(query)
         } catch (e: SQLiteException) {
-            Log.e(TAG, "searchPhotos failed", e)
+            Log.error(TAG, "searchPhotos failed", e)
             emptyList()
         }
         val ocrIds = ocrHits.map { it.id }.toSet()
@@ -337,11 +337,11 @@ class GalleryViewModel(
                 .take(MAX_SEMANTIC_RESULTS)
                 .toMap()
         } catch (e: IllegalStateException) {
-            Log.e(TAG, "semantic search failed", e)
+            Log.error(TAG, "semantic search failed", e)
             _searchAiState.value = SearchAiState.UNAVAILABLE
             emptyMap()
         } catch (e: IOException) {
-            Log.e(TAG, "semantic search failed", e)
+            Log.error(TAG, "semantic search failed", e)
             _searchAiState.value = SearchAiState.UNAVAILABLE
             emptyMap()
         }

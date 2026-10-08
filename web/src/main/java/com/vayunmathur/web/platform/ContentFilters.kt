@@ -6,7 +6,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.Locale
 
 private const val TAG = "ContentFilters"
@@ -44,7 +44,7 @@ object ContentFilters {
     private fun isOn(context: Context, key: String): Boolean =
         runCatching { Settings.Secure.getInt(context.contentResolver, key, 0) == 1 }
             .getOrElse {
-                Log.w(TAG, "could not read $key", it)
+                Log.status(TAG, "could not read $key", it)
                 false
             }
 
@@ -65,7 +65,7 @@ object ContentFilters {
             resolver.registerContentObserver(
                 Settings.Secure.getUriFor(SEARCH_FILTER), false, observer,
             )
-        }.onFailure { Log.w(TAG, "could not observe the content filter switches", it) }
+        }.onFailure { Log.status(TAG, "could not observe the content filter switches", it) }
         return observer
     }
 }
@@ -118,7 +118,7 @@ object AdultSites {
                 .toSet()
         }
     }.getOrElse {
-        Log.w(TAG, "no adult-domain list; the site filter will block nothing", it)
+        Log.status(TAG, "no adult-domain list; the site filter will block nothing", it)
         emptySet()
     }
 }

@@ -1,6 +1,6 @@
 package com.vayunmathur.passwords.platform.cable
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.passwords.data.PasskeyStore
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -36,7 +36,7 @@ class CtapProcessor(
                 else -> Ctap.response(Ctap.ERR_NOT_ALLOWED)
             }
         } catch (expected: IllegalStateException) {
-            Log.e(TAG, "CTAP processing error", expected)
+            Log.error(TAG, "CTAP processing error", expected)
             Ctap.response(Ctap.ERR_OTHER)
         }
     }
@@ -45,26 +45,26 @@ class CtapProcessor(
         val req = try {
             CtapMakeCredentialRequest.parse(payload)
         } catch (e: IllegalStateException) {
-            Log.w(TAG, "makeCredential: ${e.message}")
+            Log.status(TAG, "makeCredential: ${e.message}")
             return Ctap.response(Ctap.ERR_MISSING_PARAMETER)
         }
-        Log.d(TAG, "makeCredential rpId=${req.rpId} user=${req.userName} " +
+        Log.debug(TAG, "makeCredential rpId=${req.rpId} user=${req.userName} " +
             "algs=${req.algorithms} exclude=${req.excludeList.size} rk=${req.residentKey} " +
             "uv=${req.userVerificationRequired}")
 
         // Unlike getAssertion, up has no meaningful default here and cannot be waived.
         if (req.userPresenceOption == false) {
-            Log.w(TAG, "makeCredential: up=false is not a valid option")
+            Log.status(TAG, "makeCredential: up=false is not a valid option")
             return Ctap.response(Ctap.ERR_INVALID_OPTION)
         }
 
         if (req.userVerificationRequired && !userVerified) {
-            Log.w(TAG, "UV required but user not verified")
+            Log.status(TAG, "UV required but user not verified")
             return Ctap.response(Ctap.ERR_OPERATION_DENIED)
         }
 
         if (!req.supportsEs256) {
-            Log.w(TAG, "no ES256 in pubKeyCredParams -> ERR_UNSUPPORTED_ALGORITHM")
+            Log.status(TAG, "no ES256 in pubKeyCredParams -> ERR_UNSUPPORTED_ALGORITHM")
             return Ctap.response(Ctap.ERR_UNSUPPORTED_ALGORITHM)
         }
 
@@ -72,7 +72,7 @@ class CtapProcessor(
             store.getPasskeyByCredentialId(urlEncoder.encode(desc.id))?.rpId == req.rpId
         }
         if (excluded) {
-            Log.w(TAG, "excludeList matches a stored credential -> ERR_CREDENTIAL_EXCLUDED")
+            Log.status(TAG, "excludeList matches a stored credential -> ERR_CREDENTIAL_EXCLUDED")
             return Ctap.response(Ctap.ERR_CREDENTIAL_EXCLUDED)
         }
 
@@ -86,7 +86,7 @@ class CtapProcessor(
             store = store,
             userVerified = userVerified,
         )
-        Log.d(TAG, "created credId=${created.passkey.credentialId} " +
+        Log.debug(TAG, "created credId=${created.passkey.credentialId} " +
             "authData=${created.authenticatorData.size}B")
 
         return Ctap.response(
@@ -97,25 +97,25 @@ class CtapProcessor(
 
     private suspend fun handleGetAssertion(payload: ByteArray): ByteArray {
         val req = CtapGetAssertionRequest.parse(payload)
-        Log.d(TAG, "getAssertion rpId=${req.rpId} allowList=${req.allowList.size} " +
+        Log.debug(TAG, "getAssertion rpId=${req.rpId} allowList=${req.allowList.size} " +
             "up=${req.userPresenceRequired} uv=${req.userVerificationRequired} " +
             "clientDataHash=${req.clientDataHash.size}B")
-        req.allowList.forEachIndexed { i, d -> Log.d(TAG, "  allow[$i] id=${hex(d.id)}") }
+        req.allowList.forEachIndexed { i, d -> Log.debug(TAG, "  allow[$i] id=${hex(d.id)}") }
 
         if (req.userVerificationRequired && !userVerified) {
-            Log.w(TAG, "UV required but user not verified")
+            Log.status(TAG, "UV required but user not verified")
             return Ctap.response(Ctap.ERR_OPERATION_DENIED)
         }
 
         val allForRp = store.getPasskeysByRpId(req.rpId)
-        Log.d(TAG, "stored passkeys for ${req.rpId}: ${allForRp.size} " +
+        Log.debug(TAG, "stored passkeys for ${req.rpId}: ${allForRp.size} " +
             allForRp.joinToString { "credId=${it.credentialId}" })
 
         val passkey = resolveCredential(req) ?: run {
-            Log.w(TAG, "no matching credential -> ERR_NO_CREDENTIALS")
+            Log.status(TAG, "no matching credential -> ERR_NO_CREDENTIALS")
             return Ctap.response(Ctap.ERR_NO_CREDENTIALS)
         }
-        Log.d(TAG, "using credential credId=${passkey.credentialId} rpId=${passkey.rpId} userId=${passkey.userId}")
+        Log.debug(TAG, "using credential credId=${passkey.credentialId} rpId=${passkey.rpId} userId=${passkey.userId}")
 
         val assertion = WebAuthnAuthenticator.signAssertion(
             passkey = passkey,
@@ -131,7 +131,7 @@ class CtapProcessor(
             signature = assertion.signature,
             userId = decodeUserId(passkey.userId),
         )
-        Log.d(TAG, "assertion signed: authData=${assertion.authenticatorData.size}B sig=${assertion.signature.size}B")
+        Log.debug(TAG, "assertion signed: authData=${assertion.authenticatorData.size}B sig=${assertion.signature.size}B")
         return Ctap.response(Ctap.OK, response.encode())
     }
 

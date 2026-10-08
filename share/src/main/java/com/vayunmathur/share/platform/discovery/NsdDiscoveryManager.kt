@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.share.protocol.ShareNativeDiscovery
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -112,7 +112,7 @@ class NsdDiscoveryManager(private val context: Context) {
         localAddress: String? = null,
     ): String? {
         val mgr = nsdManager ?: run {
-            Log.w(TAG, "NsdManager unavailable - cannot advertise")
+            Log.status(TAG, "NsdManager unavailable - cannot advertise")
             return null
         }
         val record = buildAdvertiseRecord(endpointId, endpointInfo, port, localAddress) ?: return null
@@ -135,12 +135,12 @@ class NsdDiscoveryManager(private val context: Context) {
         } catch (e: SecurityException) {
             // Android 16+ Local Network Protections: ACCESS_LOCAL_NETWORK is missing or was
             // denied. Nothing about the record is wrong; the OS blocks mDNS outright.
-            Log.e(TAG, "mDNS blocked — ACCESS_LOCAL_NETWORK not granted, so :share is invisible", e)
+            Log.error(TAG, "mDNS blocked — ACCESS_LOCAL_NETWORK not granted, so :share is invisible", e)
             clearAdvertiseState()
             registrationListener = null
             return null
         } catch (e: Exception) {
-            Log.w(TAG, "registerService threw", e)
+            Log.status(TAG, "registerService threw", e)
             clearAdvertiseState()
             registrationListener = null
             return null
@@ -158,7 +158,7 @@ class NsdDiscoveryManager(private val context: Context) {
     ): AdvertiseRecord? {
         val serviceInfoBytes = serviceInfoBytes(endpointId) ?: return null
         if (endpointInfo.isEmpty()) {
-            Log.w(TAG, "empty endpointInfo - a peer would drop the record")
+            Log.status(TAG, "empty endpointInfo - a peer would drop the record")
             return null
         }
         val instance = encodeBase64(serviceInfoBytes)
@@ -179,7 +179,7 @@ class NsdDiscoveryManager(private val context: Context) {
     ): NsdManager.RegistrationListener = object : NsdManager.RegistrationListener {
         override fun onServiceRegistered(info: NsdServiceInfo) {
             registeredServiceName = info.serviceName
-            Log.i(
+            Log.status(
                 TAG,
                 "advertised $SHARE_SERVICE_TYPE as ${info.serviceName} on port $port " +
                     "(endpointId=$endpointId, ${endpointInfo.size}B endpointInfo)",
@@ -187,16 +187,16 @@ class NsdDiscoveryManager(private val context: Context) {
         }
 
         override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-            Log.w(TAG, "registration failed: $errorCode")
+            Log.status(TAG, "registration failed: $errorCode")
             clearAdvertiseState()
         }
 
         override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {
-            Log.d(TAG, "unregistered ${serviceInfo.serviceName}")
+            Log.debug(TAG, "unregistered ${serviceInfo.serviceName}")
         }
 
         override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-            Log.w(TAG, "unregistration failed: $errorCode")
+            Log.status(TAG, "unregistration failed: $errorCode")
         }
     }
 
@@ -211,11 +211,11 @@ class NsdDiscoveryManager(private val context: Context) {
         val serviceInfoBytes = try {
             ShareNativeDiscovery.nativeBuildWifiLanServiceInfo(endpointId)
         } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "libshare_nearby unavailable - refusing to advertise a guessed format", e)
+            Log.error(TAG, "libshare_nearby unavailable - refusing to advertise a guessed format", e)
             return null
         }
         if (serviceInfoBytes == null) {
-            Log.w(TAG, "endpointId '$endpointId' is not 4 ASCII characters - cannot advertise")
+            Log.status(TAG, "endpointId '$endpointId' is not 4 ASCII characters - cannot advertise")
             return null
         }
         return serviceInfoBytes
@@ -276,20 +276,20 @@ class NsdDiscoveryManager(private val context: Context) {
 
     private fun parseDiscoveredRecord(instance: String, info: NsdServiceInfo): DiscoveredPeer? {
         val serviceInfoBytes = decodeBase64(instance) ?: run {
-            Log.d(TAG, "skipping $instance: instance name is not Base64")
+            Log.debug(TAG, "skipping $instance: instance name is not Base64")
             return null
         }
         val endpointInfoBytes = textAttribute(info, TXT_ENDPOINT_INFO)?.let(::decodeBase64)
         if (endpointInfoBytes == null) {
-            Log.d(TAG, "skipping $instance: no usable '$TXT_ENDPOINT_INFO' attribute")
+            Log.debug(TAG, "skipping $instance: no usable '$TXT_ENDPOINT_INFO' attribute")
             return null
         }
         val wifiLan = ShareNativeDiscovery.parseWifiLanServiceInfo(serviceInfoBytes) ?: run {
-            Log.d(TAG, "skipping $instance: not a WifiLanServiceInfo")
+            Log.debug(TAG, "skipping $instance: not a WifiLanServiceInfo")
             return null
         }
         val endpointInfo = ShareNativeDiscovery.parseEndpointInfo(endpointInfoBytes) ?: run {
-            Log.d(TAG, "skipping $instance: endpoint info would be rejected")
+            Log.debug(TAG, "skipping $instance: endpoint info would be rejected")
             return null
         }
         return DiscoveredPeer(wifiLan.endpointId, endpointInfo.deviceName)
@@ -309,22 +309,22 @@ class NsdDiscoveryManager(private val context: Context) {
         }
         val listener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(regType: String) {
-                Log.d(TAG, "discovery started: $regType")
+                Log.debug(TAG, "discovery started: $regType")
             }
 
             override fun onServiceFound(service: NsdServiceInfo) {
-                Log.d(TAG, "found: ${service.serviceName} type=${service.serviceType}")
+                Log.debug(TAG, "found: ${service.serviceName} type=${service.serviceType}")
                 try {
                     mgr.resolveService(service, object : NsdManager.ResolveListener {
                         override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) {
-                            Log.w(TAG, "resolve failed for ${info.serviceName}: $errorCode")
+                            Log.status(TAG, "resolve failed for ${info.serviceName}: $errorCode")
                         }
 
                         override fun onServiceResolved(info: NsdServiceInfo) {
                             val dev = try {
                                 toNearbyDevice(info)
                             } catch (e: UnsatisfiedLinkError) {
-                                Log.e(TAG, "libshare_nearby unavailable — cannot decode records", e)
+                                Log.error(TAG, "libshare_nearby unavailable — cannot decode records", e)
                                 close(e)
                                 return
                             } ?: return
@@ -336,39 +336,39 @@ class NsdDiscoveryManager(private val context: Context) {
                         }
                     })
                 } catch (e: Exception) {
-                    Log.w(TAG, "resolveService threw for ${service.serviceName}", e)
+                    Log.status(TAG, "resolveService threw for ${service.serviceName}", e)
                 }
             }
 
             override fun onServiceLost(service: NsdServiceInfo) {
-                Log.d(TAG, "lost: ${service.serviceName}")
+                Log.debug(TAG, "lost: ${service.serviceName}")
                 _discoveredDevices.value = _discoveredDevices.value.filterNot {
                     it.serviceName == service.serviceName
                 }
             }
 
             override fun onDiscoveryStopped(serviceType: String) {
-                Log.d(TAG, "discovery stopped: $serviceType")
+                Log.debug(TAG, "discovery stopped: $serviceType")
             }
 
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-                Log.w(TAG, "startDiscovery failed $serviceType: $errorCode")
+                Log.status(TAG, "startDiscovery failed $serviceType: $errorCode")
                 close()
             }
 
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
-                Log.w(TAG, "stopDiscovery failed $serviceType: $errorCode")
+                Log.status(TAG, "stopDiscovery failed $serviceType: $errorCode")
             }
         }
         discoveryListener = listener
         try {
             mgr.discoverServices(SHARE_SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
         } catch (e: SecurityException) {
-            Log.e(TAG, "mDNS browse blocked — ACCESS_LOCAL_NETWORK not granted", e)
+            Log.error(TAG, "mDNS browse blocked — ACCESS_LOCAL_NETWORK not granted", e)
             close(e)
             return@callbackFlow
         } catch (e: Exception) {
-            Log.w(TAG, "discoverServices threw", e)
+            Log.status(TAG, "discoverServices threw", e)
             close(e)
             return@callbackFlow
         }

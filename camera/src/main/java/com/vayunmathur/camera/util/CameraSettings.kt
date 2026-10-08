@@ -3,7 +3,7 @@ package com.vayunmathur.camera.util
 import android.content.Context
 import android.location.LocationManager
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.net.toUri
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
@@ -155,6 +155,6 @@ fun CameraViewModel.updateLocation() {
         lastLocation = lm.getLastKnownLocation(LocationManager.FUSED_PROVIDER)
             ?: lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
     } catch (e: SecurityException) {
-        Log.w("CameraViewModel", "Failed to read last known location", e)
+        Log.status("CameraViewModel", "Failed to read last known location", e)
     }
 }

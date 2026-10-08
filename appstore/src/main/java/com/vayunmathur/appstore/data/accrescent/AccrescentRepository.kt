@@ -1,7 +1,7 @@
 package com.vayunmathur.appstore.data.accrescent
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import app.accrescent.appstore.v1.AppListing
 import com.vayunmathur.appstore.data.AppDatabase
 import com.vayunmathur.appstore.data.AppSource
@@ -88,10 +88,10 @@ class AccrescentRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "listApps failed", expected)
+            Log.status(TAG, "listApps failed", expected)
             AccrescentPage(emptyList(), "")
         } catch (expected: IllegalStateException) {
-            Log.w(TAG, "listApps failed", expected)
+            Log.status(TAG, "listApps failed", expected)
             AccrescentPage(emptyList(), "")
         }
     }
@@ -146,10 +146,10 @@ class AccrescentRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "listAppListings page $pages failed", expected)
+            Log.status(TAG, "listAppListings page $pages failed", expected)
             null
         } catch (expected: IllegalStateException) {
-            Log.w(TAG, "listAppListings page $pages failed", expected)
+            Log.status(TAG, "listAppListings page $pages failed", expected)
             null
         }
     }
@@ -168,10 +168,10 @@ class AccrescentRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (expected: java.io.IOException) {
-            Log.w(TAG, "details failed for $appId", expected)
+            Log.status(TAG, "details failed for $appId", expected)
             null
         } catch (expected: IllegalStateException) {
-            Log.w(TAG, "details failed for $appId", expected)
+            Log.status(TAG, "details failed for $appId", expected)
             null
         }
     }

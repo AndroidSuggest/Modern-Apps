@@ -8,7 +8,7 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -130,12 +130,12 @@ fun copyUriToFile(context: Context, uri: Uri): File? {
             if (tempFile.exists() && tempFile.length() > 0) {
                 tempFile
             } else {
-                Log.e("AudioRecorder", "Copy failed: File is empty or does not exist for $uri")
+                Log.error("AudioRecorder", "Copy failed: File is empty or does not exist for $uri")
                 null
             }
         }
     } catch (expected: Exception) {
-        Log.e("AudioRecorder", "Error copying URI to file: $uri", expected)
+        Log.error("AudioRecorder", "Error copying URI to file: $uri", expected)
         if (tempFile.exists()) tempFile.delete()
         null
     }

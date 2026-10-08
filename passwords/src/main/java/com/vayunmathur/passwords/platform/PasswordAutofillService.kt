@@ -28,7 +28,7 @@ import com.vayunmathur.passwords.R
 import com.vayunmathur.passwords.data.PasswordRepository
 import com.vayunmathur.passwords.domain.DomainMatch
 import kotlinx.coroutines.runBlocking
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.passwords.data.Password
 
 class PasswordAutofillService : AutofillService() {
@@ -101,7 +101,7 @@ class PasswordAutofillService : AutofillService() {
 
                 callback.onSuccess(responseBuilder.build())
             } catch (expected: IllegalStateException) {
-                Log.e(tag, "Error in onFillRequest", expected)
+                Log.error(tag, "Error in onFillRequest", expected)
                 callback.onSuccess(null)
             }
         }
@@ -159,7 +159,7 @@ class PasswordAutofillService : AutofillService() {
                     )
                 }
             } catch (expected: IllegalArgumentException) {
-                Log.d(tag, "Could not create inline presentation", expected)
+                Log.debug(tag, "Could not create inline presentation", expected)
             }
         }
 

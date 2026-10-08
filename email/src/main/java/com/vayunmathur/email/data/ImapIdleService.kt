@@ -11,7 +11,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.edit
 import com.vayunmathur.email.data.EmailAccount
@@ -64,7 +64,7 @@ class ImapIdleService : Service() {
     }
 
     private fun abortStart(reason: String?, cause: Throwable): Int {
-        Log.w(TAG, "startForeground failed: $reason", cause)
+        Log.status(TAG, "startForeground failed: $reason", cause)
         stopSelf()
         return START_NOT_STICKY
     }
@@ -92,18 +92,18 @@ class ImapIdleService : Service() {
                 backoffMs = INITIAL_BACKOFF_MS
                 delay(RECONNECT_QUIET_MS)
             } catch (e: ImapAuthException) {
-                Log.w(TAG, "IDLE auth failed for ${account.email}; stop", e)
+                Log.status(TAG, "IDLE auth failed for ${account.email}; stop", e)
                 return
             } catch (e: IOException) {
                 if (isAuthFailure(e)) {
-                    Log.w(TAG, "IDLE auth fail ${account.email}")
+                    Log.status(TAG, "IDLE auth fail ${account.email}")
                     return
                 }
-                Log.w(TAG, "IDLE err ${account.email}: ${e.javaClass.simpleName}: ${e.message}")
+                Log.status(TAG, "IDLE err ${account.email}: ${e.javaClass.simpleName}: ${e.message}")
                 delay(backoffMs)
                 backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
             } catch (_: Exception) {
-                Log.w(TAG, "IDLE non-IO err ${account.email}; backing off")
+                Log.status(TAG, "IDLE non-IO err ${account.email}; backing off")
                 delay(backoffMs)
                 backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
             }
@@ -128,7 +128,7 @@ class ImapIdleService : Service() {
                 rawConn.startTls()
                 caps = rawConn.capability()
             } catch (e: IOException) {
-                Log.w(TAG, "STARTTLS fail ${account.email}: ${e.message}")
+                Log.status(TAG, "STARTTLS fail ${account.email}: ${e.message}")
             }
         }
 
@@ -142,7 +142,7 @@ class ImapIdleService : Service() {
         }
 
         val supportsIdle = caps.has("IDLE")
-        Log.d(TAG, "Raw IDLE supports $supportsIdle for ${account.email}")
+        Log.debug(TAG, "Raw IDLE supports $supportsIdle for ${account.email}")
 
         if (!supportsIdle) {
             try {
@@ -185,7 +185,7 @@ class ImapIdleService : Service() {
                 postNewMailNotification(account.email, msgs)
             }
             syncReadStatusPullRaw(applicationContext, account, known)
-        } catch (_: Exception) { Log.w(TAG, "Raw poll fail for ${account.email}") }
+        } catch (_: Exception) { Log.status(TAG, "Raw poll fail for ${account.email}") }
     }
 
     private suspend fun fetchNewMail(rawConn: RawImapConnection, dao: EmailMessageDao, account: EmailAccount) {
@@ -209,7 +209,7 @@ class ImapIdleService : Service() {
                 }
                 postNewMailNotification(account.email, msgs)
             }
-        } catch (_: Exception) { Log.w(TAG, "quick fetch fail for ${account.email}") }
+        } catch (_: Exception) { Log.status(TAG, "quick fetch fail for ${account.email}") }
     }
 
     private suspend fun runIdleLoops(
@@ -219,7 +219,7 @@ class ImapIdleService : Service() {
     ) {
         while (scope.coroutineContext.isActive) {
             val sel = rawConn.select("INBOX")
-            Log.d(TAG, "SELECT INBOX ${account.email} exists=${sel.exists}")
+            Log.debug(TAG, "SELECT INBOX ${account.email} exists=${sel.exists}")
             discoverFolders(rawConn, db.accountDao(), account)
 
             val state = IdleWatchState()
@@ -255,7 +255,7 @@ class ImapIdleService : Service() {
                 EmailFolder(account.email, fullName, nm.ifBlank { fullName }, parent, holds, delim)
             }
             accountDao.insertFolders(folders)
-        } catch (_: Exception) { Log.w(TAG, "folder discovery fail for ${account.email}") }
+        } catch (_: Exception) { Log.status(TAG, "folder discovery fail for ${account.email}") }
     }
 
     private class IdleWatchState {
@@ -274,12 +274,12 @@ class ImapIdleService : Service() {
         state: IdleWatchState,
     ) {
         val idleTag = rawConn.sendIdle()
-        Log.d(TAG, "IDLE start ${account.email} tag=$idleTag")
+        Log.debug(TAG, "IDLE start ${account.email} tag=$idleTag")
 
         val watchdog = scope.launch {
             delay(IDLE_REFRESH_MS)
             if (isActive) {
-                Log.d(TAG, "proactive refresh ${account.email}")
+                Log.debug(TAG, "proactive refresh ${account.email}")
                 state.isProactiveRefresh = true
                 try { rawConn.sendIdleDone() } catch (_: Exception) {}
             }
@@ -295,7 +295,7 @@ class ImapIdleService : Service() {
         watchdog.cancel()
 
         if (state.isProactiveRefresh) {
-            Log.d(TAG, "24-min refresh ${account.email}")
+            Log.debug(TAG, "24-min refresh ${account.email}")
             state.isProactiveRefresh = false
             state.needReopen = true
             delay(WATCHDOG_REFRESH_GRACE_MS)
@@ -331,7 +331,7 @@ class ImapIdleService : Service() {
         line: String?,
     ): Boolean {
         if (line == null) return true
-        Log.d(TAG, "IDLE line ${account.email}: $line")
+        Log.debug(TAG, "IDLE line ${account.email}: $line")
         if (line.startsWith(idleTag)) return true
         classifyIdleLine(line, state)
         if (state.sawNewMail || state.sawExpunge || state.sawFlags) {
@@ -380,7 +380,7 @@ class ImapIdleService : Service() {
             val known = db.messageDao().getKnownUids(account.email, "INBOX").toSet()
             try {
                 syncReadStatusPullRaw(applicationContext, account, known)
-            } catch (_: Exception) { Log.w(TAG, "flag sync fail for ${account.email}") }
+            } catch (_: Exception) { Log.status(TAG, "flag sync fail for ${account.email}") }
         }
     }
 
@@ -398,7 +398,7 @@ class ImapIdleService : Service() {
         }
         val maxUid = messages.maxOfOrNull { it.id } ?: lastSeen
         if (maxUid > lastSeen) prefs.edit { putLong("$accountEmail::INBOX", maxUid) }
-        try { EmailWidget().updateAll(ctx) } catch (_: Exception) { Log.w(TAG, "widget fail $accountEmail") }
+        try { EmailWidget().updateAll(ctx) } catch (_: Exception) { Log.status(TAG, "widget fail $accountEmail") }
     }
 
     private suspend fun syncReadStatusPullRaw(context: Context, account: EmailAccount, knownUids: Set<Long>) {
@@ -472,9 +472,9 @@ class ImapIdleService : Service() {
                 context.startForegroundService(intent)
                 true
             } catch (e: SecurityException) {
-                Log.w(TAG, "start failed: ${e.message}", e); false
+                Log.status(TAG, "start failed: ${e.message}", e); false
             } catch (e: IllegalStateException) {
-                Log.w(TAG, "start failed: ${e.message}", e); false
+                Log.status(TAG, "start failed: ${e.message}", e); false
             }
         }
 

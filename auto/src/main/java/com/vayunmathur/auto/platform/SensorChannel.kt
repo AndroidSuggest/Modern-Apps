@@ -1,7 +1,7 @@
 package com.vayunmathur.auto.platform
 
 import android.os.SystemClock
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalService
 import com.vayunmathur.auto.protocol.InboundSensor
@@ -108,7 +108,7 @@ class SensorChannel(
             connection.send(channelId, requestType, payload)
             requestTracker.markRequested(type, SystemClock.uptimeMillis())
             pendingAnswers.addLast(type)
-            Log.i(TAG, "sensor subscribe: $type")
+            Log.status(TAG, "sensor subscribe: $type")
             onEvent(SensorEvent.Subscribed(type.name))
         }
     }
@@ -116,7 +116,7 @@ class SensorChannel(
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
+            Log.status(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         // Sweep subscribes the head unit never answered: each surfaces once
@@ -125,7 +125,7 @@ class SensorChannel(
         // also leave the FIFO below, so a late answer never misattributes.
         for (timedOut in requestTracker.takeTimedOut(SystemClock.uptimeMillis())) {
             pendingAnswers.remove(timedOut.type)
-            Log.w(TAG, "sensor subscribe timed out: ${timedOut.type}")
+            Log.status(TAG, "sensor subscribe timed out: ${timedOut.type}")
             onEvent(SensorEvent.SensorError(timedOut.type.name, timedOut.status))
         }
         when (val inbound = SensorCodec.decodeInbound(type, payload)) {
@@ -136,10 +136,10 @@ class SensorChannel(
                 val answered = pendingAnswers.removeFirstOrNull()
                 if (answered != null) {
                     requestTracker.markAnswered(answered)
-                    Log.i(TAG, "sensor subscribed: $answered status=${inbound.status}")
+                    Log.status(TAG, "sensor subscribed: $answered status=${inbound.status}")
                     onEvent(SensorEvent.SubscriptionAnswered(answered.name, inbound.status))
                 } else {
-                    Log.w(TAG, "unsolicited sensor answer status=${inbound.status}")
+                    Log.status(TAG, "unsolicited sensor answer status=${inbound.status}")
                     onEvent(SensorEvent.SubscriptionAnswered("UNSOLICITED", inbound.status))
                 }
             }
@@ -149,15 +149,15 @@ class SensorChannel(
                 val next = _snapshot.value.withEvents(inbound.events)
                 _snapshot.value = next
                 onValues(next)
-                Log.d(TAG, "sensor batch: ${inbound.events.size} events")
+                Log.debug(TAG, "sensor batch: ${inbound.events.size} events")
                 onEvent(SensorEvent.BatchReceived(inbound.events.size))
             }
             is InboundSensor.Error -> {
                 // Observed, never fatal: the bring-up and video carry on.
-                Log.w(TAG, "sensor error: ${inbound.type} status=${inbound.status}")
+                Log.status(TAG, "sensor error: ${inbound.type} status=${inbound.status}")
                 onEvent(SensorEvent.SensorError(inbound.type.name, inbound.status))
             }
-            is InboundSensor.Observed -> Log.d(TAG, "unhandled sensor message 0x${type.toString(HEX_RADIX)}")
+            is InboundSensor.Observed -> Log.debug(TAG, "unhandled sensor message 0x${type.toString(HEX_RADIX)}")
         }
     }
 
@@ -173,7 +173,7 @@ class SensorChannel(
         val next = _snapshot.value.withEvents(events)
         _snapshot.value = next
         onValues(next)
-        Log.d(TAG, "sensor live batch: ${events.size} events")
+        Log.debug(TAG, "sensor live batch: ${events.size} events")
         onEvent(SensorEvent.BatchReceived(events.size))
     }
 

@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -66,7 +66,7 @@ object SignalSealedSender {
                 ),
             )
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not cache the sender certificate", expected)
+            Log.status(TAG, "could not cache the sender certificate", expected)
         }
         return fetched
     }
@@ -86,11 +86,11 @@ object SignalSealedSender {
                 sslSocketFactory = sslSocketFactory,
             )
         } catch (expected: Throwable) {
-            Log.w(TAG, "delivery certificate fetch failed", expected)
+            Log.status(TAG, "delivery certificate fetch failed", expected)
             return null
         }
         if (!resp.isSuccess) {
-            Log.w(TAG, "delivery certificate fetch failed: ${resp.status} ${resp.statusMessage}")
+            Log.status(TAG, "delivery certificate fetch failed: ${resp.status} ${resp.statusMessage}")
             return null
         }
         return parseCertificate(resp.text)
@@ -99,7 +99,7 @@ object SignalSealedSender {
     /** Response is `{"certificate":"<base64>"}`. [warn] is injectable so this stays testable off-device. */
     internal fun parseCertificate(
         body: String,
-        warn: (String) -> Unit = { Log.w(TAG, it) },
+        warn: (String) -> Unit = { Log.status(TAG, it) },
     ): SenderCertificate? {
         val encoded = try {
             json.parseToJsonElement(body).jsonObject["certificate"]?.jsonPrimitive?.content
@@ -130,13 +130,13 @@ object SignalSealedSender {
     /** Remember a profile key learned from an inbound message. */
     suspend fun rememberProfileKey(db: SignalDatabase, aci: String, profileKey: ByteArray) {
         if (profileKey.size != PROFILE_KEY_SIZE) {
-            Log.w(TAG, "ignoring a ${profileKey.size}-byte profile key for $aci")
+            Log.status(TAG, "ignoring a ${profileKey.size}-byte profile key for $aci")
             return
         }
         try {
             db.profileKeyDao().upsert(SignalProfileKey(address = aci, profileKey = profileKey))
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not store the profile key for $aci", expected)
+            Log.status(TAG, "could not store the profile key for $aci", expected)
         }
     }
 
@@ -157,7 +157,7 @@ object SignalSealedSender {
             )
             cipher.doFinal(ByteArray(BLOCK_BYTES)).copyOf(BLOCK_BYTES)
         } catch (expected: Throwable) {
-            Log.w(TAG, "access key derivation failed", expected)
+            Log.status(TAG, "access key derivation failed", expected)
             null
         }
     }

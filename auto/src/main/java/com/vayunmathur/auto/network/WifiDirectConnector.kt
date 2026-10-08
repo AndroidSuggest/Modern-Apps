@@ -14,7 +14,7 @@ import android.net.wifi.WifiNetworkSpecifier
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Looper
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.platform.TransportState
 import com.vayunmathur.auto.protocol.GalTransport
 import com.vayunmathur.auto.protocol.StreamTransport
@@ -223,7 +223,7 @@ object WifiDirectConnector {
             // network keeps the bring-up going on the default route.
             huNetwork?.let { network ->
                 runCatching { network.bindSocket(socket) }
-                    .onFailure { Log.w(TAG, "could not bind the GAL socket to the car network", it) }
+                    .onFailure { Log.status(TAG, "could not bind the GAL socket to the car network", it) }
             }
             socket.connect(InetSocketAddress(params.host, params.port), CONNECT_TIMEOUT_MS)
         } catch (e: IOException) {
@@ -249,7 +249,7 @@ object WifiDirectConnector {
         if (!cancelled) {
             session.onSocketConnected()
             TransportState.publishWireless(session)
-            Log.i(TAG, "wireless socket connected to $hostAddress, parked for the service loop")
+            Log.status(TAG, "wireless socket connected to $hostAddress, parked for the service loop")
         } else {
             runCatching { transport.close() }
         }
@@ -277,7 +277,7 @@ object WifiDirectConnector {
                     }
                 },
             )
-        }.onFailure { Log.w(TAG, "could not bind to the WiFi network", it) }
+        }.onFailure { Log.status(TAG, "could not bind to the WiFi network", it) }
     }
 
     /**
@@ -307,7 +307,7 @@ object WifiDirectConnector {
                             return
                         }
                         huNetwork = network
-                        Log.i(TAG, "local car WiFi network available; GAL sockets bind to it")
+                        Log.status(TAG, "local car WiFi network available; GAL sockets bind to it")
                     }
 
                     override fun onLost(network: Network) {
@@ -315,7 +315,7 @@ object WifiDirectConnector {
                     }
                 },
             )
-        }.onFailure { Log.w(TAG, "could not request the local car WiFi network", it) }
+        }.onFailure { Log.status(TAG, "could not request the local car WiFi network", it) }
     }
 
     /**
@@ -350,7 +350,7 @@ object WifiDirectConnector {
                             return
                         }
                         huNetwork = network
-                        Log.i(TAG, "hidden car network available; GAL sockets bind to it")
+                        Log.status(TAG, "hidden car network available; GAL sockets bind to it")
                     }
 
                     override fun onLost(network: Network) {
@@ -358,8 +358,8 @@ object WifiDirectConnector {
                     }
                 },
             )
-            Log.i(TAG, "requesting hidden car network $ssid")
-        }.onFailure { Log.w(TAG, "could not request the hidden car network", it) }
+            Log.status(TAG, "requesting hidden car network $ssid")
+        }.onFailure { Log.status(TAG, "could not request the hidden car network", it) }
     }
 
     /**
@@ -380,11 +380,11 @@ object WifiDirectConnector {
      */
     private fun tryRfcommFallback(tcpCause: IOException): Boolean {
         val address = btPeerAddress ?: run {
-            Log.i(TAG, "no BT peer from CDM; skipping RFCOMM fallback (${tcpCause.message})")
+            Log.status(TAG, "no BT peer from CDM; skipping RFCOMM fallback (${tcpCause.message})")
             return false
         }
         val adapter = appContext?.getSystemService(BluetoothAdapter::class.java) ?: run {
-            Log.w(TAG, "no Bluetooth adapter for RFCOMM fallback")
+            Log.status(TAG, "no Bluetooth adapter for RFCOMM fallback")
             return false
         }
         // Discovery slows (and often breaks) an outgoing ACL connect; stop it
@@ -392,7 +392,7 @@ object WifiDirectConnector {
         runCatching { adapter.cancelDiscovery() }
         val device: BluetoothDevice = runCatching { adapter.getRemoteDevice(address) }.getOrNull()
             ?: run {
-                Log.w(TAG, "RFCOMM fallback: unparsable BT peer $address")
+                Log.status(TAG, "RFCOMM fallback: unparsable BT peer $address")
                 return false
             }
         // Stage structure (budgets enforced by the stages that can time out):
@@ -403,7 +403,7 @@ object WifiDirectConnector {
         // truthful to connect to, so the fallback stops after resolving the
         // peer and the caller reports the original TCP failure rather than
         // masking it with a half-handshake.
-        Log.i(
+        Log.status(
             TAG,
             "RFCOMM fallback: BT peer ${device.address} resolved; ACL/HFP/credential " +
                 "stages (budgets ${BT_ACL_TIMEOUT_MS}ms/${BT_HFP_TIMEOUT_MS}ms) await " +
@@ -413,7 +413,7 @@ object WifiDirectConnector {
     }
 
     private fun fail(reason: String) {
-        Log.w(TAG, reason)
+        Log.status(TAG, reason)
         if (session.state == WirelessSessionState.NEGOTIATING_WIFI) {
             session.onWifiFailed(reason)
         } else {

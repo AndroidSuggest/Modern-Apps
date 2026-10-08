@@ -1,7 +1,7 @@
 package com.vayunmathur.taxi.network.lyft
 
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.RawResponse
 import com.vayunmathur.taxi.data.BookingResult
@@ -73,7 +73,7 @@ internal class LyftRidesClient(
         // Master guard: never send while booking is not live, or when the caller asked for a
         // dry run. The full request is returned so the UI/logcat can verify it — no charge.
         if (!bookingLive() || dryRun) {
-            Log.i(TAG, "DRY-RUN /v1/core_trips/create (not sent): $requestJson")
+            Log.status(TAG, "DRY-RUN /v1/core_trips/create (not sent): $requestJson")
             return BookingResult.DryRun(requestJson, account)
         }
 
@@ -83,7 +83,7 @@ internal class LyftRidesClient(
             headers = session.authJsonHeaders(token),
             body = requestJson,
         )
-        Log.d(TAG, "POST /v1/core_trips/create -> ${resp.status}")
+        Log.debug(TAG, "POST /v1/core_trips/create -> ${resp.status}")
         if (!resp.isSuccess) return BookingResult.Failed(session.httpError(resp))
         // CreateTripResponse (vra): trip_details(1 = TripDetails) → trip_id(1). No status here;
         // parse the id (JSON or protobuf) for tracking and show nothing else.
@@ -113,7 +113,7 @@ internal class LyftRidesClient(
             method = "GET",
             headers = session.authHeaders(token),
         )
-        Log.d(TAG, "GET /v1/activeride -> ${resp.status} (${resp.bytes.size} bytes)")
+        Log.debug(TAG, "GET /v1/activeride -> ${resp.status} (${resp.bytes.size} bytes)")
         if (resp.status == LyftApiSession.HTTP_NOT_FOUND) return RideStatusResult.None
         if (!resp.isSuccess) return RideStatusResult.Failed(session.httpError(resp))
         val ride = rideParser.parseActiveRide(resp)
@@ -127,7 +127,7 @@ internal class LyftRidesClient(
             method = "GET",
             headers = session.authHeaders(token),
         )
-        Log.d(TAG, "GET /v1/rides/{id}/driver-location -> ${resp.status}")
+        Log.debug(TAG, "GET /v1/rides/{id}/driver-location -> ${resp.status}")
         if (!resp.isSuccess) return null
         return rideParser.parseDriverLocation(resp)
     }
@@ -142,7 +142,7 @@ internal class LyftRidesClient(
             headers = session.authJsonHeaders(token),
             body = "{}",
         )
-        Log.d(TAG, "POST /v1/rides/{id}/cancel -> ${resp.status}")
+        Log.debug(TAG, "POST /v1/rides/{id}/cancel -> ${resp.status}")
         // Surface the server response verbatim either way — a cancel can carry a fee.
         return if (resp.isSuccess) {
             CancelResult.Done(resp.text.take(CANCEL_RESPONSE_PREVIEW_MAX).ifBlank { "Ride cancelled" })
@@ -159,7 +159,7 @@ internal class LyftRidesClient(
             method = "GET",
             headers = session.authHeaders(token),
         )
-        Log.d(TAG, "GET /v1/rides/{id} -> ${resp.status}")
+        Log.debug(TAG, "GET /v1/rides/{id} -> ${resp.status}")
         if (resp.status == LyftApiSession.HTTP_NOT_FOUND) return RideStatusResult.None
         if (!resp.isSuccess) return RideStatusResult.Failed(session.httpError(resp))
         val ride = rideParser.parseActiveRide(resp)

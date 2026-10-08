@@ -1,6 +1,6 @@
 package com.vayunmathur.library.ui
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -168,7 +168,7 @@ private suspend fun runExport(
             AppMessages.show(context.getString(R.string.backup_export_success))
         }
     } catch (e: Exception) {
-        Log.e("BackupButtons", "Export FAILED", e)
+        Log.error("BackupButtons", "Export FAILED", e)
         withContext(Dispatchers.Main) {
             AppMessages.show(context.getString(R.string.backup_export_failed_format, e.message))
         }
@@ -196,7 +196,7 @@ private suspend fun runImport(
         delay(RESTART_DELAY_MS)
         withContext(Dispatchers.Main) { relaunch(context) }
     } catch (e: Exception) {
-        Log.e("BackupButtons", "Import FAILED", e)
+        Log.error("BackupButtons", "Import FAILED", e)
         withContext(Dispatchers.Main) {
             AppMessages.show(context.getString(R.string.backup_import_failed_format, e.message))
         }

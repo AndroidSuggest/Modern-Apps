@@ -3,7 +3,7 @@ package com.vayunmathur.health.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.health.data.HealthRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,9 +43,9 @@ class HealthBootReceiver : BroadcastReceiver() {
             try {
                 val schedules = repository.getEnabledSchedules()
                 schedules.forEach { DoseScheduler.arm(context, it) }
-                Log.i(TAG, "$action: re-armed ${schedules.size} schedule(s)")
+                Log.status(TAG, "$action: re-armed ${schedules.size} schedule(s)")
             } catch (e: Exception) {
-                Log.e(TAG, "$action: could not re-arm dose schedules", e)
+                Log.error(TAG, "$action: could not re-arm dose schedules", e)
             } finally {
                 pendingResult.finish()
             }

@@ -3,7 +3,7 @@ package com.vayunmathur.web.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.webkit.WebView
 import androidx.compose.runtime.mutableStateMapOf
 import com.vayunmathur.web.platform.captureThumb
@@ -77,7 +77,7 @@ object TabThumbnailStore {
             runCatching {
                 file.parentFile?.mkdirs()
                 file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, QUALITY, it) }
-            }.onFailure { Log.w(TAG, "thumbnail write failed", it) }
+            }.onFailure { Log.status(TAG, "thumbnail write failed", it) }
         }
     }
 
@@ -99,7 +99,7 @@ object TabThumbnailStore {
                 dir.listFiles()?.forEach { file ->
                     if (file.name.removeSuffix(EXT) !in liveTabIds) file.delete()
                 }
-            }.onFailure { Log.w(TAG, "thumbnail reap failed", it) }
+            }.onFailure { Log.status(TAG, "thumbnail reap failed", it) }
         }
     }
 

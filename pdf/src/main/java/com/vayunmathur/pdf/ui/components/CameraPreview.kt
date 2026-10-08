@@ -4,7 +4,7 @@ package com.vayunmathur.pdf.ui.components
 
 import kotlin.uuid.Uuid
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -56,9 +56,9 @@ fun CameraPreview(onImageCaptured: (Uri) -> Unit) {
                 imageCapture
             )
         } catch (expected: IllegalStateException) {
-            Log.e("CameraPreview", "Use case binding failed", expected)
+            Log.error("CameraPreview", "Use case binding failed", expected)
         } catch (expected: IllegalArgumentException) {
-            Log.e("CameraPreview", "Use case binding failed", expected)
+            Log.error("CameraPreview", "Use case binding failed", expected)
         }
     }
 
@@ -82,7 +82,7 @@ fun CameraPreview(onImageCaptured: (Uri) -> Unit) {
                         }
 
                         override fun onError(exception: ImageCaptureException) {
-                            Log.e("CameraPreview", "Image capture failed", exception)
+                            Log.error("CameraPreview", "Image capture failed", exception)
                         }
                     }
                 )

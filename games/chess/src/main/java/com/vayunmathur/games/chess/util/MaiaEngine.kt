@@ -1,7 +1,7 @@
 package com.vayunmathur.games.chess.util
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.games.chess.data.Board
 import com.vayunmathur.games.chess.data.Move
 import com.vayunmathur.games.chess.data.PieceColor
@@ -121,10 +121,10 @@ class MaiaEngine(private val context: Context) {
                 val logits = try {
                     handle.logits(encodePlanes(board, turn), difficulty.elo, difficulty.elo)
                 } catch (expected: IllegalStateException) {
-                    Log.e(TAG, "inference failed", expected)
+                    Log.error(TAG, "inference failed", expected)
                     null
                 } catch (expected: IllegalArgumentException) {
-                    Log.e(TAG, "inference failed", expected)
+                    Log.error(TAG, "inference failed", expected)
                     null
                 } ?: return@withContext null
                 choose(legal, logits, turn, difficulty)

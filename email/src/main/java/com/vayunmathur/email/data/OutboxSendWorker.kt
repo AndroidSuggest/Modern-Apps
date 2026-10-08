@@ -3,7 +3,7 @@ package com.vayunmathur.email.data
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -34,7 +34,7 @@ class OutboxSendWorker(
         val pending = repository.getOutbox()
 
         if (pending.isEmpty()) {
-            Log.d(TAG, "Outbox empty; nothing to flush")
+            Log.debug(TAG, "Outbox empty; nothing to flush")
             return Result.success()
         }
 
@@ -82,13 +82,13 @@ class OutboxSendWorker(
         }
         return when (val sendResult = trySend(manager, account, entry, uris, inline)) {
             is SendResult.Success -> {
-                Log.d(TAG, "Sent outbox entry #${entry.id} to ${entry.to}")
+                Log.debug(TAG, "Sent outbox entry #${entry.id} to ${entry.to}")
                 attachmentDirFor(applicationContext, entry.id).deleteRecursively()
                 repository.deleteOutboxEntry(entry)
                 EntryOutcome(false, Long.MAX_VALUE)
             }
             is SendResult.Failure -> {
-                Log.w(TAG, "Failed to send outbox entry #${entry.id}: ${sendResult.message}", sendResult.cause)
+                Log.status(TAG, "Failed to send outbox entry #${entry.id}: ${sendResult.message}", sendResult.cause)
                 repository.updateOutboxAttempt(
                     id = entry.id,
                     error = sendResult.message,
@@ -289,7 +289,7 @@ object OutboxManager {
                 } ?: copyFromFilePath(uri, outFile)
                 if (outFile.exists() && outFile.length() > 0) outFile.absolutePath else null
             } catch (e: IOException) {
-                Log.w("OutboxManager", "Could not copy attachment $uri", e)
+                Log.status("OutboxManager", "Could not copy attachment $uri", e)
                 null
             }
         }
@@ -323,7 +323,7 @@ object OutboxManager {
                     )
                 } else null
             } catch (e: IOException) {
-                Log.w("OutboxManager", "Could not copy inline $att", e)
+                Log.status("OutboxManager", "Could not copy inline $att", e)
                 null
             }
         }

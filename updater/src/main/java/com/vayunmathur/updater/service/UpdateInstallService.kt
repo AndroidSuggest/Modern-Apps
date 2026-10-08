@@ -8,7 +8,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.getSystemService
 import com.vayunmathur.library.util.DataStoreUtils
@@ -64,7 +64,7 @@ class UpdateInstallService : Service() {
         val build = intent?.getStringExtra(EXTRA_BUILD)
         val buildDate = intent?.getLongExtra(EXTRA_BUILD_DATE, 0L) ?: 0L
         if (build.isNullOrEmpty() || buildDate <= 0L) {
-            Log.w(TAG, "started without a target build")
+            Log.status(TAG, "started without a target build")
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -74,7 +74,7 @@ class UpdateInstallService : Service() {
         // is rejected by update_engine anyway, and a second download would fight the first over
         // the same `.part` file.
         if (job?.isActive == true) {
-            Log.i(TAG, "an update is already in progress")
+            Log.status(TAG, "an update is already in progress")
             // stopSelf takes the LATEST startId, so without this the in-flight job's own
             // stopSelf(startId) becomes a no-op and the service outlives its work.
             stopSelf(startId)
@@ -112,7 +112,7 @@ class UpdateInstallService : Service() {
      * place, so the next run resumes rather than starting the gigabyte again.
      */
     override fun onTimeout(startId: Int, fgsType: Int) {
-        Log.w(TAG, "foreground service timed out (type $fgsType)")
+        Log.status(TAG, "foreground service timed out (type $fgsType)")
         job?.cancel()
         stopSelf(startId)
     }
@@ -211,7 +211,7 @@ class UpdateInstallService : Service() {
     }
 
     private fun fail(reason: String) {
-        Log.e(TAG, "update failed: $reason")
+        Log.error(TAG, "update failed: $reason")
         UpdateNotifications.failed(this, reason)
     }
 
@@ -232,7 +232,7 @@ class UpdateInstallService : Service() {
         )
         true
     } catch (e: Exception) {
-        Log.e(TAG, "could not enter the foreground", e)
+        Log.error(TAG, "could not enter the foreground", e)
         releaseWakeLock()
         false
     }

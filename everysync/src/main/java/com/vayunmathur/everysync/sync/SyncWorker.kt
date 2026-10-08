@@ -1,7 +1,7 @@
 package com.vayunmathur.everysync.sync
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.vayunmathur.everysync.provider.SyncDirection
@@ -25,7 +25,7 @@ class SyncWorker(
             }
             Result.success()
         } catch (expected: Exception) {
-            Log.e(TAG, "Sync failed", expected)
+            Log.error(TAG, "Sync failed", expected)
             Result.retry()
         }
     }

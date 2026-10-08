@@ -146,6 +146,10 @@ dependencies {
 
     // Kotlin Serialization
     implementation(libs.kotlinx.serialization.json)
+
+    // Repo-wide logging facade (com.vayunmathur.library.log.Log). Direct
+    // android.util.Log use is banned by the DirectAndroidLog lint check.
+    implementation(project(":library:log"))
 }
 
 tasks.withType<AbstractArchiveTask>().configureEach {

@@ -6,7 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.ContactsContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.emergency.data.EmergencyContact
 import java.io.ByteArrayInputStream
 
@@ -37,7 +37,7 @@ class ContactReader(private val context: Context) {
                 null, null, null,
             )
         }.getOrElse {
-            Log.w(TAG, "unable to read contact $phoneUri", it)
+            Log.status(TAG, "unable to read contact $phoneUri", it)
             return null
         } ?: return null
         cursor.use {
@@ -62,7 +62,7 @@ class ContactReader(private val context: Context) {
         val cursor = runCatching {
             context.contentResolver.query(phoneUri, null, null, null, null)
         }.getOrElse {
-            Log.w(TAG, "unable to validate contact $phoneUri", it)
+            Log.status(TAG, "unable to validate contact $phoneUri", it)
             return false
         } ?: return false
         cursor.use { return it.moveToFirst() }

@@ -1,6 +1,6 @@
 package com.vayunmathur.camera.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -27,7 +27,7 @@ internal fun CameraViewModel.bindSession(
 
 /** Tears down whatever session is currently bound and clears the shared preview surface. */
 fun CameraViewModel.teardownSession() {
-    Log.d(
+    Log.debug(
         "NightPreview",
         "teardownSession() START thread=${Thread.currentThread().name} " +
             "surface=${surfaceRequestMutable.value?.resolution} " +
@@ -43,7 +43,7 @@ fun CameraViewModel.teardownSession() {
     // CRITICAL: clear stale SurfaceRequest BEFORE unbind so CameraXViewfinder drops dead texture
     // immediately (black-frame trap fix)
     surfaceRequestMutable.value = null
-    Log.d("NightPreview", "teardownSession() cleared surfaceRequest -> null to avoid black-frame trap")
+    Log.debug("NightPreview", "teardownSession() cleared surfaceRequest -> null to avoid black-frame trap")
     currentRecording?.stop()
     currentRecording = null
     highSpeedRecording?.stop()
@@ -66,9 +66,9 @@ fun CameraViewModel.teardownSession() {
     stopLongExposureCountdown()
     try {
         imageAnalysis?.clearAnalyzer()
-        Log.d("NightPreview", "teardownSession() cleared analyzer previous=${desiredAnalyzer?.javaClass?.simpleName}")
+        Log.debug("NightPreview", "teardownSession() cleared analyzer previous=${desiredAnalyzer?.javaClass?.simpleName}")
     } catch (e: IllegalStateException) {
-        Log.e("NightPreview", "teardownSession() clearAnalyzer failed (swallowed before)", e)
+        Log.error("NightPreview", "teardownSession() clearAnalyzer failed (swallowed before)", e)
     }
     // desiredAnalyzer is deliberately kept: teardown runs on every rebind and the next bind
     // re-attaches it. Only the UI clears it, when the effect that owns the analyzer disposes.
@@ -76,9 +76,9 @@ fun CameraViewModel.teardownSession() {
     sessionLifecycleOwner = null
     try {
         cameraProvider?.unbindAll()
-        Log.d("NightPreview", "teardownSession() unbindAll SUCCESS")
+        Log.debug("NightPreview", "teardownSession() unbindAll SUCCESS")
     } catch (e: IllegalStateException) {
-        Log.e("NightPreview", "teardownSession() unbindAll FAILED (was hidden)", e)
+        Log.error("NightPreview", "teardownSession() unbindAll FAILED (was hidden)", e)
     }
     boundCamera = null
     imageCapture = null
@@ -113,10 +113,10 @@ internal fun CameraViewModel.av1SupportedByCamera(cameraInfo: androidx.camera.co
     )
     caps?.getSupportedQualities(androidx.camera.core.DynamicRange.SDR)?.isNotEmpty() == true
 } catch (e: IllegalStateException) {
-    Log.w("VideoSession", "Could not query AV1 video capabilities", e)
+    Log.status("VideoSession", "Could not query AV1 video capabilities", e)
     false
 } catch (e: IllegalArgumentException) {
-    Log.w("VideoSession", "Could not query AV1 video capabilities", e)
+    Log.status("VideoSession", "Could not query AV1 video capabilities", e)
     false
 }
 
@@ -127,10 +127,10 @@ internal fun CameraViewModel.hevcSupportedByCamera(cameraInfo: androidx.camera.c
     )
     caps?.getSupportedQualities(androidx.camera.core.DynamicRange.SDR)?.isNotEmpty() == true
 } catch (e: IllegalStateException) {
-    Log.w("VideoSession", "Could not query HEVC video capabilities", e)
+    Log.status("VideoSession", "Could not query HEVC video capabilities", e)
     false
 } catch (e: IllegalArgumentException) {
-    Log.w("VideoSession", "Could not query HEVC video capabilities", e)
+    Log.status("VideoSession", "Could not query HEVC video capabilities", e)
     false
 }
 
@@ -139,10 +139,10 @@ internal fun CameraViewModel.hlgSupportedByCamera(cameraInfo: androidx.camera.co
         .supportedDynamicRanges
         .contains(androidx.camera.core.DynamicRange.HLG_10_BIT)
 } catch (e: IllegalStateException) {
-    Log.w("VideoSession", "Could not query HLG10 dynamic-range support", e)
+    Log.status("VideoSession", "Could not query HLG10 dynamic-range support", e)
     false
 } catch (e: IllegalArgumentException) {
-    Log.w("VideoSession", "Could not query HLG10 dynamic-range support", e)
+    Log.status("VideoSession", "Could not query HLG10 dynamic-range support", e)
     false
 }
 
@@ -192,10 +192,10 @@ internal fun CameraViewModel.highestFpsRange(
         null
     }
 } catch (e: IllegalStateException) {
-    Log.w("VideoSession", "Could not query supported frame-rate ranges", e)
+    Log.status("VideoSession", "Could not query supported frame-rate ranges", e)
     null
 } catch (e: IllegalArgumentException) {
-    Log.w("VideoSession", "Could not query supported frame-rate ranges", e)
+    Log.status("VideoSession", "Could not query supported frame-rate ranges", e)
     null
 }
 
@@ -222,10 +222,10 @@ internal fun CameraViewModel.preferredStabilizationMode(cameraInfo: androidx.cam
         else -> null
     }
 } catch (e: IllegalStateException) {
-    Log.w("VideoSession", "Could not query video stabilization modes", e)
+    Log.status("VideoSession", "Could not query video stabilization modes", e)
     null
 } catch (e: IllegalArgumentException) {
-    Log.w("VideoSession", "Could not query video stabilization modes", e)
+    Log.status("VideoSession", "Could not query video stabilization modes", e)
     null
 }
 
@@ -254,9 +254,9 @@ internal fun <T> CameraViewModel.applyVideoCaptureRequestOptions(
             )
         }
     } catch (e: IllegalStateException) {
-        Log.w("VideoSession", "Could not apply Camera2 video capture options", e)
+        Log.status("VideoSession", "Could not apply Camera2 video capture options", e)
     } catch (e: IllegalArgumentException) {
-        Log.w("VideoSession", "Could not apply Camera2 video capture options", e)
+        Log.status("VideoSession", "Could not apply Camera2 video capture options", e)
     }
 }
 
@@ -274,8 +274,8 @@ internal fun unbindQuietly(provider: ProcessCameraProvider, tag: String = "Night
     try {
         provider.unbindAll()
     } catch (e: IllegalStateException) {
-        Log.e(tag, "unbindAll in catch FAILED (hidden)", e)
+        Log.error(tag, "unbindAll in catch FAILED (hidden)", e)
     } catch (e: IllegalArgumentException) {
-        Log.e(tag, "unbindAll in catch FAILED (hidden)", e)
+        Log.error(tag, "unbindAll in catch FAILED (hidden)", e)
     }
 }

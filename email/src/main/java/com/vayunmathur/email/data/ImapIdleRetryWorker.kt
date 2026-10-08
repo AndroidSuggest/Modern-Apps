@@ -1,7 +1,7 @@
 package com.vayunmathur.email.data
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.edit
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -25,20 +25,20 @@ class ImapIdleRetryWorker(appContext: Context, params: WorkerParameters) : Corou
         return try {
             val started = ImapIdleService.start(applicationContext)
             if (started) {
-                Log.d(TAG, "ImapIdleRetryWorker: IDLE started")
+                Log.debug(TAG, "ImapIdleRetryWorker: IDLE started")
                 // Clear pending flag on success
                 applicationContext.getSharedPreferences(BootReceiver.PREFS, Context.MODE_PRIVATE)
                     .edit { remove(BootReceiver.KEY_PENDING) }
                 Result.success()
             } else {
-                Log.w(TAG, "ImapIdleRetryWorker: start returned false, retrying")
+                Log.status(TAG, "ImapIdleRetryWorker: start returned false, retrying")
                 Result.retry()
             }
         } catch (t: SecurityException) {
-            Log.w(TAG, "ImapIdleRetryWorker failed: ${t.message}", t)
+            Log.status(TAG, "ImapIdleRetryWorker failed: ${t.message}", t)
             Result.retry()
         } catch (t: IllegalStateException) {
-            Log.w(TAG, "ImapIdleRetryWorker failed: ${t.message}", t)
+            Log.status(TAG, "ImapIdleRetryWorker failed: ${t.message}", t)
             Result.retry()
         }
     }

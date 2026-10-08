@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * App-decor bind target, mirroring gearhead's `AppDecorService` (exported):
@@ -22,7 +22,7 @@ class AppDecorService : Service() {
         // Explicit no-op-with-comment: the HU decor bind is safely rejected
         // (null) because MA draws CarDisplay drawer/launcher itself rather
         // than hosting AppDecor templates.
-        Log.i(TAG, "app-decor bind rejected (rendered-surface model)")
+        Log.status(TAG, "app-decor bind rejected (rendered-surface model)")
         return null
     }
 

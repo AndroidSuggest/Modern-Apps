@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal.call
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.call.WebRtcInit
 import java.util.UUID
 import org.signal.ringrtc.CallManager
@@ -26,7 +26,7 @@ fun SignalCallManager.ensureInitialized(localAci: String): CallManager? {
     } catch (expected: Throwable) {
         // A failed initialize leaves nothing usable; let a later attempt retry.
         initialized.set(false)
-        Log.e(SignalCallManager.TAG, "RingRTC initialization failed", expected)
+        Log.error(SignalCallManager.TAG, "RingRTC initialization failed", expected)
         null
     }
 }
@@ -43,7 +43,7 @@ fun SignalCallManager.placeCall(
         manager.call(SignalRemote(remoteAci), mediaType, localDeviceId)
         true
     } catch (expected: Throwable) {
-        Log.w(SignalCallManager.TAG, "could not place a call to $remoteAci", expected)
+        Log.status(SignalCallManager.TAG, "could not place a call to $remoteAci", expected)
         false
     }
 }

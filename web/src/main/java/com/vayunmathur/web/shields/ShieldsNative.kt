@@ -1,5 +1,6 @@
 // PACKAGE STRUCTURE EXCEPTION (JNI): FQN frozen for native RegisterNatives/symbol mangling
 package com.vayunmathur.web.shields
+import com.vayunmathur.library.log.Log
 
 /**
  * JNI bridge to Brave's adblock engine (`libweb_shields.so`, built from
@@ -17,7 +18,7 @@ internal object ShieldsNative {
             System.loadLibrary("web_shields")
             true
         }.onFailure { t ->
-            android.util.Log.e("ShieldsNative", "System.loadLibrary(web_shields) failed", t)
+            Log.error("ShieldsNative", "System.loadLibrary(web_shields) failed", t)
         }.getOrDefault(false)
 
     /** Parses `filters` (Adblock Plus syntax) and returns an engine handle, or 0. */

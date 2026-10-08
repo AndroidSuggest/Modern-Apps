@@ -2,7 +2,7 @@ package com.vayunmathur.weather.data
 
 import android.content.Context
 import android.os.storage.StorageManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.room.loadSqlCipher
 import com.vayunmathur.weather.network.GeocodingResult
 import kotlinx.coroutines.CoroutineScope
@@ -188,7 +188,7 @@ object GeoDatabase {
                     }
                 }
             } catch (e: android.database.sqlite.SQLiteException) {
-                Log.e(TAG, "Place search failed", e)
+                Log.error(TAG, "Place search failed", e)
                 emptyList()
             }
         }
@@ -253,7 +253,7 @@ object GeoDatabase {
                 Result.success(asset)
             } catch (e: Exception) {
                 partDbFile.delete()
-                Log.e(TAG, "Unpack failed", e)
+                Log.error(TAG, "Unpack failed", e)
                 if (e is kotlinx.coroutines.CancellationException) {
                     _status.value = installedMeta()?.let { Status.Ready(it) } ?: Status.Absent
                     throw e
@@ -298,10 +298,10 @@ object GeoDatabase {
             json.decodeFromString<Meta>(it.readText())
         }
     } catch (e: IOException) {
-        Log.i(TAG, "No bundled places catalogue asset: ${e.message}")
+        Log.status(TAG, "No bundled places catalogue asset: ${e.message}")
         null
     } catch (e: IllegalArgumentException) {
-        Log.i(TAG, "No bundled places catalogue asset: ${e.message}")
+        Log.status(TAG, "No bundled places catalogue asset: ${e.message}")
         null
     }
 
@@ -311,10 +311,10 @@ object GeoDatabase {
             val meta = json.decodeFromString<Meta>(metaFile.readText())
             if (meta.schemaVersion == SUPPORTED_SCHEMA_VERSION) meta else null
         } catch (e: IOException) {
-            Log.e(TAG, "Unreadable unpacked metadata", e)
+            Log.error(TAG, "Unreadable unpacked metadata", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "Unreadable unpacked metadata", e)
+            Log.error(TAG, "Unreadable unpacked metadata", e)
             null
         }
     }
@@ -334,7 +334,7 @@ object GeoDatabase {
                     null,
                 ).also { handle = it }
             } catch (e: android.database.sqlite.SQLiteException) {
-                Log.e(TAG, "Failed to open the places catalogue", e)
+                Log.error(TAG, "Failed to open the places catalogue", e)
                 null
             }
         }

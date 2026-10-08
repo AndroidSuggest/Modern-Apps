@@ -1,6 +1,6 @@
 package com.vayunmathur.email.network.imap
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -34,7 +34,7 @@ internal class ImapWireIo(
                     if (r == -1) throw IOException("Unexpected EOF reading $size byte literal, got $read")
                     read += r
                 }
-                Log.d(TAG, "S> [literal $size] line=${lineStr.take(LOG_LINE_PREVIEW_LEN)}")
+                Log.debug(TAG, "S> [literal $size] line=${lineStr.take(LOG_LINE_PREVIEW_LEN)}")
                 return lineStr to litBytes
             } else {
                 return lineStr to ByteArray(0)
@@ -46,7 +46,7 @@ internal class ImapWireIo(
             } else {
                 lineStr
             }
-            Log.d(TAG, "S> $preview")
+            Log.debug(TAG, "S> $preview")
         }
         return lineStr to null
     }
@@ -77,7 +77,7 @@ internal class ImapWireIo(
     }
 
     private fun drainToNewline(inp: InputStream, baos: ByteArrayOutputStream) {
-        Log.w(TAG, "Line exceeded MAX_LINE, draining to newline")
+        Log.status(TAG, "Line exceeded MAX_LINE, draining to newline")
         var done = false
         while (!done) {
             val nb = inp.read()

@@ -4,7 +4,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
 import android.provider.ContactsContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.emergency.domain.formatPostalFallback
 
 private const val TAG = "OwnerIdentityReader"
@@ -70,7 +70,7 @@ class OwnerIdentityReader(private val context: Context) {
                 "${ContactsContract.RawContacts.STARRED} DESC, ${ContactsContract.RawContacts._ID} ASC",
             )
         }.getOrElse {
-            Log.w(TAG, "unable to resolve raw contact for $contactId", it)
+            Log.status(TAG, "unable to resolve raw contact for $contactId", it)
             return null
         } ?: return null
         cursor.use {
@@ -90,7 +90,7 @@ class OwnerIdentityReader(private val context: Context) {
                 null, null, null,
             )
         }.getOrElse {
-            Log.w(TAG, "unable to read display name for raw contact $rawId", it)
+            Log.status(TAG, "unable to read display name for raw contact $rawId", it)
             return null
         } ?: return null
         cursor.use {
@@ -117,7 +117,7 @@ class OwnerIdentityReader(private val context: Context) {
                 null,
             )
         }.getOrElse {
-            Log.w(TAG, "unable to read addresses for raw contact $rawId", it)
+            Log.status(TAG, "unable to read addresses for raw contact $rawId", it)
             return emptyList()
         } ?: return emptyList()
         cursor.use {

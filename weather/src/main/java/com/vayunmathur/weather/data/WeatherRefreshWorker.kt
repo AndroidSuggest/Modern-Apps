@@ -1,7 +1,7 @@
 package com.vayunmathur.weather.data
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.glance.appwidget.updateAll
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -36,14 +36,14 @@ class WeatherRefreshWorker(
                     val airQuality = bundle.toAirQuality()
                     repo.writeForecastCache(location.latitude, location.longitude, forecast, airQuality)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to refresh weather for ${location.name}: ${e.message}")
+                    Log.status(TAG, "Failed to refresh weather for ${location.name}: ${e.message}")
                 }
             }
             WeatherGlanceWidget().updateAll(context)
             WeatherBlobGlanceWidget().updateAll(context)
             Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "Weather refresh failed", e)
+            Log.error(TAG, "Weather refresh failed", e)
             Result.retry()
         }
     }

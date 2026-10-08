@@ -10,7 +10,7 @@ import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.annotation.RequiresPermission
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -102,7 +102,7 @@ class AudioCapture(private val context: Context) {
             try {
                 record.startRecording()
             } catch (t: IllegalStateException) {
-                Log.e(TAG, "startRecording failed", t)
+                Log.error(TAG, "startRecording failed", t)
                 trySend(Result.failure(CaptureException(CaptureFailure.UNAVAILABLE)))
                 close()
                 return@thread
@@ -147,7 +147,7 @@ class AudioCapture(private val context: Context) {
             val record = try {
                 AudioRecord(source(), SAMPLE_RATE, CHANNEL, encoding, minimum * BUFFER_MULTIPLIER)
             } catch (t: IllegalArgumentException) {
-                Log.e(TAG, "AudioRecord init failed for encoding $encoding", t)
+                Log.error(TAG, "AudioRecord init failed for encoding $encoding", t)
                 null
             }
             if (record != null && record.state == AudioRecord.STATE_INITIALIZED) {
@@ -157,7 +157,7 @@ class AudioCapture(private val context: Context) {
                 val honoured = classify(record.audioSource)
                 activeSource = honoured
                 if (honoured != CaptureSource.UNPROCESSED) {
-                    Log.w(
+                    Log.status(
                         TAG,
                         "UNPROCESSED unavailable, capturing with $honoured instead - the voice " +
                             "high-pass will attenuate everything below ~100 Hz, so readings on " +
@@ -199,7 +199,7 @@ class AudioCapture(private val context: Context) {
             if (AutomaticGainControl.isAvailable()) {
                 AutomaticGainControl.create(sessionId)?.apply { enabled = false }
             }
-        }.onFailure { Log.w(TAG, "could not detach voice processing", it) }
+        }.onFailure { Log.status(TAG, "could not detach voice processing", it) }
     }
 
     companion object {

@@ -1,6 +1,6 @@
 package com.vayunmathur.openassistant.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -17,7 +17,7 @@ object JsonSchemaValidator {
         val schema = try {
             Json.parseToJsonElement(schemaString)
         } catch (expected: Exception) {
-            Log.e("JsonSchemaValidator", "Internal Error: Schema itself is invalid JSON", expected)
+            Log.error("JsonSchemaValidator", "Internal Error: Schema itself is invalid JSON", expected)
             return null
         }
         return performValidation(json, schema)
@@ -208,7 +208,7 @@ internal object JsonExtractor {
         Json.parseToJsonElement(candidate)
         true
     } catch (expected: IllegalArgumentException) {
-        Log.e("JsonExtractor", "Invalid JSON candidate", expected)
+        Log.error("JsonExtractor", "Invalid JSON candidate", expected)
         false
     }
 }

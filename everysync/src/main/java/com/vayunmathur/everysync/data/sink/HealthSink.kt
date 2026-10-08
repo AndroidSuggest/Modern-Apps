@@ -1,7 +1,7 @@
 package com.vayunmathur.everysync.data.sink
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.BloodGlucoseRecord
@@ -65,7 +65,7 @@ object HealthSink {
         // each. Same resolution, but ~1000x fewer records to insert.
         val (heartRate, other) = measurements.partition { it.type == MeasurementType.HEART_RATE }
         val hrRecords = heartRateSeries(heartRate)
-        Log.i(
+        Log.status(
             TAG,
             "upsert: ${measurements.size} measurements " +
                 "(${heartRate.size} HR samples -> ${hrRecords.size} HR series); " +
@@ -90,13 +90,13 @@ object HealthSink {
                             client.insertRecords(batch)
                             synchronized(this@HealthSink) { inserted += batch.size }
                         } catch (expected: Exception) {
-                            Log.e(TAG, "insertRecords failed (${batch.size} records)", expected)
+                            Log.error(TAG, "insertRecords failed (${batch.size} records)", expected)
                         }
                     }
                 }
             }.awaitAll()
         }
-        Log.i(TAG, "upsert: inserted $inserted / ${scalar.size + hrRecords.size} records")
+        Log.status(TAG, "upsert: inserted $inserted / ${scalar.size + hrRecords.size} records")
     }
 
     /**
@@ -140,7 +140,7 @@ object HealthSink {
     private fun safeRecord(m: RemoteMeasurement): Record? = try {
         toRecord(m)
     } catch (expected: Exception) {
-        Log.w(TAG, "skipping ${m.type} (${m.value}) @ ${m.startMillis}: ${expected.message}")
+        Log.status(TAG, "skipping ${m.type} (${m.value}) @ ${m.startMillis}: ${expected.message}")
         null
     }
 

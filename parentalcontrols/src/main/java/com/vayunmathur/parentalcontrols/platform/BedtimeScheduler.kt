@@ -3,7 +3,7 @@ package com.vayunmathur.parentalcontrols.platform
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 import com.vayunmathur.parentalcontrols.data.BedtimeSchedule
 import com.vayunmathur.parentalcontrols.data.DowntimeSchedule
@@ -69,10 +69,10 @@ class BedtimeScheduler(private val context: Context) {
             if (canExact) {
                 alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
             } else {
-                Log.w(TAG, "no exact-alarm permission; window boundary will be approximate")
+                Log.status(TAG, "no exact-alarm permission; window boundary will be approximate")
                 alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
             }
-        }.onFailure { Log.w(TAG, "could not arm the window alarm", it) }
+        }.onFailure { Log.status(TAG, "could not arm the window alarm", it) }
     }
 
     /**

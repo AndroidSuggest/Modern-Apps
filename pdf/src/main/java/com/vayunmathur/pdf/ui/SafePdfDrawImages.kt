@@ -2,6 +2,7 @@ package com.vayunmathur.pdf.ui
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asAndroidPath
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.pdf.util.BlendMode
 import com.vayunmathur.pdf.util.PdfPrimitive
 
@@ -99,7 +100,7 @@ internal fun SafePdfDrawContext.drawImageTiledPrim(prim: PdfPrimitive.ImageTiled
             android.graphics.Shader.TileMode.REPEAT,
         ).also { it.setLocalMatrix(imgMatrix) }
     }.onFailure {
-        android.util.Log.w("SafePdfViewer", "tiling pattern shader failed", it)
+        Log.status("SafePdfViewer", "tiling pattern shader failed", it)
     }.getOrNull() ?: return
 
     tilePaint.reset()

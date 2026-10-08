@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.rcs.e2e
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * JNI bridge to the `communicate_mls` Rust crate (OpenMLS, RFC 9420).
@@ -22,14 +22,14 @@ object RustMlsCrypto {
 
     val isAvailable: Boolean = try {
         System.loadLibrary("communicate_mls")
-        Log.i(TAG, "libcommunicate_mls loaded")
+        Log.status(TAG, "libcommunicate_mls loaded")
         true
     } catch (expected: Throwable) {
         if (expected.message?.contains("already loaded", ignoreCase = true) == true) {
-            Log.i(TAG, "libcommunicate_mls already loaded")
+            Log.status(TAG, "libcommunicate_mls already loaded")
             true
         } else {
-            Log.e(TAG, "System.loadLibrary(communicate_mls) failed", expected)
+            Log.error(TAG, "System.loadLibrary(communicate_mls) failed", expected)
             false
         }
     }

@@ -1,6 +1,6 @@
 package com.vayunmathur.fooddelivery.api
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.fooddelivery.data.AuthToken
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +34,7 @@ object BitesAuth {
             BitesCore.expiresAtMs =
                 root[BitesCore.EXPIRES_AT_KEY]?.jsonPrimitive?.longOrNull ?: 0L
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "restoreToken failed", e)
+            Log.error(TAG, "restoreToken failed", e)
         }
     }
 
@@ -70,10 +70,10 @@ object BitesAuth {
         } catch (e: java.io.IOException) {
             // Swallowing this silently is what made a TLS-pinning failure look like
             // "login does nothing" with an empty logcat.
-            Log.e(TAG, "verifyPhone failed", e)
+            Log.error(TAG, "verifyPhone failed", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "verifyPhone failed", e)
+            Log.error(TAG, "verifyPhone failed", e)
             null
         }
     }
@@ -100,10 +100,10 @@ object BitesAuth {
                 null
             }
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "exchangeOtp failed", e)
+            Log.error(TAG, "exchangeOtp failed", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "exchangeOtp failed", e)
+            Log.error(TAG, "exchangeOtp failed", e)
             null
         }
     }

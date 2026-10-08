@@ -5,6 +5,7 @@ import android.util.AttributeSet
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import com.vayunmathur.games.voxels.util.VoxelsNative
+import com.vayunmathur.library.log.Log
 
 class VoxelSurfaceView @JvmOverloads constructor(
     context: Context,
@@ -21,14 +22,14 @@ class VoxelSurfaceView @JvmOverloads constructor(
             VoxelsNative.surfaceCreated(holder.surface)
             ready = true
         } catch (e: RuntimeException) {
-            android.util.Log.e("VoxelSurface", "surfaceCreated failed", e)
+            Log.error("VoxelSurface", "surfaceCreated failed", e)
         }
     }
     @Suppress("TooGenericExceptionCaught")
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         if (!VoxelsNative.isAvailable || !ready) return
         try { VoxelsNative.surfaceChanged(width, height) } catch (e: RuntimeException) {
-            android.util.Log.e("VoxelSurface", "surfaceChanged failed", e)
+            Log.error("VoxelSurface", "surfaceChanged failed", e)
         }
     }
     @Suppress("TooGenericExceptionCaught")
@@ -38,7 +39,7 @@ class VoxelSurfaceView @JvmOverloads constructor(
             VoxelsNative.surfaceDestroyed()
             ready = false
         } catch (e: RuntimeException) {
-            android.util.Log.e("VoxelSurface", "surfaceDestroyed failed", e)
+            Log.error("VoxelSurface", "surfaceDestroyed failed", e)
         }
     }
 }

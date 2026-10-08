@@ -1,6 +1,6 @@
 package com.vayunmathur.updater.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.updater.domain.UpdateComparison
 
 private const val TAG = "SystemBuild"
@@ -51,7 +51,7 @@ object SystemBuild {
         val build = stringProperty("ro.build.version.incremental")
         val date = longProperty("ro.build.date.utc")
         if (build.isEmpty() || date <= 0) {
-            Log.w(TAG, "cannot read the running build (incremental='$build' date=$date)")
+            Log.status(TAG, "cannot read the running build (incremental='$build' date=$date)")
             return null
         }
         return UpdateComparison.CurrentBuild(build, date)
@@ -60,11 +60,11 @@ object SystemBuild {
     private fun stringProperty(key: String): String = runCatching {
         val cls = Class.forName("android.os.SystemProperties")
         cls.getMethod("get", String::class.java).invoke(null, key) as? String ?: ""
-    }.onFailure { Log.w(TAG, "SystemProperties.get($key) failed", it) }.getOrDefault("")
+    }.onFailure { Log.status(TAG, "SystemProperties.get($key) failed", it) }.getOrDefault("")
 
     private fun longProperty(key: String): Long = runCatching {
         val cls = Class.forName("android.os.SystemProperties")
         cls.getMethod("getLong", String::class.java, Long::class.javaPrimitiveType)
             .invoke(null, key, 0L) as? Long ?: 0L
-    }.onFailure { Log.w(TAG, "SystemProperties.getLong($key) failed", it) }.getOrDefault(0L)
+    }.onFailure { Log.status(TAG, "SystemProperties.getLong($key) failed", it) }.getOrDefault(0L)
 }

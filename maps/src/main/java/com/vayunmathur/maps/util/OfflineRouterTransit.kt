@@ -1,7 +1,7 @@
 package com.vayunmathur.maps.util
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.util.ConnectivityMonitor
 import com.vayunmathur.maps.BuildConfig
@@ -97,7 +97,7 @@ internal object OfflineRouterTransit {
         // The native index reads the archive first and ignores the feed name
         // on that path, so this stable pseudo-feed routes there.
         if (runCatching { OfflineRouter.hasTransitArchiveNative(base) }.getOrDefault(false)) {
-            Log.d("OfflineRouterTransit", "archive transit section found")
+            Log.debug("OfflineRouterTransit", "archive transit section found")
             val feeds = listOf("world")
             cachedTransitFeeds = feeds
             return feeds
@@ -322,7 +322,7 @@ internal object OfflineRouterTransit {
         // Remove once the mapping fix lands.
         if (BuildConfig.DEBUG) {
             val hist = raw.groupingBy { it.mode }.eachCount().toSortedMap()
-            Log.d("TransitIconDiag", "feed=$feed n=${raw.size} rawRouteType->count=$hist")
+            Log.debug("TransitIconDiag", "feed=$feed n=${raw.size} rawRouteType->count=$hist")
         }
         return raw.map { v ->
             OfflineRouter.Vehicle(

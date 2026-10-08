@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.google.protobuf.ByteString
 import com.google.protobuf.InvalidProtocolBufferException
 import org.whispersystems.signalservice.internal.push.SignalServiceProtos
@@ -16,7 +16,7 @@ import signal.proto.chat_websocket.SignalChatWebsocket.WebSocketResponseMessage
 internal fun SignalProtocol.parseWebSocketMessage(bytes: ByteArray): WebSocketMessage? = try {
     WebSocketMessage.parseFrom(bytes)
 } catch (e: InvalidProtocolBufferException) {
-    Log.w(SignalProtocol.TAG, "parseWebSocketMessage failed: ${e.message}")
+    Log.status(SignalProtocol.TAG, "parseWebSocketMessage failed: ${e.message}")
     null
 }
 

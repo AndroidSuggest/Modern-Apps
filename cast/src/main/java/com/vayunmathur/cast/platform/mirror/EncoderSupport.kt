@@ -2,7 +2,7 @@ package com.vayunmathur.cast.platform.mirror
 
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.protocol.AudioCodec
 import com.vayunmathur.cast.protocol.CodecLimits
 import com.vayunmathur.cast.protocol.CodecNegotiation
@@ -68,7 +68,7 @@ object EncoderSupport {
     fun videoCodecs(width: Int, height: Int): List<CodecLimits> =
         CodecNegotiation.PREFERENCE.mapNotNull { codec ->
             val info = hardwareSurfaceEncoder(codec) ?: run {
-                Log.i(TAG, "no hardware surface encoder for ${codec.label} (${codec.mimeType})")
+                Log.status(TAG, "no hardware surface encoder for ${codec.label} (${codec.mimeType})")
                 return@mapNotNull null
             }
             val video = info.videoCapabilities(codec) ?: return@mapNotNull null
@@ -83,7 +83,7 @@ object EncoderSupport {
                     maxBitRate = video.bitrateRange.upper,
                 )
             }.getOrNull() ?: return@mapNotNull null
-            Log.i(
+            Log.status(
                 TAG,
                 "${codec.label} encodes up to ${limits.maxWidth}x${limits.maxHeight} and holds " +
                     "${limits.maxFrameRate}fps at ${width}x$height, " +
@@ -183,7 +183,7 @@ object EncoderSupport {
             val h = (height * scale).toInt().alignedDown(video.heightAlignment)
             if (w <= 0 || h <= 0) return width to height
             if (video.realtime(w, h, frameRate)) {
-                Log.i(
+                Log.status(
                     TAG,
                     "${width}x$height tops out at ${ceiling}fps on " +
                         "${info.name}; stepping down to ${w}x$h to hold ${frameRate}fps",
@@ -193,7 +193,7 @@ object EncoderSupport {
         }
         // Nothing in the ladder satisfied both. The caller's size is returned rather than a guess,
         // and this line is the only warning that the advertised frame rate is now aspirational.
-        Log.w(
+        Log.status(
             TAG,
             "no size with this aspect ratio does ${frameRate}fps on ${info.name}; " +
                 "sending ${width}x$height, which tops out at ${ceiling}fps",

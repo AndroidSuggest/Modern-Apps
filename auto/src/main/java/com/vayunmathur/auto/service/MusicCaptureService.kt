@@ -9,7 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.R
 import com.vayunmathur.auto.platform.AutoSessionState
 import com.vayunmathur.auto.platform.MusicCapture
@@ -35,7 +35,7 @@ class MusicCaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val projection = MusicCaptureGrant.projection(this)
         if (projection == null) {
-            Log.i(TAG, "no projection grant; not capturing")
+            Log.status(TAG, "no projection grant; not capturing")
             stopSelf()
             return START_NOT_STICKY
         }

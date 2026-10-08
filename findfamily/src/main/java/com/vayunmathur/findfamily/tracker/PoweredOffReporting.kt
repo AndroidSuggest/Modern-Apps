@@ -1,6 +1,6 @@
 package com.vayunmathur.findfamily.tracker
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.e2ee.Pqc
 import com.vayunmathur.findfamily.data.LocationSource
 import com.vayunmathur.findfamily.data.LocationValue
@@ -54,7 +54,7 @@ object PoweredOffReporting {
         val bundle = Networking.resolveTrackerBundle(handle) ?: return false
         val ct = TrackerProtocol.sealReport(bundle, finderLocation)
         val ok = Networking.uploadTrackerReport(handle, ct)
-        if (ok) Log.i(TAG, "uploaded powered-off sighting (rssi=${sighting.rssi})")
+        if (ok) Log.status(TAG, "uploaded powered-off sighting (rssi=${sighting.rssi})")
         return ok
     }
 
@@ -71,7 +71,7 @@ object PoweredOffReporting {
         if (cts.isEmpty()) return emptyList()
         return cts.mapNotNull { ct ->
             runCatching { openSighting(kemPriv, ct, userId) }
-                .onFailure { Log.w(TAG, "could not open a sighting for $userId", it) }
+                .onFailure { Log.status(TAG, "could not open a sighting for $userId", it) }
                 .getOrNull()
         }.sortedByDescending { it.timestamp }
     }

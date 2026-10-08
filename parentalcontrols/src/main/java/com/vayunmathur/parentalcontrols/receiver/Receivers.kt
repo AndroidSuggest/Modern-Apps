@@ -3,7 +3,7 @@ package com.vayunmathur.parentalcontrols.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.parentalcontrols.platform.EXTRA_PACKAGE_NAME
 import com.vayunmathur.parentalcontrols.platform.Enforcer
 import kotlinx.coroutines.CoroutineScope
@@ -26,7 +26,7 @@ class LimitReachedReceiver : BroadcastReceiver() {
     @Suppress("TooGenericExceptionCaught")
     override fun onReceive(context: Context, intent: Intent) {
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: run {
-            Log.w(TAG, "limit callback with no package")
+            Log.status(TAG, "limit callback with no package")
             return
         }
         val app = context.applicationContext
@@ -35,7 +35,7 @@ class LimitReachedReceiver : BroadcastReceiver() {
             try {
                 Enforcer(app).onLimitReached(packageName)
             } catch (e: Exception) {
-                Log.e(TAG, "could not enforce the limit for $packageName", e)
+                Log.error(TAG, "could not enforce the limit for $packageName", e)
             } finally {
                 pending.finish()
             }
@@ -52,7 +52,7 @@ class LimitReachedReceiver : BroadcastReceiver() {
             val app = context.applicationContext
             CoroutineScope(Dispatchers.IO).launch {
                 runCatching { Enforcer(app).onLimitReached(packageName) }
-                    .onFailure { Log.e(TAG, "could not enforce $packageName", it) }
+                    .onFailure { Log.error(TAG, "could not enforce $packageName", it) }
             }
         }
     }
@@ -73,7 +73,7 @@ class BedtimeReceiver : BroadcastReceiver() {
                 // reconcile, or the child would never learn why apps just closed.
                 Enforcer(app).onWindowBoundary()
             } catch (e: Exception) {
-                Log.e(TAG, "window boundary failed", e)
+                Log.error(TAG, "window boundary failed", e)
             } finally {
                 pending.finish()
             }
@@ -110,7 +110,7 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 Enforcer(app).reconcile()
             } catch (e: Exception) {
-                Log.e(TAG, "boot reconcile failed", e)
+                Log.error(TAG, "boot reconcile failed", e)
             } finally {
                 pending.finish()
             }

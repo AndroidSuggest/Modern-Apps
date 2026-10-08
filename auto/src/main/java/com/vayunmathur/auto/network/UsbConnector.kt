@@ -6,7 +6,7 @@ import android.content.Intent
 import android.hardware.usb.UsbAccessory
 import android.hardware.usb.UsbManager
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.platform.TransportState
 import com.vayunmathur.auto.protocol.StreamTransport
 import com.vayunmathur.auto.protocol.TransportKind
@@ -65,7 +65,7 @@ object UsbConnector {
                 lastAccessory = null
                 session.onDetached()
                 TransportState.publishUsb(session)
-                Log.i(TAG, "USB accessory detached")
+                Log.status(TAG, "USB accessory detached")
                 return true
             }
             ACTION_USB_ACCESSORY_FORCE_START -> {
@@ -86,10 +86,10 @@ object UsbConnector {
      */
     fun forceStart(context: Context) {
         val accessory = lastAccessory ?: run {
-            Log.i(TAG, "USB force-start with no accessory seen; ignoring")
+            Log.status(TAG, "USB force-start with no accessory seen; ignoring")
             return
         }
-        Log.i(TAG, "USB force-start for ${accessory.model}")
+        Log.status(TAG, "USB force-start for ${accessory.model}")
         onAttached(context, accessory)
     }
 
@@ -108,7 +108,7 @@ object UsbConnector {
         } else {
             session.onPermissionDenied()
             TransportState.publishUsb(session)
-            Log.i(TAG, "USB accessory permission denied")
+            Log.status(TAG, "USB accessory permission denied")
         }
         return true
     }
@@ -136,7 +136,7 @@ object UsbConnector {
         // ride unchanged through. No fork here on purpose: the transport is
         // agnostic and the session reuses TLS/GAL verbatim. MANAGE_USB would
         // gate only the reset/role-switch side (see ConnectionResetReceiver).
-        Log.i(TAG, "USB accessory attached: ${session.accessoryLabel}")
+        Log.status(TAG, "USB accessory attached: ${session.accessoryLabel}")
         val granted = manager?.hasPermission(accessory) == true
         if (granted) open(context, accessory) else requestPermission(context, accessory)
     }
@@ -179,7 +179,7 @@ object UsbConnector {
         )
         session.onPermissionGranted()
         TransportState.publishUsb(session)
-        Log.i(TAG, "USB accessory open, transport parked for the service loop")
+        Log.status(TAG, "USB accessory open, transport parked for the service loop")
     }
 
     private const val TAG = "MaAuto.Usb"

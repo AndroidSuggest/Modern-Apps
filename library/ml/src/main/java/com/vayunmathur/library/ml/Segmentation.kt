@@ -2,7 +2,7 @@ package com.vayunmathur.library.ml
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /** A segmentation mask: [width] × [height] probabilities in `0..1`, row-major. */
 class SegmentationMask(
@@ -64,7 +64,7 @@ internal class NativeSegmenter(
             // mapped APK rather than an inflate into a second buffer.
             create(context.assets.open(assetName).use { it.readBytes() })
         } catch (expected: Exception) {
-            Log.e(tag, "cannot load $assetName", expected)
+            Log.error(tag, "cannot load $assetName", expected)
             0L
         }
     }

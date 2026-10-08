@@ -4,7 +4,7 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.parentalcontrols.auth.ParentPin
 
 private const val TAG = "ParentalControlsSetup"
@@ -44,7 +44,7 @@ class SetupActivity : Activity() {
             // case this app should not have been resolvable either. Logged rather than shown:
             // there is no useful action for the user, and a dialog from an app with no icon and
             // no other UI would be more confusing than the entry simply not working.
-            Log.w(TAG, "no activity for $ACTION_ENABLE_SUPERVISION; is this a supervision build?", e)
+            Log.status(TAG, "no activity for $ACTION_ENABLE_SUPERVISION; is this a supervision build?", e)
         }
         finish()
     }

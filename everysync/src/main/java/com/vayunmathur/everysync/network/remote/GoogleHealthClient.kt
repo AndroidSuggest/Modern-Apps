@@ -10,7 +10,7 @@ import kotlinx.datetime.number
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import com.vayunmathur.everysync.data.MeasurementType
@@ -128,7 +128,7 @@ class GoogleHealthClient(private val accessToken: String) {
                 body,
             )
             if (!resp.isSuccess) {
-                Log.e(
+                Log.error(
                     TAG,
                     "dailyRollUp ${spec.dataType} HTTP ${resp.status}: " +
                         resp.body.take(BODY_PREVIEW_LEN),
@@ -150,7 +150,7 @@ class GoogleHealthClient(private val accessToken: String) {
                 )
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "dailyRollUp(${spec.dataType}) failed", expected)
+            Log.error(TAG, "dailyRollUp(${spec.dataType}) failed", expected)
         }
         return out
     }
@@ -171,7 +171,7 @@ class GoogleHealthClient(private val accessToken: String) {
                 listMeasurement(spec, dp, zone)?.let { out += it }
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "listDataPoints(${spec.dataType}) failed", expected)
+            Log.error(TAG, "listDataPoints(${spec.dataType}) failed", expected)
         }
         return out
     }
@@ -246,7 +246,7 @@ class GoogleHealthClient(private val accessToken: String) {
                 )
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "fetchSleep failed", expected)
+            Log.error(TAG, "fetchSleep failed", expected)
         }
         return out
     }
@@ -277,7 +277,7 @@ class GoogleHealthClient(private val accessToken: String) {
                 )
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "fetchExercise failed", expected)
+            Log.error(TAG, "fetchExercise failed", expected)
         }
         return out
     }
@@ -307,7 +307,7 @@ class GoogleHealthClient(private val accessToken: String) {
                 )
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "fetchNutrition failed", expected)
+            Log.error(TAG, "fetchNutrition failed", expected)
         }
         return out
     }
@@ -343,7 +343,7 @@ class GoogleHealthClient(private val accessToken: String) {
             if (next.isNullOrEmpty()) break
             pageToken = next
         }
-        Log.i(TAG, "list $dataType -> $total points")
+        Log.status(TAG, "list $dataType -> $total points")
     }
 
     /**
@@ -366,7 +366,7 @@ class GoogleHealthClient(private val accessToken: String) {
         }
         val resp = NetworkClient.performRequest(url, "GET", headers(), null)
         if (!resp.isSuccess) {
-            Log.e(
+            Log.error(
                 TAG,
                 "list $dataType HTTP ${resp.status}: " +
                     "${resp.body.take(BODY_PREVIEW_LEN)} (filter=$filter)",

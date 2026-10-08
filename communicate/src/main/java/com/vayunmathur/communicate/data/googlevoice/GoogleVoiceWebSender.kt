@@ -3,7 +3,7 @@ package com.vayunmathur.communicate.data.googlevoice
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -141,7 +141,7 @@ object GoogleVoiceWebSender {
                 filePathCallback: ValueCallback<Array<Uri>>?,
                 fileChooserParams: FileChooserParams?,
             ): Boolean {
-                Log.d(TAG, "file chooser requested for ${currentAttachments.size} attachment(s)")
+                Log.debug(TAG, "file chooser requested for ${currentAttachments.size} attachment(s)")
                 filePathCallback?.onReceiveValue(currentAttachments.toTypedArray())
                 return true
             }
@@ -161,13 +161,13 @@ object GoogleVoiceWebSender {
     private class Bridge {
         @JavascriptInterface
         fun onBody(body: String) {
-            Log.d(TAG, "captured sendsms body (${body.length} bytes)")
+            Log.debug(TAG, "captured sendsms body (${body.length} bytes)")
             pending?.complete(body)
         }
 
         @JavascriptInterface
         fun log(msg: String) {
-            Log.d(TAG, msg)
+            Log.debug(TAG, msg)
         }
     }
 

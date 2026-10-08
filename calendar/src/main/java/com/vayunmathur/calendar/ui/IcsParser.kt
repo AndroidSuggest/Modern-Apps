@@ -1,6 +1,6 @@
 package com.vayunmathur.calendar.ui
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.calendar.data.Event
 import com.vayunmathur.calendar.util.RRule
 import kotlinx.datetime.TimeZone
@@ -65,7 +65,7 @@ internal fun parseICSFileImpl(iS: InputStream): List<Event> {
     }
 
     return events.also {
-        if (skippedCount > 0) Log.w("IcsImport", "Skipped $skippedCount VEVENT(s)")
+        if (skippedCount > 0) Log.status("IcsImport", "Skipped $skippedCount VEVENT(s)")
     }
 }
 
@@ -161,7 +161,7 @@ private fun buildEventFromProps(
         val (endMillisRaw, _, endTzRaw) = parseICSTime(current["DTEND_PROP"], current["DTEND"])
 
         if (startMillis == null) {
-            Log.w("IcsImport", "Skipping VEVENT with unparseable DTSTART: $current")
+            Log.status("IcsImport", "Skipping VEVENT with unparseable DTSTART: $current")
         } else {
             var endMillis = endMillisRaw ?: startMillis
             val duration = current["DURATION"]
@@ -186,7 +186,7 @@ private fun buildEventFromProps(
             added = true
         }
     } catch (expected: Exception) {
-        Log.e("IcsImport", "Error parsing VEVENT", expected)
+        Log.error("IcsImport", "Error parsing VEVENT", expected)
     }
     return added
 }

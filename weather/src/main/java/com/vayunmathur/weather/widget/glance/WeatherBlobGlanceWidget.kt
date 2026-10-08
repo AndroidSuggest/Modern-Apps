@@ -2,7 +2,7 @@ package com.vayunmathur.weather.widget.glance
 
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
@@ -70,7 +70,7 @@ class WeatherBlobGlanceWidget : GlanceAppWidget() {
                 }
             }
         } catch (e: Exception) {
-            Log.e("WeatherBlobWidget", "providePreview failed", e)
+            Log.error("WeatherBlobWidget", "providePreview failed", e)
         }
     }
 

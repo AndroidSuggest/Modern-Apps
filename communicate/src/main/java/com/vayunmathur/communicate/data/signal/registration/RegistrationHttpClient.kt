@@ -2,7 +2,7 @@ package com.vayunmathur.communicate.data.signal.registration
 
 import android.content.Context
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.signal.SignalAuthData
 import com.vayunmathur.communicate.data.signal.transport.SignalTrust
 import com.vayunmathur.library.network.NetworkClient
@@ -82,7 +82,7 @@ class RegistrationHttpClient(private val context: Context) {
             pushToken = null,
             mcc = null,
             mnc = null) } catch (expected: Throwable) {
-            Log.e(TAG, "createVerificationSession failed", expected)
+            Log.error(TAG, "createVerificationSession failed", expected)
             return CodeResult("error", expected.message, expected.message ?: "")
         }
         // Persist session id so submitCaptcha/verifyCode can use it across process restarts.
@@ -111,7 +111,7 @@ class RegistrationHttpClient(private val context: Context) {
             existing
         } else {
             if (existing != null && existing.phoneNumber == number && !existing.registered) {
-                Log.i(TAG, "Regenerating stale pre-registration scaffold for existing number (UAK/key refresh)")
+                Log.status(TAG, "Regenerating stale pre-registration scaffold for existing number (UAK/key refresh)")
             }
             SignalRegistrationKeys.generate(number).authScaffold.also { SignalAuthData.save(context, it) }
         }
@@ -138,7 +138,7 @@ class RegistrationHttpClient(private val context: Context) {
                     mcc = null,
                     mnc = null)
             } catch (expected: Throwable) {
-                Log.w(TAG, "patchVerificationSession (live-only) failed", expected)
+                Log.status(TAG, "patchVerificationSession (live-only) failed", expected)
             }
             return CodeResult("error", "pushChallenge required (live-only: needs FCM pushToken)", create.raw)
         }
@@ -177,7 +177,7 @@ class RegistrationHttpClient(private val context: Context) {
                 mcc = null,
                 mnc = null)
         } catch (expected: Throwable) {
-            Log.e(TAG, "submitCaptcha patch failed", expected)
+            Log.error(TAG, "submitCaptcha patch failed", expected)
             return CodeResult("error", expected.message, expected.message ?: "")
         }
         // Keep the (possibly rotated) session id and number persisted for verifyCode.
@@ -204,7 +204,7 @@ class RegistrationHttpClient(private val context: Context) {
                 else -> CodeResult("sent", null, codeResp.raw)
             }
         } catch (expected: Throwable) {
-            Log.e(TAG, "requestVerificationCode failed", expected)
+            Log.error(TAG, "requestVerificationCode failed", expected)
             CodeResult("error", expected.message, expected.message ?: "")
         }
     }
@@ -223,7 +223,7 @@ class RegistrationHttpClient(private val context: Context) {
                 "missing verification session — call requestSmsCode first")
         // 4) PUT /v1/verification/session/{id}/code {code}
         val verify = try { submitVerificationCode(sessionId, digits) } catch (expected: Throwable) {
-            Log.e(TAG, "submitVerificationCode failed", expected)
+            Log.error(TAG, "submitVerificationCode failed", expected)
             return RegisterResult("error", null, null, expected.message, null, expected.message ?: "")
         }
         if (!verify.verified) {
@@ -231,7 +231,7 @@ class RegistrationHttpClient(private val context: Context) {
         }
         // 5) POST /v1/registration with Basic e164:password + RegistrationSessionRequestBody
         return try { submitRegistration(sessionId, stored) } catch (expected: Throwable) {
-            Log.e(TAG, "submitRegistration failed", expected)
+            Log.error(TAG, "submitRegistration failed", expected)
             RegisterResult("error", null, null, expected.message, null, expected.message ?: "")
         }
     }
@@ -253,7 +253,7 @@ class RegistrationHttpClient(private val context: Context) {
                 // whoami returns {number, aci, pni} when registered
                 ExistResult(resp.status == HTTP_OK, null, resp.body)
             } catch (expected: Throwable) {
-                Log.e(TAG, "checkExists whoami failed", expected)
+                Log.error(TAG, "checkExists whoami failed", expected)
                 ExistResult(false, expected.message, expected.message ?: "")
             }
         }
@@ -445,7 +445,7 @@ class RegistrationHttpClient(private val context: Context) {
         }
         if (!resp.isSuccess) {
             // Log the full server body so a 422/400 names the rejected field in logcat on the next retest.
-            Log.e(TAG, "submitRegistration HTTP ${resp.status}: ${resp.body.take(1000)}")
+            Log.error(TAG, "submitRegistration HTTP ${resp.status}: ${resp.body.take(1000)}")
             return RegisterResult("error", null, null, "HTTP ${resp.status}", null, resp.body)
         }
         return finalizeRegister(resp.body, auth)

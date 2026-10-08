@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.network.UsbConnector
 import com.vayunmathur.auto.service.ProjectionService
 
@@ -29,19 +29,19 @@ class CarStartupService : Service() {
                 // CarCompanionDeviceService); without one there is no MAC to
                 // trigger on, so fall back to listening and let the pairing
                 // screen stand in.
-                Log.i(TAG, "BT_START; ensuring the projection listener is up")
+                Log.status(TAG, "BT_START; ensuring the projection listener is up")
                 ProjectionService.start(this)
             }
             ACTION_START_USB_PROJECTION -> {
-                Log.i(TAG, "START_USB_PROJECTION; force-starting USB bring-up")
+                Log.status(TAG, "START_USB_PROJECTION; force-starting USB bring-up")
                 UsbConnector.forceStart(this)
                 ProjectionService.start(this)
             }
             ACTION_CAR_STARTUP_NOTIFICATION -> {
-                Log.i(TAG, "CAR_STARTUP_NOTIFICATION; starting the projection listener")
+                Log.status(TAG, "CAR_STARTUP_NOTIFICATION; starting the projection listener")
                 ProjectionService.start(this)
             }
-            else -> Log.d(TAG, "startup service without a chain action; ignoring")
+            else -> Log.debug(TAG, "startup service without a chain action; ignoring")
         }
         return START_NOT_STICKY
     }
@@ -49,7 +49,7 @@ class CarStartupService : Service() {
     override fun onBind(intent: Intent?): IBinder? {
         // Explicit no-op-with-comment: the startup chain is start-actions,
         // not a binder -- a head-unit bind expecting one is safely rejected.
-        Log.i(TAG, "startup bind rejected (start-action service, no binder)")
+        Log.status(TAG, "startup bind rejected (start-action service, no binder)")
         return null
     }
 

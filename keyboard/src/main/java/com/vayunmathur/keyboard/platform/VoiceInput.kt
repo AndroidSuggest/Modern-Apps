@@ -6,7 +6,7 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.Locale
 
 private const val TAG = "VoiceInput"
@@ -116,7 +116,7 @@ class VoiceInput(private val context: Context) {
         try {
             sr.startListening(intent)
         } catch (e: Exception) {
-            Log.e(TAG, "startListening failed", e)
+            Log.error(TAG, "startListening failed", e)
             onFailure(VoiceFailure.OTHER)
         }
     }

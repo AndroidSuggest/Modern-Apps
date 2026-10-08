@@ -10,7 +10,7 @@ import android.os.Bundle
 import android.speech.RecognitionService
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.speech.util.WhisperEngine
 import java.util.concurrent.Executors
 import kotlin.math.log10
@@ -103,7 +103,7 @@ class WhisperRecognitionService : RecognitionService() {
                     SAMPLE_RATE, CHANNEL, ENCODING, maxOf(minBuf, SAMPLE_RATE * 2),
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "AudioRecord init failed", e); null
+                Log.error(TAG, "AudioRecord init failed", e); null
             }
             if (rec == null || rec.state != AudioRecord.STATE_INITIALIZED) {
                 rec?.release(); finishError(SpeechRecognizer.ERROR_AUDIO); return
@@ -114,11 +114,11 @@ class WhisperRecognitionService : RecognitionService() {
             try {
                 rec.startRecording()
             } catch (e: IllegalStateException) {
-                Log.e(TAG, "startRecording failed", e)
+                Log.error(TAG, "startRecording failed", e)
                 finishError(SpeechRecognizer.ERROR_AUDIO)
                 return
             } catch (e: SecurityException) {
-                Log.e(TAG, "startRecording failed", e)
+                Log.error(TAG, "startRecording failed", e)
                 finishError(SpeechRecognizer.ERROR_AUDIO)
                 return
             }

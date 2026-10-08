@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.whatsapp
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.e2e.WhatsAppE2E
 
 /**
@@ -51,14 +51,14 @@ private suspend fun WhatsAppClient.encryptForDevice(
     val plaintext =
         if (devUser == ownUser && dsmPlaintextPadded != null) dsmPlaintextPadded else msgPlaintextPadded
     if (!ensureSession(dev)) {
-        Log.w(WhatsAppClient.TAG, "No session for device $dev; skipping in fan-out")
+        Log.status(WhatsAppClient.TAG, "No session for device $dev; skipping in fan-out")
         return null
     }
     return try {
         val enc = crypto.encryptDM(dev, plaintext)
         enc.data to enc.type
     } catch (expected: Exception) {
-        Log.w(WhatsAppClient.TAG, "Encrypt failed for device $dev", expected)
+        Log.status(WhatsAppClient.TAG, "Encrypt failed for device $dev", expected)
         null
     }
 }

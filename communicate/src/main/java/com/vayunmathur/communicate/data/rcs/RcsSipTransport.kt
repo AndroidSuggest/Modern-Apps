@@ -12,7 +12,7 @@ import android.telephony.ims.SipDelegateManager
 import android.telephony.ims.SipMessage
 import android.telephony.ims.stub.DelegateConnectionMessageCallback
 import android.telephony.ims.stub.DelegateConnectionStateCallback
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.SimManager
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -128,7 +128,7 @@ object RcsSipTransport {
         override fun onCreated(c: SipDelegateConnection) {
             connection = c
             _state.value = RcsRegistrationState.Available
-            Log.i(TAG, "SipDelegate created")
+            Log.status(TAG, "SipDelegate created")
         }
 
         override fun onFeatureTagStatusChanged(
@@ -136,7 +136,7 @@ object RcsSipTransport {
             deniedFeatureTags: Set<FeatureTagState>,
         ) {
             if (deniedFeatureTags.isNotEmpty()) {
-                Log.w(TAG, "Feature tags denied: ${deniedFeatureTags.map { it.getFeatureTag() }}")
+                Log.status(TAG, "Feature tags denied: ${deniedFeatureTags.map { it.getFeatureTag() }}")
                 _state.value = RcsRegistrationState.Unavailable(RcsUnavailableReason.TransportDenied)
             }
         }
@@ -147,7 +147,7 @@ object RcsSipTransport {
         }
 
         override fun onDestroyed(reason: Int) {
-            Log.w(TAG, "SipDelegate destroyed reason=$reason")
+            Log.status(TAG, "SipDelegate destroyed reason=$reason")
             connection = null
             configVersion = -1L
             lastConfig = null
@@ -168,7 +168,7 @@ object RcsSipTransport {
         }
 
         override fun onMessageSendFailure(viaTransactionId: String, reason: Int) {
-            Log.w(TAG, "Message send failed tx=$viaTransactionId reason=$reason")
+            Log.status(TAG, "Message send failed tx=$viaTransactionId reason=$reason")
             pendingSends.remove(viaTransactionId)?.callback?.invoke(false)
         }
     }
@@ -277,10 +277,10 @@ object RcsSipTransport {
                 }
             }
             _state.value = RcsRegistrationState.Available
-            Log.i(TAG, "Direct SIP leg up (fallback)")
+            Log.status(TAG, "Direct SIP leg up (fallback)")
         } else {
             directSipUp = false
-            Log.w(TAG, "Direct SIP leg failed; transport unavailable")
+            Log.status(TAG, "Direct SIP leg failed; transport unavailable")
             _state.value = RcsRegistrationState.Unavailable(RcsUnavailableReason.NotSupported)
         }
     }
@@ -451,7 +451,7 @@ object RcsSipTransport {
             pendingSends.remove(request.newBranch)
             pending.callback(false)
         }
-        Log.i(TAG, "Digest auth retry issued for ${parsed.statusCode} (proxy=${request.proxy})")
+        Log.status(TAG, "Digest auth retry issued for ${parsed.statusCode} (proxy=${request.proxy})")
         return issued
     }
 
@@ -574,13 +574,13 @@ object RcsSipTransport {
             }
             manager.createSipDelegate(DelegateRequest(CPM_FEATURE_TAGS), executor, stateCallback, messageCallback)
         } catch (e: SecurityException) {
-            Log.w(TAG, "No carrier privilege for single registration", e)
+            Log.status(TAG, "No carrier privilege for single registration", e)
             _state.value = RcsRegistrationState.Unavailable(RcsUnavailableReason.NoCarrierPrivilege)
         } catch (e: ImsException) {
-            Log.w(TAG, "IMS service unavailable", e)
+            Log.status(TAG, "IMS service unavailable", e)
             _state.value = RcsRegistrationState.Unavailable(RcsUnavailableReason.ServiceUnavailable)
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "Invalid subscription", e)
+            Log.status(TAG, "Invalid subscription", e)
             _state.value = RcsRegistrationState.Unavailable(RcsUnavailableReason.NoSubscription)
         }
     }

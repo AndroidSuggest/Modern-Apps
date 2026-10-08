@@ -5,7 +5,7 @@ package com.vayunmathur.passwords.ui
 import android.content.Intent
 import android.os.Bundle
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.GetPublicKeyCredentialOption
 import androidx.credentials.PublicKeyCredential
@@ -63,12 +63,12 @@ class PasskeyAuthActivity : FragmentActivity() {
                 FLOW_PASSWORD -> handlePassword()
                 FLOW_UNLOCK -> handleUnlock()
                 else -> {
-                    Log.e(TAG, "Unknown flow: $flow")
+                    Log.error(TAG, "Unknown flow: $flow")
                     setResult(RESULT_CANCELED)
                 }
             }
         } catch (expected: IllegalStateException) {
-            Log.e(TAG, "Error in passkey $flow flow", expected)
+            Log.error(TAG, "Error in passkey $flow flow", expected)
             setResult(RESULT_CANCELED)
         }
         finish()
@@ -76,12 +76,12 @@ class PasskeyAuthActivity : FragmentActivity() {
 
     private fun handleCreate() {
         val request = PendingIntentHandler.retrieveProviderCreateCredentialRequest(intent) ?: run {
-            Log.e(TAG, "No create credential request in intent")
+            Log.error(TAG, "No create credential request in intent")
             setResult(RESULT_CANCELED)
             return
         }
         val publicKeyRequest = request.callingRequest as? CreatePublicKeyCredentialRequest ?: run {
-            Log.e(TAG, "Request is not a PublicKeyCredentialRequest")
+            Log.error(TAG, "Request is not a PublicKeyCredentialRequest")
             setResult(RESULT_CANCELED)
             return
         }
@@ -101,7 +101,7 @@ class PasskeyAuthActivity : FragmentActivity() {
         val privilegedOrigin = PasskeyUtils.getPrivilegedOrigin(callingAppInfo, applicationContext)
         val isPrivileged = privilegedOrigin != null
         val origin = privilegedOrigin ?: PasskeyUtils.getAndroidOrigin(callingAppInfo)
-        Log.d(TAG, "Create passkey for rpId=$rpId, origin=$origin, privileged=$isPrivileged")
+        Log.debug(TAG, "Create passkey for rpId=$rpId, origin=$origin, privileged=$isPrivileged")
 
         // Generate the credential and persist it; both transports share this.
         val created = runBlocking {
@@ -157,7 +157,7 @@ class PasskeyAuthActivity : FragmentActivity() {
             put("clientExtensionResults", JSONObject())
         }.toString()
 
-        Log.d(TAG, "Passkey created successfully for rpId=$rpId, credId=$credentialIdB64")
+        Log.debug(TAG, "Passkey created successfully for rpId=$rpId, credId=$credentialIdB64")
         val credentialResponse = androidx.credentials.CreatePublicKeyCredentialResponse(responseJson)
         val result = Intent()
         PendingIntentHandler.setCreateCredentialResponse(result, credentialResponse)
@@ -166,18 +166,18 @@ class PasskeyAuthActivity : FragmentActivity() {
 
     private fun handleGet() {
         val providerRequest = PendingIntentHandler.retrieveProviderGetCredentialRequest(intent) ?: run {
-            Log.e(TAG, "No get credential request in intent")
+            Log.error(TAG, "No get credential request in intent")
             setResult(RESULT_CANCELED)
             return
         }
         val credentialId = intent.getStringExtra(EXTRA_CREDENTIAL_ID) ?: run {
-            Log.e(TAG, "No credential ID in intent")
+            Log.error(TAG, "No credential ID in intent")
             setResult(RESULT_CANCELED)
             return
         }
 
         val passkey = runBlocking { repository.getPasskeyByCredentialId(credentialId) } ?: run {
-            Log.e(TAG, "Passkey not found for credentialId=$credentialId")
+            Log.error(TAG, "Passkey not found for credentialId=$credentialId")
             setResult(RESULT_CANCELED)
             return
         }
@@ -185,7 +185,7 @@ class PasskeyAuthActivity : FragmentActivity() {
         val publicKeyOption = providerRequest.credentialOptions
             .filterIsInstance<GetPublicKeyCredentialOption>()
             .firstOrNull() ?: run {
-            Log.e(TAG, "No PublicKeyCredentialOption in request")
+            Log.error(TAG, "No PublicKeyCredentialOption in request")
             setResult(RESULT_CANCELED)
             return
         }
@@ -197,7 +197,7 @@ class PasskeyAuthActivity : FragmentActivity() {
         val privilegedOrigin = PasskeyUtils.getPrivilegedOrigin(callingAppInfo, applicationContext)
         val isPrivileged = privilegedOrigin != null
         val origin = privilegedOrigin ?: PasskeyUtils.getAndroidOrigin(callingAppInfo)
-        Log.d(TAG, "Get passkey for rpId=${passkey.rpId}, origin=$origin, privileged=$isPrivileged")
+        Log.debug(TAG, "Get passkey for rpId=${passkey.rpId}, origin=$origin, privileged=$isPrivileged")
 
         val clientDataJson = JSONObject().apply {
             put("type", "webauthn.get")
@@ -242,7 +242,7 @@ class PasskeyAuthActivity : FragmentActivity() {
             put("clientExtensionResults", JSONObject())
         }.toString()
 
-        Log.d(TAG, "Passkey assertion successful for rpId=${passkey.rpId}")
+        Log.debug(TAG, "Passkey assertion successful for rpId=${passkey.rpId}")
         val credentialResponse = PublicKeyCredential(responseJson)
         val result = Intent()
         PendingIntentHandler.setGetCredentialResponse(
@@ -259,26 +259,26 @@ class PasskeyAuthActivity : FragmentActivity() {
         return try {
             option.clientDataHash
         } catch (expected: GetCredentialUnknownException) {
-            Log.d(TAG, "privileged clientDataHash unavailable", expected)
+            Log.debug(TAG, "privileged clientDataHash unavailable", expected)
             null
         }
     }
 
     private fun handlePassword() {
         val providerRequest = PendingIntentHandler.retrieveProviderGetCredentialRequest(intent) ?: run {
-            Log.e(TAG, "No get credential request in intent")
+            Log.error(TAG, "No get credential request in intent")
             setResult(RESULT_CANCELED)
             return
         }
         val passwordId = intent.getLongExtra(PasskeyCredentialService.EXTRA_PASSWORD_ID, -1)
         if (passwordId == -1L) {
-            Log.e(TAG, "No password ID in intent")
+            Log.error(TAG, "No password ID in intent")
             setResult(RESULT_CANCELED)
             return
         }
         val password = runBlocking { repository.getPasswordById(passwordId) }
         if (password == null) {
-            Log.e(TAG, "Password not found for id=$passwordId")
+            Log.error(TAG, "Password not found for id=$passwordId")
             setResult(RESULT_CANCELED)
             return
         }
@@ -295,7 +295,7 @@ class PasskeyAuthActivity : FragmentActivity() {
     private fun handleUnlock() {
         val request = PendingIntentHandler.retrieveBeginGetCredentialRequest(intent)
         if (request == null) {
-            Log.e(TAG, "No BeginGetCredentialRequest in unlock intent")
+            Log.error(TAG, "No BeginGetCredentialRequest in unlock intent")
             setResult(RESULT_CANCELED)
             return
         }

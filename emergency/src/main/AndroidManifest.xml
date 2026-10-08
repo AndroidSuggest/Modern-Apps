@@ -72,6 +72,7 @@
         tools:node="remove" />
 
     <application
+        android:name=".EmergencyApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:defaultToDeviceProtectedStorage="true"

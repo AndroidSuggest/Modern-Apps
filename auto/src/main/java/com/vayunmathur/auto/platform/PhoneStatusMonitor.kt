@@ -11,7 +11,7 @@ import android.os.Looper
 import android.telephony.PhoneStateListener
 import android.telephony.SignalStrength
 import android.telephony.TelephonyManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.notifications.MessageMirrorService
 
 /**
@@ -58,7 +58,7 @@ class PhoneStatusMonitor(private val context: Context) {
             signalListener = listener
             @Suppress("DEPRECATION")
             manager.listen(listener, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS)
-        }.onFailure { Log.w(TAG, "signal listener unavailable", it) }
+        }.onFailure { Log.status(TAG, "signal listener unavailable", it) }
         // Battery level + charging: sticky broadcast, no permission needed.
         runCatching {
             val receiver = object : BroadcastReceiver() {
@@ -81,7 +81,7 @@ class PhoneStatusMonitor(private val context: Context) {
                 IntentFilter(Intent.ACTION_BATTERY_CHANGED),
                 Context.RECEIVER_NOT_EXPORTED,
             )
-        }.onFailure { Log.w(TAG, "battery receiver unavailable", it) }
+        }.onFailure { Log.status(TAG, "battery receiver unavailable", it) }
         refreshDndAndBadge()
     }
 

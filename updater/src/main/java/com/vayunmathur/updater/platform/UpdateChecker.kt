@@ -1,6 +1,6 @@
 package com.vayunmathur.updater.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.updater.domain.UpdateMetadata
 import java.net.HttpURLConnection
 import java.net.URL
@@ -65,7 +65,7 @@ object UpdateChecker {
     private fun fetch(url: String): String? = runCatching {
         val connection = URL(url).openConnection() as? HttpsURLConnection
             ?: run {
-                Log.w(TAG, "refusing a non-HTTPS OTA URL")
+                Log.status(TAG, "refusing a non-HTTPS OTA URL")
                 return null
             }
         connection.connectTimeout = CONNECT_TIMEOUT_MS
@@ -78,17 +78,17 @@ object UpdateChecker {
                     connection.inputStream.bufferedReader().use { it.readLine() }
 
                 HttpURLConnection.HTTP_NOT_FOUND -> {
-                    Log.i(TAG, "no release published for this device yet")
+                    Log.status(TAG, "no release published for this device yet")
                     null
                 }
 
                 else -> {
-                    Log.w(TAG, "OTA server returned HTTP $code")
+                    Log.status(TAG, "OTA server returned HTTP $code")
                     null
                 }
             }
         } finally {
             connection.disconnect()
         }
-    }.onFailure { Log.w(TAG, "metadata fetch failed", it) }.getOrNull()
+    }.onFailure { Log.status(TAG, "metadata fetch failed", it) }.getOrNull()
 }

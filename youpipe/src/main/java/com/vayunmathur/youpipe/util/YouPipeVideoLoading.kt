@@ -1,6 +1,6 @@
 package com.vayunmathur.youpipe.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.youpipe.data.CachedRelatedVideo
 import com.vayunmathur.youpipe.data.DownloadedVideo
@@ -128,7 +128,7 @@ private suspend fun YouPipeViewModel.loadRelatedVideos(
     ex.getRelatedItems()?.getItems()?.filterIsInstance<StreamInfoItem>()
         ?.mapNotNull { it.toVideoInfo() } ?: emptyList()
 }.getOrElse { error: Throwable ->
-    Log.w("YouPipeViewModel", "Could not get related videos", error)
+    Log.status("YouPipeViewModel", "Could not get related videos", error)
     emptyList()
 }
 
@@ -195,7 +195,7 @@ private fun YouPipeViewModel.handleVideoLoadFailure(
         videoStateMutable.update { it.copy(data = data, videoStreams = videoList, audioStreams = audioList) }
     } else {
         videoStateMutable.update { it.copy(error = true) }
-        Log.e(TAG, "Video load error", error)
+        Log.error(TAG, "Video load error", error)
     }
 }
 
@@ -251,7 +251,7 @@ private fun partitionStreams(
 }
 
 private fun logStreamPartition(videoId: String, partition: StreamPartition) {
-    android.util.Log.d(
+    Log.debug(
         "YouPipeSabr",
         "video $videoId streams prog(v=${partition.progVideoOnly.size}," +
             "a=${partition.progAudio.size}) sabr(v=${partition.sabrVideoOnly.size}," +

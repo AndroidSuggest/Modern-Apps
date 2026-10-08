@@ -1,7 +1,7 @@
 package com.vayunmathur.library.network
 
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
@@ -75,7 +75,7 @@ class WebSocketClient private constructor(
         val frame = try {
             readFrame()
         } catch (e: IOException) {
-            if (!closed) Log.d(TAG, "ws read error ${e.message}")
+            if (!closed) Log.debug(TAG, "ws read error ${e.message}")
             return false
         }
         when (frame) {
@@ -497,7 +497,7 @@ class WebSocketClient private constructor(
         private fun checkAccept(respHeaders: HandshakeHeaders, expectedAccept: String) {
             val accept = respHeaders.lower["sec-websocket-accept"]
             if (accept == null || accept != expectedAccept) {
-                Log.w(TAG, "ws accept mismatch expected=$expectedAccept got=$accept (continuing)")
+                Log.status(TAG, "ws accept mismatch expected=$expectedAccept got=$accept (continuing)")
             }
         }
 

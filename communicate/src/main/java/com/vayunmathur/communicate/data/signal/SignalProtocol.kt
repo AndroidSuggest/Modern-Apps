@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.google.protobuf.ByteString
 import com.google.protobuf.InvalidProtocolBufferException
 import org.whispersystems.signalservice.internal.push.SignalServiceProtos
@@ -71,7 +71,7 @@ object SignalProtocol {
     fun parseEnvelope(bytes: ByteArray): SignalServiceProtos.Envelope? = try {
         SignalServiceProtos.Envelope.parseFrom(bytes)
     } catch (e: InvalidProtocolBufferException) {
-        Log.w(TAG, "parseEnvelope failed: ${e.message}")
+        Log.status(TAG, "parseEnvelope failed: ${e.message}")
         null
     }
 
@@ -129,7 +129,7 @@ object SignalProtocol {
                 break
             }
             if (padded[i] != PADDING_ZERO) {
-                Log.w(TAG, "malformed padding, leaving message unstripped")
+                Log.status(TAG, "malformed padding, leaving message unstripped")
                 return padded
             }
         }
@@ -146,7 +146,7 @@ object SignalProtocol {
         if (plaintext.isEmpty()) return null
         SignalServiceProtos.Content.parseFrom(plaintext)
     } catch (e: InvalidProtocolBufferException) {
-        Log.w(TAG, "parseContent failed: ${e.message}")
+        Log.status(TAG, "parseContent failed: ${e.message}")
         null
     }
 
@@ -246,7 +246,7 @@ object SignalProtocol {
         return when {
             groupMasterKey != null -> {
                 val id = runCatching { SignalGroups.groupIdFromMasterKey(groupMasterKey) }.getOrElse { expected ->
-                    Log.w(TAG, "could not derive a group identifier: ${expected.message}")
+                    Log.status(TAG, "could not derive a group identifier: ${expected.message}")
                     return if (sourceAci.isNotEmpty()) sourceAci else "unknown"
                 }
                 "$GROUP_PREFIX$id"
@@ -310,7 +310,7 @@ object SignalProtocol {
     @Deprecated("Use parseWebSocketMessage(bytes)")
     fun parseWsFrame(text: String): WsFrame? {
         val obj = runCatching { org.json.JSONObject(text) }.getOrElse { expected ->
-            Log.w(TAG, "parseWsFrame failed: ${expected.message}")
+            Log.status(TAG, "parseWsFrame failed: ${expected.message}")
             return null
         }
         val type = obj.optString("type", "")

@@ -15,6 +15,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.ui.DynamicTheme
@@ -185,7 +186,7 @@ class MainActivity : ComponentActivity() {
                     .toSet()
                 TabThumbnailStore.retainOnly(liveTabIds)
             }.onFailure { e ->
-                android.util.Log.e("MainActivity", "pruneClosedWindowTabs failed", e)
+                Log.error("MainActivity", "pruneClosedWindowTabs failed", e)
             }
         }
     }

@@ -7,7 +7,7 @@ import android.content.IntentFilter
 import android.location.Location
 import android.os.BatteryManager
 import android.os.UserManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.findfamily.R
 import com.vayunmathur.findfamily.data.Coord
 import com.vayunmathur.findfamily.data.DirectBootStore
@@ -39,15 +39,15 @@ internal fun LocationTrackingService.startDirectBootTracking() {
         // Expected on the first boot after this ships, and after a factory reset: there is
         // nothing to publish with yet. Seeding happens below once the user unlocks.
         if (!DirectBootStore.isSeeded(ctx)) {
-            Log.i(LocationTrackingService.TAG_DIRECT_BOOT, "no device-protected mirror yet; idle until first unlock")
+            Log.status(LocationTrackingService.TAG_DIRECT_BOOT, "no device-protected mirror yet; idle until first unlock")
             return@launch
         }
         if (!DirectBootStore.isTrackingEnabled(ctx)) {
-            Log.i(LocationTrackingService.TAG_DIRECT_BOOT, "tracking switched off by the user; staying idle")
+            Log.status(LocationTrackingService.TAG_DIRECT_BOOT, "tracking switched off by the user; staying idle")
             return@launch
         }
         if (!Networking.initDirectBoot(DirectBootStore.store(ctx))) {
-            Log.w(LocationTrackingService.TAG_DIRECT_BOOT, "identity unavailable from the mirror; staying idle")
+            Log.status(LocationTrackingService.TAG_DIRECT_BOOT, "identity unavailable from the mirror; staying idle")
             return@launch
         }
 
@@ -64,7 +64,7 @@ internal fun LocationTrackingService.startDirectBootTracking() {
         val sharing = DirectBootStore.isGlobalSharingEnabled(ctx)
         val targets = if (sharing) DirectBootStore.roster(ctx) else emptyList()
         publishRoster = targets
-        Log.i(LocationTrackingService.TAG_DIRECT_BOOT, "running pre-unlock, sharing=$sharing targets=${targets.size}")
+        Log.status(LocationTrackingService.TAG_DIRECT_BOOT, "running pre-unlock, sharing=$sharing targets=${targets.size}")
         while (isActive) {
             publishDirectBoot(targets)
             delay(30.seconds)
@@ -77,7 +77,7 @@ internal fun LocationTrackingService.startDirectBootTracking() {
 @Suppress("TooGenericExceptionCaught")
 internal suspend fun LocationTrackingService.publishDirectBoot(targets: List<DirectBootStore.Target>) {
     val location = lastKnownLocation ?: run {
-        Log.d(LocationTrackingService.TAG_DIRECT_BOOT, "no fix yet")
+        Log.debug(LocationTrackingService.TAG_DIRECT_BOOT, "no fix yet")
         return
     }
     if (targets.isEmpty()) return
@@ -93,7 +93,7 @@ internal suspend fun LocationTrackingService.publishDirectBoot(targets: List<Dir
         battery,
     )
     val locSummary = "${location.latitude},${location.longitude} acc=${location.accuracy}"
-    Log.d(
+    Log.debug(
         LocationTrackingService.TAG_DIRECT_BOOT,
         "publishing $locSummary to ${targets.size} peer(s)"
     )
@@ -103,7 +103,7 @@ internal suspend fun LocationTrackingService.publishDirectBoot(targets: List<Dir
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(LocationTrackingService.TAG_DIRECT_BOOT, "publish to ${it.id.toULong()} failed", e)
+            Log.status(LocationTrackingService.TAG_DIRECT_BOOT, "publish to ${it.id.toULong()} failed", e)
         }
     }
 }
@@ -112,7 +112,7 @@ internal suspend fun LocationTrackingService.publishDirectBoot(targets: List<Dir
 @Suppress("TooGenericExceptionCaught")
 internal fun LocationTrackingService.onUserUnlocked() {
     serviceScope.launch {
-        Log.i(LocationTrackingService.TAG_DIRECT_BOOT, "user unlocked; handing over to the normal path")
+        Log.status(LocationTrackingService.TAG_DIRECT_BOOT, "user unlocked; handing over to the normal path")
         directBootJob?.cancelAndJoin()
         directBootJob = null
         try {
@@ -124,7 +124,7 @@ internal fun LocationTrackingService.onUserUnlocked() {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(LocationTrackingService.TAG_DIRECT_BOOT, "handover failed", e)
+            Log.status(LocationTrackingService.TAG_DIRECT_BOOT, "handover failed", e)
         }
         startTracking()
     }

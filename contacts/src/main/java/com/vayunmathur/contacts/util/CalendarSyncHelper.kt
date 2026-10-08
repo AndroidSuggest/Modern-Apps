@@ -7,7 +7,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.CalendarContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.data.CDKEvent
 import com.vayunmathur.contacts.data.Contact
@@ -105,13 +105,13 @@ object CalendarSyncHelper {
                 }
             }
         } catch (e: android.database.SQLException) {
-            Log.e("CalendarSyncHelper", "Error querying calendar", e)
+            Log.error("CalendarSyncHelper", "Error querying calendar", e)
         } catch (e: SecurityException) {
-            Log.e("CalendarSyncHelper", "Error querying calendar", e)
+            Log.error("CalendarSyncHelper", "Error querying calendar", e)
         } catch (e: IllegalArgumentException) {
-            Log.e("CalendarSyncHelper", "Error querying calendar", e)
+            Log.error("CalendarSyncHelper", "Error querying calendar", e)
         } catch (e: Exception) {
-            Log.e("CalendarSyncHelper", "Error querying calendar", e)
+            Log.error("CalendarSyncHelper", "Error querying calendar", e)
         }
         return calendarIds
     }
@@ -146,16 +146,16 @@ object CalendarSyncHelper {
             val newUri = context.contentResolver.insert(syncAdapterUri, values)
             newUri?.lastPathSegment?.toLong() ?: -1L
         } catch (e: android.content.OperationApplicationException) {
-            Log.e("CalendarSyncHelper", "Error creating calendar", e)
+            Log.error("CalendarSyncHelper", "Error creating calendar", e)
             -1L
         } catch (e: android.os.RemoteException) {
-            Log.e("CalendarSyncHelper", "Error creating calendar", e)
+            Log.error("CalendarSyncHelper", "Error creating calendar", e)
             -1L
         } catch (e: SecurityException) {
-            Log.e("CalendarSyncHelper", "Error creating calendar", e)
+            Log.error("CalendarSyncHelper", "Error creating calendar", e)
             -1L
         } catch (e: IllegalArgumentException) {
-            Log.e("CalendarSyncHelper", "Error creating calendar", e)
+            Log.error("CalendarSyncHelper", "Error creating calendar", e)
             -1L
         }
     }
@@ -209,13 +209,13 @@ object CalendarSyncHelper {
                     context.contentResolver.applyBatch(CalendarContract.AUTHORITY, ops)
                 }
             } catch (e: android.content.OperationApplicationException) {
-                Log.e("CalendarSyncHelper", "Error applying batch sync for contact", e)
+                Log.error("CalendarSyncHelper", "Error applying batch sync for contact", e)
             } catch (e: android.os.RemoteException) {
-                Log.e("CalendarSyncHelper", "Error applying batch sync for contact", e)
+                Log.error("CalendarSyncHelper", "Error applying batch sync for contact", e)
             } catch (e: SecurityException) {
-                Log.e("CalendarSyncHelper", "Error applying batch sync for contact", e)
+                Log.error("CalendarSyncHelper", "Error applying batch sync for contact", e)
             } catch (e: IllegalArgumentException) {
-                Log.e("CalendarSyncHelper", "Error applying batch sync for contact", e)
+                Log.error("CalendarSyncHelper", "Error applying batch sync for contact", e)
             }
         }
     }
@@ -297,11 +297,11 @@ object CalendarSyncHelper {
                     arrayOf(calendarId.toString())
                 )
             } catch (e: android.database.SQLException) {
-                Log.e("CalendarSyncHelper", "Error clearing calendar", e)
+                Log.error("CalendarSyncHelper", "Error clearing calendar", e)
             } catch (e: SecurityException) {
-                Log.e("CalendarSyncHelper", "Error clearing calendar", e)
+                Log.error("CalendarSyncHelper", "Error clearing calendar", e)
             } catch (e: IllegalArgumentException) {
-                Log.e("CalendarSyncHelper", "Error clearing calendar", e)
+                Log.error("CalendarSyncHelper", "Error clearing calendar", e)
             }
 
             val contacts = Contact.getAllContacts(context)
@@ -332,13 +332,13 @@ object CalendarSyncHelper {
         try {
             context.contentResolver.applyBatch(CalendarContract.AUTHORITY, ops)
         } catch (e: android.content.OperationApplicationException) {
-            Log.e("CalendarSyncHelper", "Error in syncAll batch", e)
+            Log.error("CalendarSyncHelper", "Error in syncAll batch", e)
         } catch (e: android.os.RemoteException) {
-            Log.e("CalendarSyncHelper", "Error in syncAll batch", e)
+            Log.error("CalendarSyncHelper", "Error in syncAll batch", e)
         } catch (e: SecurityException) {
-            Log.e("CalendarSyncHelper", "Error in syncAll batch", e)
+            Log.error("CalendarSyncHelper", "Error in syncAll batch", e)
         } catch (e: IllegalArgumentException) {
-            Log.e("CalendarSyncHelper", "Error in syncAll batch", e)
+            Log.error("CalendarSyncHelper", "Error in syncAll batch", e)
         }
     }
     
@@ -352,11 +352,11 @@ object CalendarSyncHelper {
             try {
                 context.contentResolver.delete(uri, null, null)
             } catch (e: android.database.SQLException) {
-                Log.e("CalendarSyncHelper", "Error removing calendar", e)
+                Log.error("CalendarSyncHelper", "Error removing calendar", e)
             } catch (e: SecurityException) {
-                Log.e("CalendarSyncHelper", "Error removing calendar", e)
+                Log.error("CalendarSyncHelper", "Error removing calendar", e)
             } catch (e: IllegalArgumentException) {
-                Log.e("CalendarSyncHelper", "Error removing calendar", e)
+                Log.error("CalendarSyncHelper", "Error removing calendar", e)
             }
 
             try {

@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal.transport
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.signal.e2e.SignalE2E
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.serialization.json.Json
@@ -67,7 +67,7 @@ object SignalKeysApi {
         )
         if (resp.status == HTTP_NOT_FOUND) throw UnregisteredUserException(aci)
         if (!resp.isSuccess) {
-            Log.w(TAG, "prekey fetch for $aci failed: ${resp.status} ${resp.statusMessage}")
+            Log.status(TAG, "prekey fetch for $aci failed: ${resp.status} ${resp.statusMessage}")
             return emptyList()
         }
         return parse(resp.text, aci)
@@ -82,7 +82,7 @@ object SignalKeysApi {
     internal fun parse(
         body: String,
         aci: String,
-        warn: (String) -> Unit = { Log.w(TAG, it) },
+        warn: (String) -> Unit = { Log.status(TAG, it) },
     ): List<DeviceBundle> {
         val root = try {
             json.parseToJsonElement(body).jsonObject
@@ -115,7 +115,7 @@ object SignalKeysApi {
         aci: String,
         element: JsonElement,
         identityKey: ByteArray,
-        warn: (String) -> Unit = { Log.w(TAG, it) },
+        warn: (String) -> Unit = { Log.status(TAG, it) },
     ): DeviceBundle? {
         val device = try {
             element.jsonObject
@@ -225,14 +225,14 @@ object SignalKeysApi {
                 sslSocketFactory = sslSocketFactory,
             )
         } catch (expected: Throwable) {
-            Log.w(TAG, "pre-key registration failed", expected)
+            Log.status(TAG, "pre-key registration failed", expected)
             return false
         }
         if (!resp.isSuccess) {
-            Log.w(TAG, "pre-key registration rejected: ${resp.status} ${resp.statusMessage}")
+            Log.status(TAG, "pre-key registration rejected: ${resp.status} ${resp.statusMessage}")
             return false
         }
-        Log.i(TAG, "registered pre-keys: signed=${signedPreKey != null}" +
+        Log.status(TAG, "registered pre-keys: signed=${signedPreKey != null}" +
             "kyber=${lastResortKyber != null} oneTime=${oneTimeEcPreKeys.size}")
         return true
     }

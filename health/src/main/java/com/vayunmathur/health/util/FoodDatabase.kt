@@ -3,6 +3,7 @@ package com.vayunmathur.health.util
 import android.content.Context
 import android.os.storage.StorageManager
 import com.vayunmathur.health.data.NutritionData
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.room.loadSqlCipher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -183,10 +184,10 @@ object FoodDatabase {
             json.decodeFromString<Meta>(it.readText())
         }
     } catch (e: IOException) {
-        android.util.Log.e(TAG, "No bundled food database asset: ${e.message}", e)
+        Log.error(TAG, "No bundled food database asset: ${e.message}", e)
         null
     } catch (e: IllegalArgumentException) {
-        android.util.Log.e(TAG, "No bundled food database asset: ${e.message}", e)
+        Log.error(TAG, "No bundled food database asset: ${e.message}", e)
         null
     }
 
@@ -197,10 +198,10 @@ object FoodDatabase {
             val meta = json.decodeFromString<Meta>(metaFile.readText())
             if (meta.schemaVersion == SUPPORTED_SCHEMA_VERSION) meta else null
         } catch (e: IOException) {
-            android.util.Log.e(TAG, "Unreadable unpacked metadata: ${e.message}", e)
+            Log.error(TAG, "Unreadable unpacked metadata: ${e.message}", e)
             null
         } catch (e: IllegalArgumentException) {
-            android.util.Log.e(TAG, "Unreadable unpacked metadata: ${e.message}", e)
+            Log.error(TAG, "Unreadable unpacked metadata: ${e.message}", e)
             null
         }
     }
@@ -219,7 +220,7 @@ object FoodDatabase {
                     null,
                 ).also { handle = it }
             } catch (e: android.database.sqlite.SQLiteException) {
-                android.util.Log.e(TAG, "Failed to open food database: ${e.message}", e)
+                Log.error(TAG, "Failed to open food database: ${e.message}", e)
                 null
             }
         }
@@ -306,7 +307,7 @@ object FoodDatabase {
                 }
             }
         } catch (e: android.database.sqlite.SQLiteException) {
-            android.util.Log.e(TAG, "Search Error: ${e.message}", e)
+            Log.error(TAG, "Search Error: ${e.message}", e)
             emptyList()
         }
     }
@@ -330,7 +331,7 @@ object FoodDatabase {
                     decodeNutrients(if (cursor.isNull(0)) ByteArray(0) else cursor.getBlob(0))
                 }
         } catch (e: android.database.sqlite.SQLiteException) {
-            android.util.Log.e(TAG, "Fetch Data Error: ${e.message}", e)
+            Log.error(TAG, "Fetch Data Error: ${e.message}", e)
             null
         }
     }
@@ -721,7 +722,7 @@ object FoodDatabase {
             } catch (e: Exception) {
                 partBinFile.delete()
                 partDbFile.delete()
-                android.util.Log.e(TAG, "Build Error: ${e.message}", e)
+                Log.error(TAG, "Build Error: ${e.message}", e)
                 if (e is kotlinx.coroutines.CancellationException) {
                     _status.value = installedMeta()?.let { Status.Ready(it) } ?: Status.Absent
                     throw e

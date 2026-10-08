@@ -20,6 +20,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.youpipe.platform.CastAudioTap
 import com.vayunmathur.youpipe.util.sabr.LocalDomPoTokenProvider
 import com.vayunmathur.youpipe.util.sabr.SabrNgDashMediaSource
@@ -275,7 +276,7 @@ class PlaybackService : MediaSessionService() {
             .build()
 
         try {
-            android.util.Log.d("YouPipeSubs", "Attempting to enable legacy text decoding")
+            Log.debug("YouPipeSubs", "Attempting to enable legacy text decoding")
         } catch (_: Exception) {}
 
         val renderersFactory = buildRenderersFactory()

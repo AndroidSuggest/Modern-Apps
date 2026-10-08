@@ -4,7 +4,7 @@ import android.content.Intent
 import android.os.IBinder
 import android.telecom.Call
 import android.telecom.InCallService
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * The non-car half of gearhead's NonCar / CarProjection `InCallService`
@@ -22,7 +22,7 @@ class NonCarInCallService : InCallService() {
     override fun onCallAdded(call: Call) {
         // Disabled: must never happen. Log and release the call reference
         // without registering anything, so a stray bind leaks nothing.
-        Log.w(TAG, "non-car InCall bound while disabled; ignoring call")
+        Log.status(TAG, "non-car InCall bound while disabled; ignoring call")
     }
 
     override fun onCallRemoved(call: Call) = Unit
@@ -31,7 +31,7 @@ class NonCarInCallService : InCallService() {
         // Explicit no-op-with-comment: a head unit (or any third party)
         // binding the non-car half must be safely rejected -- the platform
         // owns phone-UI calls and this half is manifest-disabled.
-        Log.w(TAG, "non-car InCall bind rejected (disabled half)")
+        Log.status(TAG, "non-car InCall bind rejected (disabled half)")
         return null
     }
 

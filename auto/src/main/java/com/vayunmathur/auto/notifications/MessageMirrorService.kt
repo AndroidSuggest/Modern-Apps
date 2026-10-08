@@ -3,7 +3,7 @@ package com.vayunmathur.auto.notifications
 import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import com.vayunmathur.auto.platform.MessagingPrefs
 import com.vayunmathur.auto.protocol.gal.MessagingMessage
@@ -28,7 +28,7 @@ class MessageMirrorService : NotificationListenerService() {
         val (thread, message) = extract(sbn) ?: return
         MessageMirrorBus.post(thread, message, replyRoute(sbn))
         activeCount.incrementAndGet()
-        Log.d(TAG, "mirrored message for thread ${thread.threadId}")
+        Log.debug(TAG, "mirrored message for thread ${thread.threadId}")
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {

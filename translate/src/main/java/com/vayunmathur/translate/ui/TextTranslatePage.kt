@@ -7,7 +7,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.speech.tts.TextToSpeech
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -188,7 +188,7 @@ private fun installVoiceData(context: Context) {
     try {
         context.startActivity(intent)
     } catch (e: ActivityNotFoundException) {
-        Log.w("TextTranslate", "no activity for ACTION_INSTALL_TTS_DATA", e)
+        Log.status("TextTranslate", "no activity for ACTION_INSTALL_TTS_DATA", e)
     }
 }
 

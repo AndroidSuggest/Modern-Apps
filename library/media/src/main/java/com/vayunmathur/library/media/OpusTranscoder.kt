@@ -5,7 +5,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
@@ -123,10 +123,10 @@ object OpusTranscoder {
                 isStopped() -> "cancelled"
                 else -> "failed"
             }
-            Log.i(TAG, "transcode $mime: in=${source.size} $outcome")
+            Log.status(TAG, "transcode $mime: in=${source.size} $outcome")
             return if (completed) counted.count else null
         } catch (expected: IllegalStateException) {
-            Log.w(TAG, "transcode threw: ${expected.javaClass.simpleName}: ${expected.message}", expected)
+            Log.status(TAG, "transcode threw: ${expected.javaClass.simpleName}: ${expected.message}", expected)
             return null
         } finally {
             runCatching { extractor?.release() }
@@ -144,10 +144,10 @@ object OpusTranscoder {
     private fun audioTrack(extractor: MediaExtractor): Int? {
         for (i in 0 until extractor.trackCount) {
             val mime = extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME) ?: continue
-            Log.i(TAG, "transcode track $i mime=$mime")
+            Log.status(TAG, "transcode track $i mime=$mime")
             if (mime.startsWith("audio/")) return i
         }
-        Log.w(TAG, "transcode: no audio track in ${extractor.trackCount} tracks")
+        Log.status(TAG, "transcode: no audio track in ${extractor.trackCount} tracks")
         return null
     }
 
@@ -421,7 +421,7 @@ private class OpusPump(
         frameBytes = channels * 2
         floatPcm = format.pcmEncoding() == AudioFormat.ENCODING_PCM_FLOAT
         resampler = PolyphaseResampler(rate, OpusHead.SAMPLE_RATE, channels)
-        Log.i(
+        Log.status(
             OpusTranscoder.TAG,
             "transcode source: ${rate}Hz ${sourceChannels}ch float=$floatPcm -> " +
                 "48000Hz ${channels}ch taps=${resampler?.tapsPerPhase}",

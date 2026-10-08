@@ -1,6 +1,6 @@
 package com.vayunmathur.health.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.health.data.HealthProfile
 import com.vayunmathur.health.data.ProfileAnswer
@@ -28,7 +28,7 @@ fun MedicalViewModel.importFromHealthConnect() {
             importClinical()
             importProfile()
         } catch (e: Exception) {
-            Log.e("MedicalViewModel", "Import from Health Connect failed", e)
+            Log.error("MedicalViewModel", "Import from Health Connect failed", e)
         } finally {
             syncingState.value = false
         }

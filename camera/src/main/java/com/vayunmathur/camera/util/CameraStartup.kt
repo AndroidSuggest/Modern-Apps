@@ -3,7 +3,7 @@ package com.vayunmathur.camera.util
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
@@ -58,10 +58,10 @@ internal suspend fun CameraViewModel.probeSloMoSupport(): Boolean {
         } catch (_: IllegalStateException) { emptyList() } catch (_: IllegalArgumentException) { emptyList() }
         ranges.isNotEmpty() && ranges.any { it.upper >= HFR_MIN_FPS }
     } catch (e: IllegalStateException) {
-        Log.w("SloMo", "Slo-Mo probe failed", e)
+        Log.status("SloMo", "Slo-Mo probe failed", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.w("SloMo", "Slo-Mo probe failed", e)
+        Log.status("SloMo", "Slo-Mo probe failed", e)
         false
     }
 }
@@ -72,7 +72,7 @@ internal suspend fun CameraViewModel.loadThumbnail(uri: Uri?): Bitmap? = uri?.le
             app.contentResolver.loadThumbnail(it, Size(THUMBNAIL_SIDE_PX, THUMBNAIL_SIDE_PX), null)
         } catch (e: java.io.IOException) {
             // SAF document URIs may not support loadThumbnail — decode directly.
-            Log.w("CameraViewModel", "loadThumbnail failed; trying stream decode", e)
+            Log.status("CameraViewModel", "loadThumbnail failed; trying stream decode", e)
             try {
                 app.contentResolver.openInputStream(it)?.use { stream ->
                     val bytes = stream.readBytes()
@@ -83,14 +83,14 @@ internal suspend fun CameraViewModel.loadThumbnail(uri: Uri?): Bitmap? = uri?.le
                     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
                 }
             } catch (e2: java.io.IOException) {
-                Log.w("CameraViewModel", "Failed to load gallery thumbnail", e2)
+                Log.status("CameraViewModel", "Failed to load gallery thumbnail", e2)
                 null
             } catch (e2: SecurityException) {
-                Log.w("CameraViewModel", "Failed to load gallery thumbnail", e2)
+                Log.status("CameraViewModel", "Failed to load gallery thumbnail", e2)
                 null
             }
         } catch (e: SecurityException) {
-            Log.w("CameraViewModel", "loadThumbnail failed", e)
+            Log.status("CameraViewModel", "loadThumbnail failed", e)
             null
         }
     }

@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.whatsapp
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.BinaryToken
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.Node
 import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppCertProto
@@ -437,21 +437,21 @@ fun WhatsAppProtocol.verifyServerCert(certDecrypted: ByteArray, staticDecrypted:
         val leafRaw = chain.leaf.details.toByteArray()
         val leafSig = chain.leaf.signature.toByteArray()
         if (!hasValidCertParts(interRaw, leafRaw, interSig, leafSig)) {
-            Log.e(TAG, "cert: missing/invalid parts")
+            Log.error(TAG, "cert: missing/invalid parts")
             return false
         }
         if (!ECPublicKey.fromPublicKeyBytes(WA_CERT_PUB_KEY).verifySignature(interRaw, interSig)) {
-            Log.e(TAG, "cert: intermediate signature invalid")
+            Log.error(TAG, "cert: intermediate signature invalid")
             return false
         }
         val inter = WhatsAppCertProto.CertChain.NoiseCertificate.Details.parseFrom(interRaw)
         if (inter.issuerSerial != WA_CERT_ISSUER_SERIAL || inter.key.size() != IDENTITY_KEY_SIZE) {
-            Log.e(TAG, "cert: bad intermediate issuer/key")
+            Log.error(TAG, "cert: bad intermediate issuer/key")
             return false
         }
         verifyLeafCert(inter, leafRaw, leafSig, staticDecrypted)
     } catch (expected: Exception) {
-        Log.e(TAG, "cert verification error", expected)
+        Log.error(TAG, "cert verification error", expected)
         false
     }
 }
@@ -464,22 +464,22 @@ private fun verifyLeafCert(
     staticDecrypted: ByteArray,
 ): Boolean {
     if (!ECPublicKey.fromPublicKeyBytes(inter.key.toByteArray()).verifySignature(leafRaw, leafSig)) {
-        Log.e(TAG, "cert: leaf signature invalid")
+        Log.error(TAG, "cert: leaf signature invalid")
         return false
     }
     val leaf = WhatsAppCertProto.CertChain.NoiseCertificate.Details.parseFrom(leafRaw)
     if (leaf.issuerSerial != inter.serial) {
-        Log.e(TAG, "cert: leaf issuer serial mismatch")
+        Log.error(TAG, "cert: leaf issuer serial mismatch")
         return false
     }
     if (!leaf.key.toByteArray().contentEquals(staticDecrypted)) {
-        Log.e(TAG, "cert: leaf key != server static key")
+        Log.error(TAG, "cert: leaf key != server static key")
         return false
     }
     val now = System.currentTimeMillis() / 1000
     for (d in listOf(inter, leaf)) {
-        if (d.notBefore != 0L && now < d.notBefore) { Log.e(TAG, "cert: not yet valid"); return false }
-        if (d.notAfter != 0L && now > d.notAfter) { Log.e(TAG, "cert: expired"); return false }
+        if (d.notBefore != 0L && now < d.notBefore) { Log.error(TAG, "cert: not yet valid"); return false }
+        if (d.notAfter != 0L && now > d.notAfter) { Log.error(TAG, "cert: expired"); return false }
     }
     return true
 }

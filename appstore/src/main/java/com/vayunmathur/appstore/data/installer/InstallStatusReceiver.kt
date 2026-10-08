@@ -4,7 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.RestrictedPackages
 import com.vayunmathur.library.util.AppMessages
@@ -58,24 +58,24 @@ class InstallStatusReceiver : BroadcastReceiver() {
                 context.startActivity(it)
             }
         } catch (expected: android.content.ActivityNotFoundException) {
-            Log.w(TAG, "Failed to start user action: ${expected.message}")
+            Log.status(TAG, "Failed to start user action: ${expected.message}")
         } catch (expected: SecurityException) {
-            Log.w(TAG, "Failed to start user action: ${expected.message}")
+            Log.status(TAG, "Failed to start user action: ${expected.message}")
         }
     }
 
     private fun reportSuccess(pkg: String?) {
-        Log.i(TAG, "Install success for $pkg")
+        Log.status(TAG, "Install success for $pkg")
         pkg?.let { InstallEvents.publish(InstallResult(it, success = true)) }
     }
 
     private fun reportAborted(pkg: String?) {
-        Log.i(TAG, "Install aborted for $pkg")
+        Log.status(TAG, "Install aborted for $pkg")
         pkg?.let { InstallEvents.publish(InstallResult(it, success = false)) }
     }
 
     private fun reportFailure(context: Context, status: Int, message: String?, pkg: String?) {
-        Log.w(TAG, "Install failed for $pkg status=$status message=$message")
+        Log.status(TAG, "Install failed for $pkg status=$status message=$message")
         pkg?.let { InstallEvents.publish(InstallResult(it, success = false)) }
         // A source-restricted refusal is the OS's final answer, so stop offering it.
         RestrictedPackages.recordIfRestricted(context, pkg, message)

@@ -4,7 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -30,7 +30,7 @@ internal object SabrFfmpegMuxer {
 
     @Throws(IOException::class)
     fun mux(videoInput: File, audioInput: File, output: File) {
-        Log.d(TAG, "remux video=${videoInput.length()} audio=${audioInput.length()} -> ${output.name}")
+        Log.debug(TAG, "remux video=${videoInput.length()} audio=${audioInput.length()} -> ${output.name}")
 
         validateMuxInputs(videoInput, audioInput, output)
 
@@ -63,7 +63,7 @@ internal object SabrFfmpegMuxer {
                 videoMuxerTrackIndex, audioMuxerTrackIndex,
             )
 
-            Log.d(TAG, "mux successful -> ${output.absolutePath} size=${output.length()}")
+            Log.debug(TAG, "mux successful -> ${output.absolutePath} size=${output.length()}")
         } catch (e: java.io.IOException) {
             runCatching { if (output.exists()) output.delete() }
             throw remuxFailure(e)

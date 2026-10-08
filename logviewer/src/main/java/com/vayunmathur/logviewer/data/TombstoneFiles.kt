@@ -1,6 +1,6 @@
 package com.vayunmathur.logviewer.data
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -49,7 +49,7 @@ internal object TombstoneFiles {
                     return candidate
                 }
             } catch (e: IOException) {
-                Log.d(TAG, "unable to read ${candidate.file}", e)
+                Log.debug(TAG, "unable to read ${candidate.file}", e)
             }
         }
         return null

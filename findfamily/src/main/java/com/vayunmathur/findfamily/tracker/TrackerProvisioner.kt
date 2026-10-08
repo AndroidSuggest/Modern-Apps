@@ -14,7 +14,7 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Build
 import android.os.ParcelUuid
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -47,7 +47,7 @@ class TrackerProvisioner(private val context: Context) {
                 trySend(result.device)
             }
             override fun onScanFailed(errorCode: Int) {
-                Log.w(TAG, "unprovisioned scan failed: $errorCode")
+                Log.status(TAG, "unprovisioned scan failed: $errorCode")
             }
         }
         val filter = ScanFilter.Builder()
@@ -118,29 +118,29 @@ class TrackerProvisioner(private val context: Context) {
                          * Service discovery waits for the MTU result.
                          */
                         if (!runCatching { g.requestMtu(PREFERRED_MTU) }.getOrDefault(false)) {
-                            Log.w(TAG, "requestMtu failed; continuing on default MTU")
+                            Log.status(TAG, "requestMtu failed; continuing on default MTU")
                             runCatching { g.discoverServices() }
                         }
                     } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                        Log.i(TAG, "disconnected before the write completed (status=$status)")
+                        Log.status(TAG, "disconnected before the write completed (status=$status)")
                         finish(false)
                     }
                 }
 
                 override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {
-                    Log.i(TAG, "MTU now $mtu (status=$status); discovering services")
+                    Log.status(TAG, "MTU now $mtu (status=$status); discovering services")
                     runCatching { g.discoverServices() }
                 }
 
                 override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
                     if (status != BluetoothGatt.GATT_SUCCESS) {
-                        Log.w(TAG, "service discovery failed: $status")
+                        Log.status(TAG, "service discovery failed: $status")
                         finish(false); return
                     }
                     val ch = g.getService(TrackerBle.UNPROVISIONED_SERVICE_UUID)
                         ?.getCharacteristic(TrackerBle.PROVISION_CHARACTERISTIC_UUID)
                     if (ch == null) {
-                        Log.w(TAG, "provisioning characteristic not found on this device")
+                        Log.status(TAG, "provisioning characteristic not found on this device")
                         finish(false); return
                     }
                     val ok = writeChar(g, ch, blob)
@@ -149,7 +149,7 @@ class TrackerProvisioner(private val context: Context) {
 
                 @Deprecated("compat shim for API < 33")
                 override fun onCharacteristicWrite(g: BluetoothGatt, ch: BluetoothGattCharacteristic, status: Int) {
-                    Log.i(TAG, "provisioning write completed with status=$status")
+                    Log.status(TAG, "provisioning write completed with status=$status")
                     finish(status == BluetoothGatt.GATT_SUCCESS)
                 }
             }
@@ -157,7 +157,7 @@ class TrackerProvisioner(private val context: Context) {
             gatt = try {
                 device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
             } catch (e: Exception) {
-                Log.w(TAG, "connectGatt failed", e); null
+                Log.status(TAG, "connectGatt failed", e); null
             }
             if (gatt == null) { finish(false); return@suspendCancellableCoroutine }
 
@@ -178,7 +178,7 @@ class TrackerProvisioner(private val context: Context) {
                 gatt.writeCharacteristic(ch)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "writeCharacteristic failed", e); false
+            Log.status(TAG, "writeCharacteristic failed", e); false
         }
 
     companion object {

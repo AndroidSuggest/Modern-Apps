@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.whatsapp
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,7 +32,7 @@ class WhatsAppEventProcessor(private val db: WhatsAppDatabase) {
                 try {
                     handle(event)
                 } catch (expected: Throwable) {
-                    Log.e(TAG, "failed to process ${event::class.simpleName}", expected)
+                    Log.error(TAG, "failed to process ${event::class.simpleName}", expected)
                 }
             }
         }

@@ -2,7 +2,7 @@ package com.vayunmathur.communicate.data.signal.transport
 
 import android.content.Context
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.signal.SignalAuthData
 import com.vayunmathur.library.network.WebSocketClient
 import com.vayunmathur.library.network.WsSession
@@ -135,7 +135,7 @@ class SignalSocket(
                 try {
                     _connectionState.emit(ConnectionState.Connecting)
                     val url = wsUrl()
-                    Log.i(TAG, "connecting $url as" +
+                    Log.status(TAG, "connecting $url as" +
                         buildString {
                             append(if (authenticated) {
                                 "${authData.aci.take(ACI_PREFIX_LENGTH)}.${authData.deviceId}"
@@ -147,10 +147,10 @@ class SignalSocket(
                     attempt = 0
                 } catch (expected: Exception) {
                     val reason = expected.message ?: expected.javaClass.simpleName
-                    Log.w(TAG, "connect failed: $reason")
+                    Log.status(TAG, "connect failed: $reason")
                     try { _connectionState.emit(ConnectionState.Disconnected(reason)) } catch (_: Exception) {}
                     if (reason.contains("4401")) {
-                        Log.e(
+                        Log.error(
                             TAG,
                             "4401 invalid auth — stopping reconnect until credentials refreshed (needs live server)")
                         break
@@ -159,7 +159,7 @@ class SignalSocket(
                 attempt++
                 val backoff = (RECONNECT_BASE_MS * (1 shl minOf(attempt, 6))).coerceAtMost(RECONNECT_MAX_MS)
                 delay(backoff)
-                Log.i(TAG, "reconnect attempt $attempt in ${backoff}ms")
+                Log.status(TAG, "reconnect attempt $attempt in ${backoff}ms")
             }
         }
     }
@@ -183,12 +183,12 @@ class SignalSocket(
             val tsHeader = capturedHeader["x-signal-timestamp"] ?: responseHeaders.entries
                 .firstOrNull { it.key.equals("x-signal-timestamp", ignoreCase = true) }?.value?.firstOrNull()
             if (tsHeader == null) {
-                Log.w(TAG, "missing x-signal-timestamp — possible captive portal or proxy (needs live server)")
+                Log.status(TAG, "missing x-signal-timestamp — possible captive portal or proxy (needs live server)")
             } else {
-                Log.i(TAG, "x-signal-timestamp=$tsHeader")
+                Log.status(TAG, "x-signal-timestamp=$tsHeader")
             }
             _connectionState.emit(ConnectionState.Connected)
-            Log.i(TAG, "WebSocket connected to $host")
+            Log.status(TAG, "WebSocket connected to $host")
             startKeepalive()
             try {
                 incoming.collect { frame ->
@@ -198,11 +198,11 @@ class SignalSocket(
                             _messages.emit(frame.bytes)
                         }
                         is WebSocketClient.WsFrame.Text -> {
-                            Log.w(TAG, "unexpected text frame len=${frame.text.length}")
+                            Log.status(TAG, "unexpected text frame len=${frame.text.length}")
                             _messages.emit(frame.text.toByteArray(Charsets.UTF_8))
                         }
                         is WebSocketClient.WsFrame.Close -> {
-                            Log.i(TAG, "ws close ${frame.code} ${frame.reason}")
+                            Log.status(TAG, "ws close ${frame.code} ${frame.reason}")
                             throw closeError(frame.code)
                         }
                         else -> {}
@@ -214,7 +214,7 @@ class SignalSocket(
                 session = null
                 // Release anyone blocked on a response rather than making them wait for the timeout.
                 failAllPending()
-                Log.i(TAG, "WebSocket session ended")
+                Log.status(TAG, "WebSocket session ended")
             }
         }
     }
@@ -238,7 +238,7 @@ class SignalSocket(
             s.send(data)
             true
         } catch (expected: Exception) {
-            Log.e(TAG, "send failed", expected)
+            Log.error(TAG, "send failed", expected)
             false
         }
     }
@@ -307,7 +307,7 @@ class SignalSocket(
             s.send(text.toByteArray(Charsets.UTF_8))
             true
         } catch (expected: Exception) {
-            Log.e(TAG, "sendText failed", expected)
+            Log.error(TAG, "sendText failed", expected)
             false
         }
     }
@@ -336,10 +336,10 @@ class SignalSocket(
             val ok = session?.let {
                 try { it.send(msg.toByteArray()); true } catch (_: Exception) { false }
             } ?: false
-            if (!ok) Log.w(TAG, "keepalive send failed")
+            if (!ok) Log.status(TAG, "keepalive send failed")
             ok
         } catch (_: Exception) {
-            Log.w(TAG, "keepalive failed")
+            Log.status(TAG, "keepalive failed")
             false
         }
     }

@@ -6,7 +6,7 @@ import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.downloadservice.ModelUrls
 import java.io.File
 import java.nio.ByteBuffer
@@ -109,12 +109,12 @@ object SiglipEmbedder {
             return try {
                 val app = context.applicationContext
                 if (!filesPresent(app)) {
-                    Log.w(TAG, "SigLIP2 model files missing; embedder unavailable")
+                    Log.status(TAG, "SigLIP2 model files missing; embedder unavailable")
                     initTried = false // allow a retry once files are downloaded
                     return false
                 }
                 val tok = SentencePieceTokenizer.load(modelFile(app, TOKENIZER_FILE)) ?: run {
-                    Log.w(TAG, "Failed to load SentencePiece tokenizer")
+                    Log.status(TAG, "Failed to load SentencePiece tokenizer")
                     return false
                 }
                 val opts = OrtSession.SessionOptions().apply {
@@ -132,14 +132,14 @@ object SiglipEmbedder {
                 textOutputName = bestOutputName(textSession!!)
                 cachedDim = visionSession?.let { readOutputDim(it, visionOutputName!!) } ?: 0
                 initOk = true
-                Log.i(
+                Log.status(
                     TAG,
                     "SigLIP2 embedder ready " +
                         "(dim=$cachedDim, visionOut=$visionOutputName, textOut=$textOutputName)",
                 )
                 true
             } catch (expected: Throwable) {
-                Log.e(TAG, "Failed to initialise SigLIP2 embedder", expected)
+                Log.error(TAG, "Failed to initialise SigLIP2 embedder", expected)
                 closeLocked()
                 false
             }
@@ -181,7 +181,7 @@ object SiglipEmbedder {
         val bitmap = try {
             BitmapFactory.decodeFile(file.absolutePath)
         } catch (expected: Exception) {
-            Log.e(TAG, "Failed to decode image ${file.absolutePath}", expected)
+            Log.error(TAG, "Failed to decode image ${file.absolutePath}", expected)
             null
         } ?: return null
         val input = try {
@@ -212,7 +212,7 @@ object SiglipEmbedder {
                 }
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "Image embedding failed", expected)
+            Log.error(TAG, "Image embedding failed", expected)
             null
         }
     }
@@ -268,7 +268,7 @@ object SiglipEmbedder {
                 }
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "Text embedding failed", expected)
+            Log.error(TAG, "Text embedding failed", expected)
             null
         }
     }

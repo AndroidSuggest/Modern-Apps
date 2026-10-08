@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ComponentName
 import android.content.pm.PackageManager
 import com.vayunmathur.files.data.saf.DocumentPickerActivity
+import com.vayunmathur.library.log.Log
 
 /**
  * Toggles the SAF [DocumentPickerActivity] on exactly when Files is acting as the system
@@ -20,6 +21,7 @@ import com.vayunmathur.files.data.saf.DocumentPickerActivity
 class FilesApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        Log.init(BuildConfig.DEV_BUILD)
         syncDocumentPickerAvailability()
     }
 

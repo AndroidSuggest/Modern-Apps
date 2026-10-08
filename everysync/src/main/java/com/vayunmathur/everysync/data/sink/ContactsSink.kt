@@ -11,7 +11,7 @@ import android.provider.ContactsContract.CommonDataKinds.Organization
 import android.provider.ContactsContract.CommonDataKinds.Phone
 import android.provider.ContactsContract.CommonDataKinds.StructuredName
 import android.provider.ContactsContract.CommonDataKinds.StructuredPostal
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.database.getStringOrNull
 import com.vayunmathur.everysync.auth.AccountStore
 import com.vayunmathur.everysync.data.RemoteContact
@@ -72,7 +72,7 @@ object ContactsSink {
                 }
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "localUidToEtag failed", expected)
+            Log.error(TAG, "localUidToEtag failed", expected)
         }
         return result
     }
@@ -89,7 +89,7 @@ object ContactsSink {
                 null,
             )?.use { if (it.moveToFirst()) it.getLong(CURSOR_UID) else null }
         } catch (expected: Exception) {
-            Log.e(TAG, "rawContactId failed", expected)
+            Log.error(TAG, "rawContactId failed", expected)
             null
         }
     }
@@ -139,7 +139,7 @@ object ContactsSink {
                 arrayOf(id.toString()),
             )
         } catch (expected: Exception) {
-            Log.e(TAG, "delete failed", expected)
+            Log.error(TAG, "delete failed", expected)
         }
     }
 
@@ -157,7 +157,7 @@ object ContactsSink {
                 arrayOf(accountName, ACCOUNT_TYPE),
             )
         } catch (expected: Exception) {
-            Log.e(TAG, "purge failed", expected)
+            Log.error(TAG, "purge failed", expected)
         }
     }
 
@@ -193,7 +193,7 @@ object ContactsSink {
                 }
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "getLocalChanges failed", expected)
+            Log.error(TAG, "getLocalChanges failed", expected)
         }
         return changes
     }
@@ -207,7 +207,7 @@ object ContactsSink {
                 arrayOf(rawContactId.toString()),
             )
         } catch (expected: Exception) {
-            Log.e(TAG, "clearDirty failed", expected)
+            Log.error(TAG, "clearDirty failed", expected)
         }
     }
 
@@ -231,7 +231,7 @@ object ContactsSink {
                 arrayOf(rawContactId.toString()),
             )
         } catch (expected: Exception) {
-            Log.e(TAG, "setSourceId failed", expected)
+            Log.error(TAG, "setSourceId failed", expected)
         }
     }
 
@@ -258,7 +258,7 @@ object ContactsSink {
                 }
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "readContact failed", expected)
+            Log.error(TAG, "readContact failed", expected)
         }
         return builder.build(uid ?: "")
     }
@@ -376,7 +376,7 @@ object ContactsSink {
         try {
             context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
         } catch (expected: Exception) {
-            Log.e(TAG, "applyBatch failed", expected)
+            Log.error(TAG, "applyBatch failed", expected)
         }
     }
 }

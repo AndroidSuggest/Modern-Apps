@@ -12,7 +12,7 @@ import com.vayunmathur.communicate.data.whatsapp.generateMessageId
 import com.vayunmathur.communicate.data.whatsapp.padMessage
 import com.vayunmathur.communicate.data.whatsapp.senderKeyDistributionPlaintext
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.e2e.WhatsAppE2E
 import com.vayunmathur.communicate.data.whatsapp.transport.WhatsAppSocket
 import com.vayunmathur.library.network.NetworkClient
@@ -205,7 +205,7 @@ internal suspend fun WhatsAppClient.buildEncryptedMessageNode(
     )
     WhatsAppDiag.log(TAG, "send: encrypted for ${encs.size} device(s) includeIdentity=$includeIdentity")
     if (encs.isEmpty()) {
-        Log.e(TAG, "No devices could be encrypted for $to")
+        Log.error(TAG, "No devices could be encrypted for $to")
         return null
     }
     val deviceIdentity = if (includeIdentity) accountDeviceIdentity() else null
@@ -256,7 +256,7 @@ internal suspend fun WhatsAppClient.buildEncryptedGroupMessageNode(
     val skmsgCiphertext = try {
         crypto.encryptGroup(groupJid, contentPadded)
     } catch (expected: Exception) {
-        Log.e(TAG, "Group sender-key encrypt failed for $groupJid", expected)
+        Log.error(TAG, "Group sender-key encrypt failed for $groupJid", expected)
         return null
     }
     val skdmBytes = crypto.createSenderKeyDistribution(groupJid)
@@ -275,7 +275,7 @@ internal suspend fun WhatsAppClient.buildEncryptedGroupMessageNode(
         server != "bot" && server != "hosted" && server != "hosted.lid"
     }
     if (participants.isEmpty()) {
-        Log.w(TAG, "No user participants resolved for group $groupJid; cannot fan out SKDM")
+        Log.status(TAG, "No user participants resolved for group $groupJid; cannot fan out SKDM")
         return null
     }
     val devices = getUserDevices(participants).ifEmpty { participants }
@@ -284,7 +284,7 @@ internal suspend fun WhatsAppClient.buildEncryptedGroupMessageNode(
         crypto, devices, ownUser, auth.wid, skdmPlaintext, null,
     )
     if (encs.isEmpty()) {
-        Log.e(TAG, "No group devices could be encrypted for $groupJid")
+        Log.error(TAG, "No group devices could be encrypted for $groupJid")
         return null
     }
     val skMsg = WhatsAppProtocol.Node(
@@ -373,7 +373,7 @@ suspend fun WhatsAppClient.sendMedia(
 
     pendingMessageIDs.add(id)
     if (bytes.size > MAX_FILE_SIZE) {
-        Log.e(TAG, "File too large: ${bytes.size} bytes (max $MAX_FILE_SIZE)")
+        Log.error(TAG, "File too large: ${bytes.size} bytes (max $MAX_FILE_SIZE)")
         pendingMessageIDs.remove(id)
         return false
     }
@@ -381,7 +381,7 @@ suspend fun WhatsAppClient.sendMedia(
         sendMediaPayload(ws, to, id, bytes, mimeType, fileName, mediaType, mediaKeyStr)
     } catch (expected: Exception) {
         WhatsAppDiag.log(TAG, "media: FAILED ${expected.message}")
-        Log.e(TAG, "Failed to send media", expected)
+        Log.error(TAG, "Failed to send media", expected)
         pendingMessageIDs.remove(id)
         false
     }

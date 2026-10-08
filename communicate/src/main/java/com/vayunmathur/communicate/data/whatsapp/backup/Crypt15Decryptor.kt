@@ -1,5 +1,6 @@
 package com.vayunmathur.communicate.data.whatsapp.backup
 
+import com.vayunmathur.library.log.Log
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.GZIPInputStream
@@ -85,7 +86,7 @@ object Crypt15Decryptor {
                 GZIPInputStream(ByteArrayInputStream(plaintextGz)).use { gz ->
                     out.outputStream().use { gz.copyTo(it) }
                 }
-                android.util.Log.i("Crypt15", "decrypted via: $label")
+                Log.status("Crypt15", "decrypted via: $label")
                 return out
             } catch (expected: Throwable) {
                 lastErr = expected

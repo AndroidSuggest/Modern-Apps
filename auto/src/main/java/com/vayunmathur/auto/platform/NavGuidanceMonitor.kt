@@ -9,7 +9,7 @@ import android.location.LocationManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.protocol.MapsGuidance
 import com.vayunmathur.auto.protocol.MapRoutePoint
 import com.vayunmathur.auto.protocol.NavSnapshot
@@ -94,7 +94,7 @@ class NavGuidanceMonitor(
     fun start() {
         mainHandler.post {
             val manager = context.getSystemService(LocationManager::class.java) ?: run {
-                Log.w(TAG, "no location manager; guidance stays empty")
+                Log.status(TAG, "no location manager; guidance stays empty")
                 return@post
             }
             locationManager = manager
@@ -121,7 +121,7 @@ class NavGuidanceMonitor(
             }.onFailure {
                 // No permission (or no provider): last-known stays, live fixes
                 // wait for the permission UX in MainActivity/Navigation/Route.
-                Log.w(TAG, "location unavailable; guidance holds last-known", it)
+                Log.status(TAG, "location unavailable; guidance holds last-known", it)
             }
         }
     }

@@ -1,6 +1,6 @@
 package com.vayunmathur.cast.tv.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.protocol.ControlCodec
 import com.vayunmathur.cast.protocol.ControlFraming
 import com.vayunmathur.cast.protocol.ControlMessage

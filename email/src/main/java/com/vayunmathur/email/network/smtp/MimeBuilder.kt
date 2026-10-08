@@ -3,7 +3,7 @@ package com.vayunmathur.email.network.smtp
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.email.ui.composer.InlineAttachment
 import java.io.File
 import java.security.SecureRandom
@@ -201,7 +201,7 @@ object MimeBuilder {
         val filename = queryFilename(context, uri) ?: uri.lastPathSegment ?: "attachment"
         val safeName = filename.replace("\"", "_").replace("\r", "").replace("\n", "")
         val mime = context.contentResolver.getType(uri) ?: guessMimeFromName(filename)
-        Log.d(TAG, "Attachment $filename mime=$mime uri=$uri")
+        Log.debug(TAG, "Attachment $filename mime=$mime uri=$uri")
         sb.append("Content-Type: $mime; name=\"$safeName\"\r\n")
         sb.append("Content-Disposition: attachment; filename=\"$safeName\"\r\n")
         sb.append("Content-Transfer-Encoding: base64\r\n")
@@ -229,7 +229,7 @@ object MimeBuilder {
             context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 ?: File(uri.path ?: "").readBytes()
         } catch (ignored: Exception) {
-            Log.w(TAG, "readBytes failed for $uri: ${ignored.message}")
+            Log.status(TAG, "readBytes failed for $uri: ${ignored.message}")
             try { File(uri.path ?: "").readBytes() } catch (_: Exception) { ByteArray(0) }
         }
     }

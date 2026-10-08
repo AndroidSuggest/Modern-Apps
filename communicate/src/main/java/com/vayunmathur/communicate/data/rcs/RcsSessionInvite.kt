@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.rcs
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.UUID
 
 /**
@@ -201,7 +201,7 @@ internal fun RcsSessionManager.failSession(
     callId: String,
     statusCode: Int,
 ) {
-    Log.w(RcsSessionManager.TAG, "Session failed $callId code=$statusCode")
+    Log.status(RcsSessionManager.TAG, "Session failed $callId code=$statusCode")
     transactions.entries.removeIf { it.value == session.dialogId }
     sessionsMutable.value = sessionsMutable.value - key
     answerFingerprintsMutable.remove(callId)

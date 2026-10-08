@@ -1,7 +1,7 @@
 package com.vayunmathur.findfamily.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -38,7 +38,7 @@ class NoShowCheckWorker(
     override suspend fun doWork(): Result = try {
         val fired = NoShowCheckScheduler.sweepNow(applicationContext)
         if (fired.isNotEmpty()) {
-            Log.i(TAG, "sweep fired ${fired.size} alert(s): ${fired.map { it.id }}")
+            Log.status(TAG, "sweep fired ${fired.size} alert(s): ${fired.map { it.id }}")
         }
         Result.success()
     } catch (_: Exception) {
@@ -164,9 +164,9 @@ object NoShowCheckScheduler {
         val pending = repository.noShowAlertStore.getAll().filter { !it.fired }
         for (alert in pending) {
             runCatching { schedule(context, alert) }
-                .onFailure { e -> Log.w(TAG, "reschedule alert ${alert.id} failed", e) }
+                .onFailure { e -> Log.status(TAG, "reschedule alert ${alert.id} failed", e) }
         }
-        Log.i(TAG, "rescheduled ${pending.size} no-show alert(s)")
+        Log.status(TAG, "rescheduled ${pending.size} no-show alert(s)")
     }
 
     /** Convenience: schedule exactly at the deadline computed from these parts. */

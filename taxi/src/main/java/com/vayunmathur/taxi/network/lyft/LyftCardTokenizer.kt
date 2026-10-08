@@ -2,7 +2,7 @@ package com.vayunmathur.taxi.network.lyft
 
 import android.net.Uri
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.RawResponse
 import com.vayunmathur.taxi.data.NewCard
@@ -56,19 +56,19 @@ internal class LyftCardTokenizer(
                 body = body,
             )
         }.getOrElse {
-            Log.w(TAG, "tokenization_strategies request failed", it)
+            Log.status(TAG, "tokenization_strategies request failed", it)
             return null
         }
-        Log.d(TAG, "POST /v1/tokenization_strategies -> ${resp.status} (${resp.bytes.size} bytes)")
+        Log.debug(TAG, "POST /v1/tokenization_strategies -> ${resp.status} (${resp.bytes.size} bytes)")
         if (!resp.isSuccess) {
-            Log.w(TAG, "tokenization_strategies failed: ${resp.text.take(ERROR_BODY_PREVIEW_MAX)}")
+            Log.status(TAG, "tokenization_strategies failed: ${resp.text.take(ERROR_BODY_PREVIEW_MAX)}")
             return null
         }
         val config = parseConfig(resp)
         if (config == null) {
-            Log.w(TAG, "No supported tokenizer strategy in response")
+            Log.status(TAG, "No supported tokenizer strategy in response")
         } else {
-            Log.d(TAG, "Tokenizer resolved: provider=${config.provider} key=${redactKey(config.key)}")
+            Log.debug(TAG, "Tokenizer resolved: provider=${config.provider} key=${redactKey(config.key)}")
         }
         return config
     }
@@ -210,7 +210,7 @@ internal class LyftCardTokenizer(
         }
         val pm = root?.lyftStr("payment_method")
             ?: return TokenizeResult.Err("Stripe returned no payment_method")
-        Log.d(TAG, "Stripe SetupIntent confirmed ••${card.last4} -> ${pm.take(TOKEN_LOG_PREFIX_LENGTH)}…")
+        Log.debug(TAG, "Stripe SetupIntent confirmed ••${card.last4} -> ${pm.take(TOKEN_LOG_PREFIX_LENGTH)}…")
         // mt00.provider for a Stripe card is jju.h(qbe0.STRIPE.name()) = "stripe".
         return TokenizeResult.Ok("stripe", token = pm, nonce = null, version = "STRIPE_SETUP_INTENT")
     }
@@ -250,7 +250,7 @@ internal class LyftCardTokenizer(
             return TokenizeResult.Err(msg)
         }
         val tok = root?.lyftStr("id") ?: return TokenizeResult.Err("Stripe returned no token")
-        Log.d(TAG, "Stripe tokenized ••${card.last4} -> ${tok.take(TOKEN_LOG_PREFIX_LENGTH)}…")
+        Log.debug(TAG, "Stripe tokenized ••${card.last4} -> ${tok.take(TOKEN_LOG_PREFIX_LENGTH)}…")
         return TokenizeResult.Ok("stripe", token = tok, nonce = null, version = "STRIPE_TOKEN")
     }
 
@@ -305,7 +305,7 @@ internal class LyftCardTokenizer(
             ?.get("tokenizeCreditCard")?.jsonObject
             ?.lyftStr("token")
             ?: return TokenizeResult.Err("Braintree returned no nonce")
-        Log.d(TAG, "Braintree tokenized ••${card.last4} -> nonce ${nonce.take(NONCE_LOG_PREFIX_LENGTH)}…")
+        Log.debug(TAG, "Braintree tokenized ••${card.last4} -> nonce ${nonce.take(NONCE_LOG_PREFIX_LENGTH)}…")
         return TokenizeResult.Ok("braintree", token = null, nonce = nonce)
     }
 

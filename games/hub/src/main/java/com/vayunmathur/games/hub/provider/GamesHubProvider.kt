@@ -9,6 +9,7 @@ import android.os.Binder
 import android.os.Process
 import com.vayunmathur.games.hub.data.GamesHubRepository
 import com.vayunmathur.games.hub.data.entities.ActivityEventEntity
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.sdk.games.GameHubContract
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -101,10 +102,10 @@ open class GamesHubProvider : ContentProvider() {
                     else -> null
                 }
             } catch (e: IllegalArgumentException) {
-                android.util.Log.e("GamesHubProvider", "insert failed $uri", e)
+                Log.error("GamesHubProvider", "insert failed $uri", e)
                 null
             } catch (e: android.database.SQLException) {
-                android.util.Log.e("GamesHubProvider", "insert failed $uri", e)
+                Log.error("GamesHubProvider", "insert failed $uri", e)
                 null
             }
         }
@@ -124,10 +125,10 @@ open class GamesHubProvider : ContentProvider() {
                     else -> 0
                 }
             } catch (e: IllegalArgumentException) {
-                android.util.Log.e("GamesHubProvider", "update failed $uri", e)
+                Log.error("GamesHubProvider", "update failed $uri", e)
                 0
             } catch (e: android.database.SQLException) {
-                android.util.Log.e("GamesHubProvider", "update failed $uri", e)
+                Log.error("GamesHubProvider", "update failed $uri", e)
                 0
             }
         }
@@ -157,10 +158,10 @@ open class GamesHubProvider : ContentProvider() {
                     else -> null
                 }
             } catch (e: IllegalArgumentException) {
-                android.util.Log.e("GamesHubProvider", "query failed $uri", e)
+                Log.error("GamesHubProvider", "query failed $uri", e)
                 null
             } catch (e: android.database.SQLException) {
-                android.util.Log.e("GamesHubProvider", "query failed $uri", e)
+                Log.error("GamesHubProvider", "query failed $uri", e)
                 null
             }
         }

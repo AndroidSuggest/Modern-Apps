@@ -1,7 +1,7 @@
 package com.vayunmathur.contacts.util
 
 import android.app.Application
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.contacts.util.ContactAccount
 import com.vayunmathur.contacts.data.LOCAL_ACCOUNT_TYPE
 import kotlinx.coroutines.flow.first
@@ -92,7 +92,7 @@ internal suspend fun ContactViewModel.migrateHiddenAccountKeys() {
             migrateHiddenAccountKey(hiddenEntry)
         }
     } catch (e: Exception) {
-        Log.w("ContactViewModel", "Error migrating hidden accounts", e)
+        Log.status("ContactViewModel", "Error migrating hidden accounts", e)
     }
 }
 

@@ -1,6 +1,6 @@
 package com.vayunmathur.findfamily.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.findfamily.R
 import com.vayunmathur.findfamily.data.LocationSource
 import com.vayunmathur.findfamily.data.LocationValue
@@ -58,7 +58,7 @@ internal suspend fun LocationTrackingService.processIncomingLocations(incoming: 
     if (knownSource.size != incoming.size) {
         val dropped = incoming.filter { it.source == LocationSource.UNKNOWN }.map { it.userid.toULong() }.distinct()
         val droppedCount = incoming.size - knownSource.size
-        Log.w(
+        Log.status(
             "FF-Heartbeat",
             "dropped $droppedCount fix(es) from newer peer(s) with an unrecognised source: $dropped"
         )
@@ -69,7 +69,7 @@ internal suspend fun LocationTrackingService.processIncomingLocations(incoming: 
         it.acc.isFinite() && it.acc >= 0f && it.acc <= MAX_FIX_ACCURACY_METERS
     }
     if (locList.size != knownSource.size) {
-        Log.i(
+        Log.status(
             "FF-Heartbeat",
             "dropped ${knownSource.size - locList.size} fix(es) worse than ${MAX_FIX_ACCURACY_METERS}m"
         )
@@ -82,9 +82,9 @@ internal suspend fun LocationTrackingService.processIncomingLocations(incoming: 
     val receivedIds = usersRecieved.map { it.toULong() }
     val knownIds = userIDs.map { it.toULong() }
     val selfId = Networking.userid.toULong()
-    Log.d("FF-Heartbeat", "received userids=$receivedIds self=$selfId known=$knownIds")
+    Log.debug("FF-Heartbeat", "received userids=$receivedIds self=$selfId known=$knownIds")
     val newUsers = usersRecieved.filter { it !in userIDs && it != Networking.userid }
-    Log.d("FF-Heartbeat", "newUsers to insert=${newUsers.map{ it.toULong() }}")
+    Log.debug("FF-Heartbeat", "newUsers to insert=${newUsers.map{ it.toULong() }}")
     repository.insertUsersIgnore(newUsers.map {
         User(" ", null, "Unknown Location", false, RequestStatus.AWAITING_REQUEST, Clock.System.now(), null, it)
     })
@@ -103,7 +103,7 @@ internal suspend fun LocationTrackingService.processIncomingLocations(incoming: 
     // fixes even across a force-stop. Writing here makes the fix durable no matter what
     // follows.
     repository.upsertLocations(locList)
-    Log.d("FF-Heartbeat", "upsertAll ${locList.size} locations done")
+    Log.debug("FF-Heartbeat", "upsertAll ${locList.size} locations done")
 
     // Enrichment runs off the reader coroutine. Reverse-geocoding is a slow network
     // call, so doing it inline stalled every subsequent inbound frame until the
@@ -297,7 +297,7 @@ private fun LocationTrackingService.grantContextOrNull(
 internal suspend fun LocationTrackingService.acceptPoweredOffGrant(envelope: UwbEnvelope) {
     val (store, grant, ownerId) = grantContextOrNull(envelope) ?: return
     if (repository.getUser(ownerId) == null) {
-        Log.w(LocationTrackingService.TAG_POWERED_OFF, "recovery grant from unknown sender, ignored")
+        Log.status(LocationTrackingService.TAG_POWERED_OFF, "recovery grant from unknown sender, ignored")
         return
     }
     val decoded = runCatching {
@@ -317,13 +317,13 @@ internal suspend fun LocationTrackingService.acceptPoweredOffGrant(envelope: Uwb
         recoveryPrivate = recoveryPriv,
     )
     if (!Networking.verifyFrom(ownerId, signed, signature)) {
-        Log.w(LocationTrackingService.TAG_POWERED_OFF, "recovery grant signature did not verify, ignored")
+        Log.status(LocationTrackingService.TAG_POWERED_OFF, "recovery grant signature did not verify, ignored")
         return
     }
     if (grant.epoch < store.epoch(ownerId)) {
-        Log.i(LocationTrackingService.TAG_POWERED_OFF, "ignoring superseded recovery grant (epoch ${grant.epoch})")
+        Log.status(LocationTrackingService.TAG_POWERED_OFF, "ignoring superseded recovery grant (epoch ${grant.epoch})")
         return
     }
     store.save(ownerId, secret, recoveryPriv, grant.epoch)
-    Log.i(LocationTrackingService.TAG_POWERED_OFF, "stored recovery keys for a peer (epoch ${grant.epoch})")
+    Log.status(LocationTrackingService.TAG_POWERED_OFF, "stored recovery keys for a peer (epoch ${grant.epoch})")
 }

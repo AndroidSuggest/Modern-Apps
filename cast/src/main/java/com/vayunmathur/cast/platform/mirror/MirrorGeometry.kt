@@ -2,7 +2,7 @@ package com.vayunmathur.cast.platform.mirror
 
 import android.content.Context
 import android.util.DisplayMetrics
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.WindowManager
 import androidx.core.content.getSystemService
 import com.vayunmathur.cast.protocol.CodecLimits
@@ -141,7 +141,7 @@ object MirrorGeometry {
 
         val bitRate = bitRateFor(width, height, frameRate, chosen)
 
-        Log.i(
+        Log.status(
             TAG,
             "sending ${width}x$height @ ${frameRate}fps at ${bitRate / BITS_PER_MEGABIT} Mbit/s; " +
                 "the screen is ${screenWidth}x$screenHeight and the TV will letterbox it" +
@@ -183,7 +183,7 @@ object MirrorGeometry {
         val (width, height) =
             EncoderSupport.clampToEncoder(chosen.codec, fittedWidth, fittedHeight, frameRate)
         val bitRate = bitRateFor(width, height, frameRate, chosen)
-        Log.i(
+        Log.status(
             TAG,
             "app content: asked for ${safeWidth}x$safeHeight, sending ${width}x$height " +
                 "@ ${frameRate}fps at ${bitRate / BITS_PER_MEGABIT} Mbit/s" + chosen.rateReasoning(),
@@ -260,10 +260,10 @@ object MirrorGeometry {
                 .thenByDescending { it.frameRate },
         )
         if (ordered.isEmpty()) {
-            Log.w(TAG, "the TV advertised no encodable panel modes; composing for the phone")
+            Log.status(TAG, "the TV advertised no encodable panel modes; composing for the phone")
             return listOf(forDisplay(context, chosen))
         }
-        Log.i(
+        Log.status(
             TAG,
             "desktop: offering " +
                 ordered.joinToString {

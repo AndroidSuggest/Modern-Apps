@@ -9,7 +9,7 @@ import android.provider.ContactsContract
 import android.provider.ContactsPickerSessionContract
 import android.provider.ContactsPickerSessionContract.EXTRA_PICK_CONTACTS_REQUESTED_DATA_FIELDS
 import android.provider.ContactsPickerSessionContract.EXTRA_PICK_CONTACTS_SELECTION_LIMIT
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.launch
@@ -171,7 +171,7 @@ class Platform(private val context: Context) {
                 null
             }
         } catch (e: Exception) {
-            Log.e("Platform", "Error querying contact from picker URI: $uri", e)
+            Log.error("Platform", "Error querying contact from picker URI: $uri", e)
             null
         }
     }

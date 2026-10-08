@@ -1,7 +1,7 @@
 package com.vayunmathur.taxi.network.uber
 
 import android.annotation.SuppressLint
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -51,8 +51,8 @@ fun UberWebView(
                         object {
                             @JavascriptInterface
                             fun onGraphql(operation: String, variables: String, response: String) {
-                                Log.d(TAG, "GQL $operation vars=$variables")
-                                Log.d(TAG, "GQL $operation resp=${response.take(GRAPHQL_RESPONSE_LOG_MAX)}")
+                                Log.debug(TAG, "GQL $operation vars=$variables")
+                                Log.debug(TAG, "GQL $operation resp=${response.take(GRAPHQL_RESPONSE_LOG_MAX)}")
                                 post {
                                     onGraphqlCaptured(
                                         UberGraphqlCapture(operation, variables, response),
@@ -62,7 +62,7 @@ fun UberWebView(
 
                             @JavascriptInterface
                             fun onLog(msg: String) {
-                                Log.d(TAG, "js: $msg")
+                                Log.debug(TAG, "js: $msg")
                             }
                         },
                         "AndroidUber",
@@ -77,8 +77,8 @@ fun UberWebView(
                         }
 
                         override fun onPageFinished(view: WebView, url: String?) {
-                            Log.d(TAG, "PAGE $url")
-                            Log.d(TAG, "COOKIES ${UberCookies.names(UberWeb.HOME)}")
+                            Log.debug(TAG, "PAGE $url")
+                            Log.debug(TAG, "COOKIES ${UberCookies.names(UberWeb.HOME)}")
                             if (url == null) return
                             val session = UberSession(view.context.applicationContext)
                             scope.launch {

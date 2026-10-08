@@ -1,7 +1,7 @@
 package com.vayunmathur.maps.util
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -29,7 +29,7 @@ object GTFSProvider {
         return try {
             findRouteColor(context, feedName, routeName)?.also { routeColors[cacheKey] = it }
         } catch (e: java.io.IOException) {
-            Log.w("GTFSProvider", "Failed to read routes.txt for $feedName", e)
+            Log.status("GTFSProvider", "Failed to read routes.txt for $feedName", e)
             null
         }
     }

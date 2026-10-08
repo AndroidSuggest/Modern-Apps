@@ -1,7 +1,7 @@
 package com.vayunmathur.library.ml
 
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 
 /**
@@ -71,7 +71,7 @@ private fun isBakedCache(blob: ByteArray): Boolean {
     if (blob.size < Gemma4Handle.HEADER ||
         String(blob, 0, PREFIX_MAGIC_BYTES, Charsets.US_ASCII) != PREFIX_MAGIC
     ) {
-        Log.w(Gemma4Handle.TAG, "${Gemma4Handle.PREFIX_CACHE} is not a baked cache")
+        Log.status(Gemma4Handle.TAG, "${Gemma4Handle.PREFIX_CACHE} is not a baked cache")
         return false
     }
     return true
@@ -82,7 +82,7 @@ private fun Gemma4Handle.positionsMatch(tokens: IntArray, positions: Int): Boole
     // where the next token goes and how many ids are recorded as cached, so a wrong count
     // corrupts the bookkeeping rather than merely the contents.
     if (positions != tokens.size) {
-        Log.i(
+        Log.status(
             Gemma4Handle.TAG,
             "${Gemma4Handle.PREFIX_CACHE} is $positions positions, this prefix is ${tokens.size}"
         )
@@ -100,7 +100,7 @@ private fun Gemma4Handle.digestMatches(tokens: IntArray, blob: ByteArray): Boole
     // and someone needs to re-run `bake_gemma4_prefix`.
     val digest = blob.copyOfRange(PREFIX_DIGEST_OFFSET, PREFIX_DIGEST_OFFSET + PREFIX_DIGEST_BYTES)
     if (!Gemma4Handle.digest(tokens).contentEquals(digest)) {
-        Log.w(Gemma4Handle.TAG, "${Gemma4Handle.PREFIX_CACHE} DIGEST MISMATCH - prefilling instead")
+        Log.status(Gemma4Handle.TAG, "${Gemma4Handle.PREFIX_CACHE} DIGEST MISMATCH - prefilling instead")
         return false
     }
     return true
@@ -113,7 +113,7 @@ private fun Gemma4Handle.ensurePrefixCapacity(positions: Int): Boolean {
     if (MlNative.capacityGemma4(handle) < positions) {
         val grown = MlNative.growGemma4(handle, positions + PREFIX_SLACK_POSITIONS)
         if (grown < positions) {
-            Log.i(
+            Log.status(
                 Gemma4Handle.TAG,
                 "a $positions-position prefix does not fit this device; prefilling"
             )
@@ -134,7 +134,7 @@ private fun Gemma4Handle.installPrefix(
     // The cache now holds exactly these tokens, so the next turn matches against them and
     // feeds only what follows.
     cachedIds = tokens
-    Log.i(Gemma4Handle.TAG, "loaded a $positions-position prefix cache, skipping its prefill")
+    Log.status(Gemma4Handle.TAG, "loaded a $positions-position prefix cache, skipping its prefill")
     return true
 }
 
@@ -159,7 +159,7 @@ internal fun createGemma4Handle(directory: File): Long {
     val tokenizer = File(directory, Gemma4Handle.TOKENIZER)
     for (file in listOf(text, embed, tokenizer)) {
         if (!file.isFile) {
-            Log.w(Gemma4Handle.TAG, "${file.name} is missing from $directory")
+            Log.status(Gemma4Handle.TAG, "${file.name} is missing from $directory")
             return 0L
         }
     }
@@ -169,7 +169,7 @@ internal fun createGemma4Handle(directory: File): Long {
     val headLease = openHeadLease(head) ?: return 0L
     val table = runCatching { tokenizer.readBytes() }.getOrElse {
         headLease.close()
-        Log.w(Gemma4Handle.TAG, "cannot read ${Gemma4Handle.TOKENIZER}: $it")
+        Log.status(Gemma4Handle.TAG, "cannot read ${Gemma4Handle.TOKENIZER}: $it")
         return 0L
     }
     val textFd = openModelFd(text, Gemma4Handle.TEXT, onFailure = { headLease.close() })
@@ -211,7 +211,7 @@ private fun openHeadLease(head: File): HeadLease? {
         ParcelFileDescriptor.open(head, ParcelFileDescriptor.MODE_READ_ONLY)
             .use { it.detachFd() }
     }.getOrElse {
-        Log.w(Gemma4Handle.TAG, "cannot open ${Gemma4Handle.HEAD}: $it")
+        Log.status(Gemma4Handle.TAG, "cannot open ${Gemma4Handle.HEAD}: $it")
         return null
     }
     return HeadLease(fd, head.length())
@@ -226,7 +226,7 @@ private fun openModelFd(file: File, name: String, onFailure: () -> Unit): Int? {
             .use { it.detachFd() }
     }.getOrElse {
         onFailure()
-        Log.w(Gemma4Handle.TAG, "cannot open $name: $it")
+        Log.status(Gemma4Handle.TAG, "cannot open $name: $it")
         null
     }
 }

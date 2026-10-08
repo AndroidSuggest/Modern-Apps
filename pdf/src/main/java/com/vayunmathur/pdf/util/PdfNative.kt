@@ -1,4 +1,5 @@
 package com.vayunmathur.pdf.util
+import com.vayunmathur.library.log.Log
 
 /**
  * JNI bridge to the native Rust PDF renderer (`libpdf_render.so`, built from
@@ -18,10 +19,10 @@ object PdfNative {
     val isAvailable: Boolean =
         try {
             System.loadLibrary("pdf_render")
-            android.util.Log.i("PdfNative", "libpdf_render loaded")
+            Log.status("PdfNative", "libpdf_render loaded")
             true
         } catch (expected: UnsatisfiedLinkError) {
-            android.util.Log.e("PdfNative", "System.loadLibrary(pdf_render) failed", expected)
+            Log.error("PdfNative", "System.loadLibrary(pdf_render) failed", expected)
             false
         }
 

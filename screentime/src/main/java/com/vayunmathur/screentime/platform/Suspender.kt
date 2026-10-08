@@ -1,7 +1,7 @@
 package com.vayunmathur.screentime.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.lang.reflect.Method
 
 private const val TAG = "ScreenTimeSuspender"
@@ -49,7 +49,7 @@ class Suspender(private val context: Context) {
             // paused treatment, whose details button resolves to our AppDetailsActivity.
             method.invoke(pm, packages, suspended, null, null, null)
             if (suspended) rememberPaused(packages.toSet()) else forgetPaused(packages.toSet())
-        }.onFailure { Log.w(TAG, "could not set suspended=$suspended for ${packages.toList()}", it) }
+        }.onFailure { Log.status(TAG, "could not set suspended=$suspended for ${packages.toList()}", it) }
     }
 
     private val prefs
@@ -80,7 +80,7 @@ class Suspender(private val context: Context) {
                     android.os.PersistableBundle::class.java,
                     Class.forName("android.content.pm.SuspendDialogInfo"),
                 )
-            }.onFailure { Log.w(TAG, "PackageManager.setPackagesSuspended is unreachable", it) }
+            }.onFailure { Log.status(TAG, "PackageManager.setPackagesSuspended is unreachable", it) }
                 .getOrNull()
         }
     }

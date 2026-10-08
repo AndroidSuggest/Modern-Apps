@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal.call
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.launch
 import org.signal.ringrtc.CallId
 import org.signal.ringrtc.CallManager
@@ -22,7 +22,7 @@ fun SignalCallManager.receivedOffer(
     val manager = callManager ?: return
     scope.launch {
         val keys = signaling.identityKeys(senderAci) ?: run {
-            Log.w(SignalCallManager.TAG, "no identity keys for $senderAci, cannot accept the offer")
+            Log.status(SignalCallManager.TAG, "no identity keys for $senderAci, cannot accept the offer")
             return@launch
         }
         val mediaType = if (video) CallManager.CallMediaType.VIDEO_CALL else CallManager.CallMediaType.AUDIO_CALL
@@ -40,7 +40,7 @@ fun SignalCallManager.receivedOffer(
                 keys.local,
             )
         } catch (expected: Throwable) {
-            Log.w(SignalCallManager.TAG, "receivedOffer failed", expected)
+            Log.status(SignalCallManager.TAG, "receivedOffer failed", expected)
         }
     }
 }
@@ -59,7 +59,7 @@ fun SignalCallManager.receivedAnswer(callId: Long, senderAci: String, senderDevi
                 keys.local,
             )
         } catch (expected: Throwable) {
-            Log.w(SignalCallManager.TAG, "receivedAnswer failed", expected)
+            Log.status(SignalCallManager.TAG, "receivedAnswer failed", expected)
         }
     }
 }

@@ -7,7 +7,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.service.voice.VoiceInteractionSession
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.openassistant.MainActivity
 import java.io.File
 import java.io.FileOutputStream
@@ -34,7 +34,7 @@ class OpenAssistantSession(context: Context) : VoiceInteractionSession(context) 
     override fun onHandleAssist(state: AssistState) {
         super.onHandleAssist(state)
         val text = buildScreenText(state.assistStructure, state.assistContent)
-        Log.d(TAG, "Captured screen text (${text.length} chars)")
+        Log.debug(TAG, "Captured screen text (${text.length} chars)")
         handOffToChat(text)
     }
 
@@ -48,7 +48,7 @@ class OpenAssistantSession(context: Context) : VoiceInteractionSession(context) 
             }
             screenshotPath = file.absolutePath
         } catch (expected: Exception) {
-            Log.w(TAG, "Failed to save assist screenshot", expected)
+            Log.status(TAG, "Failed to save assist screenshot", expected)
         }
     }
 

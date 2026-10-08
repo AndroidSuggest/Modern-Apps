@@ -10,6 +10,7 @@ class ModernAppsIssueRegistry : IssueRegistry() {
 
     override val issues: List<Issue> = listOf(
         ToastDetector.ISSUE,
+        DirectAndroidLogDetector.ISSUE,
         DirectBuildDatabaseDetector.ISSUE,
         DirectComposeAnimationDetector.ISSUE,
         FileLengthDetector.ISSUE,

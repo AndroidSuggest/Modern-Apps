@@ -3,7 +3,7 @@ package com.vayunmathur.updater.platform
 import android.os.RecoverySystem
 import android.os.UpdateEngine
 import android.os.UpdateEngineCallback
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.updater.domain.OtaPackageMetadata
 import com.vayunmathur.updater.domain.OtaPackageValidation
 import com.vayunmathur.updater.domain.PayloadProperties
@@ -121,14 +121,14 @@ object OtaInstaller {
             // IOException, GeneralSecurityException and SecurityException all land here, and
             // all of them mean the same thing: this package is not one we signed. Broad on
             // purpose — an unanticipated exception type must not become an accidental pass.
-            Log.e(TAG, "SIGNATURE VERIFICATION FAILED for ${packageFile.name}", e)
+            Log.error(TAG, "SIGNATURE VERIFICATION FAILED for ${packageFile.name}", e)
             packageFile.delete()
             Result.Failed("the update package failed signature verification")
         }
     }
 
     private fun abort(packageFile: File, reason: String): Result.Failed {
-        Log.e(TAG, "rejecting ${packageFile.name}: $reason")
+        Log.error(TAG, "rejecting ${packageFile.name}: $reason")
         packageFile.delete()
         return Result.Failed(reason)
     }
@@ -146,7 +146,7 @@ object OtaInstaller {
             val metadataEntry = zip.getEntry(ENTRY_METADATA)
             val propertiesEntry = zip.getEntry(ENTRY_PAYLOAD_PROPERTIES)
             if (metadataEntry == null || propertiesEntry == null) {
-                Log.e(TAG, "package is missing $ENTRY_METADATA or $ENTRY_PAYLOAD_PROPERTIES")
+                Log.error(TAG, "package is missing $ENTRY_METADATA or $ENTRY_PAYLOAD_PROPERTIES")
                 null
             } else {
                 Contents(
@@ -160,7 +160,7 @@ object OtaInstaller {
             }
         }
     } catch (e: Exception) {
-        Log.e(TAG, "could not read ${packageFile.name}", e)
+        Log.error(TAG, "could not read ${packageFile.name}", e)
         null
     }
 
@@ -178,7 +178,7 @@ object OtaInstaller {
             ZipFile(packageFile).use { zip ->
                 val entry = zip.getEntry(ENTRY_CARE_MAP)
                 if (entry == null) {
-                    Log.i(TAG, "$ENTRY_CARE_MAP missing; continuing without it")
+                    Log.status(TAG, "$ENTRY_CARE_MAP missing; continuing without it")
                     return
                 }
                 zip.getInputStream(entry).use { input ->
@@ -186,7 +186,7 @@ object OtaInstaller {
                 }
                 CARE_MAP_PATH.setReadable(true, false)
             }
-        }.onFailure { Log.i(TAG, "could not stage the care map; continuing without it", it) }
+        }.onFailure { Log.status(TAG, "could not stage the care map; continuing without it", it) }
     }
 
     /**
@@ -216,7 +216,7 @@ object OtaInstaller {
         } catch (e: Exception) {
             // The constructor binds to the update_engine binder and throws when it is
             // unavailable - which is what a non-privileged build looks like from here.
-            Log.e(TAG, "update_engine is unavailable", e)
+            Log.error(TAG, "update_engine is unavailable", e)
             return Result.Failed("the system update service is unavailable")
         }
         return try {
@@ -228,7 +228,7 @@ object OtaInstaller {
             // against the same binder we are being called on. `finally` also covers
             // cancellation, which would otherwise leave the callback registered against a
             // service that outlives this object.
-            runCatching { if (!engine.unbind()) Log.w(TAG, "could not unbind update_engine") }
+            runCatching { if (!engine.unbind()) Log.status(TAG, "could not unbind update_engine") }
         }
     }
 
@@ -257,7 +257,7 @@ object OtaInstaller {
                         }
 
                         is UpdateEngineOutcome.Outcome.Failed -> {
-                            Log.e(TAG, "apply failed: ${outcome.reason} (${outcome.code})")
+                            Log.error(TAG, "apply failed: ${outcome.reason} (${outcome.code})")
                             packageFile.delete()
                             Result.Failed(
                                 outcome.reason,
@@ -294,7 +294,7 @@ object OtaInstaller {
         } catch (e: Exception) {
             // Rejected outright — most often because a payload is already applied and awaiting
             // a reboot. No completion callback follows a rejection.
-            Log.e(TAG, "update_engine refused the payload", e)
+            Log.error(TAG, "update_engine refused the payload", e)
             continuation.finish(Result.Failed("the system update service refused the update"))
         }
     }

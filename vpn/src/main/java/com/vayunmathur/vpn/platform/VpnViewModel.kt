@@ -6,7 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.net.VpnService
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.AndroidViewModel
@@ -89,7 +89,7 @@ class VpnViewModel(
                     val pkg = app.packageName ?: continue
                     logDao.nameUid(uid, pkg, app.appLabel)
                 }
-            }.onFailure { Log.w("VpnVM", "backfillAppNames", it) }
+            }.onFailure { Log.status("VpnVM", "backfillAppNames", it) }
         }
     }
 
@@ -148,7 +148,7 @@ class VpnViewModel(
                     val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                     context.contentResolver.takePersistableUriPermission(uri, flags)
                 } catch (expected: SecurityException) {
-                    Log.w("VpnVM", "persist permission denied for $uri", expected)
+                    Log.status("VpnVM", "persist permission denied for $uri", expected)
                 }
                 val text = context.contentResolver.openInputStream(uri)?.use {
                     it.bufferedReader().readText()
@@ -183,13 +183,13 @@ class VpnViewModel(
                 dao.upsert(model.toEntity())
                 _status.value = "Imported ${model.name} from .conf"
             } catch (expected: IOException) {
-                Log.e("VpnVM", "importFromUri", expected)
+                Log.error("VpnVM", "importFromUri", expected)
                 _status.value = "Import failed: ${expected.message}"
             } catch (expected: SecurityException) {
-                Log.e("VpnVM", "importFromUri", expected)
+                Log.error("VpnVM", "importFromUri", expected)
                 _status.value = "Import failed: ${expected.message}"
             } catch (expected: IllegalStateException) {
-                Log.e("VpnVM", "importFromUri", expected)
+                Log.error("VpnVM", "importFromUri", expected)
                 _status.value = "Import failed: ${expected.message}"
             }
         }

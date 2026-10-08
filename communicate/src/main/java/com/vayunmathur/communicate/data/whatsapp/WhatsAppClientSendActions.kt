@@ -15,7 +15,7 @@ import com.vayunmathur.communicate.data.whatsapp.encodeNode
 import com.vayunmathur.communicate.data.whatsapp.transport.WhatsAppSocket
 import com.vayunmathur.communicate.data.whatsapp.generateMessageId
 import com.vayunmathur.communicate.data.whatsapp.isRevokeFromMe
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * Mark messages as read with per-sender batching for group chats.
@@ -454,7 +454,7 @@ suspend fun WhatsAppClient.setDisappearingTimer(conversationId: String, timerSec
 
     val allowedValues = setOf(0L, 86400L, 604800L, 7776000L)
     if (timerSeconds !in allowedValues) {
-        Log.w(TAG, "Invalid disappearing timer value: $timerSeconds")
+        Log.status(TAG, "Invalid disappearing timer value: $timerSeconds")
         return false
     }
 

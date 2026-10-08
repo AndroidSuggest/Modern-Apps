@@ -2,7 +2,7 @@ package com.vayunmathur.screentime.widget
 
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -81,7 +81,7 @@ class ScreenTimeGlanceWidget : GlanceAppWidget() {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "providePreview failed", e)
+            Log.error(TAG, "providePreview failed", e)
         }
     }
 }

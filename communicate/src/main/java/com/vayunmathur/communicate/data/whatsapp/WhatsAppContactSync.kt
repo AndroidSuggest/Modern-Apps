@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.provider.ContactsContract
 import android.telephony.TelephonyManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import com.vayunmathur.communicate.data.whatsapp.mex.MexResult
 import com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps
@@ -148,7 +148,7 @@ object WhatsAppContactSync {
         if (discovery.transportError != null) transportError = discovery.transportError
 
         val onWa = mappings.count { it.value.onWhatsApp }
-        Log.i(TAG, "sync: device=${device.size} e164=${e164s.size} onWA=$onWa err=$transportError")
+        Log.status(TAG, "sync: device=${device.size} e164=${e164s.size} onWA=$onWa err=$transportError")
         return SyncResult(device.size, e164s.size, onWa, transportError)
     }
 

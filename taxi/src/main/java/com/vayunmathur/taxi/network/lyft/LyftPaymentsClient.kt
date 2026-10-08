@@ -1,7 +1,7 @@
 package com.vayunmathur.taxi.network.lyft
 
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.taxi.data.AddCardResult
 import com.vayunmathur.taxi.data.NewCard
@@ -37,7 +37,7 @@ internal class LyftPaymentsClient(private val session: LyftApiSession) {
             method = "GET",
             headers = session.authHeaders(token),
         )
-        Log.d(TAG, "GET /chargeaccounts -> ${resp.status} (${resp.bytes.size} bytes)")
+        Log.debug(TAG, "GET /chargeaccounts -> ${resp.status} (${resp.bytes.size} bytes)")
         if (!resp.isSuccess) {
             return PaymentMethodsResult.Failed(session.httpError(resp))
         }
@@ -69,11 +69,11 @@ internal class LyftPaymentsClient(private val session: LyftApiSession) {
             ),
             body = body,
         )
-        Log.d(TAG, "PUT /charge-accounts-multi-provider -> ${resp.status}")
+        Log.debug(TAG, "PUT /charge-accounts-multi-provider -> ${resp.status}")
         if (!resp.isSuccess) {
             // 422s here are opaque without the server's reason — log the full exchange so the
             // exact validation error (field name / compliance / challenge) is visible.
-            Log.w(TAG, "set-default failed ${resp.status}: req=$body resp=${resp.text}")
+            Log.status(TAG, "set-default failed ${resp.status}: req=$body resp=${resp.text}")
             return PaymentActionResult.Failed(session.httpError(resp))
         }
         // The response is a ChargeAccountsResponse; return the refreshed list when it parses.
@@ -88,7 +88,7 @@ internal class LyftPaymentsClient(private val session: LyftApiSession) {
             method = "DELETE",
             headers = session.authHeaders(token),
         )
-        Log.d(TAG, "DELETE /chargeaccounts/{id} -> ${resp.status}")
+        Log.debug(TAG, "DELETE /chargeaccounts/{id} -> ${resp.status}")
         if (!resp.isSuccess) return PaymentActionResult.Failed(session.httpError(resp))
         // Callers re-fetch the list after a delete.
         return PaymentActionResult.Success(null)
@@ -155,9 +155,9 @@ internal class LyftPaymentsClient(private val session: LyftApiSession) {
                 body = body,
             )
         }.getOrElse { return AddCardResult.Failed("Create card request failed: ${it.message}") }
-        Log.d(TAG, "POST /charge-accounts-multi-provider (create) -> ${resp.status}")
+        Log.debug(TAG, "POST /charge-accounts-multi-provider (create) -> ${resp.status}")
         if (!resp.isSuccess) {
-            Log.w(TAG, "add-card failed ${resp.status}: req=$body resp=${resp.text}")
+            Log.status(TAG, "add-card failed ${resp.status}: req=$body resp=${resp.text}")
             return AddCardResult.Failed(session.httpError(resp))
         }
         // Response is a ChargeAccountsResponse; return the refreshed list when it parses.

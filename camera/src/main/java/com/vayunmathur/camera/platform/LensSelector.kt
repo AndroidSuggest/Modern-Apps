@@ -2,7 +2,7 @@ package com.vayunmathur.camera.platform
 
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraMetadata
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -56,7 +56,7 @@ private fun readRawLens(info: androidx.camera.core.CameraInfo): RawLens? {
     return try {
         readRawLensOrThrow(info)
     } catch (e: IllegalArgumentException) {
-        Log.w("LensSelector", "Skipping camera info during lens enumeration", e)
+        Log.status("LensSelector", "Skipping camera info during lens enumeration", e)
         null
     }
 }
@@ -172,10 +172,10 @@ fun CameraViewModel.ensureLensesEnumerated(provider: ProcessCameraProvider) {
     val all = try {
         enumerateLenses(provider)
     } catch (e: IllegalStateException) {
-        Log.w("LensSelector", "Lens enumeration failed; sessions fall back to facing-only selectors", e)
+        Log.status("LensSelector", "Lens enumeration failed; sessions fall back to facing-only selectors", e)
         emptyList()
     } catch (e: IllegalArgumentException) {
-        Log.w("LensSelector", "Lens enumeration failed; sessions fall back to facing-only selectors", e)
+        Log.status("LensSelector", "Lens enumeration failed; sessions fall back to facing-only selectors", e)
         emptyList()
     }
     availableLensesMutable.value = all
@@ -184,7 +184,7 @@ fun CameraViewModel.ensureLensesEnumerated(provider: ProcessCameraProvider) {
         selectedLensMutable.value = LensSelectionLogic.filterByFacing(all, facing)
             .minByOrNull { it.fallbackPriority }
     }
-    Log.d("LensSelector", "Enumerated ${all.size} lenses; selected=${selectedLensMutable.value?.labelKey}")
+    Log.debug("LensSelector", "Enumerated ${all.size} lenses; selected=${selectedLensMutable.value?.labelKey}")
 }
 
 /** Lenses of the current facing, ordered by fallback priority. */
@@ -249,15 +249,15 @@ fun CameraViewModel.bindWithFallback(
             first = false
             val camera = bind(lensSelector(facingInt, candidate))
             if (candidate != requested) {
-                Log.w("LensSelector", "Fell back to lens=${candidate?.labelKey} (requested=${requested?.labelKey})")
+                Log.status("LensSelector", "Fell back to lens=${candidate?.labelKey} (requested=${requested?.labelKey})")
             }
             return candidate to camera
         } catch (e: IllegalStateException) {
             lastError = e
-            Log.w("LensSelector", "Bind failed on lens=${candidate?.labelKey}; trying next", e)
+            Log.status("LensSelector", "Bind failed on lens=${candidate?.labelKey}; trying next", e)
         } catch (e: IllegalArgumentException) {
             lastError = e
-            Log.w("LensSelector", "Bind failed on lens=${candidate?.labelKey}; trying next", e)
+            Log.status("LensSelector", "Bind failed on lens=${candidate?.labelKey}; trying next", e)
         }
     }
     throw lastError ?: IllegalStateException("Lens bind failed with an empty ladder")

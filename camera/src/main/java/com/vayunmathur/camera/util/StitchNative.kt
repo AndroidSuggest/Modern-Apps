@@ -1,6 +1,6 @@
 package com.vayunmathur.camera.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * JNI bridge to the native `camera_stitch` Rust library (feature-based panorama
@@ -11,13 +11,13 @@ import android.util.Log
 object StitchNative {
     val isAvailable: Boolean = try {
         System.loadLibrary("camera_stitch")
-        Log.i("StitchNative", "libcamera_stitch loaded")
+        Log.status("StitchNative", "libcamera_stitch loaded")
         true
     } catch (e: UnsatisfiedLinkError) {
-        Log.e("StitchNative", "System.loadLibrary(camera_stitch) failed", e)
+        Log.error("StitchNative", "System.loadLibrary(camera_stitch) failed", e)
         false
     } catch (e: SecurityException) {
-        Log.e("StitchNative", "System.loadLibrary(camera_stitch) failed", e)
+        Log.error("StitchNative", "System.loadLibrary(camera_stitch) failed", e)
         false
     }
 

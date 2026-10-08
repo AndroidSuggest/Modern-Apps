@@ -3,7 +3,7 @@ import android.app.Application
 import android.content.ContentValues
 import android.net.Uri
 import android.provider.CalendarContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.annotation.StringRes
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
@@ -141,7 +141,7 @@ class CalendarViewModel(application: Application) :
                             arrayOf(ev.id.toString()),
                         )
                     } catch (expected: Exception) {
-                        Log.e("CalendarViewModel", "Error applying default reminders", expected)
+                        Log.error("CalendarViewModel", "Error applying default reminders", expected)
                     }
                 }
                 _events.value = Event.getAllEvents(app)
@@ -188,7 +188,7 @@ class CalendarViewModel(application: Application) :
                         allEvents.addAll(parseICSFile(iS))
                     }
                 } catch (expected: Exception) {
-                    Log.e("CalendarViewModel", "Error parsing ICS file: $uri", expected)
+                    Log.error("CalendarViewModel", "Error parsing ICS file: $uri", expected)
                 }
             }
             _parsedIcsEvents.value = allEvents
@@ -237,7 +237,7 @@ class CalendarViewModel(application: Application) :
                     _events.value = Event.getAllEvents(app)
                     ReminderScheduler.reconcileAll(app, _events.value)
                 } catch (expected: Exception) {
-                    Log.e("CalendarViewModel", "Error importing events", expected)
+                    Log.error("CalendarViewModel", "Error importing events", expected)
                 }
             }
             updateWidgets()
@@ -263,7 +263,7 @@ class CalendarViewModel(application: Application) :
                 } ?: error("Could not open $uri for writing")
                 app.getString(R.string.export_ics_success)
             } catch (expected: Exception) {
-                Log.e("CalendarViewModel", "Error exporting ICS to $uri", expected)
+                Log.error("CalendarViewModel", "Error exporting ICS to $uri", expected)
                 app.getString(R.string.export_ics_failed_format, expected.message ?: expected.javaClass.simpleName)
             }
             withContext(Dispatchers.Main) { AppMessages.show(message) }
@@ -354,7 +354,7 @@ class CalendarViewModel(application: Application) :
                     arrayOf(calendarId.toString()),
                 )
             } catch (expected: Exception) {
-                Log.e("CalendarViewModel", "Error setting calendar visibility", expected)
+                Log.error("CalendarViewModel", "Error setting calendar visibility", expected)
             }
             refreshCalendarsAndWidgets()
         }
@@ -410,7 +410,7 @@ class CalendarViewModel(application: Application) :
                 ReminderScheduler.reconcileAll(app, _events.value)
                 updateWidgets()
             } catch (expected: Exception) {
-                Log.e("CalendarViewModel", "Error upserting event", expected)
+                Log.error("CalendarViewModel", "Error upserting event", expected)
             }
         }
     }
@@ -430,7 +430,7 @@ class CalendarViewModel(application: Application) :
                     arrayOf(calendarId.toString()),
                 )
             } catch (expected: Exception) {
-                Log.e("CalendarViewModel", "Error setting calendar color", expected)
+                Log.error("CalendarViewModel", "Error setting calendar color", expected)
             }
             refreshCalendarsAndWidgets()
         }
@@ -443,7 +443,7 @@ class CalendarViewModel(application: Application) :
         val app = getApplication<Application>()
         val cal = calendars.value.find { it.id == calendarId }
         if (cal == null || !cal.canModify) {
-            Log.e("CalendarViewModel", "Attempted to rename a readonly or non-existent calendar")
+            Log.error("CalendarViewModel", "Attempted to rename a readonly or non-existent calendar")
             return
         }
         val values = ContentValues().apply {
@@ -460,7 +460,7 @@ class CalendarViewModel(application: Application) :
                     arrayOf(calendarId.toString()),
                 )
             } catch (expected: Exception) {
-                Log.e("CalendarViewModel", "Error renaming calendar", expected)
+                Log.error("CalendarViewModel", "Error renaming calendar", expected)
             }
             refreshCalendarsAndWidgets()
         }
@@ -471,7 +471,7 @@ class CalendarViewModel(application: Application) :
         val app = getApplication<Application>()
         val cal = calendars.value.find { it.id == calendarId }
         if (cal == null || !cal.canModify) {
-            Log.e("CalendarViewModel", "Attempted to delete a readonly or non-existent calendar")
+            Log.error("CalendarViewModel", "Attempted to delete a readonly or non-existent calendar")
             return
         }
         val uri = CalendarContract.Calendars.CONTENT_URI
@@ -479,7 +479,7 @@ class CalendarViewModel(application: Application) :
             try {
                 app.contentResolver.delete(uri, "${CalendarContract.Calendars._ID} = ?", arrayOf(calendarId.toString()))
             } catch (expected: Exception) {
-                Log.e("CalendarViewModel", "Error deleting calendar", expected)
+                Log.error("CalendarViewModel", "Error deleting calendar", expected)
             }
             refreshCalendarsAndWidgets()
         }
@@ -523,7 +523,7 @@ class CalendarViewModel(application: Application) :
                 val resultUri = app.contentResolver.insert(uri, values)
                 newId = resultUri?.lastPathSegment?.toLongOrNull()
             } catch (expected: Exception) {
-                Log.e("CalendarViewModel", "Error creating local calendar", expected)
+                Log.error("CalendarViewModel", "Error creating local calendar", expected)
             }
             refreshCalendarsAndWidgets()
             withContext(Dispatchers.Main) {
@@ -550,6 +550,6 @@ internal fun android.content.ContentResolver.writeReminders(eventId: Long, remin
             })
         }
     } catch (expected: Exception) {
-        Log.e("CalendarViewModel", "Error writing reminders", expected)
+        Log.error("CalendarViewModel", "Error writing reminders", expected)
     }
 }

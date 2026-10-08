@@ -3,7 +3,7 @@ package com.vayunmathur.email.data
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.edit
 import androidx.core.net.toUri
@@ -103,13 +103,13 @@ object OutlookOAuth {
             }
             .build()
 
-        Log.d(TAG, "Starting Outlook OAuth -> $url redirect=$redirectUri")
+        Log.debug(TAG, "Starting Outlook OAuth -> $url redirect=$redirectUri")
         try {
             CustomTabsIntent.Builder().build().apply {
                 intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             }.launchUrl(context, url)
         } catch (e: android.content.ActivityNotFoundException) {
-            Log.w(TAG, "CustomTabs failed, fallback to VIEW: ${e.message}")
+            Log.status(TAG, "CustomTabs failed, fallback to VIEW: ${e.message}")
             runCatching {
                 context.startActivity(
                     android.content.Intent(android.content.Intent.ACTION_VIEW, url).apply {
@@ -131,7 +131,7 @@ object OutlookOAuth {
 
     suspend fun complete(context: Context, redirect: Uri): OAuthResult {
         val rawStr = redirect.toString()
-        Log.d(
+        Log.debug(
             TAG,
             "complete redirect=$redirect host=${redirect.host} " +
                 "path=${redirect.path} query=${redirect.query} raw=$rawStr",
@@ -140,7 +140,7 @@ object OutlookOAuth {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val verifier = prefs.getString("verifier", null)
         if (verifier == null) {
-            Log.e(TAG, "No verifier — prefs $PREFS missing; wrong flow or cleared?")
+            Log.error(TAG, "No verifier — prefs $PREFS missing; wrong flow or cleared?")
             return OAuthResult.Failure("No PKCE verifier found — please try signing in again")
         }
         val session = OAuthSession(
@@ -156,7 +156,7 @@ object OutlookOAuth {
 
         val returnedState = redirect.getQueryParameter("state") ?: extractQueryParam(rawStr, "state")
         if (session.expectedState != null && returnedState != null && returnedState != session.expectedState) {
-            Log.e(TAG, "State mismatch exp=${session.expectedState} got=$returnedState")
+            Log.error(TAG, "State mismatch exp=${session.expectedState} got=$returnedState")
             prefs.edit { clear() }
             return OAuthResult.Failure(
                 "State mismatch — possible CSRF, please retry",
@@ -176,7 +176,7 @@ object OutlookOAuth {
 
         val email = tokens.idTokenEmail ?: session.emailHint.takeIf { it.contains("@") }
         if (email.isNullOrBlank()) {
-            Log.e(TAG, "No email from id_token, hint='${session.emailHint}'")
+            Log.error(TAG, "No email from id_token, hint='${session.emailHint}'")
             return OAuthResult.Failure(
                 "No email found in id_token — try entering your email before signing in",
                 "no_email_in_id_token",
@@ -185,7 +185,7 @@ object OutlookOAuth {
         }
 
         persistAccount(context, email, tokens)
-        Log.d(TAG, "Outlook persisted: $email")
+        Log.debug(TAG, "Outlook persisted: $email")
         return OAuthResult.Success(email)
     }
 
@@ -202,7 +202,7 @@ object OutlookOAuth {
     ): OAuthResult.Failure {
         val err = redirect.getQueryParameter("error") ?: extractQueryParam(rawStr, "error")
         val desc = redirect.getQueryParameter("error_description") ?: extractQueryParam(rawStr, "error_description")
-        Log.e(TAG, "No code, error=$err desc=$desc raw=$rawStr")
+        Log.error(TAG, "No code, error=$err desc=$desc raw=$rawStr")
         if (err != null) prefs.edit { clear() }
         val reason = err ?: "No authorization code from Microsoft"
         return OAuthResult.Failure(reason, err, desc)
@@ -224,7 +224,7 @@ object OutlookOAuth {
     }
 
     private fun exchangeFailure(result: ExchangeResult): OAuthResult.Failure {
-        Log.e(TAG, "Token exchange failed: ${result.error} desc=${result.errorDescription} raw=${result.rawBody}")
+        Log.error(TAG, "Token exchange failed: ${result.error} desc=${result.errorDescription} raw=${result.rawBody}")
         val reason = result.error ?: "Token exchange failed"
         return OAuthResult.Failure(reason, result.error, result.errorDescription ?: result.rawBody)
     }
@@ -296,7 +296,7 @@ object OutlookOAuth {
     private suspend fun exchangeWithError(form: Map<String, String>): ExchangeResult = withContext(Dispatchers.IO) {
         try {
             val (respCode, text) = postTokenForm(form)
-            Log.d(
+            Log.debug(
                 TAG,
                 "token $respCode " +
                     "body=$text formKeys=${redactedFormKeys(form)}",
@@ -306,10 +306,10 @@ object OutlookOAuth {
             }
             parseTokenResponse(text)
         } catch (e: IOException) {
-            Log.e(TAG, "exchange IO failure", e)
+            Log.error(TAG, "exchange IO failure", e)
             ExchangeResult(null, e.javaClass.simpleName, e.message, null)
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "exchange parse failure", e)
+            Log.error(TAG, "exchange parse failure", e)
             ExchangeResult(null, e.javaClass.simpleName, e.message, null)
         }
     }
@@ -335,7 +335,7 @@ object OutlookOAuth {
     }
 
     private fun failedExchange(respCode: Int, text: String): ExchangeResult {
-        Log.e(TAG, "token exchange $respCode: $text")
+        Log.error(TAG, "token exchange $respCode: $text")
         var err: String? = null
         var errDesc: String? = null
         try {
@@ -382,7 +382,7 @@ object OutlookOAuth {
         val obj = json.parseToJsonElement(decoded) as? JsonObject ?: return null
         (obj["email"] ?: obj["preferred_username"] ?: obj["upn"] ?: obj["unique_name"])?.jsonPrimitive?.contentOrNull()
     } catch (e: IllegalArgumentException) {
-        Log.e(TAG, "id_token decode", e)
+        Log.error(TAG, "id_token decode", e)
         null
     }
 

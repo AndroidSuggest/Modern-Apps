@@ -3,7 +3,7 @@ package com.vayunmathur.screentime.platform
 import android.app.PendingIntent
 import android.app.usage.UsageStatsManager
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 import com.vayunmathur.screentime.data.AppTimer
 import com.vayunmathur.screentime.receiver.TimerReachedReceiver
@@ -45,7 +45,7 @@ class AppTimers(private val context: Context) {
         val usage = usage ?: return
         val method = unregisterMethod ?: return
         runCatching { method.invoke(usage, observerId(packageName)) }
-            .onFailure { Log.w(TAG, "could not unregister the observer for $packageName", it) }
+            .onFailure { Log.status(TAG, "could not unregister the observer for $packageName", it) }
     }
 
     private fun register(usage: UsageStatsManager, packageName: String, minutes: Int) {
@@ -72,7 +72,7 @@ class AppTimers(private val context: Context) {
                 java.util.concurrent.TimeUnit.MINUTES,
                 pending,
             )
-        }.onFailure { Log.w(TAG, "could not register an observer for $packageName", it) }
+        }.onFailure { Log.status(TAG, "could not register an observer for $packageName", it) }
     }
 
     /**
@@ -87,7 +87,7 @@ class AppTimers(private val context: Context) {
         val stats = runCatching {
             usage.queryAndAggregateUsageStats(midnight, System.currentTimeMillis())
         }.getOrElse {
-            Log.w(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
+            Log.status(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
             return Duration.ZERO
         }
         return Duration.ofMillis(stats[packageName]?.totalTimeInForeground ?: 0L)
@@ -105,7 +105,7 @@ class AppTimers(private val context: Context) {
         val stats = runCatching {
             usage.queryAndAggregateUsageStats(midnight, System.currentTimeMillis())
         }.getOrElse {
-            Log.w(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
+            Log.status(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
             return Duration.ZERO
         }
         return Duration.ofMillis(stats.values.sumOf { it.totalTimeInForeground })
@@ -130,7 +130,7 @@ class AppTimers(private val context: Context) {
                 .mapValues { (_, stats) -> stats.totalTimeInForeground }
                 .filterValues { it > 0 }
         }.getOrElse {
-            Log.w(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
+            Log.status(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
             null
         }
     }
@@ -164,7 +164,7 @@ class AppTimers(private val context: Context) {
 
         fun systemApi(name: String, vararg params: Class<*>): java.lang.reflect.Method? =
             runCatching { UsageStatsManager::class.java.getMethod(name, *params) }
-                .onFailure { Log.w(TAG, "UsageStatsManager.$name is unreachable", it) }
+                .onFailure { Log.status(TAG, "UsageStatsManager.$name is unreachable", it) }
                 .getOrNull()
     }
 }

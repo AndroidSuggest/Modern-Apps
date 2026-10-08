@@ -1,7 +1,7 @@
 package com.vayunmathur.camera.util
 
 import android.media.MediaFormat
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -26,10 +26,10 @@ suspend fun CameraViewModel.setupVideoSession(): Boolean {
         finishVideoSession()
         true
     } catch (e: IllegalStateException) {
-        Log.e("VideoSession", "Failed to set up video session", e)
+        Log.error("VideoSession", "Failed to set up video session", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e("VideoSession", "Failed to set up video session", e)
+        Log.error("VideoSession", "Failed to set up video session", e)
         false
     }
 }
@@ -86,14 +86,14 @@ private fun CameraViewModel.resolveVideoChoices(cameraInfo: androidx.camera.core
     // HEVC/H.264 codec (AV1 stays off). Preview and VideoCapture must share the dynamic
     // range or the bind fails, so both are gated together.
     val hlgSupported = hlgSupportedByCamera(cameraInfo)
-    Log.d("VideoSession", "Codec selection: av1=$useAv1, hevc=$useHevc, opus=$useOpus, hlg10=$hlgSupported")
+    Log.debug("VideoSession", "Codec selection: av1=$useAv1, hevc=$useHevc, opus=$useOpus, hlg10=$hlgSupported")
 
     // Cinematic mode enables video stabilization; all video modes always record at max
     // quality/fps (no UI picker).
     val cinematic = cameraModeMutable.value == CameraMode.CINEMATIC
     val bestFpsRange = highestFpsRange(cameraInfo)
     val stabilizationMode = if (cinematic) preferredStabilizationMode(cameraInfo) else null
-    Log.d("VideoSession", "Video tuning: fps=$bestFpsRange, stabilization=$stabilizationMode")
+    Log.debug("VideoSession", "Video tuning: fps=$bestFpsRange, stabilization=$stabilizationMode")
 
     // Prefer UHD, then FHD, then HD, falling back to the next lower supported quality.
     val qualitySelector = QualitySelector.fromOrderedList(
@@ -188,7 +188,7 @@ private fun CameraViewModel.tryVideoRung(
         true
     } catch (e: IllegalStateException) {
         videoLastError = e
-        Log.w(
+        Log.status(
             "VideoSession",
             "Video bind failed (hlg=$hlg, snapshot=$snapshot, " +
                 "lens=${candidate?.labelKey}); trying next",
@@ -197,7 +197,7 @@ private fun CameraViewModel.tryVideoRung(
         false
     } catch (e: IllegalArgumentException) {
         videoLastError = e
-        Log.w(
+        Log.status(
             "VideoSession",
             "Video bind failed (hlg=$hlg, snapshot=$snapshot, " +
                 "lens=${candidate?.labelKey}); trying next",

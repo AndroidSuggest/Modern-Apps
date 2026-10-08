@@ -1,6 +1,6 @@
 package com.vayunmathur.auto.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalMessage
 import com.vayunmathur.auto.protocol.InputCodec
@@ -83,7 +83,7 @@ class InputChannel(
         val (type, payload) = InputCodec.encodeKeyBinding(keycodes)
         connection.send(channelId, type, payload)
         bound = true
-        Log.i(TAG, "input channel open; bound ${keycodes.size} keycodes")
+        Log.status(TAG, "input channel open; bound ${keycodes.size} keycodes")
         onEvent(InputEvent.BindingRequested(keycodes.size))
     }
 
@@ -99,7 +99,7 @@ class InputChannel(
         if (!bound) return
         val (type, payload) = InputCodec.encodeFeedback(feedbackEvent)
         connection.send(channelId, type, payload)
-        Log.d(TAG, "input feedback sent: $feedbackEvent")
+        Log.debug(TAG, "input feedback sent: $feedbackEvent")
         onEvent(InputEvent.FeedbackSent(feedbackEvent))
     }
 
@@ -118,7 +118,7 @@ class InputChannel(
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
+            Log.status(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         if (!bound) {
@@ -126,7 +126,7 @@ class InputChannel(
             // talking on a channel we never bound (or the grant path never
             // ran). Log, don't crash -- the binding goes out on the grant and
             // on the focus flap back to input-allowed.
-            Log.w(TAG, "ch8 traffic before binding (0x${type.toString(HEX_RADIX)}); dropping")
+            Log.status(TAG, "ch8 traffic before binding (0x${type.toString(HEX_RADIX)}); dropping")
             onEvent(InputEvent.DroppedNoFocus)
             return
         }
@@ -136,17 +136,17 @@ class InputChannel(
         }
         val events = InputCodec.decodeInbound(type, payload)
         if (events == null) {
-            Log.d(TAG, "unhandled input message 0x${type.toString(HEX_RADIX)}")
+            Log.debug(TAG, "unhandled input message 0x${type.toString(HEX_RADIX)}")
             return
         }
         if (!isInputAllowed()) {
-            Log.d(TAG, "dropping ${events.describe()} without input focus")
+            Log.debug(TAG, "dropping ${events.describe()} without input focus")
             onEvent(InputEvent.DroppedNoFocus)
             return
         }
         val display = displaySize()
         if (display == null) {
-            Log.d(TAG, "dropping ${events.describe()} with no car display yet")
+            Log.debug(TAG, "dropping ${events.describe()} with no car display yet")
             onEvent(InputEvent.DroppedNoFocus)
             return
         }
@@ -155,7 +155,7 @@ class InputChannel(
 
     private fun onBindingResponse(payload: ByteArray) {
         val status = runCatching { InputCodec.decodeKeyBindingResponse(payload) }.getOrNull()
-        Log.i(TAG, "key binding response: ${status?.status}")
+        Log.status(TAG, "key binding response: ${status?.status}")
         onEvent(InputEvent.BindingAnswered(status?.status ?: BINDING_UNKNOWN_STATUS))
     }
 
@@ -222,7 +222,7 @@ class InputChannel(
                     sendInjectFeedback()
                 }
             } else {
-                Log.d(TAG, "ignoring absolute event keycode=$keycode value=$value")
+                Log.debug(TAG, "ignoring absolute event keycode=$keycode value=$value")
             }
         }
     }

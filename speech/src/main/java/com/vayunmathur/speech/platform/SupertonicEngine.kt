@@ -1,7 +1,7 @@
 package com.vayunmathur.speech.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ml.SupertonicSynthesizer
 import com.vayunmathur.speech.domain.SupertonicVoices
 import java.io.File
@@ -88,7 +88,7 @@ class SupertonicEngine(private val context: Context) {
             try {
                 engine.synthesize(text, language)
             } catch (e: Exception) {
-                Log.e(TAG, "synthesis failed", e)
+                Log.error(TAG, "synthesis failed", e)
                 return false
             }
         }
@@ -137,7 +137,7 @@ class SupertonicEngine(private val context: Context) {
         attempts++
         val built = SupertonicSynthesizer.inAssets(context.assets, voice = voice)
         if (!built.isAvailable) {
-            Log.e(TAG, "the Supertonic bundle is not usable on this device (attempt $attempts)")
+            Log.error(TAG, "the Supertonic bundle is not usable on this device (attempt $attempts)")
             built.close()
             return null
         }
@@ -192,7 +192,7 @@ object SupertonicBundle {
             // Deliberately not cached. A throw here is a failure to *read* the assets rather than
             // an answer about them, and pinning `false` on it would unadvertise the engine for the
             // life of the process over something that may not recur.
-            Log.e(TAG, "cannot list the Supertonic assets", e)
+            Log.error(TAG, "cannot list the Supertonic assets", e)
             return false
         }
         val found = REQUIRED.all { it in entries }
@@ -219,7 +219,7 @@ object SupertonicBundle {
             root.deleteRecursively()
             bytes
         }.getOrNull() ?: return
-        Log.i(TAG, "removed ${freed / BYTES_PER_MB} MB of Piper voices that nothing reads")
+        Log.status(TAG, "removed ${freed / BYTES_PER_MB} MB of Piper voices that nothing reads")
     }
 
     private const val TAG = "SupertonicBundle"

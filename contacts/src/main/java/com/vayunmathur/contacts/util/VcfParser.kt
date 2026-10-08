@@ -13,6 +13,7 @@ import com.vayunmathur.contacts.data.Note
 import com.vayunmathur.contacts.data.Organization
 import com.vayunmathur.contacts.data.PhoneNumber
 import com.vayunmathur.contacts.data.Photo
+import com.vayunmathur.library.log.Log
 import kotlinx.datetime.LocalDate
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -294,7 +295,7 @@ private class VcfParser(
             builder.groups.addAll(resolveGroups(names))
         } catch (e: Exception) {
             // Default no-op / resolver failures must never crash import.
-            android.util.Log.w("VcfParser", "Group resolution failed", e)
+            Log.status("VcfParser", "Group resolution failed", e)
         }
     }
 
@@ -316,10 +317,10 @@ private class VcfParser(
         return try {
             if (isQP) decodeQuotedPrintable(valuePart, charsetName ?: "UTF-8") else valuePart
         } catch (e: java.io.UnsupportedEncodingException) {
-            android.util.Log.w("VcfParser", "Unsupported charset for QP value", e)
+            Log.status("VcfParser", "Unsupported charset for QP value", e)
             valuePart
         } catch (e: IllegalArgumentException) {
-            android.util.Log.w("VcfParser", "Bad QP value", e)
+            Log.status("VcfParser", "Bad QP value", e)
             valuePart
         }
     }
@@ -337,7 +338,7 @@ private class VcfParser(
         return try {
             LocalDate.parse(dv)
         } catch (e: IllegalArgumentException) {
-            android.util.Log.w("VcfParser", "Unparseable VCF date", e)
+            Log.status("VcfParser", "Unparseable VCF date", e)
             null
         }
     }

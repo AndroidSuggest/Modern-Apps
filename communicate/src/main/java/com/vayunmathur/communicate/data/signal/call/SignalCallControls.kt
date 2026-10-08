@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal.call
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import org.signal.ringrtc.CallId
 import org.signal.ringrtc.CallManager
 

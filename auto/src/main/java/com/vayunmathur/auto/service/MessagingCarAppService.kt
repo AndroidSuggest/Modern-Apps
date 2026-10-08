@@ -1,6 +1,6 @@
 package com.vayunmathur.auto.service
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.app.RemoteInput
 import com.vayunmathur.auto.notifications.MessageMirrorBus
 import com.vayunmathur.auto.notifications.MessageReplyRoute
@@ -52,7 +52,7 @@ class MessagingCarAppService(
     /** The channel grant arrived; start mirroring the phone side. */
     fun onChannelOpen() {
         open = true
-        Log.i(TAG, "messaging channel open; mirroring message threads")
+        Log.status(TAG, "messaging channel open; mirroring message threads")
         mirror = MessageMirrorBus.register { thread, message, route ->
             onPhoneMessage(thread, message, route)
         }
@@ -61,14 +61,14 @@ class MessagingCarAppService(
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
+            Log.status(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         // Only ACTION arrives here; anything else (a head unit echoing our own
         // posts, a future extension) is observed and ignored.
         val action = MessagingCodec.decodeInbound(type, payload)
         if (action == null) {
-            Log.d(TAG, "unhandled messaging message 0x${type.toString(HEX_RADIX)}")
+            Log.debug(TAG, "unhandled messaging message 0x${type.toString(HEX_RADIX)}")
             return
         }
         when (action) {
@@ -100,13 +100,13 @@ class MessagingCarAppService(
         val intent = route?.replyIntent
         val remoteInput = route?.remoteInput
         if (intent == null || remoteInput == null) {
-            Log.i(TAG, "reply for $threadId with no app route; dropping")
+            Log.status(TAG, "reply for $threadId with no app route; dropping")
             onEvent(MessagingEvent.ReplyFailed(threadId, "no-route"))
             onReply(threadId, text)
             return
         }
         val appContext = context() ?: run {
-            Log.i(TAG, "reply for $threadId with no context; dropping")
+            Log.status(TAG, "reply for $threadId with no context; dropping")
             onEvent(MessagingEvent.ReplyFailed(threadId, "no-context"))
             onReply(threadId, text)
             return
@@ -119,11 +119,11 @@ class MessagingCarAppService(
             intent.send(appContext, 0, fillIn)
         }
             .onSuccess {
-                Log.i(TAG, "reply for $threadId handed to message app")
+                Log.status(TAG, "reply for $threadId handed to message app")
                 onEvent(MessagingEvent.ReplySent(threadId))
             }
             .onFailure {
-                Log.w(TAG, "reply for $threadId failed to send", it)
+                Log.status(TAG, "reply for $threadId failed to send", it)
                 onEvent(MessagingEvent.ReplyFailed(threadId, "send-failed"))
             }
         onReply(threadId, text)
@@ -132,11 +132,11 @@ class MessagingCarAppService(
     /** Fires the thread's mark-read intent, if the app advertised one. */
     private fun sendMarkRead(threadId: String) {
         val readIntent = routes[threadId]?.readIntent ?: run {
-            Log.d(TAG, "mark-read for $threadId with no app route")
+            Log.debug(TAG, "mark-read for $threadId with no app route")
             return
         }
         runCatching { readIntent.send() }
-            .onFailure { Log.w(TAG, "mark-read for $threadId failed", it) }
+            .onFailure { Log.status(TAG, "mark-read for $threadId failed", it) }
     }
 
     /** A phone notification arrived: snapshot the threads, post the body, read it aloud. */

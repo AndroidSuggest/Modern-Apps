@@ -6,6 +6,7 @@ import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.data.ContactDetails
 import com.vayunmathur.contacts.data.SimContactsDataSource
 import com.vayunmathur.contacts.data.isSimAccountType
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -40,11 +41,11 @@ private fun ContactViewModel.parseSingleVcfUri(
             allContacts.addAll(VcfUtils.parseContacts(input))
         }
     } catch (e: java.io.FileNotFoundException) {
-        android.util.Log.e("ContactViewModel", "Error parsing VCF file: $uri", e)
+        Log.error("ContactViewModel", "Error parsing VCF file: $uri", e)
     } catch (e: SecurityException) {
-        android.util.Log.e("ContactViewModel", "Error parsing VCF file: $uri", e)
+        Log.error("ContactViewModel", "Error parsing VCF file: $uri", e)
     } catch (e: java.io.IOException) {
-        android.util.Log.e("ContactViewModel", "Error parsing VCF file: $uri", e)
+        Log.error("ContactViewModel", "Error parsing VCF file: $uri", e)
     }
 }
 
@@ -79,7 +80,7 @@ fun ContactViewModel.importVcfContacts(
                     importVcfToProvider(app, contacts, accountName, accountType)
                 }
             } catch (e: Exception) {
-                android.util.Log.e("ContactViewModel", "Error importing contacts", e)
+                Log.error("ContactViewModel", "Error importing contacts", e)
             }
         }
         loadContacts()

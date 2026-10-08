@@ -8,7 +8,7 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Message
 import android.os.Messenger
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.parentalcontrols.platform.SupervisionApis
 import com.vayunmathur.parentalcontrols.platform.SupervisionCaller
 
@@ -79,7 +79,7 @@ class SupervisionMessengerService : Service() {
         override fun handleMessage(msg: Message) {
             val replyTo = msg.replyTo
             if (replyTo == null) {
-                Log.w(TAG, "ignoring a request with no replyTo")
+                Log.status(TAG, "ignoring a request with no replyTo")
                 return
             }
             val apiId = msg.what
@@ -92,7 +92,7 @@ class SupervisionMessengerService : Service() {
                 // Not merely unhelpful: these answers describe how a child's device is supervised,
                 // and the role this app holds is powerful enough that an unchecked bound service
                 // would be a way to ask about it from anywhere.
-                Log.w(TAG, "refusing api $apiId from uid $sendingUid; only Settings may ask")
+                Log.status(TAG, "refusing api $apiId from uid $sendingUid; only Settings may ask")
                 response.arg2 = STATUS_PERMISSION_DENIED
             } else {
                 when (apiId) {
@@ -106,7 +106,7 @@ class SupervisionMessengerService : Service() {
                         response.data = SupervisionApis.isSupervisorAccount()
 
                     else -> {
-                        Log.w(TAG, "unknown api id $apiId")
+                        Log.status(TAG, "unknown api id $apiId")
                         response.arg2 = STATUS_UNKNOWN_API
                     }
                 }
@@ -114,7 +114,7 @@ class SupervisionMessengerService : Service() {
             // A failure to reply is the client's problem to time out on; there is nothing useful
             // to do with it here, and throwing would take the handler thread down with it.
             runCatching { replyTo.send(response) }
-                .onFailure { Log.w(TAG, "could not reply to api $apiId", it) }
+                .onFailure { Log.status(TAG, "could not reply to api $apiId", it) }
         }
 
         private companion object {

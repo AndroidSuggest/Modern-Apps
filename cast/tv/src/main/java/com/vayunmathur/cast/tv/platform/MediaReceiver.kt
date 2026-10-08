@@ -1,6 +1,6 @@
 package com.vayunmathur.cast.tv.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.protocol.DecodableFrame
 import com.vayunmathur.cast.protocol.Negotiation
 import com.vayunmathur.cast.protocol.ReceiverSession
@@ -66,10 +66,10 @@ class MediaReceiver(
         } catch (_: java.net.SocketTimeoutException) {
             return false
         } catch (e: IOException) {
-            Log.w(TAG, "udp receive failed", e)
+            Log.status(TAG, "udp receive failed", e)
             return false
         } catch (e: SecurityException) {
-            Log.w(TAG, "udp receive failed", e)
+            Log.status(TAG, "udp receive failed", e)
             return false
         }
         senderAddress = datagram.address
@@ -132,13 +132,13 @@ class MediaReceiver(
             try {
                 socket.send(DatagramPacket(packet, packet.size, address, senderPort))
             } catch (e: IOException) {
-                Log.w(TAG, "could not send feedback", e)
+                Log.status(TAG, "could not send feedback", e)
                 return
             } catch (e: SecurityException) {
-                Log.w(TAG, "could not send feedback", e)
+                Log.status(TAG, "could not send feedback", e)
                 return
             } catch (e: IllegalArgumentException) {
-                Log.w(TAG, "could not send feedback", e)
+                Log.status(TAG, "could not send feedback", e)
                 return
             }
         }

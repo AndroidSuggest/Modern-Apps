@@ -2,7 +2,7 @@ package com.vayunmathur.library.network
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.ByteArrayInputStream
 import java.io.Closeable
 import java.io.IOException
@@ -183,7 +183,7 @@ internal object HttpUrlEngine {
             try {
                 conn.setChunkedStreamingMode(0)
             } catch (_: IllegalStateException) {
-                Log.d(TAG, "streaming mode already fixed; writing body as-is")
+                Log.debug(TAG, "streaming mode already fixed; writing body as-is")
             }
         }
         conn.outputStream.use { it.write(bodyBytes) }

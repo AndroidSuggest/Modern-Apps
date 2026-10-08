@@ -3,7 +3,7 @@ package com.vayunmathur.screentime.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.screentime.platform.Coordinator
 import com.vayunmathur.screentime.platform.EXTRA_PACKAGE_NAME
 import kotlinx.coroutines.CoroutineScope
@@ -25,7 +25,7 @@ class TimerReachedReceiver : BroadcastReceiver() {
     @Suppress("TooGenericExceptionCaught")
     override fun onReceive(context: Context, intent: Intent) {
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: run {
-            Log.w(TAG, "timer callback with no package")
+            Log.status(TAG, "timer callback with no package")
             return
         }
         val app = context.applicationContext
@@ -34,7 +34,7 @@ class TimerReachedReceiver : BroadcastReceiver() {
             try {
                 Coordinator(app).onTimerReached(packageName)
             } catch (e: Exception) {
-                Log.e(TAG, "could not enforce the timer for $packageName", e)
+                Log.error(TAG, "could not enforce the timer for $packageName", e)
             } finally {
                 pending.finish()
             }
@@ -51,7 +51,7 @@ class TimerReachedReceiver : BroadcastReceiver() {
             val app = context.applicationContext
             CoroutineScope(Dispatchers.IO).launch {
                 runCatching { Coordinator(app).onTimerReached(packageName) }
-                    .onFailure { Log.e(TAG, "could not enforce $packageName", it) }
+                    .onFailure { Log.error(TAG, "could not enforce $packageName", it) }
             }
         }
     }
@@ -70,7 +70,7 @@ class ScheduleReceiver : BroadcastReceiver() {
             try {
                 Coordinator(app).reconcile()
             } catch (e: Exception) {
-                Log.e(TAG, "schedule reconcile failed", e)
+                Log.error(TAG, "schedule reconcile failed", e)
             } finally {
                 pending.finish()
             }
@@ -106,7 +106,7 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 Coordinator(app).reconcile()
             } catch (e: Exception) {
-                Log.e(TAG, "boot reconcile failed", e)
+                Log.error(TAG, "boot reconcile failed", e)
             } finally {
                 pending.finish()
             }

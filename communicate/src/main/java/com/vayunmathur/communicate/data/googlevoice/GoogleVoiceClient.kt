@@ -1,6 +1,7 @@
 package com.vayunmathur.communicate.data.googlevoice
 
 import android.content.Context
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.SimpleResponse
 import java.io.IOException
@@ -104,8 +105,8 @@ class GoogleVoiceClient(private val session: GoogleVoiceSession) {
         // TEMP diagnostic logging of raw protojson so the positional parser can be pinned to the
         // real wire shapes. Chunked because logcat truncates long lines.
         val body = response.body
-        android.util.Log.d(TAG, "$path <= ${body.length} bytes")
-        body.chunked(LOG_CHUNK).forEachIndexed { i, chunk -> android.util.Log.d(TAG, "$path[$i] $chunk") }
+        Log.debug(TAG, "$path <= ${body.length} bytes")
+        body.chunked(LOG_CHUNK).forEachIndexed { i, chunk -> Log.debug(TAG, "$path[$i] $chunk") }
         return body
     }
 
@@ -115,7 +116,7 @@ class GoogleVoiceClient(private val session: GoogleVoiceSession) {
             throw GoogleVoiceAuthException("Google Voice auth rejected (${response.status})")
         }
         if (!response.isSuccess) {
-            android.util.Log.e(TAG, "$path failed HTTP ${response.status}: ${response.body.take(LOG_SNIPPET)}")
+            Log.error(TAG, "$path failed HTTP ${response.status}: ${response.body.take(LOG_SNIPPET)}")
             throw IOException("Google Voice ${path} failed: HTTP ${response.status}")
         }
     }

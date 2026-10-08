@@ -3,7 +3,7 @@ package com.vayunmathur.communicate.data.whatsapp.registration
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.security.KeyStore
 import javax.crypto.KeyGenerator
 import javax.crypto.Mac
@@ -52,7 +52,7 @@ object WhatsAppAttestationKeyStore {
         mac.init(key)
         mac.doFinal(body)
     }.getOrElse {
-        Log.w(TAG, "KeyStore HMAC sign failed; caller should fall back", it)
+        Log.status(TAG, "KeyStore HMAC sign failed; caller should fall back", it)
         null
     }
 

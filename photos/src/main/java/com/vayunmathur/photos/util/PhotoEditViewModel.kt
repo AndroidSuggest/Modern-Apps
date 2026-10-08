@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.IntentSender
 import android.graphics.Bitmap
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -151,9 +151,9 @@ class PhotoEditViewModel(
                 )
                 requestPreviewUpdate(immediate = true)
             } catch (e: IOException) {
-                Log.e(TAG, "decode failed for $uri", e)
+                Log.error(TAG, "decode failed for $uri", e)
             } catch (e: SecurityException) {
-                Log.e(TAG, "decode failed for $uri", e)
+                Log.error(TAG, "decode failed for $uri", e)
             }
         }
     }
@@ -213,10 +213,10 @@ class PhotoEditViewModel(
             val preview = try {
                 compositor.compositePreview(renderDoc, PREVIEW_MAX_DIM)
             } catch (e: IllegalArgumentException) {
-                Log.e(TAG, "preview composite failed", e)
+                Log.error(TAG, "preview composite failed", e)
                 return@launch
             } catch (e: IllegalStateException) {
-                Log.e(TAG, "preview composite failed", e)
+                Log.error(TAG, "preview composite failed", e)
                 return@launch
             }
             _compositedPreview.value = preview

@@ -8,7 +8,7 @@ import android.media.AudioRecord
 import android.media.projection.MediaProjection
 import android.os.Handler
 import android.os.HandlerThread
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -59,28 +59,28 @@ class MusicCapture(
      */
     fun start(projection: MediaProjection?) {
         val target = handler ?: run {
-            Log.d(TAG, "dropping music capture start; no capture thread")
+            Log.debug(TAG, "dropping music capture start; no capture thread")
             return
         }
         target.post {
             if (running) return@post
             if (!MusicCapturePrefs.isMusicCaptureConsented(appContext)) {
-                Log.i(TAG, "music capture not consented; ch5 stays silent")
+                Log.status(TAG, "music capture not consented; ch5 stays silent")
                 return@post
             }
             if (projection == null) {
-                Log.i(TAG, "music capture without projection grant; ch5 stays silent")
+                Log.status(TAG, "music capture without projection grant; ch5 stays silent")
                 return@post
             }
             val record = buildRecord(projection) ?: return@post
             runCatching { record.startRecording() }.onFailure {
-                Log.w(TAG, "music capture startRecording failed", it)
+                Log.status(TAG, "music capture startRecording failed", it)
                 runCatching { record.release() }
                 return@post
             }
             this.record = record
             running = true
-            Log.i(TAG, "music capture started (${CAPTURE_RATE_HZ}Hz mono)")
+            Log.status(TAG, "music capture started (${CAPTURE_RATE_HZ}Hz mono)")
             pump()
         }
     }
@@ -99,7 +99,7 @@ class MusicCapture(
             runCatching { record?.stop() }
             runCatching { record?.release() }
             record = null
-            Log.i(TAG, "music capture stopped")
+            Log.status(TAG, "music capture stopped")
         }
     }
 
@@ -138,7 +138,7 @@ class MusicCapture(
                 // socket bytes and keeps the sink's counters honest (music
                 // only, never quiet-room noise).
             } else if (read < 0) {
-                Log.w(TAG, "music capture read failed ($read); stopping")
+                Log.status(TAG, "music capture read failed ($read); stopping")
                 running = false
                 runCatching { active.stop() }
                 runCatching { active.release() }
@@ -170,7 +170,7 @@ class MusicCapture(
             AudioFormat.ENCODING_PCM_16BIT,
         )
         if (minBytes <= 0) {
-            Log.w(TAG, "music capture has no viable buffer ($minBytes)")
+            Log.status(TAG, "music capture has no viable buffer ($minBytes)")
             return null
         }
         return runCatching {
@@ -180,7 +180,7 @@ class MusicCapture(
                 .setBufferSizeInBytes((minBytes * BUFFER_SIZE_MULTIPLIER).coerceAtLeast(CHUNK_BYTES * 2))
                 .build()
         }.getOrElse {
-            Log.w(TAG, "music capture AudioRecord build failed", it)
+            Log.status(TAG, "music capture AudioRecord build failed", it)
             null
         }
     }

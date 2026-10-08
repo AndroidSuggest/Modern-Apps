@@ -1,7 +1,7 @@
 package com.vayunmathur.cast.platform
 
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.domain.ClientFailure
 import com.vayunmathur.cast.network.ControlSocket
 import com.vayunmathur.cast.protocol.Bye
@@ -180,7 +180,7 @@ class MirrorClient(
         val identity = identityFrame.message as? TvIdentity
             ?: return HandshakeOutcome.Failed(ClientFailure.Protocol)
         if (identity.version != PROTOCOL_VERSION) {
-            Log.w(TAG, "the TV speaks version ${identity.version}; we speak $PROTOCOL_VERSION")
+            Log.status(TAG, "the TV speaks version ${identity.version}; we speak $PROTOCOL_VERSION")
             return HandshakeOutcome.Failed(ClientFailure.VersionMismatch)
         }
         rememberIdentity(identityFrame.body, identity)
@@ -199,9 +199,9 @@ class MirrorClient(
 
     private fun logReceiverCapabilities(identity: TvIdentity) {
         if (identity.displayModes.isEmpty()) {
-            Log.w(TAG, "'${identity.receiverName}' reported no panel modes; a desktop will use phone geometry")
+            Log.status(TAG, "'${identity.receiverName}' reported no panel modes; a desktop will use phone geometry")
         } else {
-            Log.i(
+            Log.status(
                 TAG,
                 "'${identity.receiverName}' panel offers " +
                     identity.displayModes.joinToString { "${it.width}x${it.height}" },
@@ -210,10 +210,10 @@ class MirrorClient(
         if (identity.limits.videoCodecs.isEmpty()) {
             // Not a failure here - CastController names the codecs it checked - but the log is where
             // it would be diagnosed, and "the TV advertised nothing" is invisible otherwise.
-            Log.w(TAG, "'${identity.receiverName}' advertised no hardware video decoder at all")
+            Log.status(TAG, "'${identity.receiverName}' advertised no hardware video decoder at all")
         }
         for (codec in identity.limits.videoCodecs) {
-            Log.i(
+            Log.status(
                 TAG,
                 "'${identity.receiverName}' decodes ${codec.codec.label} up to " +
                     "${codec.maxWidth}x${codec.maxHeight} @ ${codec.maxFrameRate}fps, " +
@@ -282,7 +282,7 @@ class MirrorClient(
         val reply = socket.receive() ?: return HandshakeOutcome.Failed(ClientFailure.Unreachable)
         return when (val message = reply.message) {
             is PairOk -> {
-                Log.i(TAG, "paired with '$receiverName'")
+                Log.status(TAG, "paired with '$receiverName'")
                 HandshakeOutcome.Paired(message.deviceKey?.let { ProtocolBase64.decode(it) })
             }
             is PairFailed -> HandshakeOutcome.NeedsCode(
@@ -293,7 +293,7 @@ class MirrorClient(
             // or a reset - and has put a code on screen instead. Not a failure; the user just has to
             // read it.
             is PairRequired -> {
-                Log.i(TAG, "'$receiverName' no longer remembers this phone; a code is on screen")
+                Log.status(TAG, "'$receiverName' no longer remembers this phone; a code is on screen")
                 HandshakeOutcome.NeedsCode(message.attemptsLeft, codeChanged = false)
             }
             else -> HandshakeOutcome.Failed(ClientFailure.Protocol)
@@ -340,10 +340,10 @@ class MirrorClient(
         val ready = socket.receive()?.message as? StreamReady
             ?: return HandshakeOutcome.Failed(ClientFailure.StreamRefused)
         if (ready.udpPort !in MIN_UDP_PORT..MAX_UDP_PORT) {
-            Log.w(TAG, "the TV named udp port ${ready.udpPort}")
+            Log.status(TAG, "the TV named udp port ${ready.udpPort}")
             return HandshakeOutcome.Failed(ClientFailure.StreamRefused)
         }
-        Log.i(TAG, "streaming ${videoCodec.label} ${width}x$height to udp ${ready.udpPort}")
+        Log.status(TAG, "streaming ${videoCodec.label} ${width}x$height to udp ${ready.udpPort}")
         return HandshakeOutcome.Ready(Negotiation.of(config, ready, sessionKeys))
     }
 
@@ -395,14 +395,14 @@ class MirrorClient(
         val ready = withTimeoutOrNull(RECONFIGURE_TIMEOUT_MS) { waiter.await() }
         pendingStreamReady = null
         if (ready == null) {
-            Log.w(TAG, "'$receiverName' did not answer a mid-session STREAM_CONFIG")
+            Log.status(TAG, "'$receiverName' did not answer a mid-session STREAM_CONFIG")
             return HandshakeOutcome.Failed(ClientFailure.StreamRefused)
         }
         if (ready.udpPort !in MIN_UDP_PORT..MAX_UDP_PORT) {
-            Log.w(TAG, "the TV named udp port ${ready.udpPort}")
+            Log.status(TAG, "the TV named udp port ${ready.udpPort}")
             return HandshakeOutcome.Failed(ClientFailure.StreamRefused)
         }
-        Log.i(TAG, "restreaming ${videoCodec.label} ${width}x$height to udp ${ready.udpPort}")
+        Log.status(TAG, "restreaming ${videoCodec.label} ${width}x$height to udp ${ready.udpPort}")
         return HandshakeOutcome.Ready(Negotiation.of(config, ready, sessionKeys))
     }
 
@@ -440,10 +440,10 @@ class MirrorClient(
         val ready = socket.receive()?.message as? ContentReady
             ?: return ContentOutcome.Refused("the TV did not answer")
         if (!ready.accepted) {
-            Log.w(TAG, "the TV refused a content session: ${ready.detail}")
+            Log.status(TAG, "the TV refused a content session: ${ready.detail}")
             return ContentOutcome.Refused(ready.detail)
         }
-        Log.i(TAG, "serving ${if (video) "audio and video" else "audio"} from $host:$port")
+        Log.status(TAG, "serving ${if (video) "audio and video" else "audio"} from $host:$port")
         return ContentOutcome.Accepted
     }
 
@@ -454,9 +454,9 @@ class MirrorClient(
      * ordering, the artwork and the metadata, so "next" is a decision this end makes and then reports.
      */
     fun playMedia(media: PlayMedia) {
-        Log.i(TAG, "asking the TV to play ${media.resourceId}")
+        Log.status(TAG, "asking the TV to play ${media.resourceId}")
         runCatching { socket.send(media) }
-            .onFailure { Log.w(TAG, "could not send the play request", it) }
+            .onFailure { Log.status(TAG, "could not send the play request", it) }
     }
 
     /**
@@ -468,13 +468,13 @@ class MirrorClient(
      * without its payload - a lyric sheet in the log would bury everything else.
      */
     fun sendNowPlaying(nowPlaying: NowPlaying) {
-        Log.i(
+        Log.status(
             TAG,
             "describing ${nowPlaying.resourceId} to the TV: '${nowPlaying.title}'" +
                 if (nowPlaying.artworkResourceId.isEmpty()) ", no cover" else ", with a cover",
         )
         runCatching { socket.send(nowPlaying) }
-            .onFailure { Log.w(TAG, "could not send the now-playing metadata", it) }
+            .onFailure { Log.status(TAG, "could not send the now-playing metadata", it) }
     }
 
     /**
@@ -486,9 +486,9 @@ class MirrorClient(
      * path at all.
      */
     fun sendCodecConfig(csd: ByteArray) {
-        Log.i(TAG, "sending codec config: ${csd.size} bytes")
+        Log.status(TAG, "sending codec config: ${csd.size} bytes")
         runCatching { socket.send(VideoCodecConfig(csd = ProtocolBase64.encode(csd))) }
-            .onFailure { Log.w(TAG, "could not send the codec config", it) }
+            .onFailure { Log.status(TAG, "could not send the codec config", it) }
     }
 
     /**
@@ -503,7 +503,7 @@ class MirrorClient(
      */
     fun sendPlaybackState(state: PlaybackState) {
         runCatching { socket.send(state) }
-            .onFailure { Log.w(TAG, "could not send the playback state", it) }
+            .onFailure { Log.status(TAG, "could not send the playback state", it) }
     }
 
     /**
@@ -515,9 +515,9 @@ class MirrorClient(
      * but logged, because unlike a snapshot each of these is a user action rather than a tick.
      */
     fun sendPlaybackCommand(command: PlaybackCommand) {
-        Log.i(TAG, "asking the TV for ${command.action}${command.value?.let { " $it" }.orEmpty()}")
+        Log.status(TAG, "asking the TV for ${command.action}${command.value?.let { " $it" }.orEmpty()}")
         runCatching { socket.send(command) }
-            .onFailure { Log.w(TAG, "could not send ${command.action}", it) }
+            .onFailure { Log.status(TAG, "could not send ${command.action}", it) }
     }
 
     /**
@@ -532,9 +532,9 @@ class MirrorClient(
      * state the user just used. Closing one cast should leave the TV ready for the next.
      */
     fun sendContentEnded() {
-        Log.i(TAG, "telling '$receiverName' the content session is over")
+        Log.status(TAG, "telling '$receiverName' the content session is over")
         runCatching { socket.send(ContentEnded) }
-            .onFailure { Log.w(TAG, "could not end the content session", it) }
+            .onFailure { Log.status(TAG, "could not end the content session", it) }
     }
 
     /**
@@ -547,7 +547,7 @@ class MirrorClient(
      */
     fun sendPing() {
         runCatching { socket.send(Ping) }
-            .onFailure { Log.w(TAG, "could not send a keep-alive", it) }
+            .onFailure { Log.status(TAG, "could not send a keep-alive", it) }
     }
 
     /**
@@ -578,16 +578,16 @@ class MirrorClient(
             val next = socket.receive() ?: return null
             when (val message = next.message) {
                 is Bye -> {
-                    Log.i(TAG, "'$receiverName' said goodbye: ${message.reason.ifBlank { "no reason" }}")
+                    Log.status(TAG, "'$receiverName' said goodbye: ${message.reason.ifBlank { "no reason" }}")
                     return message.reason
                 }
                 is PlaybackCommand -> {
                     val argument = message.value?.let { " $it" }.orEmpty()
                     if (onCommand == null) {
-                        Log.w(TAG, "'$receiverName' asked for ${message.action}$argument, " +
+                        Log.status(TAG, "'$receiverName' asked for ${message.action}$argument, " +
                             "but there is no transport to control")
                     } else {
-                        Log.i(TAG, "'$receiverName' asked for ${message.action}$argument")
+                        Log.status(TAG, "'$receiverName' asked for ${message.action}$argument")
                         onCommand(message)
                     }
                 }
@@ -603,7 +603,7 @@ class MirrorClient(
                 is StreamReady -> {
                     val waiter = pendingStreamReady
                     if (waiter == null) {
-                        Log.w(TAG, "'$receiverName' sent STREAM_READY with nothing waiting for it")
+                        Log.status(TAG, "'$receiverName' sent STREAM_READY with nothing waiting for it")
                     } else {
                         pendingStreamReady = null
                         waiter.complete(message)

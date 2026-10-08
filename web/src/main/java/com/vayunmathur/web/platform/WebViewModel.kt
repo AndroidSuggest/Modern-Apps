@@ -6,7 +6,7 @@ import kotlin.uuid.Uuid
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.webkit.WebView
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -202,7 +202,7 @@ class WebViewModel(
         viewModelScope.launch {
             runCatching { restorePersistedState() }
                 .onFailure { e ->
-                    Log.e(TAG, "Failed to load prefs", e)
+                    Log.error(TAG, "Failed to load prefs", e)
                     withContext(Dispatchers.Main) { ensureBlankTab() }
                 }
         }

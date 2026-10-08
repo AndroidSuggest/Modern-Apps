@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.service.ProjectionService
 
 /**
@@ -26,14 +26,14 @@ class DeepLinkResolverActivity : Activity() {
             CarStartupService.ACTION_BT_START,
             WirelessStartupReceiver.ACTION_WIRELESS_STARTUP,
             -> {
-                Log.i(TAG, "deep link ${intent.action}; entering the startup chain")
+                Log.status(TAG, "deep link ${intent.action}; entering the startup chain")
                 startForegroundService(
                     Intent(this, CarStartupService::class.java)
                         .setAction(intent.action),
                 )
             }
             else -> {
-                Log.i(TAG, "deep link without a chain action; starting the listener")
+                Log.status(TAG, "deep link without a chain action; starting the listener")
                 ProjectionService.start(this)
             }
         }

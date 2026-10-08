@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.signal.e2e.acceptIdentity
 import com.vayunmathur.communicate.data.signal.e2e.storedIdentityKey
 import kotlinx.coroutines.launch
@@ -31,7 +31,7 @@ internal fun SignalClient.profileKeyFrom(parsed: SignalProtocol.ParsedContent): 
 internal fun SignalClient.reportIdentityChange(peerAci: String, newIdentityKey: ByteArray) {
     val hex = SignalGroups.run { newIdentityKey.toHex() }
     pendingIdentityChanges[peerAci] = newIdentityKey
-    Log.w(TAG, "identity key changed for $peerAci")
+    Log.status(TAG, "identity key changed for $peerAci")
     scope.launch {
         eventsMutable.emit(
             SignalEvent.IdentityKeyChanged(
@@ -73,17 +73,17 @@ suspend fun SignalClient.safetyNumber(peerAci: String): String? {
 suspend fun SignalClient.acceptIdentityChange(peerAci: String, expectedKeyHex: String): Boolean {
     val e = e2e ?: return false
     val pending = pendingIdentityChanges[peerAci] ?: run {
-        Log.w(TAG, "no pending identity change for $peerAci")
+        Log.status(TAG, "no pending identity change for $peerAci")
         return false
     }
     if (!SignalGroups.run { pending.toHex() }.equals(expectedKeyHex, ignoreCase = true)) {
-        Log.w(TAG, "refusing to accept a different key than the one shown for $peerAci")
+        Log.status(TAG, "refusing to accept a different key than the one shown for $peerAci")
         return false
     }
     val accepted = e.acceptIdentity(peerAci, pending)
     if (accepted) {
         pendingIdentityChanges.remove(peerAci)
-        Log.i(TAG, "accepted the new identity key for $peerAci")
+        Log.status(TAG, "accepted the new identity key for $peerAci")
     }
     return accepted
 }
@@ -113,7 +113,7 @@ internal suspend fun SignalClient.linkPniToAci(
     val aciIdentity = e.storedIdentityKey(senderAci)
     val pniIdentity = e.storedIdentityKey(pniServiceId)
     if (aciIdentity == null || pniIdentity == null) {
-        Log.i(TAG, "cannot verify the PNI signature for $senderAci: missing an identity key")
+        Log.status(TAG, "cannot verify the PNI signature for $senderAci: missing an identity key")
         return
     }
     if (!verifyPniSignature(senderAci, pniServiceId, aciIdentity, pniIdentity, pniSignature)) return
@@ -133,7 +133,7 @@ private suspend fun SignalClient.mergePniContact(
         null
     }
     if (contact == null) {
-        Log.i(TAG, "verified PNI signature from $senderAci but no contact holds $pniServiceId")
+        Log.status(TAG, "verified PNI signature from $senderAci but no contact holds $pniServiceId")
         return
     }
     if (contact.aci == senderAci) return
@@ -141,9 +141,9 @@ private suspend fun SignalClient.mergePniContact(
         // The row is keyed by aci, so replace it rather than update in place.
         database.contactDao().deleteByPhone(contact.phoneE164)
         database.contactDao().upsert(contact.copy(aci = senderAci))
-        Log.i(TAG, "associated $senderAci with ${contact.phoneE164} via a verified PNI signature")
+        Log.status(TAG, "associated $senderAci with ${contact.phoneE164} via a verified PNI signature")
     } catch (expected: Throwable) {
-        Log.w(TAG, "could not associate $senderAci with ${contact.phoneE164}", expected)
+        Log.status(TAG, "could not associate $senderAci with ${contact.phoneE164}", expected)
     }
 }
 
@@ -161,11 +161,11 @@ private suspend fun SignalClient.verifyPniSignature(
             pniSignature.signature.toByteArray(),
         )
     } catch (expected: Throwable) {
-        Log.w(TAG, "PNI signature verification failed for $senderAci", expected)
+        Log.status(TAG, "PNI signature verification failed for $senderAci", expected)
         false
     }
     if (!verified) {
-        Log.w(TAG, "invalid PNI signature from $senderAci; not associating it with $pniServiceId")
+        Log.status(TAG, "invalid PNI signature from $senderAci; not associating it with $pniServiceId")
         return false
     }
     return true

@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.data.whatsapp.call
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol
 import com.vayunmathur.communicate.data.whatsapp.padMessage
 import com.vayunmathur.communicate.data.whatsapp.unpadMessage
@@ -270,7 +270,7 @@ object WhatsAppCallManager {
     }
 
     private fun fail(callId: String, reason: String) {
-        Log.e(TAG, "call $callId failed: $reason")
+        Log.error(TAG, "call $callId failed: $reason")
         endCall(callId, reason)
     }
 

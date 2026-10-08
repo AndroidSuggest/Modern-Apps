@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.data.rcs
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -92,7 +92,7 @@ object RcsMsrpListen {
         val bound = RcsImsNetwork.listenSocket(context) ?: return@withContext false
         listen = bound
         appContext = context.applicationContext
-        Log.i(TAG, "Listening on ${bound.localIp}:${bound.localPort}")
+        Log.status(TAG, "Listening on ${bound.localIp}:${bound.localPort}")
         scope.launch { acceptLoop(bound, onAccepted) }
         true
     }
@@ -156,7 +156,7 @@ object RcsMsrpListen {
             scope.launch { routeAccepted(socket, onAccepted) }
         }
         if (listen === bound) listen = null
-        Log.i(TAG, "Accept loop ended")
+        Log.status(TAG, "Accept loop ended")
     }
 
     /**
@@ -208,7 +208,7 @@ object RcsMsrpListen {
             ).bufferedReader(Charsets.UTF_8)
             routePlain(socket, input, onAccepted)
         }.onFailure {
-            Log.w(TAG, "Accept routing failed", it)
+            Log.status(TAG, "Accept routing failed", it)
             runCatching { socket.close() }
         }
     }
@@ -245,13 +245,13 @@ object RcsMsrpListen {
         if (pending == null) {
             send481(socket, first, toPath)
             runCatching { socket.close() }
-            Log.w(TAG, "Rejected inbound MSRP for unknown path $toPath")
+            Log.status(TAG, "Rejected inbound MSRP for unknown path $toPath")
             return
         }
         if (pending.secure) {
             // Peer skipped TLS on a secure path — reject, don't downgrade
             // silently (downgrade negotiation belongs in SDP, not here).
-            Log.w(TAG, "Rejected plaintext SEND on secure path $toPath")
+            Log.status(TAG, "Rejected plaintext SEND on secure path $toPath")
             runCatching { socket.close() }
             return
         }
@@ -294,7 +294,7 @@ object RcsMsrpListen {
         }
         val ssl = acceptTls(peekSocket) ?: run {
             runCatching { tcp.close() }
-            Log.w(TAG, "TLS accept failed")
+            Log.status(TAG, "TLS accept failed")
             return
         }
         // Handshake done — now read the first SEND head from TLS plaintext.
@@ -317,16 +317,16 @@ object RcsMsrpListen {
         if (pending == null) {
             send481(ssl, first, toPath)
             runCatching { ssl.close() }
-            Log.w(TAG, "Rejected inbound MSRP-TLS for unknown path $toPath")
+            Log.status(TAG, "Rejected inbound MSRP-TLS for unknown path $toPath")
             return
         }
         if (!pending.secure) {
             // Peer did TLS on a plaintext path: accept the media anyway (TLS
             // is strictly stronger; the SDP answer just didn't advertise it).
-            Log.i(TAG, "Peer used TLS on plaintext path $toPath — accepting")
+            Log.status(TAG, "Peer used TLS on plaintext path $toPath — accepting")
         }
         if (!RcsMsrpTls.verifyServerSide(ssl, pending.peerFingerprint)) {
-            Log.w(TAG, "TLS peer fingerprint mismatch for ${pending.conversationId}")
+            Log.status(TAG, "TLS peer fingerprint mismatch for ${pending.conversationId}")
             runCatching { ssl.close() }
             return
         }
@@ -370,10 +370,10 @@ object RcsMsrpListen {
             ssl.soTimeout = ACCEPT_TIMEOUT_MS
             ssl.startHandshake()
             ssl.soTimeout = 0
-            Log.i(TAG, "TLS accept established")
+            Log.status(TAG, "TLS accept established")
             ssl
         }.getOrElse {
-            Log.w(TAG, "TLS accept handshake failed", it)
+            Log.status(TAG, "TLS accept handshake failed", it)
             runCatching { tcp.close() }
             null
         }

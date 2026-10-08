@@ -8,7 +8,7 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.Locale
 
 /**
@@ -134,10 +134,10 @@ class AndroidSpeechRecognizer(private val context: Context) : SpeechRecognizerEn
         try {
             sr.startListening(intent)
         } catch (e: SecurityException) {
-            Log.e(TAG, "startListening failed", e)
+            Log.error(TAG, "startListening failed", e)
             onError("Could not start speech recognition")
         } catch (e: Exception) {
-            Log.e(TAG, "startListening failed", e)
+            Log.error(TAG, "startListening failed", e)
             onError("Could not start speech recognition")
         }
     }

@@ -13,7 +13,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.ContextCompat
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.util.RouteService.TravelMode
@@ -144,7 +144,7 @@ object NavigationSessionManager {
     fun init(context: Context) {
         if (!initialized.compareAndSet(false, true)) return
         appContext = context.applicationContext
-        Log.i(TAG, "init")
+        Log.status(TAG, "init")
     }
 
     /**
@@ -158,14 +158,14 @@ object NavigationSessionManager {
         destinationLabel: String,
     ) {
         if (!initialized.get()) {
-            Log.w(TAG, "start() called before init()")
+            Log.status(TAG, "start() called before init()")
             return
         }
         if (_state.value !is NavState.Idle && _state.value !is NavState.Failed) {
-            Log.w(TAG, "start() called while already in state ${_state.value}; ignoring")
+            Log.status(TAG, "start() called while already in state ${_state.value}; ignoring")
             return
         }
-        Log.i(
+        Log.status(
             TAG,
             "start(mode=$mode, label=$destinationLabel, " +
                 "steps=${route.step.size}, dist=${route.distanceMeters})",
@@ -184,7 +184,7 @@ object NavigationSessionManager {
 
     /** End the navigation session. Cancels jobs, stops location, resets state. */
     fun stop() {
-        Log.i(TAG, "stop")
+        Log.status(TAG, "stop")
         locationJob?.cancel()
         locationJob = null
         recalcJob?.cancel()
@@ -258,7 +258,7 @@ object NavigationSessionManager {
                     locListener,
                 )
             }
-        }.onFailure { Log.e(TAG, "requestLocationUpdates failed", it) }
+        }.onFailure { Log.error(TAG, "requestLocationUpdates failed", it) }
 
         // Compass fusion for the stationary case (start-of-route, traffic stop).
         val sensorListener = object : SensorEventListener {
@@ -376,7 +376,7 @@ object NavigationSessionManager {
     private fun triggerRecalculate(from: GeoPoint) {
         val dest = destination ?: return
         val mode = _session.value.travelMode ?: return
-        Log.i(TAG, "off-route; recalculating from $from to $dest (attempt ${recalcAttempts + 1})")
+        Log.status(TAG, "off-route; recalculating from $from to $dest (attempt ${recalcAttempts + 1})")
         _state.value = NavState.Recalculating
         recalcAttempts++
         lastRecalcMs = System.currentTimeMillis()
@@ -404,7 +404,7 @@ object NavigationSessionManager {
             }.getOrNull()
 
             if (newRoute == null) {
-                Log.w(TAG, "recalc failed")
+                Log.status(TAG, "recalc failed")
                 if (recalcAttempts >= MAX_RECALC_ATTEMPTS) {
                     _state.value = NavState.Failed("Could not recalculate route")
                 } else {
@@ -421,7 +421,7 @@ object NavigationSessionManager {
             // overwrite the (still-valid) Arrived state with a fresh,
             // longer route and the user would be "un-arrived".
             if (_state.value is NavState.Arrived) {
-                Log.i(TAG, "recalc completed but user already arrived; discarding new route")
+                Log.status(TAG, "recalc completed but user already arrived; discarding new route")
                 return@launch
             }
 
@@ -434,7 +434,7 @@ object NavigationSessionManager {
             NavigationTts.reset()
             // The location listener is still running; the next fix will move
             // us into Navigating on the new route.
-            Log.i(TAG, "recalc succeeded; new route ${newRoute.distanceMeters}m / ${newRoute.step.size} steps")
+            Log.status(TAG, "recalc succeeded; new route ${newRoute.distanceMeters}m / ${newRoute.step.size} steps")
         }
     }
 }

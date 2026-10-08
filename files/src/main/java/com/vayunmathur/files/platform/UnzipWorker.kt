@@ -1,7 +1,7 @@
 package com.vayunmathur.files.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.work.WorkerParameters
 import com.vayunmathur.files.R
 import java.io.File
@@ -41,11 +41,11 @@ class UnzipWorker(context: Context, params: WorkerParameters) : ProgressNotifica
             extractArchive(File(zipPathString), File(destPathString), budget, extracted)
             Result.success()
         } catch (e: ArchiveTooLargeException) {
-            Log.w(TAG_UNZIP, "archive exceeds its extraction budget", e)
+            Log.status(TAG_UNZIP, "archive exceeds its extraction budget", e)
             cleanUpPartial(extracted)
             Result.failure()
         } catch (e: IOException) {
-            Log.w(TAG_UNZIP, "failed to extract archive", e)
+            Log.status(TAG_UNZIP, "failed to extract archive", e)
             cleanUpPartial(extracted)
             Result.failure()
         } finally {

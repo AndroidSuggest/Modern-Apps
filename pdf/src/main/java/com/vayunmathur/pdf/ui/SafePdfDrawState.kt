@@ -1,5 +1,6 @@
 package com.vayunmathur.pdf.ui
 
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.pdf.util.BlendMode
 import com.vayunmathur.pdf.util.PdfPrimitive
 
@@ -69,7 +70,7 @@ internal fun SafePdfDrawContext.applyGroupPush(prim: PdfPrimitive.GroupPush) {
     val alpha = prim.alpha.coerceIn(0f, 1f)
     val blend = prim.blend
     val layered = if (groupSaveCount >= MAX_GROUP_LAYER_DEPTH) {
-        android.util.Log.w("SafePdfViewer", "group layer depth cap reached, drawing inline")
+        Log.status("SafePdfViewer", "group layer depth cap reached, drawing inline")
         false
     } else {
         runCatching {
@@ -80,7 +81,7 @@ internal fun SafePdfDrawContext.applyGroupPush(prim: PdfPrimitive.GroupPush) {
             }
             nativeCanvas.saveLayer(null, groupPaint)
         }.onFailure {
-            android.util.Log.w("SafePdfViewer", "GroupPush saveLayer failed", it)
+            Log.status("SafePdfViewer", "GroupPush saveLayer failed", it)
         }.isSuccess
     }
     // Account a level either way, so the matching GroupPop restores this push
@@ -104,7 +105,7 @@ internal fun SafePdfDrawContext.applySoftMaskPush(prim: PdfPrimitive.SoftMaskPus
     val frame = SoftMaskFrame(prim.maskType)
     val layered = softMaskStack.size < MAX_GROUP_LAYER_DEPTH &&
         runCatching { nativeCanvas.saveLayer(null, null) }.onFailure {
-            android.util.Log.w("SafePdfViewer", "SoftMaskPush saveLayer failed", it)
+            Log.status("SafePdfViewer", "SoftMaskPush saveLayer failed", it)
         }.isSuccess
     if (!layered) {
         nativeCanvas.save()

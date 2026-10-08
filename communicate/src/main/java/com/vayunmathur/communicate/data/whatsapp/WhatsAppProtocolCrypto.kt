@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.whatsapp
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.nio.ByteBuffer
 import java.security.SecureRandom
 import javax.crypto.Cipher
@@ -260,7 +260,7 @@ fun WhatsAppProtocol.decryptPollVote(
             .selectedOptionsList
             .map { it.toByteArray() }
     } catch (expected: Exception) {
-        Log.w(TAG, "Poll vote decrypt failed", expected)
+        Log.status(TAG, "Poll vote decrypt failed", expected)
         null
     }
 }

@@ -4,7 +4,7 @@ package com.vayunmathur.translate.ui
 
 import android.graphics.Bitmap
 import android.hardware.display.DisplayManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.util.Rational
 import android.view.Surface
 import androidx.camera.core.Camera
@@ -129,7 +129,7 @@ internal fun CameraBinding(
             val bmp = try {
                 proxy.toBitmap()
             } catch (e: Exception) {
-                Log.e(TAG, "toBitmap failed", e)
+                Log.error(TAG, "toBitmap failed", e)
                 null
             }
             val rotation = proxy.imageInfo.rotationDegrees
@@ -161,7 +161,7 @@ internal fun CameraBinding(
                     }
                     frozenFrame.value = upright
                 } catch (e: Exception) {
-                    Log.e(TAG, "Frame analysis failed", e)
+                    Log.error(TAG, "Frame analysis failed", e)
                 } finally {
                     // Measure the gap from the *end* of the pass, so a slow OCR run
                     // doesn't immediately trigger the next one.
@@ -196,7 +196,7 @@ internal fun CameraBinding(
             // change the frame [ANALYSIS_SIZE] is resolved in.
             analysis.targetRotation = boundRotation
         } catch (e: Exception) {
-            Log.e(TAG, "Camera bind failed", e)
+            Log.error(TAG, "Camera bind failed", e)
         }
     }
 }

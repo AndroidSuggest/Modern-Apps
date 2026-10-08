@@ -1,7 +1,7 @@
 package com.vayunmathur.openassistant.assist
 
 import android.service.voice.VoiceInteractionService
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * Entry point that registers OpenAssistant as a system voice interaction (digital
@@ -13,7 +13,7 @@ import android.util.Log
 class OpenAssistantVoiceInteractionService : VoiceInteractionService() {
     override fun onReady() {
         super.onReady()
-        Log.d(TAG, "VoiceInteractionService ready")
+        Log.debug(TAG, "VoiceInteractionService ready")
     }
 
     companion object {

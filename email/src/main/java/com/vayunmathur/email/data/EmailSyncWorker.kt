@@ -1,7 +1,7 @@
 package com.vayunmathur.email.data
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.edit
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -36,7 +36,7 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
         val accounts = db.accountDao().getAccounts()
 
         if (accounts.isEmpty()) {
-            Log.d("EmailSync", "No accounts to sync")
+            Log.debug("EmailSync", "No accounts to sync")
             return Result.success()
         }
 
@@ -49,7 +49,7 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
                 syncAccount(db, account, nonInboxOnly, accounts.size, accountsProcessed)
                 true
             } catch (_: Exception) {
-                Log.e("EmailSync", "Failed to sync account ${account.email}")
+                Log.error("EmailSync", "Failed to sync account ${account.email}")
                 false
             }
             if (!ok) hasErrors = true
@@ -68,12 +68,12 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
         accountCount: Int,
         accountsProcessed: Int,
     ) {
-        Log.d("EmailSync", ">>> RAW Starting sync for ${account.email} (nonInboxOnly=$nonInboxOnly)")
+        Log.debug("EmailSync", ">>> RAW Starting sync for ${account.email} (nonInboxOnly=$nonInboxOnly)")
         val auth = account.resolveAuth(applicationContext)
 
         val folders = ImapClient.fetchFolders(account.imapServer(), account.loginUser(), auth)
         db.accountDao().insertFolders(folders)
-        Log.d("EmailSync", "Synced ${folders.size} folders.")
+        Log.debug("EmailSync", "Synced ${folders.size} folders.")
 
         val skipSet = if (account.provider == PROVIDER_GMAIL) ImapClient.GMAIL_VIRTUAL_FOLDERS else emptySet()
         val messageFolders = if (nonInboxOnly) {
@@ -93,7 +93,7 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
             backfillBodies(db, account, auth)
         }
 
-        Log.d("EmailSync", "<<< Completed RAW sync for ${account.email}")
+        Log.debug("EmailSync", "<<< Completed RAW sync for ${account.email}")
     }
 
     private suspend fun syncFolder(
@@ -126,13 +126,13 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
                 handleInboxExtras(account, folder, messages, knownUids)
             }
 
-            Log.d(
+            Log.debug(
                 "EmailSync",
                 "[${index + 1}/$folderCount] ${folder.fullName}: " +
                     "${messages.size} new (skipped ${knownUids.size}).",
             )
         } catch (_: Exception) {
-            Log.e("EmailSync", "   x Failed folder ${folder.fullName}")
+            Log.error("EmailSync", "   x Failed folder ${folder.fullName}")
         }
     }
 
@@ -172,17 +172,17 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
         val messagesDao = db.messageDao()
         val missing = messagesDao.getMessagesWithoutBody(account.email, BACKFILL_LIMIT)
         if (missing.isEmpty()) return
-        Log.d("EmailSync", "Body backfill: ${missing.size} message(s)")
+        Log.debug("EmailSync", "Body backfill: ${missing.size} message(s)")
         EmailSyncState.setProgress(0f)
         for ((idx, msg) in missing.withIndex()) {
             if (isStopped) {
-                Log.d("EmailSync", "Backfill stopped at ${idx}/${missing.size}")
+                Log.debug("EmailSync", "Backfill stopped at ${idx}/${missing.size}")
                 break
             }
             backfillOne(messagesDao, account, auth, msg)
             EmailSyncState.setProgress((idx + 1f) / missing.size)
         }
-        Log.d("EmailSync", "Backfill done for ${account.email}")
+        Log.debug("EmailSync", "Backfill done for ${account.email}")
     }
 
     private suspend fun backfillOne(
@@ -215,7 +215,7 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
                 if (attachments.isNotEmpty()) messagesDao.insertAttachments(attachments)
             }
         } catch (_: Exception) {
-            Log.w("EmailSync", "   x Backfill failed for UID ${msg.id}")
+            Log.status("EmailSync", "   x Backfill failed for UID ${msg.id}")
         }
     }
 

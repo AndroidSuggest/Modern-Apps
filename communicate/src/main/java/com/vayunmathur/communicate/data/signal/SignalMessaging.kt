@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.signal.SignalAttachmentCipher
 import com.vayunmathur.communicate.data.signal.transport.SignalAttachmentUpload
 import com.vayunmathur.communicate.data.signal.transport.SignalPayload
@@ -25,7 +25,7 @@ suspend fun SignalClient.sendMessage(recipient: String, body: String): String? {
     val groupMasterKey = if (isGroup) groupMasterKeyForConversation(aci) else null
     if (isGroup && groupMasterKey == null) {
         // Without the master key the recipients cannot tell which group this belongs to.
-        Log.w(TAG, "no stored master key for $aci, cannot send to the group")
+        Log.status(TAG, "no stored master key for $aci, cannot send to the group")
         eventsMutable.emit(SignalEvent.SendFailed(conversationId = aci, messageId = id, errorMessage = "unknown group"))
         return null
     }
@@ -81,7 +81,7 @@ suspend fun SignalClient.sendMedia(
     val encrypted = try {
         SignalAttachmentCipher.encrypt(bytes)
     } catch (expected: Throwable) {
-        Log.w(TAG, "attachment encryption failed", expected)
+        Log.status(TAG, "attachment encryption failed", expected)
         return sendMediaFailed(recipient, "could not encrypt the attachment")
     }
     val form = SignalAttachmentUpload.fetchForm(
@@ -172,7 +172,7 @@ private suspend fun SignalClient.cacheOutgoingMedia(
 }
 
 private suspend fun SignalClient.sendMediaFailed(recipient: String, reason: String): String? {
-    Log.w(TAG, "attachment send to $recipient failed: $reason")
+    Log.status(TAG, "attachment send to $recipient failed: $reason")
     eventsMutable.emit(SignalEvent.SendFailed(conversationId = recipient, errorMessage = reason))
     return null
 }
@@ -422,18 +422,18 @@ suspend fun SignalClient.downloadMedia(
         // public CAs. signalTls() is a union factory (Signal roots + system), safe for both.
         val resp = NetworkClient.execute(url, method = "GET", sslSocketFactory = signalTls())
         if (!resp.isSuccess) {
-            Log.w(TAG, "attachment download failed: ${resp.status} ${resp.statusMessage}")
+            Log.status(TAG, "attachment download failed: ${resp.status} ${resp.statusMessage}")
             return null
         }
         resp.bytes
     } catch (expected: Throwable) {
-        Log.w(TAG, "attachment download failed", expected)
+        Log.status(TAG, "attachment download failed", expected)
         return null
     }
     return try {
         SignalAttachmentCipher.decrypt(blob, key, digest, plaintextSize)
     } catch (expected: Throwable) {
-        Log.w(TAG, "attachment did not decrypt ($type)", expected)
+        Log.status(TAG, "attachment did not decrypt ($type)", expected)
         null
     }
 }
@@ -441,7 +441,7 @@ suspend fun SignalClient.downloadMedia(
 suspend fun SignalClient.refreshPresence(conversationId: String) {
     // Signal has no presence REST; typing/read are only presence cues per verification report §8.
     // Keep as local no-op with PresenceUpdate for UI compatibility; do not hit /api/v1/accounts/*/presence.
-    Log.i(TAG, "refreshPresence no-op (Signal has no presence REST; typing/read indicate presence)")
+    Log.status(TAG, "refreshPresence no-op (Signal has no presence REST; typing/read indicate presence)")
     eventsMutable.emit(SignalEvent.PresenceUpdate(
         conversationId = conversationId,
         isOnline = false,
@@ -467,7 +467,7 @@ suspend fun SignalClient.sendContactCard(
         phoneNumbers = phoneNumbers,
         emails = emails,
     ) ?: run {
-        Log.w(TAG, "refusing to share a contact with no name and no numbers")
+        Log.status(TAG, "refusing to share a contact with no name and no numbers")
         return false
     }
     val ts = System.currentTimeMillis()

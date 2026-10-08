@@ -1,7 +1,7 @@
 package com.vayunmathur.calendar.data
 import android.content.Context
 import android.provider.CalendarContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 data class Calendar(
     val id: Long,
@@ -33,12 +33,12 @@ data class Calendar(
                         try {
                             list.add(readCalendarRow(it))
                         } catch (expected: Exception) {
-                            Log.e("Calendar", "Error constructing calendar from cursor", expected)
+                            Log.error("Calendar", "Error constructing calendar from cursor", expected)
                         }
                     }
                 }
             } catch (expected: Exception) {
-                Log.e("Calendar", "Error querying calendars", expected)
+                Log.error("Calendar", "Error querying calendars", expected)
             }
             return list
         }

@@ -3,7 +3,7 @@ package com.vayunmathur.setupwizard.ui
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
 import androidx.compose.runtime.Composable
@@ -56,7 +56,7 @@ fun HandoffScreen(
         try {
             launcher.launch(target)
         } catch (e: ActivityNotFoundException) {
-            Log.w(TAG, "nothing handled ${target.action}; skipping the step", e)
+            Log.status(TAG, "nothing handled ${target.action}; skipping the step", e)
             onUnavailable()
         }
     }

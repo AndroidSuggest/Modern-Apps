@@ -1,6 +1,6 @@
 package com.vayunmathur.findfamily.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.findfamily.tracker.PoweredOffProtocol
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
@@ -55,7 +55,7 @@ suspend fun Networking.registerTracker(trackerUserId: Long, secret: ByteArray, p
         session.send(frame)
         true
     } catch (e: Exception) {
-        Log.w("FF-Networking", "registerTracker failed", e); false
+        Log.status("FF-Networking", "registerTracker failed", e); false
     }
 }
 /** Finder: resolve a beacon epoch-id to the owning tracker's ML-KEM public bundle. */
@@ -72,7 +72,7 @@ suspend fun Networking.resolveTrackerBundle(epochId: ByteArray): ByteArray? {
         session.send(req)
         withTimeoutOrNull(GETKEY_TIMEOUT_MS) { deferred.await() }
     } catch (e: Exception) {
-        Log.w("FF-Networking", "resolveTrackerBundle failed", e); null
+        Log.status("FF-Networking", "resolveTrackerBundle failed", e); null
     } finally {
         pendingResolves.remove(hex)
     }
@@ -89,7 +89,7 @@ suspend fun Networking.uploadTrackerReport(epochId: ByteArray, ciphertext: ByteA
         session.send(frame)
         true
     } catch (e: Exception) {
-        Log.w("FF-Networking", "uploadTrackerReport failed", e); false
+        Log.status("FF-Networking", "uploadTrackerReport failed", e); false
     }
 }
 /** Owner: fetch (and drain) sealed reports for a batch of recent epoch-ids. */
@@ -113,7 +113,7 @@ suspend fun Networking.fetchTrackerReports(epochIds: List<ByteArray>): List<Byte
         session.send(frame)
         withTimeoutOrNull(GETKEY_TIMEOUT_MS) { deferred.await() } ?: emptyList()
     } catch (e: Exception) {
-        Log.w("FF-Networking", "fetchTrackerReports failed", e); emptyList()
+        Log.status("FF-Networking", "fetchTrackerReports failed", e); emptyList()
     } finally {
         pendingReportGets.remove(deferred)
     }
@@ -158,6 +158,6 @@ suspend fun Networking.registerPoweredOffEids(
         session.send(frame)
         true
     } catch (e: Exception) {
-        Log.w("FF-Networking", "registerPoweredOffEids failed", e); false
+        Log.status("FF-Networking", "registerPoweredOffEids failed", e); false
     }
 }

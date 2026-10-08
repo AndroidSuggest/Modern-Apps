@@ -1,7 +1,7 @@
 package com.vayunmathur.cast.tv.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Surface
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
@@ -138,7 +138,7 @@ class ContentPlayer(
     fun start(onError: (String) -> Unit): Boolean {
         val fingerprint = ProtocolBase64.decode(session.certificateFingerprint)
         if (fingerprint == null || fingerprint.size != FINGERPRINT_BYTES) {
-            Log.w(TAG, "the phone sent an unusable certificate fingerprint")
+            Log.status(TAG, "the phone sent an unusable certificate fingerprint")
             return false
         }
 
@@ -162,7 +162,7 @@ class ContentPlayer(
             override fun onPlayerError(error: PlaybackException) {
                 // Deliberately loud. The old path reported load errors as end-of-stream, so an
                 // expired URL produced silence and no explanation at either end.
-                Log.w(TAG, "playback failed: ${error.errorCodeName}", error)
+                Log.status(TAG, "playback failed: ${error.errorCodeName}", error)
                 onError(error.errorCodeName)
             }
 
@@ -174,7 +174,7 @@ class ContentPlayer(
         })
         built.playWhenReady = true
         player = built
-        Log.i(
+        Log.status(
             TAG,
             "content player up for ${session.host}:${session.port}, " +
                 if (session.video) "audio and video" else "audio only",
@@ -192,7 +192,7 @@ class ContentPlayer(
             // round trip before anything can start.
             .setMimeType(media.mimeType.ifBlank { MimeTypes.BASE_TYPE_AUDIO })
             .build()
-        Log.i(TAG, "playing ${media.resourceId} (${media.mimeType}) from ${media.startPositionMs}ms")
+        Log.status(TAG, "playing ${media.resourceId} (${media.mimeType}) from ${media.startPositionMs}ms")
         statedDurationMs = media.durationMs
         // A position rather than the start, so handing playback over from the phone keeps it. A
         // resource still being written cannot honour it - there is no length to seek against - and

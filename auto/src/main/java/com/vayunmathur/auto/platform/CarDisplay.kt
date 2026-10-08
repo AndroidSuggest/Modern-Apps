@@ -7,7 +7,7 @@ import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Surface
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
@@ -632,7 +632,7 @@ class CarDisplay(
         fun dumpVirtualDisplay(display: android.view.Display, surface: Surface) {
             if (!BuildConfig.DEV_BUILD) return
             val size = android.graphics.Point().also { display.getRealSize(it) }
-            Log.i(
+            Log.status(
                 TAG,
                 "virtual display up: id=${display.displayId} real=${size.x}x${size.y} " +
                     "surface valid=${surface.isValid}",

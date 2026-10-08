@@ -1,6 +1,6 @@
 package com.vayunmathur.cast.tv.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.protocol.Hello
 import com.vayunmathur.cast.protocol.PairFailed
 import com.vayunmathur.cast.protocol.PairOk
@@ -72,11 +72,11 @@ private suspend fun ReceiverController.tryRememberedKey(
     val proof = channel.receive()?.message as? PairProof ?: return false
     val bytes = ProtocolBase64.decode(proof.proof) ?: return false
     if (pairingGate.verifyDevice(keys, transcript, remembered, bytes) !is PairResult.Ok) {
-        Log.i(TAG, "'${greeting.senderName}' failed its device proof; asking for a code")
+        Log.status(TAG, "'${greeting.senderName}' failed its device proof; asking for a code")
         return false
     }
     channel.send(PairOk())
-    Log.i(TAG, "'${greeting.senderName}' authenticated with a remembered device key")
+    Log.status(TAG, "'${greeting.senderName}' authenticated with a remembered device key")
     return true
 }
 
@@ -112,7 +112,7 @@ private suspend fun ReceiverController.pairWithCode(
                 val deviceKey = result.deviceKey ?: return false
                 store.remember(greeting.senderId, deviceKey)
                 channel.send(PairOk(deviceKey = ProtocolBase64.encode(deviceKey)))
-                Log.i(TAG, "'${greeting.senderName}' paired; it will connect silently from now on")
+                Log.status(TAG, "'${greeting.senderName}' paired; it will connect silently from now on")
                 return true
             }
             is PairResult.Wrong -> {

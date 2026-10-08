@@ -56,6 +56,7 @@ import com.vayunmathur.games.voxels.platform.VoxelsAchievements
 import com.vayunmathur.games.voxels.util.VoxelsNative
 import com.vayunmathur.games.voxels.network.VoxelsSync
 import com.vayunmathur.e2ee.Pqc
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ui.AchievementNotification
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.IconButton
@@ -77,7 +78,7 @@ class MainActivity : ComponentActivity() {
     @Suppress("TooGenericExceptionCaught")
     private fun initEngine(worldDir: String, worldSeed: Int) {
         try { VoxelsNative.nativeInit(worldDir, worldSeed) } catch (e: RuntimeException) {
-            android.util.Log.e("VoxelsMain", "nativeInit failed", e)
+            Log.error("VoxelsMain", "nativeInit failed", e)
         }
     }
 

@@ -3,7 +3,7 @@
 package com.vayunmathur.notes.data
 
 import kotlin.uuid.Uuid
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ink.SerializedStroke
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -73,7 +73,7 @@ fun Note.body(): NoteBody {
     return try {
         blockJson.decodeFromString<NoteBody>(json)
     } catch (e: SerializationException) {
-        Log.w(TAG, "unparseable blocks JSON, falling back to plain text", e)
+        Log.status(TAG, "unparseable blocks JSON, falling back to plain text", e)
         NoteBody(blocks = listOf(NoteBlock.Text(content)))
     }
 }

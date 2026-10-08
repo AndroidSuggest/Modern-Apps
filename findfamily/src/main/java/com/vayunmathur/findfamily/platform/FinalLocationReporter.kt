@@ -7,7 +7,7 @@ import android.content.IntentFilter
 import android.location.Location
 import android.os.BatteryManager
 import android.os.SystemClock
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.findfamily.data.Coord
 import com.vayunmathur.findfamily.data.DirectBootStore
 import com.vayunmathur.findfamily.data.LocationSource
@@ -179,7 +179,7 @@ object FinalLocationReporter {
                         withTimeoutOrNull(BEACON_BUDGET) {
                             PoweredOffBeacon.armForShutdown(appContext)
                         }
-                    }.onFailure { Log.w(TAG, "beacon arming threw", it) }.getOrNull()
+                    }.onFailure { Log.status(TAG, "beacon arming threw", it) }.getOrNull()
                 }
             } else {
                 null
@@ -188,13 +188,13 @@ object FinalLocationReporter {
                 report(appContext, source, lastFix(), roster())
             }
             if (beacon?.await() == null && source == LocationSource.SHUTDOWN) {
-                Log.i(TAG, "powered-off beacon not armed")
+                Log.status(TAG, "powered-off beacon not armed")
             }
             // Swallowed on purpose: a parting report that did not make it out must
             // never be the reason the device refuses to power off.
-            if (done == null) Log.w(TAG, "$source report gave up after $BUDGET")
+            if (done == null) Log.status(TAG, "$source report gave up after $BUDGET")
         } catch (e: Exception) {
-            Log.w(TAG, "$source report failed", e)
+            Log.status(TAG, "$source report failed", e)
         } finally {
             pending.finish()
         }
@@ -207,21 +207,21 @@ object FinalLocationReporter {
         targets: List<DirectBootStore.Target>,
     ) {
         if (location == null) {
-            Log.i(TAG, "$source: no fix has ever been taken, nothing to report")
+            Log.status(TAG, "$source: no fix has ever been taken, nothing to report")
             return
         }
         if (targets.isEmpty()) {
-            Log.i(TAG, "$source: nobody to report to")
+            Log.status(TAG, "$source: nobody to report to")
             return
         }
         if (Networking.userid == 0L) {
-            Log.i(TAG, "$source: identity not loaded, nothing to report as")
+            Log.status(TAG, "$source: identity not loaded, nothing to report as")
             return
         }
         if (!Networking.liveConnected) {
             // Reconnecting costs a TLS handshake we do not have time for, and on shutdown the
             // radios are going down anyway. Saying so beats silently sending nothing.
-            Log.i(TAG, "$source: socket is down, dropping the report")
+            Log.status(TAG, "$source: socket is down, dropping the report")
             return
         }
 
@@ -241,10 +241,10 @@ object FinalLocationReporter {
             reportedAt = now,
             source = source,
         )
-        Log.i(TAG, "$source: reporting a fix ${now - value.timestamp} old to ${targets.size} peer(s)")
+        Log.status(TAG, "$source: reporting a fix ${now - value.timestamp} old to ${targets.size} peer(s)")
         targets.forEach {
             runCatching { Networking.publishLocation(value, it.id, it.bundle) }
-                .onFailure { e -> Log.w(TAG, "$source publish to ${it.id.toULong()} failed", e) }
+                .onFailure { e -> Log.status(TAG, "$source publish to ${it.id.toULong()} failed", e) }
         }
     }
 

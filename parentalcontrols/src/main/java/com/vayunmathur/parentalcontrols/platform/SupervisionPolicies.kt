@@ -3,7 +3,7 @@ package com.vayunmathur.parentalcontrols.platform
 import android.app.supervision.PackageUsagePolicy
 import android.app.supervision.SupervisionManager
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 import java.time.Duration
 
@@ -58,7 +58,7 @@ class SupervisionPolicies(context: Context) {
         }.getOrElse {
             // IllegalStateException from performBuild when the flag is off or the duration is
             // out of range. Not fatal: the cap still works, because we time it ourselves.
-            Log.w(TAG, "could not build a time-limit policy for $packageName", it)
+            Log.status(TAG, "could not build a time-limit policy for $packageName", it)
             return
         }
         set(policy)
@@ -68,7 +68,7 @@ class SupervisionPolicies(context: Context) {
         val policy = runCatching {
             PackageUsagePolicy.Builder(packageName, type).build()
         }.getOrElse {
-            Log.w(TAG, "could not build a type-$type policy for $packageName", it)
+            Log.status(TAG, "could not build a type-$type policy for $packageName", it)
             return
         }
         set(policy)
@@ -76,10 +76,10 @@ class SupervisionPolicies(context: Context) {
 
     private fun set(policy: PackageUsagePolicy) {
         val manager = manager ?: run {
-            Log.w(TAG, "no SupervisionManager; is the supervision role held?")
+            Log.status(TAG, "no SupervisionManager; is the supervision role held?")
             return
         }
         runCatching { manager.setPolicy(policy) }
-            .onFailure { Log.w(TAG, "setPolicy rejected for ${policy.packageName}", it) }
+            .onFailure { Log.status(TAG, "setPolicy rejected for ${policy.packageName}", it) }
     }
 }

@@ -8,7 +8,7 @@ import android.telephony.TelephonyManager
 import android.telephony.gba.TlsParams
 import android.telephony.gba.UaSecurityProtocolIdentifier
 import android.telephony.`TelephonyManager$BootstrapAuthenticationCallback`
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import kotlin.coroutines.resume
@@ -71,7 +71,7 @@ object RcsGbaBootstrap {
                 runCatching {
                     requestBootstrap(context.applicationContext, nafUrl, force, done)
                 }.onFailure {
-                    Log.w(TAG, "GBA bootstrap setup failed", it)
+                    Log.status(TAG, "GBA bootstrap setup failed", it)
                     done(null)
                 }
             }
@@ -109,7 +109,7 @@ object RcsGbaBootstrap {
             }
 
             override fun onAuthenticationFailure(reason: Int) {
-                Log.w(TAG, "GBA authentication failure reason=$reason")
+                Log.status(TAG, "GBA authentication failure reason=$reason")
                 done(null)
             }
         }
@@ -136,7 +136,7 @@ object RcsGbaBootstrap {
             )
         } catch (e: java.lang.reflect.InvocationTargetException) {
             // Framework-side refusal (no privilege, modem error): degrade.
-            Log.w(TAG, "GBA request refused", e.cause ?: e)
+            Log.status(TAG, "GBA request refused", e.cause ?: e)
             done(null)
         }
     }
@@ -169,7 +169,7 @@ object RcsGbaBootstrap {
                 .setTlsCipherSuite(suite)
                 .build()
         }.getOrElse {
-            Log.w(TAG, "GBA security-protocol build failed", it)
+            Log.status(TAG, "GBA security-protocol build failed", it)
             null
         }
     }

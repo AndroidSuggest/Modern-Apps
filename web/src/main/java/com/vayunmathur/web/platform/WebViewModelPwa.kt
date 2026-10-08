@@ -1,6 +1,6 @@
 package com.vayunmathur.web.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.web.data.InstalledSite
 import kotlinx.coroutines.launch
 
@@ -49,7 +49,7 @@ fun WebViewModel.installAsPwa(
         }.onSuccess { accepted ->
             onResult(accepted)
         }.onFailure { e ->
-            Log.e(TAG, "installAsPwa failed", e)
+            Log.error(TAG, "installAsPwa failed", e)
             onResult(false)
         }
     }

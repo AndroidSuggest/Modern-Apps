@@ -2,7 +2,7 @@ package com.vayunmathur.findfamily.tracker
 
 import android.bluetooth.BluetoothDevice
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.findfamily.data.FindFamilyRepository
 import com.vayunmathur.findfamily.data.RequestStatus
 import com.vayunmathur.findfamily.data.User
@@ -54,7 +54,7 @@ object TrackerBinder {
                 val trackerId = Random.nextLong(from = 1, until = Long.MAX_VALUE)
 
                 if (!TrackerProvisioner(context).provision(device, trackerId, secret)) {
-                    Log.w(TAG, "provisioning write failed; not persisting tracker $trackerId")
+                    Log.status(TAG, "provisioning write failed; not persisting tracker $trackerId")
                     return@runCatching false
                 }
 
@@ -77,7 +77,7 @@ object TrackerBinder {
                 // socket is momentarily down (see pollTrackerReports).
                 runCatching { Networking.registerTracker(trackerId, secret, publicBundle) }
                 true
-            }.onFailure { Log.w(TAG, "bind failed", it) }.getOrDefault(false)
+            }.onFailure { Log.status(TAG, "bind failed", it) }.getOrDefault(false)
         }
 
     private fun decodeB64(s: String): ByteArray =

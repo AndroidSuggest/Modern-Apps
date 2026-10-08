@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.protocol.AudioCodec
 import com.vayunmathur.auto.protocol.AudioGain
 import com.vayunmathur.auto.protocol.AudioSinkRole
@@ -84,7 +84,7 @@ class AudioSinkChannel(
         if (pick == null) {
             state = AudioSinkState.UNSUPPORTED
             onEvent(AudioEvent.SinkSetup(role.name, "unsupported"))
-            Log.w(TAG, "$role sink unsupported (non-PCM or no config); parked")
+            Log.status(TAG, "$role sink unsupported (non-PCM or no config); parked")
             publish()
             return
         }
@@ -101,14 +101,14 @@ class AudioSinkChannel(
                     "${pick.config.numberOfChannels}ch config ${pick.index}",
             ),
         )
-        Log.i(TAG, "$role sink setup requested (config ${pick.index})")
+        Log.status(TAG, "$role sink setup requested (config ${pick.index})")
         publish()
     }
 
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
-            Log.w(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
+            Log.status(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
         when (val inbound = AudioCodec.decodeSinkInbound(type, payload)) {
@@ -118,7 +118,7 @@ class AudioSinkChannel(
                 onEvent(AudioEvent.AckReceived(role.name, inbound.ackSeq))
             }
             is InboundAudio.Sync -> onEvent(AudioEvent.SyncReceived(role.name))
-            is InboundAudio.Observed -> Log.d(TAG, "$role unhandled audio message 0x${type.toString(HEX_RADIX)}")
+            is InboundAudio.Observed -> Log.debug(TAG, "$role unhandled audio message 0x${type.toString(HEX_RADIX)}")
         }
     }
 
@@ -144,7 +144,7 @@ class AudioSinkChannel(
         target.post {
             val pcm = AudioCodec.stripWavToPcm16Mono(snapshot)
             if (pcm == null) {
-                Log.w(TAG, "$role dropping malformed TTS wav (${snapshot.size}B)")
+                Log.status(TAG, "$role dropping malformed TTS wav (${snapshot.size}B)")
                 onEvent(AudioEvent.TtsDropped("malformed"))
                 return@post
             }
@@ -158,7 +158,7 @@ class AudioSinkChannel(
         lastGain = currentGain()
         publish()
         if (lastGain == AudioGain.MUTED) {
-            Log.d(TAG, "$role muted by focus")
+            Log.debug(TAG, "$role muted by focus")
         }
     }
 
@@ -184,7 +184,7 @@ class AudioSinkChannel(
         }
         val confirmed = AudioCodec.confirmConfig(inbound.response, pick, service) ?: run {
             state = AudioSinkState.UNSUPPORTED
-            Log.w(TAG, "$role head unit confirmed nothing usable; parked")
+            Log.status(TAG, "$role head unit confirmed nothing usable; parked")
             publish()
             return
         }
@@ -195,23 +195,23 @@ class AudioSinkChannel(
         state = AudioSinkState.STARTED
         lastGain = currentGain()
         onEvent(AudioEvent.SinkStarted(role.name, confirmed.index))
-        Log.i(TAG, "$role sink started (session $sessionId, config ${confirmed.index})")
+        Log.status(TAG, "$role sink started (session $sessionId, config ${confirmed.index})")
         publish()
     }
 
     private fun writeFramed(pcm: ByteArray, sampleRateHz: Int) {
         val config = selected ?: run {
-            Log.d(TAG, "$role dropping ${pcm.size}B with no confirmed config")
+            Log.debug(TAG, "$role dropping ${pcm.size}B with no confirmed config")
             return
         }
         if (state != AudioSinkState.STARTED) {
-            Log.d(TAG, "$role dropping ${pcm.size}B while $state")
+            Log.debug(TAG, "$role dropping ${pcm.size}B while $state")
             return
         }
         val gain = currentGain()
         lastGain = gain
         if (gain == AudioGain.MUTED) {
-            Log.d(TAG, "$role muted; dropping ${pcm.size}B")
+            Log.debug(TAG, "$role muted; dropping ${pcm.size}B")
             return
         }
         val resampled = AudioCodec.resampleLinearMono16(pcm, sampleRateHz, config.config.samplingRate)

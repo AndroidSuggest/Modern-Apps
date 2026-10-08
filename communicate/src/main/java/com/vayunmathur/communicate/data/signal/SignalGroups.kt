@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.data.signal
 
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.google.protobuf.ByteString
 import com.vayunmathur.communicate.data.signal.transport.SignalPayload
 import com.vayunmathur.library.network.NetworkClient
@@ -108,7 +108,7 @@ object SignalGroups {
         val aci = ServiceId.Aci.parseFromString(serviceId)
         ClientZkGroupCipher(GroupSecretParams(secretParamsBytes)).encrypt(aci).serialize()
     } catch (expected: Exception) {
-        Log.w(TAG, "could not encrypt member id: ${expected.message}")
+        Log.status(TAG, "could not encrypt member id: ${expected.message}")
         null
     }
 
@@ -164,7 +164,7 @@ object SignalGroups {
             sslSocketFactory = sslSocketFactory)
         resp.isSuccess
     } catch (expected: Exception) {
-        Log.w(TAG, "putNewGroup failed", expected)
+        Log.status(TAG, "putNewGroup failed", expected)
         false
     }
 
@@ -179,7 +179,7 @@ object SignalGroups {
         // Live-only: fetch endorsements from GET /v2/groups/token or via PushServiceSocket.getGroupHistory.
         // Without live server/SGX, return null and document the gap; the send path will omit the
         // group-send-token header and the server will reject with 403 until endorsement is supplied.
-        Log.i(TAG, "fetchGroupSendEndorsements live-only (needs GET" +
+        Log.status(TAG, "fetchGroupSendEndorsements live-only (needs GET" +
             "$GROUPSV2_TOKEN_PATH with zkgroup GroupSendEndorsementsResponse)")
         return null
     }

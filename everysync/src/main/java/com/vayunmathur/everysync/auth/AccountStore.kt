@@ -4,7 +4,7 @@ import android.accounts.Account
 import android.accounts.AccountManager
 import android.app.Application
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -49,7 +49,7 @@ class AccountStore private constructor(private val context: Application) {
                 am.addAccountExplicitly(Account(accountName, ACCOUNT_TYPE), null, null)
             }
         } catch (expected: Exception) {
-            Log.e(TAG, "Failed to register system account", expected)
+            Log.error(TAG, "Failed to register system account", expected)
         }
     }
 
@@ -60,7 +60,7 @@ class AccountStore private constructor(private val context: Application) {
                 .firstOrNull { it.name == accountName }
                 ?.let { am.removeAccountExplicitly(it) }
         } catch (expected: Exception) {
-            Log.e(TAG, "Failed to remove system account", expected)
+            Log.error(TAG, "Failed to remove system account", expected)
         }
     }
 
@@ -71,7 +71,7 @@ class AccountStore private constructor(private val context: Application) {
         return try {
             json.decodeFromString<List<AccountConfig>>(raw)
         } catch (expected: Exception) {
-            Log.e(TAG, "Failed to decode accounts", expected)
+            Log.error(TAG, "Failed to decode accounts", expected)
             emptyList()
         }
     }

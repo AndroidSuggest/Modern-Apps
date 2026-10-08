@@ -1,7 +1,7 @@
 package com.vayunmathur.library.map
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Choreographer
 import android.view.Surface
 import androidx.compose.runtime.getValue
@@ -373,13 +373,13 @@ class SurfaceMapRenderer(
         // let the camera diff conclude the first frame changed nothing.
         lastFrame = null
         if (!MapNative.isAvailable) {
-            Log.e(TAG, "libmap_renderer.so did not load; the map will not draw")
+            Log.error(TAG, "libmap_renderer.so did not load; the map will not draw")
             renderState = MapRenderState.Unavailable(MapRenderState.Reason.RendererLibraryMissing)
             return
         }
         handle = MapNative.create(surface, cacheDir.absolutePath, localArchivePath, widthPx, heightPx, dark, muted)
         if (handle == 0L) {
-            Log.e(TAG, "the Vulkan renderer failed to start; see MapRenderer in logcat")
+            Log.error(TAG, "the Vulkan renderer failed to start; see MapRenderer in logcat")
             renderState = MapRenderState.Unavailable(MapRenderState.Reason.RendererStartFailed)
             return
         }
@@ -726,7 +726,7 @@ class SurfaceMapRenderer(
 
     /** Dim everything outside the region [mask] names, or clear the mask with `null`. */
     fun setRegionMask(mask: Long?) {
-        Log.d("RegionDbg", "setRegionMask mask=$mask")
+        Log.debug("RegionDbg", "setRegionMask mask=$mask")
         this.selectedRegionId = mask
         this.regionResolved = false
         applyRegionMask()
@@ -752,7 +752,7 @@ class SurfaceMapRenderer(
         // `0` clears above; a nonzero id returns nonzero once a resident tile carries it.
         // `0` back means the tiles have not landed yet — retried next frame, not a miss.
         val resolved = MapNative.setRegionMask(handle, id) != 0L
-        Log.d("RegionDbg", "applyRegionMask id=$id resolved=$resolved")
+        Log.debug("RegionDbg", "applyRegionMask id=$id resolved=$resolved")
         regionResolved = resolved
     }
 

@@ -3,7 +3,7 @@ package com.vayunmathur.web.platform.shields
 import android.content.Context
 import android.net.Uri
 import android.text.TextUtils
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import com.vayunmathur.web.R
@@ -68,7 +68,7 @@ object ShieldsRequestFilter {
     ): WebResourceResponse? {
         if (scheme != "http" || lanPolicy.allowsCleartext(request.url.toString())) return null
         val host = LocalNetwork.hostOf(request.url.toString())
-        Log.d(TAG, "blocked public cleartext request to $host")
+        Log.debug(TAG, "blocked public cleartext request to $host")
         return if (request.isForMainFrame) {
             blockedPageResponse(context, host)
         } else {
@@ -132,7 +132,7 @@ object ShieldsRequestFilter {
         }
         WebResourceResponse(mime, "utf-8", HTTP_OK, "OK", emptyMap(), ByteArrayInputStream(bytes))
     }.onFailure { e ->
-        Log.w(TAG, "malformed redirect resource", e)
+        Log.status(TAG, "malformed redirect resource", e)
     }.getOrNull()
 
     /**

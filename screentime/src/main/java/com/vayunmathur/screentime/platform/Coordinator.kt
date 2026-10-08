@@ -1,7 +1,7 @@
 package com.vayunmathur.screentime.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.screentime.data.ScreenTimeRules
 import com.vayunmathur.screentime.widget.WidgetRefresh
 import java.time.LocalDate

@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.call.CallCapabilities
 import com.vayunmathur.communicate.data.call.InAppCallPhase
@@ -45,7 +45,7 @@ internal suspend fun SignalClient.handleCallMessage(
     val localDeviceId = authData?.deviceId ?: PRIMARY_DEVICE_ID
     if (cm.hasDestinationDeviceId() && cm.destinationDeviceId != localDeviceId) return
     val manager = callManager ?: run {
-        Log.w(TAG, "RingRTC unavailable, dropping a call message from $senderAci")
+        Log.status(TAG, "RingRTC unavailable, dropping a call message from $senderAci")
         return
     }
     // Ensure the native stack is up before feeding anything in.
@@ -84,7 +84,7 @@ internal suspend fun SignalClient.handleCallMessage(
             manager.receivedBusy(cm.busy.id, senderAci, senderDeviceId)
             eventsMutable.emit(SignalEvent.CallEnded(callId = cm.busy.id.toString(), reason = "busy"))
         }
-        cm.hasOpaque() -> Log.i(TAG, "ignoring an opaque call message (group calling not implemented)")
+        cm.hasOpaque() -> Log.status(TAG, "ignoring an opaque call message (group calling not implemented)")
     }
 }
 
@@ -104,7 +104,7 @@ private suspend fun SignalClient.handleCallOffer(
     // send: our own offers are accepted by the server but never ring, and our side reports
     // success, so the difference has to be in the message itself.
     val ageSec = ((env.serverTimestamp - env.timestamp).coerceAtLeast(0L)) / 1000
-    Log.i(
+    Log.status(
         TAG,
         "inbound Offer callId=${offer.id} from $senderAci:$senderDeviceId " +
             "opaque=${offer.opaque.size()}B type=${offer.type} " +
@@ -212,29 +212,29 @@ internal suspend fun SignalClient.emitCallState(
  */
 fun SignalClient.placeCall(conversationId: String, video: Boolean) {
     val localAci = authData?.aci?.takeIf { it.isNotEmpty() } ?: run {
-        Log.w(TAG, "cannot call before registration")
+        Log.status(TAG, "cannot call before registration")
         return
     }
     val manager = callManager ?: run {
-        Log.w(TAG, "RingRTC unavailable, cannot place a call")
+        Log.status(TAG, "RingRTC unavailable, cannot place a call")
         return
     }
     scope.launch {
         val resolved = resolveDestinationAci(conversationId)
         if (resolved == null) {
-            Log.w(TAG, "cannot call $conversationId: no Signal identity for it")
+            Log.status(TAG, "cannot call $conversationId: no Signal identity for it")
             eventsMutable.emit(SignalEvent.CallEnded(callId = "", reason = "not a Signal user"))
             return@launch
         }
         if (!ACI_REGEX.matches(resolved)) {
             // A PNI is enough to message but not to call.
-            Log.w(TAG, "cannot call $resolved: calling needs an ACI, which arrives with their first message")
+            Log.status(TAG, "cannot call $resolved: calling needs an ACI, which arrives with their first message")
             eventsMutable.emit(SignalEvent.CallEnded(callId = "", reason = "cannot call this contact yet"))
             return@launch
         }
         val e = e2e
         if (e == null || (!e.hasSession(resolved, PRIMARY_DEVICE_ID) && !establishSession(e, resolved))) {
-            Log.w(TAG, "no session with $resolved, cannot place a call")
+            Log.status(TAG, "no session with $resolved, cannot place a call")
             eventsMutable.emit(SignalEvent.CallEnded(callId = "", reason = "no session"))
             return@launch
         }
@@ -270,12 +270,12 @@ fun SignalClient.setCallAudioEnabled(enabled: Boolean): Boolean =
 suspend fun SignalClient.placeGroupCall(conversationId: String): Boolean {
     if (!SignalProtocol.isGroupConversation(conversationId)) return false
     val manager = groupCallManager ?: run {
-        Log.w(TAG, "RingRTC unavailable, cannot place a group call")
+        Log.status(TAG, "RingRTC unavailable, cannot place a group call")
         return false
     }
     val conversation = try { db?.conversationDao()?.getConversation(conversationId) } catch (_: Exception) { null }
     val masterKey = conversation?.groupMasterKey ?: run {
-        Log.w(TAG, "no master key for $conversationId, cannot place a group call")
+        Log.status(TAG, "no master key for $conversationId, cannot place a group call")
         return false
     }
     // Membership must be current or participants cannot be matched to people.

@@ -3,7 +3,7 @@ package com.vayunmathur.cast.service
 import android.os.Bundle
 import android.os.Message
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.protocol.MediaResource
 import com.vayunmathur.cast.protocol.MediaResourceResolver
 import com.vayunmathur.sdk.cast.CastContract
@@ -80,12 +80,12 @@ class ClientResourceResolver(
                 }
             }
             if (!send(request)) {
-                Log.w(TAG, "no client to ask for '$resourceId'")
+                Log.status(TAG, "no client to ask for '$resourceId'")
                 return null
             }
             val answer = mailbox.poll(REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             if (answer == null) {
-                Log.w(TAG, "the app did not answer for '$resourceId' within ${REQUEST_TIMEOUT_MS}ms")
+                Log.status(TAG, "the app did not answer for '$resourceId' within ${REQUEST_TIMEOUT_MS}ms")
                 return null
             }
             val resource = answer.resource ?: return null
@@ -150,16 +150,16 @@ class ClientResourceResolver(
         val resourceId = data?.getString(CastContract.KEY_RESOURCE_ID) ?: return
         val resource = cache[resourceId]
         if (resource == null) {
-            Log.w(TAG, "'$resourceId' was completed but was never handed over")
+            Log.status(TAG, "'$resourceId' was completed but was never handed over")
             return
         }
         if (data.containsKey(CastContract.KEY_RESOURCE_LENGTH)) {
             val length = data.getLong(CastContract.KEY_RESOURCE_LENGTH)
             resource.complete(length)
-            Log.i(TAG, "'$resourceId' finished at $length bytes")
+            Log.status(TAG, "'$resourceId' finished at $length bytes")
         } else {
             resource.fail()
-            Log.w(TAG, "the app could not finish producing '$resourceId'")
+            Log.status(TAG, "the app could not finish producing '$resourceId'")
         }
     }
 

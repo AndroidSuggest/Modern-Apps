@@ -1,7 +1,7 @@
 package com.vayunmathur.translate.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ml.NllbHandle
 import com.vayunmathur.translate.domain.Languages
 import com.vayunmathur.translate.domain.TranslationEngine
@@ -59,7 +59,7 @@ class NllbTranslator(private val context: Context) : TranslationEngine {
                 try {
                     handle.translate(text, source, target)?.ifBlank { null }
                 } catch (e: Exception) {
-                    Log.e(TAG, "translate failed", e)
+                    Log.error(TAG, "translate failed", e)
                     null
                 }
             }
@@ -98,7 +98,7 @@ class NllbTranslator(private val context: Context) : TranslationEngine {
         attempts++
         val reclaimed = NllbModel.deleteRetired(context)
         if (reclaimed > 0) {
-            Log.i(TAG, "reclaimed $reclaimed bytes of retired SMaLL-100 weights")
+            Log.status(TAG, "reclaimed $reclaimed bytes of retired SMaLL-100 weights")
         }
         val handle = NllbHandle.inDirectory(NllbModel.modelDir(context))
         if (!handle.isAvailable) {

@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Rect
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
@@ -77,7 +77,7 @@ private fun CameraViewModel.buildSingleCapturePlan(pending: PendingStill): Singl
             androidx.camera.camera2.interop.Camera2CameraControl.from(it)
         }
     } catch (e: IllegalArgumentException) {
-        Log.w("CameraViewModel", "Camera2 control unavailable", e)
+        Log.status("CameraViewModel", "Camera2 control unavailable", e)
         null
     }
     return SingleCapturePlan(
@@ -118,10 +118,10 @@ private fun CameraViewModel.applyNightExposureThen(plan: SingleCapturePlan, doCa
         plan.cam2Control!!.setCaptureRequestOptions(options.build())
             .addListener({ doCapture(plan) }, ContextCompat.getMainExecutor(app))
     } catch (e: IllegalStateException) {
-        Log.w("CameraViewModel", "Failed to set night exposure", e)
+        Log.status("CameraViewModel", "Failed to set night exposure", e)
         doCapture(plan)
     } catch (e: IllegalArgumentException) {
-        Log.w("CameraViewModel", "Failed to set night exposure", e)
+        Log.status("CameraViewModel", "Failed to set night exposure", e)
         doCapture(plan)
     }
 }
@@ -202,7 +202,7 @@ private fun CameraViewModel.captureProcessedSingle(
                 }
             }
             override fun onError(exception: ImageCaptureException) {
-                Log.e("CameraViewModel", "Adjusted capture failed", exception)
+                Log.error("CameraViewModel", "Adjusted capture failed", exception)
                 finishCapture(null)
             }
         }
@@ -257,10 +257,10 @@ fun CameraViewModel.capturePhotoForResult(onSaved: (Bitmap?) -> Unit, onError: (
         val outputStream = try {
             app.contentResolver.openOutputStream(outputUri)
         } catch (e: java.io.FileNotFoundException) {
-            Log.e("CameraViewModel", "Could not open EXTRA_OUTPUT for writing", e)
+            Log.error("CameraViewModel", "Could not open EXTRA_OUTPUT for writing", e)
             null
         } catch (e: SecurityException) {
-            Log.e("CameraViewModel", "Could not open EXTRA_OUTPUT for writing", e)
+            Log.error("CameraViewModel", "Could not open EXTRA_OUTPUT for writing", e)
             null
         }
         if (outputStream == null) {
@@ -282,7 +282,7 @@ fun CameraViewModel.capturePhotoForResult(onSaved: (Bitmap?) -> Unit, onError: (
             }
             override fun onError(exception: ImageCaptureException) {
                 isCapturingMutable.value = false
-                Log.e("CameraViewModel", "IMAGE_CAPTURE to EXTRA_OUTPUT failed", exception)
+                Log.error("CameraViewModel", "IMAGE_CAPTURE to EXTRA_OUTPUT failed", exception)
                 onError()
             }
         })
@@ -300,7 +300,7 @@ fun CameraViewModel.capturePhotoForResult(onSaved: (Bitmap?) -> Unit, onError: (
             }
             override fun onError(exception: ImageCaptureException) {
                 isCapturingMutable.value = false
-                Log.e("CameraViewModel", "IMAGE_CAPTURE thumbnail capture failed", exception)
+                Log.error("CameraViewModel", "IMAGE_CAPTURE thumbnail capture failed", exception)
                 onError()
             }
         })
@@ -374,7 +374,7 @@ internal fun CameraViewModel.capturePhotoForResultProcessed(
                     result.fold(
                         onSuccess = { onSaved(it) },
                         onFailure = {
-                            Log.e("CameraViewModel", "Processed IMAGE_CAPTURE failed", it)
+                            Log.error("CameraViewModel", "Processed IMAGE_CAPTURE failed", it)
                             onError()
                         }
                     )
@@ -382,7 +382,7 @@ internal fun CameraViewModel.capturePhotoForResultProcessed(
             }
             override fun onError(exception: ImageCaptureException) {
                 isCapturingMutable.value = false
-                Log.e("CameraViewModel", "Processed IMAGE_CAPTURE capture failed", exception)
+                Log.error("CameraViewModel", "Processed IMAGE_CAPTURE capture failed", exception)
                 onError()
             }
         }

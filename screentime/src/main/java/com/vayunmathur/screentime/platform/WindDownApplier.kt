@@ -3,7 +3,7 @@ package com.vayunmathur.screentime.platform
 import android.app.NotificationManager
 import android.content.Context
 import android.provider.Settings
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 
 private const val TAG = "ScreenTimeWindDown"
@@ -57,7 +57,7 @@ class WindDownApplier(private val context: Context) {
                     daltonizerMode(),
                 )
             }
-        }.onFailure { Log.w(TAG, "could not set grayscale=$on", it) }
+        }.onFailure { Log.status(TAG, "could not set grayscale=$on", it) }
     }
 
     /**
@@ -78,7 +78,7 @@ class WindDownApplier(private val context: Context) {
     private fun setDnd(on: Boolean) {
         val nm = notifications ?: return
         if (!nm.isNotificationPolicyAccessGranted) {
-            Log.w(TAG, "no DND policy access; skipping DND change")
+            Log.status(TAG, "no DND policy access; skipping DND change")
             return
         }
         runCatching {
@@ -86,7 +86,7 @@ class WindDownApplier(private val context: Context) {
                 if (on) NotificationManager.INTERRUPTION_FILTER_PRIORITY
                 else NotificationManager.INTERRUPTION_FILTER_ALL,
             )
-        }.onFailure { Log.w(TAG, "could not set DND=$on", it) }
+        }.onFailure { Log.status(TAG, "could not set DND=$on", it) }
     }
 
     private companion object {

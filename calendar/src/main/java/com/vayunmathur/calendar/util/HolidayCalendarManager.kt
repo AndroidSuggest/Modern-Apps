@@ -8,7 +8,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.CalendarContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlin.math.absoluteValue
 
 /**
@@ -59,7 +59,7 @@ object HolidayCalendarManager {
                         }
                 }
             }
-        }.onFailure { Log.e("HolidayCal", "addedCalendars failed", it) }
+        }.onFailure { Log.error("HolidayCal", "addedCalendars failed", it) }
         return out
     }
 
@@ -119,7 +119,7 @@ object HolidayCalendarManager {
         val calId = runCatching {
             context.contentResolver.insert(syncUri(CalendarContract.Calendars.CONTENT_URI), calValues)
                 ?.let { ContentUris.parseId(it) }
-        }.onFailure { Log.e("HolidayCal", "create calendar failed", it) }.getOrNull() ?: return
+        }.onFailure { Log.error("HolidayCal", "create calendar failed", it) }.getOrNull() ?: return
 
         val rows = HolidayData.holidays(context, code, lang).mapNotNull { h ->
             val date = runCatching { LocalDate.parse(h.d) }.getOrNull() ?: return@mapNotNull null
@@ -138,7 +138,7 @@ object HolidayCalendarManager {
             // Insert as sync adapter so the provider allows writing into a read-only calendar.
             runCatching {
                 context.contentResolver.bulkInsert(syncUri(CalendarContract.Events.CONTENT_URI), rows)
-            }.onFailure { Log.e("HolidayCal", "insert events failed", it) }
+            }.onFailure { Log.error("HolidayCal", "insert events failed", it) }
         }
     }
 
@@ -151,7 +151,7 @@ object HolidayCalendarManager {
                 "${CalendarContract.Calendars._ID} = ?",
                 arrayOf(calId.toString()),
             )
-        }.onFailure { Log.e("HolidayCal", "remove calendar failed", it) }
+        }.onFailure { Log.error("HolidayCal", "remove calendar failed", it) }
     }
 
     /** Remove all language variants for a country code (backward compat helper). */

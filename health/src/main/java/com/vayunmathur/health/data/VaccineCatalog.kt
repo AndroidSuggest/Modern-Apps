@@ -1,7 +1,7 @@
 package com.vayunmathur.health.data
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -79,10 +79,10 @@ object VaccineCatalog {
             json.decodeFromString<List<Vaccine>>(it.readText())
         }
     } catch (e: IOException) {
-        Log.e(TAG, "No bundled vaccine catalogue", e)
+        Log.error(TAG, "No bundled vaccine catalogue", e)
         emptyList()
     } catch (e: IllegalArgumentException) {
-        Log.e(TAG, "No bundled vaccine catalogue", e)
+        Log.error(TAG, "No bundled vaccine catalogue", e)
         emptyList()
     }
 }

@@ -2,7 +2,7 @@ package com.vayunmathur.openassistant.ui
 
 import android.content.ClipData
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -113,7 +113,7 @@ fun ChatBubble(message: Message) {
                                     }
                                     context.startActivity(intent)
                                 } catch (expected: Exception) {
-                                    Log.w("LiteRTChatUi", "Failed to open link: $url", expected)
+                                    Log.status("LiteRTChatUi", "Failed to open link: $url", expected)
                                 }
                             },
                             modifier = Modifier.align(Alignment.End)

@@ -1,7 +1,7 @@
 package com.vayunmathur.library.room
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.room3.Room
 import androidx.room3.RoomDatabase
 import androidx.room3.migration.Migration
@@ -19,7 +19,7 @@ fun loadSqlCipher() {
         System.loadLibrary("sqlcipher")
         sqlCipherLoaded = true
     } catch (expected: UnsatisfiedLinkError) {
-        Log.e(TAG, "Failed to load sqlcipher native library", expected)
+        Log.error(TAG, "Failed to load sqlcipher native library", expected)
     }
 }
 
@@ -177,7 +177,7 @@ fun encryptExistingDatabase(context: Context, dbName: String, password: String) 
             }
         }
     } catch (expected: java.io.IOException) {
-        Log.w(TAG, "Failed to read database header; assuming encrypted", expected)
+        Log.status(TAG, "Failed to read database header; assuming encrypted", expected)
         true
     }
 
@@ -211,7 +211,7 @@ fun encryptExistingDatabase(context: Context, dbName: String, password: String) 
 
         tempFile.renameTo(dbFile)
     } catch (expected: net.zetetic.database.sqlcipher.SQLiteNotADatabaseException) {
-        Log.w(TAG, "Database is not a plain SQLite file; skipping encryption", expected)
+        Log.status(TAG, "Database is not a plain SQLite file; skipping encryption", expected)
         tempFile.delete()
     }
 }

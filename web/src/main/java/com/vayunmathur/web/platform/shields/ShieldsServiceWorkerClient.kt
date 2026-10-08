@@ -1,7 +1,7 @@
 package com.vayunmathur.web.platform.shields
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import androidx.webkit.ServiceWorkerClientCompat
@@ -59,7 +59,7 @@ class ShieldsServiceWorkerClient(
                     .setServiceWorkerClient(ShieldsServiceWorkerClient(app))
             }.onFailure {
                 registered.set(false)
-                Log.w(TAG, "service worker client unavailable", it)
+                Log.status(TAG, "service worker client unavailable", it)
             }
         }
     }

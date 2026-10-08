@@ -1,7 +1,7 @@
 package com.vayunmathur.youpipe.util
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -18,12 +18,12 @@ import kotlinx.coroutines.CancellationException
 class SubscriptionFetchTask(context: Context, params: WorkerParameters) :
         CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        Log.d("SubscriptionFetchTask", "Starting...")
+        Log.debug("SubscriptionFetchTask", "Starting...")
         return try {
             val repository = SubscriptionRepository.get(applicationContext)
 
             val subscriptions = repository.getAllSubscriptions()
-            Log.d("SubscriptionFetchTask", "Fetched ${subscriptions.size} subscriptions")
+            Log.debug("SubscriptionFetchTask", "Fetched ${subscriptions.size} subscriptions")
 
             subscriptions.forEachIndexed { index, sub ->
                 fetchAndStoreChannelVideos(repository, sub)
@@ -31,18 +31,18 @@ class SubscriptionFetchTask(context: Context, params: WorkerParameters) :
             }
             Result.success()
         } catch (e: CancellationException) {
-            Log.d("SubscriptionFetchTask", "Task cancelled")
+            Log.debug("SubscriptionFetchTask", "Task cancelled")
             throw e
         } catch (e: java.net.UnknownHostException) {
-            Log.e("SubscriptionFetchTask", "Offline during fetch, retrying", e)
+            Log.error("SubscriptionFetchTask", "Offline during fetch, retrying", e)
             Result.retry()
         } catch (e: IllegalStateException) {
             val message = e.message ?: e.javaClass.simpleName
-            Log.e("SubscriptionFetchTask", "Error during fetch: $message", e)
+            Log.error("SubscriptionFetchTask", "Error during fetch: $message", e)
             Result.retry()
         } catch (e: android.database.sqlite.SQLiteException) {
             val message = e.message ?: e.javaClass.simpleName
-            Log.e("SubscriptionFetchTask", "Database error during fetch: $message", e)
+            Log.error("SubscriptionFetchTask", "Database error during fetch: $message", e)
             Result.retry()
         }
     }
@@ -80,11 +80,11 @@ private suspend fun fetchAndStoreChannelVideos(
         throw offlineFetchException(sub.name, e)
     } catch (e: org.schabi.newpipe.extractor.exceptions.ExtractionException) {
         // Best-effort per-channel fetch: one channel failing must not abort the rest.
-        android.util.Log.e("SubscriptionFetchTask", "Failed to fetch videos for ${sub.name}", e)
+        Log.error("SubscriptionFetchTask", "Failed to fetch videos for ${sub.name}", e)
     } catch (e: java.io.IOException) {
         // UnresolvedAddressException extends IOException, so offline DNS failures
         // land here too; log per-channel, retry at the WorkManager level.
-        android.util.Log.e("SubscriptionFetchTask", "Failed to fetch videos for ${sub.name}", e)
+        Log.error("SubscriptionFetchTask", "Failed to fetch videos for ${sub.name}", e)
     }
 }
 
@@ -93,6 +93,6 @@ fun setupHourlyTask(context: Context) {
 }
 
 private fun offlineFetchException(channelName: String, cause: java.io.IOException): java.io.IOException {
-    android.util.Log.e("SubscriptionFetchTask", "Offline, retrying fetch for $channelName", cause)
+    Log.error("SubscriptionFetchTask", "Offline, retrying fetch for $channelName", cause)
     return cause
 }

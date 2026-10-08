@@ -1,6 +1,6 @@
 package com.vayunmathur.passwords.platform.cable
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.passwords.R
 import com.vayunmathur.passwords.domain.Cbor
 
@@ -35,33 +35,33 @@ class CableSession(
 
             val domainId = TunnelDomains.DEFAULT_ID
             val domain = TunnelDomains.decode(domainId)
-            Log.d(TAG, "Connecting to tunnel $domain")
+            Log.debug(TAG, "Connecting to tunnel $domain")
             onStatus(R.string.cable_status_connecting)
             val tun = CableTunnel.connectNew(domain, tunnelId).also { tunnel = it }
 
             val routingId = tun.routingId ?: ByteArray(CableEid.ROUTING_ID_SIZE)
             if (tun.routingId == null) {
-                Log.w(TAG, "No routing id from tunnel; using zeros (browser likely won't connect back)")
+                Log.status(TAG, "No routing id from tunnel; using zeros (browser likely won't connect back)")
             }
             val nonce = CableEid.randomNonce()
             val plaintextEid = CableEid.buildPlaintext(nonce, routingId, domainId)
             onStatus(R.string.cable_status_advertising)
             advertiser.start(CableEid.encrypt(plaintextEid, eidKey)) { ok ->
-                if (!ok) Log.w(TAG, "BLE advertising unavailable; proximity check may fail")
+                if (!ok) Log.status(TAG, "BLE advertising unavailable; proximity check may fail")
             }
 
             // PSK binds the handshake to the advertised EID.
             val psk = CableKeys.psk(qr.qrSecret, plaintextEid)
 
             onStatus(R.string.cable_status_handshake)
-            Log.d(TAG, "Waiting for browser handshake (msg1)...")
+            Log.debug(TAG, "Waiting for browser handshake (msg1)...")
             val responder = NoiseResponder(P256.decodePoint(qr.peerPublicKey), psk)
             val msg1 = tun.receive()
-            Log.d(TAG, "Received handshake msg1: ${msg1.size} bytes")
+            Log.debug(TAG, "Received handshake msg1: ${msg1.size} bytes")
             responder.readMessage1(msg1)
             val (msg2, crypter) = responder.writeMessage2()
             tun.send(msg2)
-            Log.d(TAG, "Handshake complete; sent msg2 (${msg2.size} bytes)")
+            Log.debug(TAG, "Handshake complete; sent msg2 (${msg2.size} bytes)")
 
             // Post-handshake message: { 1: getInfo bytes, 3: features }. Sent as PLAIN CBOR, which
             // makes the desktop negotiate protocol revision 1 (MessageType-byte framing below).
@@ -71,12 +71,12 @@ class CableSession(
                 3L to listOf("ctap"),
             ))
             tun.send(crypter.encrypt(postHandshake))
-            Log.d(TAG, "Sent post-handshake getInfo")
+            Log.debug(TAG, "Sent post-handshake getInfo")
 
             onStatus(R.string.cable_status_waiting)
             return ctapLoop(tun, crypter)
         } catch (expected: IllegalStateException) {
-            Log.e(TAG, "caBLE session error", expected)
+            Log.error(TAG, "caBLE session error", expected)
             onStatus(R.string.cable_status_failed)
             return false
         } finally {
@@ -95,7 +95,7 @@ class CableSession(
     private suspend fun handleTransportMessage(tun: CableTunnel, crypter: Crypter): Boolean? {
         val plain = crypter.decrypt(tun.receive())
         if (plain.isEmpty()) return null
-        Log.d(TAG, "Transport message: type=${plain[0].toInt() and BYTE_MASK}, ${plain.size} bytes")
+        Log.debug(TAG, "Transport message: type=${plain[0].toInt() and BYTE_MASK}, ${plain.size} bytes")
 
         val messageType = plain[0].toInt() and BYTE_MASK
         val payload = plain.copyOfRange(1, plain.size)

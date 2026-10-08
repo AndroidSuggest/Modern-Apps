@@ -4,7 +4,7 @@ import com.vayunmathur.translate.domain.Languages
 
 import android.content.Context
 import android.speech.tts.TextToSpeech
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.Locale
 import java.util.MissingResourceException
 
@@ -53,7 +53,7 @@ class TtsSpeaker(context: Context) {
         tts = TextToSpeech(context.applicationContext) { status ->
             val queued = synchronized(this) {
                 ready = status == TextToSpeech.SUCCESS
-                if (!ready) Log.w(TAG, "TextToSpeech init failed: $status")
+                if (!ready) Log.status(TAG, "TextToSpeech init failed: $status")
                 pending.also { pending = null }
             }
             if (queued != null) utter(queued)
@@ -114,7 +114,7 @@ class TtsSpeaker(context: Context) {
         val engine = synchronized(this) { tts.takeIf { ready } } ?: return
         val locale = localeFor(req.languageCode)
         if (locale == null) {
-            Log.w(TAG, "engine has no voice for ${req.languageCode}; not speaking")
+            Log.status(TAG, "engine has no voice for ${req.languageCode}; not speaking")
             req.onMissingVoice?.invoke()
             return
         }
@@ -122,14 +122,14 @@ class TtsSpeaker(context: Context) {
             // Re-check the result: voice data can be uninstalled between resolution and
             // now, and a failed switch would otherwise speak in the previous locale.
             if (engine.setLanguage(locale) < TextToSpeech.LANG_AVAILABLE) {
-                Log.w(TAG, "engine refused $locale; not speaking")
+                Log.status(TAG, "engine refused $locale; not speaking")
                 synchronized(this) { resolved.remove(req.languageCode) }
                 req.onMissingVoice?.invoke()
                 return
             }
             engine.speak(req.text, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_ID)
         } catch (e: Exception) {
-            Log.e(TAG, "speak failed", e)
+            Log.error(TAG, "speak failed", e)
         }
     }
 
@@ -162,7 +162,7 @@ class TtsSpeaker(context: Context) {
         val installed = try {
             engine.availableLanguages.orEmpty()
         } catch (e: Exception) {
-            Log.w(TAG, "could not list available languages", e)
+            Log.status(TAG, "could not list available languages", e)
             return null
         }
         val sameLanguage = installed
@@ -179,7 +179,7 @@ class TtsSpeaker(context: Context) {
         // LANG_MISSING_DATA and LANG_NOT_SUPPORTED are the negative codes.
         engine.isLanguageAvailable(locale) >= TextToSpeech.LANG_AVAILABLE
     } catch (e: Exception) {
-        Log.w(TAG, "availability check failed for $locale", e)
+        Log.status(TAG, "availability check failed for $locale", e)
         false
     }
 

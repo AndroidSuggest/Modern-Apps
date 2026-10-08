@@ -1,6 +1,6 @@
 package com.vayunmathur.fooddelivery.ui
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -168,11 +168,11 @@ fun CheckoutScreen(
         )
         val response = BitesOrders.checkout(merchantId, request)
         if (BuildConfig.DEV_BUILD) {
-            Log.d("Checkout", "response.order=${response?.order}")
-            Log.d("Checkout", "response.clientSecret=${response?.clientSecret?.take(20)}")
-            Log.d("Checkout", "response.serviceable=${response?.serviceable}")
+            Log.debug("Checkout", "response.order=${response?.order}")
+            Log.debug("Checkout", "response.clientSecret=${response?.clientSecret?.take(20)}")
+            Log.debug("Checkout", "response.serviceable=${response?.serviceable}")
             response?.order?.let { o ->
-                Log.d("Checkout", "order: foodTotal=${o.foodTotal} taxes=${o.taxes} deliveryFee=${o.deliveryFee} fees=${o.fees} tips=${o.tips} displayTotal=${o.displayTotal}")
+                Log.debug("Checkout", "order: foodTotal=${o.foodTotal} taxes=${o.taxes} deliveryFee=${o.deliveryFee} fees=${o.fees} tips=${o.tips} displayTotal=${o.displayTotal}")
             }
         }
         // Reuse the draft order on the next re-price; drop it if this call failed so we
@@ -199,7 +199,7 @@ fun CheckoutScreen(
         rewards = if (customer == null || orderUuid == null) null
         else BitesOrders.getOrderRewards(orderUuid)
         if (BuildConfig.DEV_BUILD) {
-            Log.d("Checkout", "rewardsAvailable=${rewards?.rewardsAvailable} rate=${rewards?.rewardsRate}")
+            Log.debug("Checkout", "rewardsAvailable=${rewards?.rewardsAvailable} rate=${rewards?.rewardsRate}")
         }
     }
 
@@ -211,11 +211,11 @@ fun CheckoutScreen(
             runCatching {
                 Stripe(context, PaymentConfiguration.getInstance(context).publishableKey)
                     .retrievePaymentIntentSynchronous(secret).amount?.toInt()
-            }.onFailure { Log.w("Checkout", "PaymentIntent lookup failed", it) }.getOrNull()
+            }.onFailure { Log.status("Checkout", "PaymentIntent lookup failed", it) }.getOrNull()
         } ?: return@LaunchedEffect
         val shown = payTotal ?: return@LaunchedEffect
         if (kotlin.math.abs(amount / 100.0 - shown) > 0.005 && BuildConfig.DEV_BUILD) {
-            Log.w("Checkout", "MISMATCH: stripe=${amount / 100.0} shown=$shown " +
+            Log.status("Checkout", "MISMATCH: stripe=${amount / 100.0} shown=$shown " +
                 "componentTotal=${confirmedOrder.componentTotal} rewards=${rewards?.rewardsAvailable}")
         }
     }

@@ -9,7 +9,7 @@ import android.graphics.Rect
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.util.Size
 import androidx.collection.LruCache
 import androidx.compose.foundation.background
@@ -93,7 +93,7 @@ fun albumArtistPairs(music: List<Music>, artists: List<Artist>, albums: List<Alb
         } else album to artist
     }.distinct()
     if (unmatched > 0) {
-        Log.w("MusicUtil", "$unmatched of ${music.size} songs had no matching album or artist")
+        Log.status("MusicUtil", "$unmatched of ${music.size} songs had no matching album or artist")
     }
     return pairs
 }
@@ -132,11 +132,11 @@ suspend fun getSongs(context: Context): List<Music> = withContext(Dispatchers.IO
             "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC",
         )?.use { cursor -> songs.addAll(readSongs(cursor)) }
     } catch (e: SecurityException) {
-        Log.e("MusicUtil", "Error querying songs", e)
+        Log.error("MusicUtil", "Error querying songs", e)
     } catch (e: IllegalArgumentException) {
-        Log.e("MusicUtil", "Error querying songs", e)
+        Log.error("MusicUtil", "Error querying songs", e)
     } catch (e: IllegalStateException) {
-        Log.e("MusicUtil", "Error querying songs", e)
+        Log.error("MusicUtil", "Error querying songs", e)
     }
     return@withContext songs
 }
@@ -222,11 +222,11 @@ suspend fun getAlbums(context: Context): List<Album> = withContext(Dispatchers.I
             }
         }
     } catch (e: SecurityException) {
-        Log.e("MusicUtil", "Error querying albums", e)
+        Log.error("MusicUtil", "Error querying albums", e)
     } catch (e: IllegalArgumentException) {
-        Log.e("MusicUtil", "Error querying albums", e)
+        Log.error("MusicUtil", "Error querying albums", e)
     } catch (e: IllegalStateException) {
-        Log.e("MusicUtil", "Error querying albums", e)
+        Log.error("MusicUtil", "Error querying albums", e)
     }
     return@withContext musicList
 }
@@ -263,11 +263,11 @@ suspend fun getArtists(context: Context): List<Artist> = withContext(Dispatchers
             }
         }
     } catch (e: SecurityException) {
-        Log.e("MusicUtil", "Error querying artists", e)
+        Log.error("MusicUtil", "Error querying artists", e)
     } catch (e: IllegalArgumentException) {
-        Log.e("MusicUtil", "Error querying artists", e)
+        Log.error("MusicUtil", "Error querying artists", e)
     } catch (e: IllegalStateException) {
-        Log.e("MusicUtil", "Error querying artists", e)
+        Log.error("MusicUtil", "Error querying artists", e)
     }
     return@withContext artistList
 }
@@ -390,13 +390,13 @@ private inline fun <T> withAudioMetadata(
         extract(retriever)
     }
 } catch (e: IllegalArgumentException) {
-    Log.w("MusicUtil", "Could not read audio metadata", e)
+    Log.status("MusicUtil", "Could not read audio metadata", e)
     default
 } catch (e: SecurityException) {
-    Log.w("MusicUtil", "Could not read audio metadata", e)
+    Log.status("MusicUtil", "Could not read audio metadata", e)
     default
 } catch (e: IllegalStateException) {
-    Log.w("MusicUtil", "Could not read audio metadata", e)
+    Log.status("MusicUtil", "Could not read audio metadata", e)
     default
 }
 

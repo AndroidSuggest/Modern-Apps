@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.data.rcs
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.CommunicateAttachment
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.RcsSendResult
@@ -82,7 +82,7 @@ object RcsOutbox {
             )
             id
         }.getOrElse {
-            Log.w(TAG, "Outbox enqueue failed", it)
+            Log.status(TAG, "Outbox enqueue failed", it)
             null
         }
     }
@@ -141,7 +141,7 @@ object RcsOutbox {
                     )
                 }
             }
-        }.onFailure { Log.w(TAG, "Outbox pump failed", it) }
+        }.onFailure { Log.status(TAG, "Outbox pump failed", it) }
         retried to sent
     }
 

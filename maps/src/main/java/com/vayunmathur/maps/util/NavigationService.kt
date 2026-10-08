@@ -8,7 +8,7 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import com.vayunmathur.maps.MainActivity
 import com.vayunmathur.maps.R
@@ -53,12 +53,12 @@ class NavigationService : Service() {
         super.onCreate()
         NavigationSessionManager.init(this)
         NavigationTts.init(this)
-        Log.i(TAG, "onCreate")
+        Log.status(TAG, "onCreate")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            Log.i(TAG, "ACTION_STOP")
+            Log.status(TAG, "ACTION_STOP")
             stopSelfAndSession()
             return START_NOT_STICKY
         }
@@ -81,7 +81,7 @@ class NavigationService : Service() {
     }
 
     override fun onDestroy() {
-        Log.i(TAG, "onDestroy")
+        Log.status(TAG, "onDestroy")
         collectorJob?.cancel()
         NavigationTts.shutdown()
         // Defensive cleanup for the case where the system kills the service
@@ -98,7 +98,7 @@ class NavigationService : Service() {
         // If the user swipes the app away from recents while navigating,
         // tear down rather than leave the singleton (and the persistent
         // notification) orphaned.
-        Log.i(TAG, "onTaskRemoved — stopping navigation session")
+        Log.status(TAG, "onTaskRemoved — stopping navigation session")
         stopSelfAndSession()
         super.onTaskRemoved(rootIntent)
     }

@@ -5,7 +5,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.UserManager
 import android.provider.Settings
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -107,7 +107,7 @@ internal object ReportHeaders {
     fun readFileAsString(path: String): String? = try {
         String(Files.readAllBytes(Paths.get(path)), Charsets.UTF_8)
     } catch (e: IOException) {
-        Log.e(TAG, "unable to read $path", e)
+        Log.error(TAG, "unable to read $path", e)
         null
     }
 }

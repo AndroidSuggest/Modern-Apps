@@ -2,7 +2,7 @@ package com.vayunmathur.email.network.imap
 
 import android.content.Context
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.email.data.Attachment
 import com.vayunmathur.email.platform.EmlAttachment
 import com.vayunmathur.email.platform.ParsedEml
@@ -535,7 +535,7 @@ object MimeParser {
                 val str = String(bytes, Charsets.US_ASCII).replace(Regex("\\s"), "")
                 if (str.isEmpty()) ByteArray(0) else Base64.decode(str, Base64.DEFAULT)
             } catch (ignored: Exception) {
-                Log.w(TAG, "base64 decode failed: ${ignored.message}")
+                Log.status(TAG, "base64 decode failed: ${ignored.message}")
                 bytes
             }
             "quoted-printable" -> decodeQuotedPrintable(bytes)

@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
@@ -92,7 +93,7 @@ fun SafePdfPageCanvas(
             try {
                 drawSafePage(decoded)
             } catch (expected: RuntimeException) {
-                android.util.Log.w("SafePdfViewer", "drawSafePage failed", expected)
+                Log.status("SafePdfViewer", "drawSafePage failed", expected)
             } finally {
                 drawContext.canvas.nativeCanvas.restoreToCount(base)
             }

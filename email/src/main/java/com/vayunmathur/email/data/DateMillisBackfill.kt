@@ -1,7 +1,7 @@
 package com.vayunmathur.email.data
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -34,7 +34,7 @@ object DateMillisBackfill {
                 }
                 batch = dao.getRowsWithZeroDateMillis()
             }
-            if (fixed > 0) Log.d("DateMillisBackfill", "Backfilled $fixed row(s)")
+            if (fixed > 0) Log.debug("DateMillisBackfill", "Backfilled $fixed row(s)")
         }
     }
 }

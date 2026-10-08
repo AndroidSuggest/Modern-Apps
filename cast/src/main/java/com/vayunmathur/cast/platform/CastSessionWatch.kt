@@ -1,7 +1,7 @@
 package com.vayunmathur.cast.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.R
 import com.vayunmathur.cast.domain.CastDevice
 import com.vayunmathur.cast.platform.mirror.MirrorPreferences
@@ -70,7 +70,7 @@ internal fun CastController.startWatch(
         // `awaitEnd` is not proof that the TV ended the session. Whoever cancelled this job is
         // publishing its own failure, and a second teardown here would clear it.
         if (!isActive) return@launch
-        Log.i(TAG, "the control channel closed")
+        Log.status(TAG, "the control channel closed")
         val receiverId = activeClient.receiverId ?: device.id
         // Read before the teardown clears it, so a failure already on screen survives a socket that
         // then closed without a reason of its own - otherwise the message a user has to read would
@@ -82,7 +82,7 @@ internal fun CastController.startWatch(
         // Published *after* the teardown, which resets the phase and clears the failure - the
         // order matters, and setting either first would only have it wiped.
         val message = if (reason == ByeReason.MISSING_CODEC_CONFIG && codec != null) {
-            Log.w(TAG, "'${device.friendlyName}' never got ${codec.label}'s codec config")
+            Log.status(TAG, "'${device.friendlyName}' never got ${codec.label}'s codec config")
             MirrorPreferences.demoteCodec(appContext, receiverId, codec)
             appContext.getString(R.string.cast_mirror_codec_config_failed)
         } else {

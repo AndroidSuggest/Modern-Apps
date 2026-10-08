@@ -5,6 +5,7 @@
     <uses-permission android:name="com.vayunmathur.games.hub.permission.WRITE_GAME_DATA" />
 
     <application
+        android:name=".GamesMinesweeperApplication"
         android:allowBackup="true"
         android:backupAgent=".platform.AppBackupAgent"
         android:dataExtractionRules="@xml/data_extraction_rules"

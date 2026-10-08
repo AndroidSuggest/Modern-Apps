@@ -8,6 +8,7 @@
     <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false" />
 
     <application
+        android:name=".MeasureApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"

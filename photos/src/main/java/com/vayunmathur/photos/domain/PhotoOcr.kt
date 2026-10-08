@@ -5,7 +5,7 @@ import android.database.sqlite.SQLiteException
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.net.toUri
 import com.vayunmathur.library.ocr.OcrEngine
 import com.vayunmathur.photos.data.OcrBox
@@ -44,10 +44,10 @@ internal fun decodeForOcr(context: Context, uri: Uri): Bitmap? {
             }
         }
     } catch (e: IOException) {
-        Log.e(TAG, "Failed to decode $uri for OCR", e)
+        Log.error(TAG, "Failed to decode $uri for OCR", e)
         null
     } catch (e: SecurityException) {
-        Log.e(TAG, "Failed to decode $uri for OCR", e)
+        Log.error(TAG, "Failed to decode $uri for OCR", e)
         null
     }
 }
@@ -93,10 +93,10 @@ object OcrBoxStore {
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: IOException) {
-                        Log.e(TAG, "On-demand OCR failed for photo ${photo.id}", e)
+                        Log.error(TAG, "On-demand OCR failed for photo ${photo.id}", e)
                         null
                     } catch (e: SQLiteException) {
-                        Log.e(TAG, "On-demand OCR failed for photo ${photo.id}", e)
+                        Log.error(TAG, "On-demand OCR failed for photo ${photo.id}", e)
                         null
                     } finally {
                         release(photo.id)

@@ -1,6 +1,6 @@
 package com.vayunmathur.openassistant.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -92,7 +92,7 @@ class SentencePieceTokenizer private constructor(
                 val bytes = modelFile.readBytes()
                 parse(bytes)
             } catch (expected: Exception) {
-                Log.e(TAG, "Failed to load SentencePiece model ${modelFile.absolutePath}", expected)
+                Log.error(TAG, "Failed to load SentencePiece model ${modelFile.absolutePath}", expected)
                 null
             }
         }
@@ -149,7 +149,7 @@ class SentencePieceTokenizer private constructor(
             }
             // Cap the DP window; real Gemma pieces are short subwords.
             maxLen = min(maxLen, MAX_PIECE_LEN_CAP)
-            Log.i(
+            Log.status(
                 TAG,
                 "Loaded SentencePiece: $n pieces, unkId=$unkId, padId=$padId, maxPieceLen=$maxLen",
             )

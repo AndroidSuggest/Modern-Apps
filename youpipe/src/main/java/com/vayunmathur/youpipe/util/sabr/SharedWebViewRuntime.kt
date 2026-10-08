@@ -9,7 +9,7 @@ import android.content.pm.ApplicationInfo
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
@@ -268,13 +268,13 @@ class SharedWebViewRuntime private constructor(context: Context) {
             return
         }
         try {
-            Log.i(
+            Log.status(
                 TAG,
                 "creating WebView attempt=${attempt.number} elapsedMs=${attempt.elapsedMs()}"
             )
             val view = WebView(appContext)
             attempt.view = view
-            Log.i(
+            Log.status(
                 TAG,
                 "created WebView attempt=${attempt.number} elapsedMs=${attempt.elapsedMs()}"
             )
@@ -297,7 +297,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
             view.webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(message: ConsoleMessage): Boolean {
                     if (debuggable) {
-                        Log.d(
+                        Log.debug(
                             TAG,
                             "console ${message.messageLevel()} ${message.message()}" +
                                 " @${message.sourceId()}:${message.lineNumber()}"
@@ -313,7 +313,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
                     view: WebView,
                     detail: RenderProcessGoneDetail,
                 ): Boolean {
-                    Log.w(
+                    Log.status(
                         TAG,
                         "renderer gone crashed=${detail.didCrash()} attempt=${attempt.number}"
                     )
@@ -331,7 +331,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
                 override fun onPageFinished(view: WebView, url: String) {
                     // WebView 44/83 occasionally misses this callback for a headless local page.
                     // Readiness is therefore determined only by the local document's bridge call.
-                    Log.i(
+                    Log.status(
                         TAG,
                         "page finished url=$url attempt=${attempt.number}" +
                             " elapsedMs=${attempt.elapsedMs()}"
@@ -360,7 +360,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
                 runtimeDocument(attempt.id),
                 "text/html", "UTF-8", null
             )
-            Log.i(
+            Log.status(
                 TAG,
                 "load dispatched attempt=${attempt.number} elapsedMs=${attempt.elapsedMs()}"
             )
@@ -395,7 +395,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
             destroyWebView(attempt.view)
             return
         }
-        Log.i(
+        Log.status(
             TAG,
             "ready source=bridge attempt=${attempt.number} elapsedMs=${attempt.elapsedMs()}" +
                 " mainThread=${Looper.myLooper() == Looper.getMainLooper()}"
@@ -423,7 +423,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
                 )
                 activeInitializationAttempt = retry
             }
-            Log.w(
+            Log.status(
                 TAG,
                 "retrying WebView runtime ready callback after attempt ${attempt.number}" +
                     " elapsedMs=${attempt.elapsedMs()}",
@@ -441,7 +441,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
             activeInitializationAttempt = null
             attempt.error.compareAndSet(null, throwable)
         }
-        Log.e(
+        Log.error(
             TAG,
             "WebView runtime ready callback failed attempt=${attempt.number}" +
                 " elapsedMs=${attempt.elapsedMs()}",
@@ -576,7 +576,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
                 view.stopLoading()
                 view.destroy()
             } catch (throwable: IllegalStateException) {
-                Log.w(TAG, "Could not destroy failed WebView initialization attempt", throwable)
+                Log.status(TAG, "Could not destroy failed WebView initialization attempt", throwable)
             }
         }
     }

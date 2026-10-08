@@ -1,4 +1,5 @@
 package com.vayunmathur.weather.domain.map
+import com.vayunmathur.library.log.Log
 
 /**
  * JNI bridge to the native Rust `.om` decoder (`libweather_om.so`, built from
@@ -13,13 +14,13 @@ object OmTilesNative {
     val isAvailable: Boolean =
         try {
             System.loadLibrary("weather_om")
-            android.util.Log.i("OmMap", "libweather_om loaded")
+            Log.status("OmMap", "libweather_om loaded")
             true
         } catch (e: Exception) {
-            android.util.Log.e("OmMap", "System.loadLibrary(weather_om) failed", e)
+            Log.error("OmMap", "System.loadLibrary(weather_om) failed", e)
             false
         } catch (e: UnsatisfiedLinkError) {
-            android.util.Log.e("OmMap", "System.loadLibrary(weather_om) failed", e)
+            Log.error("OmMap", "System.loadLibrary(weather_om) failed", e)
             false
         }
 

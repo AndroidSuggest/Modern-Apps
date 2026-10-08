@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal.transport
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.signal.SignalAuthData
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.serialization.json.Json
@@ -81,17 +81,17 @@ object SignalGroupsApi {
                 sslSocketFactory = sslSocketFactory,
             )
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not fetch group auth credentials", expected)
+            Log.status(TAG, "could not fetch group auth credentials", expected)
             return emptyList()
         }
         if (!resp.isSuccess) {
-            Log.w(TAG, "group credential request failed: ${resp.status} ${resp.statusMessage}")
+            Log.status(TAG, "group credential request failed: ${resp.status} ${resp.statusMessage}")
             return emptyList()
         }
         return parseCredentials(resp.text)
     }
 
-    internal fun parseCredentials(body: String, warn: (String) -> Unit = { Log.w(TAG, it) }): List<DayCredential> =
+    internal fun parseCredentials(body: String, warn: (String) -> Unit = { Log.status(TAG, it) }): List<DayCredential> =
         try {
             json.parseToJsonElement(body).jsonObject["credentials"]?.jsonArray?.mapNotNull { element ->
                 val obj = element.jsonObject
@@ -131,7 +131,7 @@ object SignalGroupsApi {
         val password = presentation.serialize().toHex()
         Base64.Default.encode("$username:$password".toByteArray(Charsets.UTF_8))
     } catch (expected: Throwable) {
-        Log.w(TAG, "could not build a group authorization", expected)
+        Log.status(TAG, "could not build a group authorization", expected)
         null
     }
 
@@ -148,11 +148,11 @@ object SignalGroupsApi {
                 sslSocketFactory = sslSocketFactory,
             )
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not fetch the group", expected)
+            Log.status(TAG, "could not fetch the group", expected)
             return null
         }
         if (!resp.isSuccess) {
-            Log.w(TAG, "group fetch failed: ${resp.status} ${resp.statusMessage}")
+            Log.status(TAG, "group fetch failed: ${resp.status} ${resp.statusMessage}")
             return null
         }
         return try {
@@ -162,7 +162,7 @@ object SignalGroupsApi {
                 .getOrNull()
                 ?: Group.parseFrom(bytes)
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not parse the group response", expected)
+            Log.status(TAG, "could not parse the group response", expected)
             null
         }
     }
@@ -194,7 +194,7 @@ object SignalGroupsApi {
                 val serviceId = cipher.decrypt(UuidCiphertext(member.userId.toByteArray()))
                 (serviceId as? ServiceId.Aci)?.toString()
             } catch (expected: Throwable) {
-                Log.i(TAG, "skipping an undecryptable group member: ${expected.message}")
+                Log.status(TAG, "skipping an undecryptable group member: ${expected.message}")
                 null
             }
         }
@@ -202,7 +202,7 @@ object SignalGroupsApi {
             val blobBytes = cipher.decryptBlob(group.title.toByteArray())
             GroupAttributeBlob.parseFrom(blobBytes).title.trim()
         } catch (expected: Throwable) {
-            Log.i(TAG, "could not decrypt the group title: ${expected.message}")
+            Log.status(TAG, "could not decrypt the group title: ${expected.message}")
             ""
         }
         GroupState(
@@ -212,7 +212,7 @@ object SignalGroupsApi {
             pendingCount = group.membersPendingProfileKeyCount,
         )
     } catch (expected: Throwable) {
-        Log.w(TAG, "could not decrypt the group", expected)
+        Log.status(TAG, "could not decrypt the group", expected)
         null
     }
 
@@ -240,16 +240,16 @@ object SignalGroupsApi {
                 sslSocketFactory = sslSocketFactory,
             )
         } catch (expected: Throwable) {
-            Log.w(TAG, "group change failed", expected)
+            Log.status(TAG, "group change failed", expected)
             return false
         }
         if (!resp.isSuccess) {
             // Reported rather than swallowed: a rejected change previously still updated local state, so the
             // UI claimed success for a group the server never modified.
-            Log.w(TAG, "group change rejected: ${resp.status} ${resp.statusMessage}")
+            Log.status(TAG, "group change rejected: ${resp.status} ${resp.statusMessage}")
             return false
         }
-        Log.i(TAG, "group change accepted")
+        Log.status(TAG, "group change accepted")
         return true
     }
 
@@ -265,7 +265,7 @@ object SignalGroupsApi {
             )
             .build()
     } catch (expected: Throwable) {
-        Log.w(TAG, "could not build a title change", expected)
+        Log.status(TAG, "could not build a title change", expected)
         null
     }
 
@@ -298,7 +298,7 @@ object SignalGroupsApi {
         }
         if (added == 0) null else builder.build()
     } catch (expected: Throwable) {
-        Log.w(TAG, "could not build an add-members change", expected)
+        Log.status(TAG, "could not build an add-members change", expected)
         null
     }
 
@@ -320,11 +320,11 @@ object SignalGroupsApi {
                 sslSocketFactory = sslSocketFactory,
             )
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not fetch a group membership proof", expected)
+            Log.status(TAG, "could not fetch a group membership proof", expected)
             return null
         }
         if (!resp.isSuccess) {
-            Log.w(TAG, "membership proof request failed: ${resp.status} ${resp.statusMessage}")
+            Log.status(TAG, "membership proof request failed: ${resp.status} ${resp.statusMessage}")
             return null
         }
         return try {
@@ -332,7 +332,7 @@ object SignalGroupsApi {
             // The token is a string in the proto but goes to RingRTC as raw bytes.
             ExternalGroupCredential.parseFrom(bytes).token.toByteArray(Charsets.UTF_8)
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not parse the membership proof", expected)
+            Log.status(TAG, "could not parse the membership proof", expected)
             null
         }
     }

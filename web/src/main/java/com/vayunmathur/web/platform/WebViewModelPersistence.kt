@@ -1,7 +1,7 @@
 package com.vayunmathur.web.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
@@ -26,7 +26,7 @@ internal fun WebViewModel.persistTabsSync() {
             .putString(savedTabsKey, json.encodeToString(toSave))
             .putString(activeTabKey, activeTabId)
             .apply()
-    }.onFailure { e -> Log.e(TAG, "persistTabs failed", e) }
+    }.onFailure { e -> Log.error(TAG, "persistTabs failed", e) }
 }
 
 internal fun WebViewModel.persistPrefs() {
@@ -46,6 +46,6 @@ internal fun WebViewModel.persistPrefs() {
                 .putBoolean(P_SHIELD_FINGERPRINT, shields.fingerprintProtection != false)
                 .putBoolean(P_SHIELD_HTTPS, shields.httpsUpgrade != false)
                 .apply()
-        }.onFailure { e -> Log.e(TAG, "persistPrefs failed", e) }
+        }.onFailure { e -> Log.error(TAG, "persistPrefs failed", e) }
     }
 }

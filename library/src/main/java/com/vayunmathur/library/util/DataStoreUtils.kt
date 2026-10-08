@@ -2,7 +2,7 @@ package com.vayunmathur.library.util
 
 import android.content.Context
 import android.os.UserManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
@@ -327,7 +327,7 @@ class DataStoreUtils internal constructor(private val dataStore: DataStore<Prefe
             }
             val copied = getInstance(context, deviceProtected = true)
                 .copyFrom(getInstance(context), keys, overwrite)
-            if (copied > 0) Log.i(TAG, "seeded $copied key(s) into device-protected storage")
+            if (copied > 0) Log.status(TAG, "seeded $copied key(s) into device-protected storage")
             return copied
         }
     }

@@ -11,7 +11,7 @@ import android.net.Uri
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.net.toUri
 import com.vayunmathur.clock.R
@@ -113,7 +113,7 @@ class AlarmSoundService : Service() {
             if (silent || sounding) {
                 cancelRingNotification()
             } else {
-                Log.e(TAG, "Alarm $alarmId: no ringtone played; leaving the ring notification up")
+                Log.error(TAG, "Alarm $alarmId: no ringtone played; leaving the ring notification up")
             }
         }
 
@@ -123,7 +123,7 @@ class AlarmSoundService : Service() {
     private fun tryPlay(uri: Uri?, gradualSeconds: Int, alarmId: Long): Boolean {
         val playing = runCatching { playAlarm(uri, gradualSeconds) }
             .onFailure {
-                Log.e(TAG, "Alarm $alarmId: ringtone $uri failed to play", it)
+                Log.error(TAG, "Alarm $alarmId: ringtone $uri failed to play", it)
                 releasePlayer()
             }
             .getOrDefault(false)

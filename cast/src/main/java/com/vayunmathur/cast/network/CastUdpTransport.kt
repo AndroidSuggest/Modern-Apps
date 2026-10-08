@@ -1,6 +1,6 @@
 package com.vayunmathur.cast.network
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.PortUnreachableException
@@ -43,7 +43,7 @@ class CastUdpTransport(private val host: String, private val port: Int) {
             connect(InetSocketAddress(host, port))
         }
         val granted = runCatching { channel?.getOption(StandardSocketOptions.SO_SNDBUF) }.getOrNull()
-        Log.i(TAG, "udp connected to $host:$port with sndbuf=${granted}B")
+        Log.status(TAG, "udp connected to $host:$port with sndbuf=${granted}B")
         true
     } catch (e: IOException) {
         failOpen(e)
@@ -54,7 +54,7 @@ class CastUdpTransport(private val host: String, private val port: Int) {
     }
 
     private fun failOpen(e: Exception): Boolean {
-        Log.w(TAG, "could not open a udp socket to $host:$port", e)
+        Log.status(TAG, "could not open a udp socket to $host:$port", e)
         close()
         return false
     }
@@ -85,7 +85,7 @@ class CastUdpTransport(private val host: String, private val port: Int) {
 
     fun send(packet: ByteArray): Boolean {
         val active = channel ?: return false
-        if (hexDump) Log.i(TAG, "-> ${packet.size}B ${packet.toHexPreview()}")
+        if (hexDump) Log.status(TAG, "-> ${packet.size}B ${packet.toHexPreview()}")
         return try {
             // A non-blocking write can accept fewer bytes than offered when the send buffer is
             // full, which for a datagram socket means the packet did not go. Reporting it as sent
@@ -99,18 +99,18 @@ class CastUdpTransport(private val host: String, private val port: Int) {
             // stack traces, which buries whatever else the log had to say.
             unreachableCount++
             if (unreachableCount == 1) {
-                Log.d(TAG, "port unreachable for $host:$port; the receiver may not have bound yet", e)
+                Log.debug(TAG, "port unreachable for $host:$port; the receiver may not have bound yet", e)
             }
             if (unreachableCount == UNREACHABLE_THRESHOLD) {
-                Log.w(TAG, "$host:$port is unreachable - the receiver closed its socket")
+                Log.status(TAG, "$host:$port is unreachable - the receiver closed its socket")
             }
             false
         } catch (e: IOException) {
-            Log.w(TAG, "udp send failed", e)
+            Log.status(TAG, "udp send failed", e)
             countFailure()
             false
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "udp send failed", e)
+            Log.status(TAG, "udp send failed", e)
             countFailure()
             false
         }
@@ -121,7 +121,7 @@ class CastUdpTransport(private val host: String, private val port: Int) {
         val now = System.currentTimeMillis()
         if (now - lastFailureLogMs < FAILURE_LOG_INTERVAL_MS) return
         lastFailureLogMs = now
-        Log.w(TAG, "the send buffer is full; $sendFailures packets dropped before they left")
+        Log.status(TAG, "the send buffer is full; $sendFailures packets dropped before they left")
     }
 
     /** One datagram, or null when nothing is waiting. Never blocks. */
@@ -132,14 +132,14 @@ class CastUdpTransport(private val host: String, private val port: Int) {
             if (active.read(readBuffer) <= 0) return null
             readBuffer.flip()
             ByteArray(readBuffer.remaining()).also { readBuffer.get(it) }
-                .also { if (hexDump) Log.i(TAG, "<- ${it.size}B ${it.toHexPreview()}") }
+                .also { if (hexDump) Log.status(TAG, "<- ${it.size}B ${it.toHexPreview()}") }
         } catch (e: IOException) {
             // A port-unreachable ICMP surfaces here on a connected socket. Not fatal: the receiver
             // may not have bound yet.
-            Log.d(TAG, "udp receive failed: ${e.javaClass.simpleName}")
+            Log.debug(TAG, "udp receive failed: ${e.javaClass.simpleName}")
             null
         } catch (e: IllegalArgumentException) {
-            Log.d(TAG, "udp receive failed: ${e.javaClass.simpleName}")
+            Log.debug(TAG, "udp receive failed: ${e.javaClass.simpleName}")
             null
         }
     }

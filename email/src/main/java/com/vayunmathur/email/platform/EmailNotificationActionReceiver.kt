@@ -3,7 +3,7 @@ package com.vayunmathur.email.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationManagerCompat
 import com.vayunmathur.email.platform.EmailManager
 import com.vayunmathur.email.platform.resolveAuth
@@ -64,7 +64,7 @@ class EmailNotificationActionReceiver : BroadcastReceiver() {
                 }
                 NotificationManagerCompat.from(context).cancel(notifId)
             } catch (_: Exception) {
-                Log.w("EmailNotifAction", "Action $action failed")
+                Log.status("EmailNotifAction", "Action $action failed")
             } finally {
                 pending.finish()
             }

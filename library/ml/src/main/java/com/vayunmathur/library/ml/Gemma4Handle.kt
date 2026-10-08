@@ -1,7 +1,7 @@
 package com.vayunmathur.library.ml
 
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.io.File
 import java.text.Normalizer
 
@@ -164,7 +164,7 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
         // The last part is always the generation prompt, so it is text and it is not empty.
         val tail = parts.lastOrNull() as? Part.Tokens
         if (tail == null || tail.ids.isEmpty()) {
-            Log.w(TAG, "an empty prompt")
+            Log.status(TAG, "an empty prompt")
             return null
         }
         return tail
@@ -190,7 +190,7 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
             }
         }
         if (capacity in 1 until (length + PromptConstants.PROMPT_SLACK_POSITIONS)) {
-            Log.w(TAG, "a prompt of $length positions does not fit a $capacity cache")
+            Log.status(TAG, "a prompt of $length positions does not fit a $capacity cache")
             return null
         }
         return PreparedPrompt(length, capacity)
@@ -210,7 +210,7 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
         // prompt is logged rather than guessed at. `fitted` truncates to make room for the
         // reply, and a prompt that lost its instructions to that truncation looks exactly like
         // a broken tokenizer.
-        Log.i(
+        Log.status(
             TAG,
             "prompt $length positions in ${parts.size} parts, " +
                 "${conversation.size} turns, ${tools.size} tools, reply budget $limit",
@@ -226,7 +226,7 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
                 // the bug rather than a case to render nicely.
                 is Part.Text -> "UNTOKENISED ${part.text.take(PromptConstants.PROMPT_LOG_CHARS / 2)}"
             }
-            Log.i(TAG, "  part $index  $what")
+            Log.status(TAG, "  part $index  $what")
         }
     }
 
@@ -273,7 +273,7 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
             while (reused < ceiling && prior[reused] == flat[reused]) reused++
         }
         if (reused > 0 && MlNative.seekGemma4(handle, reused) == reused) {
-            Log.i(TAG, "reused $reused of $length positions, feeding ${length - reused}")
+            Log.status(TAG, "reused $reused of $length positions, feeding ${length - reused}")
         } else {
             reused = 0
             reset()

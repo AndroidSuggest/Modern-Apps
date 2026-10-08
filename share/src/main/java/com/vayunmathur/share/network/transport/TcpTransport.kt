@@ -1,6 +1,6 @@
 package com.vayunmathur.share.network.transport
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.share.domain.protocol.PendingFile
 import com.vayunmathur.share.domain.protocol.ShareSession
 import com.vayunmathur.share.domain.protocol.ShareState
@@ -173,17 +173,17 @@ class TcpTransport(
         val server = ServerSocket(0, 10, InetAddress.getByName("0.0.0.0"))
         serverSocket = server
         _listenPort.value = server.localPort
-        Log.i(TAG, "listening on port ${server.localPort}")
+        Log.status(TAG, "listening on port ${server.localPort}")
         listenJob = scope.launch {
             while (isActive) {
                 try {
                     val client = withContext(Dispatchers.IO) { server.accept() }
                     client.tcpNoDelay = true
                     client.soTimeout = SOCKET_TIMEOUT_MS
-                    Log.i(TAG, "accepted ${client.inetAddress.hostAddress}:${client.port}")
+                    Log.status(TAG, "accepted ${client.inetAddress.hostAddress}:${client.port}")
                     launchConnection(client, incoming = true)
                 } catch (e: Exception) {
-                    if (isActive) Log.w(TAG, "accept failed", e)
+                    if (isActive) Log.status(TAG, "accept failed", e)
                     else break
                 }
             }
@@ -200,7 +200,7 @@ class TcpTransport(
         }
         serverSocket = null
         _listenPort.value = null
-        Log.d(TAG, "stopped listening")
+        Log.debug(TAG, "stopped listening")
     }
 
     // ------------------------------------------------------------------
@@ -216,7 +216,7 @@ class TcpTransport(
         sock.tcpNoDelay = true
         sock.soTimeout = SOCKET_TIMEOUT_MS
         sock.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-        Log.i(TAG, "connected to $host:$port")
+        Log.status(TAG, "connected to $host:$port")
         launchConnection(sock, incoming = false)
     }
 
@@ -265,7 +265,7 @@ class TcpTransport(
                 if (pumpOnce(conn, input, buf, keeper) == PumpAction.Stop) break
             }
         } catch (e: Exception) {
-            if (isActive) Log.w(TAG, "pump error for ${conn.remoteEndpoint}", e)
+            if (isActive) Log.status(TAG, "pump error for ${conn.remoteEndpoint}", e)
             conn.error.value = e.message
             try {
                 conn.state.value = ShareState.Failed
@@ -330,7 +330,7 @@ class TcpTransport(
             return pollTerminal(conn)
         }
         if (n == -1) {
-            Log.i(TAG, "peer closed cleanly for ${conn.remoteEndpoint}")
+            Log.status(TAG, "peer closed cleanly for ${conn.remoteEndpoint}")
             return PumpAction.Stop
         }
         return if (n == 0) PumpAction.Continue else handleInbound(conn, buf, n, keeper)
@@ -349,7 +349,7 @@ class TcpTransport(
         val inbound = buf.copyOf(n)
         val rc = conn.session.feedInbound(inbound)
         if (rc < 0) {
-            Log.w(TAG, "feedInbound failed rc=$rc")
+            Log.status(TAG, "feedInbound failed rc=$rc")
             conn.error.value = conn.session.failureReason ?: "Protocol error ($rc)"
             conn.state.value = ShareState.Failed
             return PumpAction.Stop
@@ -390,7 +390,7 @@ class TcpTransport(
                 mimeType = announcedMime ?: ReceivedFileStore.mimeTypeOf(finished),
                 uri = receivedStore.contentUri(finished),
             )
-            Log.i(TAG, "received ${finished.name} (${finished.length()} bytes)")
+            Log.status(TAG, "received ${finished.name} (${finished.length()} bytes)")
         }
     }
 
@@ -434,7 +434,7 @@ class TcpTransport(
         state.value = polled
         if (polled == ShareState.Failed) {
             if (error.value == null) error.value = session.failureReason ?: "Transfer failed"
-            Log.w(TAG, "session ${session.handle} failed: ${error.value}\n${session.trace}")
+            Log.status(TAG, "session ${session.handle} failed: ${error.value}\n${session.trace}")
         }
     }
 
@@ -543,7 +543,7 @@ class TcpTransport(
     suspend fun sendFiles(conn: Connection, files: List<File>) = withContext(Dispatchers.IO) {
         if (files.isEmpty()) return@withContext
         if (!conn.introductionSent.compareAndSet(false, true)) {
-            Log.w(TAG, "already announced files on session ${conn.sessionHandle}; ignoring ${files.size} more")
+            Log.status(TAG, "already announced files on session ${conn.sessionHandle}; ignoring ${files.size} more")
             return@withContext
         }
         stageFiles(conn, files) ?: return@withContext
@@ -582,7 +582,7 @@ class TcpTransport(
         try {
             drainAll(conn)
         } catch (e: Exception) {
-            Log.w(TAG, "drain after accept failed", e)
+            Log.status(TAG, "drain after accept failed", e)
         }
         return rc
     }

@@ -1,6 +1,6 @@
 package com.vayunmathur.camera.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.util.Size
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -31,7 +31,7 @@ internal const val PORTRAIT_ANALYSIS_HEIGHT = 768
 internal var boundLensIdField: String? = null
 
 suspend fun CameraViewModel.setupNightPreviewSession(): Boolean {
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setupNightPreviewSession() ENTRY thread=${Thread.currentThread().name} " +
             "lens=${lensFacingMutable.value} surfaceBefore=${surfaceRequestMutable.value?.resolution}"
@@ -42,7 +42,7 @@ suspend fun CameraViewModel.setupNightPreviewSession(): Boolean {
         finishNightPreview(session)
         true
     } catch (e: IllegalStateException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupNightPreviewSession() OUTER CATCH – FAILED to set up night preview, " +
                 "falling back to normal photo session. " +
@@ -51,7 +51,7 @@ suspend fun CameraViewModel.setupNightPreviewSession(): Boolean {
         )
         fallbackToPhotoSession()
     } catch (e: IllegalArgumentException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupNightPreviewSession() OUTER CATCH – FAILED to set up night preview, " +
                 "falling back to normal photo session. " +
@@ -82,14 +82,14 @@ internal data class NightPreviewPrep(
 internal suspend fun CameraViewModel.prepareNightPreview(): NightPreviewPrep? {
     val provider = ProcessCameraProvider.awaitInstance(app)
     cameraProvider = provider
-    Log.d("NightPreview", "setupNightPreviewSession() got cameraProvider=$provider")
+    Log.debug("NightPreview", "setupNightPreviewSession() got cameraProvider=$provider")
     val mgr = getExtensionsManager(provider)
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setupNightPreviewSession() ExtensionsManager=${mgr != null} cacheExt=${extensionsManager != null}"
     )
     if (mgr == null) {
-        Log.w("NightPreview", "setupNightPreviewSession() manager NULL, falling back to normal photo session")
+        Log.status("NightPreview", "setupNightPreviewSession() manager NULL, falling back to normal photo session")
         return null
     }
     // Night extension is wide-only on most vendors; pin to the selected lens so the
@@ -98,15 +98,15 @@ internal suspend fun CameraViewModel.prepareNightPreview(): NightPreviewPrep? {
     val requestedNightLens = selectedLensMutable.value
     val baseSelector = lensSelector(lensFacingMutable.value, requestedNightLens)
     if (!isNightExtensionSupported(mgr, baseSelector)) return null
-    Log.d("NightPreview", "setupNightPreviewSession() unbinding all before night selector")
+    Log.debug("NightPreview", "setupNightPreviewSession() unbinding all before night selector")
     try {
         provider.unbindAll()
-        Log.d("NightPreview", "setupNightPreviewSession() provider.unbindAll SUCCESS")
+        Log.debug("NightPreview", "setupNightPreviewSession() provider.unbindAll SUCCESS")
     } catch (e: IllegalStateException) {
-        Log.e("NightPreview", "setupNightPreviewSession() unbindAll FAILED (was hidden)", e)
+        Log.error("NightPreview", "setupNightPreviewSession() unbindAll FAILED (was hidden)", e)
         throw e
     } catch (e: IllegalArgumentException) {
-        Log.e("NightPreview", "setupNightPreviewSession() unbindAll FAILED (was hidden)", e)
+        Log.error("NightPreview", "setupNightPreviewSession() unbindAll FAILED (was hidden)", e)
         throw e
     }
     val analysisSupported = isNightAnalysisSupported(mgr, baseSelector)
@@ -119,7 +119,7 @@ internal suspend fun CameraViewModel.prepareNightPreview(): NightPreviewPrep? {
 
     val preview = Preview.Builder().build()
     preview.setSurfaceProvider { request ->
-        Log.d("NightPreview", "setupNightPreviewSession() NEW surfaceRequest emitted res=${request.resolution}")
+        Log.debug("NightPreview", "setupNightPreviewSession() NEW surfaceRequest emitted res=${request.resolution}")
         surfaceRequestMutable.value = request
     }
 
@@ -151,18 +151,18 @@ internal fun CameraViewModel.isNightExtensionSupported(
     val extAvail = try {
         mgr.isExtensionAvailable(baseSelector, ExtensionMode.NIGHT)
     } catch (e: IllegalStateException) {
-        Log.e("NightPreview", "setupNightPreviewSession() isExtensionAvailable threw (was hidden)", e)
+        Log.error("NightPreview", "setupNightPreviewSession() isExtensionAvailable threw (was hidden)", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e("NightPreview", "setupNightPreviewSession() isExtensionAvailable threw (was hidden)", e)
+        Log.error("NightPreview", "setupNightPreviewSession() isExtensionAvailable threw (was hidden)", e)
         false
     }
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setupNightPreviewSession() isExtensionAvailable(NIGHT)=$extAvail lens=${lensFacingMutable.value}"
     )
     if (!extAvail) {
-        Log.w(
+        Log.status(
             "NightPreview",
             "setupNightPreviewSession() extension NOT available on lens=${lensFacingMutable.value}, " +
                 "falling back"
@@ -180,13 +180,13 @@ internal fun CameraViewModel.isNightAnalysisSupported(
     val analysisSupported = try {
         mgr.isImageAnalysisSupported(baseSelector, ExtensionMode.NIGHT)
     } catch (e: IllegalStateException) {
-        Log.e("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported query FAILED", e)
+        Log.error("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported query FAILED", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported query FAILED", e)
+        Log.error("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported query FAILED", e)
         false
     }
-    Log.d("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported=$analysisSupported")
+    Log.debug("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported=$analysisSupported")
     return analysisSupported
 }
 
@@ -195,7 +195,7 @@ internal fun CameraViewModel.bindNightPreview(session: NightPreviewPrep) {
     boundCamera = try {
         bindNightUseCases(session, withAnalysis = session.analysisSupported)
     } catch (e: IllegalStateException) {
-        Log.w(
+        Log.status(
             "NightPreview",
             "setupNightPreviewSession() bind FAILED " +
                 "withAnalysis=${session.analysisSupported}: ${e.javaClass.simpleName} ${e.message}",
@@ -205,7 +205,7 @@ internal fun CameraViewModel.bindNightPreview(session: NightPreviewPrep) {
         try { session.provider.unbindAll() } catch (_: Exception) {}
         bindNightUseCases(session, withAnalysis = false)
     } catch (e: IllegalArgumentException) {
-        Log.w(
+        Log.status(
             "NightPreview",
             "setupNightPreviewSession() bind FAILED " +
                 "withAnalysis=${session.analysisSupported}: ${e.javaClass.simpleName} ${e.message}",
@@ -219,7 +219,7 @@ internal fun CameraViewModel.bindNightPreview(session: NightPreviewPrep) {
 
 /** Binds the night extension use cases, with or without the analysis stream. */
 internal fun CameraViewModel.bindNightUseCases(session: NightPreviewPrep, withAnalysis: Boolean): Camera {
-    Log.d("NightPreview", "setupNightPreviewSession() bind(withAnalysis=$withAnalysis) START")
+    Log.debug("NightPreview", "setupNightPreviewSession() bind(withAnalysis=$withAnalysis) START")
     return if (withAnalysis) {
         val analysis = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -227,7 +227,7 @@ internal fun CameraViewModel.bindNightUseCases(session: NightPreviewPrep, withAn
         imageAnalysis = analysis
         bindSession(session.provider, session.owner, session.baseSelector, session.preview, session.capture, analysis)
     } else {
-        Log.w(
+        Log.status(
             "NightPreview",
             "setupNightPreviewSession() binding NIGHT without ImageAnalysis – QR scanning, " +
                 "luminance sampling and Motion Photo are off for this session"
@@ -240,7 +240,7 @@ internal fun CameraViewModel.bindNightUseCases(session: NightPreviewPrep, withAn
 /** Marks the night preview active and wires extension observers. */
 internal suspend fun CameraViewModel.finishNightPreview(session: NightPreviewPrep) {
     val zs = boundCamera?.cameraInfo?.zoomState?.value
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setupNightPreviewSession() boundCamera zoomState min=${zs?.minZoomRatio} " +
             "max=${zs?.maxZoomRatio} current=${zs?.zoomRatio} – vendor NIGHT extension often reports " +
@@ -262,7 +262,7 @@ internal suspend fun CameraViewModel.finishNightPreview(session: NightPreviewPre
     onSessionBound()
     nightPreviewActiveMutable.value = true
     photoSessionActiveMutable.value = true
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setupNightPreviewSession() SUCCESS – nightPreviewActive=true photoSessionActive=true " +
             "surfaceRequest=${surfaceRequestMutable.value?.resolution}"
@@ -279,21 +279,21 @@ internal suspend fun CameraViewModel.fallbackToPhotoSession(): Boolean {
     val fallback = try {
         setupPhotoSession()
     } catch (e2: IllegalStateException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupNightPreviewSession() fallback setupPhotoSession() ALSO FAILED (double hidden)",
             e2
         )
         false
     } catch (e2: IllegalArgumentException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupNightPreviewSession() fallback setupPhotoSession() ALSO FAILED (double hidden)",
             e2
         )
         false
     }
-    Log.d("NightPreview", "setupNightPreviewSession() fallback result=$fallback")
+    Log.debug("NightPreview", "setupNightPreviewSession() fallback result=$fallback")
     return fallback
 }
 
@@ -312,7 +312,7 @@ suspend fun CameraViewModel.setupPanoramaSession(): Boolean {
         finishPanoramaSession()
         true
     } catch (e: IllegalStateException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPanoramaSession() OUTER CATCH – Failed solid black? " +
                 "${e.javaClass.simpleName} ${e.message}",
@@ -320,7 +320,7 @@ suspend fun CameraViewModel.setupPanoramaSession(): Boolean {
         )
         false
     } catch (e: IllegalArgumentException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPanoramaSession() OUTER CATCH – Failed solid black? " +
                 "${e.javaClass.simpleName} ${e.message}",
@@ -373,7 +373,7 @@ internal suspend fun CameraViewModel.preparePanoramaSession(): PanoSessionPrep {
 internal fun CameraViewModel.bindPanoLadder(session: PanoSessionPrep) {
     var panoBoundLensId: String? = null
     boundCamera = try {
-        Log.d("NightPreview", "setupPanoramaSession() bind capped=true START")
+        Log.debug("NightPreview", "setupPanoramaSession() bind capped=true START")
         val (lens, camera) = bindWithFallback(session.provider, session.panoLens, session.panoFamily) {
             lensSel ->
             bindPanoUseCases(session, lensSel, capped = true)
@@ -381,7 +381,7 @@ internal fun CameraViewModel.bindPanoLadder(session: PanoSessionPrep) {
         panoBoundLensId = lens?.logicalCameraId
         camera
     } catch (e: IllegalStateException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPanoramaSession() Capped panorama bind FAILED (was hidden as Warn), " +
                 "retrying at default – resolution lower!",
@@ -392,7 +392,7 @@ internal fun CameraViewModel.bindPanoLadder(session: PanoSessionPrep) {
             panoBoundLensId = lens?.logicalCameraId
         }
     } catch (e: IllegalArgumentException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPanoramaSession() Capped panorama bind FAILED (was hidden as Warn), " +
                 "retrying at default – resolution lower!",
@@ -419,7 +419,7 @@ internal fun CameraViewModel.bindPanoDefault(
         onLens(lens)
         camera
     } catch (e2: IllegalStateException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPanoramaSession() default bind ALSO FAILED – " +
                 "black root ${e2.javaClass.simpleName} ${e2.message}",
@@ -427,7 +427,7 @@ internal fun CameraViewModel.bindPanoDefault(
         )
         throw e2
     } catch (e2: IllegalArgumentException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPanoramaSession() default bind ALSO FAILED – " +
                 "black root ${e2.javaClass.simpleName} ${e2.message}",
@@ -466,7 +466,7 @@ internal fun CameraViewModel.bindPanoUseCases(
 /** Refreshes capabilities and marks the panorama session active. */
 internal suspend fun CameraViewModel.finishPanoramaSession() {
     val zsP = boundCamera?.cameraInfo?.zoomState?.value
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setupPanoramaSession() bound zoom min=${zsP?.minZoomRatio} max=${zsP?.maxZoomRatio} " +
             "ratio=${zsP?.zoomRatio}"
@@ -474,7 +474,7 @@ internal suspend fun CameraViewModel.finishPanoramaSession() {
     boundCamera?.let { refreshCapabilities(it, boundLensIdField) }
     onSessionBound()
     photoSessionActiveMutable.value = true
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setupPanoramaSession() SUCCESS photoActive=true " +
             "surface=${surfaceRequestMutable.value?.resolution}"

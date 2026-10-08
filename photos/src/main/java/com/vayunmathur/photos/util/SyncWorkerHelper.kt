@@ -1,7 +1,7 @@
 package com.vayunmathur.photos.util
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.net.toUri
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -77,7 +77,7 @@ suspend fun runClipIndexing(scanRepository: PhotoScanRepository, context: Contex
 
     // The ET pair is a runtime download, so this fails until the download completes.
     if (ClipEmbedder.embeddingSupport(context) != ClipEmbedder.Support.READY) {
-        Log.w("ClipWorker", "TinyCLIP embedder unavailable; skipping semantic indexing")
+        Log.status("ClipWorker", "TinyCLIP embedder unavailable; skipping semantic indexing")
         return@coroutineScope
     }
 
@@ -114,7 +114,7 @@ suspend fun runClipIndexing(scanRepository: PhotoScanRepository, context: Contex
             val embedding = pending.embedOnePhoto(context, photo) { flush() }
                 ?: continue
             val elapsedMs = System.currentTimeMillis() - t0
-            Log.d("ClipWorker", "Embedded photo ${photo.id} (${embedding.size}d) in ${elapsedMs}ms")
+            Log.debug("ClipWorker", "Embedded photo ${photo.id} (${embedding.size}d) in ${elapsedMs}ms")
             pending += ClipResult(id = photo.id, embedding = ClipEmbedder.floatsToBytes(embedding))
             if (pending.size >= INDEX_FLUSH_EVERY) flush()
 
@@ -166,7 +166,7 @@ private suspend fun MutableList<ClipResult>.skipUnembeddablePhoto(
 ) {
     // The embedder is healthy but this one image couldn't be decoded: mark it scanned
     // with no vector so we skip it rather than blocking the queue on it forever.
-    Log.w("ClipWorker", "Skipping un-embeddable photo ${photo.id}: $message")
+    Log.status("ClipWorker", "Skipping un-embeddable photo ${photo.id}: $message")
     this += ClipResult(id = photo.id, embedding = null)
     if (size >= INDEX_FLUSH_EVERY) flush()
     delay(CLIP_INTER_ITEM_DELAY_MS)
@@ -174,7 +174,7 @@ private suspend fun MutableList<ClipResult>.skipUnembeddablePhoto(
 
 /** Stop the run WITHOUT marking scanned so these photos retry on the next pass. */
 private fun pauseIndexing(e: Exception): Nothing {
-    Log.w("ClipWorker", "Embedding unavailable; pausing indexing", e)
+    Log.status("ClipWorker", "Embedding unavailable; pausing indexing", e)
     throw StopIndexing()
 }
 

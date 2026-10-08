@@ -11,7 +11,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.graphics.createBitmap
 import com.vayunmathur.library.ocr.OcrEngine
 import com.vayunmathur.pdf.model.CapturedImage
@@ -45,13 +45,13 @@ suspend fun savePdfToUri(
         }
         true
     } catch (expected: java.io.IOException) {
-        Log.e("PdfExporter", "Failed to save PDF", expected)
+        Log.error("PdfExporter", "Failed to save PDF", expected)
         false
     } catch (expected: SecurityException) {
-        Log.e("PdfExporter", "Failed to save PDF", expected)
+        Log.error("PdfExporter", "Failed to save PDF", expected)
         false
     } catch (expected: IllegalStateException) {
-        Log.e("PdfExporter", "Failed to save PDF", expected)
+        Log.error("PdfExporter", "Failed to save PDF", expected)
         false
     } finally {
         pdfDocument.close()
@@ -94,11 +94,11 @@ private suspend fun renderImagePage(
         pdfDocument.finishPage(page)
         pageBitmap.recycle()
     } catch (expected: java.io.IOException) {
-        Log.e("PdfExporter", "Error processing image $uri", expected)
+        Log.error("PdfExporter", "Error processing image $uri", expected)
     } catch (expected: SecurityException) {
-        Log.e("PdfExporter", "Error processing image $uri", expected)
+        Log.error("PdfExporter", "Error processing image $uri", expected)
     } catch (expected: IllegalStateException) {
-        Log.e("PdfExporter", "Error processing image $uri", expected)
+        Log.error("PdfExporter", "Error processing image $uri", expected)
     }
 }
 
@@ -109,10 +109,10 @@ private fun decodeSource(context: Context, uri: Uri): Bitmap? {
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
         }
     } catch (expected: java.io.IOException) {
-        Log.e("PdfExporter", "Error decoding $uri", expected)
+        Log.error("PdfExporter", "Error decoding $uri", expected)
         null
     } catch (expected: SecurityException) {
-        Log.e("PdfExporter", "Error decoding $uri", expected)
+        Log.error("PdfExporter", "Error decoding $uri", expected)
         null
     }
 }

@@ -3,7 +3,7 @@ package com.vayunmathur.contacts.util
 import android.content.Context
 import android.content.pm.PackageManager
 import android.provider.ContactsContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 object PackageUtils {
     const val SIGNAL_PACKAGE = "org.thoughtcrime.securesms"
@@ -37,13 +37,13 @@ object PackageUtils {
                 if (cursor.moveToFirst()) cursor.getLong(0) else null
             }
         } catch (e: android.database.SQLException) {
-            Log.e(TAG, "Error getting aggregate contact ID", e)
+            Log.error(TAG, "Error getting aggregate contact ID", e)
             null
         } catch (e: SecurityException) {
-            Log.e(TAG, "Error getting aggregate contact ID", e)
+            Log.error(TAG, "Error getting aggregate contact ID", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "Error getting aggregate contact ID", e)
+            Log.error(TAG, "Error getting aggregate contact ID", e)
             null
         }
     }
@@ -73,11 +73,11 @@ object PackageUtils {
                 }
             }
         } catch (e: android.database.SQLException) {
-            Log.e(TAG, "Error querying platform data rows", e)
+            Log.error(TAG, "Error querying platform data rows", e)
         } catch (e: SecurityException) {
-            Log.e(TAG, "Error querying platform data rows", e)
+            Log.error(TAG, "Error querying platform data rows", e)
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "Error querying platform data rows", e)
+            Log.error(TAG, "Error querying platform data rows", e)
         }
 
         return result

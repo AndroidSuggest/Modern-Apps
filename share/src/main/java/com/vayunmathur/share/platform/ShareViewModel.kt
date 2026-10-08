@@ -6,7 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -112,7 +112,7 @@ class ShareViewModel(
                     _discoveredDevices.value = mergeDevice(_discoveredDevices.value, dev)
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "NSD discover error", e)
+                Log.status(TAG, "NSD discover error", e)
             }
         }
         scanBleJob = viewModelScope.launch {
@@ -122,7 +122,7 @@ class ShareViewModel(
                     _discoveredDevices.value = mergeDevice(_discoveredDevices.value, dev)
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "BLE scan error", e)
+                Log.status(TAG, "BLE scan error", e)
             }
         }
     }
@@ -168,7 +168,7 @@ class ShareViewModel(
         val host = device.host
         val port = device.port
         if (host == null || port == null) {
-            Log.w(TAG, "cannot connect to ${device.endpointName}: no host/port (needs the mDNS browse)")
+            Log.status(TAG, "cannot connect to ${device.endpointName}: no host/port (needs the mDNS browse)")
             return
         }
         val uris = _outgoingUris.value
@@ -193,7 +193,7 @@ class ShareViewModel(
                 ShareTransferService.startSendMode(appContext)
                 sendUrisOver(conn, uris)
             } catch (e: Exception) {
-                Log.w(TAG, "connect to ${device.endpointName} failed", e)
+                Log.status(TAG, "connect to ${device.endpointName} failed", e)
             } finally {
                 connecting.set(false)
             }
@@ -243,7 +243,7 @@ class ShareViewModel(
                 val uri = Uri.fromFile(f)
                 withContext(Dispatchers.Main) { setOutgoingUris(listOf(uri)) }
             } catch (e: Exception) {
-                Log.w(TAG, "stageTextAsFile failed", e)
+                Log.status(TAG, "stageTextAsFile failed", e)
             }
         }
     }
@@ -325,7 +325,7 @@ internal fun uriToTempFile(context: Context, uri: Uri): File? {
         }
         if (dest.exists() && dest.length() > 0) dest else null
     } catch (e: Exception) {
-        Log.w(TAG, "uriToTempFile failed for $uri", e)
+        Log.status(TAG, "uriToTempFile failed for $uri", e)
         null
     }
 }

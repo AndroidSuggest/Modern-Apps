@@ -6,7 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import com.vayunmathur.health.R
 import com.vayunmathur.health.platform.DoseActionReceiver
@@ -74,7 +74,7 @@ object DoseNotification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
             !manager.canUseFullScreenIntent()
         ) {
-            Log.w(TAG, "USE_FULL_SCREEN_INTENT not granted; the reminder will not take over the screen")
+            Log.status(TAG, "USE_FULL_SCREEN_INTENT not granted; the reminder will not take over the screen")
         }
 
         manager.notify(

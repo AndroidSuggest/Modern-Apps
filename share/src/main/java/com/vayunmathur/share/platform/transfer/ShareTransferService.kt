@@ -9,7 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import com.vayunmathur.library.util.deleteNotificationChannel
@@ -101,7 +101,7 @@ class ShareTransferService : Service() {
                 val accept = action == ACTION_ACCEPT
                 scope.launch {
                     val rc = ShareReceiveController.acceptIncoming(this@ShareTransferService, handle, accept)
-                    if (rc < 0) Log.w(TAG, "accept($accept) on $handle failed rc=$rc")
+                    if (rc < 0) Log.status(TAG, "accept($accept) on $handle failed rc=$rc")
                     if (!accept) stopIfNotNeeded()
                 }
             }
@@ -144,7 +144,7 @@ class ShareTransferService : Service() {
             if (ShareReceiveController.isServiceWanted(this)) return
             ShareReceiveController.stop()
             if (ShareReceiveController.hasActiveTransfers(this)) {
-                Log.i(TAG, "deferring stop: a transfer is still in flight")
+                Log.status(TAG, "deferring stop: a transfer is still in flight")
                 ShareReceiveController.awaitIdle(this)
             }
             withContext(Dispatchers.Main) {
@@ -175,7 +175,7 @@ class ShareTransferService : Service() {
         } catch (e: Exception) {
             // A background start that the platform refuses. Nothing to recover here; the tile
             // and the boot receiver both retry through syncServiceState.
-            Log.w(TAG, "could not enter the foreground", e)
+            Log.status(TAG, "could not enter the foreground", e)
         }
     }
 
@@ -186,7 +186,7 @@ class ShareTransferService : Service() {
      * caps it anyway, stopping cleanly beats being killed with a live socket open.
      */
     override fun onTimeout(startId: Int, fgsType: Int) {
-        Log.w(TAG, "foreground service timed out (type $fgsType)")
+        Log.status(TAG, "foreground service timed out (type $fgsType)")
         scope.launch {
             ShareReceiveController.stop()
             withContext(Dispatchers.Main) {

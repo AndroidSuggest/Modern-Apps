@@ -1,7 +1,7 @@
 package com.vayunmathur.email.network.imap
 
 import android.util.Base64
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.email.platform.ServerConfig
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -84,7 +84,7 @@ class RawImapConnection(
     private fun readLineWithLiteral(): Pair<String, ByteArray?>? = wire.readLineWithLiteral()
 
     fun connect() {
-        Log.d(TAG, "Connecting to ${server.host}:${server.port} ssl=${server.useSsl} trustAll=$trustAll")
+        Log.debug(TAG, "Connecting to ${server.host}:${server.port} ssl=${server.useSsl} trustAll=$trustAll")
         val s: Socket = if (server.useSsl) {
             TrustAll.createSocket(server.host, server.port, trustAll)
         } else {
@@ -99,7 +99,7 @@ class RawImapConnection(
         output = BufferedOutputStream(s.getOutputStream())
 
         val greeting = readLineWithLiteral()?.first ?: ""
-        Log.d(TAG, "Greeting: $greeting")
+        Log.debug(TAG, "Greeting: $greeting")
         if (greeting.startsWith("* BYE") || greeting.startsWith("* BAD")) {
             throw IOException("IMAP server rejected: $greeting")
         }
@@ -117,7 +117,7 @@ class RawImapConnection(
         upgraded.soTimeout = SOCKET_TIMEOUT_MS
         input = BufferedInputStream(upgraded.inputStream)
         output = BufferedOutputStream(upgraded.outputStream)
-        Log.d(TAG, "STARTTLS upgraded")
+        Log.debug(TAG, "STARTTLS upgraded")
     }
 
     fun capability(): ImapCapabilities {
@@ -144,7 +144,7 @@ class RawImapConnection(
             .split(Regex("\\s+"))
             .filter { it.isNotBlank() }
             .toSet()
-        Log.d(TAG, "CAPABILITY $allCaps final=$last")
+        Log.debug(TAG, "CAPABILITY $allCaps final=$last")
         return ImapCapabilities(allCaps)
     }
 
@@ -191,7 +191,7 @@ class RawImapConnection(
         if (accum.finalLine.contains(" OK ", ignoreCase = true)) return accum.finalLine
 
         // If BAD/NO, retry challenge/response variant
-        Log.d(TAG, "XOAUTH2 inline failed: ${accum.finalLine}, trying CR")
+        Log.debug(TAG, "XOAUTH2 inline failed: ${accum.finalLine}, trying CR")
         tag = nextTag()
         sendLine("$tag AUTHENTICATE XOAUTH2")
         val continuation = readLineWithLiteral()?.first ?: ""
@@ -437,7 +437,7 @@ class RawImapConnection(
         } else {
             line
         }
-        Log.d(TAG, "C> $preview")
+        Log.debug(TAG, "C> $preview")
     }
 
     private fun escapeString(s: String): String {

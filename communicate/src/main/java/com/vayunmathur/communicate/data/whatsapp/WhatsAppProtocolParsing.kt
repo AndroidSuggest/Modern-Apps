@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.whatsapp
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.Node
 import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto
 
@@ -229,7 +229,7 @@ private fun WhatsAppProtocol.parseEncryptedMessage(
 
         buildParsedMessage(node, e2eMessage, chatJid, fromMe, isViewOnceMsg, id, type, timestamp, participant)
     } catch (expected: Exception) {
-        Log.e(TAG, "Failed to parse E2E message", expected)
+        Log.error(TAG, "Failed to parse E2E message", expected)
         WhatsAppMessage(
             id = id,
             from = from,

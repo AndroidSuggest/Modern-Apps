@@ -2,7 +2,7 @@ package com.vayunmathur.findfamily.util
 
 import android.location.Location
 import android.os.BatteryManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.findfamily.data.Coord
 import com.vayunmathur.findfamily.data.DirectBootStore
 import com.vayunmathur.findfamily.data.LocationValue
@@ -78,8 +78,8 @@ private fun LocationTrackingService.logHeartbeatSummary(
 ) {
     val userId = Networking.userid
     val loc = "${location.latitude},${location.longitude} acc=${location.accuracy}"
-    Log.d("FF-Heartbeat", "heartbeat userid=${userId.toULong()} self raw=$userId users=$userCount")
-    Log.d("FF-Heartbeat", "heartbeat links=$linkCount moving=$isMoving loc=$loc")
+    Log.debug("FF-Heartbeat", "heartbeat userid=${userId.toULong()} self raw=$userId users=$userCount")
+    Log.debug("FF-Heartbeat", "heartbeat links=$linkCount moving=$isMoving loc=$loc")
 }
 
 private suspend fun LocationTrackingService.upsertSelfLocation(
@@ -94,14 +94,14 @@ private suspend fun LocationTrackingService.upsertSelfLocation(
         now,
         bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).toFloat()
     )
-    Log.d("FF-Heartbeat", "upsert local LocationValue for self")
+    Log.debug("FF-Heartbeat", "upsert local LocationValue for self")
     repository.upsertLocation(locationValue)
     return locationValue
 }
 
 private suspend fun LocationTrackingService.ensureSelfUser(currentUsers: List<User>) {
     if (currentUsers.none { it.id == Networking.userid }) {
-        Log.d("FF-Heartbeat", "self not in user DB, inserting me")
+        Log.debug("FF-Heartbeat", "self not in user DB, inserting me")
         repository.upsertUser(
             User(
                 getString(R.string.me_label),
@@ -130,13 +130,13 @@ private suspend fun LocationTrackingService.applyTimerAutoToggles(
     try {
         val flipped = repository.applyDueAutoToggles(now.epochSeconds)
         if (flipped > 0) {
-            Log.d("FF-Heartbeat", "auto-toggle flipped $flipped user(s), reloading sharing state")
+            Log.debug("FF-Heartbeat", "auto-toggle flipped $flipped user(s), reloading sharing state")
             // Reload fresh sharing flags so we don't publish once after an intended disable,
             // and we start publishing immediately after an intended enable.
             return repository.getAllUsers()
         }
     } catch (e: Exception) {
-        Log.w("FF-Heartbeat", "auto-toggle apply failed", e)
+        Log.status("FF-Heartbeat", "auto-toggle apply failed", e)
     }
     return currentUsers
 }
@@ -158,12 +158,12 @@ private suspend fun LocationTrackingService.applyArrivalAutoToggles(
         if (insideWaypointIds.isNotEmpty()) {
             val flippedArrival = repository.applyDueArrivalToggles(insideWaypointIds)
             if (flippedArrival > 0) {
-                Log.d("FF-Heartbeat", "arrival auto-toggle flipped $flippedArrival user(s), reloading")
+                Log.debug("FF-Heartbeat", "arrival auto-toggle flipped $flippedArrival user(s), reloading")
                 return repository.getAllUsers()
             }
         }
     } catch (e: Exception) {
-        Log.w("FF-Heartbeat", "arrival auto-toggle apply failed", e)
+        Log.status("FF-Heartbeat", "arrival auto-toggle apply failed", e)
     }
     return publishBaseUsers
 }
@@ -182,18 +182,18 @@ private suspend fun LocationTrackingService.publishHeartbeat(
     else publishBaseUsers.filter { it.id != Networking.userid && it.sendingEnabled }
     val targetIds = publishTargets.map { it.id.toULong() }
     val targetNames = publishTargets.map { it.name }
-    Log.d("FF-Heartbeat", "publish targets count=${publishTargets.size} ids=$targetIds names=$targetNames")
-    Log.d("FF-Heartbeat", "publish globalSharing=$sharingOut")
+    Log.debug("FF-Heartbeat", "publish targets count=${publishTargets.size} ids=$targetIds names=$targetNames")
+    Log.debug("FF-Heartbeat", "publish globalSharing=$sharingOut")
     publishTargets.forEach {
         val result = runCatching { Networking.publishLocation(locationValue, it) }
         if (result.isFailure) {
-            Log.w("FF-Heartbeat", "publish to ${it.id.toULong()} threw", result.exceptionOrNull())
+            Log.status("FF-Heartbeat", "publish to ${it.id.toULong()} threw", result.exceptionOrNull())
         }
     }
     if (sharingOut) currentLinks.filter { now < it.deleteAt }.forEach {
         val result = runCatching { Networking.publishLocation(locationValue, it) }
         if (result.isFailure) {
-            Log.w("FF-Heartbeat", "publish to link ${it.id} threw", result.exceptionOrNull())
+            Log.status("FF-Heartbeat", "publish to link ${it.id} threw", result.exceptionOrNull())
         }
     }
     currentLinks.filter { now >= it.deleteAt }.forEach {
@@ -205,11 +205,11 @@ private suspend fun LocationTrackingService.publishHeartbeat(
 @Suppress("TooGenericExceptionCaught")
 internal suspend fun LocationTrackingService.syncHeartbeat() {
     val location = lastKnownLocation ?: run {
-        Log.d("FF-Heartbeat", "syncHeartbeat: no lastKnownLocation yet")
+        Log.debug("FF-Heartbeat", "syncHeartbeat: no lastKnownLocation yet")
         return
     }
     if (Networking.userid == 0L) {
-        Log.d("FF-Heartbeat", "syncHeartbeat: userid==0, not initialized yet")
+        Log.debug("FF-Heartbeat", "syncHeartbeat: userid==0, not initialized yet")
         return
     }
 
@@ -230,7 +230,7 @@ internal suspend fun LocationTrackingService.syncHeartbeat() {
         // Networking.startLive). There is no HTTP receive; if the socket is down the loop
         // reconnects and the next heartbeat re-publishes.
     } catch (e: Exception) {
-        Log.w("FF-Heartbeat", "syncHeartbeat crashed", e)
+        Log.status("FF-Heartbeat", "syncHeartbeat crashed", e)
     }
 }
 
@@ -258,7 +258,7 @@ internal suspend fun LocationTrackingService.seedDirectBootMirror() {
         globalSharingEnabled = sharingOut,
     )
     lastSeededMirror = signature
-    Log.i(
+    Log.status(
         LocationTrackingService.TAG_DIRECT_BOOT,
         "mirror seeded: ${targets.size} target(s) sharing=$sharingOut tracking=$trackingEnabled"
     )

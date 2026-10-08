@@ -1,6 +1,6 @@
 package com.vayunmathur.communicate.data.signal.transport
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -33,21 +33,21 @@ object SignalCallingApi {
                 sslSocketFactory = sslSocketFactory,
             )
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not fetch calling relays", expected)
+            Log.status(TAG, "could not fetch calling relays", expected)
             return emptyList()
         }
         if (!resp.isSuccess) {
-            Log.w(TAG, "calling relays request failed: ${resp.status} ${resp.statusMessage}")
+            Log.status(TAG, "calling relays request failed: ${resp.status} ${resp.statusMessage}")
             return emptyList()
         }
         val servers = parseRelays(resp.text)
-        Log.i(TAG, "fetched ${servers.size} ICE servers")
+        Log.status(TAG, "fetched ${servers.size} ICE servers")
         return servers
     }
 
     internal fun parseRelays(
         body: String,
-        warn: (String) -> Unit = { Log.w(TAG, it) },
+        warn: (String) -> Unit = { Log.status(TAG, it) },
     ): List<PeerConnection.IceServer> {
         val relays = try {
             json.parseToJsonElement(body).jsonObject["relays"]?.jsonArray

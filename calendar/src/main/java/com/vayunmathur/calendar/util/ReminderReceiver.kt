@@ -7,7 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.UserManager
 import android.text.format.DateFormat
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import com.vayunmathur.calendar.MainActivity
 import com.vayunmathur.calendar.R
@@ -79,7 +79,7 @@ class ReminderReceiver : BroadcastReceiver() {
                     ReminderScheduler.reconcileAll(context)
                 }
             } catch (expected: Exception) {
-                Log.e(TAG, "could not reschedule after a reminder fired", expected)
+                Log.error(TAG, "could not reschedule after a reminder fired", expected)
             } finally {
                 pendingResult.finish()
             }

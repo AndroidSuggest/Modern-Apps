@@ -1,6 +1,6 @@
 package com.vayunmathur.youpipe.util.sabr
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.services.youtube.sabrng.YoutubeSabrInfo
 import org.schabi.newpipe.extractor.services.youtube.sabrng.YoutubeSabrRequest
@@ -106,7 +106,7 @@ object SabrNgSessionStore {
             throw IOException("SABR initialization request failed for $videoId", e)
         }
         if (initByItag.size < formats.size) {
-            Log.w(
+            Log.status(
                 TAG,
                 "SABR init incomplete for $videoId: got=${initByItag.keys} needed=$neededItags"
             )

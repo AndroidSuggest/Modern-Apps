@@ -2,7 +2,7 @@
 
 package com.vayunmathur.library.carhost
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.car.app.OnDoneCallback
 import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
@@ -257,7 +257,7 @@ object HostTemplateParsers {
                 actionStripActions(runCatching { template.actionStrip }.getOrNull())
             )
             else -> {
-                Log.w(TAG, "unhandled template ${template.javaClass.simpleName}; pane fallback")
+                Log.status(TAG, "unhandled template ${template.javaClass.simpleName}; pane fallback")
                 HostTemplate.Pane(title = template.javaClass.simpleName)
             }
         }
@@ -383,7 +383,7 @@ object HostTemplateParsers {
         val latch = CountDownLatch(1)
         val cb = sectionCallback(ref, latch)
         runCatching { delegate.requestItemRange(0, size - 1, cb) }
-            .onFailure { Log.w(TAG, "section range fetch failed", it); return emptyList() }
+            .onFailure { Log.status(TAG, "section range fetch failed", it); return emptyList() }
         latch.await(FETCH_TIMEOUT_SEC, TimeUnit.SECONDS)
         return ref.get().orEmpty()
     }
@@ -448,7 +448,7 @@ object HostTemplateParsers {
                 { contentId ->
                     thread(name = "ma-auto-carhost-tab", isDaemon = true) {
                         runCatching { d.sendTabSelected(contentId, HostClickCallback) }
-                            .onFailure { Log.w(TAG, "tab select failed", it) }
+                            .onFailure { Log.status(TAG, "tab select failed", it) }
                     }
                 }
             },
@@ -604,7 +604,7 @@ object HostTemplateParsers {
                     thread(name = "ma-auto-carhost-search", isDaemon = true) {
                         runCatching {
                             d.sendSearchTextChanged(text, HostClickCallback)
-                        }.onFailure { Log.w(TAG, "search text change failed", it) }
+                        }.onFailure { Log.status(TAG, "search text change failed", it) }
                     }
                 }
             },
@@ -613,7 +613,7 @@ object HostTemplateParsers {
                     thread(name = "ma-auto-carhost-search", isDaemon = true) {
                         runCatching {
                             d.sendSearchSubmitted(text, HostClickCallback)
-                        }.onFailure { Log.w(TAG, "search submit failed", it) }
+                        }.onFailure { Log.status(TAG, "search submit failed", it) }
                     }
                 }
             },
@@ -659,7 +659,7 @@ object HostTemplateParsers {
                 {
                     thread(name = "ma-auto-carhost-click", isDaemon = true) {
                         runCatching { d.sendClick(HostClickCallback) }
-                            .onFailure { Log.w(TAG, "row click failed: $title", it) }
+                            .onFailure { Log.status(TAG, "row click failed: $title", it) }
                     }
                 }
             },
@@ -681,7 +681,7 @@ object HostTemplateParsers {
                     {
                         thread(name = "ma-auto-carhost-click", isDaemon = true) {
                             runCatching { d.sendClick(HostClickCallback) }
-                                .onFailure { Log.w(TAG, "grid click failed: $title", it) }
+                                .onFailure { Log.status(TAG, "grid click failed: $title", it) }
                         }
                     }
                 },
@@ -707,7 +707,7 @@ object HostTemplateParsers {
         return HostUiAction(title) {
             thread(name = "ma-auto-carhost-click", isDaemon = true) {
                 runCatching { delegate.sendClick(HostClickCallback) }
-                    .onFailure { Log.w(TAG, "action click failed: $title", it) }
+                    .onFailure { Log.status(TAG, "action click failed: $title", it) }
             }
         }
     }

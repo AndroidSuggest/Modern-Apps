@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.auto.network.WifiDirectConnector
 
 /**
@@ -26,10 +26,10 @@ class WirelessSetupSharedService : Service() {
         // service form -- same connector, same consent semantics.
         val mac = intent?.getStringExtra(EXTRA_BT_ADDRESS)
         if (!mac.isNullOrBlank()) {
-            Log.i(TAG, "wireless setup for associated head unit $mac")
+            Log.status(TAG, "wireless setup for associated head unit $mac")
             WifiDirectConnector.startFromAssociation(this, mac)
         } else {
-            Log.i(TAG, "wireless setup without an association; tap stand-in path")
+            Log.status(TAG, "wireless setup without an association; tap stand-in path")
             WifiDirectConnector.start(this)
         }
         return START_NOT_STICKY
@@ -38,7 +38,7 @@ class WirelessSetupSharedService : Service() {
     override fun onBind(intent: Intent?): IBinder? {
         // Explicit no-op-with-comment: wireless setup is a start-action, not
         // a binder -- a head-unit bind expecting one is safely rejected.
-        Log.i(TAG, "wireless-setup bind rejected (start-action service, no binder)")
+        Log.status(TAG, "wireless-setup bind rejected (start-action service, no binder)")
         return null
     }
 

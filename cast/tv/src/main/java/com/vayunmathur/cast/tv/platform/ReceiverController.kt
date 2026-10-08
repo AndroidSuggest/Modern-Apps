@@ -2,7 +2,7 @@ package com.vayunmathur.cast.tv.platform
 
 import android.content.Context
 import android.os.Build
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Surface
 import com.vayunmathur.cast.protocol.Bye
 import com.vayunmathur.cast.protocol.ByeReason
@@ -182,7 +182,7 @@ object ReceiverController {
         val live = channel ?: return
         scope.launch {
             runCatching { live.send(command) }
-                .onFailure { Log.w(TAG, "could not send ${command.action}", it) }
+                .onFailure { Log.status(TAG, "could not send ${command.action}", it) }
         }
     }
 
@@ -290,11 +290,11 @@ object ReceiverController {
         val server = try {
             ServerSocket(0)
         } catch (e: IOException) {
-            Log.e(TAG, "could not bind a control socket", e)
+            Log.error(TAG, "could not bind a control socket", e)
             mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
             return
         } catch (e: SecurityException) {
-            Log.e(TAG, "could not bind a control socket", e)
+            Log.error(TAG, "could not bind a control socket", e)
             mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
             return
         }
@@ -308,7 +308,7 @@ object ReceiverController {
             deviceName = name,
             localNetworkBlocked = nsd.localNetworkBlocked,
         )
-        Log.i(TAG, "receiving as '$name' ($deviceId) on control port ${server.localPort}")
+        Log.status(TAG, "receiving as '$name' ($deviceId) on control port ${server.localPort}")
 
         acceptLoop(server, context, store, identity, deviceId, name, limits, nsd)
     }
@@ -333,16 +333,16 @@ object ReceiverController {
             val socket = try {
                 server.accept()
             } catch (e: IOException) {
-                if (scope.isActive) Log.w(TAG, "accept failed", e)
+                if (scope.isActive) Log.status(TAG, "accept failed", e)
                 return
             } catch (e: SecurityException) {
-                if (scope.isActive) Log.w(TAG, "accept failed", e)
+                if (scope.isActive) Log.status(TAG, "accept failed", e)
                 return
             }
             if (sessionJob?.isActive == true) {
                 // One screen, one session. Refusing is what stops anyone on the LAN from displacing a
                 // running mirror without authenticating at all.
-                Log.i(TAG, "refusing ${socket.inetAddress} - already receiving")
+                Log.status(TAG, "refusing ${socket.inetAddress} - already receiving")
                 runCatching { socket.close() }
                 continue
             }
@@ -381,11 +381,11 @@ object ReceiverController {
             try {
                 runSession(context, channel, store, identity, deviceId, name, limits)
             } catch (e: IOException) {
-                Log.w(TAG, "session ended", e)
+                Log.status(TAG, "session ended", e)
             } catch (e: IllegalStateException) {
-                Log.w(TAG, "session ended", e)
+                Log.status(TAG, "session ended", e)
             } catch (e: IllegalArgumentException) {
-                Log.w(TAG, "session ended", e)
+                Log.status(TAG, "session ended", e)
             } finally {
                 channel.close()
                 this@ReceiverController.channel = null
@@ -431,11 +431,11 @@ object ReceiverController {
 
         val greeting = receiveGreeting(channel, transcript) ?: return null
         if (greeting.version != PROTOCOL_VERSION) {
-            Log.w(TAG, "refusing protocol version ${greeting.version}, we speak $PROTOCOL_VERSION")
+            Log.status(TAG, "refusing protocol version ${greeting.version}, we speak $PROTOCOL_VERSION")
             mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
             return null
         }
-        Log.i(TAG, "'${greeting.senderName}' connected from ${channel.remoteAddress}")
+        Log.status(TAG, "'${greeting.senderName}' connected from ${channel.remoteAddress}")
 
         transcript.add(
             channel.send(
@@ -490,7 +490,7 @@ object ReceiverController {
         val secret = ProtocolBase64.decode(sealedSecret.sealed)
             ?.let { SecretSealing.open(identity, it) }
         if (secret != null) return secret
-        Log.w(TAG, "could not open the sealed secret; the phone has a stale identity for us")
+        Log.status(TAG, "could not open the sealed secret; the phone has a stale identity for us")
         mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
         return null
     }
@@ -542,7 +542,7 @@ object ReceiverController {
                     forgetPlayback()
                 }
                 is Bye -> {
-                    Log.i(TAG, "'$senderName' said goodbye")
+                    Log.status(TAG, "'$senderName' said goodbye")
                     return
                 }
                 // Echoed rather than treated as a surprise, so a keep-alive cannot end the very channel
@@ -582,7 +582,7 @@ object ReceiverController {
             val next = channel.receive() ?: break
             when (val message = next.message) {
                 is Bye -> {
-                    Log.i(TAG, "'$senderName' said goodbye")
+                    Log.status(TAG, "'$senderName' said goodbye")
                     return
                 }
                 // **A second STREAM_CONFIG re-arms the session rather than being ignored.**
@@ -592,7 +592,7 @@ object ReceiverController {
                 // decoder and socket go first: they are sized and bound for the geometry being
                 // replaced.
                 is StreamConfig -> {
-                    Log.i(
+                    Log.status(
                         TAG,
                         "'$senderName' is switching to ${message.width}x${message.height} " +
                             "@ ${message.frameRate}fps",
@@ -654,12 +654,12 @@ object ReceiverController {
         if (codec == null) {
             // An audio-only session has no decoder to configure. Ignored rather than treated as a
             // fault: it means the phone sent one anyway, which is harmless and says nothing useful.
-            Log.w(TAG, "a codec config arrived for a session with no video")
+            Log.status(TAG, "a codec config arrived for a session with no video")
             return
         }
         val csd = ProtocolBase64.decode(message.csd)
         if (csd == null || csd.isEmpty()) {
-            Log.w(TAG, "the phone sent an unreadable codec config")
+            Log.status(TAG, "the phone sent an unreadable codec config")
             return
         }
         val shape = when (csd.first()) {
@@ -667,7 +667,7 @@ object ReceiverController {
             0x0a.toByte() -> "a sequence header OBU"
             else -> "an unrecognised form"
         }
-        Log.i(
+        Log.status(
             TAG,
             "codec config for ${codec.label}: ${csd.size} bytes, $shape, " +
                 "[${csd.take(CSD_LOG_BYTES).joinToString(" ") { "%02x".format(it) }}]; " +

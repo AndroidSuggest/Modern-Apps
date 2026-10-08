@@ -7,7 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.ImageDecoder
 import android.graphics.Rect
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import androidx.core.net.toUri
@@ -67,11 +67,11 @@ class WallpaperViewModel(application: Application) : AndroidViewModel(applicatio
                 _bitmap.value = argb
                 _loadState.value = WallpaperLoadState.Loaded
             } catch (e: IOException) {
-                Log.e(TAG, "wallpaper decode failed for $uriString", e)
+                Log.error(TAG, "wallpaper decode failed for $uriString", e)
                 prev?.let { _bitmap.value = it }
                 _loadState.value = WallpaperLoadState.Failed
             } catch (e: SecurityException) {
-                Log.e(TAG, "wallpaper decode failed for $uriString", e)
+                Log.error(TAG, "wallpaper decode failed for $uriString", e)
                 prev?.let { _bitmap.value = it }
                 _loadState.value = WallpaperLoadState.Failed
             }
@@ -188,13 +188,13 @@ object WallpaperUtil {
                 opaqueBmp.recycle()
             }
         } catch (e: IOException) {
-            Log.e(TAG, "setWallpaper failed", e)
+            Log.error(TAG, "setWallpaper failed", e)
             SetResult.Failure(e)
         } catch (e: SecurityException) {
-            Log.e(TAG, "setWallpaper failed", e)
+            Log.error(TAG, "setWallpaper failed", e)
             SetResult.Failure(e)
         } catch (oom: OutOfMemoryError) {
-            Log.e(TAG, "setWallpaper OOM", oom)
+            Log.error(TAG, "setWallpaper OOM", oom)
             SetResult.Failure(RuntimeException("Out of memory: image too large", oom))
         }
     }

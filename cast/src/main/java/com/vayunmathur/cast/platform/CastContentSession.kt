@@ -1,7 +1,7 @@
 package com.vayunmathur.cast.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.R
 import com.vayunmathur.cast.domain.CastDevice
 import com.vayunmathur.cast.domain.ClientPhase
@@ -52,7 +52,7 @@ suspend fun CastController.startContentSession(
     val device = deviceMutable.value
     val phase = sessionStateMutable.value.phase
     if (!isPairable(activeClient, device, phase)) {
-        Log.w(TAG, "asked for an app-content session with no paired TV")
+        Log.status(TAG, "asked for an app-content session with no paired TV")
         return@withContext ContentSessionResult.Failed(CastContract.REASON_NO_SESSION)
     }
     requireNotNull(activeClient)
@@ -76,7 +76,7 @@ suspend fun CastController.startContentSession(
 
     val codec = when (val choice = chooseCodec(appContext, device, activeClient, width, height)) {
         is CodecOutcome.Refused -> {
-            Log.w(TAG, "refusing an app-content session: ${choice.message}")
+            Log.status(TAG, "refusing an app-content session: ${choice.message}")
             mirrorPhaseMutable.value = MirrorPhase.Failed
             failureMutable.value = choice.message
             return@withContext ContentSessionResult.Failed(CastContract.REASON_FAILED)
@@ -130,7 +130,7 @@ private suspend fun CastController.startEncodedContentSession(
     }
     val ready = outcome as? HandshakeOutcome.Ready
     if (ready == null) {
-        Log.w(TAG, "the TV would not agree an app-content stream: $outcome")
+        Log.status(TAG, "the TV would not agree an app-content stream: $outcome")
         mirrorPhaseMutable.value = MirrorPhase.Failed
         failureMutable.value = appContext.getString(R.string.cast_mirror_negotiation_failed)
         return ContentSessionResult.Failed(CastContract.REASON_FAILED)
@@ -200,7 +200,7 @@ internal suspend fun CastController.startServedSession(
 ): ContentSessionResult {
     val limits = activeClient.limits ?: DecoderLimits()
     if (!CodecNegotiation.canPlayAudio(limits)) {
-        Log.w(TAG, "refusing a served session: '${device.friendlyName}' advertised no Opus decoder")
+        Log.status(TAG, "refusing a served session: '${device.friendlyName}' advertised no Opus decoder")
         failureMutable.value = context.getString(R.string.cast_mirror_tv_no_audio)
         mirrorPhaseMutable.value = MirrorPhase.Failed
         return ContentSessionResult.Failed(CastContract.REASON_FAILED)
@@ -211,7 +211,7 @@ internal suspend fun CastController.startServedSession(
     // reachable back from the television.
     val host = socket?.localAddress
     if (host == null || host.hostAddress == null) {
-        Log.w(TAG, "no local address on the control channel; nothing could be served")
+        Log.status(TAG, "no local address on the control channel; nothing could be served")
         mirrorPhaseMutable.value = MirrorPhase.Failed
         return ContentSessionResult.Failed(CastContract.REASON_FAILED)
     }

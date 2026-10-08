@@ -1,7 +1,7 @@
 package com.vayunmathur.calendar.data
 import android.content.Context
 import android.provider.CalendarContract
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.database.getStringOrNull
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
@@ -126,12 +126,12 @@ data class Instance(
 
                             instances.add(Instance(id, eventID, start, end, timezone, allDay, eventTitle, color, rrule))
                         } catch (expected: Exception) {
-                            Log.e("Instance", "Error constructing instance from cursor", expected)
+                            Log.error("Instance", "Error constructing instance from cursor", expected)
                         }
                     }
                 }
             } catch (expected: Exception) {
-                Log.e("Instance", "Error querying instances", expected)
+                Log.error("Instance", "Error querying instances", expected)
             }
 
             return instances

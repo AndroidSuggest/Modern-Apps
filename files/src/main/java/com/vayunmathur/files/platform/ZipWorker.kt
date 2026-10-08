@@ -1,7 +1,7 @@
 package com.vayunmathur.files.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.work.WorkerParameters
 import com.vayunmathur.files.R
 import java.io.File
@@ -36,7 +36,7 @@ class ZipWorker(context: Context, params: WorkerParameters) : ProgressNotificati
             archiveSources(sourcePaths, destFile)
             Result.success()
         } catch (e: IOException) {
-            Log.w(TAG_ZIP, "failed to create archive", e)
+            Log.status(TAG_ZIP, "failed to create archive", e)
             Result.failure()
         } finally {
             cancelNotification()

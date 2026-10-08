@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.getSystemService
@@ -40,7 +40,7 @@ class MirrorConsentActivity : ComponentActivity() {
         val data = result.data
         if (result.resultCode != RESULT_OK || data == null) {
             // Declining is a choice, not an error, so it is not worth a message.
-            Log.i(TAG, "screen capture consent declined")
+            Log.status(TAG, "screen capture consent declined")
             finish()
             return@registerForActivityResult
         }
@@ -52,7 +52,7 @@ class MirrorConsentActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val manager = getSystemService<MediaProjectionManager>()
         if (manager == null) {
-            Log.w(TAG, "no MediaProjectionManager on this device")
+            Log.status(TAG, "no MediaProjectionManager on this device")
             AppMessages.show(getString(R.string.cast_mirror_unavailable))
             finish()
             return

@@ -3,7 +3,7 @@ package com.vayunmathur.education.ui
 import android.content.Intent
 import android.text.format.DateUtils
 import androidx.compose.runtime.setValue
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,7 +72,7 @@ fun VideoPlayerPage(
         state = try {
             PlayerUiState.Ready(VideoExtractor.resolve(youtubeId))
         } catch (e: Exception) {
-            Log.w("VideoPlayer", "could not resolve $youtubeId", e)
+            Log.status("VideoPlayer", "could not resolve $youtubeId", e)
             PlayerUiState.Failed
         }
     }

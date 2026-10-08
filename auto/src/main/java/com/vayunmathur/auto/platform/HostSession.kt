@@ -9,7 +9,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.RemoteException
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.MotionEvent
 import android.view.Surface
 import androidx.car.app.CarAppService
@@ -96,7 +96,7 @@ class HostSession(
     fun bind() {
         if (bound) return
         if (!hasService()) {
-            Log.i(TAG, "$component missing; stays unhosted")
+            Log.status(TAG, "$component missing; stays unhosted")
             return
         }
         val intent = Intent(CarAppService.SERVICE_INTERFACE).apply {
@@ -106,9 +106,9 @@ class HostSession(
         }
         val conn = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-                Log.i(TAG, "$component connected; starting handshake")
+                Log.status(TAG, "$component connected; starting handshake")
                 if (binder == null) {
-                    Log.w(TAG, "$component connected with null binder")
+                    Log.status(TAG, "$component connected with null binder")
                     return
                 }
                 thread(name = "ma-auto-carhost", isDaemon = true) {
@@ -117,7 +117,7 @@ class HostSession(
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
-                Log.w(TAG, "$component disconnected")
+                Log.status(TAG, "$component disconnected")
                 carApp = null
                 bound = false
                 handshakeDone = false
@@ -125,21 +125,21 @@ class HostSession(
             }
 
             override fun onBindingDied(name: ComponentName?) {
-                Log.w(TAG, "$component binding died")
+                Log.status(TAG, "$component binding died")
             }
 
             override fun onNullBinding(name: ComponentName?) {
-                Log.w(TAG, "$component returned null binding")
+                Log.status(TAG, "$component returned null binding")
                 mainHandler.post { onTemplate(HostTemplate.Pane(title = null)) }
             }
         }
         connection = conn
-        Log.i(TAG, "binding car service $component")
+        Log.status(TAG, "binding car service $component")
         val ok = runCatching {
             appContext.bindService(intent, conn, Context.BIND_AUTO_CREATE)
         }.getOrDefault(false)
         bound = ok
-        Log.i(TAG, "bindService returned $ok")
+        Log.status(TAG, "bindService returned $ok")
     }
 
     /**
@@ -167,7 +167,7 @@ class HostSession(
             runCatching {
                 val container = SurfaceContainer(last, localWidth, localHeight, localDpi)
                 bundleOf(container)?.let { cb.onSurfaceDestroyed(it, doneCallback()) }
-            }.onFailure { Log.w(TAG, "onSurfaceDestroyed failed", it) }
+            }.onFailure { Log.status(TAG, "onSurfaceDestroyed failed", it) }
         }
     }
 
@@ -182,7 +182,7 @@ class HostSession(
                         if (dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO
                 }
                 app.onConfigurationChanged(config, doneCallback())
-            }.onFailure { Log.w(TAG, "onConfigurationChanged failed", it) }
+            }.onFailure { Log.status(TAG, "onConfigurationChanged failed", it) }
         }
     }
 
@@ -251,7 +251,7 @@ class HostSession(
 
     private fun runHandshake(app: ICarApp) {
         carApp = app
-        Log.i(TAG, "starting car-app handshake for $component")
+        Log.status(TAG, "starting car-app handshake for $component")
         val handshake = bundleOf(HandshakeInfo(appContext.packageName, HOST_API_LEVEL)) ?: return
         if (!roundTrip("onHandshakeCompleted") { cb -> app.onHandshakeCompleted(handshake, cb) }) return
         val config = Configuration(appContext.resources.configuration)
@@ -272,17 +272,17 @@ class HostSession(
 
     /** One blocking binder call with a 5s cap; false means the session is dead. */
     private fun roundTrip(name: String, call: (IOnDoneCallback) -> Unit): Boolean {
-        Log.i(TAG, "$name: calling for $component")
+        Log.status(TAG, "$name: calling for $component")
         val latch = CountDownLatch(1)
         val failure = AtomicReference<Throwable?>(null)
         val cb = object : IOnDoneCallback.Stub() {
             override fun onSuccess(response: Bundleable?) {
-                Log.i(TAG, "$name: success")
+                Log.status(TAG, "$name: success")
                 latch.countDown()
             }
 
             override fun onFailure(response: Bundleable?) {
-                Log.w(TAG, "$name: failure $response")
+                Log.status(TAG, "$name: failure $response")
                 failure.set(RuntimeException("$name failed: $response"))
                 latch.countDown()
             }
@@ -290,12 +290,12 @@ class HostSession(
             override fun getInterfaceVersion(): Int = IOnDoneCallback.VERSION
         }
         runCatching { call(cb) }.onFailure {
-            Log.w(TAG, "$name binder call threw", it)
+            Log.status(TAG, "$name binder call threw", it)
             return false
         }
         val done = runCatching { latch.await(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS) }.getOrDefault(false)
-        if (!done) Log.w(TAG, "$name timed out")
-        failure.get()?.let { Log.w(TAG, "$name rejected", it) }
+        if (!done) Log.status(TAG, "$name timed out")
+        failure.get()?.let { Log.status(TAG, "$name rejected", it) }
         return done && failure.get() == null
     }
 
@@ -311,17 +311,17 @@ class HostSession(
             }
 
             override fun onFailure(response: Bundleable?) {
-                Log.w(TAG, "fetchTemplate: getManager failure $response")
+                Log.status(TAG, "fetchTemplate: getManager failure $response")
                 latch.countDown()
             }
 
             override fun getInterfaceVersion(): Int = IOnDoneCallback.VERSION
         }
         runCatching { app.getManager(CarContext.APP_SERVICE, managerCb) }
-            .onFailure { Log.w(TAG, "getManager threw", it); return }
+            .onFailure { Log.status(TAG, "getManager threw", it); return }
         latch.await(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         val manager = managerRef.get() ?: run {
-            Log.w(TAG, "getManager returned no manager")
+            Log.status(TAG, "getManager returned no manager")
             return
         }
         val templateRef = AtomicReference<Any?>(null)
@@ -333,20 +333,20 @@ class HostSession(
             }
 
             override fun onFailure(response: Bundleable?) {
-                Log.w(TAG, "fetchTemplate: getTemplate failure $response")
+                Log.status(TAG, "fetchTemplate: getTemplate failure $response")
                 templateLatch.countDown()
             }
 
             override fun getInterfaceVersion(): Int = IOnDoneCallback.VERSION
         }
         runCatching { manager.getTemplate(templateCb) }
-            .onFailure { Log.w(TAG, "getTemplate threw", it); return }
+            .onFailure { Log.status(TAG, "getTemplate threw", it); return }
         templateLatch.await(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         val wrapper = templateRef.get() as? androidx.car.app.model.TemplateWrapper
         val parsed = HostTemplateParsers.parse(wrapper)
         taskStack.record(parsed)
         if (!taskStack.isAllowed(parsed)) {
-            Log.w(TAG, "task quota exceeded for $component; showing error pane")
+            Log.status(TAG, "task quota exceeded for $component; showing error pane")
             mainHandler.post { onTemplate(HostTemplate.Pane(title = "Too many screens")) }
             return
         }
@@ -360,13 +360,13 @@ class HostSession(
         runCatching {
             bundleOf(SurfaceContainer(surface, localWidth, localHeight, localDpi))
                 ?.let { cb.onSurfaceAvailable(it, doneCallback()) }
-        }.onFailure { Log.w(TAG, "onSurfaceAvailable failed", it) }
+        }.onFailure { Log.status(TAG, "onSurfaceAvailable failed", it) }
     }
 
     private fun doneCallback(): IOnDoneCallback = object : IOnDoneCallback.Stub() {
         override fun onSuccess(response: Bundleable?) = Unit
         override fun onFailure(response: Bundleable?) {
-            Log.w(TAG, "host call rejected: $response")
+            Log.status(TAG, "host call rejected: $response")
         }
 
         override fun getInterfaceVersion(): Int = IOnDoneCallback.VERSION
@@ -382,7 +382,7 @@ class HostSession(
             runCatching {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 appContext.startActivity(intent)
-            }.onFailure { Log.w(TAG, "startCarApp failed", it) }
+            }.onFailure { Log.status(TAG, "startCarApp failed", it) }
         }
 
         override fun getHost(hostType: String?): IBinder {
@@ -407,7 +407,7 @@ class HostSession(
         }
 
         override fun showToast(text: CharSequence?, duration: Int) {
-            Log.i(TAG, "car toast: $text")
+            Log.status(TAG, "car toast: $text")
         }
 
         override fun setSurfaceCallback(callback: ISurfaceCallback?) {
@@ -418,7 +418,7 @@ class HostSession(
         override fun sendLocation(location: android.location.Location?) = Unit
 
         override fun showAlert(alert: Bundleable?) {
-            Log.i(TAG, "car alert shown (not rendered)")
+            Log.status(TAG, "car alert shown (not rendered)")
         }
 
         override fun dismissAlert(alertId: Int) = Unit
@@ -432,12 +432,12 @@ class HostSession(
 
     private val navHostBinder = object : INavigationHost.Stub() {
         override fun navigationStarted() {
-            Log.i(TAG, "$component navigation started")
+            Log.status(TAG, "$component navigation started")
             taskStack.reset() // NavigationTemplate resets the task quota
         }
 
         override fun navigationEnded() {
-            Log.i(TAG, "$component navigation ended")
+            Log.status(TAG, "$component navigation ended")
             mainHandler.post { onTemplate(HostTemplate.Pane(title = null)) }
         }
 
@@ -448,7 +448,7 @@ class HostSession(
             // This host has no voice pipeline of its own — GAL carries mic
             // audio on ch6 (MicSourceChannel) and the phone resolves intents.
             // Record receipt so a future voice route can consume it.
-            Log.i(TAG, "$component voice-assistant capabilities received")
+            Log.status(TAG, "$component voice-assistant capabilities received")
             voiceCapabilities.set(capabilities != null)
         }
 
@@ -487,7 +487,7 @@ class HostSession(
      */
     private val mediaHostBinder = object : androidx.car.app.media.IMediaPlaybackHost.Stub() {
         override fun registerMediaSessionToken(token: Bundleable?) {
-            Log.i(TAG, "$component media playback token registered")
+            Log.status(TAG, "$component media playback token registered")
             mediaToken.set(token != null)
         }
 
@@ -502,7 +502,7 @@ class HostSession(
      */
     private val suggestionHostBinder = object : androidx.car.app.suggestion.ISuggestionHost.Stub() {
         override fun updateSuggestions(suggestions: Bundleable?) {
-            Log.i(TAG, "$component suggestions updated")
+            Log.status(TAG, "$component suggestions updated")
         }
 
         override fun getInterfaceVersion(): Int =

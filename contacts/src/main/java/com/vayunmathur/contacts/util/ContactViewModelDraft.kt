@@ -4,7 +4,7 @@ package com.vayunmathur.contacts.util
 
 import android.app.Application
 import android.graphics.Bitmap
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.graphics.scale
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.contacts.R
@@ -183,7 +183,7 @@ fun ContactViewModel.addPhoneNumberToContact(
         try {
             appendPhoneNumber(contactId, phone, type)
         } catch (e: Exception) {
-            Log.e("ContactViewModel", "Failed to add phone to contact $contactId", e)
+            Log.error("ContactViewModel", "Failed to add phone to contact $contactId", e)
         }
         withContext(Dispatchers.Main) { onComplete() }
     }

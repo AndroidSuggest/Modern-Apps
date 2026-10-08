@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.DropdownMenu
@@ -302,7 +303,7 @@ private fun ComposePageThumb(
                     try {
                         drawSafePage(current)
                     } catch (expected: RuntimeException) {
-                        android.util.Log.w("CutGlueScreen", "drawSafePage failed", expected)
+                        Log.status("CutGlueScreen", "drawSafePage failed", expected)
                     } finally {
                         drawContext.canvas.nativeCanvas.restoreToCount(base)
                     }

@@ -3,7 +3,7 @@ package com.vayunmathur.auto.platform
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
-import android.util.Log
+import com.vayunmathur.library.log.Log
 
 /**
  * Head-unit compositor bind target, mirroring gearhead's
@@ -23,7 +23,7 @@ class CarSystemUiControllerService : Service() {
         // Explicit no-op-with-comment: the HU compositor bind is safely
         // rejected (null) because MA renders CarDisplay into ch2 video
         // rather than hosting HU-composited system-UI windows.
-        Log.i(TAG, "system-ui controller bind rejected (rendered-surface model)")
+        Log.status(TAG, "system-ui controller bind rejected (rendered-surface model)")
         return null
     }
 

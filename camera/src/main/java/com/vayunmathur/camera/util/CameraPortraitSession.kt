@@ -1,6 +1,6 @@
 package com.vayunmathur.camera.util
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -28,7 +28,7 @@ import com.vayunmathur.camera.platform.refreshCapabilities
  * capped+max+UHD → capped+max+JPEG → capped+default+UHD → capped+default+JPEG → default+default
  */
 suspend fun CameraViewModel.setupPortraitSession(): Boolean {
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setupPortraitSession() ENTRY lens=${lensFacingMutable.value} thread=${Thread.currentThread().name}"
     )
@@ -38,7 +38,7 @@ suspend fun CameraViewModel.setupPortraitSession(): Boolean {
         finishPortraitSession()
         true
     } catch (e: IllegalStateException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPortraitSession() OUTER CATCH – Failed black root? " +
                 "${e.javaClass.simpleName} ${e.message}",
@@ -46,7 +46,7 @@ suspend fun CameraViewModel.setupPortraitSession(): Boolean {
         )
         false
     } catch (e: IllegalArgumentException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPortraitSession() OUTER CATCH – Failed black root? " +
                 "${e.javaClass.simpleName} ${e.message}",
@@ -70,7 +70,7 @@ internal data class PortraitSessionPrep(
 internal suspend fun CameraViewModel.preparePortraitSession(): PortraitSessionPrep {
     val provider = ProcessCameraProvider.awaitInstance(app)
     cameraProvider = provider
-    Log.d("NightPreview", "setupPortraitSession() providerHash=${provider.hashCode()}")
+    Log.debug("NightPreview", "setupPortraitSession() providerHash=${provider.hashCode()}")
     provider.unbindAll()
 
     ensureLensesEnumerated(provider)
@@ -81,7 +81,7 @@ internal suspend fun CameraViewModel.preparePortraitSession(): PortraitSessionPr
     attachAeSnapshot(previewBuilder, "setupPortraitSession()")
     val preview = previewBuilder.build()
     preview.setSurfaceProvider { request ->
-        Log.d(
+        Log.debug(
             "NightPreview",
             "setupPortraitSession() surfaceRequest res=${request.resolution} " +
                 "thread=${Thread.currentThread().name}"
@@ -106,13 +106,13 @@ internal fun CameraViewModel.probePortraitUltraHdr(
         val cameraInfo = provider.getCameraInfo(lensSelector(lensFacingMutable.value, portraitLens))
         val sup = ImageCapture.getImageCaptureCapabilities(cameraInfo)
             .supportedOutputFormats.contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
-        Log.d("NightPreview", "setupPortraitSession() ultraHdrSupported=$sup lens=${portraitLens?.labelKey}")
+        Log.debug("NightPreview", "setupPortraitSession() ultraHdrSupported=$sup lens=${portraitLens?.labelKey}")
         sup
     } catch (e: IllegalStateException) {
-        Log.e("NightPreview", "setupPortraitSession() Could not query Ultra HDR support (hidden)", e)
+        Log.error("NightPreview", "setupPortraitSession() Could not query Ultra HDR support (hidden)", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.e("NightPreview", "setupPortraitSession() Could not query Ultra HDR support (hidden)", e)
+        Log.error("NightPreview", "setupPortraitSession() Could not query Ultra HDR support (hidden)", e)
         false
     }
 }
@@ -157,7 +157,7 @@ internal suspend fun CameraViewModel.bindPortraitLadder(session: PortraitSession
         }
     }
     if (bound == null) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPortraitSession() ALL attempts FAILED! " +
                 "lastError=${lastError?.javaClass?.simpleName} ${lastError?.message} – " +
@@ -216,9 +216,9 @@ internal fun CameraViewModel.tryPortraitRung(
         session.provider.unbindAll()
         boundCamera = bindPortraitUseCases(session, candidate, capped, maxRes, ultra)
         if (candidate != session.portraitLens) {
-            Log.w("LensSelector", "Portrait fell back to lens=${candidate?.labelKey}")
+            Log.status("LensSelector", "Portrait fell back to lens=${candidate?.labelKey}")
         }
-        Log.d(
+        Log.debug(
             "NightPreview",
             "setupPortraitSession() bind ladder SUCCESS capped=$capped maxRes=$maxRes " +
                 "ultra=$ultra lens=${candidate?.labelKey} " +
@@ -228,7 +228,7 @@ internal fun CameraViewModel.tryPortraitRung(
         true
     } catch (e: IllegalStateException) {
         portraitLastError = e
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPortraitSession() Portrait bind failed " +
                 "(capped=$capped maxRes=$maxRes ultra=$ultra lens=${candidate?.labelKey}) – " +
@@ -240,7 +240,7 @@ internal fun CameraViewModel.tryPortraitRung(
         false
     } catch (e: IllegalArgumentException) {
         portraitLastError = e
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPortraitSession() Portrait bind failed " +
                 "(capped=$capped maxRes=$maxRes ultra=$ultra lens=${candidate?.labelKey}) – " +
@@ -261,7 +261,7 @@ internal fun CameraViewModel.bindPortraitUseCases(
     maxResCapture: Boolean,
     ultraHdr: Boolean
 ): Camera {
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setupPortraitSession() bind(capped=$cappedAnalysis maxRes=$maxResCapture ultra=$ultraHdr) START"
     )
@@ -276,7 +276,7 @@ internal fun CameraViewModel.bindPortraitUseCases(
             capture,
             analysis
         ).also {
-            Log.d(
+            Log.debug(
                 "NightPreview",
                 "setupPortraitSession() bind SUCCESS capped=$cappedAnalysis " +
                     "maxRes=$maxResCapture ultra=$ultraHdr " +
@@ -285,7 +285,7 @@ internal fun CameraViewModel.bindPortraitUseCases(
             )
         }
     } catch (e: IllegalStateException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPortraitSession() bind(capped=$cappedAnalysis maxRes=$maxResCapture " +
                 "ultra=$ultraHdr) FAILED – swallowed before! " +
@@ -294,7 +294,7 @@ internal fun CameraViewModel.bindPortraitUseCases(
         )
         throw e
     } catch (e: IllegalArgumentException) {
-        Log.e(
+        Log.error(
             "NightPreview",
             "setupPortraitSession() bind(capped=$cappedAnalysis maxRes=$maxResCapture " +
                 "ultra=$ultraHdr) FAILED – swallowed before! " +
@@ -357,7 +357,7 @@ internal fun CameraViewModel.buildPortraitAnalysis(cappedAnalysis: Boolean, maxR
 /** Refreshes capabilities and marks the portrait session active. */
 internal suspend fun CameraViewModel.finishPortraitSession() {
     val zsPor = boundCamera?.cameraInfo?.zoomState?.value
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setupPortraitSession() final zoom min=${zsPor?.minZoomRatio} max=${zsPor?.maxZoomRatio} " +
             "ratio=${zsPor?.zoomRatio} – if max=1, zoom bar will show only 1x"
@@ -366,7 +366,7 @@ internal suspend fun CameraViewModel.finishPortraitSession() {
     boundCamera?.let { refreshCapabilities(it, boundLensIdField) }
     onSessionBound()
     photoSessionActiveMutable.value = true
-    Log.d(
+    Log.debug(
         "NightPreview",
         "setupPortraitSession() SUCCESS photoActive=true " +
             "surface=${surfaceRequestMutable.value?.resolution}"

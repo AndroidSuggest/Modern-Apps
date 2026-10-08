@@ -1,6 +1,6 @@
 package com.vayunmathur.cast.tv.platform
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Surface
 import com.vayunmathur.cast.protocol.Bye
 import com.vayunmathur.cast.protocol.ByeReason
@@ -91,7 +91,7 @@ internal fun ReceiverController.startStreaming(
             ),
         )
     }
-    Log.i(
+    Log.status(
         TAG,
         "receiving ${config.videoCodec?.label ?: "audio only"} ${config.width}x${config.height} @ " +
             "${config.frameRate}fps (${config.bitRate / BITS_PER_MBIT} Mbit/s) on udp " +
@@ -138,11 +138,11 @@ private fun ReceiverController.sendStreamReady(
         channel.send(ready)
         return true
     } catch (e: IOException) {
-        Log.w(TAG, "could not send STREAM_READY", e)
+        Log.status(TAG, "could not send STREAM_READY", e)
     } catch (e: IllegalStateException) {
-        Log.w(TAG, "could not send STREAM_READY", e)
+        Log.status(TAG, "could not send STREAM_READY", e)
     } catch (e: IllegalArgumentException) {
-        Log.w(TAG, "could not send STREAM_READY", e)
+        Log.status(TAG, "could not send STREAM_READY", e)
     }
     runCatching { socket.close() }
     mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.StreamEnded)) }
@@ -155,7 +155,7 @@ private fun ReceiverController.failStreaming(
     detail: String,
     cause: Exception,
 ): Nothing? {
-    Log.w(TAG, detail, cause)
+    Log.status(TAG, detail, cause)
     channel.send(Bye(reason = "no udp socket"))
     mutableState.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.StreamEnded)) }
     return null
@@ -339,7 +339,7 @@ private class PumpState(
         }
         decoder = started
         decoderSurface = activeSurface
-        Log.i(TAG, "decoder up; the picture starts at the next key frame")
+        Log.status(TAG, "decoder up; the picture starts at the next key frame")
         return true
     }
 
@@ -355,14 +355,14 @@ private class PumpState(
         val waiting = System.currentTimeMillis()
         if (codecConfigWaitStartedAt == 0L) {
             codecConfigWaitStartedAt = waiting
-            Log.i(
+            Log.status(
                 TAG,
                 "surface ready; waiting for ${videoCodec.label}'s codec config",
             )
             return true
         }
         if (waiting - codecConfigWaitStartedAt < CODEC_CONFIG_TIMEOUT_MS) return true
-        Log.w(
+        Log.status(
             TAG,
             "no ${videoCodec.label} codec config after " +
                 "${CODEC_CONFIG_TIMEOUT_MS}ms; nothing can be decoded",
@@ -439,7 +439,7 @@ private class PumpState(
         lastStatsLog = now
         // Paired with MirrorEngine's line on the phone. Two logs reporting at the same
         // cadence from both ends is what five rounds of hardware debugging never had.
-        Log.i(
+        Log.status(
             TAG,
             media.throughputSummary() +
                 " playout=${playout.depth}f/rebased=${playout.rebases}" +

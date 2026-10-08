@@ -16,7 +16,7 @@ import android.ranging.raw.RawResponderRangingConfig
 import android.ranging.uwb.UwbAddress
 import android.ranging.uwb.UwbComplexChannel
 import android.ranging.uwb.UwbRangingParams
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.annotation.RequiresApi
 import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.awaitClose
@@ -165,33 +165,33 @@ class UwbController(context: Context) {
             sessionId, localUwbAddress, peerUwbAddress, sessionKey, channelNumber, preambleIndex, peerUuid
         )
         val startTier = if (lastWorkingTier >= 0) (lastWorkingTier + 1).coerceAtMost(2) else 2
-        Log.i(TAG, "stream: opening session at tier=$startTier (last working was $lastWorkingTier)")
+        Log.status(TAG, "stream: opening session at tier=$startTier (last working was $lastWorkingTier)")
         var currentTier = startTier
 
         val callback = object : RangingSession.Callback {
             override fun onOpened() {
-                Log.i(TAG, "RangingSession.onOpened (tier=$currentTier)")
+                Log.status(TAG, "RangingSession.onOpened (tier=$currentTier)")
                 lastWorkingTier = currentTier
             }
             override fun onOpenFailed(reason: Int) {
-                Log.e(TAG, openFailedMessage(reason, currentTier))
+                Log.error(TAG, openFailedMessage(reason, currentTier))
                 // If REASON_UNSUPPORTED, this config tier was rejected by the
                 // radio. Drop one tier and retry, until we hit tier 0 (AoA-only).
                 if (reason == 3 && currentTier > 0) {
                     currentTier -= 1
-                    Log.w(TAG, "Retrying at tier=$currentTier")
+                    Log.status(TAG, "Retrying at tier=$currentTier")
                     runCatching { session?.close() }
                     val newConfig = try {
                         preferenceForTier(currentTier, role, rawDevice)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed to create preference for tier $currentTier", e)
+                        Log.error(TAG, "Failed to create preference for tier $currentTier", e)
                         null
                     }
                     if (newConfig != null) {
                         val newSession = try {
                             mgr.createRangingSession(executor, this)
                         } catch (e: Exception) {
-                            Log.e(TAG, "Failed to create RangingSession during retry", e)
+                            Log.error(TAG, "Failed to create RangingSession during retry", e)
                             null
                         }
                         if (newSession != null) {
@@ -199,7 +199,7 @@ class UwbController(context: Context) {
                             try {
                                 newSession.start(newConfig)
                             } catch (e: Exception) {
-                                Log.e(TAG, "Failed to start RangingSession during retry", e)
+                                Log.error(TAG, "Failed to start RangingSession during retry", e)
                             }
                         }
                     }
@@ -247,7 +247,7 @@ class UwbController(context: Context) {
                     val distOk = (d?.confidence ?: 0) >= 1
                     val azOk = (az?.confidence ?: 0) >= 1
                     val elOk = (el?.confidence ?: 0) >= 1
-                    Log.i(TAG, formatSampleLog(data, rawAzDeg, foldedAzDeg))
+                    Log.status(TAG, formatSampleLog(data, rawAzDeg, foldedAzDeg))
                     trySend(
                         RangingSample(
                             distanceMeters = if (distOk) d?.measurement?.toFloat() else null,
@@ -257,7 +257,7 @@ class UwbController(context: Context) {
                         )
                     )
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error processing RangingData in onResults", e)
+                    Log.error(TAG, "Error processing RangingData in onResults", e)
                     // Continue processing - don't crash on malformed data
                 }
             }
@@ -266,7 +266,7 @@ class UwbController(context: Context) {
         val newSession = try {
             mgr.createRangingSession(executor, callback)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to create RangingSession", e)
+            Log.error(TAG, "Failed to create RangingSession", e)
             null
         }
         if (newSession == null) {
@@ -278,7 +278,7 @@ class UwbController(context: Context) {
         try {
             newSession.start(preferenceForTier(startTier, role, rawDevice))
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start RangingSession", e)
+            Log.error(TAG, "Failed to start RangingSession", e)
             trySend(disconnectedSample())
             close(IllegalStateException("Failed to start RangingSession", e))
             return@callbackFlow
@@ -307,7 +307,7 @@ class UwbController(context: Context) {
         return try {
             UwbAddress.fromBytes(bytes)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to create UwbAddress from ${which}Address", e)
+            Log.error(TAG, "Failed to create UwbAddress from ${which}Address", e)
             trySend(disconnectedSample())
             close(IllegalStateException("Invalid $which UWB address", e))
             null
@@ -383,7 +383,7 @@ class UwbController(context: Context) {
                 // degrades to the same config as tier 1.
                 if (tier >= 2 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
                     runCatching { setAntennaMode(SessionConfig.ANTENNA_MODE_DIRECTIONAL) }
-                        .onFailure { Log.w(TAG, "setAntennaMode unavailable: ${it.message}") }
+                        .onFailure { Log.status(TAG, "setAntennaMode unavailable: ${it.message}") }
                 }
                 if (tier >= 1) {
                     runCatching {
@@ -392,7 +392,7 @@ class UwbController(context: Context) {
                                 .setSensorFusionEnabled(true)
                                 .build()
                         )
-                    }.onFailure { Log.w(TAG, "setSensorFusionParams unavailable: ${it.message}") }
+                    }.onFailure { Log.status(TAG, "setSensorFusionParams unavailable: ${it.message}") }
                 }
             }
             .build()

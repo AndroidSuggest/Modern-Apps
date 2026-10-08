@@ -1,7 +1,7 @@
 package com.vayunmathur.euicc.platform
 
 import android.app.Application
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -139,13 +139,13 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
                     runCatching { json.decodeFromString<AuthSession>(raw) }.getOrNull()
                 },
                 onFailure = {
-                    Log.e(TAG, "download authenticate failed: ${it.message}", it)
+                    Log.error(TAG, "download authenticate failed: ${it.message}", it)
                     null
                 },
             )
             if (auth == null || auth.transactionId == null) {
                 val message = auth?.error
-                Log.e(TAG, "download failed: ${message.ifNullOrBlank()}")
+                Log.error(TAG, "download failed: ${message.ifNullOrBlank()}")
                 download = DownloadState.Failed(message?.ifBlank { null })
                 reload()
                 return@launch
@@ -210,7 +210,7 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
                     when {
                         result == null -> {
                             // Error strings only — no activation data or crypto material.
-                            Log.e(TAG, "download failed: unreadable native result")
+                            Log.error(TAG, "download failed: unreadable native result")
                             DownloadState.Failed(null)
                         }
                         result.success -> DownloadState.Complete(pendingCarrier)
@@ -218,17 +218,17 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
                             // A wrong code is retryable without re-authenticating
                             // only when the session survives; ours is consumed,
                             // so re-authenticate and land back on the code screen.
-                            Log.e(TAG, "download failed: ${result.message}")
+                            Log.error(TAG, "download failed: ${result.message}")
                             relaunchForConfirmationCode(result.message)
                         }
                         else -> {
-                            Log.e(TAG, "download failed: ${result.message.ifBlank { "<empty>" }}")
+                            Log.error(TAG, "download failed: ${result.message.ifBlank { "<empty>" }}")
                             DownloadState.Failed(result.message.ifBlank { null })
                         }
                     }
                 },
                 onFailure = {
-                    Log.e(TAG, "download failed: ${it.message}", it)
+                    Log.error(TAG, "download failed: ${it.message}", it)
                     DownloadState.Failed(it.message)
                 },
             )

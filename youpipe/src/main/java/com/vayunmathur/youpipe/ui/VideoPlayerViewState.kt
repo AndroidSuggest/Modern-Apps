@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.sdk.cast.CastClient
 import com.vayunmathur.sdk.cast.CastContract
@@ -152,7 +153,7 @@ internal fun rememberVideoPlayerViewState(
         val player = controller ?: return@LaunchedEffect
         val casting = castState as? CastPlayback.State.Casting
         if (casting != null) {
-            android.util.Log.i(
+            Log.status(
                 "YpCastDiag",
                 "handing the cast surface to the player: valid=${casting.surface.isValid} " +
                     "${casting.width}x${casting.height}",
@@ -168,25 +169,25 @@ internal fun rememberVideoPlayerViewState(
     DisposableEffect(controller, isCasting) {
         val player = controller
         if (player == null || !isCasting) return@DisposableEffect onDispose { }
-        android.util.Log.i(
+        Log.status(
             "YpCastDiag",
             "attached; videoSize=${player.videoSize.width}x${player.videoSize.height} " +
                 "playing=${player.isPlaying} state=${player.playbackState}",
         )
         val listener = object : Player.Listener {
             override fun onRenderedFirstFrame() {
-                android.util.Log.i("YpCastDiag", "onRenderedFirstFrame")
+                Log.status("YpCastDiag", "onRenderedFirstFrame")
             }
 
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                android.util.Log.i(
+                Log.status(
                     "YpCastDiag",
                     "onVideoSizeChanged ${videoSize.width}x${videoSize.height}",
                 )
             }
 
             override fun onSurfaceSizeChanged(width: Int, height: Int) {
-                android.util.Log.i("YpCastDiag", "onSurfaceSizeChanged ${width}x$height")
+                Log.status("YpCastDiag", "onSurfaceSizeChanged ${width}x$height")
             }
 
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -196,7 +197,7 @@ internal fun rememberVideoPlayerViewState(
                 val selected = tracks.groups.count {
                     it.type == androidx.media3.common.C.TRACK_TYPE_VIDEO && it.isSelected
                 }
-                android.util.Log.i(
+                Log.status(
                     "YpCastDiag",
                     "onTracksChanged videoGroups=$video selectedVideoGroups=$selected",
                 )

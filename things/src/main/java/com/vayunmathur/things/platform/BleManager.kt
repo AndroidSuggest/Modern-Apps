@@ -14,7 +14,7 @@ import android.bluetooth.le.ScanSettings
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.UUID
 
 /** One drained drink log read from the bottle's offline history (or live). */
@@ -134,7 +134,7 @@ class BleManager {
         }
 
         override fun onScanFailed(errorCode: Int) {
-            Log.e(TAG, "onScanFailed error=$errorCode")
+            Log.error(TAG, "onScanFailed error=$errorCode")
             DeviceController.runOnMain {
                 stopScan()
                 DeviceController.connectionState.value = "Scan failed ($errorCode)"
@@ -235,13 +235,13 @@ class BleManager {
         val g = gatt ?: run { writing = false; return }
         val service = g.getService(WRITE_SERVICE_UUID)
         if (service == null) {
-            Log.w(TAG, "writeNext: WRITE service $WRITE_SERVICE_UUID not found; dropping $hex")
+            Log.status(TAG, "writeNext: WRITE service $WRITE_SERVICE_UUID not found; dropping $hex")
             writing = false
             return
         }
         val char = service.getCharacteristic(WRITE_CHAR_UUID)
         if (char == null) {
-            Log.w(TAG, "writeNext: WRITE char $WRITE_CHAR_UUID not found; dropping $hex")
+            Log.status(TAG, "writeNext: WRITE char $WRITE_CHAR_UUID not found; dropping $hex")
             writing = false
             return
         }
@@ -255,7 +255,7 @@ class BleManager {
         } else {
             BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         }
-        Log.d(TAG, "-> write $hex (props=0x${char.properties.toString(BOTTLE_HEX_RADIX)} type=$writeType)")
+        Log.debug(TAG, "-> write $hex (props=0x${char.properties.toString(BOTTLE_HEX_RADIX)} type=$writeType)")
         val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             g.writeCharacteristic(char, bytes, writeType)
         } else {
@@ -264,7 +264,7 @@ class BleManager {
             if (g.writeCharacteristic(char)) WRITE_OK else WRITE_REJECTED
         }
         if (result != 0) {
-            Log.w(TAG, "write of $hex rejected by the stack (code $result)")
+            Log.status(TAG, "write of $hex rejected by the stack (code $result)")
             writing = false
             writeNext()
         }
@@ -272,7 +272,7 @@ class BleManager {
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
-            Log.d(TAG, "onConnectionStateChange status=$status newState=$newState")
+            Log.debug(TAG, "onConnectionStateChange status=$status newState=$newState")
             DeviceController.runOnMain {
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
@@ -306,16 +306,16 @@ class BleManager {
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
-            Log.d(TAG, "onServicesDiscovered status=$status")
+            Log.debug(TAG, "onServicesDiscovered status=$status")
             if (status != BluetoothGatt.GATT_SUCCESS) return
             val service = g.getService(NOTIFY_SERVICE_UUID)
             if (service == null) {
-                Log.w(TAG, "NOTIFY service $NOTIFY_SERVICE_UUID not found; services=${g.services.map { it.uuid }}")
+                Log.status(TAG, "NOTIFY service $NOTIFY_SERVICE_UUID not found; services=${g.services.map { it.uuid }}")
                 return
             }
             val char = service.getCharacteristic(NOTIFY_CHAR_UUID)
             if (char == null) {
-                Log.w(TAG, "NOTIFY char $NOTIFY_CHAR_UUID not found")
+                Log.status(TAG, "NOTIFY char $NOTIFY_CHAR_UUID not found")
                 return
             }
             g.setCharacteristicNotification(char, true)
@@ -330,24 +330,24 @@ class BleManager {
                     @Suppress("DEPRECATION")
                     g.writeDescriptor(it)
                 }
-            } ?: Log.w(TAG, "CCCD $CCCD_UUID not found on notify char")
+            } ?: Log.status(TAG, "CCCD $CCCD_UUID not found on notify char")
         }
 
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             if (pendingRegistration) {
                 // First-time setup: exit factory mode + start registration (blue LED, button press).
-                Log.d(TAG, "onDescriptorWrite status=$status; starting registration")
+                Log.debug(TAG, "onDescriptorWrite status=$status; starting registration")
                 enqueueCommand(CMD_EXIT_FACTORY_MODE, REQUEST_DELAY_MS)
                 enqueueCommand(CMD_REQUEST_REGISTRATION, REQUEST_DELAY_MS)
             } else {
                 // Notifications are on; kick off the handshake by asking for full bottle data.
-                Log.d(TAG, "onDescriptorWrite status=$status; requesting bottle data")
+                Log.debug(TAG, "onDescriptorWrite status=$status; requesting bottle data")
                 enqueueCommand(CMD_REQUEST_DATA, REQUEST_DELAY_MS)
             }
         }
 
         override fun onCharacteristicWrite(g: BluetoothGatt, char: BluetoothGattCharacteristic, status: Int) {
-            Log.d(TAG, "onCharacteristicWrite ${char.uuid} status=$status queued=${commandQueue.size}")
+            Log.debug(TAG, "onCharacteristicWrite ${char.uuid} status=$status queued=${commandQueue.size}")
             DeviceController.runOnMain {
                 writing = false
                 if (commandQueue.isNotEmpty()) writeNext()
@@ -360,7 +360,7 @@ class BleManager {
             value: ByteArray
         ) {
             if (char.uuid != NOTIFY_CHAR_UUID || value.size < 2) return
-            Log.d(TAG, "<- notify ${value.toHex()}")
+            Log.debug(TAG, "<- notify ${value.toHex()}")
             DeviceController.runOnMain { dispatch(value) }
         }
 
@@ -385,7 +385,7 @@ class BleManager {
             b0 == PT_MARKER_B0 && b1 == PT_MARKER_B1 -> handlePtFirst(value)
             // Water-log continuation packet.
             b1 == PT_CONTINUATION_B1 -> handlePtContinuation(value)
-            else -> Log.w(TAG, "dispatch: unhandled packet ${value.toHex()}")
+            else -> Log.status(TAG, "dispatch: unhandled packet ${value.toHex()}")
         }
     }
 
@@ -398,7 +398,7 @@ class BleManager {
         // Response to a written text/LED signature (BleGattCallback → onSignatureResponse). It
         // has nothing to do with registration, and this app never writes a signature.
         if (b5 == RP_SIGNATURE_RESPONSE) {
-            Log.d(TAG, "RP: signature response, ignored")
+            Log.debug(TAG, "RP: signature response, ignored")
             return
         }
 
@@ -435,7 +435,7 @@ class BleManager {
     }
 
     private fun logRpSnapshot(kind: String) {
-        Log.d(
+        Log.debug(
             TAG,
             "RP $kind: temp=$curTemp batt=$curBattery charging=$curCharging " +
                 "tds=$curTds vol%=$curVolumePct",
@@ -445,7 +445,7 @@ class BleManager {
     /** Sync setting acknowledged; now request the water logs. True when handled. */
     private fun handleRpSyncAck(b2: Int, b3: Int): Boolean {
         if (b2 == RP_SNAPSHOT_B2 && b3 == RP_SYNC_ACK_B3) {
-            Log.d(TAG, "RP: sync ack → request logs")
+            Log.debug(TAG, "RP: sync ack → request logs")
             enqueueCommand(CMD_REQUEST_LOGS, REQUEST_DELAY_MS)
             return true
         }
@@ -457,7 +457,7 @@ class BleManager {
     private fun handleRpLogAvailability(value: ByteArray, b5: Int): Boolean {
         if (b5 != RP_LOG_AVAILABILITY) return false
         val available = if (value.size > RP_FLAG_INDEX) value[RP_FLAG_INDEX].toInt() and BYTE_MASK else -1
-        Log.d(TAG, "RP: water-log availability=$available")
+        Log.debug(TAG, "RP: water-log availability=$available")
         if (available == 0) {
             expectedLogs = 0
             parsedRecords = 0
@@ -470,13 +470,13 @@ class BleManager {
     private fun handleRpRegistration(value: ByteArray, b5: Int) {
         if (b5 != RP_REGISTRATION_STATE || !pendingRegistration) return
         val step = if (value.size > RP_FLAG_INDEX) value[RP_FLAG_INDEX].toInt() and BYTE_MASK else -1
-        Log.d(TAG, "RP: registration step=$step")
+        Log.debug(TAG, "RP: registration step=$step")
         when (step) {
             RP_REG_PRESS_BUTTON -> DeviceController.connectionState.value = "Press the bottle button"
             RP_REG_DONE -> {
                 // Registration successful (and offline data cleared). Leave registration mode
                 // and proceed to the normal data flow so status/logs start syncing.
-                Log.d(TAG, "RP: registration successful → requesting bottle data")
+                Log.debug(TAG, "RP: registration successful → requesting bottle data")
                 pendingRegistration = false
                 DeviceController.connectionState.value = "Connected"
                 enqueueCommand(CMD_REQUEST_DATA, REQUEST_DELAY_MS)
@@ -497,11 +497,11 @@ class BleManager {
                 return
             }
             RT_RECALIBRATE_SELECTOR -> {
-                Log.d(TAG, "RT: recalibrate result=${value[RT_VALUE_INDEX].toInt() and BYTE_MASK}")
+                Log.debug(TAG, "RT: recalibrate result=${value[RT_VALUE_INDEX].toInt() and BYTE_MASK}")
                 return
             }
             else -> {
-                Log.d(TAG, "RT: unhandled selector=0x${sel.toString(BOTTLE_HEX_RADIX)}")
+                Log.debug(TAG, "RT: unhandled selector=0x${sel.toString(BOTTLE_HEX_RADIX)}")
                 return
             }
         }
@@ -510,7 +510,7 @@ class BleManager {
     }
 
     private fun logRtState(value: ByteArray) {
-        Log.d(
+        Log.debug(
             TAG,
             "RT sel=0x${(value[RT_SELECTOR_INDEX].toInt() and BYTE_MASK).toString(BOTTLE_HEX_RADIX)} " +
                 "→ temp=$curTemp batt=$curBattery charging=$curCharging tds=$curTds vol%=$curVolumePct",
@@ -534,7 +534,7 @@ class BleManager {
     private fun handleRtRegistration(value: ByteArray) {
         if (!pendingRegistration) return
         val result = value[RT_VALUE_INDEX].toInt() and BYTE_MASK
-        Log.d(TAG, "RT: registration result=$result")
+        Log.debug(TAG, "RT: registration result=$result")
         when (result) {
             RT_REG_CONFIRMED -> {
                 DeviceController.connectionState.value = "Registering…"

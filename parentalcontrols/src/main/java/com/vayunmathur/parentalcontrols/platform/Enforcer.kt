@@ -1,7 +1,7 @@
 package com.vayunmathur.parentalcontrols.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.parentalcontrols.data.AppRule
 import com.vayunmathur.parentalcontrols.data.BedtimeSchedule
 import com.vayunmathur.parentalcontrols.data.BonusGrant
@@ -150,7 +150,7 @@ class Enforcer(private val context: Context) {
      */
     suspend fun reconcile() {
         if (!policies.isAvailable) {
-            Log.w(TAG, "no supervision policy channel; nothing will be enforced")
+            Log.status(TAG, "no supervision policy channel; nothing will be enforced")
             return
         }
         // Master switch off ("Controls for this phone"): lift every block, stop timing, and
@@ -180,7 +180,7 @@ class Enforcer(private val context: Context) {
         // Cheap and idempotent, and it has to happen before AppLimits.sync below: without the
         // usage-stats op an observer is armed with timeUsed = 0.
         if (UsageAccess.ensure(context) == UsageAccess.Status.DENIED) {
-            Log.w(TAG, "usage-stats op denied; limits measure from arm time until it is granted")
+            Log.status(TAG, "usage-stats op denied; limits measure from arm time until it is granted")
         }
 
         val deviceOverBudget = deviceOverBudgetNow(bonuses)

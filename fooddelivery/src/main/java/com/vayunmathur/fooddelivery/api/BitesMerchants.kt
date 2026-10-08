@@ -1,6 +1,6 @@
 package com.vayunmathur.fooddelivery.api
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.fooddelivery.data.CheckoutAddress
 import com.vayunmathur.fooddelivery.data.Merchant
 import com.vayunmathur.fooddelivery.data.MerchantDetail
@@ -77,10 +77,10 @@ object BitesMerchants {
                 null
             }
         } catch (e: java.io.IOException) {
-            Log.e(TAG, "checkServiceability failed", e)
+            Log.error(TAG, "checkServiceability failed", e)
             null
         } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "checkServiceability failed", e)
+            Log.error(TAG, "checkServiceability failed", e)
             null
         }
     }
@@ -96,10 +96,10 @@ object BitesMerchants {
             "${BitesCore.API}/merchants/reporting/$merchantId",
         ).takeIf { it.isSuccess }?.body
     } catch (e: java.io.IOException) {
-        Log.e(TAG, "getMerchantReporting failed", e)
+        Log.error(TAG, "getMerchantReporting failed", e)
         null
     } catch (e: IllegalArgumentException) {
-        Log.e(TAG, "getMerchantReporting failed", e)
+        Log.error(TAG, "getMerchantReporting failed", e)
         null
     }
 

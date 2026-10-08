@@ -5,7 +5,7 @@ import android.content.pm.PackageManager
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.telephony.emergency.EmergencyNumber
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 
 private const val TAG = "EmergencyNumberLookup"
@@ -45,7 +45,7 @@ class EmergencyNumberLookup(private val context: Context) {
         val lists = runCatching {
             telecom.getEmergencyNumberList(EmergencyNumber.EMERGENCY_SERVICE_CATEGORY_POLICE)
         }.getOrElse {
-            Log.w(TAG, "could not read the emergency-number list", it)
+            Log.status(TAG, "could not read the emergency-number list", it)
             return null
         }
         if (lists.isNullOrEmpty()) return null

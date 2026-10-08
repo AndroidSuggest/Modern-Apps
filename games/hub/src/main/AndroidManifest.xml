@@ -28,6 +28,7 @@
     </queries>
 
     <application
+        android:name=".GamesHubApplication"
         android:allowBackup="true"
         android:backupAgent=".util.AppBackupAgent"
         android:dataExtractionRules="@xml/data_extraction_rules"

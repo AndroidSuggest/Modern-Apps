@@ -5,7 +5,7 @@ import android.content.Context
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.hardware.display.VirtualDisplayConfig
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Display
 import android.view.Surface
 import com.vayunmathur.cast.platform.mirror.CaptureGeometry
@@ -146,7 +146,7 @@ class CastSystemDisplay(context: Context) {
         supportedModes: List<CaptureGeometry> = emptyList(),
     ): Boolean {
         if (displays == null) {
-            Log.w(TAG, "no DisplayManager")
+            Log.status(TAG, "no DisplayManager")
             return false
         }
         return try {
@@ -165,10 +165,10 @@ class CastSystemDisplay(context: Context) {
             builder.applySupportedModes(supportedModes)
             receiverId?.let { builder.applyUniqueId("$UNIQUE_ID_PREFIX$it") }
             display = displays.createVirtualDisplay(builder.build())
-            if (display == null) Log.w(TAG, "the platform returned no display")
+            if (display == null) Log.status(TAG, "the platform returned no display")
             display != null
         } catch (e: SecurityException) {
-            Log.e(
+            Log.error(
                 TAG,
                 "refused a trusted virtual display - ADD_TRUSTED_DISPLAY was not granted. It is " +
                     "signature|role, so privileged placement alone never grants it; check that " +
@@ -177,7 +177,7 @@ class CastSystemDisplay(context: Context) {
             )
             false
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "could not create the cast display", e)
+            Log.status(TAG, "could not create the cast display", e)
             false
         }
     }
@@ -197,11 +197,11 @@ class CastSystemDisplay(context: Context) {
                 .getMethod("setUniqueId", String::class.java)
                 .invoke(this, uniqueId)
         } catch (e: ReflectiveOperationException) {
-            Log.w(TAG, "setUniqueId unavailable; display preferences will not persist", e)
+            Log.status(TAG, "setUniqueId unavailable; display preferences will not persist", e)
         } catch (e: SecurityException) {
-            Log.w(TAG, "setUniqueId unavailable; display preferences will not persist", e)
+            Log.status(TAG, "setUniqueId unavailable; display preferences will not persist", e)
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "setUniqueId unavailable; display preferences will not persist", e)
+            Log.status(TAG, "setUniqueId unavailable; display preferences will not persist", e)
         }
     }
 
@@ -235,7 +235,7 @@ class CastSystemDisplay(context: Context) {
     }
 
     private fun failSupportedModes(e: Exception) {
-        Log.w(TAG, "setSupportedModes unavailable; the resolution picker will show one mode", e)
+        Log.status(TAG, "setSupportedModes unavailable; the resolution picker will show one mode", e)
     }
 
     /**
@@ -261,7 +261,7 @@ class CastSystemDisplay(context: Context) {
         }
 
     private fun failDisplayMode(width: Int, height: Int, e: Exception): Display.Mode? {
-        Log.w(TAG, "Display.Mode(int, int, float) unavailable; cannot declare ${width}x$height", e)
+        Log.status(TAG, "Display.Mode(int, int, float) unavailable; cannot declare ${width}x$height", e)
         return null
     }
 
@@ -279,7 +279,7 @@ class CastSystemDisplay(context: Context) {
     fun attach(surface: Surface): Boolean {
         val current = display
         if (current == null) {
-            Log.w(TAG, "asked to re-attach a surface with no display")
+            Log.status(TAG, "asked to re-attach a surface with no display")
             return false
         }
         return runCatching { current.surface = surface }.isSuccess

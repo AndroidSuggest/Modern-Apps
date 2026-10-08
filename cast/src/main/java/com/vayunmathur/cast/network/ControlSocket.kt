@@ -1,6 +1,6 @@
 package com.vayunmathur.cast.network
 
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.protocol.ControlCodec
 import com.vayunmathur.cast.protocol.ControlFraming
 import com.vayunmathur.cast.protocol.ControlMessage
@@ -66,7 +66,7 @@ class ControlSocket(private val host: String, private val port: Int) {
             input = DataInputStream(plain.inputStream.buffered())
             output = DataOutputStream(plain.outputStream.buffered())
             socket = plain
-            Log.i(TAG, "control channel open to $host:$port")
+            Log.status(TAG, "control channel open to $host:$port")
         } catch (e: IOException) {
             // Nothing else holds `plain` yet, so a failure here would leak the descriptor.
             runCatching { plain.close() }
@@ -106,7 +106,7 @@ class ControlSocket(private val host: String, private val port: Int) {
         val stream = input ?: return null
         val body = readFrameBody(stream) ?: return null
         val message = codec.decode(body) ?: run {
-            Log.w(TAG, "could not decode a ${body.size}-byte control frame")
+            Log.status(TAG, "could not decode a ${body.size}-byte control frame")
             return null
         }
         return Received(message, body)
@@ -115,14 +115,14 @@ class ControlSocket(private val host: String, private val port: Int) {
     private fun readFrameBody(stream: DataInputStream): ByteArray? = try {
         ControlFraming.read(stream)
     } catch (e: SocketTimeoutException) {
-        Log.w(TAG, "no control frame for ${READ_TIMEOUT_MS}ms; treating the TV as gone", e)
+        Log.status(TAG, "no control frame for ${READ_TIMEOUT_MS}ms; treating the TV as gone", e)
         null
     } catch (e: IOException) {
-        Log.i(TAG, "the TV closed the control channel", e)
+        Log.status(TAG, "the TV closed the control channel", e)
         null
     } catch (e: IllegalArgumentException) {
         // A length prefix outside the bound. The stream cannot be resynchronised after one.
-        Log.w(TAG, "unframeable control traffic", e)
+        Log.status(TAG, "unframeable control traffic", e)
         null
     }
 

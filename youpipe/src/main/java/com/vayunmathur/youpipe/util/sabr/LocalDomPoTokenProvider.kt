@@ -1,7 +1,7 @@
 package com.vayunmathur.youpipe.util.sabr
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
@@ -90,7 +90,7 @@ class LocalDomPoTokenProvider(context: Context) : YoutubeSessionPoTokenProvider 
             sessionToClose = state.generator
         }
         sessionToClose.close()
-        Log.i(TAG, "Invalidated rejected PO token minter")
+        Log.status(TAG, "Invalidated rejected PO token minter")
         warmUp()
     }
 
@@ -111,7 +111,7 @@ class LocalDomPoTokenProvider(context: Context) : YoutubeSessionPoTokenProvider 
         val rawToken = state.sessionPoToken
             ?: state.generator.mint(state.bootstrap.visitorData)
         val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(rawToken)
-        Log.i(
+        Log.status(
             TAG,
             "session token ready client=$clientName loggedIn=$loggedIn bytes=${rawToken.size}",
         )
@@ -216,7 +216,7 @@ class LocalDomPoTokenProvider(context: Context) : YoutubeSessionPoTokenProvider 
             } else {
                 null
             }
-        Log.i(
+        Log.status(
             TAG,
             "Global PO minter ready client=${bootstrap.clientName} " +
                 "version=${bootstrap.clientVersion} " +

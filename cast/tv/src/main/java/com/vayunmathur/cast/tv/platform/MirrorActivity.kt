@@ -1,7 +1,7 @@
 package com.vayunmathur.cast.tv.platform
 
 import android.os.Bundle
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.KeyEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -446,7 +446,7 @@ class MirrorActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        Log.i(TAG, "surface ready")
+        Log.status(TAG, "surface ready")
         ReceiverController.attachSurface(holder.surface)
     }
 
@@ -459,7 +459,7 @@ class MirrorActivity : ComponentActivity(), SurfaceHolder.Callback {
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
-        Log.i(TAG, "surface gone")
+        Log.status(TAG, "surface gone")
         ReceiverController.detachSurface()
     }
 
@@ -506,7 +506,7 @@ class MirrorActivity : ComponentActivity(), SurfaceHolder.Callback {
                 height,
                 android.view.Gravity.CENTER,
             )
-            Log.i(
+            Log.status(
                 TAG,
                 "buffer ${sourceWidth}x$sourceHeight shown as ${width}x$height " +
                     "on a ${availableWidth}x$availableHeight panel",
@@ -546,7 +546,7 @@ class MirrorActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (chosen.modeId == requestedModeId) return
         requestedModeId = chosen.modeId
         window.attributes = window.attributes.apply { preferredDisplayModeId = chosen.modeId }
-        Log.i(
+        Log.status(
             TAG,
             "asked for ${chosen.physicalWidth}x${chosen.physicalHeight} @ " +
                 "${chosen.refreshRate}Hz of ${modes.size} modes" +

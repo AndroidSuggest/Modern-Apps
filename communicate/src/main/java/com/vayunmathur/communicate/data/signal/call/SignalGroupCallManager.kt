@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.data.signal.call
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,7 +59,7 @@ class SignalGroupCallManager(
      */
     fun connect(groupIdentifier: ByteArray): Boolean {
         if (groupCall != null) {
-            Log.w(TAG, "a group call is already active")
+            Log.status(TAG, "a group call is already active")
             return false
         }
         return try {
@@ -77,10 +77,10 @@ class SignalGroupCallManager(
             groupCall = call
             groupId = groupIdentifier
             call.connect()
-            Log.i(TAG, "connecting to the group call for ${groupIdentifier.toHex()}")
+            Log.status(TAG, "connecting to the group call for ${groupIdentifier.toHex()}")
             true
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not create the group call", expected)
+            Log.status(TAG, "could not create the group call", expected)
             groupCall = null
             groupId = null
             false
@@ -94,7 +94,7 @@ class SignalGroupCallManager(
             call.setOutgoingVideoSource(localVideoSink, NoCameraControl)
             call.join()
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not join the group call", expected)
+            Log.status(TAG, "could not join the group call", expected)
         }
     }
 
@@ -104,7 +104,7 @@ class SignalGroupCallManager(
             call.leave()
             call.disconnect()
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not leave the group call", expected)
+            Log.status(TAG, "could not leave the group call", expected)
         } finally {
             groupCall = null
             groupId = null
@@ -116,7 +116,7 @@ class SignalGroupCallManager(
         try {
             groupCall?.setOutgoingAudioMuted(muted)
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not change the group call mute state", expected)
+            Log.status(TAG, "could not change the group call mute state", expected)
         }
     }
 
@@ -124,7 +124,7 @@ class SignalGroupCallManager(
         try {
             groupCall?.setOutgoingVideoMuted(muted, isScreenShare)
         } catch (expected: Throwable) {
-            Log.w(TAG, "could not change the group call video state", expected)
+            Log.status(TAG, "could not change the group call video state", expected)
         }
     }
 
@@ -135,13 +135,13 @@ class SignalGroupCallManager(
         scope.launch {
             val proof = signaling.membershipProof(id)
             if (proof == null) {
-                Log.w(TAG, "no membership proof; the SFU will refuse this call")
+                Log.status(TAG, "no membership proof; the SFU will refuse this call")
                 return@launch
             }
             try {
                 groupCall.setMembershipProof(proof)
             } catch (expected: Throwable) {
-                Log.w(TAG, "could not set the membership proof", expected)
+                Log.status(TAG, "could not set the membership proof", expected)
             }
         }
     }
@@ -151,7 +151,7 @@ class SignalGroupCallManager(
         scope.launch {
             val members = signaling.groupMembers(id)
             if (members.isEmpty()) {
-                Log.w(TAG, "no group members; participants cannot be identified")
+                Log.status(TAG, "no group members; participants cannot be identified")
                 return@launch
             }
             try {
@@ -159,7 +159,7 @@ class SignalGroupCallManager(
                     members.map { (uuid, ciphertext) -> GroupCall.GroupMemberInfo(uuid, ciphertext) },
                 )
             } catch (expected: Throwable) {
-                Log.w(TAG, "could not set the group members", expected)
+                Log.status(TAG, "could not set the group members", expected)
             }
         }
     }
@@ -169,7 +169,7 @@ class SignalGroupCallManager(
         val state = try { groupCall.localDeviceState } catch (_: Throwable) { null }
         val joined = state?.joinState == GroupCall.JoinState.JOINED
         val participants = try { groupCall.remoteDeviceStates?.size() ?: 0 } catch (_: Throwable) { 0 }
-        Log.i(TAG, "group call state: joinState=${state?.joinState} participants=$participants")
+        Log.status(TAG, "group call state: joinState=${state?.joinState} participants=$participants")
         signaling.onGroupCallStateChanged(id, joined, participants)
     }
 
@@ -187,7 +187,7 @@ class SignalGroupCallManager(
     /** Who is already on the call, before joining. */
     override fun onPeekChanged(groupCall: GroupCall) {
         val peek = try { groupCall.peekInfo } catch (_: Throwable) { null }
-        Log.i(TAG, "group call peek: devices=${peek?.deviceCount} creator=${peek?.creator}")
+        Log.status(TAG, "group call peek: devices=${peek?.deviceCount} creator=${peek?.creator}")
     }
 
     override fun onEnded(
@@ -196,7 +196,7 @@ class SignalGroupCallManager(
         summary: CallSummary,
     ) {
         val id = groupId
-        Log.i(TAG, "group call ended: $reason")
+        Log.status(TAG, "group call ended: $reason")
         this.groupCall = null
         this.groupId = null
         localVideoSink.attach(null)

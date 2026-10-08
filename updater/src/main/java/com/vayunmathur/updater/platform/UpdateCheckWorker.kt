@@ -3,7 +3,7 @@ package com.vayunmathur.updater.platform
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.content.getSystemService
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -47,7 +47,7 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) :
         // the only thing that resolves it.
         val pendingReboot = store.getStringAwait(UpdaterPreferences.PENDING_REBOOT_BUILD)
         if (!pendingReboot.isNullOrEmpty()) {
-            Log.i(TAG, "$pendingReboot is applied and waiting for a reboot; not checking")
+            Log.status(TAG, "$pendingReboot is applied and waiting for a reboot; not checking")
             return WorkResult.success()
         }
 
@@ -64,7 +64,7 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) :
             // Retry rather than fail: the realistic cause is a captive portal or a flaky
             // connection, and there is nothing to tell the user about either.
             is UpdateChecker.Result.Failed -> {
-                Log.i(TAG, "check failed: ${result.reason}")
+                Log.status(TAG, "check failed: ${result.reason}")
                 return WorkResult.retry()
             }
         }
@@ -91,13 +91,13 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) :
                     // background start. Fall back to telling the user, who can start it from
                     // the app, rather than failing the worker over something a retry in six
                     // hours will hit again.
-                    Log.w(TAG, "could not start the install service", e)
+                    Log.status(TAG, "could not start the install service", e)
                     UpdateNotifications.updateAvailable(context, metadata.build)
                 }
             }
 
             is AutoInstallPolicy.Decision.Hold -> {
-                Log.i(TAG, "not installing ${metadata.build}: ${decision.reason}")
+                Log.status(TAG, "not installing ${metadata.build}: ${decision.reason}")
                 UpdateNotifications.updateAvailable(context, metadata.build)
             }
         }

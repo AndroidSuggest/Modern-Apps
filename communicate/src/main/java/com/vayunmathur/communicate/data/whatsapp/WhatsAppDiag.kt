@@ -8,7 +8,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.format
 import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.padMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +34,7 @@ object WhatsAppDiag {
         val line =
             "${Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).time.format(timeFmt)} $tag  $msg"
         _log.value = (_log.value + line).takeLast(MAX_ENTRIES)
-        Log.i(tag, msg)
+        Log.status(tag, msg)
     }
 
     @Synchronized

@@ -3,7 +3,7 @@ package com.vayunmathur.cast.platform.mirror
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.projection.MediaProjection
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Surface
 
 private const val TAG = "ScreenCapture"
@@ -32,16 +32,16 @@ class ScreenCapture(private val projection: MediaProjection) {
         )
         display != null
     } catch (e: SecurityException) {
-        Log.w(TAG, "could not create the virtual display", e)
+        Log.status(TAG, "could not create the virtual display", e)
         false
     } catch (e: IllegalStateException) {
-        Log.w(TAG, "could not create the virtual display", e)
+        Log.status(TAG, "could not create the virtual display", e)
         false
     } catch (e: IllegalArgumentException) {
-        Log.w(TAG, "could not create the virtual display", e)
+        Log.status(TAG, "could not create the virtual display", e)
         false
     } catch (e: UnsupportedOperationException) {
-        Log.w(TAG, "could not create the virtual display", e)
+        Log.status(TAG, "could not create the virtual display", e)
         false
     }
 

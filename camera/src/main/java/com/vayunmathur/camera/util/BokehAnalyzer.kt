@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.os.SystemClock
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.core.graphics.scale
@@ -66,9 +66,9 @@ class BokehAnalyzer(
 
             smoothAndEmit(result)
         } catch (e: IllegalStateException) {
-            Log.e("BokehAnalyzer", "segmentation failed", e)
+            Log.error("BokehAnalyzer", "segmentation failed", e)
         } catch (e: IllegalArgumentException) {
-            Log.e("BokehAnalyzer", "segmentation failed", e)
+            Log.error("BokehAnalyzer", "segmentation failed", e)
         } finally {
             imageProxy.close()
         }

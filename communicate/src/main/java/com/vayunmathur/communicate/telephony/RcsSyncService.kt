@@ -10,7 +10,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.telephony.ims.SipMessage
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.vayunmathur.communicate.MainActivity
@@ -193,7 +193,7 @@ class RcsSyncService : Service() {
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
-        Log.w(TAG, "FGS timeout for type=$fgsType; leaving foreground to avoid crash")
+        Log.status(TAG, "FGS timeout for type=$fgsType; leaving foreground to avoid crash")
         stopForeground(STOP_FOREGROUND_DETACH)
     }
 
@@ -301,7 +301,7 @@ class RcsSyncService : Service() {
         val callId = message.getCallIdParameter() ?: return
         RcsSessionManager.onSipRequest("BYE", callId, "", null, "")
         closeDeadMsrpConnections()
-        Log.i(TAG, "BYE processed callId=$callId")
+        Log.status(TAG, "BYE processed callId=$callId")
     }
 
     /**
@@ -374,7 +374,7 @@ class RcsSyncService : Service() {
                 RcsSipTransport.sendSipMessage(startLine, headers, content)
             }
         }
-        Log.i(TAG, "Relayed focus message to ${others.size} members")
+        Log.status(TAG, "Relayed focus message to ${others.size} members")
     }
 
     /**
@@ -392,7 +392,7 @@ class RcsSyncService : Service() {
                     row.copy(ftUrl = android.net.Uri.fromFile(file).toString()),
                 )
             }
-            Log.i(TAG, "Auto-fetched FT for $conversationId")
+            Log.status(TAG, "Auto-fetched FT for $conversationId")
         }
     }
 

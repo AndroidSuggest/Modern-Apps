@@ -4,7 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.provider.Settings
 import android.telephony.TelephonyManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppAuthData
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol
 import com.vayunmathur.library.network.NetworkClient
@@ -102,7 +102,7 @@ class RegistrationHttpClient(
 
         val body = send("code", p)
         val j = parse(body)
-        Log.e(
+        Log.error(
             TAG,
             "W2 code raw=${body.take(LOG_BODY_SNIPPET)} " +
                 "reason=${j.optStringOrNull("reason")} param=${j.optStringOrNull("param")}")
@@ -154,8 +154,8 @@ class RegistrationHttpClient(
     suspend fun checkExist(cc: String, number: String): ExistResult {
         // DEBUG: log token variants so we can compare to the offline reference (no SMS sent).
         runCatching {
-            Log.i(TAG, "debug token national=$number -> ${RegistrationAttestation.computeToken(context, number)}")
-            Log.i(TAG, "debug token full=$cc$number -> ${RegistrationAttestation.computeToken(context, "$cc$number")}")
+            Log.status(TAG, "debug token national=$number -> ${RegistrationAttestation.computeToken(context, number)}")
+            Log.status(TAG, "debug token full=$cc$number -> ${RegistrationAttestation.computeToken(context, "$cc$number")}")
         }
         val auth = WhatsAppAuthData.load(context)
         val p = RegParams()
@@ -169,7 +169,7 @@ class RegistrationHttpClient(
         if (auth != null) p.bundle(RegistrationKeys.bundleFields(auth))
         val body = send("exist", p)
         val j = parse(body)
-        Log.e(
+        Log.error(
             TAG,
             "W2 exist raw=${body.take(LOG_BODY_SNIPPET)} " +
                 "reason=${j.optStringOrNull("reason")} param=${j.optStringOrNull("param")}")
@@ -379,7 +379,7 @@ class RegistrationHttpClient(
         }
         val reason = j.optStringOrNull("reason")
         val param = j.optStringOrNull("param")
-        if (status != "ok") Log.e(TAG, "W2 register raw=${body.take(LOG_BODY_SNIPPET)} reason=$reason param=$param")
+        if (status != "ok") Log.error(TAG, "W2 register raw=${body.take(LOG_BODY_SNIPPET)} reason=$reason param=$param")
         return RegisterResult(
             status = status,
             newJid = newJid ?: login?.let { "$it@s.whatsapp.net" },
@@ -535,10 +535,10 @@ class RegistrationHttpClient(
                 body = body,
                 useSystemTrust = true,
             )
-            Log.i(TAG, "/v2/$path -> ${resp.status}: ${resp.body.take(LOG_RESP_SNIPPET)}")
+            Log.status(TAG, "/v2/$path -> ${resp.status}: ${resp.body.take(LOG_RESP_SNIPPET)}")
             resp.body
         } catch (expected: Throwable) {
-            Log.e(TAG, "/v2/$path request failed", expected)
+            Log.error(TAG, "/v2/$path request failed", expected)
             """{"status":"error","reason":"network:${expected.message}"}"""
         }
     }

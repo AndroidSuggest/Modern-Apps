@@ -2,7 +2,7 @@ package com.vayunmathur.calendar.glance
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -94,7 +94,7 @@ class CalendarGlanceWidget : GlanceAppWidget() {
                 }
             }
         } catch (expected: Throwable) {
-            Log.e("CalendarWidget", "providePreview failed", expected)
+            Log.error("CalendarWidget", "providePreview failed", expected)
             try {
                 provideContent {
                     DynamicThemeGlance(context) {

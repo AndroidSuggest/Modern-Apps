@@ -6,7 +6,7 @@ import android.media.AudioTrack
 import android.media.MediaCodec
 import android.media.MediaCodecList
 import android.media.MediaFormat
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.protocol.AudioCodec
 import com.vayunmathur.cast.protocol.StreamConstants
 import java.io.IOException
@@ -75,7 +75,7 @@ class AudioPlayer {
     fun start(): Boolean {
         val name = decoderName()
         if (name == null) {
-            Log.w(TAG, "no $AUDIO_MIME decoder on this TV")
+            Log.status(TAG, "no $AUDIO_MIME decoder on this TV")
             return false
         }
         return try {
@@ -143,7 +143,7 @@ class AudioPlayer {
      * `MediaCodec.createByCodecName`, `configure` and the `AudioTrack` builder report.
      */
     private fun failStart(cause: Exception): Boolean {
-        Log.w(TAG, "could not start audio playback", cause)
+        Log.status(TAG, "could not start audio playback", cause)
         release()
         return false
     }
@@ -163,7 +163,7 @@ class AudioPlayer {
     fun setVolume(level: Float) {
         val activeTrack = track ?: return
         runCatching { activeTrack.setVolume(level.coerceIn(0f, 1f)) }
-            .onFailure { Log.w(TAG, "could not set the output volume", it) }
+            .onFailure { Log.status(TAG, "could not set the output volume", it) }
     }
 
     /**
@@ -217,7 +217,7 @@ class AudioPlayer {
         release()
         if (restarts >= MAX_RESTARTS) {
             failed = true
-            Log.w(
+            Log.status(
                 TAG,
                 "audio failed $MAX_RESTARTS times; the rest of this session is silent",
                 cause,
@@ -225,10 +225,10 @@ class AudioPlayer {
             return
         }
         restarts++
-        Log.w(TAG, "audio playback failed; rebuilding the decoder (attempt $restarts)", cause)
+        Log.status(TAG, "audio playback failed; rebuilding the decoder (attempt $restarts)", cause)
         if (!start()) {
             failed = true
-            Log.w(TAG, "the rebuilt audio decoder would not start; this session is silent")
+            Log.status(TAG, "the rebuilt audio decoder would not start; this session is silent")
         }
     }
 
@@ -332,14 +332,14 @@ class AudioPlayer {
         fun limits(): List<AudioCodec> {
             val name = decoderName()
             if (name == null) {
-                Log.i(TAG, "no $AUDIO_MIME decoder on this TV; audio-only sessions will be refused")
+                Log.status(TAG, "no $AUDIO_MIME decoder on this TV; audio-only sessions will be refused")
                 return emptyList()
             }
             // Logged for the same reason `VideoDecoder.limits` logs its codecs: which decoder was
             // found, and whether one was found at all, can only be answered on hardware and only
             // from this line. A silent audio half was how an unplayable session used to look
             // identical to a working one.
-            Log.i(TAG, "advertising ${AudioCodec.Opus.label} decode from $name")
+            Log.status(TAG, "advertising ${AudioCodec.Opus.label} decode from $name")
             return listOf(AudioCodec.Opus)
         }
 

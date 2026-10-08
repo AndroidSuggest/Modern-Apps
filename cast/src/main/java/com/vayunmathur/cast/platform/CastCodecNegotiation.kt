@@ -1,7 +1,7 @@
 package com.vayunmathur.cast.platform
 
 import android.content.Context
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.cast.R
 import com.vayunmathur.cast.domain.CastDevice
 import com.vayunmathur.cast.platform.mirror.EncoderSupport
@@ -50,7 +50,7 @@ internal suspend fun chooseCodec(
     val receiverId = activeClient.receiverId ?: device.id
     val demoted = MirrorPreferences.demotedCodecs(context, receiverId)
     if (demoted.isNotEmpty()) {
-        Log.i(
+        Log.status(
             TAG,
             "skipping ${demoted.joinToString { it.label }} - it has already failed on this TV",
         )
@@ -69,7 +69,7 @@ internal suspend fun chooseCodec(
     )
     return when (selection) {
         is CodecSelection.Chosen -> {
-            Log.i(TAG, "chose ${selection.codec.label} for '${device.friendlyName}'")
+            Log.status(TAG, "chose ${selection.codec.label} for '${device.friendlyName}'")
             CodecOutcome.Chosen(selection)
         }
         is CodecSelection.None -> CodecOutcome.Refused(refusal(context, selection))

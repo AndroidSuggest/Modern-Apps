@@ -5,7 +5,7 @@ import android.net.Uri
 import android.telephony.SubscriptionManager
 import android.telephony.ims.ImsException
 import android.telephony.ims.ImsManager
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import kotlin.coroutines.resume
@@ -85,7 +85,7 @@ object RcsCapabilityExchange {
                         }
 
                         override fun onError(errorCode: Int, retryAfterMillis: Long) {
-                            Log.w(TAG, "UCE availability error code=$errorCode")
+                            Log.status(TAG, "UCE availability error code=$errorCode")
                             if (cont.isActive) cont.resume(collected.toList())
                         }
                     },
@@ -162,18 +162,18 @@ object RcsCapabilityExchange {
                     }
 
                     override fun onError(errorCode: Int, retryAfterMillis: Long) {
-                        Log.w(TAG, "UCE error code=$errorCode")
+                        Log.status(TAG, "UCE error code=$errorCode")
                         if (cont.isActive) cont.resume(collected.toList())
                     }
                 },
             )
         } catch (e: SecurityException) {
-            Log.w(TAG, "No UCE permission", e)
+            Log.status(TAG, "No UCE permission", e)
             uceAvailable = false
             if (cont.isActive) cont.resume(emptyList())
             false
         } catch (e: ImsException) {
-            Log.w(TAG, "UCE service unavailable", e)
+            Log.status(TAG, "UCE service unavailable", e)
             if (cont.isActive) cont.resume(emptyList())
             false
         }

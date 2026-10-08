@@ -2,7 +2,7 @@ package com.vayunmathur.maps.car
 
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Surface
 import androidx.car.app.CarContext
 import androidx.car.app.SurfaceCallback
@@ -62,7 +62,7 @@ internal class CarMapRenderer(
         val surface = surfaceContainer.surface ?: return
         val width = surfaceContainer.width
         val height = surfaceContainer.height
-        Log.i(TAG, "onSurfaceAvailable ${width}x$height dpi=${surfaceContainer.dpi}")
+        Log.status(TAG, "onSurfaceAvailable ${width}x$height dpi=${surfaceContainer.dpi}")
         if (width <= 0 || height <= 0) return
 
         teardown()
@@ -78,14 +78,14 @@ internal class CarMapRenderer(
         created.attachSurface(surface, width, height)
         val state = created.renderState
         if (state is MapRenderState.Unavailable) {
-            Log.e(TAG, "car map will not draw: ${state.reason}")
+            Log.error(TAG, "car map will not draw: ${state.reason}")
         }
         created.start()
         renderer = created
     }
 
     override fun onSurfaceDestroyed(surfaceContainer: SurfaceContainer) {
-        Log.i(TAG, "onSurfaceDestroyed")
+        Log.status(TAG, "onSurfaceDestroyed")
         // Synchronous, and before this returns: the host releases the Surface as soon as we
         // do, and destroy() is what waits for the GPU to go idle and drops the window. The
         // Surface itself is the host's and is deliberately not released here.

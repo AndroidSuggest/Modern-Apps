@@ -3,7 +3,7 @@ package com.vayunmathur.photos.util
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import androidx.core.graphics.withSave
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import com.vayunmathur.library.ink.SerializedStroke
@@ -66,9 +66,9 @@ fun Canvas.drawSerializedStrokes(
             try {
                 renderer.draw(this, serialized.deserialize(), identity)
             } catch (e: IllegalArgumentException) {
-                Log.w(OVERLAY_TAG, "Failed to render stroke", e)
+                Log.status(OVERLAY_TAG, "Failed to render stroke", e)
             } catch (e: IllegalStateException) {
-                Log.w(OVERLAY_TAG, "Failed to render stroke", e)
+                Log.status(OVERLAY_TAG, "Failed to render stroke", e)
             }
         }
     }

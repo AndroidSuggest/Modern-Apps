@@ -4,7 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaFormat
-import android.util.Log
+import com.vayunmathur.library.log.Log
 import android.view.Surface
 import com.vayunmathur.cast.protocol.CodecLimits
 import com.vayunmathur.cast.protocol.CodecNegotiation
@@ -58,7 +58,7 @@ class VideoDecoder(private val surface: Surface, private val codec: VideoCodec) 
     fun start(width: Int, height: Int, codecConfig: ByteArray? = null): Boolean {
         val name = decoderName(codec)
         if (name == null) {
-            Log.w(TAG, "no hardware ${codec.mimeType} decoder on this TV")
+            Log.status(TAG, "no hardware ${codec.mimeType} decoder on this TV")
             return false
         }
         return try {
@@ -74,7 +74,7 @@ class VideoDecoder(private val surface: Surface, private val codec: VideoCodec) 
             created.configure(format, surface, null, 0)
             created.start()
             mediaCodec = created
-            Log.i(
+            Log.status(
                 TAG,
                 "decoding ${codec.label} ${width}x$height with $name" +
                     if (codecConfig == null) {
@@ -85,15 +85,15 @@ class VideoDecoder(private val surface: Surface, private val codec: VideoCodec) 
             )
             true
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "could not start the ${codec.label} decoder", e)
+            Log.status(TAG, "could not start the ${codec.label} decoder", e)
             release()
             false
         } catch (e: IllegalStateException) {
-            Log.w(TAG, "could not start the ${codec.label} decoder", e)
+            Log.status(TAG, "could not start the ${codec.label} decoder", e)
             release()
             false
         } catch (e: UnsupportedOperationException) {
-            Log.w(TAG, "could not start the ${codec.label} decoder", e)
+            Log.status(TAG, "could not start the ${codec.label} decoder", e)
             release()
             false
         }
@@ -139,7 +139,7 @@ class VideoDecoder(private val surface: Surface, private val codec: VideoCodec) 
         framesDropped++
         if (cause != null && !tracedFailure) {
             tracedFailure = true
-            Log.w(TAG, "could not queue a frame; further failures are counted only", cause)
+            Log.status(TAG, "could not queue a frame; further failures are counted only", cause)
         }
         return false
     }
@@ -162,7 +162,7 @@ class VideoDecoder(private val surface: Surface, private val codec: VideoCodec) 
             val index = try {
                 active.dequeueOutputBuffer(info, 0)
             } catch (e: IllegalStateException) {
-                Log.w(TAG, "decoder went away mid-render", e)
+                Log.status(TAG, "decoder went away mid-render", e)
                 return
             }
             if (index < 0) return
@@ -199,7 +199,7 @@ class VideoDecoder(private val surface: Surface, private val codec: VideoCodec) 
         fun limits(): DecoderLimits = DecoderLimits(
             videoCodecs = CodecNegotiation.PREFERENCE.mapNotNull { codec ->
                 val name = decoderName(codec) ?: run {
-                    Log.i(TAG, "no hardware decoder for ${codec.label} (${codec.mimeType})")
+                    Log.status(TAG, "no hardware decoder for ${codec.label} (${codec.mimeType})")
                     return@mapNotNull null
                 }
                 val video = runCatching {
@@ -218,7 +218,7 @@ class VideoDecoder(private val surface: Surface, private val codec: VideoCodec) 
                         maxBitRate = video.bitrateRange.upper,
                     )
                 }.getOrNull() ?: return@mapNotNull null
-                Log.i(
+                Log.status(
                     TAG,
                     "advertising ${codec.label} up to ${advertised.maxWidth}x" +
                         "${advertised.maxHeight} @ ${advertised.maxFrameRate}fps, " +
