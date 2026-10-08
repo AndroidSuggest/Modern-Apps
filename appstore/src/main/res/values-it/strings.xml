@@ -162,4 +162,5 @@
     <string name="trust_own_key_unreadable">Impossibile leggere la chiave di firma di quest\'app.</string>
     <string name="sources_all_disabled">Tutte le fonti sono disattivate, quindi non c\'è nulla da sfogliare, cercare o aggiornare.</string>
     <string name="section_sandboxed_google_play">Google Play in modalità sandbox</string>
+    <string name="source_chip_modern_apps" translatable="false"></string>
 </resources>
