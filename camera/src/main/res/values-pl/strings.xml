@@ -53,4 +53,15 @@
     <string name="settings_save_location_choose">Wybierz folder</string>
     <string name="settings_save_location_reset">Przywróć domyślne</string>
     <string name="settings_save_location_error">Nie udało się użyć tego folderu</string>
+    <string name="mode_cinematic">Filmowy</string>
+    <string name="add_esim">Dodaj eSIM</string>
+    <string name="mode_photo">Zdjęcie</string>
+    <string name="mode_portrait">Portret</string>
+    <string name="mode_slo_mo">Zwolnione tempo</string>
+    <string name="no_app_to_add_esim">Brak aplikacji do dodania profilu eSIM</string>
+    <string name="mode_panorama">Panorama</string>
+    <string name="esim_qr_result">Kod QR eSIM</string>
+    <string name="mode_photosphere">Sfera</string>
+    <string name="mode_video">Wideo</string>
+    <string name="mode_timelapse">Poklatkowy</string>
 </resources>
