@@ -30,4 +30,5 @@
     <string name="need_permissions">Sünkroonimisrakendus EverySync vajab kasutajakonto andmete sünkroonimiseks ligipääsu kontaktidele ja kalendrile.</string>
     <string name="everysync_privacy_policy">Sünkroonimisrakendus EverySync sünkroonib kontakte, kalendreid ja terviseandmeid selle seadme ja sinu pilvekontode vahel. Andmed salvestuvad vaid selles seadmes ja sinu valitud pilveteenus(te)s.</string>
     <string name="icloud_app_password_steps">iCloud vajab rakendusepõhist salasõna (mitte sinu Apple ID salasõna):\n\n1. Logi sisse saidis account.apple.com\n2. Ava „Sisselogimine ja turvalisus“ → „Rakendusepõhised salasõnad“\n3. Loo uus salasõna ja pane nimeks „EverySync“\n4. Sisesta alljärgnevalt oma Apple ID e-posti aadress ja see justloodud salasõna</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
