@@ -270,4 +270,24 @@
     <string name="landscape_1">Альбомная</string>
     <string name="landscape">● Альбомная</string>
     <string name="insert_table_1">Вставить таблицу</string>
+    <string name="document_theme_follow_system"></string>
+    <string name="document_dark_mode"></string>
+    <string name="speaker_notes_1"></string>
+    <string name="document_dark_mode_1"></string>
+    <string name="on"></string>
+    <string name="italic_cell"></string>
+    <string name="border_color"></string>
+    <string name="off"></string>
+    <string name="document_theme_unchanged"></string>
+    <string name="sharing_online_generates_your_encryption"></string>
+    <string name="merge_with_below"></string>
+    <string name="annotation_author_date"></string>
+    <string name="your_device_id"></string>
+    <string name="bold_cell"></string>
+    <string name="markdown_md"></string>
+    <string name="tracked_change_author_date"></string>
+    <string name="document_theme_summary"></string>
+    <string name="document_theme"></string>
+    <string name="make_viewer"></string>
+    <string name="online_1"></string>
 </resources>
