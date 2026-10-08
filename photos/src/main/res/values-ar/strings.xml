@@ -292,4 +292,5 @@
     <string name="adj_fade"></string>
     <string name="editor_desc_selective"></string>
     <string name="tool_line"></string>
+    <string name="editor_desc_none"></string>
 </resources>
