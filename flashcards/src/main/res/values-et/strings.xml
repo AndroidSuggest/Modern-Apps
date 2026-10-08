@@ -115,4 +115,18 @@
     <string name="custom_study_new">Ainult uued sähvikud</string>
     <string name="custom_study_count">Sähvikute arv</string>
     <string name="custom_study_days">Päevi ette</string>
+    <string name="swipe_hint"></string>
+    <string name="optimize_fsrs_hint"></string>
+    <string name="custom_study"></string>
+    <string name="optimize_fsrs_done"></string>
+    <string name="insert_cloze"></string>
+    <string name="stat_retention"></string>
+    <string name="custom_study_ahead"></string>
+    <string name="stat_mature"></string>
+    <string name="stat_retention_by_interval"></string>
+    <string name="custom_study_cram"></string>
+    <string name="stat_streak"></string>
+    <string name="optimize_fsrs"></string>
+    <string name="stat_forecast"></string>
+    <string name="custom_study_lapses"></string>
 </resources>
