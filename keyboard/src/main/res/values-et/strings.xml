@@ -28,4 +28,18 @@
     <string name="voice_busy">Kõnetuvastus on hõivatud</string>
     <string name="voice_audio_error">Heli salvestamine ei õnnestunud</string>
     <string name="voice_failed">Häälsisendi kasutamine ei toiminud</string>
+    <string name="clipboard_image_not_supported">Siia väljale ei saa pilte sisestada</string>
+    <string name="setting_auto_capitalize">Lisa suurtähed automaatselt</string>
+    <string name="subtype_keyboard">Klahvistik</string>
+    <string name="status_selected">Määratud aktiivseks klahvistikuks</string>
+    <string name="setting_key_sound">Klahviheli</string>
+    <string name="setting_haptic_feedback">Haptiline tagasiside</string>
+    <string name="setting_clipboard_history_desc">Jäta sinu kopeeritud sisu meelde ja paku seda klahvide kohal kasutamiseks</string>
+    <string name="setting_show_suggestions">Näita soovitusi</string>
+    <string name="setting_double_space_period">Topelttühik lisab punkti</string>
+    <string name="setting_number_row">Numbririda</string>
+    <string name="setting_clipboard_history">Lõikelaua ajalugu</string>
+    <string name="clipboard_image_unavailable">Pilt pole enam saadaval</string>
+    <string name="status_enabled">Lülitatud sisse süsteemi seadistustest</string>
+    <string name="setting_auto_correct">Automaatne veaparandus</string>
 </resources>
