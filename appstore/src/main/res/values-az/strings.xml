@@ -214,4 +214,7 @@
     <string name="trust_grapheneos_check_rollback">Əvvəl görülmüş siyahıdan daha köhnə olan siyahı rədd edilir; buna görə də sizə köhnə bir qurğu (build) təkrar təqdim edilə bilməz</string>
     <string name="trust_grapheneos_check_hash_and_key">Yüklənən hər bir fayl, onun adlarını ehtiva edən siyahıdakı heş (hash) və imzalama açarı ilə uyğunluq təşkil edir</string>
     <string name="trust_grapheneos_limits">Bunlar Google-un qapalı kodlu tətbiqləridir. Heç bir şey dərc olunmuş mənbə kodundan hazırlanmayıb və heç birini yenidən yaratmaq mümkün deyil; buna görə də sübut olunan yeganə məqam GrapheneOS tərəfindən siyahıya alınmış faylı əldə etməyinizdir, həmin faylın nə iş gördüyü barədə isə heç nə təsdiqlənmir. Mənbə kodu yalnız \"Sandboxed Google Play\" komponentlərini ehtiva edir və telefonlara yüklənmiş zərərli buraxılışı geri qaytarmağın heç bir yolu yoxdur.</string>
+    <string name="trust_modern_apps_title" translatable="false"></string>
+    <string name="source_modern_apps" translatable="false"></string>
+    <string name="source_chip_modern_apps" translatable="false"></string>
 </resources>
