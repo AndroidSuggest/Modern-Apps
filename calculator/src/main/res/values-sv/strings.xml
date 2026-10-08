@@ -33,4 +33,5 @@
     <string name="units_widget_label">Enhetsomvandlare</string>
     <string name="units_widget_description">Omvandla enheter med en blick – tryck för att öppna omvandlaren</string>
     <string name="units_widget_choose_category">Välj enhetskategori</string>
+    <string name="absolute_time"></string>
 </resources>
