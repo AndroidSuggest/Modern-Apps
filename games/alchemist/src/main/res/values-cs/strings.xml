@@ -22,5 +22,4 @@
     </plurals>
     <string name="cd_final_item">Finální prvek</string>
     <string name="cd_delete">Smazat</string>
-    <string name="app_name" translatable="false"></string>
 </resources>

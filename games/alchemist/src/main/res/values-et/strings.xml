@@ -22,5 +22,4 @@
     </plurals>
     <string name="cd_final_item">Viimane objekt</string>
     <string name="cd_delete">Kustuta</string>
-    <string name="app_name" translatable="false"></string>
 </resources>
