@@ -100,4 +100,7 @@
     <string name="source_play">Play 商店（匿名）</string>
     <string name="section_sandboxed_google_play">沙盒化的Google Play</string>
     <string name="section_sandboxed_google_play_subtitle">让 Google Play 组件以普通非特权应用的形式运行</string>
+    <string name="trust_modern_apps_title" translatable="false"></string>
+    <string name="source_modern_apps" translatable="false"></string>
+    <string name="source_chip_modern_apps" translatable="false"></string>
 </resources>
