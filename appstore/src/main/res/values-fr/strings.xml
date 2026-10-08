@@ -162,4 +162,7 @@
     <string name="section_sandboxed_google_play">Google Play en bac à sable</string>
     <string name="section_sandboxed_google_play_subtitle">Les composants Google Play comme applications ordinaires, sans privilèges</string>
     <string name="action_install_all">Tout installer</string>
+    <string name="trust_modern_apps_title" translatable="false"></string>
+    <string name="source_modern_apps" translatable="false"></string>
+    <string name="source_chip_modern_apps" translatable="false"></string>
 </resources>
