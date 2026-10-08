@@ -121,6 +121,4 @@
     <string name="cleartext_blocked_message">%1$s begärdes via vanlig HTTP. Okrypterade anslutningar tillåts endast till enheter i ditt lokala nätverk.</string>
     <string name="local_network_title">Tillåt åtkomst till lokalt nätverk?</string>
     <string name="local_network_message">%1$s verkar vara en enhet i ditt nätverk. Android behöver behörighet till det lokala nätverket innan sidan kan läsas in.</string>
-    <string name="open_link"></string>
-    <string name="go_forward"></string>
 </resources>
