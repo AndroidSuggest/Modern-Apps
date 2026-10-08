@@ -24,4 +24,5 @@
     <string name="expected">%1$s förväntades</string>
     <string name="got_2">%1$s erhölls</string>
     <string name="hz">%1$s Hz</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
