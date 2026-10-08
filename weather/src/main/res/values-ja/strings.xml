@@ -97,4 +97,6 @@
     <string name="weather_no_data">—</string>
     <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
     <string name="weather_blob_widget_description">有機的な塊の天気 - アイコン付きの大きな気温とダークティールの背景</string>
+    <string name="set_units"></string>
+    <string name="gusts"></string>
 </resources>
