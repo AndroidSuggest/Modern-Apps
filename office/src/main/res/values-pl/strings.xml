@@ -235,7 +235,7 @@
     <!-- MainActivity: Menu insert time field -->
     <string name="time_field">Godzina (pole)</string>
     <!-- MainActivity: Empty state for online docs explaining share via device id -->
-    <string name="no_online_documents_yet_open_a_document">Brak dokumentów online. Otwórz dokument i użyj opcji \u201CUdostępnij\u201D, aby skopiować go tutaj i wysłać komuś, albo poproś o udostępnienie na Twój identyfikator urządzenia, a następnie odśwież stronę.</string>
+    <string name="no_online_documents_yet_open_a_document">Brak dokumentów online. Otwórz dokument i użyj opcji “Udostępnij”, aby skopiować go tutaj i wysłać komuś, albo poproś o udostępnienie na Twój identyfikator urządzenia, a następnie odśwież stronę.</string>
     <!-- MainActivity: Export format Word docx with ellipsis -->
     <string name="word_docx">Word (.docx)…</string>
     <!-- MainActivity: Menu View. Noun. -->
@@ -543,7 +543,7 @@
     <!-- MainActivity: Whole word toggle unchecked -->
     <string name="word_1">☐ Całe słowa</string>
     <!-- MainActivity: Presence typing indicator suffix with leading space -->
-    <string name="typing"> (pisze…)</string>
+    <string name="typing">(pisze…)</string>
     <!-- MainActivity: Online presence bar. %1$s=concatenated presence e.g. "Alice · Sheet1" -->
     <string name="online_1">Online: <xliff:g id="presence" example="Alice · Sheet1">%1$s</xliff:g></string>
     <!-- MainActivity: Portrait orientation radio selected with bullet -->
@@ -570,4 +570,6 @@
     <string name="document_theme_summary">Kontroluje sposób wyświetlania dokumentów. Nie zmienia pliku.</string>
     <string name="document_theme_unchanged">Bez zmian</string>
     <string name="document_theme_follow_system">Zgodnie z motywem systemu</string>
+    <string name="insert_table_1">Wstaw tabelę</string>
+    <string name="speaker_notes_2">Notatki prelegenta</string>
 </resources>
