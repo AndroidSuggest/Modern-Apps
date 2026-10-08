@@ -97,6 +97,4 @@
     <string name="moon_phase_last_quarter">Poslední čtvrť</string>
     <string name="moon_phase_waning_crescent">Couvající srpek</string>
     <string name="weather_blob_widget_description">Počasí v organickém bloku – velká teplota s ikonou, tmavě tyrkysové pozadí</string>
-    <string name="set_units"></string>
-    <string name="gusts"></string>
 </resources>
