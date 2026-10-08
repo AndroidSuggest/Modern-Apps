@@ -28,4 +28,18 @@
     <string name="voice_busy">语音识别器正忙</string>
     <string name="voice_audio_error">无法录制音频</string>
     <string name="voice_failed">语音输入失败</string>
+    <string name="clipboard_image_not_supported"></string>
+    <string name="setting_auto_capitalize"></string>
+    <string name="subtype_keyboard"></string>
+    <string name="status_selected"></string>
+    <string name="setting_key_sound"></string>
+    <string name="setting_haptic_feedback"></string>
+    <string name="setting_clipboard_history_desc"></string>
+    <string name="setting_show_suggestions"></string>
+    <string name="setting_double_space_period"></string>
+    <string name="setting_number_row"></string>
+    <string name="setting_clipboard_history"></string>
+    <string name="clipboard_image_unavailable"></string>
+    <string name="status_enabled"></string>
+    <string name="setting_auto_correct"></string>
 </resources>
