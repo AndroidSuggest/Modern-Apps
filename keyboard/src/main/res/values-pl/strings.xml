@@ -28,4 +28,18 @@
     <string name="voice_busy">Moduł rozpoznawania mowy jest zajęty</string>
     <string name="voice_audio_error">Nie udało się nagrać dźwięku</string>
     <string name="voice_failed">Wprowadzanie głosowe nie powiodło się</string>
+    <string name="clipboard_image_not_supported">To pole nie obsługuje obrazów</string>
+    <string name="setting_auto_capitalize">Automatyczna wielka litera</string>
+    <string name="subtype_keyboard">Klawiatura</string>
+    <string name="status_selected">Wybrana jako aktywna klawiatura</string>
+    <string name="setting_key_sound">Dźwięk klawiszy</string>
+    <string name="setting_haptic_feedback">Wibracje</string>
+    <string name="setting_clipboard_history_desc">Pamiętaj skopiowane treści i wyświetlaj je nad klawiszami</string>
+    <string name="setting_show_suggestions">Pokaż sugestie</string>
+    <string name="setting_double_space_period">Kropka po podwójnej spacji</string>
+    <string name="setting_number_row">Wiersz cyfr</string>
+    <string name="setting_clipboard_history">Historia schowka</string>
+    <string name="clipboard_image_unavailable">Obraz jest już niedostępny</string>
+    <string name="status_enabled">Włączono w ustawieniach systemowych</string>
+    <string name="setting_auto_correct">Autokorekta</string>
 </resources>
