@@ -10,7 +10,7 @@
     <string name="week_range"><xliff:g id="start_date" example="May 12">%1$s</xliff:g> – <xliff:g id="end_date" example="May 18">%2$s</xliff:g></string>
     <string name="no_data_available">Inga data är tillgängliga för den här perioden</string>
     <string name="unit_per_day_avg_format"><xliff:g id="unit" example="steps">%1$s</xliff:g> per dag (genomsnitt)</string>
-    <string name="unit_only_format"> <xliff:g id="unit" example="steps">%1$s</xliff:g></string>
+    <string name="unit_only_format"><xliff:g id="unit" example="steps">%1$s</xliff:g></string>
     <string name="month_year_format"><xliff:g id="month" example="January">%1$s</xliff:g> <xliff:g id="year" example="2026">%2$d</xliff:g></string>
     <string name="value_unit_space_format"><xliff:g id="value" example="12,345">%1$s</xliff:g> <xliff:g id="unit" example="steps">%2$s</xliff:g></string>
     <string name="k_format"><xliff:g id="thousands" example="12">%1$s</xliff:g> t</string>
