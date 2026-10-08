@@ -82,5 +82,4 @@
     <string name="or_add_by_device_id">Или добавьте по идентификатору устройства</string>
     <string name="requesting_access">Запрос доступа…</string>
     <string name="seed">Начальное число</string>
-    <string name="app_name" translatable="false"></string>
 </resources>
