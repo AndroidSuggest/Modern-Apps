@@ -64,26 +64,4 @@
     <string name="label_note">Note</string>
     <string name="section_note">Note</string>
     <string name="name_required">Le nom ne peut pas être vide</string>
-    <string name="passkey_link_section"></string>
-    <string name="passkey_unlinked_message"></string>
-    <string name="import_source_proton_pass"></string>
-    <string name="cable_status_advertising"></string>
-    <string name="passkey_link_detached"></string>
-    <string name="passkey_link_dialog_empty"></string>
-    <string name="cable_status_failed"></string>
-    <string name="passkey_count"></string>
-    <string name="cable_status_connecting"></string>
-    <string name="passkey_link_none"></string>
-    <string name="cable_status_cancelled"></string>
-    <string name="passkey_disconnect"></string>
-    <string name="section_passkeys"></string>
-    <string name="passkey_link_manual"></string>
-    <string name="cable_status_registered"></string>
-    <string name="passkey_linked_message"></string>
-    <string name="passkey_link_use_auto"></string>
-    <string name="cable_status_handshake"></string>
-    <string name="passkey_link_auto"></string>
-    <string name="cable_status_waiting"></string>
-    <string name="passkey_link_dialog_title"></string>
-    <string name="cable_status_signed_in"></string>
 </resources>
