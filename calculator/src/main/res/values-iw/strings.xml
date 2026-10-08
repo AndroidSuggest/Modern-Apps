@@ -22,4 +22,16 @@
     <string name="calculator_widget_label">מחשבון</string>
     <string name="calculator_widget_transparent">רקע שקוף</string>
     <string name="units_widget_label">המרת יחידות</string>
+    <string name="currency_unavailable"></string>
+    <string name="toggle_curve_visibility"></string>
+    <string name="absolute_time"></string>
+    <string name="feature_intersection"></string>
+    <string name="feature_y_intercept"></string>
+    <string name="calculator_widget_description"></string>
+    <string name="units_widget_description"></string>
+    <string name="currency_loading"></string>
+    <string name="converter_swap"></string>
+    <string name="insert_unit"></string>
+    <string name="calculator_widget_transparent_summary"></string>
+    <string name="units_widget_choose_category"></string>
 </resources>
