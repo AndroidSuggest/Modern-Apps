@@ -34,4 +34,5 @@
     <string name="wheel_spacing_wider">更宽</string>
     <string name="wheel_spacing_widest">最宽</string>
     <string name="no_definition_available">这个词没有定义。</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
