@@ -39,12 +39,9 @@ import com.vayunmathur.library.ui.isExpandedWidth
 import com.vayunmathur.library.ui.rememberFreeHeightSheetState
 import com.vayunmathur.library.ui.rememberMessenger
 import com.vayunmathur.library.util.NavBackStack
-import com.vayunmathur.library.map.CameraPosition
-import com.vayunmathur.library.map.CameraState
-import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.map.MapBody
 import com.vayunmathur.library.map.MoonTextures
-import com.vayunmathur.library.map.rememberCameraState
+import com.vayunmathur.maps.ui.map.rememberInitialCamera
 import com.vayunmathur.maps.Route
 import com.vayunmathur.maps.data.ParkingSpot
 import com.vayunmathur.maps.data.SpecificFeature
@@ -84,9 +81,6 @@ import com.vayunmathur.maps.util.SelectedFeatureViewModel
 import kotlinx.coroutines.launch
 import com.vayunmathur.maps.R as MapsR
 
-/** Cold-start camera: San Francisco at z14, where the baked POIs are dense enough to see. */
-private val INITIAL_CAMERA = CameraPosition(target = GeoPoint(-122.4194, 37.7749), zoom = 14.0)
-
 
 /**
  * The map screen.
@@ -116,7 +110,7 @@ fun MapPage(
     val noResultsMessage = stringResource(MapsR.string.no_results_found)
 
     val chrome = rememberMapChromeState()
-    val camera = rememberCameraState(INITIAL_CAMERA)
+    val camera = rememberInitialCamera(viewModel)
 
     val selectedFeature by viewModel.selectedFeature.collectAsState()
     // Keep the router's plan order on the visible tab: routes plans the

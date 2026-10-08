@@ -21,6 +21,14 @@ object MapPreferences {
     const val KEY_LAYER_SAFETY = "layer_safety"
     const val KEY_LAYER_TRANSIT = "layer_transit"
 
+    /**
+     * Last known user position (lon/lat doubles). Written on every accepted GPS
+     * fix and read back to seed the cold-start camera, so the map opens where
+     * the user was rather than the SF fallback. Absent = no fix ever recorded.
+     */
+    const val KEY_LAST_LON = "last_lon"
+    const val KEY_LAST_LAT = "last_lat"
+
     const val DEFAULT_VOICE_GUIDANCE = true
     const val DEFAULT_GLOBE = false
     const val DEFAULT_LAYER_TRAFFIC = true

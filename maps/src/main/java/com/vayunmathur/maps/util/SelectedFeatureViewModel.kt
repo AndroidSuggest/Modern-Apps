@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.maps.data.MapPreferences
 
 class SelectedFeatureViewModel(application: Application): AndroidViewModel(application) {
     private val _selectedFeature = MutableStateFlow<SpecificFeature?>(null)
@@ -72,6 +74,20 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
     private companion object {
         const val PARTIAL_MIN_GROWTH = 5
         const val PARTIAL_MIN_INTERVAL_MS = 2_000L
+
+        /**
+         * Minimum movement (metres, equirectangular — fine at this scale)
+         * before the persisted position is rewritten.
+         */
+        private const val MIN_PERSIST_DISTANCE_M = 50.0
+
+        /** Equirectangular distance in metres — fine at the 50 m gate scale. */
+        private fun distanceM(a: GeoPoint, b: GeoPoint): Double {
+            val dx = (a.longitude - b.longitude) * 111_320.0 *
+                kotlin.math.cos(Math.toRadians((a.latitude + b.latitude) / 2.0))
+            val dy = (a.latitude - b.latitude) * 110_540.0
+            return kotlin.math.sqrt(dx * dx + dy * dy)
+        }
     }
 
     /** A pending request for the map to fly to [position] (at [zoom] when set) and
@@ -96,6 +112,14 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
 
     val locationManager = FrameworkLocationManager(application)
 
+    private val dataStore = DataStoreUtils.getInstance(application)
+
+    /**
+     * Last fix persisted, throttled by distance — DataStore rewrites the whole
+     * file per edit, so a standing-still phone should not rewrite it every second.
+     */
+    private var lastPersisted: GeoPoint? = null
+
     // Hidden-WebView reviews scraper (keyless; Google 404'd the old reviews RPC). Holds a single
     // WebView built from the application Context, serialized + idle-reaped internally.
     private val webReviews = WebReviewsFetcher(application)
@@ -105,11 +129,31 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
             onUpdateReceived = { position, bearing ->
                 _userPosition.value = position
                 _userBearing.value = bearing
+                persistPosition(position)
             },
             onAccuracyReceived = { accuracy ->
                 _userHeadingAccuracy.value = accuracy
             },
         )
+    }
+
+    /**
+     * Persist the live fix for the next cold start, throttled by distance so a
+     * stationary phone does not rewrite DataStore every second. Fire-and-forget
+     * on `viewModelScope`: a lost write only costs one stale open.
+     */
+    private fun persistPosition(position: GeoPoint) {
+        // (0,0) is this VM's "no fix" sentinel — never persist it over a real fix.
+        if (position.latitude == 0.0 && position.longitude == 0.0) return
+        val previous = lastPersisted
+        if (previous != null && distanceM(previous, position) < MIN_PERSIST_DISTANCE_M) return
+        lastPersisted = position
+        viewModelScope.launch {
+            runCatching {
+                dataStore.setDouble(MapPreferences.KEY_LAST_LON, position.longitude)
+                dataStore.setDouble(MapPreferences.KEY_LAST_LAT, position.latitude)
+            }
+        }
     }
 
     override fun onCleared() {

@@ -96,6 +96,21 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
             )
         }
 
+        // Emit the OS last-known fix immediately so the UI opens on the user's
+        // current (or last known) location instead of waiting for the first
+        // live fix. Any last-known beats the SF fallback, so no staleness
+        // filter here — recency filtering is for the live stream only.
+        lastKnownLocation()?.let { location ->
+            lastFix = Fix(
+                fromGps = location.provider == LocationManager.GPS_PROVIDER,
+                accuracyM = if (location.hasAccuracy()) location.accuracy else 0f,
+                elapsedRealtimeNanos = location.elapsedRealtimeNanos,
+            )
+            lastLocation = location
+            val heading = if (location.hasBearing()) location.bearing else currentHeading
+            onUpdate?.invoke(GeoPoint(location.longitude, location.latitude), heading)
+        }
+
         // 2. Setup Sensor Updates (Compass)
         sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.also { acc ->
             sensorManager.registerListener(this, acc, SensorManager.SENSOR_DELAY_UI)
@@ -126,6 +141,33 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
         lastLocation = null
         currentHeading = null
         lastEmittedHeading = null
+    }
+
+    /**
+     * Best last-known position the OS has cached (GPS preferred, then network),
+     * or null when neither provider has one. Called with location permission
+     * already granted — the caller gates on it — so a SecurityException here
+     * means the provider state changed mid-call and is treated as no fix.
+     */
+    @SuppressLint("MissingPermission")
+    private fun lastKnownLocation(): Location? {
+        val providers = listOf(
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+        )
+        var best: Location? = null
+        for (provider in providers) {
+            if (!locationManager.isProviderEnabled(provider)) continue
+            val fix = runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
+                ?: continue
+            // A (0,0) last-known is the OS having nothing real, not the Gulf of Guinea.
+            if (fix.latitude == 0.0 && fix.longitude == 0.0) continue
+            val current = best
+            if (current == null || fix.elapsedRealtimeNanos > current.elapsedRealtimeNanos) {
+                best = fix
+            }
+        }
+        return best
     }
 
     override fun onSensorChanged(event: SensorEvent) {

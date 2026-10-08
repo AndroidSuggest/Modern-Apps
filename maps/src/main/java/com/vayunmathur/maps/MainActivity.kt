@@ -274,10 +274,15 @@ class MainActivity : ComponentActivity() {
             selectedVm.userPosition.first { it.latitude != 0.0 || it.longitude != 0.0 }
         }
 
-    /** Search bias: the user's live position when known, else the map's default centre. */
+    /** Search bias: the user's live position when known, else the persisted last fix, else the map's default centre. */
     private fun biasPosition(): GeoPoint {
         val p = selectedVm.userPosition.value
-        return if (p.latitude != 0.0 || p.longitude != 0.0) p else GeoPoint(FALLBACK_LON, FALLBACK_LAT)
+        if (p.latitude != 0.0 || p.longitude != 0.0) return p
+        val ds = DataStoreUtils.getInstance(this)
+        val lon = ds.getDouble(MapPreferences.KEY_LAST_LON)
+        val lat = ds.getDouble(MapPreferences.KEY_LAST_LAT)
+        if (lon != null && lat != null && (lat != 0.0 || lon != 0.0)) return GeoPoint(lon, lat)
+        return GeoPoint(FALLBACK_LON, FALLBACK_LAT)
     }
 
     private fun genericPlace(name: String, lat: Double, lng: Double) =
