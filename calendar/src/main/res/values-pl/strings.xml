@@ -191,4 +191,9 @@
         <item quantity="many">+<xliff:g id="count" example="5">%1$d</xliff:g> więcej</item>
         <item quantity="other">+<xliff:g id="count" example="5">%1$d</xliff:g> więcej</item>
     </plurals>
+    <string name="save_this_event">Zapisz to wydarzenie</string>
+    <string name="save_all_events">Zapisz wszystkie wydarzenia</string>
+    <string name="calendar_not_found">Nie znaleziono kalendarza</string>
+    <string name="save_this_and_following_events">Zapisz to i przyszłe wydarzenia</string>
+    <string name="edit_occurrence_not_found">Nie znaleziono tego powtórzenia — nic nie zapisano</string>
 </resources>
