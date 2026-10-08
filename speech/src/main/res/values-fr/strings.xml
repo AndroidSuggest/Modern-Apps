@@ -11,4 +11,6 @@
     <string name="grant_microphone">Autoriser l’accès au microphone</string>
     <string name="speak_sample">Lire l’exemple à voix haute</string>
     <string name="app_name">Voix</string>
+    <string name="broken_install_body"></string>
+    <string name="broken_install_title"></string>
 </resources>
