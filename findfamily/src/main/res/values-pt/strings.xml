@@ -167,4 +167,5 @@
     <string name="history_step_plus_1m"></string>
     <string name="permission_background_explanation"></string>
     <string name="gps_fallback_warning_title"></string>
+    <string name="app_name" translatable="false"></string>
 </resources>
