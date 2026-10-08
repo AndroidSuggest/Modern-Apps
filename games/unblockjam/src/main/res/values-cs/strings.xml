@@ -10,4 +10,5 @@
     <string name="moves">Pohyby</string>
     <string name="daily_challenge">Denní výzva</string>
     <string name="daily_streak"><xliff:g id="days" example="5">%1$d</xliff:g> denní řada</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
