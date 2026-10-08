@@ -15,4 +15,9 @@
     <string name="error_ai_json_schema_mismatch">L\'IA non è riuscita a restituire un JSON valido corrispondente allo schema.</string>
     <string name="settings_title">Impostazioni</string>
     <string name="app_name" translatable="false"></string>
+    <string name="memories"></string>
+    <string name="reset_to_default"></string>
+    <string name="system_prompt"></string>
+    <string name="inference_service_label"></string>
+    <string name="no_memories_yet"></string>
 </resources>
