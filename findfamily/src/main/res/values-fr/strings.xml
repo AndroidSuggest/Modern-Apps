@@ -101,4 +101,5 @@
     <string name="status_already_requested">Demande de partage déjà envoyée à cette personne</string>
     <string name="unknown">Inconnu</string>
     <string name="computing">Calcul en cours…</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
