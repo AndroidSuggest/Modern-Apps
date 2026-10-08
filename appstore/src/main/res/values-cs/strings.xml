@@ -200,4 +200,5 @@
     <string name="trust_play_practice_identity"></string>
     <string name="library_empty_message"></string>
     <string name="action_install_all"></string>
+    <string name="source_chip_modern_apps" translatable="false"></string>
 </resources>
