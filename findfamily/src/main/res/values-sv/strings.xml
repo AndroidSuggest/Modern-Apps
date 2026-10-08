@@ -175,4 +175,7 @@
     </plurals>
     <string name="noshow_save">Bevaka</string>
     <string name="noshow_scheduled">Bevakning av utebliven ankomst har ställts in</string>
+    <string name="user_card_shutdown"></string>
+    <string name="user_card_battery_low"></string>
+    <string name="app_name" translatable="false"></string>
 </resources>
