@@ -8,4 +8,5 @@
     <string name="next_level">Następny puzzle</string>
     <string name="completed">Zakończono</string>
     <string name="moves">Ruchy</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
