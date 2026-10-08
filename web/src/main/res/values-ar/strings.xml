@@ -111,4 +111,20 @@
     <string name="copy_link">نسخ الرابط</string>
     <string name="open_in_new_tab">فتح في علامة تبويب جديدة</string>
     <string name="link_copied">تم نسخ الرابط</string>
+    <string name="shortcuts_launch_pwaactivity_standalone"></string>
+    <string name="cleartext_blocked_title"></string>
+    <string name="local_network_message"></string>
+    <string name="toolbar_at_bottom"></string>
+    <string name="open_link"></string>
+    <string name="local_network_title"></string>
+    <plurals name="pwas">
+    </plurals>
+    <string name="keeps_the_address_bar_within_thumb_reach"></string>
+    <string name="cleartext_blocked_message"></string>
+    <string name="blank_new_tab_tap_the_address_pill_to_se"></string>
+    <string name="go_forward"></string>
+    <plurals name="entries">
+    </plurals>
+    <string name="no_site_data_yet_cookies_localstorage_in"></string>
+    <string name="shields_fingerprint_desc"></string>
 </resources>
