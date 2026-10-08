@@ -44,5 +44,4 @@
     <string name="callout">Noolega jutumull</string>
     <string name="safe_pdf_not_a_pdf">See pole PDF-fail</string>
     <string name="pdf_page_failed">Selle lehe kuvamine ei õnnestunud</string>
-    <string name="app_name" translatable="false"></string>
 </resources>

@@ -44,5 +44,4 @@
     <string name="outline">Dispositionsvy</string>
     <string name="sign">Signera</string>
     <string name="pdf_page_failed">Den här sidan kunde inte visas</string>
-    <string name="app_name" translatable="false"></string>
 </resources>

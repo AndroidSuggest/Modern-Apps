@@ -43,6 +43,4 @@
     <string name="sticky_note">Note autocollante</string>
     <string name="aa">Aa</string>
     <string name="safe_pdf_not_a_pdf">Ce fichier n’est pas au format PDF</string>
-    <string name="pdf_page_failed"></string>
-    <string name="app_name" translatable="false"></string>
 </resources>
