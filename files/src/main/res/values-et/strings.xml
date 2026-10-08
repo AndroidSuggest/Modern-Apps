@@ -82,4 +82,16 @@
     <string name="ready_to_paste"><xliff:g id="count" example="3">%1$d</xliff:g> objekt(i) on valmis asetamiseks</string>
     <string name="create_failed">Faili või kausta loomine ei õnnestunud</string>
     <string name="zip_too_large_to_extract">Fail on lahtipakkimiseks liiga suur: vajalik oleks <xliff:g id="needed" example="4.2 GB">%1$s</xliff:g>, kuid on vaid <xliff:g id="available" example="1.1 GB">%2$s</xliff:g></string>
+    <string name="restored_n"><xliff:g id="count" example="3">%1$d</xliff:g> objekt(i) on taastatud</string>
+    <string name="delete_permanently_title">Kas kustutad <xliff:g id="count" example="3">%1$d</xliff:g> objekti lõplikult?</string>
+    <string name="trash_request_failed">Prügikastipäringu käivitamine ei õnnestu</string>
+    <string name="trash">Prügikast</string>
+    <string name="trash_empty">Prügikast on tühi</string>
+    <string name="restore">Taasta</string>
+    <string name="trash_auto_delete_note">Prügikastis olevad objektid kustutatakse lõplikult 30 päeva möödumisel</string>
+    <string name="delete_permanently_message">Seda tegevust ei saa tagasi pöörata. Kaustu ja mõningaid faile ei saa prügikasti visata.</string>
+    <string name="empty_trash">Tühjenda prügikast</string>
+    <string name="deleted_forever_n"><xliff:g id="count" example="3">%1$d</xliff:g> objekt(i) on lõplikult kustutatud</string>
+    <string name="delete_forever">Kustuta lõplikult</string>
+    <string name="moved_to_trash"><xliff:g id="count" example="3">%1$d</xliff:g> objekt(i) on visatud prügikasti</string>
 </resources>
