@@ -48,5 +48,4 @@
     <string name="search_result_star_fallback">Étoile <xliff:g id="star_id" example="123">%1$s</xliff:g></string>
     <string name="search_result_star_mag">Étoile – mag. <xliff:g id="magnitude" example="2.1">%1$s</xliff:g></string>
     <string name="search_result_constellation">Constellation <xliff:g id="constellation" example="Orion">%1$s</xliff:g></string>
-    <string name="settings"></string>
 </resources>
