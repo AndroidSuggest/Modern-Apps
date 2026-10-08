@@ -10,5 +10,4 @@
     <string name="moves">Drag</string>
     <string name="daily_challenge">Dagens utmaning</string>
     <string name="daily_streak">%1$d dagars svit</string>
-    <string name="app_name" translatable="false"></string>
 </resources>

@@ -10,5 +10,4 @@
     <string name="moves">Käigud</string>
     <string name="daily_challenge">Igapäevane ülesanne</string>
     <string name="daily_streak"><xliff:g id="days" example="5">%1$d</xliff:g> päeva järjest</string>
-    <string name="app_name" translatable="false"></string>
 </resources>

@@ -10,5 +10,4 @@
     <string name="moves">手数</string>
     <string name="daily_challenge">デイリーチャレンジ</string>
     <string name="daily_streak"><xliff:g id="days" example="5">%1$d</xliff:g> 日連続記録</string>
-    <string name="app_name" translatable="false"></string>
 </resources>
