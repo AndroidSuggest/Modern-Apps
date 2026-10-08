@@ -284,4 +284,10 @@
     <string name="join_request_failed">Impossible d’envoyer la demande — vérifiez votre connexion et réessayez.</string>
     <string name="insert_table_1">Insérer un tableau</string>
     <string name="speaker_notes_2">Notes du présentateur</string>
+    <string name="document_theme_follow_system"></string>
+    <string name="document_dark_mode"></string>
+    <string name="document_dark_mode_1"></string>
+    <string name="document_theme_unchanged"></string>
+    <string name="document_theme_summary"></string>
+    <string name="document_theme"></string>
 </resources>
