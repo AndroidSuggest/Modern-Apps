@@ -105,8 +105,8 @@ class GoogleVoiceClient(private val session: GoogleVoiceSession) {
         // TEMP diagnostic logging of raw protojson so the positional parser can be pinned to the
         // real wire shapes. Chunked because logcat truncates long lines.
         val body = response.body
-        Log.debug(TAG, "$path <= ${body.length} bytes")
-        body.chunked(LOG_CHUNK).forEachIndexed { i, chunk -> Log.debug(TAG, "$path[$i] $chunk") }
+        Log.dev(TAG, "$path <= ${body.length} bytes")
+        body.chunked(LOG_CHUNK).forEachIndexed { i, chunk -> Log.dev(TAG, "$path[$i] $chunk") }
         return body
     }
 

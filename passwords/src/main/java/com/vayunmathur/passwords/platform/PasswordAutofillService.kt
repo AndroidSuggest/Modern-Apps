@@ -159,7 +159,7 @@ class PasswordAutofillService : AutofillService() {
                     )
                 }
             } catch (expected: IllegalArgumentException) {
-                Log.debug(tag, "Could not create inline presentation", expected)
+                Log.dev(tag, "Could not create inline presentation", expected)
             }
         }
 

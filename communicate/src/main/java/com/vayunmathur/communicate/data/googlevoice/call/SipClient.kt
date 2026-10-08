@@ -189,12 +189,12 @@ class SipClient(
     // ------------------------------------------------------------------
 
     private suspend fun send(message: String) {
-        Log.debug(TAG, "SIP >>\n$message")
+        Log.dev(TAG, "SIP >>\n$message")
         socket?.send(message)
     }
 
     private fun handleIncoming(message: String) {
-        Log.debug(TAG, "SIP <<\n$message")
+        Log.dev(TAG, "SIP <<\n$message")
         val firstLine = message.lineSequence().firstOrNull()?.trim().orEmpty()
         val headers = parseHeaders(message)
         headers["to"]?.let { extractTag(it)?.let { t -> toTag = t } }

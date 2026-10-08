@@ -99,7 +99,7 @@ class RideTrackingService : Service() {
             }
 
             if (ride != null) {
-                Log.debug(TAG, "ride $rideId status=${ride.status} eta=${ride.pickupEtaSeconds}")
+                Log.dev(TAG, "ride $rideId status=${ride.status} eta=${ride.pickupEtaSeconds}")
                 notify(RideLiveUpdate.build(this, ride))
                 if (ride.status.isTerminal) {
                     Log.debug(TAG, "ride $rideId terminal; stopping")

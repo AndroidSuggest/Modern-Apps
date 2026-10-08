@@ -51,7 +51,7 @@ internal class AssistantToolIntents(private val context: Context) {
     }
 
     fun handleMissingApp(packageName: String): String {
-        Log.debug("AssistantToolSet", "Handling missing app: $packageName")
+        Log.dev("AssistantToolSet", "Handling missing app: $packageName")
         return getMissingAppMessage(packageName) +
             " Try to help the user with your own knowledge instead."
     }

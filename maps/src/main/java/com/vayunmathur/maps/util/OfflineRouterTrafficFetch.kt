@@ -31,7 +31,7 @@ internal object OfflineRouterTrafficFetch {
         packedSquare: Int,
         forceAsync: Boolean,
     ) {
-        Log.debug(
+        Log.dev(
             "TRAFFIC_DATA",
             "fetchTrafficData START: bbox ($minLat,$minLon)-($maxLat,$maxLon) " +
                 "packed=$packedSquare forceAsync=$forceAsync",
@@ -46,7 +46,7 @@ internal object OfflineRouterTrafficFetch {
                 Log.error("TRAFFIC_DATA", "fetchTrafficData ERROR")
                 OfflineRouter.finishTrafficFetch(packedSquare)
             }
-            Log.debug("TRAFFIC_DATA", "fetchTrafficData END: packed=$packedSquare")
+            Log.dev("TRAFFIC_DATA", "fetchTrafficData END: packed=$packedSquare")
         }
 
         if (forceAsync) {
@@ -79,7 +79,7 @@ internal object OfflineRouterTrafficFetch {
             url = "https://api.vayunmathur.com/maps/traffic" +
                 "?min_lat=$minLat&min_lon=$minLon&max_lat=$maxLat&max_lon=$maxLon",
         )
-        Log.debug(
+        Log.dev(
             "TRAFFIC_DATA",
             "fetchTrafficData NETWORK DONE: status=$status, size=${bytes.size}",
         )
@@ -134,7 +134,7 @@ internal object OfflineRouterTrafficFetch {
             compRatios[i] = buffer.get()
         }
 
-        Log.debug(
+        Log.dev(
             "TRAFFIC_DATA",
             "fetchTrafficData PROCESSING: $nBigI big edges, $nComponentI components",
         )

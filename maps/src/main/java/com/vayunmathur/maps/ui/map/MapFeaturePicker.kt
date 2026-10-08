@@ -183,7 +183,7 @@ class MapFeaturePicker(
          */
         fun PlacedLabel.toFeature1(): Feature1? {
             if (nativeToBase(layerId) == null) return null
-            Log.debug("RegionDbg", "pick layer=$layerId name=$name kind=$kind regionId=$regionId")
+            Log.dev("RegionDbg", "pick layer=$layerId name=$name kind=$kind regionId=$regionId")
             return Feature1(
                 Point(position),
                 JsonObject(

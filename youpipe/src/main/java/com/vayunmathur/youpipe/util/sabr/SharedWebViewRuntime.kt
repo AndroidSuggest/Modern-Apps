@@ -297,7 +297,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
             view.webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(message: ConsoleMessage): Boolean {
                     if (debuggable) {
-                        Log.debug(
+                        Log.dev(
                             TAG,
                             "console ${message.messageLevel()} ${message.message()}" +
                                 " @${message.sourceId()}:${message.lineNumber()}"

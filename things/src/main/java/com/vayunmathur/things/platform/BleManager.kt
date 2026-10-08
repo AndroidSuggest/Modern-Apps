@@ -255,7 +255,7 @@ class BleManager {
         } else {
             BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         }
-        Log.debug(TAG, "-> write $hex (props=0x${char.properties.toString(BOTTLE_HEX_RADIX)} type=$writeType)")
+        Log.dev(TAG, "-> write $hex (props=0x${char.properties.toString(BOTTLE_HEX_RADIX)} type=$writeType)")
         val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             g.writeCharacteristic(char, bytes, writeType)
         } else {
@@ -272,7 +272,7 @@ class BleManager {
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
-            Log.debug(TAG, "onConnectionStateChange status=$status newState=$newState")
+            Log.dev(TAG, "onConnectionStateChange status=$status newState=$newState")
             DeviceController.runOnMain {
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
@@ -306,7 +306,7 @@ class BleManager {
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
-            Log.debug(TAG, "onServicesDiscovered status=$status")
+            Log.dev(TAG, "onServicesDiscovered status=$status")
             if (status != BluetoothGatt.GATT_SUCCESS) return
             val service = g.getService(NOTIFY_SERVICE_UUID)
             if (service == null) {
@@ -336,18 +336,18 @@ class BleManager {
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             if (pendingRegistration) {
                 // First-time setup: exit factory mode + start registration (blue LED, button press).
-                Log.debug(TAG, "onDescriptorWrite status=$status; starting registration")
+                Log.dev(TAG, "onDescriptorWrite status=$status; starting registration")
                 enqueueCommand(CMD_EXIT_FACTORY_MODE, REQUEST_DELAY_MS)
                 enqueueCommand(CMD_REQUEST_REGISTRATION, REQUEST_DELAY_MS)
             } else {
                 // Notifications are on; kick off the handshake by asking for full bottle data.
-                Log.debug(TAG, "onDescriptorWrite status=$status; requesting bottle data")
+                Log.dev(TAG, "onDescriptorWrite status=$status; requesting bottle data")
                 enqueueCommand(CMD_REQUEST_DATA, REQUEST_DELAY_MS)
             }
         }
 
         override fun onCharacteristicWrite(g: BluetoothGatt, char: BluetoothGattCharacteristic, status: Int) {
-            Log.debug(TAG, "onCharacteristicWrite ${char.uuid} status=$status queued=${commandQueue.size}")
+            Log.dev(TAG, "onCharacteristicWrite ${char.uuid} status=$status queued=${commandQueue.size}")
             DeviceController.runOnMain {
                 writing = false
                 if (commandQueue.isNotEmpty()) writeNext()
@@ -360,7 +360,7 @@ class BleManager {
             value: ByteArray
         ) {
             if (char.uuid != NOTIFY_CHAR_UUID || value.size < 2) return
-            Log.debug(TAG, "<- notify ${value.toHex()}")
+            Log.dev(TAG, "<- notify ${value.toHex()}")
             DeviceController.runOnMain { dispatch(value) }
         }
 
@@ -398,7 +398,7 @@ class BleManager {
         // Response to a written text/LED signature (BleGattCallback → onSignatureResponse). It
         // has nothing to do with registration, and this app never writes a signature.
         if (b5 == RP_SIGNATURE_RESPONSE) {
-            Log.debug(TAG, "RP: signature response, ignored")
+            Log.dev(TAG, "RP: signature response, ignored")
             return
         }
 
@@ -435,7 +435,7 @@ class BleManager {
     }
 
     private fun logRpSnapshot(kind: String) {
-        Log.debug(
+        Log.dev(
             TAG,
             "RP $kind: temp=$curTemp batt=$curBattery charging=$curCharging " +
                 "tds=$curTds vol%=$curVolumePct",
@@ -445,7 +445,7 @@ class BleManager {
     /** Sync setting acknowledged; now request the water logs. True when handled. */
     private fun handleRpSyncAck(b2: Int, b3: Int): Boolean {
         if (b2 == RP_SNAPSHOT_B2 && b3 == RP_SYNC_ACK_B3) {
-            Log.debug(TAG, "RP: sync ack → request logs")
+            Log.dev(TAG, "RP: sync ack → request logs")
             enqueueCommand(CMD_REQUEST_LOGS, REQUEST_DELAY_MS)
             return true
         }
@@ -457,7 +457,7 @@ class BleManager {
     private fun handleRpLogAvailability(value: ByteArray, b5: Int): Boolean {
         if (b5 != RP_LOG_AVAILABILITY) return false
         val available = if (value.size > RP_FLAG_INDEX) value[RP_FLAG_INDEX].toInt() and BYTE_MASK else -1
-        Log.debug(TAG, "RP: water-log availability=$available")
+        Log.dev(TAG, "RP: water-log availability=$available")
         if (available == 0) {
             expectedLogs = 0
             parsedRecords = 0
@@ -470,13 +470,13 @@ class BleManager {
     private fun handleRpRegistration(value: ByteArray, b5: Int) {
         if (b5 != RP_REGISTRATION_STATE || !pendingRegistration) return
         val step = if (value.size > RP_FLAG_INDEX) value[RP_FLAG_INDEX].toInt() and BYTE_MASK else -1
-        Log.debug(TAG, "RP: registration step=$step")
+        Log.dev(TAG, "RP: registration step=$step")
         when (step) {
             RP_REG_PRESS_BUTTON -> DeviceController.connectionState.value = "Press the bottle button"
             RP_REG_DONE -> {
                 // Registration successful (and offline data cleared). Leave registration mode
                 // and proceed to the normal data flow so status/logs start syncing.
-                Log.debug(TAG, "RP: registration successful → requesting bottle data")
+                Log.dev(TAG, "RP: registration successful → requesting bottle data")
                 pendingRegistration = false
                 DeviceController.connectionState.value = "Connected"
                 enqueueCommand(CMD_REQUEST_DATA, REQUEST_DELAY_MS)
@@ -497,11 +497,11 @@ class BleManager {
                 return
             }
             RT_RECALIBRATE_SELECTOR -> {
-                Log.debug(TAG, "RT: recalibrate result=${value[RT_VALUE_INDEX].toInt() and BYTE_MASK}")
+                Log.dev(TAG, "RT: recalibrate result=${value[RT_VALUE_INDEX].toInt() and BYTE_MASK}")
                 return
             }
             else -> {
-                Log.debug(TAG, "RT: unhandled selector=0x${sel.toString(BOTTLE_HEX_RADIX)}")
+                Log.dev(TAG, "RT: unhandled selector=0x${sel.toString(BOTTLE_HEX_RADIX)}")
                 return
             }
         }
@@ -510,7 +510,7 @@ class BleManager {
     }
 
     private fun logRtState(value: ByteArray) {
-        Log.debug(
+        Log.dev(
             TAG,
             "RT sel=0x${(value[RT_SELECTOR_INDEX].toInt() and BYTE_MASK).toString(BOTTLE_HEX_RADIX)} " +
                 "→ temp=$curTemp batt=$curBattery charging=$curCharging tds=$curTds vol%=$curVolumePct",
@@ -534,7 +534,7 @@ class BleManager {
     private fun handleRtRegistration(value: ByteArray) {
         if (!pendingRegistration) return
         val result = value[RT_VALUE_INDEX].toInt() and BYTE_MASK
-        Log.debug(TAG, "RT: registration result=$result")
+        Log.dev(TAG, "RT: registration result=$result")
         when (result) {
             RT_REG_CONFIRMED -> {
                 DeviceController.connectionState.value = "Registering…"

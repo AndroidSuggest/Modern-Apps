@@ -75,7 +75,7 @@ class WebSocketClient private constructor(
         val frame = try {
             readFrame()
         } catch (e: IOException) {
-            if (!closed) Log.debug(TAG, "ws read error ${e.message}")
+            if (!closed) Log.dev(TAG, "ws read error ${e.message}")
             return false
         }
         when (frame) {

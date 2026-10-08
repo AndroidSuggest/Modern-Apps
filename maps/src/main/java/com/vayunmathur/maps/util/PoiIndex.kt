@@ -404,7 +404,7 @@ object PoiIndex {
         }
         return try {
             mapped = PoiIndexSideFiles.mapSideFiles(dir, indexFile, namesFile)
-            Log.debug(
+            Log.dev(
                 TAG,
                 "Loaded ${mapped?.count} POI records, names=${mapped?.namesLen}B, " +
                     "grid=${mapped?.cellCount ?: 0} cells, words=${mapped?.entryCount ?: 0}",
@@ -452,7 +452,7 @@ object PoiIndex {
             Log.status(TAG, "$ATTRS_FILE offset array runs past the file")
             return null
         }
-        Log.debug(TAG, "Loaded POI attributes for $attrCount record(s)")
+        Log.dev(TAG, "Loaded POI attributes for $attrCount record(s)")
         return buf to blobStart
     }
 
@@ -686,7 +686,7 @@ object PoiIndex {
     ): PoiAttributes? {
         val m = mapped
         if (m?.attrs == null) {
-            Log.debug(
+            Log.dev(
                 TAG,
                 "attributesNear: sidecar absent (index loaded=${m != null}); " +
                     "no attrs for \"$name\" at ($lat, $lon)",
@@ -700,7 +700,7 @@ object PoiIndex {
         for (rec in candidates) {
             val attrs = attributesAt(rec.ordinal)
             if (attrs != null) {
-                Log.debug(
+                Log.dev(
                     TAG,
                     "attributesNear: \"$name\" at ($lat, $lon) matched nothing by name; " +
                         "using nearest-with-attrs \"${rec.name}\"",
@@ -708,7 +708,7 @@ object PoiIndex {
                 return attrs
             }
         }
-        Log.debug(
+        Log.dev(
             TAG,
             "attributesNear: \"$name\" at ($lat, $lon) matched none of " +
                 "${candidates.size} candidate(s) within $maxMeters m",

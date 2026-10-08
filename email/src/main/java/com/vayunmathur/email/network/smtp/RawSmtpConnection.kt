@@ -42,7 +42,7 @@ class RawSmtpConnection(
     private var caps: Set<String> = emptySet()
 
     fun connect() {
-        Log.debug(TAG, "Connecting SMTP ${server.host}:${server.port} ssl=${server.useSsl}")
+        Log.dev(TAG, "Connecting SMTP ${server.host}:${server.port} ssl=${server.useSsl}")
         val s: Socket = if (server.useSsl) {
             TrustAll.createSocket(server.host, server.port, trustAll || !TrustAll.isKnownHost(server.host))
         } else {
@@ -184,7 +184,7 @@ class RawSmtpConnection(
             cmd.startsWith("AUTH ") -> cmd.substringBefore(' ') + " [redacted]"
             else -> cmd
         }
-        Log.debug(TAG, "C> $redacted")
+        Log.dev(TAG, "C> $redacted")
         val w = writer ?: throw IOException("Not connected")
         w.write(cmd)
         w.write("\r\n")
@@ -198,7 +198,7 @@ class RawSmtpConnection(
         while (line != null) {
             val current = line
             lines.add(current)
-            Log.debug(TAG, "S> $current")
+            Log.dev(TAG, "S> $current")
             // Multiline SMTP: 250- continues, 250 ends. Check separator char after the code.
             // If line[3] == '-' keep reading
             line = if (isLastReplyLine(current)) null else r.readLine()

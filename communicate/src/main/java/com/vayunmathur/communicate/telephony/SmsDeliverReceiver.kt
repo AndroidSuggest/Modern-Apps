@@ -64,7 +64,7 @@ class SmsDeliverReceiver : BroadcastReceiver() {
             if (subscriptionId >= 0) put(Telephony.Sms.SUBSCRIPTION_ID, subscriptionId)
         }
         context.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, values)
-        Log.debug(TAG, "stored inbound SMS parts=${parts.size} thread=$threadId")
+        Log.dev(TAG, "stored inbound SMS parts=${parts.size} thread=$threadId")
 
         if (address != null) {
             ConversationSpace.ensureIncomingChannel(

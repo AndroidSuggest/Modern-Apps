@@ -84,7 +84,7 @@ class RawImapConnection(
     private fun readLineWithLiteral(): Pair<String, ByteArray?>? = wire.readLineWithLiteral()
 
     fun connect() {
-        Log.debug(TAG, "Connecting to ${server.host}:${server.port} ssl=${server.useSsl} trustAll=$trustAll")
+        Log.dev(TAG, "Connecting to ${server.host}:${server.port} ssl=${server.useSsl} trustAll=$trustAll")
         val s: Socket = if (server.useSsl) {
             TrustAll.createSocket(server.host, server.port, trustAll)
         } else {
@@ -99,7 +99,7 @@ class RawImapConnection(
         output = BufferedOutputStream(s.getOutputStream())
 
         val greeting = readLineWithLiteral()?.first ?: ""
-        Log.debug(TAG, "Greeting: $greeting")
+        Log.dev(TAG, "Greeting: $greeting")
         if (greeting.startsWith("* BYE") || greeting.startsWith("* BAD")) {
             throw IOException("IMAP server rejected: $greeting")
         }
@@ -117,7 +117,7 @@ class RawImapConnection(
         upgraded.soTimeout = SOCKET_TIMEOUT_MS
         input = BufferedInputStream(upgraded.inputStream)
         output = BufferedOutputStream(upgraded.outputStream)
-        Log.debug(TAG, "STARTTLS upgraded")
+        Log.dev(TAG, "STARTTLS upgraded")
     }
 
     fun capability(): ImapCapabilities {
@@ -144,7 +144,7 @@ class RawImapConnection(
             .split(Regex("\\s+"))
             .filter { it.isNotBlank() }
             .toSet()
-        Log.debug(TAG, "CAPABILITY $allCaps final=$last")
+        Log.dev(TAG, "CAPABILITY $allCaps final=$last")
         return ImapCapabilities(allCaps)
     }
 
@@ -191,7 +191,7 @@ class RawImapConnection(
         if (accum.finalLine.contains(" OK ", ignoreCase = true)) return accum.finalLine
 
         // If BAD/NO, retry challenge/response variant
-        Log.debug(TAG, "XOAUTH2 inline failed: ${accum.finalLine}, trying CR")
+        Log.dev(TAG, "XOAUTH2 inline failed: ${accum.finalLine}, trying CR")
         tag = nextTag()
         sendLine("$tag AUTHENTICATE XOAUTH2")
         val continuation = readLineWithLiteral()?.first ?: ""
@@ -437,7 +437,7 @@ class RawImapConnection(
         } else {
             line
         }
-        Log.debug(TAG, "C> $preview")
+        Log.dev(TAG, "C> $preview")
     }
 
     private fun escapeString(s: String): String {

@@ -184,7 +184,7 @@ fun CameraViewModel.ensureLensesEnumerated(provider: ProcessCameraProvider) {
         selectedLensMutable.value = LensSelectionLogic.filterByFacing(all, facing)
             .minByOrNull { it.fallbackPriority }
     }
-    Log.debug("LensSelector", "Enumerated ${all.size} lenses; selected=${selectedLensMutable.value?.labelKey}")
+    Log.dev("LensSelector", "Enumerated ${all.size} lenses; selected=${selectedLensMutable.value?.labelKey}")
 }
 
 /** Lenses of the current facing, ordered by fallback priority. */

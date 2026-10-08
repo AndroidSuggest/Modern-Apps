@@ -78,8 +78,8 @@ private fun LocationTrackingService.logHeartbeatSummary(
 ) {
     val userId = Networking.userid
     val loc = "${location.latitude},${location.longitude} acc=${location.accuracy}"
-    Log.debug("FF-Heartbeat", "heartbeat userid=${userId.toULong()} self raw=$userId users=$userCount")
-    Log.debug("FF-Heartbeat", "heartbeat links=$linkCount moving=$isMoving loc=$loc")
+    Log.dev("FF-Heartbeat", "heartbeat userid=${userId.toULong()} self raw=$userId users=$userCount")
+    Log.dev("FF-Heartbeat", "heartbeat links=$linkCount moving=$isMoving loc=$loc")
 }
 
 private suspend fun LocationTrackingService.upsertSelfLocation(
@@ -130,7 +130,7 @@ private suspend fun LocationTrackingService.applyTimerAutoToggles(
     try {
         val flipped = repository.applyDueAutoToggles(now.epochSeconds)
         if (flipped > 0) {
-            Log.debug("FF-Heartbeat", "auto-toggle flipped $flipped user(s), reloading sharing state")
+            Log.dev("FF-Heartbeat", "auto-toggle flipped $flipped user(s), reloading sharing state")
             // Reload fresh sharing flags so we don't publish once after an intended disable,
             // and we start publishing immediately after an intended enable.
             return repository.getAllUsers()
@@ -158,7 +158,7 @@ private suspend fun LocationTrackingService.applyArrivalAutoToggles(
         if (insideWaypointIds.isNotEmpty()) {
             val flippedArrival = repository.applyDueArrivalToggles(insideWaypointIds)
             if (flippedArrival > 0) {
-                Log.debug("FF-Heartbeat", "arrival auto-toggle flipped $flippedArrival user(s), reloading")
+                Log.dev("FF-Heartbeat", "arrival auto-toggle flipped $flippedArrival user(s), reloading")
                 return repository.getAllUsers()
             }
         }
@@ -182,8 +182,8 @@ private suspend fun LocationTrackingService.publishHeartbeat(
     else publishBaseUsers.filter { it.id != Networking.userid && it.sendingEnabled }
     val targetIds = publishTargets.map { it.id.toULong() }
     val targetNames = publishTargets.map { it.name }
-    Log.debug("FF-Heartbeat", "publish targets count=${publishTargets.size} ids=$targetIds names=$targetNames")
-    Log.debug("FF-Heartbeat", "publish globalSharing=$sharingOut")
+    Log.dev("FF-Heartbeat", "publish targets count=${publishTargets.size} ids=$targetIds names=$targetNames")
+    Log.dev("FF-Heartbeat", "publish globalSharing=$sharingOut")
     publishTargets.forEach {
         val result = runCatching { Networking.publishLocation(locationValue, it) }
         if (result.isFailure) {

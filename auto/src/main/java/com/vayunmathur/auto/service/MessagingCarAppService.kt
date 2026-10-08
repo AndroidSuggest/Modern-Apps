@@ -68,7 +68,7 @@ class MessagingCarAppService(
         // posts, a future extension) is observed and ignored.
         val action = MessagingCodec.decodeInbound(type, payload)
         if (action == null) {
-            Log.debug(TAG, "unhandled messaging message 0x${type.toString(HEX_RADIX)}")
+            Log.dev(TAG, "unhandled messaging message 0x${type.toString(HEX_RADIX)}")
             return
         }
         when (action) {
@@ -132,7 +132,7 @@ class MessagingCarAppService(
     /** Fires the thread's mark-read intent, if the app advertised one. */
     private fun sendMarkRead(threadId: String) {
         val readIntent = routes[threadId]?.readIntent ?: run {
-            Log.debug(TAG, "mark-read for $threadId with no app route")
+            Log.dev(TAG, "mark-read for $threadId with no app route")
             return
         }
         runCatching { readIntent.send() }

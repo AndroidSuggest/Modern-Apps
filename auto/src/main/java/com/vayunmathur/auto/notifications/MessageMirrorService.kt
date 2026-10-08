@@ -28,7 +28,7 @@ class MessageMirrorService : NotificationListenerService() {
         val (thread, message) = extract(sbn) ?: return
         MessageMirrorBus.post(thread, message, replyRoute(sbn))
         activeCount.incrementAndGet()
-        Log.debug(TAG, "mirrored message for thread ${thread.threadId}")
+        Log.dev(TAG, "mirrored message for thread ${thread.threadId}")
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {

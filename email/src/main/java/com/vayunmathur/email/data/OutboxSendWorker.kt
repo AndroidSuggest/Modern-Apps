@@ -82,7 +82,7 @@ class OutboxSendWorker(
         }
         return when (val sendResult = trySend(manager, account, entry, uris, inline)) {
             is SendResult.Success -> {
-                Log.debug(TAG, "Sent outbox entry #${entry.id} to ${entry.to}")
+                Log.dev(TAG, "Sent outbox entry #${entry.id} to ${entry.to}")
                 attachmentDirFor(applicationContext, entry.id).deleteRecursively()
                 repository.deleteOutboxEntry(entry)
                 EntryOutcome(false, Long.MAX_VALUE)

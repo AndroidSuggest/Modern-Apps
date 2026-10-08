@@ -61,7 +61,7 @@ class MmsDeliverReceiver : BroadcastReceiver() {
                 Log.status(TAG, "no SmsManager"); return
             }
             sms.downloadMultimediaMessage(context, location, contentUri, null, pi)
-            Log.debug(TAG, "MMS download triggered for $location")
+            Log.dev(TAG, "MMS download triggered for $location")
         }.onFailure { Log.error(TAG, "handlePush failed", it) }
     }
 
@@ -73,7 +73,7 @@ class MmsDeliverReceiver : BroadcastReceiver() {
                 val bytes = File(path).readBytes()
                 val msg = MmsPduReader.parseRetrieved(bytes)
                 insertInboundMms(context, msg)
-                Log.debug(TAG, "MMS stored from=${msg.from} parts=${msg.parts.size}")
+                Log.dev(TAG, "MMS stored from=${msg.from} parts=${msg.parts.size}")
             }.onFailure { Log.error(TAG, "handleDownloaded failed", it) }
             runCatching { File(path).delete() }
             pending.finish()

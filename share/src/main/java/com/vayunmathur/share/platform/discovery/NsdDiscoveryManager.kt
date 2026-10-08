@@ -192,7 +192,7 @@ class NsdDiscoveryManager(private val context: Context) {
         }
 
         override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {
-            Log.debug(TAG, "unregistered ${serviceInfo.serviceName}")
+            Log.dev(TAG, "unregistered ${serviceInfo.serviceName}")
         }
 
         override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
@@ -276,20 +276,20 @@ class NsdDiscoveryManager(private val context: Context) {
 
     private fun parseDiscoveredRecord(instance: String, info: NsdServiceInfo): DiscoveredPeer? {
         val serviceInfoBytes = decodeBase64(instance) ?: run {
-            Log.debug(TAG, "skipping $instance: instance name is not Base64")
+            Log.dev(TAG, "skipping $instance: instance name is not Base64")
             return null
         }
         val endpointInfoBytes = textAttribute(info, TXT_ENDPOINT_INFO)?.let(::decodeBase64)
         if (endpointInfoBytes == null) {
-            Log.debug(TAG, "skipping $instance: no usable '$TXT_ENDPOINT_INFO' attribute")
+            Log.dev(TAG, "skipping $instance: no usable '$TXT_ENDPOINT_INFO' attribute")
             return null
         }
         val wifiLan = ShareNativeDiscovery.parseWifiLanServiceInfo(serviceInfoBytes) ?: run {
-            Log.debug(TAG, "skipping $instance: not a WifiLanServiceInfo")
+            Log.dev(TAG, "skipping $instance: not a WifiLanServiceInfo")
             return null
         }
         val endpointInfo = ShareNativeDiscovery.parseEndpointInfo(endpointInfoBytes) ?: run {
-            Log.debug(TAG, "skipping $instance: endpoint info would be rejected")
+            Log.dev(TAG, "skipping $instance: endpoint info would be rejected")
             return null
         }
         return DiscoveredPeer(wifiLan.endpointId, endpointInfo.deviceName)
@@ -309,11 +309,11 @@ class NsdDiscoveryManager(private val context: Context) {
         }
         val listener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(regType: String) {
-                Log.debug(TAG, "discovery started: $regType")
+                Log.dev(TAG, "discovery started: $regType")
             }
 
             override fun onServiceFound(service: NsdServiceInfo) {
-                Log.debug(TAG, "found: ${service.serviceName} type=${service.serviceType}")
+                Log.dev(TAG, "found: ${service.serviceName} type=${service.serviceType}")
                 try {
                     mgr.resolveService(service, object : NsdManager.ResolveListener {
                         override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) {
@@ -341,14 +341,14 @@ class NsdDiscoveryManager(private val context: Context) {
             }
 
             override fun onServiceLost(service: NsdServiceInfo) {
-                Log.debug(TAG, "lost: ${service.serviceName}")
+                Log.dev(TAG, "lost: ${service.serviceName}")
                 _discoveredDevices.value = _discoveredDevices.value.filterNot {
                     it.serviceName == service.serviceName
                 }
             }
 
             override fun onDiscoveryStopped(serviceType: String) {
-                Log.debug(TAG, "discovery stopped: $serviceType")
+                Log.dev(TAG, "discovery stopped: $serviceType")
             }
 
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {

@@ -137,7 +137,7 @@ class WeatherGlanceWidget : GlanceAppWidget() {
                 isDay = current.isDay != 0,
             )
         } catch (e: Exception) {
-            Log.debug("WeatherWidget", "no cached snapshot yet", e)
+            Log.dev("WeatherWidget", "no cached snapshot yet", e)
             null
         }
     }

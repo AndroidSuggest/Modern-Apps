@@ -289,7 +289,7 @@ class GalleryViewModel(
                     val results = withContext(Dispatchers.IO) {
                         combinedSearch(query)
                     }
-                    Log.debug(TAG, "Search '$query' returned ${results.size} photos")
+                    Log.dev(TAG, "Search '$query' returned ${results.size} photos")
                     _searchResults.value = results
                 }
         }

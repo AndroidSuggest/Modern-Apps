@@ -102,7 +102,7 @@ object UberAuth {
             Log.status(TAG, "submit-form ${resp.status}: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
             return UberAuthResult.Failed("HTTP ${resp.status}: ${resp.body.take(ERROR_BODY_PREVIEW_MAX)}")
         }
-        Log.debug(TAG, "submit-form ok: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
+        Log.dev(TAG, "submit-form ok: ${resp.body.take(LOG_BODY_PREVIEW_MAX)}")
         val container = runCatching {
             json.decodeFromString(FormContainer.serializer(), resp.body)
         }.getOrElse { return UberAuthResult.Failed("Unreadable silkscreen response") }

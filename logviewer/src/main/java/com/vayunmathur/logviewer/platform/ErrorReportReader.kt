@@ -109,7 +109,7 @@ internal object ErrorReportReader {
         return try {
             GZIPInputStream(ByteArrayInputStream(gzipped)).use { it.readBytes() }
         } catch (e: IOException) {
-            Log.debug(TAG, "corrupt gzipped message", e)
+            Log.dev(TAG, "corrupt gzipped message", e)
             null
         }
     }

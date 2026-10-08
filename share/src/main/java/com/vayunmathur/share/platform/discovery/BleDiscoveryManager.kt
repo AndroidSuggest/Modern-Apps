@@ -102,7 +102,7 @@ class BleDiscoveryManager(private val context: Context) {
         // `data` nests the Sharing blob inside the Nearby Connections envelope; the
         // envelope is what carries the peer's endpoint id.
         val endpointInfo = ShareNativeDiscovery.nativeParseBleEndpointInfo(data) ?: run {
-            Log.debug(
+            Log.dev(
                 TAG,
                 "skipping $addr: not a NearbySharing endpoint payload (" +
                     data.joinToString("") { "%02x".format(it) } + ")",
@@ -110,7 +110,7 @@ class BleDiscoveryManager(private val context: Context) {
             return null
         }
         val fields = ShareNativeDiscovery.parseEndpointInfo(endpointInfo) ?: run {
-            Log.debug(
+            Log.dev(
                 TAG,
                 "skipping $addr: endpoint info not parseable (" +
                     endpointInfo.joinToString("") { "%02x".format(it) } + ")",

@@ -51,8 +51,8 @@ fun UberWebView(
                         object {
                             @JavascriptInterface
                             fun onGraphql(operation: String, variables: String, response: String) {
-                                Log.debug(TAG, "GQL $operation vars=$variables")
-                                Log.debug(TAG, "GQL $operation resp=${response.take(GRAPHQL_RESPONSE_LOG_MAX)}")
+                                Log.dev(TAG, "GQL $operation vars=$variables")
+                                Log.dev(TAG, "GQL $operation resp=${response.take(GRAPHQL_RESPONSE_LOG_MAX)}")
                                 post {
                                     onGraphqlCaptured(
                                         UberGraphqlCapture(operation, variables, response),
@@ -62,7 +62,7 @@ fun UberWebView(
 
                             @JavascriptInterface
                             fun onLog(msg: String) {
-                                Log.debug(TAG, "js: $msg")
+                                Log.dev(TAG, "js: $msg")
                             }
                         },
                         "AndroidUber",
@@ -77,8 +77,8 @@ fun UberWebView(
                         }
 
                         override fun onPageFinished(view: WebView, url: String?) {
-                            Log.debug(TAG, "PAGE $url")
-                            Log.debug(TAG, "COOKIES ${UberCookies.names(UberWeb.HOME)}")
+                            Log.dev(TAG, "PAGE $url")
+                            Log.dev(TAG, "COOKIES ${UberCookies.names(UberWeb.HOME)}")
                             if (url == null) return
                             val session = UberSession(view.context.applicationContext)
                             scope.launch {

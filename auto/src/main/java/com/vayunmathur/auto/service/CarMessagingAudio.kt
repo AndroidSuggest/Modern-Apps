@@ -44,7 +44,7 @@ class CarMessagingAudio(
         }
         channel.beginTurn { pcm ->
             if (pcm.isEmpty()) {
-                Log.debug(TAG, "mic turn for $threadId yielded nothing")
+                Log.dev(TAG, "mic turn for $threadId yielded nothing")
                 return@beginTurn
             }
             transcribe(pcm) { text ->
@@ -52,7 +52,7 @@ class CarMessagingAudio(
                     Log.status(TAG, "mic turn for $threadId transcribed ${text.length} chars")
                     onResult(text)
                 } else {
-                    Log.debug(TAG, "mic turn for $threadId transcribed nothing")
+                    Log.dev(TAG, "mic turn for $threadId transcribed nothing")
                 }
             }
             // The turn stays open until the head unit ends it; the service

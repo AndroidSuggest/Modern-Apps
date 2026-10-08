@@ -28,14 +28,14 @@ internal fun ScaleBleManager.makeScanCallback(): ScanCallback = object : ScanCal
         result.scanRecord?.manufacturerSpecificData?.let { data ->
             if (data.size() > 0) data.valueAt(0)?.let {
                 manufacturerData[addr] = it
-                Log.debug(
+                Log.dev(
                     ScaleBleManager.TAG,
                     "scan $name company=0x${data.keyAt(0).toString(HEX_RADIX)} mfg=${it.toHex()} " +
                         "category=${qnScaleCategory(it)} " +
                         "encryptRes=${qnUsesResistanceEncrypt(qnScaleCategory(it), it)}",
                 )
             }
-        } ?: Log.debug(ScaleBleManager.TAG, "scan $name (no manufacturer data)")
+        } ?: Log.dev(ScaleBleManager.TAG, "scan $name (no manufacturer data)")
         if (DeviceController.scaleDevices.none { it.address == addr }) {
             DeviceController.scaleDevices.add(ScaleBleManager.ScaleBleDevice(name ?: "Scale", addr))
         }
@@ -55,7 +55,7 @@ internal fun ScaleBleManager.makeWatchCallback(): ScanCallback = object : ScanCa
         result.scanRecord?.manufacturerSpecificData?.let { data ->
             if (data.size() > 0) data.valueAt(0)?.let { manufacturerData[result.device.address] = it }
         }
-        Log.debug(ScaleBleManager.TAG, "scale woke up; connecting")
+        Log.dev(ScaleBleManager.TAG, "scale woke up; connecting")
         stopWatch()
         openGattFor(result.device)
     }
@@ -110,7 +110,7 @@ internal fun ScaleBleManager.startWatchNow(address: String, watchCallback: ScanC
         .build()
     runCatching { scanner?.startScan(filters, settings, watchCallback) }
         .onFailure { Log.error(ScaleBleManager.TAG, "watch scan failed to start", it) }
-    Log.debug(ScaleBleManager.TAG, "watching for $address to wake up")
+    Log.dev(ScaleBleManager.TAG, "watching for $address to wake up")
     DeviceController.scaleLink.value = DeviceController.LinkState.Waiting
     DeviceController.scaleConnectionState.value = SCALE_WAITING_STATE
 }
@@ -139,7 +139,7 @@ internal fun ScaleBleManager.openGattNow(device: BluetoothDevice) {
         useResistanceEncrypt = DeviceController.savedScaleEncryptsResistance()
     }
     isVaScale = scaleCategory in VA_CATEGORIES
-    Log.debug(
+    Log.dev(
         ScaleBleManager.TAG,
         "connect $address category=$scaleCategory va=$isVaScale encryptRes=$useResistanceEncrypt",
     )

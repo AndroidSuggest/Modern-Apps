@@ -251,7 +251,7 @@ class InferenceService : Service() {
                 Log.status("InferenceService", "Queueing Intent Inference request")
                 intentQueue.trySend(InferenceJob.Intent(userText, imagePaths, schema, receiver))
             } else if (conversationId != -1L) {
-                Log.debug("InferenceService", "Queueing standard inference for conversation: $conversationId")
+                Log.dev("InferenceService", "Queueing standard inference for conversation: $conversationId")
                 standardQueue.trySend(InferenceJob.Standard(conversationId, userText, imagePaths, audioPath))
             }
         }
@@ -487,7 +487,7 @@ class InferenceService : Service() {
                     EMBEDDING_OK_CODE,
                     Bundle().apply { putString("json_result", finalJson) },
                 )
-                Log.debug("InferenceService", "AI produced output: $finalJson")
+                Log.dev("InferenceService", "AI produced output: $finalJson")
                 return
             }
         }

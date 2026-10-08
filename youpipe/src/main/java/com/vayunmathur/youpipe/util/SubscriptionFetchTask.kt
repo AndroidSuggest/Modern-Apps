@@ -18,12 +18,12 @@ import kotlinx.coroutines.CancellationException
 class SubscriptionFetchTask(context: Context, params: WorkerParameters) :
         CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        Log.debug("SubscriptionFetchTask", "Starting...")
+        Log.dev("SubscriptionFetchTask", "Starting...")
         return try {
             val repository = SubscriptionRepository.get(applicationContext)
 
             val subscriptions = repository.getAllSubscriptions()
-            Log.debug("SubscriptionFetchTask", "Fetched ${subscriptions.size} subscriptions")
+            Log.dev("SubscriptionFetchTask", "Fetched ${subscriptions.size} subscriptions")
 
             subscriptions.forEachIndexed { index, sub ->
                 fetchAndStoreChannelVideos(repository, sub)
@@ -31,7 +31,7 @@ class SubscriptionFetchTask(context: Context, params: WorkerParameters) :
             }
             Result.success()
         } catch (e: CancellationException) {
-            Log.debug("SubscriptionFetchTask", "Task cancelled")
+            Log.dev("SubscriptionFetchTask", "Task cancelled")
             throw e
         } catch (e: java.net.UnknownHostException) {
             Log.error("SubscriptionFetchTask", "Offline during fetch, retrying", e)

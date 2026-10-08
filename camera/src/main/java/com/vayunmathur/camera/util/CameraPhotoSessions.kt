@@ -31,7 +31,7 @@ internal const val PORTRAIT_ANALYSIS_HEIGHT = 768
 internal var boundLensIdField: String? = null
 
 suspend fun CameraViewModel.setupNightPreviewSession(): Boolean {
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setupNightPreviewSession() ENTRY thread=${Thread.currentThread().name} " +
             "lens=${lensFacingMutable.value} surfaceBefore=${surfaceRequestMutable.value?.resolution}"
@@ -82,9 +82,9 @@ internal data class NightPreviewPrep(
 internal suspend fun CameraViewModel.prepareNightPreview(): NightPreviewPrep? {
     val provider = ProcessCameraProvider.awaitInstance(app)
     cameraProvider = provider
-    Log.debug("NightPreview", "setupNightPreviewSession() got cameraProvider=$provider")
+    Log.dev("NightPreview", "setupNightPreviewSession() got cameraProvider=$provider")
     val mgr = getExtensionsManager(provider)
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setupNightPreviewSession() ExtensionsManager=${mgr != null} cacheExt=${extensionsManager != null}"
     )
@@ -98,10 +98,10 @@ internal suspend fun CameraViewModel.prepareNightPreview(): NightPreviewPrep? {
     val requestedNightLens = selectedLensMutable.value
     val baseSelector = lensSelector(lensFacingMutable.value, requestedNightLens)
     if (!isNightExtensionSupported(mgr, baseSelector)) return null
-    Log.debug("NightPreview", "setupNightPreviewSession() unbinding all before night selector")
+    Log.dev("NightPreview", "setupNightPreviewSession() unbinding all before night selector")
     try {
         provider.unbindAll()
-        Log.debug("NightPreview", "setupNightPreviewSession() provider.unbindAll SUCCESS")
+        Log.dev("NightPreview", "setupNightPreviewSession() provider.unbindAll SUCCESS")
     } catch (e: IllegalStateException) {
         Log.error("NightPreview", "setupNightPreviewSession() unbindAll FAILED (was hidden)", e)
         throw e
@@ -119,7 +119,7 @@ internal suspend fun CameraViewModel.prepareNightPreview(): NightPreviewPrep? {
 
     val preview = Preview.Builder().build()
     preview.setSurfaceProvider { request ->
-        Log.debug("NightPreview", "setupNightPreviewSession() NEW surfaceRequest emitted res=${request.resolution}")
+        Log.dev("NightPreview", "setupNightPreviewSession() NEW surfaceRequest emitted res=${request.resolution}")
         surfaceRequestMutable.value = request
     }
 
@@ -157,7 +157,7 @@ internal fun CameraViewModel.isNightExtensionSupported(
         Log.error("NightPreview", "setupNightPreviewSession() isExtensionAvailable threw (was hidden)", e)
         false
     }
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setupNightPreviewSession() isExtensionAvailable(NIGHT)=$extAvail lens=${lensFacingMutable.value}"
     )
@@ -186,7 +186,7 @@ internal fun CameraViewModel.isNightAnalysisSupported(
         Log.error("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported query FAILED", e)
         false
     }
-    Log.debug("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported=$analysisSupported")
+    Log.dev("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported=$analysisSupported")
     return analysisSupported
 }
 
@@ -219,7 +219,7 @@ internal fun CameraViewModel.bindNightPreview(session: NightPreviewPrep) {
 
 /** Binds the night extension use cases, with or without the analysis stream. */
 internal fun CameraViewModel.bindNightUseCases(session: NightPreviewPrep, withAnalysis: Boolean): Camera {
-    Log.debug("NightPreview", "setupNightPreviewSession() bind(withAnalysis=$withAnalysis) START")
+    Log.dev("NightPreview", "setupNightPreviewSession() bind(withAnalysis=$withAnalysis) START")
     return if (withAnalysis) {
         val analysis = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -240,7 +240,7 @@ internal fun CameraViewModel.bindNightUseCases(session: NightPreviewPrep, withAn
 /** Marks the night preview active and wires extension observers. */
 internal suspend fun CameraViewModel.finishNightPreview(session: NightPreviewPrep) {
     val zs = boundCamera?.cameraInfo?.zoomState?.value
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setupNightPreviewSession() boundCamera zoomState min=${zs?.minZoomRatio} " +
             "max=${zs?.maxZoomRatio} current=${zs?.zoomRatio} – vendor NIGHT extension often reports " +
@@ -262,7 +262,7 @@ internal suspend fun CameraViewModel.finishNightPreview(session: NightPreviewPre
     onSessionBound()
     nightPreviewActiveMutable.value = true
     photoSessionActiveMutable.value = true
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setupNightPreviewSession() SUCCESS – nightPreviewActive=true photoSessionActive=true " +
             "surfaceRequest=${surfaceRequestMutable.value?.resolution}"
@@ -293,7 +293,7 @@ internal suspend fun CameraViewModel.fallbackToPhotoSession(): Boolean {
         )
         false
     }
-    Log.debug("NightPreview", "setupNightPreviewSession() fallback result=$fallback")
+    Log.dev("NightPreview", "setupNightPreviewSession() fallback result=$fallback")
     return fallback
 }
 
@@ -373,7 +373,7 @@ internal suspend fun CameraViewModel.preparePanoramaSession(): PanoSessionPrep {
 internal fun CameraViewModel.bindPanoLadder(session: PanoSessionPrep) {
     var panoBoundLensId: String? = null
     boundCamera = try {
-        Log.debug("NightPreview", "setupPanoramaSession() bind capped=true START")
+        Log.dev("NightPreview", "setupPanoramaSession() bind capped=true START")
         val (lens, camera) = bindWithFallback(session.provider, session.panoLens, session.panoFamily) {
             lensSel ->
             bindPanoUseCases(session, lensSel, capped = true)
@@ -466,7 +466,7 @@ internal fun CameraViewModel.bindPanoUseCases(
 /** Refreshes capabilities and marks the panorama session active. */
 internal suspend fun CameraViewModel.finishPanoramaSession() {
     val zsP = boundCamera?.cameraInfo?.zoomState?.value
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setupPanoramaSession() bound zoom min=${zsP?.minZoomRatio} max=${zsP?.maxZoomRatio} " +
             "ratio=${zsP?.zoomRatio}"
@@ -474,7 +474,7 @@ internal suspend fun CameraViewModel.finishPanoramaSession() {
     boundCamera?.let { refreshCapabilities(it, boundLensIdField) }
     onSessionBound()
     photoSessionActiveMutable.value = true
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setupPanoramaSession() SUCCESS photoActive=true " +
             "surface=${surfaceRequestMutable.value?.resolution}"

@@ -75,13 +75,13 @@ class MicSourceChannel(
             return
         }
         if (type == GalMessage.Microphone.REQUEST) {
-            Log.debug(TAG, "mic request (${payload.size}B); acking")
+            Log.dev(TAG, "mic request (${payload.size}B); acking")
             ack()
             return
         }
         val chunk = AudioCodec.decodeMicData(type, payload)
         if (chunk == null) {
-            Log.debug(TAG, "unhandled mic message 0x${type.toString(HEX_RADIX)}")
+            Log.dev(TAG, "unhandled mic message 0x${type.toString(HEX_RADIX)}")
             return
         }
         val target = handler ?: run {
@@ -132,7 +132,7 @@ class MicSourceChannel(
                 onEvent(AudioEvent.MicTurn(pcm.size.toLong()))
                 callback(pcm)
             } else {
-                Log.debug(TAG, "mic turn ended with ${pcm.size}B; yielding nothing")
+                Log.dev(TAG, "mic turn ended with ${pcm.size}B; yielding nothing")
             }
         }
     }

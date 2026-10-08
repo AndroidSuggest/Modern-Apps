@@ -141,7 +141,7 @@ object GoogleVoiceWebSender {
                 filePathCallback: ValueCallback<Array<Uri>>?,
                 fileChooserParams: FileChooserParams?,
             ): Boolean {
-                Log.debug(TAG, "file chooser requested for ${currentAttachments.size} attachment(s)")
+                Log.dev(TAG, "file chooser requested for ${currentAttachments.size} attachment(s)")
                 filePathCallback?.onReceiveValue(currentAttachments.toTypedArray())
                 return true
             }
@@ -161,13 +161,13 @@ object GoogleVoiceWebSender {
     private class Bridge {
         @JavascriptInterface
         fun onBody(body: String) {
-            Log.debug(TAG, "captured sendsms body (${body.length} bytes)")
+            Log.dev(TAG, "captured sendsms body (${body.length} bytes)")
             pending?.complete(body)
         }
 
         @JavascriptInterface
         fun log(msg: String) {
-            Log.debug(TAG, msg)
+            Log.dev(TAG, msg)
         }
     }
 

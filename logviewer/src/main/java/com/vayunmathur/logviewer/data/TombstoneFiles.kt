@@ -49,7 +49,7 @@ internal object TombstoneFiles {
                     return candidate
                 }
             } catch (e: IOException) {
-                Log.debug(TAG, "unable to read ${candidate.file}", e)
+                Log.dev(TAG, "unable to read ${candidate.file}", e)
             }
         }
         return null

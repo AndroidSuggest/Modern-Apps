@@ -263,7 +263,7 @@ private fun CameraViewModel.tryHfrBind(
             configBuilder.build()
         )
         sloMoFps = range.upper
-        Log.debug(
+        Log.dev(
             "SloMo",
             "High-speed session bound at ${range.upper}fps (range=$range) " +
                 "lens=${candidate?.labelKey}, quality=${session.orderedQualities}"
@@ -307,7 +307,7 @@ private fun CameraViewModel.applyAntiBanding() {
 /** Refreshes capabilities and marks the high-speed session active. */
 private suspend fun CameraViewModel.finishHighSpeedSession() {
     val zoomAfter = boundCamera?.cameraInfo?.zoomState?.value
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setupHighSpeedSession() after levels=${availableZoomLevelsMutable.value} " +
             "ratio=${zoomRatioMutable.value} min=${zoomAfter?.minZoomRatio} max=${zoomAfter?.maxZoomRatio}"

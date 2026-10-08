@@ -118,7 +118,7 @@ class AudioSinkChannel(
                 onEvent(AudioEvent.AckReceived(role.name, inbound.ackSeq))
             }
             is InboundAudio.Sync -> onEvent(AudioEvent.SyncReceived(role.name))
-            is InboundAudio.Observed -> Log.debug(TAG, "$role unhandled audio message 0x${type.toString(HEX_RADIX)}")
+            is InboundAudio.Observed -> Log.dev(TAG, "$role unhandled audio message 0x${type.toString(HEX_RADIX)}")
         }
     }
 
@@ -158,7 +158,7 @@ class AudioSinkChannel(
         lastGain = currentGain()
         publish()
         if (lastGain == AudioGain.MUTED) {
-            Log.debug(TAG, "$role muted by focus")
+            Log.dev(TAG, "$role muted by focus")
         }
     }
 
@@ -201,17 +201,17 @@ class AudioSinkChannel(
 
     private fun writeFramed(pcm: ByteArray, sampleRateHz: Int) {
         val config = selected ?: run {
-            Log.debug(TAG, "$role dropping ${pcm.size}B with no confirmed config")
+            Log.dev(TAG, "$role dropping ${pcm.size}B with no confirmed config")
             return
         }
         if (state != AudioSinkState.STARTED) {
-            Log.debug(TAG, "$role dropping ${pcm.size}B while $state")
+            Log.dev(TAG, "$role dropping ${pcm.size}B while $state")
             return
         }
         val gain = currentGain()
         lastGain = gain
         if (gain == AudioGain.MUTED) {
-            Log.debug(TAG, "$role muted; dropping ${pcm.size}B")
+            Log.dev(TAG, "$role muted; dropping ${pcm.size}B")
             return
         }
         val resampled = AudioCodec.resampleLinearMono16(pcm, sampleRateHz, config.config.samplingRate)

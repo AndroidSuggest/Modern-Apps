@@ -20,7 +20,7 @@ internal fun CameraViewModel.attachAeSnapshot(
     try {
         androidx.camera.camera2.interop.Camera2Interop.Extender(previewBuilder)
             .setSessionCaptureCallback(aeSnapshotCallback)
-        Log.debug("NightPreview", "$tag attached AE snapshot callback")
+        Log.dev("NightPreview", "$tag attached AE snapshot callback")
     } catch (e: IllegalStateException) {
         Log.error("NightPreview", "$tag Could not attach AE snapshot callback (was hidden as Warn)", e)
     } catch (e: IllegalArgumentException) {
@@ -39,7 +39,7 @@ internal fun CameraViewModel.probeUltraHdr(
         val caps = androidx.camera.core.ImageCapture.getImageCaptureCapabilities(cameraInfo)
             .supportedOutputFormats
             .contains(androidx.camera.core.ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
-        Log.debug("NightPreview", "setupPhotoSession() ultraHdrSupported=$caps lens=${requestedLens?.labelKey}")
+        Log.dev("NightPreview", "setupPhotoSession() ultraHdrSupported=$caps lens=${requestedLens?.labelKey}")
         caps
     } catch (e: IllegalStateException) {
         Log.error("NightPreview", "setupPhotoSession() Could not query Ultra HDR support (was hidden as Warn)", e)

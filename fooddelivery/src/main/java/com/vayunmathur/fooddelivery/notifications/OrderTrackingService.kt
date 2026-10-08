@@ -77,16 +77,16 @@ class OrderTrackingService : Service() {
             }.getOrNull()
 
             if (order == null) {
-                Log.debug(TAG, "order $orderId not found; stopping")
+                Log.dev(TAG, "order $orderId not found; stopping")
                 finish()
                 return
             }
 
-            Log.debug(TAG, "order $orderId stage=${order.stage} eta=${order.etaMillis}")
+            Log.dev(TAG, "order $orderId stage=${order.stage} eta=${order.etaMillis}")
             notify(OrderLiveUpdate.build(this, order))
 
             if (order.isDone) {
-                Log.debug(TAG, "order $orderId done; stopping")
+                Log.dev(TAG, "order $orderId done; stopping")
                 // Leave the terminal update visible briefly, then clear it.
                 delay(TERMINAL_LINGER_MS)
                 finish()

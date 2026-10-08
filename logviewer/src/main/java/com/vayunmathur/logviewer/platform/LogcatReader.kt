@@ -71,7 +71,7 @@ internal object LogcatReader {
             targetAppInfo = try {
                 context.packageManager.getApplicationInfo(request.targetPackage, 0)
             } catch (e: PackageManager.NameNotFoundException) {
-                Log.debug(TAG, "unknown package ${request.targetPackage}", e)
+                Log.dev(TAG, "unknown package ${request.targetPackage}", e)
                 return LogLoadResult.Unavailable()
             }
             command += "--uid=${targetAppInfo.uid}"

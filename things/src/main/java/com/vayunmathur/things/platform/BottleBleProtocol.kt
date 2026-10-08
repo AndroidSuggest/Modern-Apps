@@ -151,7 +151,7 @@ internal fun BleManager.handlePtFirst(value: ByteArray) {
     expectedLogs = beInt(value, PT_COUNT_OFFSET) / RECORD_SIZE
     collected.clear()
     parsedRecords = 0
-    Log.debug(BleManager.TAG, "logs: expecting $expectedLogs records")
+    Log.dev(BleManager.TAG, "logs: expecting $expectedLogs records")
     accumulateDrain(value, PT_FIRST_DATA_OFFSET)
 }
 
@@ -171,7 +171,7 @@ internal fun BleManager.accumulateDrain(value: ByteArray, start: Int) {
         i += RECORD_SIZE
     }
     if (expectedLogs > 0 && parsedRecords >= expectedLogs) {
-        Log.debug(BleManager.TAG, "logs: drained parsed=$parsedRecords drinks=${collected.size}")
+        Log.dev(BleManager.TAG, "logs: drained parsed=$parsedRecords drinks=${collected.size}")
         collected.forEach { DeviceController.onDrinkLog(it) }
         // Acknowledge/clear the drained logs from the bottle so each is counted once.
         enqueueCommand(CMD_DRAIN_ACK_HEAD + toHex(expectedLogs * RECORD_SIZE, DRAIN_COUNT_HEX_LEN))

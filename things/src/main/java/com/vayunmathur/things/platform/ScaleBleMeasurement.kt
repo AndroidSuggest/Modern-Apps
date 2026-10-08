@@ -25,7 +25,7 @@ internal fun ScaleBleManager.dispatch(value: ByteArray) {
                 // A pending wipe has to go first, since it invalidates any slot we hold.
                 if (DeviceController.scaleResetPending()) sendDeleteAllUsers() else syncUser()
             } else {
-                Log.debug(ScaleBleManager.TAG, "time frame acknowledged; starting measurement")
+                Log.dev(ScaleBleManager.TAG, "time frame acknowledged; starting measurement")
                 handler.removeCallbacks(sendStart)
                 handler.postDelayed(sendStart, ScaleBleManager.ACK_TO_START_MS)
             }
@@ -73,7 +73,7 @@ internal fun ScaleBleManager.sendUserFrame(
     val gender = if (profile.sex == Sex.Male) 0 else 1
     val age = profile.age.coerceIn(6, 80)
     val heightMm = (profile.heightCm.coerceIn(40.0, 240.0) * 10).toInt()
-    Log.debug(ScaleBleManager.TAG, "user sync sub=$sub index=$index gender=$gender age=$age heightMm=$heightMm")
+    Log.dev(ScaleBleManager.TAG, "user sync sub=$sub index=$index gender=$gender age=$age heightMm=$heightMm")
     enqueue(
         bleWriteChar,
         buildFrame(
@@ -87,7 +87,7 @@ internal fun ScaleBleManager.sendUserFrame(
 
 /** Frees all eight slots. Ten trailing zero bytes pad it to the length the scale expects. */
 internal fun ScaleBleManager.sendDeleteAllUsers() {
-    Log.debug(ScaleBleManager.TAG, "resetting all scale user slots")
+    Log.dev(ScaleBleManager.TAG, "resetting all scale user slots")
     enqueue(
         bleWriteChar,
         buildFrame(CMD_USER_SYNC, VA_SUB_DELETE, VA_DELETE_ALL_MASK, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
@@ -99,7 +99,7 @@ internal fun ScaleBleManager.handleUserSyncResult(v: ByteArray) {
     val sub = v[2].toInt() and BYTE_MASK
     val index = v[3].toInt() and BYTE_MASK
     val ok = (v[4].toInt() and BYTE_MASK) == 1
-    Log.debug(ScaleBleManager.TAG, "user sync result sub=$sub index=$index ok=$ok")
+    Log.dev(ScaleBleManager.TAG, "user sync result sub=$sub index=$index ok=$ok")
     when (sub) {
         VA_SUB_REGISTER -> {
             if (!ok) {
@@ -145,7 +145,7 @@ internal fun ScaleBleManager.handleVaStored(v: ByteArray) {
     if (v.size < VA_STORED_MIN_SIZE) return
     val total = v[3].toInt() and BYTE_MASK
     if (total == 0) {
-        Log.debug(ScaleBleManager.TAG, "no stored records")
+        Log.dev(ScaleBleManager.TAG, "no stored records")
         return
     }
     val index = v[4].toInt() and BYTE_MASK
@@ -154,7 +154,7 @@ internal fun ScaleBleManager.handleVaStored(v: ByteArray) {
     // filing someone else's weigh-in, or an unattributed one (0xF0), as ours.
     val ours = vaUserIndex
     if (ours != null && recordUser != ours) {
-        Log.debug(ScaleBleManager.TAG, "stored record $index/$total belongs to user $recordUser; skipped")
+        Log.dev(ScaleBleManager.TAG, "stored record $index/$total belongs to user $recordUser; skipped")
         return
     }
     // Timestamp is little-endian here while weight and impedance below are big-endian; that
@@ -167,12 +167,12 @@ internal fun ScaleBleManager.handleVaStored(v: ByteArray) {
     val measuredAt = (BASE_TIME_2000_SECONDS + seconds) * MILLIS_PER_SECOND
     val now = System.currentTimeMillis()
     if (now < measuredAt || now - measuredAt > MAX_STORED_AGE_MILLIS) {
-        Log.debug(ScaleBleManager.TAG, "stored record $index/$total timestamp implausible; dropped")
+        Log.dev(ScaleBleManager.TAG, "stored record $index/$total timestamp implausible; dropped")
         return
     }
     val weight = decodeWeightByMultiplication(twoByteInt(v[10], v[11]), kgWeightRatio)
     if (weight <= 0) return
-    Log.debug(ScaleBleManager.TAG, "stored record $index/$total user=$recordUser weight=$weight")
+    Log.dev(ScaleBleManager.TAG, "stored record $index/$total user=$recordUser weight=$weight")
     DeviceController.onScaleHistory(
         weightKg = weight,
         r50 = fourResTwoByte2Int(v[VA_STORED_R50_HI], v[VA_STORED_R50_LO]),
@@ -255,7 +255,7 @@ internal fun ScaleBleManager.startHandshake() {
     val age = profile.age.coerceIn(6, 80)
     // The config frame inverts the sex encoding used everywhere else in the SDK.
     val gender = if (profile.sex == Sex.Male) 0 else 1
-    Log.debug(ScaleBleManager.TAG, "handshake: scaleType=$scaleType h=$height age=$age gender=$gender holtek=$isHoltek va=$isVaScale")
+    Log.dev(ScaleBleManager.TAG, "handshake: scaleType=$scaleType h=$height age=$age gender=$gender holtek=$isHoltek va=$isVaScale")
     if (isVaScale) {
         // The VA config frame carries display settings only; the profile goes in 0xA0 instead.
         enqueue(configChar, buildCmd(CMD_CONFIG, UNIT_KG, LIGHT_INTERVAL, 0, 0, 0))

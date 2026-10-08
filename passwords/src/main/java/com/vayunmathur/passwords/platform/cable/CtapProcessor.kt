@@ -48,7 +48,7 @@ class CtapProcessor(
             Log.status(TAG, "makeCredential: ${e.message}")
             return Ctap.response(Ctap.ERR_MISSING_PARAMETER)
         }
-        Log.debug(TAG, "makeCredential rpId=${req.rpId} user=${req.userName} " +
+        Log.dev(TAG, "makeCredential rpId=${req.rpId} user=${req.userName} " +
             "algs=${req.algorithms} exclude=${req.excludeList.size} rk=${req.residentKey} " +
             "uv=${req.userVerificationRequired}")
 
@@ -86,7 +86,7 @@ class CtapProcessor(
             store = store,
             userVerified = userVerified,
         )
-        Log.debug(TAG, "created credId=${created.passkey.credentialId} " +
+        Log.dev(TAG, "created credId=${created.passkey.credentialId} " +
             "authData=${created.authenticatorData.size}B")
 
         return Ctap.response(
@@ -97,10 +97,10 @@ class CtapProcessor(
 
     private suspend fun handleGetAssertion(payload: ByteArray): ByteArray {
         val req = CtapGetAssertionRequest.parse(payload)
-        Log.debug(TAG, "getAssertion rpId=${req.rpId} allowList=${req.allowList.size} " +
+        Log.dev(TAG, "getAssertion rpId=${req.rpId} allowList=${req.allowList.size} " +
             "up=${req.userPresenceRequired} uv=${req.userVerificationRequired} " +
             "clientDataHash=${req.clientDataHash.size}B")
-        req.allowList.forEachIndexed { i, d -> Log.debug(TAG, "  allow[$i] id=${hex(d.id)}") }
+        req.allowList.forEachIndexed { i, d -> Log.dev(TAG, "  allow[$i] id=${hex(d.id)}") }
 
         if (req.userVerificationRequired && !userVerified) {
             Log.status(TAG, "UV required but user not verified")
@@ -108,14 +108,14 @@ class CtapProcessor(
         }
 
         val allForRp = store.getPasskeysByRpId(req.rpId)
-        Log.debug(TAG, "stored passkeys for ${req.rpId}: ${allForRp.size} " +
+        Log.dev(TAG, "stored passkeys for ${req.rpId}: ${allForRp.size} " +
             allForRp.joinToString { "credId=${it.credentialId}" })
 
         val passkey = resolveCredential(req) ?: run {
             Log.status(TAG, "no matching credential -> ERR_NO_CREDENTIALS")
             return Ctap.response(Ctap.ERR_NO_CREDENTIALS)
         }
-        Log.debug(TAG, "using credential credId=${passkey.credentialId} rpId=${passkey.rpId} userId=${passkey.userId}")
+        Log.dev(TAG, "using credential credId=${passkey.credentialId} rpId=${passkey.rpId} userId=${passkey.userId}")
 
         val assertion = WebAuthnAuthenticator.signAssertion(
             passkey = passkey,
@@ -131,7 +131,7 @@ class CtapProcessor(
             signature = assertion.signature,
             userId = decodeUserId(passkey.userId),
         )
-        Log.debug(TAG, "assertion signed: authData=${assertion.authenticatorData.size}B sig=${assertion.signature.size}B")
+        Log.dev(TAG, "assertion signed: authData=${assertion.authenticatorData.size}B sig=${assertion.signature.size}B")
         return Ctap.response(Ctap.OK, response.encode())
     }
 

@@ -49,7 +49,7 @@ class CableTunnel private constructor(
 
         suspend fun connectNew(domain: String, tunnelId: ByteArray): CableTunnel {
             val url = "wss://$domain/cable/new/${hex(tunnelId)}"
-            Log.debug(TAG, "Opening tunnel: $url")
+            Log.dev(TAG, "Opening tunnel: $url")
 
             // Capture routing-id header from handshake
             val client = WebSocketClient.connect(
@@ -59,13 +59,13 @@ class CableTunnel private constructor(
             )
 
             val headerSummary = client.responseHeaders.entries.joinToString { "${it.key}=${it.value}" }
-            Log.debug(TAG, "Tunnel response headers: $headerSummary")
+            Log.dev(TAG, "Tunnel response headers: $headerSummary")
             val routingHex = client.capturedHeaders[ROUTING_ID_HEADER]
                 ?: client.responseHeaders.entries
                     .firstOrNull { it.key.equals(ROUTING_ID_HEADER, ignoreCase = true) }
                     ?.value?.firstOrNull()
             val routingId = routingHex?.let { runCatching { unhex(it) }.getOrNull() }
-            Log.debug(TAG, "routingId header=$routingHex parsed=${routingId?.let { hex(it) }}")
+            Log.dev(TAG, "routingId header=$routingHex parsed=${routingId?.let { hex(it) }}")
 
             // Bridge incoming flow into a Channel for receive() synchronous-style
             val channel = Channel<WebSocketClient.WsFrame>(Channel.UNLIMITED)

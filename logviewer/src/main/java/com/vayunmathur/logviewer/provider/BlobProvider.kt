@@ -43,7 +43,7 @@ class BlobProvider : ContentProvider(), ContentProvider.PipeDataWriter<ByteArray
      */
     @Throws(FileNotFoundException::class)
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
-        Log.debug(TAG, "openFile $uri, mode $mode, caller $callingPackage")
+        Log.dev(TAG, "openFile $uri, mode $mode, caller $callingPackage")
         val entry = entryFor(uri) ?: throw FileNotFoundException()
         return openPipeHelper(uri, LogDocument.MIME_TYPE, null, entry.gzipped, this)
     }
@@ -62,7 +62,7 @@ class BlobProvider : ContentProvider(), ContentProvider.PipeDataWriter<ByteArray
             }
         } catch (e: IOException) {
             // Normal: the reader is free to stop early, which closes its end of the pipe.
-            Log.debug(TAG, "pipe closed while writing $uri", e)
+            Log.dev(TAG, "pipe closed while writing $uri", e)
         }
     }
 
@@ -79,7 +79,7 @@ class BlobProvider : ContentProvider(), ContentProvider.PipeDataWriter<ByteArray
         selectionArgs: Array<out String>?,
         sortOrder: String?,
     ): Cursor? {
-        Log.debug(TAG, "query $uri, caller $callingPackage")
+        Log.dev(TAG, "query $uri, caller $callingPackage")
         val entry = entryFor(uri) ?: return null
         val columns = projection
             ?: arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)

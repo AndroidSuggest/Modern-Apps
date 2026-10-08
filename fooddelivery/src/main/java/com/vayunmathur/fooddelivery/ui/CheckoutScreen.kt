@@ -168,11 +168,11 @@ fun CheckoutScreen(
         )
         val response = BitesOrders.checkout(merchantId, request)
         if (BuildConfig.DEV_BUILD) {
-            Log.debug("Checkout", "response.order=${response?.order}")
-            Log.debug("Checkout", "response.clientSecret=${response?.clientSecret?.take(20)}")
-            Log.debug("Checkout", "response.serviceable=${response?.serviceable}")
+            Log.dev("Checkout", "response.order=${response?.order}")
+            Log.dev("Checkout", "response.clientSecret=${response?.clientSecret?.take(20)}")
+            Log.dev("Checkout", "response.serviceable=${response?.serviceable}")
             response?.order?.let { o ->
-                Log.debug("Checkout", "order: foodTotal=${o.foodTotal} taxes=${o.taxes} deliveryFee=${o.deliveryFee} fees=${o.fees} tips=${o.tips} displayTotal=${o.displayTotal}")
+                Log.dev("Checkout", "order: foodTotal=${o.foodTotal} taxes=${o.taxes} deliveryFee=${o.deliveryFee} fees=${o.fees} tips=${o.tips} displayTotal=${o.displayTotal}")
             }
         }
         // Reuse the draft order on the next re-price; drop it if this call failed so we
@@ -199,7 +199,7 @@ fun CheckoutScreen(
         rewards = if (customer == null || orderUuid == null) null
         else BitesOrders.getOrderRewards(orderUuid)
         if (BuildConfig.DEV_BUILD) {
-            Log.debug("Checkout", "rewardsAvailable=${rewards?.rewardsAvailable} rate=${rewards?.rewardsRate}")
+            Log.dev("Checkout", "rewardsAvailable=${rewards?.rewardsAvailable} rate=${rewards?.rewardsRate}")
         }
     }
 

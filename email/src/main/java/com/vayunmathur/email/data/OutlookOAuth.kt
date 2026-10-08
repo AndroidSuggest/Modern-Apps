@@ -103,7 +103,7 @@ object OutlookOAuth {
             }
             .build()
 
-        Log.debug(TAG, "Starting Outlook OAuth -> $url redirect=$redirectUri")
+        Log.dev(TAG, "Starting Outlook OAuth -> $url redirect=$redirectUri")
         try {
             CustomTabsIntent.Builder().build().apply {
                 intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -131,7 +131,7 @@ object OutlookOAuth {
 
     suspend fun complete(context: Context, redirect: Uri): OAuthResult {
         val rawStr = redirect.toString()
-        Log.debug(
+        Log.dev(
             TAG,
             "complete redirect=$redirect host=${redirect.host} " +
                 "path=${redirect.path} query=${redirect.query} raw=$rawStr",
@@ -185,7 +185,7 @@ object OutlookOAuth {
         }
 
         persistAccount(context, email, tokens)
-        Log.debug(TAG, "Outlook persisted: $email")
+        Log.dev(TAG, "Outlook persisted: $email")
         return OAuthResult.Success(email)
     }
 
@@ -296,7 +296,7 @@ object OutlookOAuth {
     private suspend fun exchangeWithError(form: Map<String, String>): ExchangeResult = withContext(Dispatchers.IO) {
         try {
             val (respCode, text) = postTokenForm(form)
-            Log.debug(
+            Log.dev(
                 TAG,
                 "token $respCode " +
                     "body=$text formKeys=${redactedFormKeys(form)}",

@@ -33,7 +33,7 @@ fun CameraViewModel.onViewfinderZoomRatio(ratio: Float) {
 fun CameraViewModel.setZoomRatio(ratio: Float) {
     val cam = boundCamera
     val zs = cam?.cameraInfo?.zoomState?.value
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setZoomRatio() requested=$ratio clamped? min=${zs?.minZoomRatio} max=${zs?.maxZoomRatio} " +
             "current=${zs?.zoomRatio} nightPreviewActive=${nightPreviewActiveMutable.value} " +
@@ -79,7 +79,7 @@ internal fun CameraViewModel.restoreZoom(minZoom: Float, maxZoom: Float) {
 }
 
 fun CameraViewModel.updateZoomLevels(minZoom: Float, maxZoom: Float) {
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "updateZoomLevels() min=$minZoom max=$maxZoom " +
             "nightPreviewActive=${nightPreviewActiveMutable.value} " +
@@ -95,7 +95,7 @@ fun CameraViewModel.updateZoomLevels(minZoom: Float, maxZoom: Float) {
     for (tele in TELE_ZOOM_LEVELS) {
         if (tele <= maxZoom + TELE_ZOOM_TOLERANCE) levels.add(formatZoomLabel(tele) to tele)
     }
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "updateZoomLevels() emitting levels=$levels – if min=1f max=1f, only [1x] will show, " +
             "explaining 'all zoom levels also disappear'"

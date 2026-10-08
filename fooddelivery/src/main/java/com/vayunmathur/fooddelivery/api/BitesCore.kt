@@ -59,7 +59,7 @@ internal object BitesCore {
     private val refreshMutex = Mutex()
 
     internal inline fun logd(message: () -> String) {
-        if (BuildConfig.DEV_BUILD) Log.debug(TAG, message())
+        if (BuildConfig.DEV_BUILD) Log.dev(TAG, message())
     }
 
     /**

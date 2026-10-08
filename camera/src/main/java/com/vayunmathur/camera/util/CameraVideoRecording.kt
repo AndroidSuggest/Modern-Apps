@@ -76,7 +76,7 @@ internal fun CameraViewModel.startHighSpeedRecording() {
                     Log.error("SloMo", "Recording error: ${event.error} - ${event.cause?.message}")
                     cacheFile.delete()
                 } else {
-                    Log.debug("SloMo", "High-speed recording saved: ${event.outputResults.outputUri}")
+                    Log.dev("SloMo", "High-speed recording saved: ${event.outputResults.outputUri}")
                     viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                         if (cacheFile.exists()) {
                             saveVideoStaged(displayName, cacheFile)?.let { setLastCaptureUri(it) }

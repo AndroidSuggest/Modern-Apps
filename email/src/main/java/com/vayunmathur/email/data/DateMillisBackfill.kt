@@ -34,7 +34,7 @@ object DateMillisBackfill {
                 }
                 batch = dao.getRowsWithZeroDateMillis()
             }
-            if (fixed > 0) Log.debug("DateMillisBackfill", "Backfilled $fixed row(s)")
+            if (fixed > 0) Log.dev("DateMillisBackfill", "Backfilled $fixed row(s)")
         }
     }
 }

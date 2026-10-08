@@ -39,13 +39,13 @@ object SourceStamp {
         } catch (expected: SecurityException) {
             // An absent stamp is normal and not an error; a malformed one is treated the
             // same as absent, and the caller decides whether absence is acceptable.
-            Log.debug(TAG, "No verifiable source stamp on ${apk.name}: ${expected.message}")
+            Log.dev(TAG, "No verifiable source stamp on ${apk.name}: ${expected.message}")
             null
         } catch (expected: IllegalStateException) {
-            Log.debug(TAG, "No verifiable source stamp on ${apk.name}: ${expected.message}")
+            Log.dev(TAG, "No verifiable source stamp on ${apk.name}: ${expected.message}")
             null
         } catch (expected: java.io.IOException) {
-            Log.debug(TAG, "No verifiable source stamp on ${apk.name}: ${expected.message}")
+            Log.dev(TAG, "No verifiable source stamp on ${apk.name}: ${expected.message}")
             null
         }
     }

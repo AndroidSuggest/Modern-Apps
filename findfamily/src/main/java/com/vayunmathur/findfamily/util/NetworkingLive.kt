@@ -34,7 +34,7 @@ internal suspend fun WsSession.sendSubscribe() {
     Networking.putU64Be(sub, 1, Networking.userid.toULong())
     bundle.copyInto(sub, Networking.BUNDLE_FIELD_OFFSET)
     send(sub)
-    Log.debug(Networking.TAG, "live WS connected as ${Networking.userid.toULong()} bundleLen=${bundle.size}")
+    Log.dev(Networking.TAG, "live WS connected as ${Networking.userid.toULong()} bundleLen=${bundle.size}")
 }
 
 /**

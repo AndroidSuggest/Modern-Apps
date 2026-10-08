@@ -464,7 +464,7 @@ object OfflineRouter {
         mode: RouteService.TravelMode,
     ): RouteService.Route =
         withContext(Dispatchers.Default) {
-            Log.debug("OfflineRouter", "getRoute: mode=$mode, start=$start, end=$end")
+            Log.dev("OfflineRouter", "getRoute: mode=$mode, start=$start, end=$end")
             if (!OfflineRouterLifecycle.isInitialized) {
                 OfflineRouterLifecycle.initialize(context)
             }

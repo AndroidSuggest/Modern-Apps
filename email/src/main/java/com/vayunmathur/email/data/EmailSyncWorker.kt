@@ -68,12 +68,12 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
         accountCount: Int,
         accountsProcessed: Int,
     ) {
-        Log.debug("EmailSync", ">>> RAW Starting sync for ${account.email} (nonInboxOnly=$nonInboxOnly)")
+        Log.dev("EmailSync", ">>> RAW Starting sync for ${account.email} (nonInboxOnly=$nonInboxOnly)")
         val auth = account.resolveAuth(applicationContext)
 
         val folders = ImapClient.fetchFolders(account.imapServer(), account.loginUser(), auth)
         db.accountDao().insertFolders(folders)
-        Log.debug("EmailSync", "Synced ${folders.size} folders.")
+        Log.dev("EmailSync", "Synced ${folders.size} folders.")
 
         val skipSet = if (account.provider == PROVIDER_GMAIL) ImapClient.GMAIL_VIRTUAL_FOLDERS else emptySet()
         val messageFolders = if (nonInboxOnly) {
@@ -93,7 +93,7 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
             backfillBodies(db, account, auth)
         }
 
-        Log.debug("EmailSync", "<<< Completed RAW sync for ${account.email}")
+        Log.dev("EmailSync", "<<< Completed RAW sync for ${account.email}")
     }
 
     private suspend fun syncFolder(
@@ -126,7 +126,7 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
                 handleInboxExtras(account, folder, messages, knownUids)
             }
 
-            Log.debug(
+            Log.dev(
                 "EmailSync",
                 "[${index + 1}/$folderCount] ${folder.fullName}: " +
                     "${messages.size} new (skipped ${knownUids.size}).",
@@ -172,17 +172,17 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
         val messagesDao = db.messageDao()
         val missing = messagesDao.getMessagesWithoutBody(account.email, BACKFILL_LIMIT)
         if (missing.isEmpty()) return
-        Log.debug("EmailSync", "Body backfill: ${missing.size} message(s)")
+        Log.dev("EmailSync", "Body backfill: ${missing.size} message(s)")
         EmailSyncState.setProgress(0f)
         for ((idx, msg) in missing.withIndex()) {
             if (isStopped) {
-                Log.debug("EmailSync", "Backfill stopped at ${idx}/${missing.size}")
+                Log.dev("EmailSync", "Backfill stopped at ${idx}/${missing.size}")
                 break
             }
             backfillOne(messagesDao, account, auth, msg)
             EmailSyncState.setProgress((idx + 1f) / missing.size)
         }
-        Log.debug("EmailSync", "Backfill done for ${account.email}")
+        Log.dev("EmailSync", "Backfill done for ${account.email}")
     }
 
     private suspend fun backfillOne(

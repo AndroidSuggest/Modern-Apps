@@ -186,7 +186,7 @@ fun WebViewBrowser(
 
                 setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
                     val fileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
-                    Log.debug(WEB_VIEW_BROWSER_TAG, "Download: $fileName $url")
+                    Log.dev(WEB_VIEW_BROWSER_TAG, "Download: $fileName $url")
                     viewModel.addDownload(url, fileName, mimeType, contentLength)
                     runCatching {
                         val dm = ctx.getSystemService(android.app.DownloadManager::class.java)

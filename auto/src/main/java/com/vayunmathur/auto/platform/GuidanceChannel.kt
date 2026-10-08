@@ -86,7 +86,7 @@ class GuidanceChannel(
             }
             is InboundAudio.Ack -> Log.debug(TAG, "guidance ack (no stream running)")
             is InboundAudio.Sync -> Log.debug(TAG, "guidance sync pulse")
-            is InboundAudio.Observed -> Log.debug(TAG, "unhandled guidance message 0x${type.toString(HEX_RADIX)}")
+            is InboundAudio.Observed -> Log.dev(TAG, "unhandled guidance message 0x${type.toString(HEX_RADIX)}")
         }
     }
 

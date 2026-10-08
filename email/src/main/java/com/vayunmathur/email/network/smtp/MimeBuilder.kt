@@ -201,7 +201,7 @@ object MimeBuilder {
         val filename = queryFilename(context, uri) ?: uri.lastPathSegment ?: "attachment"
         val safeName = filename.replace("\"", "_").replace("\r", "").replace("\n", "")
         val mime = context.contentResolver.getType(uri) ?: guessMimeFromName(filename)
-        Log.debug(TAG, "Attachment $filename mime=$mime uri=$uri")
+        Log.dev(TAG, "Attachment $filename mime=$mime uri=$uri")
         sb.append("Content-Type: $mime; name=\"$safeName\"\r\n")
         sb.append("Content-Disposition: attachment; filename=\"$safeName\"\r\n")
         sb.append("Content-Transfer-Encoding: base64\r\n")

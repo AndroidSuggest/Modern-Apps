@@ -99,7 +99,7 @@ object HealthAPI {
     // The SDK throws undocumented RuntimeExceptions, not just declared ones.
     @Suppress("TooGenericExceptionCaught")
     suspend fun writeHealthRecord(record: Record) {
-        Log.debug("HealthAPI", "writeHealthRecord: type=${record.type}, metadata=${record.metadata}")
+        Log.dev("HealthAPI", "writeHealthRecord: type=${record.type}, metadata=${record.metadata}")
         val hcRecord: androidx.health.connect.client.records.Record = when (record.type) {
             RecordType.Nutrition -> nutritionRecord(record) ?: return
             RecordType.Hydration -> hydrationRecord(record)

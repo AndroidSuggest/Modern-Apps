@@ -224,7 +224,7 @@ class ScaleBleManager {
 
     internal val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
-            Log.debug(TAG, "onConnectionStateChange status=$status newState=$newState")
+            Log.dev(TAG, "onConnectionStateChange status=$status newState=$newState")
             DeviceController.runOnMain {
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
@@ -281,7 +281,7 @@ class ScaleBleManager {
                 notifyChar = ch.uuid
                 configChar = if (holtek) CHAR_FFF2 else CHAR_FFE3
                 bleWriteChar = if (!holtek && svc.getCharacteristic(CHAR_FFE4) != null) CHAR_FFE4 else configChar
-                Log.debug(
+                Log.dev(
                     TAG,
                     "service=$serviceUuid holtek=$holtek notify=$notifyChar " +
                         "config=$configChar bleWrite=$bleWriteChar",
@@ -313,7 +313,7 @@ class ScaleBleManager {
         }
 
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            Log.debug(TAG, "onDescriptorWrite ${descriptor.characteristic.uuid} status=$status")
+            Log.dev(TAG, "onDescriptorWrite ${descriptor.characteristic.uuid} status=$status")
             DeviceController.runOnMain {
                 if (descriptorQueue.isNotEmpty()) {
                     writeNextDescriptor(g)
@@ -326,7 +326,7 @@ class ScaleBleManager {
         }
 
         override fun onCharacteristicWrite(g: BluetoothGatt, char: BluetoothGattCharacteristic, status: Int) {
-            Log.debug(TAG, "onCharacteristicWrite ${char.uuid} status=$status")
+            Log.dev(TAG, "onCharacteristicWrite ${char.uuid} status=$status")
             DeviceController.runOnMain {
                 writing = false
                 writeNext()
@@ -338,7 +338,7 @@ class ScaleBleManager {
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
-            Log.debug(TAG, "<- ${characteristic.uuid.short()} ${value.toHex()}")
+            Log.dev(TAG, "<- ${characteristic.uuid.short()} ${value.toHex()}")
             if (characteristic.uuid != notifyChar && characteristic.uuid != indicateChar) return
             if (value.isEmpty()) return
             DeviceController.runOnMain { dispatch(value) }
@@ -389,7 +389,7 @@ class ScaleBleManager {
         } else {
             BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         }
-        Log.debug(TAG, "-> ${cmd.char.short()} ${cmd.bytes.toHex()} type=$writeType")
+        Log.dev(TAG, "-> ${cmd.char.short()} ${cmd.bytes.toHex()} type=$writeType")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             g.writeCharacteristic(ch, cmd.bytes, writeType)
         } else {
@@ -402,10 +402,10 @@ class ScaleBleManager {
     /** Dump the discovered GATT table once, so an unexpected layout is visible in a bug report. */
     private fun logGatt(g: BluetoothGatt) {
         for (svc in g.services) {
-            Log.debug(TAG, "svc ${svc.uuid.short()}")
+            Log.dev(TAG, "svc ${svc.uuid.short()}")
             for (c in svc.characteristics) {
                 val descriptors = c.descriptors.joinToString(",") { it.uuid.short() }
-                Log.debug(TAG, "  chr ${c.uuid.short()} props=0x${c.properties.toString(HEX_RADIX)} desc=[$descriptors]")
+                Log.dev(TAG, "  chr ${c.uuid.short()} props=0x${c.properties.toString(HEX_RADIX)} desc=[$descriptors]")
             }
         }
     }

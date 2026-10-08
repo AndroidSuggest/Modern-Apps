@@ -108,7 +108,7 @@ internal fun BoxWithConstraintsScope.CameraPreviewBox(
                     !it.isRecycled && it.width > 0 && it.height > 0
                 }
                 val hasBokeh = cameraMode == CameraMode.PORTRAIT && currentMask != null
-                Log.debug("BokehDebug", "render mode=$cameraMode hasBokeh=$hasBokeh mask=${currentMask?.width}x${currentMask?.height}")
+                Log.dev("BokehDebug", "render mode=$cameraMode hasBokeh=$hasBokeh mask=${currentMask?.width}x${currentMask?.height}")
                 if (hasBokeh || hasColorAdj) {
                     Modifier.graphicsLayer {
                         var effect: RenderEffect? = null
@@ -180,12 +180,12 @@ internal fun BoxWithConstraintsScope.CameraPreviewBox(
 
     surfaceRequest?.let { request ->
         LaunchedEffect(request) {
-            Log.debug("NightPreview", "CameraXViewfinder COMPOSED with request res=${request.resolution} dynamicRange=${request.dynamicRange} useNightPreview=${state.useNightPreview} sessionKind=${state.sessionKind} zoomRatio=${state.zoomRatio} levels=${state.availableZoomLevels} thread=${Thread.currentThread().name}")
+            Log.dev("NightPreview", "CameraXViewfinder COMPOSED with request res=${request.resolution} dynamicRange=${request.dynamicRange} useNightPreview=${state.useNightPreview} sessionKind=${state.sessionKind} zoomRatio=${state.zoomRatio} levels=${state.availableZoomLevels} thread=${Thread.currentThread().name}")
         }
         DisposableEffect(request) {
-            Log.debug("NightPreview", "CameraXViewfinder DisposableEffect ATTACH request res=${request.resolution} useNightPreview=${state.useNightPreview}")
+            Log.dev("NightPreview", "CameraXViewfinder DisposableEffect ATTACH request res=${request.resolution} useNightPreview=${state.useNightPreview}")
             onDispose {
-                Log.debug("NightPreview", "CameraXViewfinder DisposableEffect DETACH request res=${request.resolution} useNightPreview=${state.useNightPreview} – surface will be invalidated, if next request fails to emit we go black")
+                Log.dev("NightPreview", "CameraXViewfinder DisposableEffect DETACH request res=${request.resolution} useNightPreview=${state.useNightPreview} – surface will be invalidated, if next request fails to emit we go black")
             }
         }
         CameraXViewfinder(

@@ -82,9 +82,9 @@ internal suspend fun LocationTrackingService.processIncomingLocations(incoming: 
     val receivedIds = usersRecieved.map { it.toULong() }
     val knownIds = userIDs.map { it.toULong() }
     val selfId = Networking.userid.toULong()
-    Log.debug("FF-Heartbeat", "received userids=$receivedIds self=$selfId known=$knownIds")
+    Log.dev("FF-Heartbeat", "received userids=$receivedIds self=$selfId known=$knownIds")
     val newUsers = usersRecieved.filter { it !in userIDs && it != Networking.userid }
-    Log.debug("FF-Heartbeat", "newUsers to insert=${newUsers.map{ it.toULong() }}")
+    Log.dev("FF-Heartbeat", "newUsers to insert=${newUsers.map{ it.toULong() }}")
     repository.insertUsersIgnore(newUsers.map {
         User(" ", null, "Unknown Location", false, RequestStatus.AWAITING_REQUEST, Clock.System.now(), null, it)
     })
@@ -103,7 +103,7 @@ internal suspend fun LocationTrackingService.processIncomingLocations(incoming: 
     // fixes even across a force-stop. Writing here makes the fix durable no matter what
     // follows.
     repository.upsertLocations(locList)
-    Log.debug("FF-Heartbeat", "upsertAll ${locList.size} locations done")
+    Log.dev("FF-Heartbeat", "upsertAll ${locList.size} locations done")
 
     // Enrichment runs off the reader coroutine. Reverse-geocoding is a slow network
     // call, so doing it inline stalled every subsequent inbound frame until the

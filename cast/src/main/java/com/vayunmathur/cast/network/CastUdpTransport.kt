@@ -99,7 +99,7 @@ class CastUdpTransport(private val host: String, private val port: Int) {
             // stack traces, which buries whatever else the log had to say.
             unreachableCount++
             if (unreachableCount == 1) {
-                Log.debug(TAG, "port unreachable for $host:$port; the receiver may not have bound yet", e)
+                Log.dev(TAG, "port unreachable for $host:$port; the receiver may not have bound yet", e)
             }
             if (unreachableCount == UNREACHABLE_THRESHOLD) {
                 Log.status(TAG, "$host:$port is unreachable - the receiver closed its socket")
@@ -136,10 +136,10 @@ class CastUdpTransport(private val host: String, private val port: Int) {
         } catch (e: IOException) {
             // A port-unreachable ICMP surfaces here on a connected socket. Not fatal: the receiver
             // may not have bound yet.
-            Log.debug(TAG, "udp receive failed: ${e.javaClass.simpleName}")
+            Log.dev(TAG, "udp receive failed: ${e.javaClass.simpleName}")
             null
         } catch (e: IllegalArgumentException) {
-            Log.debug(TAG, "udp receive failed: ${e.javaClass.simpleName}")
+            Log.dev(TAG, "udp receive failed: ${e.javaClass.simpleName}")
             null
         }
     }

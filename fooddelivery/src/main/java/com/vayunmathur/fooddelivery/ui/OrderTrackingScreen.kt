@@ -94,7 +94,7 @@ fun OrderTrackingScreen(orderId: Int, onBack: () -> Unit) {
         while (true) {
             val found = BitesOrders.getOrders().firstOrNull { it.id == orderId }
             order = found
-            Log.debug("Tracking", "order=${found?.id} stage=${found?.stage} " +
+            Log.dev("Tracking", "order=${found?.id} stage=${found?.stage} " +
                 "driver=${found?.driverPosition} eta=${found?.etaMillis}")
             loading = false
             // Stop polling once it's done; nothing more will change.

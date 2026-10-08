@@ -71,7 +71,7 @@ suspend fun CameraViewModel.refreshCapabilities(bound: Camera, lensId: String?) 
         exposureCompRange = expRange ?: lensCapabilitiesMutable.value?.exposureCompRange,
         nightExtensionUsable = nightExtensionUsableMutable.value,
     )
-    Log.debug("LensSelector", "Refreshed capabilities lens=$lensId zoom=[$minZoom,$maxZoom] flash=$hasFlash")
+    Log.dev("LensSelector", "Refreshed capabilities lens=$lensId zoom=[$minZoom,$maxZoom] flash=$hasFlash")
 }
 
 /** Zoom bounds off the bound camera; unity defaults when unreadable. */

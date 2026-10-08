@@ -297,13 +297,13 @@ private suspend fun WhatsAppClient.handleProtocolMessage(
 
     // Skip status broadcasts (Go handleWAMessage status@broadcast check)
     if (message.from.startsWith("status@broadcast")) {
-        Log.debug(TAG, "Skipping status broadcast from ${message.participant}")
+        Log.dev(TAG, "Skipping status broadcast from ${message.participant}")
         return true
     }
 
     // Pending message dedup (Go handleWAMessage pendingMessages check)
     if (pendingMessageIDs.remove(message.id)) {
-        Log.debug(TAG, "Ignoring pending message ${message.id}")
+        Log.dev(TAG, "Ignoring pending message ${message.id}")
         return true
     }
     return false
@@ -500,7 +500,7 @@ private suspend fun WhatsAppClient.emitSpecialMessage(message: WhatsAppMessage, 
 private suspend fun WhatsAppClient.emitEditMessage(message: WhatsAppMessage) {
     // Edit dedup (Go events.go ConvertEdit meta.Edits check)
     if (!processedEditIDs.add(message.id)) {
-        Log.debug(TAG, "Ignoring duplicate edit ${message.id}")
+        Log.dev(TAG, "Ignoring duplicate edit ${message.id}")
         return
     }
     val targetId = message.editTargetId ?: return
@@ -604,7 +604,7 @@ internal suspend fun WhatsAppClient.handlePictureUpdate(node: WhatsAppProtocol.N
     val pictureNode = node.getChildByTag("set") ?: node.getChildByTag("delete")
     if (pictureNode != null) {
         val isRemoved = pictureNode.tag == "delete"
-        Log.debug(TAG, "Picture ${if (isRemoved) "removed" else "updated"} for $from")
+        Log.dev(TAG, "Picture ${if (isRemoved) "removed" else "updated"} for $from")
     }
 }
 
@@ -620,7 +620,7 @@ internal suspend fun WhatsAppClient.handleAccountSync(node: WhatsAppProtocol.Nod
                 val jid = child.attrs["jid"] ?: node.attrs["from"]
                 if (pushName != null && jid != null) {
                     nameCache[jid] = pushName
-                    Log.debug(TAG, "Push name updated: $jid -> $pushName")
+                    Log.dev(TAG, "Push name updated: $jid -> $pushName")
                 }
             }
             "contact" -> {

@@ -25,7 +25,7 @@ import com.vayunmathur.camera.platform.refreshCapabilities
  * capped (~1.2 MP) — see the note in [CameraViewModel.bindSession].
  */
 suspend fun CameraViewModel.setupPhotoSession(): Boolean {
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setupPhotoSession() ENTRY thread=${Thread.currentThread().name} " +
             "lens=${lensFacingMutable.value} surfaceBefore=${surfaceRequestMutable.value?.resolution}"
@@ -68,7 +68,7 @@ internal data class PhotoSessionPrep(
 internal suspend fun CameraViewModel.preparePhotoSession(): PhotoSessionPrep? {
     val provider = ProcessCameraProvider.awaitInstance(app)
     cameraProvider = provider
-    Log.debug("NightPreview", "setupPhotoSession() got providerHash=${provider.hashCode()}")
+    Log.dev("NightPreview", "setupPhotoSession() got providerHash=${provider.hashCode()}")
     provider.unbindAll()
 
     ensureLensesEnumerated(provider)
@@ -81,7 +81,7 @@ internal suspend fun CameraViewModel.preparePhotoSession(): PhotoSessionPrep? {
     attachAeSnapshot(previewBuilder, "setupPhotoSession()")
     val preview = previewBuilder.build()
     preview.setSurfaceProvider { request ->
-        Log.debug(
+        Log.dev(
             "NightPreview",
             "setupPhotoSession() surfaceRequest emitted res=${request.resolution} " +
                 "format=${request.javaClass.simpleName} thread=${Thread.currentThread().name} " +
@@ -89,7 +89,7 @@ internal suspend fun CameraViewModel.preparePhotoSession(): PhotoSessionPrep? {
         )
         surfaceRequestMutable.value = request
     }
-    Log.debug("NightPreview", "setupPhotoSession() preview surfaceProvider attached")
+    Log.dev("NightPreview", "setupPhotoSession() preview surfaceProvider attached")
 
     val owner = ManualLifecycleOwner()
     owner.start()
@@ -163,7 +163,7 @@ internal fun CameraViewModel.bindPhotoUseCases(
     maxRes: Boolean,
     ultraHdr: Boolean
 ): Camera {
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setupPhotoSession() bind(maxRes=$maxRes ultraHdr=$ultraHdr) " +
             "START thread=${Thread.currentThread().name}"
@@ -172,7 +172,7 @@ internal fun CameraViewModel.bindPhotoUseCases(
         val capture = buildPhotoCapture(maxRes, ultraHdr)
         val analysis = buildPhotoAnalysis()
         bindSession(session.provider, session.owner, lensSelector, session.preview, capture, analysis).also {
-            Log.debug(
+            Log.dev(
                 "NightPreview",
                 "setupPhotoSession() bind SUCCESS res=${it.cameraInfo} " +
                     "zoom min=${it.cameraInfo.zoomState.value?.minZoomRatio} " +
@@ -254,7 +254,7 @@ internal fun CameraViewModel.buildPhotoAnalysis(): ImageAnalysis {
 /** Applies manual controls, refreshes capabilities and marks the session active. */
 internal suspend fun CameraViewModel.finishPhotoSession() {
     val zs = boundCamera?.cameraInfo?.zoomState?.value
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setupPhotoSession() bound zoomState min=${zs?.minZoomRatio} max=${zs?.maxZoomRatio} " +
             "ratio=${zs?.zoomRatio} thread=${Thread.currentThread().name}"
@@ -264,7 +264,7 @@ internal suspend fun CameraViewModel.finishPhotoSession() {
     boundCamera?.cameraInfo?.let { observeNightModeIndicator(it) }
     onSessionBound()
     photoSessionActiveMutable.value = true
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "setupPhotoSession() SUCCESS photoActive=true " +
             "surface=${surfaceRequestMutable.value?.resolution} " +

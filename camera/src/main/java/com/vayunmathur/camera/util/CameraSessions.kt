@@ -27,7 +27,7 @@ internal fun CameraViewModel.bindSession(
 
 /** Tears down whatever session is currently bound and clears the shared preview surface. */
 fun CameraViewModel.teardownSession() {
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "teardownSession() START thread=${Thread.currentThread().name} " +
             "surface=${surfaceRequestMutable.value?.resolution} " +
@@ -43,7 +43,7 @@ fun CameraViewModel.teardownSession() {
     // CRITICAL: clear stale SurfaceRequest BEFORE unbind so CameraXViewfinder drops dead texture
     // immediately (black-frame trap fix)
     surfaceRequestMutable.value = null
-    Log.debug("NightPreview", "teardownSession() cleared surfaceRequest -> null to avoid black-frame trap")
+    Log.dev("NightPreview", "teardownSession() cleared surfaceRequest -> null to avoid black-frame trap")
     currentRecording?.stop()
     currentRecording = null
     highSpeedRecording?.stop()
@@ -66,7 +66,7 @@ fun CameraViewModel.teardownSession() {
     stopLongExposureCountdown()
     try {
         imageAnalysis?.clearAnalyzer()
-        Log.debug("NightPreview", "teardownSession() cleared analyzer previous=${desiredAnalyzer?.javaClass?.simpleName}")
+        Log.dev("NightPreview", "teardownSession() cleared analyzer previous=${desiredAnalyzer?.javaClass?.simpleName}")
     } catch (e: IllegalStateException) {
         Log.error("NightPreview", "teardownSession() clearAnalyzer failed (swallowed before)", e)
     }
@@ -76,7 +76,7 @@ fun CameraViewModel.teardownSession() {
     sessionLifecycleOwner = null
     try {
         cameraProvider?.unbindAll()
-        Log.debug("NightPreview", "teardownSession() unbindAll SUCCESS")
+        Log.dev("NightPreview", "teardownSession() unbindAll SUCCESS")
     } catch (e: IllegalStateException) {
         Log.error("NightPreview", "teardownSession() unbindAll FAILED (was hidden)", e)
     }

@@ -107,11 +107,11 @@ internal fun CameraScreenEffects(
         }
     }
     LaunchedEffect(useNightPreview) {
-        Log.debug("NightPreview", "CameraScreen useNightPreview recomputed=$useNightPreview sessionKind=$sessionKind cameraMode=$cameraMode nightModeActive=${state.nightModeActive} nightExtAvailable=${state.nightExtAvailable} lensFacing=$lensFacing")
+        Log.dev("NightPreview", "CameraScreen useNightPreview recomputed=$useNightPreview sessionKind=$sessionKind cameraMode=$cameraMode nightModeActive=${state.nightModeActive} nightExtAvailable=${state.nightExtAvailable} lensFacing=$lensFacing")
     }
     val surfaceRequest = state.surfaceRequest
     LaunchedEffect(surfaceRequest) {
-        Log.debug("NightPreview", "CameraScreen surfaceRequest changed res=${surfaceRequest?.resolution} frameType=${surfaceRequest?.javaClass?.simpleName} useNightPreview=$useNightPreview sessionKind=$sessionKind thread=${Thread.currentThread().name} lensFacing=${lensFacing}")
+        Log.dev("NightPreview", "CameraScreen surfaceRequest changed res=${surfaceRequest?.resolution} frameType=${surfaceRequest?.javaClass?.simpleName} useNightPreview=$useNightPreview sessionKind=$sessionKind thread=${Thread.currentThread().name} lensFacing=${lensFacing}")
         if (surfaceRequest == null && useNightPreview) {
             Log.status("NightPreview", "CameraScreen WARNING: surfaceRequest is NULL while useNightPreview=true – preview will be black until Provider re-emits. This is the black-frame trap you described: teardown -> delay(250) -> setupNightPreviewSession() tears down standard photo session surface before extension emits!")
         }
@@ -120,7 +120,7 @@ internal fun CameraScreenEffects(
         }
     }
     LaunchedEffect(state.availableZoomLevels) {
-        Log.debug("NightPreview", "CameraScreen availableZoomLevels changed=${state.availableZoomLevels} currentZoom=${state.zoomRatio} useNightPreview=$useNightPreview – vendor NIGHT often reports only [1x], making zoom bar appear to 'disappear' except 1x")
+        Log.dev("NightPreview", "CameraScreen availableZoomLevels changed=${state.availableZoomLevels} currentZoom=${state.zoomRatio} useNightPreview=$useNightPreview – vendor NIGHT often reports only [1x], making zoom bar appear to 'disappear' except 1x")
     }
 
     // Analyzer selection for the photo modes. Keyed on photoSessionActive so the analyzer is
@@ -190,12 +190,12 @@ internal fun CameraScreenEffects(
                 context,
                 isFrontFacing = lensFacing == CameraSelector.LENS_FACING_FRONT
             ) { mask ->
-                Log.debug("BokehDebug", "mask arrived ${mask.width}x${mask.height} recycled=${mask.isRecycled}")
+                Log.dev("BokehDebug", "mask arrived ${mask.width}x${mask.height} recycled=${mask.isRecycled}")
                 if (mask.isRecycled) return@BokehAnalyzer
                 mainHandler.post {
                     // If mask was recycled while message queued, drop it
                     if (mask.isRecycled) {
-                        Log.debug("BokehDebug", "mask recycled before post ran")
+                        Log.dev("BokehDebug", "mask recycled before post ran")
                         return@post
                     }
                     val prev = state.maskBitmap
@@ -203,7 +203,7 @@ internal fun CameraScreenEffects(
                         try { prev.recycle() } catch (_: Exception) {}
                     }
                     state.maskBitmap = mask
-                    Log.debug("BokehDebug", "mask stored ${mask.width}x${mask.height}")
+                    Log.dev("BokehDebug", "mask stored ${mask.width}x${mask.height}")
                 }
             }.also {
                 viewModel.setBokehAnalyzer(it)
@@ -237,9 +237,9 @@ internal fun CameraScreenEffects(
     // they join the effect keys: changing them in Settings rebinds instead of silently waiting
     // for the next mode switch. Aspect ratio is applied live (setCropAspectRatio) — no rebind.
     LaunchedEffect(cameraMode, lensFacing, selectedLens, sessionKind, useNightPreview, state.videoCodec, state.audioInputSource, state.mirrorFront, lifecycleOwner) {
-        Log.debug("NightPreview", "CameraScreen session LaunchedEffect START keys lensFacing=$lensFacing selectedLens=${selectedLens?.labelKey} sessionKind=$sessionKind useNightPreview=$useNightPreview codec=${state.videoCodec} audio=${state.audioInputSource} mirror=${state.mirrorFront} lifecycle=${lifecycleOwner.lifecycle.currentState} thread=${Thread.currentThread().name}")
+        Log.dev("NightPreview", "CameraScreen session LaunchedEffect START keys lensFacing=$lensFacing selectedLens=${selectedLens?.labelKey} sessionKind=$sessionKind useNightPreview=$useNightPreview codec=${state.videoCodec} audio=${state.audioInputSource} mirror=${state.mirrorFront} lifecycle=${lifecycleOwner.lifecycle.currentState} thread=${Thread.currentThread().name}")
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            Log.debug("NightPreview", "CameraScreen repeatOnLifecycle STARTED – calling teardownSession()")
+            Log.dev("NightPreview", "CameraScreen repeatOnLifecycle STARTED – calling teardownSession()")
             viewModel.teardownSession()
             // Brief yield so the previous session's surface detaches before the next binds; short
             // enough that a mode switch reads as instant, long enough to avoid a bind-over-teardown race.
@@ -262,18 +262,18 @@ internal fun CameraScreenEffects(
                 Log.error("NightPreview", "CameraScreen session binding THREW (was not logged before) kind=$sessionKind useNightPreview=$useNightPreview nightExtAvailable=${state.nightExtAvailable}", e)
                 false
             }
-            Log.debug("NightPreview", "CameraScreen session bind finished success=$bindSuccess took=${System.currentTimeMillis() - bindStart}ms surface after=${viewModel.surfaceRequest.value?.resolution} zoomLevels=${viewModel.availableZoomLevels.value} zoomRatio=${viewModel.zoomRatio.value}")
+            Log.dev("NightPreview", "CameraScreen session bind finished success=$bindSuccess took=${System.currentTimeMillis() - bindStart}ms surface after=${viewModel.surfaceRequest.value?.resolution} zoomLevels=${viewModel.availableZoomLevels.value} zoomRatio=${viewModel.zoomRatio.value}")
             if (!bindSuccess) {
                 Log.error("NightPreview", "CameraScreen BIND FAILED – this produces solid black preview and zoom bar showing only 1x (fallback?). Check logcat for NightPreview tag – exception was previously swallowed as warning")
             }
             try {
                 awaitCancellation()
             } finally {
-                Log.debug("NightPreview", "CameraScreen session coroutine cancelled/finished, calling teardownSession()")
+                Log.dev("NightPreview", "CameraScreen session coroutine cancelled/finished, calling teardownSession()")
                 viewModel.teardownSession()
             }
         }
-        Log.debug("NightPreview", "CameraScreen repeatOnLifecycle block EXIT – lifecycle dropped below STARTED")
+        Log.dev("NightPreview", "CameraScreen repeatOnLifecycle block EXIT – lifecycle dropped below STARTED")
     }
 
     // Hardware volume-key shutter.

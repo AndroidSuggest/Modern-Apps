@@ -142,7 +142,7 @@ class ImapIdleService : Service() {
         }
 
         val supportsIdle = caps.has("IDLE")
-        Log.debug(TAG, "Raw IDLE supports $supportsIdle for ${account.email}")
+        Log.dev(TAG, "Raw IDLE supports $supportsIdle for ${account.email}")
 
         if (!supportsIdle) {
             try {
@@ -219,7 +219,7 @@ class ImapIdleService : Service() {
     ) {
         while (scope.coroutineContext.isActive) {
             val sel = rawConn.select("INBOX")
-            Log.debug(TAG, "SELECT INBOX ${account.email} exists=${sel.exists}")
+            Log.dev(TAG, "SELECT INBOX ${account.email} exists=${sel.exists}")
             discoverFolders(rawConn, db.accountDao(), account)
 
             val state = IdleWatchState()
@@ -274,12 +274,12 @@ class ImapIdleService : Service() {
         state: IdleWatchState,
     ) {
         val idleTag = rawConn.sendIdle()
-        Log.debug(TAG, "IDLE start ${account.email} tag=$idleTag")
+        Log.dev(TAG, "IDLE start ${account.email} tag=$idleTag")
 
         val watchdog = scope.launch {
             delay(IDLE_REFRESH_MS)
             if (isActive) {
-                Log.debug(TAG, "proactive refresh ${account.email}")
+                Log.dev(TAG, "proactive refresh ${account.email}")
                 state.isProactiveRefresh = true
                 try { rawConn.sendIdleDone() } catch (_: Exception) {}
             }
@@ -295,7 +295,7 @@ class ImapIdleService : Service() {
         watchdog.cancel()
 
         if (state.isProactiveRefresh) {
-            Log.debug(TAG, "24-min refresh ${account.email}")
+            Log.dev(TAG, "24-min refresh ${account.email}")
             state.isProactiveRefresh = false
             state.needReopen = true
             delay(WATCHDOG_REFRESH_GRACE_MS)
@@ -331,7 +331,7 @@ class ImapIdleService : Service() {
         line: String?,
     ): Boolean {
         if (line == null) return true
-        Log.debug(TAG, "IDLE line ${account.email}: $line")
+        Log.dev(TAG, "IDLE line ${account.email}: $line")
         if (line.startsWith(idleTag)) return true
         classifyIdleLine(line, state)
         if (state.sawNewMail || state.sawExpunge || state.sawFlags) {

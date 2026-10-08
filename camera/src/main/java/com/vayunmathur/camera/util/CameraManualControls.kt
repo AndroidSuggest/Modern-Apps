@@ -74,7 +74,7 @@ fun CameraViewModel.applyManualControls() {
 /** Reads the bound sensor's ISO range → stop list for the manual ISO control. */
 @Suppress("DEPRECATION")
 internal fun CameraViewModel.readManualControlRanges() {
-    Log.debug(
+    Log.dev(
         "NightPreview",
         "readManualControlRanges() called bound=${boundCamera != null} " +
             "thread=${Thread.currentThread().name}"
@@ -88,12 +88,12 @@ internal fun CameraViewModel.readManualControlRanges() {
         val isoRange = info.getCameraCharacteristic(
             android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE
         )
-        Log.debug("NightPreview", "readManualControlRanges() isoRange=$isoRange")
+        Log.dev("NightPreview", "readManualControlRanges() isoRange=$isoRange")
         isoStopsMutable.value = if (isoRange != null) {
             val filtered = listOf(50, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
                 .filter { it in isoRange.lower..isoRange.upper }
                 .ifEmpty { listOf(isoRange.lower, isoRange.upper) }
-            Log.debug("NightPreview", "readManualControlRanges() filtered stops=$filtered")
+            Log.dev("NightPreview", "readManualControlRanges() filtered stops=$filtered")
             filtered
         } else {
             Log.status("NightPreview", "readManualControlRanges() isoRange null, emitting emptyList -> ISO bar notAvailable")

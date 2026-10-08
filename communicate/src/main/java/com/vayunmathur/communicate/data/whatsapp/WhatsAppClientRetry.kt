@@ -26,7 +26,7 @@ internal suspend fun WhatsAppClient.sendRetryReceipt(node: WhatsAppProtocol.Node
     } else null
     val receipt = WhatsAppProtocol.buildRetryReceipt(node, auth.registrationId, count, keysNode)
     ws.send(WhatsAppProtocol.encodeNode(receipt))
-    Log.debug(TAG, "Sent retry receipt #$count for $msgId")
+    Log.dev(TAG, "Sent retry receipt #$count for $msgId")
 }
 
 /**

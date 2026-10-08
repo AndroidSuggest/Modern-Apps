@@ -34,7 +34,7 @@ class OpenAssistantSession(context: Context) : VoiceInteractionSession(context) 
     override fun onHandleAssist(state: AssistState) {
         super.onHandleAssist(state)
         val text = buildScreenText(state.assistStructure, state.assistContent)
-        Log.debug(TAG, "Captured screen text (${text.length} chars)")
+        Log.dev(TAG, "Captured screen text (${text.length} chars)")
         handOffToChat(text)
     }
 

@@ -65,7 +65,7 @@ class CableActivity : FragmentActivity() {
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    Log.debug(TAG, "Biometric error $errorCode: $errString")
+                    Log.dev(TAG, "Biometric error $errorCode: $errString")
                     finish()
                 }
             },

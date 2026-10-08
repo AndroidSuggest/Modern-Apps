@@ -170,8 +170,8 @@ class VideoSinkChannel(
             // semantics were recovered (see VideoCodec), so it is observed like
             // the 0x800B sync pulse -- never answered, never fatal.
             GalMessage.Video.UPDATE_UI_CONFIG_REQUEST ->
-                Log.debug(TAG, "update-ui-config response (${payload.size}B); observed")
-            else -> Log.debug(TAG, "unhandled video message 0x${type.toString(HEX_RADIX)}")
+                Log.dev(TAG, "update-ui-config response (${payload.size}B); observed")
+            else -> Log.dev(TAG, "unhandled video message 0x${type.toString(HEX_RADIX)}")
         }
     }
 

@@ -35,7 +35,7 @@ class CableSession(
 
             val domainId = TunnelDomains.DEFAULT_ID
             val domain = TunnelDomains.decode(domainId)
-            Log.debug(TAG, "Connecting to tunnel $domain")
+            Log.dev(TAG, "Connecting to tunnel $domain")
             onStatus(R.string.cable_status_connecting)
             val tun = CableTunnel.connectNew(domain, tunnelId).also { tunnel = it }
 
@@ -95,7 +95,7 @@ class CableSession(
     private suspend fun handleTransportMessage(tun: CableTunnel, crypter: Crypter): Boolean? {
         val plain = crypter.decrypt(tun.receive())
         if (plain.isEmpty()) return null
-        Log.debug(TAG, "Transport message: type=${plain[0].toInt() and BYTE_MASK}, ${plain.size} bytes")
+        Log.dev(TAG, "Transport message: type=${plain[0].toInt() and BYTE_MASK}, ${plain.size} bytes")
 
         val messageType = plain[0].toInt() and BYTE_MASK
         val payload = plain.copyOfRange(1, plain.size)

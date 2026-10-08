@@ -218,7 +218,7 @@ class ProjectionService : Service() {
             deviceModel = Build.MODEL,
             deviceManufacturer = Build.MANUFACTURER,
             onChannelMessage = { message -> routeChannelMessage(message) },
-            trace = { Log.debug(TAG, it) },
+            trace = { Log.dev(TAG, it) },
         )
 
         // The session owns focus arbitration; mirror accepted changes to the
@@ -252,7 +252,7 @@ class ProjectionService : Service() {
             // GAL 11/12 gap: the channel message IDs are unmapped, so
             // these are observed and ignored, never answered. Now-playing
             // rides the ch2 video stream instead.
-            Log.debug(TAG, "ignoring media-browser message on ch${message.channelId}")
+            Log.dev(TAG, "ignoring media-browser message on ch${message.channelId}")
         } else if (message.channelId == GalService.NOTIFICATION.id) {
             messaging?.onMessage(message.channelId, message.type, message.payload)
         } else if (message.channelId == inputChannelId) {
@@ -272,7 +272,7 @@ class ProjectionService : Service() {
         } else if (message.channelId == GalService.VIDEO_SINK.id) {
             video?.onMessage(message.channelId, message.type, message.payload)
         } else {
-            Log.debug(
+            Log.dev(
                 TAG,
                 "ignoring message on unowned service ch${message.channelId} " +
                     "(0x${message.type.toString(HEX_RADIX)}); no owner",

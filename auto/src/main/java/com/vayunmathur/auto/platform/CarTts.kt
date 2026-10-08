@@ -92,12 +92,12 @@ class CarTts(
     private fun synthesize(text: String) {
         val tts = engine
         if (!engineReady || tts == null) {
-            Log.debug(TAG, "dropping ${text.length} chars; tts not ready")
+            Log.dev(TAG, "dropping ${text.length} chars; tts not ready")
             onEvent(AudioEvent.TtsDropped("engine-unready"))
             return
         }
         val sink = systemSink() ?: run {
-            Log.debug(TAG, "dropping ${text.length} chars; no system sink")
+            Log.dev(TAG, "dropping ${text.length} chars; no system sink")
             onEvent(AudioEvent.TtsDropped("no-sink"))
             return
         }

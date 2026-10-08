@@ -93,7 +93,7 @@ internal suspend fun LocationTrackingService.publishDirectBoot(targets: List<Dir
         battery,
     )
     val locSummary = "${location.latitude},${location.longitude} acc=${location.accuracy}"
-    Log.debug(
+    Log.dev(
         LocationTrackingService.TAG_DIRECT_BOOT,
         "publishing $locSummary to ${targets.size} peer(s)"
     )

@@ -63,11 +63,11 @@ object PasskeyUtils {
                 .bufferedReader().use { it.readText() }
             val origin = callingAppInfo.getOrigin(allowList)
             if (!origin.isNullOrEmpty()) {
-                Log.debug(TAG, "Resolved privileged browser origin: $origin")
+                Log.dev(TAG, "Resolved privileged browser origin: $origin")
                 origin.removeSuffix("/")
             } else null
         } catch (expected: IllegalArgumentException) {
-            Log.debug(TAG, "No privileged browser match: ${expected.message}")
+            Log.dev(TAG, "No privileged browser match: ${expected.message}")
             null
         }
     }

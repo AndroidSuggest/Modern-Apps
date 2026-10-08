@@ -99,7 +99,7 @@ class InputChannel(
         if (!bound) return
         val (type, payload) = InputCodec.encodeFeedback(feedbackEvent)
         connection.send(channelId, type, payload)
-        Log.debug(TAG, "input feedback sent: $feedbackEvent")
+        Log.dev(TAG, "input feedback sent: $feedbackEvent")
         onEvent(InputEvent.FeedbackSent(feedbackEvent))
     }
 
@@ -136,17 +136,17 @@ class InputChannel(
         }
         val events = InputCodec.decodeInbound(type, payload)
         if (events == null) {
-            Log.debug(TAG, "unhandled input message 0x${type.toString(HEX_RADIX)}")
+            Log.dev(TAG, "unhandled input message 0x${type.toString(HEX_RADIX)}")
             return
         }
         if (!isInputAllowed()) {
-            Log.debug(TAG, "dropping ${events.describe()} without input focus")
+            Log.dev(TAG, "dropping ${events.describe()} without input focus")
             onEvent(InputEvent.DroppedNoFocus)
             return
         }
         val display = displaySize()
         if (display == null) {
-            Log.debug(TAG, "dropping ${events.describe()} with no car display yet")
+            Log.dev(TAG, "dropping ${events.describe()} with no car display yet")
             onEvent(InputEvent.DroppedNoFocus)
             return
         }
@@ -222,7 +222,7 @@ class InputChannel(
                     sendInjectFeedback()
                 }
             } else {
-                Log.debug(TAG, "ignoring absolute event keycode=$keycode value=$value")
+                Log.dev(TAG, "ignoring absolute event keycode=$keycode value=$value")
             }
         }
     }

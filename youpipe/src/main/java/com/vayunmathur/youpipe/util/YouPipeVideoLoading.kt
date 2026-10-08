@@ -251,7 +251,7 @@ private fun partitionStreams(
 }
 
 private fun logStreamPartition(videoId: String, partition: StreamPartition) {
-    Log.debug(
+    Log.dev(
         "YouPipeSabr",
         "video $videoId streams prog(v=${partition.progVideoOnly.size}," +
             "a=${partition.progAudio.size}) sabr(v=${partition.sabrVideoOnly.size}," +

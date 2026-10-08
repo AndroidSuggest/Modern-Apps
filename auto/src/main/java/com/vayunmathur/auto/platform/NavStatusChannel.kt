@@ -52,7 +52,7 @@ class NavStatusChannel(
             Log.status(TAG, "ignoring 0x${type.toString(HEX_RADIX)} for channel $channelId")
             return
         }
-        Log.debug(TAG, "unhandled nav-status message 0x${type.toString(HEX_RADIX)}")
+        Log.dev(TAG, "unhandled nav-status message 0x${type.toString(HEX_RADIX)}")
     }
 
     /**

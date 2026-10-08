@@ -265,14 +265,14 @@ class MediaProxyServer(
     private fun endConnection(client: Socket, e: Exception) {
         // A player that has finished with a range simply closes, so this is the ordinary end
         // of a connection as often as it is a fault.
-        Log.debug(TAG, "connection from ${client.inetAddress?.hostAddress} ended: ${e.javaClass.simpleName}")
+        Log.dev(TAG, "connection from ${client.inetAddress?.hostAddress} ended: ${e.javaClass.simpleName}")
     }
 
     private fun report(outcome: ExchangeOutcome, client: Socket) {
         val peer = client.inetAddress?.hostAddress
         when (outcome) {
             is ExchangeOutcome.Served ->
-                Log.debug(TAG, "served ${outcome.resourceId} ${outcome.bytes} bytes to $peer")
+                Log.dev(TAG, "served ${outcome.resourceId} ${outcome.bytes} bytes to $peer")
             is ExchangeOutcome.Rejected ->
                 // Logged as a warning because on a pinned, tokenised connection there is no
                 // legitimate source of a rejected request: it is either a bug at our end or a

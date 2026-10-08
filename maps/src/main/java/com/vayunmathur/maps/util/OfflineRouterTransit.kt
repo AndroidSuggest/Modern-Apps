@@ -322,7 +322,7 @@ internal object OfflineRouterTransit {
         // Remove once the mapping fix lands.
         if (BuildConfig.DEBUG) {
             val hist = raw.groupingBy { it.mode }.eachCount().toSortedMap()
-            Log.debug("TransitIconDiag", "feed=$feed n=${raw.size} rawRouteType->count=$hist")
+            Log.dev("TransitIconDiag", "feed=$feed n=${raw.size} rawRouteType->count=$hist")
         }
         return raw.map { v ->
             OfflineRouter.Vehicle(

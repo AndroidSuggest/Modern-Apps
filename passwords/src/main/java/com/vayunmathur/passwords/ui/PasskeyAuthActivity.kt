@@ -101,7 +101,7 @@ class PasskeyAuthActivity : FragmentActivity() {
         val privilegedOrigin = PasskeyUtils.getPrivilegedOrigin(callingAppInfo, applicationContext)
         val isPrivileged = privilegedOrigin != null
         val origin = privilegedOrigin ?: PasskeyUtils.getAndroidOrigin(callingAppInfo)
-        Log.debug(TAG, "Create passkey for rpId=$rpId, origin=$origin, privileged=$isPrivileged")
+        Log.dev(TAG, "Create passkey for rpId=$rpId, origin=$origin, privileged=$isPrivileged")
 
         // Generate the credential and persist it; both transports share this.
         val created = runBlocking {
@@ -157,7 +157,7 @@ class PasskeyAuthActivity : FragmentActivity() {
             put("clientExtensionResults", JSONObject())
         }.toString()
 
-        Log.debug(TAG, "Passkey created successfully for rpId=$rpId, credId=$credentialIdB64")
+        Log.dev(TAG, "Passkey created successfully for rpId=$rpId, credId=$credentialIdB64")
         val credentialResponse = androidx.credentials.CreatePublicKeyCredentialResponse(responseJson)
         val result = Intent()
         PendingIntentHandler.setCreateCredentialResponse(result, credentialResponse)
@@ -197,7 +197,7 @@ class PasskeyAuthActivity : FragmentActivity() {
         val privilegedOrigin = PasskeyUtils.getPrivilegedOrigin(callingAppInfo, applicationContext)
         val isPrivileged = privilegedOrigin != null
         val origin = privilegedOrigin ?: PasskeyUtils.getAndroidOrigin(callingAppInfo)
-        Log.debug(TAG, "Get passkey for rpId=${passkey.rpId}, origin=$origin, privileged=$isPrivileged")
+        Log.dev(TAG, "Get passkey for rpId=${passkey.rpId}, origin=$origin, privileged=$isPrivileged")
 
         val clientDataJson = JSONObject().apply {
             put("type", "webauthn.get")
@@ -242,7 +242,7 @@ class PasskeyAuthActivity : FragmentActivity() {
             put("clientExtensionResults", JSONObject())
         }.toString()
 
-        Log.debug(TAG, "Passkey assertion successful for rpId=${passkey.rpId}")
+        Log.dev(TAG, "Passkey assertion successful for rpId=${passkey.rpId}")
         val credentialResponse = PublicKeyCredential(responseJson)
         val result = Intent()
         PendingIntentHandler.setGetCredentialResponse(
@@ -259,7 +259,7 @@ class PasskeyAuthActivity : FragmentActivity() {
         return try {
             option.clientDataHash
         } catch (expected: GetCredentialUnknownException) {
-            Log.debug(TAG, "privileged clientDataHash unavailable", expected)
+            Log.dev(TAG, "privileged clientDataHash unavailable", expected)
             null
         }
     }

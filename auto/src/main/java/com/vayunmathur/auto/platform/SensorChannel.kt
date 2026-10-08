@@ -149,7 +149,7 @@ class SensorChannel(
                 val next = _snapshot.value.withEvents(inbound.events)
                 _snapshot.value = next
                 onValues(next)
-                Log.debug(TAG, "sensor batch: ${inbound.events.size} events")
+                Log.dev(TAG, "sensor batch: ${inbound.events.size} events")
                 onEvent(SensorEvent.BatchReceived(inbound.events.size))
             }
             is InboundSensor.Error -> {
@@ -157,7 +157,7 @@ class SensorChannel(
                 Log.status(TAG, "sensor error: ${inbound.type} status=${inbound.status}")
                 onEvent(SensorEvent.SensorError(inbound.type.name, inbound.status))
             }
-            is InboundSensor.Observed -> Log.debug(TAG, "unhandled sensor message 0x${type.toString(HEX_RADIX)}")
+            is InboundSensor.Observed -> Log.dev(TAG, "unhandled sensor message 0x${type.toString(HEX_RADIX)}")
         }
     }
 
@@ -173,7 +173,7 @@ class SensorChannel(
         val next = _snapshot.value.withEvents(events)
         _snapshot.value = next
         onValues(next)
-        Log.debug(TAG, "sensor live batch: ${events.size} events")
+        Log.dev(TAG, "sensor live batch: ${events.size} events")
         onEvent(SensorEvent.BatchReceived(events.size))
     }
 

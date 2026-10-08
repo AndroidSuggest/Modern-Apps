@@ -36,7 +36,7 @@ object PeekContentBackfill {
                 }
                 batch = dao.getRowsWithEmptyPeek()
             }
-            if (fixed > 0) Log.debug("PeekContentBackfill", "Backfilled $fixed row(s)")
+            if (fixed > 0) Log.dev("PeekContentBackfill", "Backfilled $fixed row(s)")
         }
     }
 }

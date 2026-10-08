@@ -30,7 +30,7 @@ internal object SabrFfmpegMuxer {
 
     @Throws(IOException::class)
     fun mux(videoInput: File, audioInput: File, output: File) {
-        Log.debug(TAG, "remux video=${videoInput.length()} audio=${audioInput.length()} -> ${output.name}")
+        Log.dev(TAG, "remux video=${videoInput.length()} audio=${audioInput.length()} -> ${output.name}")
 
         validateMuxInputs(videoInput, audioInput, output)
 
@@ -63,7 +63,7 @@ internal object SabrFfmpegMuxer {
                 videoMuxerTrackIndex, audioMuxerTrackIndex,
             )
 
-            Log.debug(TAG, "mux successful -> ${output.absolutePath} size=${output.length()}")
+            Log.dev(TAG, "mux successful -> ${output.absolutePath} size=${output.length()}")
         } catch (e: java.io.IOException) {
             runCatching { if (output.exists()) output.delete() }
             throw remuxFailure(e)

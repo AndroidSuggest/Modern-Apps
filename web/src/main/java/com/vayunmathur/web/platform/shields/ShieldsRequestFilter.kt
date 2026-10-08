@@ -68,7 +68,7 @@ object ShieldsRequestFilter {
     ): WebResourceResponse? {
         if (scheme != "http" || lanPolicy.allowsCleartext(request.url.toString())) return null
         val host = LocalNetwork.hostOf(request.url.toString())
-        Log.debug(TAG, "blocked public cleartext request to $host")
+        Log.dev(TAG, "blocked public cleartext request to $host")
         return if (request.isForMainFrame) {
             blockedPageResponse(context, host)
         } else {

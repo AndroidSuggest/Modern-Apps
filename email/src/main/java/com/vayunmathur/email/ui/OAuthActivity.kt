@@ -40,7 +40,7 @@ class OAuthActivity : ComponentActivity() {
             finish()
             return
         }
-        Log.debug(TAG, "Redirect raw=$raw host=${raw.host} path=${raw.path} query=${raw.query}")
+        Log.dev(TAG, "Redirect raw=$raw host=${raw.host} path=${raw.path} query=${raw.query}")
 
         lifecycleScope.launch {
             val result: OutlookOAuth.OAuthResult = try {
@@ -56,7 +56,7 @@ class OAuthActivity : ComponentActivity() {
 
             val (msg, duration) = when (result) {
                 is OutlookOAuth.OAuthResult.Success -> {
-                    Log.debug(TAG, "OAuth success email=${result.email}")
+                    Log.dev(TAG, "OAuth success email=${result.email}")
                     getString(R.string.added, result.email) to AppMessages.Duration.Long
                 }
                 is OutlookOAuth.OAuthResult.Failure -> {

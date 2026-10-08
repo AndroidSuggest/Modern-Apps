@@ -106,7 +106,7 @@ object Networking {
                 try {
                     pqcIdentity = PqcIdentity.loadOrCreate(DataStoreKeyStore(dataStoreUtils), "ff_pqc")
                     pqcReady = true
-                    Log.debug(TAG, "PQC identity ready bundleLen=${pqcIdentity.publicBundle.size}")
+                    Log.dev(TAG, "PQC identity ready bundleLen=${pqcIdentity.publicBundle.size}")
                 } catch (e: Throwable) {
                     Log.status(TAG, "PQC identity unavailable (native lib load failed)", e)
                     pqcReady = false
@@ -169,7 +169,7 @@ object Networking {
             userid = mirroredId
             directBoot = true
             initialized = true
-            Log.debug(TAG, "direct boot init as ${userid.toULong()}")
+            Log.dev(TAG, "direct boot init as ${userid.toULong()}")
             return true
         }
     }
@@ -429,7 +429,7 @@ object Networking {
         }
         return try {
             val ok = sendLivePublish(user.id, "location", sealLocation(location, bundle))
-            Log.debug(TAG, "publishLocation PQC to ${user.id.toULong()} (${user.name}) ok=$ok")
+            Log.dev(TAG, "publishLocation PQC to ${user.id.toULong()} (${user.name}) ok=$ok")
             ok
         } catch (e: Exception) {
             Log.status(TAG, "publishLocation to ${user.id.toULong()} exception", e)
@@ -444,7 +444,7 @@ object Networking {
         return try {
             val bundle = Base64.decode(link.pqcPublicKey)
             val ok = sendLivePublish(link.id, "location", sealLocation(location, bundle))
-            Log.debug(TAG, "publishLocation PQC to temp link ${link.id} ok=$ok")
+            Log.dev(TAG, "publishLocation PQC to temp link ${link.id} ok=$ok")
             ok
         } catch (e: Exception) {
             Log.status(TAG, "publishLocation temp link ${link.id} failed", e)
@@ -462,7 +462,7 @@ object Networking {
     suspend fun publishLocation(location: LocationValue, targetId: Long, bundleB64: String): Boolean {
         return try {
             val ok = sendLivePublish(targetId, "location", sealLocation(location, Base64.decode(bundleB64)))
-            Log.debug(TAG, "publishLocation PQC to ${targetId.toULong()} (direct boot) ok=$ok")
+            Log.dev(TAG, "publishLocation PQC to ${targetId.toULong()} (direct boot) ok=$ok")
             ok
         } catch (e: Exception) {
             Log.status(TAG, "publishLocation direct boot to ${targetId.toULong()} failed", e)
@@ -492,7 +492,7 @@ object Networking {
         return try {
             val sealed = Pqc.encryptTo(bundle, json.encodeToString(envelope).encodeToByteArray())
             val ok = sendLivePublish(recipientUserId, "uwb", sealed)
-            Log.debug(TAG, "publishUwbMessage PQC to ${recipientUserId.toULong()} ok=$ok")
+            Log.dev(TAG, "publishUwbMessage PQC to ${recipientUserId.toULong()} ok=$ok")
             ok
         } catch (e: Exception) {
             Log.status(TAG, "publishUwbMessage to ${recipientUserId.toULong()} failed", e)

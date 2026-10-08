@@ -116,7 +116,7 @@ class PhotoAnalyzer(
         }
         if (count > 0) {
             val avg = sum.toFloat() / count
-            Log.debug(
+            Log.dev(
                 "NightPreview",
                 "PhotoAnalyzer luma avg=$avg sum=$sum count=$count bytesSize=${frame.bytes.size} " +
                     "width=${imageProxy.width} height=${imageProxy.height} rowStride=${frame.rowStride} " +
@@ -197,7 +197,7 @@ class PhotoAnalyzer(
 
         try {
             val result = reader.decodeWithState(bitmap)
-            Log.debug(
+            Log.dev(
                 "NightPreview",
                 "PhotoAnalyzer QR decoded text=${result.text} " +
                     "width=${imageProxy.width} height=${imageProxy.height}"
@@ -237,7 +237,7 @@ class PhotoAnalyzer(
         }
         try {
             imageProxy.close()
-            Log.debug(
+            Log.dev(
                 "NightPreview",
                 "PhotoAnalyzer imageProxy.close() took=${System.currentTimeMillis() - startMs}ms " +
                     "total – if not closed, pipeline stalls -> black preview!"

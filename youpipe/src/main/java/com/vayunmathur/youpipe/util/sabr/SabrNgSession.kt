@@ -308,7 +308,7 @@ class SabrNgSession(
         } catch (_: Exception) {
             null
         }
-        Log.debug(
+        Log.dev(
             TAG,
             "pump video=${spec.videoId} playhead=${currentPlayheadMs()} " +
                 "supplier=$supplied fallback=$playerTimeMs " +

@@ -114,7 +114,7 @@ suspend fun runClipIndexing(scanRepository: PhotoScanRepository, context: Contex
             val embedding = pending.embedOnePhoto(context, photo) { flush() }
                 ?: continue
             val elapsedMs = System.currentTimeMillis() - t0
-            Log.debug("ClipWorker", "Embedded photo ${photo.id} (${embedding.size}d) in ${elapsedMs}ms")
+            Log.dev("ClipWorker", "Embedded photo ${photo.id} (${embedding.size}d) in ${elapsedMs}ms")
             pending += ClipResult(id = photo.id, embedding = ClipEmbedder.floatsToBytes(embedding))
             if (pending.size >= INDEX_FLUSH_EVERY) flush()
 

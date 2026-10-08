@@ -276,7 +276,7 @@ class PlaybackService : MediaSessionService() {
             .build()
 
         try {
-            Log.debug("YouPipeSubs", "Attempting to enable legacy text decoding")
+            Log.dev("YouPipeSubs", "Attempting to enable legacy text decoding")
         } catch (_: Exception) {}
 
         val renderersFactory = buildRenderersFactory()
