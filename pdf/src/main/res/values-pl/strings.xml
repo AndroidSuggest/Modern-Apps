@@ -44,4 +44,5 @@
     <string name="outline">Spis treści</string>
     <string name="sign">Podpisz</string>
     <string name="pdf_page_failed">Nie można wyświetlić tej strony</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
