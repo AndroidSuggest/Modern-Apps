@@ -43,4 +43,5 @@
     <string name="outline">Obsah</string>
     <string name="sign">Podepsat</string>
     <string name="safe_pdf_not_a_pdf">Tento soubor není PDF</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
