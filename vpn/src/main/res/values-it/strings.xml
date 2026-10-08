@@ -30,4 +30,5 @@
     <string name="no_tunnels_yet"></string>
     <string name="always_on_vpn"></string>
     <string name="mtu_keepalive_s"></string>
+    <string name="app_name" translatable="false"></string>
 </resources>
