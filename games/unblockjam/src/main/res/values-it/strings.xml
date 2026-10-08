@@ -9,4 +9,5 @@
     <string name="completed">Completato</string>
     <string name="moves">Mosse</string>
     <string name="app_name" translatable="false"></string>
+    <string name="daily_streak"></string>
 </resources>
