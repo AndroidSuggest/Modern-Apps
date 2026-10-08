@@ -286,4 +286,7 @@
     <string name="hvs_never_true">Niciodată adevărat</string>
     <string name="transport_medical">Da, de la programări medicale sau de la primirea de medicamente</string>
     <string name="transport_non_medical">Da, de la serviciu sau de alte lucruri de care am nevoie</string>
+    <string name="dose_due_title"></string>
+    <string name="choose_a_strength"></string>
+    <string name="search_strengths"></string>
 </resources>
