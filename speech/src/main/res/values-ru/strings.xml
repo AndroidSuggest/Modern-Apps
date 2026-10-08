@@ -11,6 +11,4 @@
     <string name="try_the_voice">Прослушать голос</string>
     <string name="speak_sample">Пример произношения</string>
     <string name="heard">Услышано: %1$s</string>
-    <string name="broken_install_body"></string>
-    <string name="broken_install_title"></string>
 </resources>
