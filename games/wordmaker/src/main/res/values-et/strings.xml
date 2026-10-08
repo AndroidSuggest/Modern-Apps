@@ -34,4 +34,5 @@
     <string name="wheel_spacing_wider">Laiem</string>
     <string name="wheel_spacing_widest">Kõige laiem</string>
     <string name="no_definition_available">Selle sõna definitsiooni pole saadaval.</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
