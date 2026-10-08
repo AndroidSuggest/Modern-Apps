@@ -82,4 +82,5 @@
     <string name="estus"></string>
     <string name="seed"></string>
     <string name="busy"></string>
+    <string name="app_name" translatable="false"></string>
 </resources>
