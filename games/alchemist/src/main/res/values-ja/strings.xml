@@ -19,4 +19,5 @@
     </plurals>
     <string name="cd_final_item">最後のアイテム</string>
     <string name="cd_delete">削除</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
