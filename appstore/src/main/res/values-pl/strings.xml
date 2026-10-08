@@ -226,4 +226,5 @@
     <string name="trust_modern_apps_title" translatable="false"></string>
     <string name="source_modern_apps" translatable="false"></string>
     <string name="source_chip_modern_apps" translatable="false"></string>
+    <string name="app_name"></string>
 </resources>
