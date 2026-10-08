@@ -19,7 +19,7 @@
     <string name="no_tracked_changes_in_this_document">Aucune modification suivie dans ce document.</string>
     <string name="heading_4">Titre 4</string>
     <string name="csv">CSV…</string>
-    <string name="role">Rôle :</string>
+    <string name="role">Rôle :</string>
     <string name="html_html">HTML (.html)…</string>
     <string name="opens_odf_word_excel_powerpoint_csv_tsv">Ouvre les fichiers ODF, Word, Excel, PowerPoint, CSV, TSV, Markdown et texte</string>
     <string name="cell_comment">Commentaire de cellule</string>
@@ -29,14 +29,14 @@
     <string name="share_online_1">Partager en ligne…</string>
     <string name="footnote">Note de bas de page…</string>
     <string name="text_txt">Texte (.txt)…</string>
-    <string name="compare_with_the_recipient_out_of_band_i">Comparez-le avec le destinataire par un autre canal — il doit être identique sur les deux appareils :</string>
+    <string name="compare_with_the_recipient_out_of_band_i">Comparez-le avec le destinataire par un autre canal — il doit être identique sur les deux appareils :</string>
     <string name="go_to_slide">Aller à la diapositive</string>
     <string name="unfreeze">Annuler le figement</string>
     <string name="meta_keywords">Mots-clés</string>
     <string name="hide_notes">Masquer les notes</string>
     <string name="page_setup">Mise en page…</string>
     <string name="currency">Devise ($)</string>
-    <string name="enable_online_sharing">Activer le partage en ligne ?</string>
+    <string name="enable_online_sharing">Activer le partage en ligne ?</string>
     <string name="send_to_back">Envoyer à l’arrière-plan</string>
     <string name="no_online_documents_yet_open_a_document">Aucun document en ligne pour le moment. Ouvrez un document et utilisez « Partager » pour le copier ici et l’envoyer à quelqu’un, ou demandez à cette personne de le partager avec l’identifiant de votre appareil, puis appuyez sur Actualiser.</string>
     <string name="border">Bordure</string>
@@ -77,7 +77,7 @@
     <string name="slide_background">Arrière-plan de la diapositive…</string>
     <string name="word_1">☐ Mot entier</string>
     <string name="online">En ligne</string>
-    <string name="save_failed">Échec de l’enregistrement : <xliff:g id="error" example="Autorisation refusée">%1$s</xliff:g></string>
+    <string name="save_failed">Échec de l’enregistrement : <xliff:g id="error" example="Autorisation refusée">%1$s</xliff:g></string>
     <string name="reject_all">Tout refuser</string>
     <string name="on">ACTIVÉ</string>
     <string name="insert">Insérer</string>
@@ -92,7 +92,7 @@
     <string name="border_color">Couleur de la bordure…</string>
     <string name="meta_subject">Sujet</string>
     <string name="latex_tex">LaTeX (.tex)…</string>
-    <string name="type">Type :</string>
+    <string name="type">Type :</string>
     <string name="search_hint">Rechercher dans le document…</string>
     <string name="online_sharing_is_off">Le partage en ligne est désactivé</string>
     <string name="name">Nom</string>
@@ -123,7 +123,7 @@
     <string name="row_column_size_1">Taille des lignes et des colonnes</string>
     <string name="url">URL</string>
     <string name="categories_comma_separated">Catégories (séparées par des virgules)</string>
-    <string name="order">Ordre :</string>
+    <string name="order">Ordre :</string>
     <string name="font_size_1">Taille de police</string>
     <string name="time_field">Heure (champ)</string>
     <string name="stop">Arrêter</string>
@@ -161,7 +161,7 @@
     <string name="recipient_device_id">Identifiant de l’appareil du destinataire</string>
     <string name="word_count_bar_1">Barre de comptage des mots</string>
     <string name="delete_row">Supprimer la ligne</string>
-    <string name="your_device_id">Identifiant de votre appareil :</string>
+    <string name="your_device_id">Identifiant de votre appareil :</string>
     <string name="page_of">Page <xliff:g id="current_page" example="2">%1$s</xliff:g> sur <xliff:g id="total_pages" example="5">%2$s</xliff:g></string>
     <string name="meta_author">Auteur</string>
     <string name="insert_hyperlink">Insérer un lien hypertexte</string>
@@ -203,7 +203,7 @@
     <string name="enable_online_sharing_1">Activer le partage en ligne</string>
     <string name="move_paragraph_down">Déplacer le paragraphe vers le bas</string>
     <string name="empty_drawing">Dessin vide</string>
-    <string name="unsaved_changes_message">Vous avez des modifications non enregistrées. Voulez-vous les enregistrer avant de quitter ?</string>
+    <string name="unsaved_changes_message">Vous avez des modifications non enregistrées. Voulez-vous les enregistrer avant de quitter ?</string>
     <string name="scientific">Scientifique</string>
     <string name="make_owner">Définir comme propriétaire</string>
     <string name="insert_column_right">Insérer une colonne à droite</string>
@@ -218,16 +218,16 @@
     <string name="font_size_2">Taille de police…</string>
     <string name="night_reading_mode">✓ Mode de lecture nocturne</string>
     <string name="footnote_text">Texte de la note de bas de page</string>
-    <string name="some_formatting_and_features_may_be_lost">Certaines mises en forme et fonctionnalités peuvent être perdues lors de l’exportation vers un format autre que l’OpenDocument. Continuer ?</string>
+    <string name="some_formatting_and_features_may_be_lost">Certaines mises en forme et fonctionnalités peuvent être perdues lors de l’exportation vers un format autre que l’OpenDocument. Continuer ?</string>
     <string name="tsv">TSV…</string>
     <string name="shared_with_you">Partagé avec vous</string>
     <string name="pdf_pdf">PDF (.pdf)…</string>
     <string name="text">+ Texte</string>
-    <string name="add_someone_by_device_id_copies_this_doc">Ajouter une personne à l’aide de son identifiant d’appareil (copie ce document dans votre dossier en ligne avec un chiffrement de bout en bout) :</string>
+    <string name="add_someone_by_device_id_copies_this_doc">Ajouter une personne à l’aide de son identifiant d’appareil (copie ce document dans votre dossier en ligne avec un chiffrement de bout en bout) :</string>
     <string name="play">▶ Lire</string>
     <string name="edit_image">Modifier l’image</string>
     <string name="dup">Dupliquer</string>
-    <string name="series_name_v1_v2">Série (nom : v1, v2, …)</string>
+    <string name="series_name_v1_v2">Série (nom : v1, v2, …)</string>
     <string name="presentation_timer">Minuteur de présentation</string>
     <string name="go">Aller</string>
     <string name="column_width_px">Largeur de colonne (px)</string>
@@ -243,18 +243,18 @@
     <string name="margins">Marges</string>
     <string name="accept">Accepter</string>
     <string name="error_loading">Erreur lors du chargement du document</string>
-    <string name="default_font_size_pt">Taille de police par défaut : <xliff:g id="size" example="12">%1$s</xliff:g> pt</string>
-    <string name="your_device_id_share_this_so_others_can">Identifiant de votre appareil (partagez-le pour que d’autres personnes puissent vous envoyer des documents) :</string>
+    <string name="default_font_size_pt">Taille de police par défaut : <xliff:g id="size" example="12">%1$s</xliff:g> pt</string>
+    <string name="your_device_id_share_this_so_others_can">Identifiant de votre appareil (partagez-le pour que d’autres personnes puissent vous envoyer des documents) :</string>
     <string name="close_search">Fermer</string>
     <string name="insert_table">Insérer un tableau</string>
     <string name="rectangle">Rectangle</string>
     <string name="case_on">☑ Respecter la casse</string>
     <string name="file">Fichier</string>
     <string name="synced_to_cloud">Synchronisé avec le cloud</string>
-    <string name="online_1">En ligne : <xliff:g id="presence" example="Alice · Feuille1">%1$s</xliff:g></string>
+    <string name="online_1">En ligne : <xliff:g id="presence" example="Alice · Feuille1">%1$s</xliff:g></string>
     <string name="show_security_code">Afficher le code de sécurité</string>
     <string name="insert_row_below">Insérer une ligne en dessous</string>
-    <string name="people_with_access">Personnes ayant accès :</string>
+    <string name="people_with_access">Personnes ayant accès :</string>
     <string name="row_height_px">Hauteur de ligne (px)</string>
     <string name="delete_paragraph">Supprimer le paragraphe</string>
     <string name="footer">Pied de page</string>
@@ -282,4 +282,6 @@
     <string name="join_request_sending">Demande d’accès en cours…</string>
     <string name="join_request_sent">Demande envoyée — vous aurez accès dès que le propriétaire l’aura approuvée.</string>
     <string name="join_request_failed">Impossible d’envoyer la demande — vérifiez votre connexion et réessayez.</string>
+    <string name="insert_table_1">Insérer un tableau</string>
+    <string name="speaker_notes_2">Notes du présentateur</string>
 </resources>
