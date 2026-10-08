@@ -33,5 +33,4 @@
     <string name="units_widget_choose_category">选择单位类别</string>
     <string name="calculator_widget_transparent">透明背景</string>
     <string name="calculator_widget_transparent_summary">显示键盘后面的壁纸。按键保持填充状态，因此它们仍然可读。</string>
-    <string name="absolute_time"></string>
 </resources>

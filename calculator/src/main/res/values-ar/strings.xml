@@ -31,7 +31,4 @@
     <string name="units_widget_label">محول الوحدات</string>
     <string name="units_widget_description">تحويل بين الوحدات في لحظة - اضغط لفتح المحول</string>
     <string name="units_widget_choose_category">اختر فئة الوحدة</string>
-    <string name="currency_unavailable"></string>
-    <string name="absolute_time"></string>
-    <string name="currency_loading"></string>
 </resources>
