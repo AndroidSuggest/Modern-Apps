@@ -33,4 +33,5 @@
     <string name="daily_come_back_tomorrow"></string>
     <string name="no_definition_available"></string>
     <string name="wheel_spacing_default"></string>
+    <string name="app_name" translatable="false"></string>
 </resources>
