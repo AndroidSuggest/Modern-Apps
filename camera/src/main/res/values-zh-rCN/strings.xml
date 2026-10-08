@@ -53,15 +53,4 @@
     <string name="settings_save_location_choose">选择文件夹</string>
     <string name="settings_save_location_reset">重置为默认</string>
     <string name="settings_save_location_error">无法使用该文件夹</string>
-    <string name="mode_cinematic"></string>
-    <string name="add_esim"></string>
-    <string name="mode_photo"></string>
-    <string name="mode_portrait"></string>
-    <string name="mode_slo_mo"></string>
-    <string name="no_app_to_add_esim"></string>
-    <string name="mode_panorama"></string>
-    <string name="esim_qr_result"></string>
-    <string name="mode_photosphere"></string>
-    <string name="mode_video"></string>
-    <string name="mode_timelapse"></string>
 </resources>
