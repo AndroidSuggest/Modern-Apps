@@ -1,4 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="theme">Tema</string>
+    <string name="voice_failed"></string>
+    <string name="emoji_you_use_show_up_here"></string>
+    <string name="subtype_en"></string>
+    <string name="abc"></string>
+    <string name="voice_listening"></string>
+    <string name="voice_permission_blocked"></string>
+    <string name="clipboard_image_not_supported"></string>
+    <string name="voice_unavailable"></string>
+    <string name="search_emoji"></string>
+    <string name="setting_auto_capitalize"></string>
+    <string name="voice_busy"></string>
+    <string name="voice_input"></string>
+    <string name="subtype_keyboard"></string>
+    <string name="image"></string>
+    <string name="status_selected"></string>
+    <string name="follows_the_system_light_dark_theme_and"></string>
+    <string name="try_the_keyboard_here"></string>
+    <string name="setting_key_sound"></string>
+    <string name="key_height"></string>
+    <string name="keyboard_languages"></string>
+    <string name="enable_keyboard"></string>
+    <string name="clear_clipboard_history"></string>
+    <string name="setting_haptic_feedback"></string>
+    <string name="voice_no_speech"></string>
+    <string name="setting_clipboard_history_desc"></string>
+    <string name="setting_show_suggestions"></string>
+    <string name="voice_permission_denied"></string>
+    <string name="choose_keyboard"></string>
+    <string name="voice_network"></string>
+    <string name="setting_double_space_period"></string>
+    <string name="setting_number_row"></string>
+    <string name="setting_clipboard_history"></string>
+    <string name="clipboard_image_unavailable"></string>
+    <string name="clear_clipboard"></string>
+    <string name="voice_audio_error"></string>
+    <string name="app_name"></string>
+    <string name="copied_text_shows_up_here"></string>
+    <string name="available_for_english_layouts_only"></string>
+    <string name="status_enabled"></string>
+    <string name="voice_transcribing"></string>
+    <string name="setting_auto_correct"></string>
 </resources>
