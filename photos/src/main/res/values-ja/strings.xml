@@ -269,4 +269,5 @@
     <string name="editor_desc_selective"></string>
     <string name="album_rename"></string>
     <string name="tool_line"></string>
+    <string name="editor_desc_none"></string>
 </resources>
