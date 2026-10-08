@@ -19,4 +19,5 @@
     <string name="inference_service_label">访问推理服务</string>
     <string name="system_prompt">系统提示</string>
     <string name="reset_to_default">重置为默认</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
