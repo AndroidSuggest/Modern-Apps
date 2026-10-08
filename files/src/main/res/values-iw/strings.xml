@@ -82,16 +82,4 @@
     <string name="storage_usage"><xliff:g id="used" example="12 GB">%1$s</xliff:g> בשימוש מתוך <xliff:g id="total" example="128 GB">%2$s</xliff:g></string>
     <string name="items_count"><xliff:g id="count" example="12">%1$d</xliff:g> פריטים</string>
     <string name="saf_select_count">בחירה של (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
-    <string name="restored_n"></string>
-    <string name="delete_permanently_title"></string>
-    <string name="trash_request_failed"></string>
-    <string name="trash"></string>
-    <string name="trash_empty"></string>
-    <string name="restore"></string>
-    <string name="trash_auto_delete_note"></string>
-    <string name="delete_permanently_message"></string>
-    <string name="empty_trash"></string>
-    <string name="deleted_forever_n"></string>
-    <string name="delete_forever"></string>
-    <string name="moved_to_trash"></string>
 </resources>
