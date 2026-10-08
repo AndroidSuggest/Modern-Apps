@@ -1,13 +1,17 @@
 package com.vayunmathur.library.ui
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatIndentDecrease
 import androidx.compose.material.icons.automirrored.filled.FormatIndentIncrease
@@ -188,28 +192,40 @@ fun EditorBaseButtons(formatter: EditorFormatter) {
 }
 
 /**
- * Shared bottom-bar container for editor toolbars: a tonal [Surface] wrapping a
- * [Row]. Place [EditorBaseButtons] plus any editor-specific extras inside
- * [content]. Set [scrollable] for wide toolbars (e.g. office).
+ * Shared bottom-bar container for editor toolbars: a tonal [Surface] wrapping
+ * a [FlowRow] grid. Place [EditorBaseButtons] plus any editor-specific extras
+ * inside [content]; buttons wrap onto as many rows as they need, so nothing
+ * scrolls.
  *
- * Does NOT apply window insets: as a reusable component it does not know its
- * host's inset ownership. The host (MainNavigation, or a standalone root
- * Scaffold) owns imePadding and keeps this bar above the keyboard.
+ * The [scrollable] parameter is accepted for source compatibility and ignored:
+ * every toolbar now shows all its buttons. Kept (rather than removed) so the
+ * call sites in notes, email, office and the markdown/html editors compile
+ * unchanged.
+ *
+ * The bar rides above the keyboard: a Scaffold's `bottomBar` slot is measured
+ * bare and pinned to the layout bottom by M3, so the bar claims
+ * `navigationBars ∪ ime` itself — union, not sum, since a visible keyboard
+ * already covers the navigation bar (same fix as `BottomNavBar` in `:library`).
+ * Not a [BottomAppBar]: the grid needs wrap-content height, and M3 fixes that
+ * bar to a single container height.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EditorBottomBar(
     modifier: Modifier = Modifier,
-    scrollable: Boolean = false,
+    @Suppress("UnusedParameter") scrollable: Boolean = false,
     content: @Composable RowScope.() -> Unit,
 ) {
-    Surface(modifier = modifier, tonalElevation = 3.dp) {
-        Row(
+    Surface(
+        modifier = modifier.windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)),
+        tonalElevation = 3.dp,
+    ) {
+        FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (scrollable) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
                 .padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = if (scrollable) Arrangement.Start else Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.Start,
+            verticalArrangement = Arrangement.Center,
             content = content,
         )
     }

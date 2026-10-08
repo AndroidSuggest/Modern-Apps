@@ -6,9 +6,13 @@
 
 package com.vayunmathur.library.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.union
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExposedDropdownMenu as Material3ExposedDropdownMenu
 import androidx.compose.material3.ExposedDropdownMenuBox as Material3ExposedDropdownMenuBox
@@ -20,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 // --- Theme function (distinct from the MaterialTheme object alias) ---
 @Composable
@@ -69,12 +74,51 @@ fun NavigationDrawerItem(
 )
 
 // --- Bottom app bars ---
+/**
+ * [BottomAppBar] that rides above the keyboard.
+ *
+ * A bar in a Scaffold's `bottomBar` slot must claim insets itself (M3 only
+ * pads content; see `BottomNavBar` in `:library` for the same fix on the nav
+ * bar). The inset is the union — not the sum — of the bar's normal one and
+ * the keyboard: a visible keyboard already covers the navigation bar, so
+ * padding for both would float the bar a nav bar's height above the keys.
+ */
 @Composable
 fun BottomAppBar(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = androidx.compose.material3.BottomAppBarDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit,
-) = androidx.compose.material3.BottomAppBar(modifier = modifier, contentPadding = contentPadding, content = content)
+) = androidx.compose.material3.BottomAppBar(
+    modifier = modifier,
+    contentPadding = contentPadding,
+    // M3's default ([BottomAppBarDefaults.windowInsets]) is system-bars only,
+    // with no IME — the bar would sit behind the keyboard.
+    windowInsets = androidx.compose.material3.BottomAppBarDefaults.windowInsets
+        .union(WindowInsets.ime),
+    content = content,
+)
+
+/**
+ * Compact [FlexibleBottomAppBar]: same keyboard-riding insets as [BottomAppBar]
+ * but shrunk to [barHeight] (default 48.dp, the old toolbar height) instead of
+ * M3's fixed 80.dp container. With no scroll behavior `expandedHeight` is a
+ * fixed height; the inner row keeps the caller's arrangement.
+ */
+@Composable
+fun CompactBottomAppBar(
+    modifier: Modifier = Modifier,
+    barHeight: Dp = 48.dp,
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
+    content: @Composable RowScope.() -> Unit,
+) = androidx.compose.material3.FlexibleBottomAppBar(
+    modifier = modifier,
+    contentPadding = PaddingValues(horizontal = 4.dp),
+    horizontalArrangement = horizontalArrangement,
+    expandedHeight = barHeight,
+    windowInsets = androidx.compose.material3.BottomAppBarDefaults.windowInsets
+        .union(WindowInsets.ime),
+    content = content,
+)
 
 @Composable
 fun FlexibleBottomAppBar(
