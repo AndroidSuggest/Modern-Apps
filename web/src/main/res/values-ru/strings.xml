@@ -129,4 +129,6 @@
     <string name="local_network_message">%1$s выглядит как устройство в вашей сети. Android нуждается в разрешении локальной сети, прежде чем эта страница сможет загрузиться.</string>
     <string name="blocks_doubleclick_googletagmanager_anal">Блокирует doubleclick, googletagmanager, analytics</string>
     <string name="shields_https_desc">Также удаляет utm_, fbclid и другие параметры отслеживания</string>
+    <string name="open_link"></string>
+    <string name="go_forward"></string>
 </resources>
