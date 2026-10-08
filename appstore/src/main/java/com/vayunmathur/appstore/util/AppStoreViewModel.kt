@@ -16,14 +16,10 @@ import com.vayunmathur.appstore.data.CatalogRepository
 import com.vayunmathur.appstore.data.InstalledAppsRepository
 import com.vayunmathur.appstore.data.InstalledInfo
 import com.vayunmathur.appstore.data.PlayStoreLinks
-import com.vayunmathur.appstore.data.RestrictedPackages
-import com.vayunmathur.appstore.data.SandboxedGooglePlay
 import com.vayunmathur.appstore.data.SettingsRepository
 import com.vayunmathur.appstore.data.SyncStep
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.data.accrescent.AccrescentRepository
-import com.vayunmathur.appstore.data.grapheneos.GrapheneOSRepository
-import com.vayunmathur.appstore.data.grapheneos.toUnifiedApp
 import com.vayunmathur.appstore.data.installer.InstallCoordinator
 import com.vayunmathur.appstore.data.installer.InstallEvents
 import com.vayunmathur.appstore.data.installer.InstallFailureBatch
@@ -63,11 +59,10 @@ class AppStoreViewModel(
     internal val catalog = CatalogRepository(context, db, viewModelScope)
     internal val play = PlayRepository(context)
     internal val accrescent = AccrescentRepository(context, db)
-    internal val grapheneOS = GrapheneOSRepository(context)
     internal val installedRepo = InstalledAppsRepository(context)
     internal val settings = SettingsRepository(context, viewModelScope)
     internal val installer =
-        InstallCoordinator(context, db, play, accrescent, grapheneOS, viewModelScope) { ownSigningCertificates }
+        InstallCoordinator(context, db, play, accrescent, viewModelScope) { ownSigningCertificates }
 
     /** Off-by-default: the periodic check may also download and install updates unattended. */
     val autoInstallUpdates: StateFlow<Boolean> = settings.autoInstallUpdates
@@ -94,6 +89,11 @@ class AppStoreViewModel(
     internal val playSectionsFlow = MutableStateFlow<List<AppSection>>(emptyList())
     internal val recentlyUpdatedFlow = MutableStateFlow<List<UnifiedApp>>(emptyList())
 
+    /** Newest builds per offline repo: each one gets its own home row. */
+    internal val modernRecentFlow = MutableStateFlow<List<UnifiedApp>>(emptyList())
+    internal val proprietaryRecentFlow = MutableStateFlow<List<UnifiedApp>>(emptyList())
+    internal val fdroidRecentFlow = MutableStateFlow<List<UnifiedApp>>(emptyList())
+
     /** Accrescent listings for the home carousel, from the gRPC listing API. */
     internal val accrescentAppsFlow = MutableStateFlow<List<UnifiedApp>>(emptyList())
 
@@ -103,20 +103,6 @@ class AppStoreViewModel(
      */
     internal val accrescentPackagesFlow = MutableStateFlow<Set<String>>(emptySet())
 
-    /**
-     * The Sandboxed Google Play bundle rows. Seeded with stand-ins so the section is on
-     * screen immediately; [loadHome] replaces them with rows built from GrapheneOS's signed
-     * index. These install from GrapheneOS's release server, never Play.
-     * Kept in [SandboxedGooglePlay.PACKAGES] order so the ordered install reads straight off it.
-     *
-     * Empty on stock Android. These packages only work alongside the gmscompat layer, which
-     * is part of the OS, so on a device without it the section would offer three installs
-     * that cannot function.
-     */
-    internal val sandboxedGooglePlayFlow = MutableStateFlow(
-        if (RestrictedPackages.isGrapheneOS(context)) SandboxedGooglePlay.placeholders()
-        else emptyList()
-    )
     internal val categoriesFlow = MutableStateFlow<List<String>>(emptyList())
     internal val selectedCategoryFlow = MutableStateFlow<String?>(null)
     internal val categoryAppsFlow = MutableStateFlow<List<UnifiedApp>>(emptyList())
@@ -133,7 +119,6 @@ class AppStoreViewModel(
     internal val catalogUpdatesFlow = MutableStateFlow<List<UnifiedApp>>(emptyList())
     internal val playUpdatesFlow = MutableStateFlow<List<UnifiedApp>>(emptyList())
     internal val accrescentUpdatesFlow = MutableStateFlow<List<UnifiedApp>>(emptyList())
-    internal val grapheneOSUpdatesFlow = MutableStateFlow<List<UnifiedApp>>(emptyList())
 
     private val libraryFilterFlow = MutableStateFlow(SourceFilter.ALL)
 
@@ -180,11 +165,10 @@ class AppStoreViewModel(
         catalogUpdatesFlow,
         playUpdatesFlow,
         accrescentUpdatesFlow,
-        grapheneOSUpdatesFlow,
         installedRepo.apps,
-    ) { catalogUpdates, playUpdates, accrescentUpdates, grapheneOSUpdates, installed ->
+    ) { catalogUpdates, playUpdates, accrescentUpdates, installed ->
         val installedVersions = installed.associate { it.packageName to it.versionCode }
-        (catalogUpdates + playUpdates + accrescentUpdates + grapheneOSUpdates)
+        (catalogUpdates + playUpdates + accrescentUpdates)
             // The surviving row's source decides which download-and-verify path the update
             // takes, so it has to be the same precedence search and the library use.
             .sortedBy { it.source.priority }
@@ -201,16 +185,25 @@ class AppStoreViewModel(
 
     private val sections: StateFlow<List<AppSection>> = combine(
         catalog.modernApps,
+        combine(
+            modernRecentFlow,
+            proprietaryRecentFlow,
+            fdroidRecentFlow,
+        ) { modernRecent, proprietaryRecent, fdroidRecent ->
+            Triple(modernRecent, proprietaryRecent, fdroidRecent)
+        },
         playSectionsFlow,
-        recentlyUpdatedFlow,
-        sandboxedGooglePlayFlow,
         combine(
             categoryAppsFlow,
             selectedCategoryFlow,
             accrescentAppsFlow,
         ) { apps, category, accrescent -> Triple(apps, category, accrescent) },
-    ) { modern, playSections, recent, sandboxed, (categoryApps, category, accrescentApps) ->
-        buildSections(modern, playSections, recent, sandboxed, accrescentApps, categoryApps, category)
+    ) { modern, (modernRecent, proprietaryRecent, fdroidRecent), playSections,
+        (categoryApps, category, accrescentApps) ->
+        buildSections(
+            modern, modernRecent, proprietaryRecent, fdroidRecent,
+            playSections, accrescentApps, categoryApps, category,
+        )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val home: StateFlow<HomeUiState> = combine(
@@ -306,20 +299,15 @@ class AppStoreViewModel(
         libraryFilterFlow,
     ) { rows, index, playPackages, accrescentPackages, filter ->
         // Source attribution, highest priority first:
-        //  1. GrapheneOS's Sandboxed Google Play components (GSF/GMS/Vending) are Google's
-        //     APKs re-hosted by GrapheneOS and installed from its release server, so they
-        //     are attributed to GrapheneOS — never Play — even though Play lists them too.
-        //  2. Whatever the offline catalogue (F-Droid / Modern Apps) recorded.
-        //  3. Accrescent, for packages its signed allowlist vouches for.
-        //  4. Play, but only for packages Play confirmed it hosts (see playInstalledPackagesFlow).
+        //  1. Whatever the offline catalogue (F-Droid / Modern Apps / Proprietary) recorded.
+        //  2. Accrescent, for packages its signed allowlist vouches for.
+        //  3. Play, but only for packages Play confirmed it hosts (see playInstalledPackagesFlow).
         // A package no source vouches for — sideloaded, or from a store we don't track — is
         // left out entirely rather than mislabelled as Play.
-        fun sourceOf(pkg: String): AppSource? = when {
-            pkg in SandboxedGooglePlay.PACKAGES -> AppSource.GRAPHENEOS
-            else -> index[pkg]?.source?.let { runCatching { AppSource.valueOf(it) }.getOrNull() }
+        fun sourceOf(pkg: String): AppSource? =
+            index[pkg]?.source?.let { runCatching { AppSource.valueOf(it) }.getOrNull() }
                 ?: AppSource.ACCRESCENT.takeIf { pkg in accrescentPackages }
                 ?: AppSource.PLAYSTORE.takeIf { pkg in playPackages }
-        }
 
         val all = rows.installed.mapNotNull { info ->
             sourceOf(info.packageName)?.let { info.toUnifiedApp(it) }
@@ -396,10 +384,10 @@ class AppStoreViewModel(
     /**
      * Ask Play which installed packages it actually hosts, for library attribution.
      *
-     * Only packages neither offline source lists and that aren't GrapheneOS components are
-     * worth asking about — the rest are already attributed. Play returning nothing (no
-     * account, no network) leaves the previous answer in place rather than emptying the
-     * library, so a transient failure can't hide apps Play was known to host.
+     * Only packages no offline source lists are worth asking about — the rest are
+     * already attributed. Play returning nothing (no account, no network) leaves the
+     * previous answer in place rather than emptying the library, so a transient
+     * failure can't hide apps Play was known to host.
      */
     private suspend fun refreshPlayInstalledPackages(
         enabled: Set<AppSource> = enabledSources.value,
@@ -411,7 +399,7 @@ class AppStoreViewModel(
         val index = catalog.packageIndex.value
         val candidates = installedRepo.apps.value
             .map { it.packageName }
-            .filter { it !in index && it !in SandboxedGooglePlay.PACKAGES }
+            .filter { it !in index }
         if (candidates.isEmpty()) {
             playInstalledPackagesFlow.value = emptySet()
             return
@@ -500,16 +488,6 @@ class AppStoreViewModel(
 
     override fun dismissInstallFailure(packageName: String) = installer.dismissFailure(packageName)
 
-    /**
-     * Install the Sandboxed Google Play bundle in dependency order.
-     *
-     * Sequential and awaited, like [updateAll]: Play Services provides the provider Vending
-     * talks to, so it must land first, and each first-time install shows its own
-     * PackageInstaller confirmation - firing them at once would bury the user in prompts and
-     * let the store client install before the services it needs.
-     */
-    override fun installSandboxedGooglePlay() = installSandboxedGooglePlayImpl()
-
     override fun openApp(packageName: String) = openAppImpl(packageName)
 
     override fun uninstallApp(packageName: String) = uninstallAppImpl(packageName)
@@ -591,7 +569,8 @@ class AppStoreViewModel(
     internal companion object {
         internal const val SEARCH_DEBOUNCE_MS = 350L
         internal const val INSTALL_SETTLE_MS = 1_500L
-        internal const val RECENT_LIMIT = 30
+        /** Per-repo cap for the three home rows; the three lists stay additive. */
+        internal const val RECENT_PER_SOURCE_LIMIT = 20
         internal const val CAROUSEL_LIMIT = 20
         internal const val PLAY_CLUSTER_LIMIT = 4
 

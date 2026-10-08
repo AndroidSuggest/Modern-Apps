@@ -6,9 +6,8 @@ import com.vayunmathur.appstore.data.accrescent.SignifyNative
 /**
  * ed25519 verification of an OpenBSD-signify signature.
  *
- * Two of this store's sources sign their index with signify — Accrescent's `repodata.N.json`
- * and GrapheneOS's `metadata.N.N.sjson` — so the framing is parsed once here rather than
- * twice.
+ * Accrescent's `repodata.N.json` signs its index with signify, so the framing is
+ * parsed once here.
  *
  * signify wire format (what this understands):
  * - A **public key** is a raw base64 blob of `2-byte algo id || 8-byte key id || 32-byte
@@ -18,7 +17,7 @@ import com.vayunmathur.appstore.data.accrescent.SignifyNative
  *   `untrusted comment:` line; a signature embedded in a signed document does not.
  * - The signature is over the **raw bytes of the signed file**.
  *
- * This is the whole trust anchor for both sources, so it fails closed: any parsing or
+ * This is the whole trust anchor for that source, so it fails closed: any parsing or
  * verification problem returns `false` rather than throwing or assuming success.
  *
  * The framing above is parsed here; the raw ed25519 check itself is [SignifyNative].

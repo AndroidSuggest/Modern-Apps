@@ -47,10 +47,9 @@ internal fun AppStoreViewModel.setSearchImpl(query: String) {
 /**
  * Combine catalogue, Play and Accrescent hits, one row per package.
  *
- * Where several sources offer a package, [AppSource.PRIORITY] decides which row survives —
- * notably keeping the GrapheneOS row for the Sandboxed Google Play components rather than
- * Play's listing of the same three packages. Sorting is stable, so each source's own
- * relevance ordering is preserved within its rank, and [rank] re-sorts the result anyway.
+ * Where several sources offer a package, [AppSource.PRIORITY] decides which row survives.
+ * Sorting is stable, so each source's own relevance ordering is preserved within its
+ * rank, and [rank] re-sorts the result anyway.
  */
 internal fun AppStoreViewModel.merge(vararg lists: List<UnifiedApp>): List<UnifiedApp> =
     lists.asSequence()

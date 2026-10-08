@@ -25,7 +25,6 @@ _Install: ./install appstore (dev by default)._
 - com/vayunmathur/appstore/data/InstalledAppsRepository.kt
 - com/vayunmathur/appstore/data/PlayStoreLinks.kt
 - com/vayunmathur/appstore/data/RestrictedPackages.kt
-- com/vayunmathur/appstore/data/SandboxedGooglePlay.kt
 - com/vayunmathur/appstore/data/SettingsRepository.kt
 - com/vayunmathur/appstore/data/UpdateCheckWorker.kt
 - com/vayunmathur/appstore/data/accrescent/AccrescentApi.kt
@@ -35,9 +34,6 @@ _Install: ./install appstore (dev by default)._
 - com/vayunmathur/appstore/data/accrescent/AccrescentTrustStore.kt
 - com/vayunmathur/appstore/data/accrescent/DeviceAttributesProvider.kt
 - com/vayunmathur/appstore/data/accrescent/SignifyNative.kt
-- com/vayunmathur/appstore/data/grapheneos/GrapheneOSIndex.kt
-- com/vayunmathur/appstore/data/grapheneos/GrapheneOSRepo.kt
-- com/vayunmathur/appstore/data/grapheneos/GrapheneOSRepository.kt
 - com/vayunmathur/appstore/data/installer/InstallCoordinator.kt
 - com/vayunmathur/appstore/data/installer/InstallStatusReceiver.kt
 - com/vayunmathur/appstore/data/installer/PlayDownloader.kt

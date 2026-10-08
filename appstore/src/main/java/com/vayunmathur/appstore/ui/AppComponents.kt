@@ -101,7 +101,6 @@ fun SourceChip(source: AppSource, modifier: Modifier = Modifier) {
         when (source) {
             AppSource.MODERN_APPS -> R.string.source_chip_modern_apps
             AppSource.FDROID -> R.string.source_chip_fdroid
-            AppSource.GRAPHENEOS -> R.string.source_chip_grapheneos
             AppSource.PLAYSTORE -> R.string.source_chip_play
             AppSource.ACCRESCENT -> R.string.source_chip_accrescent
             AppSource.PROPRIETARY -> R.string.source_chip_proprietary

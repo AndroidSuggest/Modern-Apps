@@ -38,24 +38,6 @@ internal fun AppStoreViewModel.installImpl(app: UnifiedApp) {
     }
 }
 
-/**
- * Install the Sandboxed Google Play bundle in dependency order.
- *
- * Sequential and awaited, like [updateAll]: Play Services provides the provider Vending
- * talks to, so it must land first, and each first-time install shows its own
- * PackageInstaller confirmation - firing them at once would bury the user in prompts and
- * let the store client install before the services it needs.
- */
-internal fun AppStoreViewModel.installSandboxedGooglePlayImpl() {
-    viewModelScope.launch {
-        for (app in sandboxedGooglePlayFlow.value) {
-            installer.install(app)
-        }
-        delay(INSTALL_SETTLE_MS)
-        installedRepo.refresh()
-    }
-}
-
 internal fun AppStoreViewModel.openAppImpl(packageName: String) {
     val launchIntent = runCatching {
         context.packageManager.getLaunchIntentForPackage(packageName)

@@ -6,9 +6,7 @@ import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.REPEATED_FAILUR
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.AppSource
-import com.vayunmathur.appstore.data.SandboxedGooglePlay
 import com.vayunmathur.appstore.data.UnifiedApp
-import com.vayunmathur.appstore.data.grapheneos.toUnifiedApp
 import com.vayunmathur.appstore.data.installer.InstallFailureBatch
 import com.vayunmathur.appstore.data.security.VerificationResult
 import com.vayunmathur.library.util.AppMessages
@@ -30,17 +28,11 @@ internal fun AppStoreViewModel.checkForUpdatesImpl() {
 
         // Only ask Play about packages neither offline source lists — for the rest the
         // catalogue already answered, and Play would just re-answer it over the network.
-        // The Sandboxed Google Play components are held back too: Play hosts newer builds
-        // of all three, but only GrapheneOS's are the ones this device can use, so their
-        // updates come from its signed index below instead.
         val index = catalog.packageIndex.value
         val installed = installedRepo.updatable.value
         if (AppSource.PLAYSTORE in enabled) {
             val playCandidates = installed
-                .filter {
-                    it.packageName !in index &&
-                        it.packageName !in SandboxedGooglePlay.PACKAGES
-                }
+                .filter { it.packageName !in index }
                 .map { it.packageName }
 
             val remote = play.details(playCandidates).associateBy { it.packageName }
@@ -61,14 +53,6 @@ internal fun AppStoreViewModel.checkForUpdatesImpl() {
             accrescentUpdatesFlow.value = installed
                 .filter { it.packageName in accrescentIds }
                 .mapNotNull { inst -> accrescentUpdate(inst.packageName, inst.versionCode) }
-        }
-
-        // GrapheneOS: its signed index is the only place a Sandboxed Google Play update
-        // can come from, which is why the three are held back from the Play list above.
-        grapheneOSUpdatesFlow.value = grapheneOS.packages.mapNotNull { entry ->
-            val current = installed.firstOrNull { it.packageName == entry.packageName }
-                ?: return@mapNotNull null
-            entry.toUnifiedApp().takeIf { it.versionCode > current.versionCode }
         }
 
         lastUpdateCheckFlow.value = System.currentTimeMillis()

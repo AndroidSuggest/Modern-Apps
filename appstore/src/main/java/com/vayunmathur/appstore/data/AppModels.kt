@@ -6,14 +6,6 @@ enum class AppSource {
     /** This monorepo's own repository, signed with the same key as this app. */
     MODERN_APPS,
     FDROID,
-
-    /**
-     * GrapheneOS's app release server (apps.grapheneos.org). Used for the Sandboxed Google
-     * Play components (GSF, GMS, Vending), which GrapheneOS re-hosts as Google's own signed
-     * APKs with signed repo metadata. Installs go through the store's ordinary signed-APK
-     * download + PackageInstaller path, never Google Play.
-     */
-    GRAPHENEOS,
     PLAYSTORE,
 
     /**
@@ -39,25 +31,16 @@ enum class AppSource {
         /**
          * Precedence when more than one source offers the same package, most preferred first.
          *
-         * GrapheneOS outranks Play deliberately: Play lists the Sandboxed Google Play
-         * components too, but only the build GrapheneOS re-hosts is the one the OS's gmscompat
-         * layer expects, so a Play-delivered Vending or GMS is the wrong artifact for the
-         * device even though it would install. Below that the order is a provenance
-         * preference rather than a security ranking (see
+         * Below is a provenance preference rather than a security ranking (see
          * [com.vayunmathur.appstore.data.security.TrustProfile]): catalogue rows carry a
          * publisher key and a hash a download can be checked against, and Modern Apps rows are
          * signed with this store's own key.
          */
         val PRIORITY: List<AppSource> =
-            listOf(GRAPHENEOS, MODERN_APPS, PROPRIETARY, FDROID, ACCRESCENT, PLAYSTORE)
+            listOf(MODERN_APPS, PROPRIETARY, FDROID, ACCRESCENT, PLAYSTORE)
 
         /**
          * Sources the user may switch off, in the order the sources screen lists them.
-         *
-         * [GRAPHENEOS] is absent on purpose. It carries nothing but the Sandboxed Google Play
-         * components, which only exist on a device whose OS already ships the gmscompat layer
-         * they belong to, and which must never be updated from anywhere else — so a switch
-         * would either do nothing or strand three system packages on a stale build.
          */
         val TOGGLEABLE: List<AppSource> = listOf(MODERN_APPS, PROPRIETARY, FDROID, PLAYSTORE, ACCRESCENT)
     }

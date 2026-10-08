@@ -6,10 +6,11 @@ import androidx.core.content.edit
 /**
  * Packages the OS will not let this store install, so it stops offering them updates.
  *
- * GrapheneOS reserves a few Google packages for its own first-party package source. Committing
- * a session for one fails with `INSTALL_FAILED_SESSION_INVALID: Only the first party package
- * source and shell are allowed to install <package>`, which is not something the user can act
- * on — so a pending update for it is a notification that can only ever be dismissed.
+ * Some GrapheneOS-derived builds reserve Google packages for their own first-party
+ * package source. Committing a session for one fails with
+ * `INSTALL_FAILED_SESSION_INVALID: Only the first party package source and shell are
+ * allowed to install <package>`, which is not something the user can act on — so a
+ * pending update for it is a notification that can only ever be dismissed.
  *
  * [KNOWN] is consulted on GrapheneOS-derived builds only; on stock Android these are ordinary
  * updatable apps. [recordIfRestricted] adds whatever else the installer finds out the hard way,
@@ -65,9 +66,7 @@ object RestrictedPackages {
     /**
      * Whether this is GrapheneOS or a build derived from it, such as Modern Apps OS.
      *
-     * Also gates the Sandboxed Google Play section: those packages only work alongside the
-     * gmscompat layer, which is part of the OS, so offering them on stock Android would offer
-     * an install that cannot function.
+     * Gates which packages are left out of update checks via [forDevice].
      */
     fun isGrapheneOS(context: Context): Boolean =
         context.packageManager.hasSystemFeature(GRAPHENEOS_FEATURE)

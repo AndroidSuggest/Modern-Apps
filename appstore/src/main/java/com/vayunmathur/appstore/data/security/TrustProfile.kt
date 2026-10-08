@@ -79,13 +79,6 @@ enum class TrustProfile {
      */
     FDROID,
 
-    /**
-     * GrapheneOS's app release server, which re-hosts Google's own signed builds of the
-     * Sandboxed Google Play components behind a signify-signed index. Trust is the pinned
-     * release key, and per file the SHA-256 and signing certificate that index vouches for.
-     */
-    GRAPHENEOS,
-
     /** Google Play, via an anonymous account. */
     PLAY,
 
@@ -109,7 +102,6 @@ enum class TrustProfile {
         get() = when (this) {
             MODERN_APPS -> R.string.trust_modern_apps_title
             FDROID -> R.string.source_chip_fdroid
-            GRAPHENEOS -> R.string.source_chip_grapheneos
             PLAY -> R.string.trust_play_title
             ACCRESCENT -> R.string.source_chip_accrescent
             PROPRIETARY -> R.string.source_chip_proprietary
@@ -121,7 +113,6 @@ enum class TrustProfile {
         get() = when (this) {
             MODERN_APPS -> R.string.trust_modern_apps_summary
             FDROID -> R.string.trust_fdroid_summary
-            GRAPHENEOS -> R.string.trust_grapheneos_summary
             PLAY -> R.string.trust_play_summary
             ACCRESCENT -> R.string.trust_accrescent_summary
             PROPRIETARY -> R.string.trust_proprietary_summary
@@ -138,11 +129,6 @@ enum class TrustProfile {
                 R.string.trust_fdroid_practice_source,
                 R.string.trust_fdroid_practice_rebuild,
                 R.string.trust_fdroid_practice_antifeatures,
-            )
-            GRAPHENEOS -> listOf(
-                R.string.trust_grapheneos_practice_official,
-                R.string.trust_grapheneos_practice_signed_index,
-                R.string.trust_grapheneos_practice_matched,
             )
             PLAY -> listOf(
                 R.string.trust_play_practice_identity,
@@ -176,11 +162,6 @@ enum class TrustProfile {
                 R.string.trust_fdroid_check_rebuilt,
                 R.string.trust_fdroid_check_hash_and_key,
             )
-            GRAPHENEOS -> listOf(
-                R.string.trust_grapheneos_check_index_signed,
-                R.string.trust_grapheneos_check_rollback,
-                R.string.trust_grapheneos_check_hash_and_key,
-            )
             PLAY -> listOf(
                 R.string.trust_play_check_hash,
                 R.string.trust_play_check_key,
@@ -203,7 +184,6 @@ enum class TrustProfile {
         get() = when (this) {
             MODERN_APPS -> R.string.trust_modern_apps_limits
             FDROID -> R.string.trust_fdroid_limits
-            GRAPHENEOS -> R.string.trust_grapheneos_limits
             PLAY -> R.string.trust_play_limits
             ACCRESCENT -> R.string.trust_accrescent_limits
             PROPRIETARY -> R.string.trust_proprietary_limits
@@ -215,7 +195,6 @@ enum class TrustProfile {
             // The whole F-Droid catalogue is listed; whether a given version was reproduced
             // is shown per-app as a badge (see UnifiedApp.reproducible).
             AppSource.FDROID -> FDROID
-            AppSource.GRAPHENEOS -> GRAPHENEOS
             AppSource.PLAYSTORE -> PLAY
             // Accrescent apps are signed by their developers, not by Accrescent; trust is the
             // ed25519-signed allowlist that pins each app's signing certificate + min version.

@@ -76,15 +76,21 @@ class MetadataPreviews {
                 state = HomeUiState(
                     sections = listOf(
                         AppSection(
-                            id = "modern",
-                            title = "From Modern Apps",
-                            subtitle = "Built in this repo and signed with the same key as this store",
+                            id = "modern-recent",
+                            title = "New from Modern Apps",
+                            subtitle = "The newest builds from this repo",
                             apps = MODERN,
                         ),
                         AppSection(
-                            id = "recent",
-                            title = "New and updated",
-                            subtitle = "The newest builds F-Droid has reproduced",
+                            id = "proprietary-recent",
+                            title = "New in Proprietary",
+                            subtitle = "The newest builds from the Play mirror",
+                            apps = PROPRIETARY,
+                        ),
+                        AppSection(
+                            id = "fdroid-recent",
+                            title = "New on F-Droid",
+                            subtitle = "The newest builds on F-Droid",
                             apps = FDROID,
                             layout = SectionLayout.LIST,
                         ),
@@ -250,6 +256,16 @@ private val FDROID = listOf(
         name = "Syncthing",
         summary = "Continuous file synchronisation between your own devices",
         author = "Syncthing Community",
+    ),
+)
+
+private val PROPRIETARY = listOf(
+    UnifiedApp(
+        packageName = "com.whatsapp",
+        source = AppSource.PROPRIETARY,
+        name = "WhatsApp",
+        summary = "Messaging and calling, privately mirrored from Play",
+        author = "WhatsApp LLC",
     ),
 )
 

@@ -25,7 +25,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.appstore.R
-import com.vayunmathur.appstore.data.SandboxedGooglePlay
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.util.AppSection
 import com.vayunmathur.appstore.util.AppStoreViewModel
@@ -33,7 +32,6 @@ import com.vayunmathur.appstore.util.HomeActions
 import com.vayunmathur.appstore.util.HomeUiState
 import com.vayunmathur.appstore.util.SectionLayout
 import com.vayunmathur.library.ui.AppScaffold
-import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -153,17 +151,7 @@ fun HomeScreen(
 
             state.sections.forEach { section ->
                 item("${section.id}-header") {
-                    if (section.id == SandboxedGooglePlay.SECTION_ID) {
-                        SandboxedGooglePlayHeader(
-                            title = section.title,
-                            subtitle = section.subtitle,
-                            allInstalled = section.apps.isNotEmpty() &&
-                                section.apps.all { it.packageName in state.installedPackages },
-                            onInstallAll = actions::installSandboxedGooglePlay,
-                        )
-                    } else {
-                        SectionHeader(section.title, section.subtitle)
-                    }
+                    SectionHeader(section.title, section.subtitle)
                 }
                 when (section.layout) {
                     SectionLayout.CAROUSEL -> item("${section.id}-body") {
@@ -191,30 +179,6 @@ fun HomeScreen(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SandboxedGooglePlayHeader(
-    title: String,
-    subtitle: String?,
-    allInstalled: Boolean,
-    onInstallAll: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SectionHeader(title, subtitle, Modifier.weight(1f))
-        Button(
-            onClick = onInstallAll,
-            enabled = !allInstalled,
-            modifier = Modifier.padding(end = 16.dp),
-        ) {
-            IconDownload()
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.action_install_all))
         }
     }
 }

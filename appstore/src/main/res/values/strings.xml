@@ -23,7 +23,6 @@
     <!-- Source chips. Factual labels; the sources are not ranked. -->
     <string name="source_chip_modern_apps" translatable="false">Modern Apps</string>
     <string name="source_chip_fdroid">F-Droid</string>
-    <string name="source_chip_grapheneos">GrapheneOS</string>
     <string name="source_chip_play">Play Store</string>
     <string name="source_chip_accrescent">Accrescent</string>
     <string name="source_chip_proprietary">Proprietary</string>
@@ -34,11 +33,13 @@
     <string name="section_modern_apps">From Modern Apps</string>
     <string name="section_modern_apps_subtitle">Built in this repo and signed with the same key as this store</string>
     <string name="section_play_top_charts">Top on the Play Store</string>
-    <string name="section_recently_updated">New and updated</string>
-    <string name="section_recently_updated_subtitle">The newest builds on F-Droid</string>
+    <string name="section_modern_apps_recent">New from Modern Apps</string>
+    <string name="section_modern_apps_recent_subtitle">The newest builds from this repo</string>
+    <string name="section_proprietary_recent">New in Proprietary</string>
+    <string name="section_proprietary_recent_subtitle">The newest builds from the Play mirror</string>
+    <string name="section_fdroid_recent">New on F-Droid</string>
+    <string name="section_fdroid_recent_subtitle">The newest builds on F-Droid</string>
     <string name="section_category_subtitle">Apps from the offline catalogue in this category</string>
-    <string name="section_sandboxed_google_play">Sandboxed Google Play</string>
-    <string name="section_sandboxed_google_play_subtitle">Google\'s Play components as ordinary, unprivileged apps</string>
     <string name="section_accrescent">On Accrescent</string>
     <string name="section_accrescent_subtitle">Developer-signed apps from Accrescent\'s signed app list</string>
     <string name="action_install_all">Install all</string>
@@ -211,14 +212,6 @@
     <string name="trust_fdroid_check_rebuilt">Versions F-Droid\'s second build server reproduced bit-for-bit are badged as reproducible</string>
     <string name="trust_fdroid_check_hash_and_key">The hash and the signing key both come from the signed list</string>
     <string name="trust_fdroid_limits">F-Droid holds the signing key, not the developer, so its build servers can sign anything. Nobody checks what an app does, only that it matches its source. Updates wait to be rebuilt, which can take days or weeks, security fixes included.</string>
-    <string name="trust_grapheneos_summary">Google\'s own signed builds of the Sandboxed Google Play components, re-hosted by GrapheneOS behind a signed list naming each file\'s hash and signing key.</string>
-    <string name="trust_grapheneos_practice_official">The files are Google\'s own signed builds, re-hosted unchanged rather than rebuilt</string>
-    <string name="trust_grapheneos_practice_signed_index">GrapheneOS signs the list of versions, file hashes and expected signing keys with its release key</string>
-    <string name="trust_grapheneos_practice_matched">Only the builds that match the compatibility layer your OS ships are offered</string>
-    <string name="trust_grapheneos_check_index_signed">That signed list is checked against a key built into this store</string>
-    <string name="trust_grapheneos_check_rollback">A list older than the last one seen is refused, so an old build cannot be pushed back onto you</string>
-    <string name="trust_grapheneos_check_hash_and_key">Every downloaded file matches the hash and the signing key that list names for it</string>
-    <string name="trust_grapheneos_limits">These are Google\'s closed-source apps. Nothing is built from published source and nothing is reproducible, so what is proven is that you received the file GrapheneOS listed, not anything about what that file does. The source carries only the Sandboxed Google Play components.</string>
     <string name="trust_play_title">Google Play</string>
     <string name="trust_play_summary">Reviewed, scanned and signed by Google, who verify who the developer is and can pull an app from every phone at once.</string>
     <string name="trust_play_practice_identity">Developers have to prove who they are, with a real name and address on file</string>

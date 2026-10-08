@@ -2,15 +2,13 @@ package com.vayunmathur.appstore.util
 
 import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.CAROUSEL_LIMIT
 import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.PLAY_CLUSTER_LIMIT
-import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.RECENT_LIMIT
+import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.RECENT_PER_SOURCE_LIMIT
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.DefaultRepos
-import com.vayunmathur.appstore.data.SandboxedGooglePlay
 import com.vayunmathur.appstore.data.SyncStep
 import com.vayunmathur.appstore.data.UnifiedApp
-import com.vayunmathur.appstore.data.grapheneos.toUnifiedApp
 import com.vayunmathur.library.util.AppMessages
 import kotlinx.coroutines.launch
 
@@ -27,20 +25,32 @@ import kotlinx.coroutines.launch
  */
 internal suspend fun AppStoreViewModel.loadHome(enabled: Set<AppSource> = enabledSources.value) {
     isLoadingHomeFlow.value = true
-    recentlyUpdatedFlow.value = catalog.recentlyUpdated(RECENT_LIMIT)
-
-    // The Sandboxed Google Play components come from GrapheneOS's release server, not
-    // Play. Refreshing its signed index is what turns the stand-ins into installable
-    // rows: the version, file list, signer digests and per-APK hashes all come from
-    // there. A failed refresh leaves the stand-ins, and the section, exactly as they were.
-    if (sandboxedGooglePlayFlow.value.isNotEmpty()) {
-        grapheneOS.refresh(SandboxedGooglePlay.PACKAGES).getOrNull()?.let { packages ->
-            val byPackage = packages.associateBy { it.packageName }
-            sandboxedGooglePlayFlow.value = sandboxedGooglePlayFlow.value.map { row ->
-                byPackage[row.packageName]?.toUnifiedApp() ?: row
-            }
+    val modernEnabled = AppSource.MODERN_APPS in enabled
+    val fdroidEnabled = AppSource.FDROID in enabled
+    val proprietaryEnabled = AppSource.PROPRIETARY in enabled
+    if (modernEnabled || fdroidEnabled || proprietaryEnabled) {
+        modernRecentFlow.value = if (modernEnabled) {
+            catalog.recentlyUpdatedBySource(AppSource.MODERN_APPS, RECENT_PER_SOURCE_LIMIT)
+        } else {
+            emptyList()
         }
+        fdroidRecentFlow.value = if (fdroidEnabled) {
+            catalog.recentlyUpdatedBySource(AppSource.FDROID, RECENT_PER_SOURCE_LIMIT)
+        } else {
+            emptyList()
+        }
+        proprietaryRecentFlow.value = if (proprietaryEnabled) {
+            catalog.recentlyUpdatedBySource(AppSource.PROPRIETARY, RECENT_PER_SOURCE_LIMIT)
+        } else {
+            emptyList()
+        }
+    } else {
+        modernRecentFlow.value = emptyList()
+        fdroidRecentFlow.value = emptyList()
+        proprietaryRecentFlow.value = emptyList()
     }
+    recentlyUpdatedFlow.value =
+        modernRecentFlow.value + proprietaryRecentFlow.value + fdroidRecentFlow.value
 
     if (AppSource.PLAYSTORE !in enabled) {
         isLoadingHomeFlow.value = false
@@ -72,9 +82,10 @@ internal suspend fun AppStoreViewModel.loadHome(enabled: Set<AppSource> = enable
 
 internal fun AppStoreViewModel.buildSections(
     modern: List<UnifiedApp>,
+    modernRecent: List<UnifiedApp>,
+    proprietaryRecent: List<UnifiedApp>,
+    fdroidRecent: List<UnifiedApp>,
     playSections: List<AppSection>,
-    recent: List<UnifiedApp>,
-    sandboxed: List<UnifiedApp>,
     accrescent: List<UnifiedApp>,
     categoryApps: List<UnifiedApp>,
     category: String?,
@@ -93,7 +104,18 @@ internal fun AppStoreViewModel.buildSections(
         )
         return@buildList
     }
-    if (modern.isNotEmpty()) {
+    // Each offline repo gets its own row — Modern Apps, the proprietary mirror and
+    // F-Droid are never mixed into one "recent" list.
+    if (modernRecent.isNotEmpty()) {
+        add(
+            AppSection(
+                id = "modern-recent",
+                title = context.getString(R.string.section_modern_apps_recent),
+                apps = modernRecent,
+                subtitle = context.getString(R.string.section_modern_apps_recent_subtitle),
+            )
+        )
+    } else if (modern.isNotEmpty()) {
         add(
             AppSection(
                 id = "modern",
@@ -103,13 +125,13 @@ internal fun AppStoreViewModel.buildSections(
             )
         )
     }
-    if (sandboxed.isNotEmpty()) {
+    if (proprietaryRecent.isNotEmpty()) {
         add(
             AppSection(
-                id = SandboxedGooglePlay.SECTION_ID,
-                title = context.getString(R.string.section_sandboxed_google_play),
-                apps = sandboxed,
-                subtitle = context.getString(R.string.section_sandboxed_google_play_subtitle),
+                id = "proprietary-recent",
+                title = context.getString(R.string.section_proprietary_recent),
+                apps = proprietaryRecent,
+                subtitle = context.getString(R.string.section_proprietary_recent_subtitle),
             )
         )
     }
@@ -124,13 +146,13 @@ internal fun AppStoreViewModel.buildSections(
             )
         )
     }
-    if (recent.isNotEmpty()) {
+    if (fdroidRecent.isNotEmpty()) {
         add(
             AppSection(
-                id = "recent",
-                title = context.getString(R.string.section_recently_updated),
-                apps = recent,
-                subtitle = context.getString(R.string.section_recently_updated_subtitle),
+                id = "fdroid-recent",
+                title = context.getString(R.string.section_fdroid_recent),
+                apps = fdroidRecent,
+                subtitle = context.getString(R.string.section_fdroid_recent_subtitle),
             )
         )
     }
@@ -139,8 +161,8 @@ internal fun AppStoreViewModel.buildSections(
 /**
  * Populate the offline catalogues the first time the store is opened.
  *
- * Nothing else fetches them on startup: [loadHome] only refreshes GrapheneOS's index, and
- * the periodic [com.vayunmathur.appstore.work.UpdateCheckWorker] may be hours away. That
+ * Nothing else fetches them on startup: the periodic
+ * [com.vayunmathur.appstore.work.UpdateCheckWorker] may be hours away. That
  * left a fresh install showing an empty store until the user thought to pull to refresh.
  *
  * Keyed off the catalogue being empty rather than a "first run" flag, so it also recovers
@@ -150,9 +172,11 @@ internal fun AppStoreViewModel.buildSections(
  */
 internal fun AppStoreViewModel.syncIfNeverSynced(enabled: Set<AppSource>) {
     if (recentlyUpdatedFlow.value.isNotEmpty()) return
-    // Nothing to fetch if both offline sources are switched off; syncSources() would only
+    // Nothing to fetch if all three offline sources are switched off; syncSources() would only
     // report "all sources off" at someone who never asked for a sync.
-    val offlineSources = setOf(DefaultRepos.FDROID.source, DefaultRepos.MODERN_APPS.source)
+    val offlineSources = setOf(
+        DefaultRepos.FDROID.source, DefaultRepos.MODERN_APPS.source, DefaultRepos.PROPRIETARY.source
+    )
     if (enabled.intersect(offlineSources).isEmpty()) return
     syncSources()
 }

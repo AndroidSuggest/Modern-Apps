@@ -5,12 +5,9 @@ import com.vayunmathur.library.log.Log
 import com.vayunmathur.appstore.data.AppDatabase
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.PinnedStampEntity
-import com.vayunmathur.appstore.data.SandboxedGooglePlay
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.data.accrescent.AccrescentRepository
 import com.vayunmathur.appstore.data.accrescent.IncompatibleDeviceException
-import com.vayunmathur.appstore.data.grapheneos.GrapheneOSRepo
-import com.vayunmathur.appstore.data.grapheneos.GrapheneOSRepository
 import com.vayunmathur.appstore.data.play.CertUtil
 import com.vayunmathur.appstore.data.play.PlayRepository
 import com.vayunmathur.appstore.data.security.InstallRequirement
@@ -29,7 +26,6 @@ import java.io.FilterInputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.zip.GZIPInputStream
 import javax.net.ssl.HttpsURLConnection
 
 /**
@@ -54,15 +50,15 @@ sealed interface InstallStage {
  *
  * Both paths end at the same place — [SessionInstaller.installSplits] with an
  * [InstallRequirement] describing what the bytes have to prove — but they get there
- * differently: F-Droid, Modern Apps and GrapheneOS publish a URL and a hash, while Play
- * requires an account, a purchase call and a delivery response that names the files.
+ * differently: F-Droid, Modern Apps and the proprietary mirror publish a URL and a
+ * hash, while Play requires an account, a purchase call and a delivery response
+ * that names the files.
  */
 class InstallCoordinator(
     private val context: Context,
     private val db: AppDatabase,
     private val play: PlayRepository,
     private val accrescent: AccrescentRepository,
-    private val grapheneOS: GrapheneOSRepository,
     scope: CoroutineScope,
     private val ownSigningCertificates: () -> Set<String>,
 ) {
@@ -109,7 +105,6 @@ class InstallCoordinator(
             val outcome = when (app.source) {
                 AppSource.PLAYSTORE -> installFromPlay(app)
                 AppSource.ACCRESCENT -> installFromAccrescent(app)
-                AppSource.GRAPHENEOS -> installFromGrapheneOS(app)
                 else -> installFromUrl(app)
             }
             record(app.packageName, outcome.verification)
@@ -203,7 +198,6 @@ class InstallCoordinator(
         url: String,
         target: File,
         expectedSize: Long,
-        gzipped: Boolean = false,
         onProgress: (Float) -> Unit,
     ) {
         val rawConnection = URL(url).openConnection()
@@ -225,8 +219,6 @@ class InstallCoordinator(
                 throw IOException("the server returned HTTP $code for ${target.name}")
             }
 
-            // Progress counts bytes off the network, so it stays honest for a gzipped body
-            // where the file on disk ends up several times larger than the transfer.
             val total = conn.contentLengthLong.takeIf { it > 0 } ?: expectedSize
             var downloaded = 0L
             val counting = object : FilterInputStream(conn.inputStream) {
@@ -240,8 +232,7 @@ class InstallCoordinator(
                         }
                     }
             }
-            val input = if (gzipped) GZIPInputStream(counting) else counting
-            input.use { source ->
+            counting.use { source ->
                 target.outputStream().use { out ->
                     source.copyTo(out, COPY_BUFFER_SIZE)
                 }
@@ -250,77 +241,6 @@ class InstallCoordinator(
             conn.disconnect()
         }
     }
-
-    // --- GrapheneOS ------------------------------------------------------------------
-
-    /**
-     * Install one of GrapheneOS's packages from its signed index.
-     *
-     * Everything the install is checked against — the file list, each file's SHA-256, and the
-     * certificates the APKs must be signed by — comes from the index this store verified the
-     * signature of, so a package the index does not vouch for is refused before anything is
-     * downloaded rather than installed unchecked.
-     *
-     * The files are served gzipped and the published hashes are of the uncompressed APKs, so
-     * they are decompressed on the way to disk and hashed there, under their index file names
-     * so the hash map lines up.
-     */
-    private suspend fun installFromGrapheneOS(app: UnifiedApp): SessionInstaller.Outcome =
-        withContext(Dispatchers.IO) {
-            // The index is fetched when the home screen loads, so tapping install before that
-            // lands - a cold start, or a refresh that failed while the network was down - would
-            // otherwise report that GrapheneOS does not vouch for a package it plainly does.
-            // Fetch it here rather than fail on the timing: refresh() is mutex-guarded, so a
-            // sync already in flight is awaited rather than duplicated.
-            val entry = grapheneOS.packageFor(app.packageName)
-                ?: run {
-                    grapheneOS.refresh(SandboxedGooglePlay.PACKAGES)
-                    grapheneOS.packageFor(app.packageName)
-                }
-                ?: return@withContext SessionInstaller.Outcome(
-                    false,
-                    VerificationResult.Rejected(
-                        "GrapheneOS's signed app list does not vouch for this app"
-                    ),
-                )
-
-            val dir = File(context.cacheDir, "grapheneos/${app.packageName}").apply {
-                deleteRecursively()
-                mkdirs()
-            }
-
-            val totalCompressed = entry.apks.sumOf { it.gzSize }.takeIf { it > 0 } ?: -1L
-            var doneCompressed = 0L
-            val files = entry.apks.map { apk ->
-                val file = File(dir, apk.name)
-                val start = doneCompressed
-                download(
-                    url = GrapheneOSRepo.apkUrl(app.packageName, entry.versionCode, apk.name),
-                    target = file,
-                    expectedSize = apk.gzSize,
-                    gzipped = true,
-                ) { fileFraction ->
-                    if (totalCompressed > 0) {
-                        val overall = (start + fileFraction * apk.gzSize) / totalCompressed
-                        stage(app.packageName, InstallStage.Downloading(overall.coerceIn(0f, 1f)))
-                    }
-                }
-                doneCompressed += apk.gzSize
-                file
-            }
-
-            val requirement = InstallRequirement(
-                expectedPackage = app.packageName,
-                requiredSigners = entry.signers.toSet(),
-                expectedSha256 = entry.apks.associate { it.name to it.sha256 },
-                signerOrigin = "GrapheneOS's signed app list",
-            )
-
-            stage(app.packageName, InstallStage.Verifying)
-            sessionInstaller.installSplits(
-                app.packageName, files, requirement, files.sumOf { it.length() }
-            )
-        }
 
     // --- Accrescent ----------------------------------------------------------------
 

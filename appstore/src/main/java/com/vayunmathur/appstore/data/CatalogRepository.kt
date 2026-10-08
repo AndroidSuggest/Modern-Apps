@@ -79,11 +79,13 @@ class CatalogRepository(
             runCatching { AppSource.valueOf(it) }.getOrNull()
         }
 
-    /** F-Droid's most recently published builds — the browse screen's "New and updated". */
-    suspend fun recentlyUpdated(limit: Int = 30): List<UnifiedApp> = withContext(Dispatchers.IO) {
-        runCatching { db.cachedAppDao().recentlyUpdated(limit).map { it.toUnifiedApp() } }
-            .getOrDefault(emptyList())
-    }
+    /** Newest builds from one offline source: each repo gets its own home row. */
+    suspend fun recentlyUpdatedBySource(source: AppSource, limit: Int = 30): List<UnifiedApp> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                db.cachedAppDao().recentlyUpdatedBySource(source.name, limit).map { it.toUnifiedApp() }
+            }.getOrDefault(emptyList())
+        }
 
     suspend fun byCategory(category: String, limit: Int = 60): List<UnifiedApp> =
         withContext(Dispatchers.IO) {

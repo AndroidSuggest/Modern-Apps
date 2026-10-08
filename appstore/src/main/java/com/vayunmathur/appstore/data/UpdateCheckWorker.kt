@@ -26,8 +26,6 @@ import com.vayunmathur.appstore.MainActivity
 import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.installer.InstallCoordinator
 import com.vayunmathur.appstore.data.accrescent.AccrescentRepository
-import com.vayunmathur.appstore.data.grapheneos.GrapheneOSRepository
-import com.vayunmathur.appstore.data.grapheneos.toUnifiedApp
 import com.vayunmathur.appstore.data.play.PlayRepository
 import com.vayunmathur.appstore.data.security.ApkCertificates
 import com.vayunmathur.library.network.NetworkClient
@@ -85,7 +83,6 @@ class UpdateCheckWorker(
         val installedRepo: InstalledAppsRepository,
         val play: PlayRepository,
         val accrescent: AccrescentRepository,
-        val grapheneOS: GrapheneOSRepository,
         val settings: SettingsRepository,
     )
 
@@ -98,7 +95,6 @@ class UpdateCheckWorker(
             installedRepo = InstalledAppsRepository(context),
             play = PlayRepository(context),
             accrescent = AccrescentRepository(context, db),
-            grapheneOS = GrapheneOSRepository(context),
             settings = SettingsRepository(context, scope),
         )
         val enabled = env.settings.readEnabledSources()
@@ -121,11 +117,10 @@ class UpdateCheckWorker(
         val fromCatalog = env.catalog.updatesFor(installed)
         val fromPlay = playUpdates(env, enabled, installed)
         val fromAccrescent = accrescentUpdates(env, enabled, installed)
-        val fromGrapheneOS = grapheneOSUpdates(env, installed)
 
         // The surviving row's source decides which download-and-verify path the update takes,
         // so it has to be the same precedence the rest of the store uses.
-        return (fromCatalog + fromPlay + fromAccrescent + fromGrapheneOS)
+        return (fromCatalog + fromPlay + fromAccrescent)
             .sortedBy { it.source.priority }
             .distinctBy { it.packageName }
     }
@@ -135,17 +130,11 @@ class UpdateCheckWorker(
         enabled: Set<AppSource>,
         installed: List<InstalledInfo>,
     ): List<UnifiedApp> {
-        // Only Play can answer for packages the offline catalogues have never heard of — except
-        // the Sandboxed Google Play components, which Play also hosts but must never update
-        // here: only the builds GrapheneOS re-hosts are the ones this device can use. Their
-        // updates come from GrapheneOS's own signed index instead, below.
+        // Only Play can answer for packages the offline catalogues have never heard of.
         if (AppSource.PLAYSTORE !in enabled) return emptyList()
         val index = env.catalog.packageIndex.value
         val unknown = installed
-            .filter {
-                it.packageName !in index &&
-                    it.packageName !in SandboxedGooglePlay.PACKAGES
-            }
+            .filter { it.packageName !in index }
             .map { it.packageName }
         val remote = env.play.details(unknown).associateBy { it.packageName }
         return installed.mapNotNull { inst ->
@@ -179,22 +168,6 @@ class UpdateCheckWorker(
             }
     }
 
-    private suspend fun grapheneOSUpdates(
-        env: CheckEnv,
-        installed: List<InstalledInfo>,
-    ): List<UnifiedApp> {
-        // GrapheneOS: refresh its signed index and offer a newer build of each Sandboxed
-        // Google Play component that is installed. Skipped on stock Android, where these
-        // packages cannot work at all for want of the OS's gmscompat layer.
-        if (!RestrictedPackages.isGrapheneOS(context)) return emptyList()
-        return env.grapheneOS.refresh(SandboxedGooglePlay.PACKAGES).getOrNull().orEmpty()
-            .mapNotNull { entry ->
-                val current = installed.firstOrNull { it.packageName == entry.packageName }
-                    ?: return@mapNotNull null
-                entry.toUnifiedApp().takeIf { it.versionCode > current.versionCode }
-            }
-    }
-
     private suspend fun reportUpdates(env: CheckEnv, updates: List<UnifiedApp>) {
         val autoInstall = env.settings.readAutoInstallUpdates()
 
@@ -220,13 +193,15 @@ class UpdateCheckWorker(
         )
     }
 
-    private suspend fun autoInstall(eligible: List<UnifiedApp>, env: CheckEnv) {
+    private suspend fun autoInstall(
+        eligible: List<UnifiedApp>,
+        env: CheckEnv,
+    ) {
         autoInstall(
             eligible,
             env.db,
             env.play,
             env.accrescent,
-            env.grapheneOS,
             env.scope,
         )
     }
@@ -304,7 +279,6 @@ class UpdateCheckWorker(
         db: AppDatabase,
         play: PlayRepository,
         accrescent: AccrescentRepository,
-        grapheneOS: GrapheneOSRepository,
         scope: CoroutineScope,
     ) {
         runCatching { setForeground(installingForegroundInfo(apps.size)) }
@@ -313,7 +287,6 @@ class UpdateCheckWorker(
             db = db,
             play = play,
             accrescent = accrescent,
-            grapheneOS = grapheneOS,
             scope = scope,
             ownSigningCertificates = { ApkCertificates.selfSigners(context) },
         )

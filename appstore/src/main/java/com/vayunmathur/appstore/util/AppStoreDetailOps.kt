@@ -12,14 +12,6 @@ fun AppStoreViewModel.selectApp(app: UnifiedApp) {
     detailJob?.cancel()
     selectedAppFlow.value = app
     detailJob = viewModelScope.launch {
-        // Play lists the Sandboxed Google Play components too, so a search hit for one can
-        // arrive carrying AppSource.PLAYSTORE. Describe it from GrapheneOS regardless: that
-        // is the row an install would actually use, and the Play build is the wrong
-        // artifact for the device even though Play would happily deliver it.
-        sandboxedGooglePlayRow(app.packageName)?.let { sandboxed ->
-            selectedAppFlow.value = sandboxed
-            return@launch
-        }
         // The catalogue row wins whenever there is one, even if the user tapped a Play
         // tile for the same package. It is the row an install would actually use — it
         // carries the signer and hash an authenticated index published — so showing
@@ -56,10 +48,6 @@ fun AppStoreViewModel.selectApp(app: UnifiedApp) {
 /** Open a package the store only knows by name, e.g. from a `market://` link. */
 fun AppStoreViewModel.selectPackage(packageName: String) {
     viewModelScope.launch {
-        sandboxedGooglePlayRow(packageName)?.let {
-            selectApp(it)
-            return@launch
-        }
         val known = catalog.byPackage(packageName)
         if (known != null) {
             selectApp(known)
@@ -83,12 +71,3 @@ fun AppStoreViewModel.clearSelection() {
     detailJob?.cancel()
     selectedAppFlow.value = null
 }
-
-/**
- * The GrapheneOS row for a Sandboxed Google Play component, or null for any other package.
- *
- * Carries whatever [loadHome] enriched the stand-in with, so this is the best row the store
- * holds for GSF, GMS or Vending.
- */
-internal fun AppStoreViewModel.sandboxedGooglePlayRow(packageName: String): UnifiedApp? =
-    sandboxedGooglePlayFlow.value.firstOrNull { it.packageName == packageName }

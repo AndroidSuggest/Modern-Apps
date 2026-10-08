@@ -259,8 +259,12 @@ interface CachedAppDao {
     @Query("SELECT * FROM CachedAppEntity WHERE source = :source ORDER BY name ASC")
     fun bySourceFlow(source: String): Flow<List<CachedAppEntity>>
 
-    @Query("SELECT * FROM CachedAppEntity ORDER BY lastUpdated DESC LIMIT :limit")
-    suspend fun recentlyUpdated(limit: Int): List<CachedAppEntity>
+    /**
+     * Newest builds from one offline source only. Each repo gets its own home
+     * row, so the catalogue is never asked for a cross-source "recent" mix.
+     */
+    @Query("SELECT * FROM CachedAppEntity WHERE source = :source ORDER BY lastUpdated DESC LIMIT :limit")
+    suspend fun recentlyUpdatedBySource(source: String, limit: Int): List<CachedAppEntity>
 
     @Query(
         "SELECT * FROM CachedAppEntity WHERE ',' || categories || ',' LIKE '%,' || :category || ',%' " +

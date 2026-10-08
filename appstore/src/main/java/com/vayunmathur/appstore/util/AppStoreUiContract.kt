@@ -45,7 +45,6 @@ enum class SourceFilter(val source: AppSource?) {
     MODERN_APPS(AppSource.MODERN_APPS),
     PROPRIETARY(AppSource.PROPRIETARY),
     FDROID(AppSource.FDROID),
-    GRAPHENEOS(AppSource.GRAPHENEOS),
     PLAYSTORE(AppSource.PLAYSTORE),
     ACCRESCENT(AppSource.ACCRESCENT),
 }
@@ -136,9 +135,6 @@ interface AppActions {
 interface HomeActions : AppActions {
     fun selectCategory(category: String?) {}
     fun refresh() {}
-
-    /** Install the Sandboxed Google Play bundle in dependency order (GMS, then Vending). */
-    fun installSandboxedGooglePlay() {}
 
     companion object {
         val Noop: HomeActions = object : HomeActions {}
