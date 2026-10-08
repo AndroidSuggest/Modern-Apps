@@ -223,8 +223,4 @@
     <string name="trust_grapheneos_check_rollback">Listy starsze niż ostatnio zarejestrowana są odrzucane, co uniemożliwia wymuszenie instalacji starej wersji</string>
     <string name="trust_grapheneos_check_hash_and_key">Każdy pobrany plik jest zgodny z sumą kontrolną oraz kluczem podpisu przypisanymi do jego nazwy na liście</string>
     <string name="trust_grapheneos_limits">Są to aplikacje Google o zamkniętym kodzie źródłowym. Żadna z nich nie powstaje na bazie opublikowanego kodu ani nie jest możliwa do odtworzenia; potwierdzone jest jedynie to, że otrzymano plik wskazany przez GrapheneOS, a nie to, co ten plik faktycznie robi. Kod źródłowy obejmuje wyłącznie komponenty Google Play działające w izolowanym środowisku, a wadliwego wydania nie da się już wycofać z telefonów.</string>
-    <string name="trust_modern_apps_title" translatable="false"></string>
-    <string name="source_modern_apps" translatable="false"></string>
-    <string name="source_chip_modern_apps" translatable="false"></string>
-    <string name="app_name"></string>
 </resources>
