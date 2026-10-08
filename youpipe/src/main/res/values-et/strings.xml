@@ -129,4 +129,5 @@
     <string name="cast_failed">Edastamist sinu telerisse ei õnnestunud käivitada</string>
     <string name="playback_error">Taasesitus lõppes ootamatult. Palun proovi uuesti.</string>
     <string name="restore_unsupported_format">See varukoopiafaili vorming pole toetatud.</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
