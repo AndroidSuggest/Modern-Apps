@@ -106,4 +106,17 @@
     <string name="shields_reset_site">デフォルトにリセット</string>
     <string name="shields_clear_exceptions">ウェブサイトの例外を消去</string>
     <string name="shields_engine_loading">フィルターリストを読み込み中…</string>
+    <string name="link_copied"></string>
+    <string name="cleartext_blocked_title"></string>
+    <string name="local_network_message"></string>
+    <string name="toolbar_at_bottom"></string>
+    <string name="shields_up"></string>
+    <string name="open_link"></string>
+    <string name="local_network_title"></string>
+    <string name="shields_down"></string>
+    <string name="keeps_the_address_bar_within_thumb_reach"></string>
+    <string name="cleartext_blocked_message"></string>
+    <string name="open_in_new_tab"></string>
+    <string name="go_forward"></string>
+    <string name="copy_link"></string>
 </resources>
