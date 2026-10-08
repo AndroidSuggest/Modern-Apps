@@ -169,4 +169,9 @@
         <item quantity="one">veel <xliff:g id="count" example="1">%1$d</xliff:g></item>
         <item quantity="other">veel <xliff:g id="count" example="3">%1$d</xliff:g></item>
     </plurals>
+    <string name="save_this_event">Salvesta see sündmus</string>
+    <string name="save_all_events">Salvesta kõik sündmused</string>
+    <string name="calendar_not_found">Kalendrit ei leidu</string>
+    <string name="save_this_and_following_events">Salvesta see ja järgmised sündmused</string>
+    <string name="edit_occurrence_not_found">Selle korduvuse leidmine ei õnnestunud - mitte midagi ei saanud salvestatud</string>
 </resources>
