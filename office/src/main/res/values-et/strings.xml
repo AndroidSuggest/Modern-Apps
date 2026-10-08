@@ -288,4 +288,6 @@
     <string name="document_theme_summary">Saad hallata, kuidas dokumenti kuvatakse. Ei muuda faili sisu.</string>
     <string name="document_theme_unchanged">Muutmata kujul</string>
     <string name="document_theme_follow_system">Järgi süsteemi kujundust</string>
+    <string name="insert_table_1">Lisa tabel</string>
+    <string name="speaker_notes_2">Esineja märkmed</string>
 </resources>
