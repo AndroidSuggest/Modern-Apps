@@ -80,4 +80,5 @@
     <string name="invite_sent"></string>
     <string name="host_online_world"></string>
     <string name="busy"></string>
+    <string name="app_name" translatable="false"></string>
 </resources>
