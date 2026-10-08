@@ -19,5 +19,4 @@
     <string name="inference_service_label">Juurdepääs järeldusteenusele</string>
     <string name="system_prompt">Süstemi viip</string>
     <string name="reset_to_default">Lähtesta vaikimisi väärtusteks</string>
-    <string name="app_name" translatable="false"></string>
 </resources>

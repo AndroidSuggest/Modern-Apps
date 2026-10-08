@@ -16,8 +16,4 @@
     <string name="settings_title">Nastavení</string>
     <string name="memories">Vzpomínky</string>
     <string name="no_memories_yet">Zatím žádné vzpomínky.</string>
-    <string name="app_name" translatable="false"></string>
-    <string name="reset_to_default"></string>
-    <string name="system_prompt"></string>
-    <string name="inference_service_label"></string>
 </resources>

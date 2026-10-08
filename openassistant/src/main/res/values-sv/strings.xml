@@ -19,5 +19,4 @@
     <string name="system_prompt">Systemprompt</string>
     <string name="reset_to_default">Återställ till standard</string>
     <string name="inference_service_label">Åtkomst till inferenstjänsten</string>
-    <string name="app_name" translatable="false"></string>
 </resources>
