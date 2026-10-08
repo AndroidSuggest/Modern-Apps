@@ -170,9 +170,4 @@
         <item quantity="many"><xliff:g id="minutes" example="1">%1$d</xliff:g> دقيقة</item>
         <item quantity="other"><xliff:g id="minutes" example="1">%1$d</xliff:g> دقيقة</item>
     </plurals>
-    <string name="noshow_scheduled"></string>
-    <string name="noshow_watch_button"></string>
-    <string name="noshow_save"></string>
-    <string name="app_name" translatable="false"></string>
-    <string name="battery_percentage"></string>
 </resources>
