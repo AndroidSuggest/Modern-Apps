@@ -33,4 +33,5 @@
     <string name="units_widget_choose_category">Scegli una categoria di unità</string>
     <string name="calculator_widget_transparent">Sfondo trasparente</string>
     <string name="calculator_widget_transparent_summary">Mostra lo sfondo dietro il tastierino. I tasti rimangono riempiti in modo da rimanere leggibili.</string>
+    <string name="absolute_time"></string>
 </resources>
