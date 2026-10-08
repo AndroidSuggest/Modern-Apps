@@ -150,4 +150,12 @@
     <string name="heading_1">العنوان ١</string>
     <string name="cc_bcc"></string>
     <string name="justify"></string>
+    <string name="cc"></string>
+    <string name="inline_images"></string>
+    <string name="bcc"></string>
+    <string name="inline_code"></string>
+    <string name="cc_1"></string>
+    <string name="horizontal_rule"></string>
+    <string name="sans"></string>
+    <string name="serif"></string>
 </resources>
