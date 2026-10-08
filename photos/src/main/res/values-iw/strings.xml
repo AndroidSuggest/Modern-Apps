@@ -268,4 +268,5 @@
     <string name="adj_fade"></string>
     <string name="editor_desc_selective"></string>
     <string name="album_rename"></string>
+    <string name="video_trim"></string>
 </resources>
