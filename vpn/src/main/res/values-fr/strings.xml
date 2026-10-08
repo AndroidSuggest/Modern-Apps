@@ -30,5 +30,4 @@
     <string name="no_tunnels_yet">Aucun tunnel pour le moment</string>
     <string name="always_on_vpn">VPN permanent</string>
     <string name="mtu_keepalive_s">MTU : %1$s • Maintien de connexion : %2$s s</string>
-    <string name="app_name" translatable="false"></string>
 </resources>

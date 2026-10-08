@@ -30,5 +30,4 @@
     <string name="publickey">Offentlig nyckel: %1$s</string>
     <string name="peer_publickey">Motpartens offentliga nyckel: %1$s</string>
     <string name="vpn_channel_name">VPN-tunnel</string>
-    <string name="app_name" translatable="false"></string>
 </resources>
