@@ -5,36 +5,36 @@
     <string name="app_name">Astronomie</string>
     <string name="show_deep_sky">Ciel profond (Messier)</string>
     <string name="night_mode">Mode nuit (rouge)</string>
-    <string name="object_not_found">Objet introuvable : <xliff:g id="object_name" example="Polaris">%1$s</xliff:g></string>
+    <string name="object_not_found">Objet introuvable : <xliff:g id="object_name" example="Polaris">%1$s</xliff:g></string>
     <string name="circumpolar_never_sets">Circumpolaire – ne se couche jamais</string>
-    <string name="alt_az">Alt. : <xliff:g id="altitude" example="45">%1$s</xliff:g>° Az. : <xliff:g id="azimuth" example="180">%2$s</xliff:g>°</string>
-    <string name="mag">Magnitude : <xliff:g id="magnitude" example="1.5">%1$s</xliff:g></string>
+    <string name="alt_az">Alt. : <xliff:g id="altitude" example="45">%1$s</xliff:g>° Az. : <xliff:g id="azimuth" example="180">%2$s</xliff:g>°</string>
+    <string name="mag">Magnitude : <xliff:g id="magnitude" example="1.5">%1$s</xliff:g></string>
     <string name="rise_transit_set">Lever / Passage au méridien / Coucher</string>
     <string name="trajectory_24h_15m_steps_yellow_line_on">Trajectoire sur 24 h (pas de 15 min) - ligne jaune sur la carte</string>
-    <string name="transit_1">Passage au méridien : <xliff:g id="time" example="21:30">%1$s</xliff:g> ?:</string>
+    <string name="transit_1">Passage au méridien : <xliff:g id="time" example="21:30">%1$s</xliff:g> ?:</string>
     <string name="calculating">Calcul en cours…</string>
-    <string name="ra_dec">AD : <xliff:g id="ra" example="5.5">%1$s</xliff:g>° Déc. : <xliff:g id="dec" example="-8.2">%2$s</xliff:g>°</string>
+    <string name="ra_dec">AD : <xliff:g id="ra" example="5.5">%1$s</xliff:g>° Déc. : <xliff:g id="dec" example="-8.2">%2$s</xliff:g>°</string>
     <string name="never_rises_at_this_location">Ne se lève jamais à cet emplacement</string>
-    <string name="rise_1">Lever : <xliff:g id="time" example="18:45">%1$s</xliff:g> ?:</string>
-    <string name="set_1">Coucher : <xliff:g id="time" example="04:12">%1$s</xliff:g> ?:</string>
-    <string name="ra_h_h">AD h : <xliff:g id="hours" example="5.5">%1$s</xliff:g> h</string>
+    <string name="rise_1">Lever : <xliff:g id="time" example="18:45">%1$s</xliff:g> ?:</string>
+    <string name="set_1">Coucher : <xliff:g id="time" example="04:12">%1$s</xliff:g> ?:</string>
+    <string name="ra_h_h">AD h : <xliff:g id="hours" example="5.5">%1$s</xliff:g> h</string>
     <string name="search_1">Rechercher</string>
     <string name="search_stars_planets_messier">Rechercher des étoiles, des planètes ou des objets Messier</string>
-    <string name="magnitude_limit">Magnitude limite : <xliff:g id="limit" example="4.5">%1$s</xliff:g></string>
+    <string name="magnitude_limit">Magnitude limite : <xliff:g id="limit" example="4.5">%1$s</xliff:g></string>
     <string name="longitude_deg">Longitude (°)</string>
     <string name="save_location">Enregistrer la position</string>
-    <string name="catalog_stars_constellations_dso">Catalogue : <xliff:g id="star_count" example="5000">%1$s</xliff:g> étoiles, <xliff:g id="constellation_count" example="88">%2$s</xliff:g> constellations, <xliff:g id="dso_count" example="110">%3$s</xliff:g> objets du ciel profond.</string>
+    <string name="catalog_stars_constellations_dso">Catalogue : <xliff:g id="star_count" example="5000">%1$s</xliff:g> étoiles, <xliff:g id="constellation_count" example="88">%2$s</xliff:g> constellations, <xliff:g id="dso_count" example="110">%3$s</xliff:g> objets du ciel profond.</string>
     <string name="constellations">Constellations</string>
     <string name="lines_only">Lignes uniquement</string>
     <string name="show_below_horizon_all_sky">Afficher sous l’horizon (ciel entier)</string>
-    <string name="notes_true_north_correction_via_geomagne">Remarques : correction du nord vrai via la déclinaison géomagnétique. La RA utilise CameraX et la fusion du vecteur de rotation.</string>
+    <string name="notes_true_north_correction_via_geomagne">Remarques : correction du nord vrai via la déclinaison géomagnétique. La RA utilise CameraX et la fusion du vecteur de rotation.</string>
     <string name="lines_art">Lignes + illustrations</string>
     <string name="location">Position</string>
     <string name="coordinate_grid_whole_sphere">Grille de coordonnées (sphère entière)</string>
     <string name="latitude_deg">Latitude (°)</string>
     <string name="use_current_location">Utiliser la position actuelle</string>
     <string name="planets_sun_moon">Planètes / Soleil / Lune</string>
-    <string name="fov">Champ de vision : <xliff:g id="degrees" example="60">%1$s</xliff:g>°</string>
+    <string name="fov">Champ de vision : <xliff:g id="degrees" example="60">%1$s</xliff:g>°</string>
     <string name="planet_sun">Soleil</string>
     <string name="planet_moon">Lune</string>
     <string name="planet_mercury">Mercure</string>
