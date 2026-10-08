@@ -34,4 +34,5 @@
     <string name="cd_submit">Skicka</string>
     <string name="cd_backspace">Backsteg</string>
     <string name="no_definition_available">Ingen definition finns tillgänglig för detta ord.</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
