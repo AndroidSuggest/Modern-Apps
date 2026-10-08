@@ -169,9 +169,4 @@
     <string name="reminder_notification_text">Saat <xliff:g id="start_time" example="3:00 PM">%1$s</xliff:g>-da başlayır</string>
     <string name="today">Bu gün</string>
     <string name="tomorrow">Sabah</string>
-    <string name="save_this_event"></string>
-    <string name="save_all_events"></string>
-    <string name="calendar_not_found"></string>
-    <string name="save_this_and_following_events"></string>
-    <string name="edit_occurrence_not_found"></string>
 </resources>

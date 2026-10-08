@@ -169,9 +169,4 @@
         <item quantity="one">+<xliff:g id="count" example="1">%1$d</xliff:g> till</item>
         <item quantity="other">+<xliff:g id="count" example="3">%1$d</xliff:g> till</item>
     </plurals>
-    <string name="save_this_event"></string>
-    <string name="save_all_events"></string>
-    <string name="calendar_not_found"></string>
-    <string name="save_this_and_following_events"></string>
-    <string name="edit_occurrence_not_found"></string>
 </resources>
