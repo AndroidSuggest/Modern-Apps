@@ -8,7 +8,7 @@
     <string name="set_an_alarm">Configurer une alarme</string>
     <string name="button_stop">ARRÊTER</string>
     <string name="button_snooze">REPORTER (5 MIN)</string>
-    <string name="alarm_notification_wake_up">Réveillez-vous !</string>
+    <string name="alarm_notification_wake_up">Réveillez-vous !</string>
     <string name="alarm_ringing_notification_title">L\'alarme sonne</string>
     <string name="channel_ongoing_timers_name">Minuteurs actifs</string>
     <string name="channel_completed_timers_name">Minuteurs écoulés</string>
@@ -23,7 +23,7 @@
     <string name="stopwatch_time_format"><xliff:g id="minutes" example="1">%1$d</xliff:g>:<xliff:g id="seconds" example="05">%2$02d</xliff:g></string>
     <string name="button_add_minute">+ 1 min</string>
     <string name="timer_finished_title">Minuteur écoulé</string>
-    <string name="timer_finished_text">Le minuteur « <xliff:g id="timer_name" example="Thé">%1$s</xliff:g> » est écoulé !</string>
+    <string name="timer_finished_text">Le minuteur « <xliff:g id="timer_name" example="Thé">%1$s</xliff:g> » est écoulé !</string>
     <string name="label_new_timer">Nouveau minuteur</string>
     <string name="field_label">Libellé</string>
     <string name="button_cancel">Annuler</string>
