@@ -117,4 +117,6 @@
     <string name="local_network_message">%1$s 似乎是您网络上的设备。Android 需要本地网络权限才能加载此页面。</string>
     <string name="toolbar_at_bottom">底部工具栏</string>
     <string name="keeps_the_address_bar_within_thumb_reach">让地址栏触手可及</string>
+    <string name="open_link"></string>
+    <string name="go_forward"></string>
 </resources>
