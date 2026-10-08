@@ -34,5 +34,4 @@
     <string name="wheel_spacing_wider">Širší</string>
     <string name="wheel_spacing_widest">Nejširší</string>
     <string name="no_definition_available">Pro toto slovo není definice dostupná.</string>
-    <string name="app_name" translatable="false"></string>
 </resources>
