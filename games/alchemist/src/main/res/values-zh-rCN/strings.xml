@@ -20,4 +20,5 @@
         <item quantity="other">发现 <xliff:g id="count" example="3">%1$s</xliff:g> 件物品！</item>
     </plurals>
     <string name="cd_delete">删除</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
