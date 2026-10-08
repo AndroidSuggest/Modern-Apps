@@ -129,5 +129,4 @@
     <string name="cast_install_prompt">未安装 MA Cast。请打开其列表以便您安装。</string>
     <string name="cast_update_prompt">MA Cast 太旧，无法在您的电视上播放视频。请打开其列表以便您更新。</string>
     <string name="cast_failed">无法开始投屏到您的电视</string>
-    <string name="app_name" translatable="false"></string>
 </resources>
