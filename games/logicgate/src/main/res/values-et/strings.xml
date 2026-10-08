@@ -15,4 +15,10 @@
     <string name="cd_achievements">Saavutused</string>
     <string name="inputs">Sisendid</string>
     <string name="outputs">Väljundid</string>
+    <string name="got">Teg.</string>
+    <string name="gate">%1$s. VÄRAV</string>
+    <string name="exp">Eeld.</string>
+    <string name="hz">%1$s hz</string>
+    <string name="expected">Eeldatud: %1$s</string>
+    <string name="got_2">Tegelik: %1$s</string>
 </resources>
