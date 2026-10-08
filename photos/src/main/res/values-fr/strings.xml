@@ -9,11 +9,11 @@
     <string name="label_map">Carte</string>
     <string name="title_edit_photo">Modifier la photo</string>
     <string name="people_scanning">Regroupement des visages… Les personnes apparaîtront ici au fur et à mesure qu’elles seront identifiées.</string>
-    <string name="taken_on">Date de prise de vue : <xliff:g id="date" example="Jan 5, 2024">%1$s</xliff:g></string>
+    <string name="taken_on">Date de prise de vue : <xliff:g id="date" example="Jan 5, 2024">%1$s</xliff:g></string>
     <string name="grant_image_video_permissions">Accorder les autorisations aux images et aux vidéos</string>
     <string name="detecting">Détection en cours…</string>
     <string name="people_model_missing">Le regroupement de visages nécessite un modèle MobileFaceNet. Ajoutez le fichier mobilefacenet.tflite, sous licence permissive, dans le répertoire photos/src/main/assets (voir FaceRecognizer).</string>
-    <string name="location">Lieu : <xliff:g id="place" example="Paris, France">%1$s</xliff:g></string>
+    <string name="location">Lieu : <xliff:g id="place" example="Paris, France">%1$s</xliff:g></string>
     <string name="people_empty">Aucune personne n\'a encore été détectée. L\'analyse s\'effectue en arrière-plan : revenez vérifier une fois que vos photos auront été indexées.</string>
     <string name="label_gallery">Galerie</string>
     <string name="label_trash">Corbeille</string>
@@ -231,7 +231,7 @@
     <string name="wallpaper_set_success">Fond d’écran appliqué !</string>
     <string name="wallpaper_set_failed">Échec de l’application du fond d’écran : <xliff id="error" example="IO error">%1$s</xliff></string>
     <string name="wallpaper_load_failed">Impossible de charger l’image</string>
-    <string name="file_size">Taille : <xliff:g id="size" example="2,5 Mo">%1$s</xliff:g></string>
+    <string name="file_size">Taille : <xliff:g id="size" example="2,5 Mo">%1$s</xliff:g></string>
     <string name="edit_with_label">Modifier avec My App</string>
     <string name="editor_desc_none">" "</string>
     <string name="gif_badge">GIF</string>
