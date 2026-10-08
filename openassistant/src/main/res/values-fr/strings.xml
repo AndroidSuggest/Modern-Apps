@@ -18,4 +18,6 @@
     <string name="no_memories_yet">Aucune mémoire pour le moment.</string>
     <string name="inference_service_label">Service d’accès à l’inférence</string>
     <string name="app_name" translatable="false"></string>
+    <string name="reset_to_default"></string>
+    <string name="system_prompt"></string>
 </resources>
