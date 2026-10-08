@@ -113,6 +113,4 @@
     <string name="no_contacts_yet_message">Tocca il pulsante Aggiungi per creare il tuo primo contatto.</string>
     <string name="no_groups_yet">Nessun gruppo presente</string>
     <string name="no_groups_yet_message">Tocca il pulsante Aggiungi per raggruppare i contatti.</string>
-    <string name="sim_slot_label"></string>
-    <string name="sim_name_or_phone_required"></string>
 </resources>

@@ -102,19 +102,4 @@
     <string name="import_contacts_from_vcf_files">連絡先を .vcf ファイルからインポート</string>
     <string name="custom_label">カスタムラベル</string>
     <string name="enter_custom_label">カスタムラベルを入力</string>
-    <string name="no_contacts_yet_message"></string>
-    <string name="account_name_exists"></string>
-    <string name="name_prefix"></string>
-    <string name="sim_slot_label"></string>
-    <string name="no_groups_yet"></string>
-    <string name="delete_account"></string>
-    <string name="sim_limited_fields_hint"></string>
-    <string name="save_failed"></string>
-    <string name="delete_local_account_confirm"></string>
-    <string name="importing"></string>
-    <string name="rename_account"></string>
-    <string name="name_suffix"></string>
-    <string name="sim_name_or_phone_required"></string>
-    <string name="no_contacts_yet"></string>
-    <string name="no_groups_yet_message"></string>
 </resources>

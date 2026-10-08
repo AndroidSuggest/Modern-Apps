@@ -243,6 +243,4 @@
     <string name="no_groups_yet">Noch keine Gruppen</string>
     <!-- Supporting text under no_groups_yet, pointing at the add button -->
     <string name="no_groups_yet_message">Benutze die Hinzufügen-Schaltfläche um Kontakte zu gruppieren.</string>
-    <string name="sim_slot_label"></string>
-    <string name="sim_name_or_phone_required"></string>
 </resources>

@@ -117,14 +117,4 @@
     <string name="account_display_format"><xliff:g id="account_name" example="Personal">%1$s</xliff:g> (<xliff:g id="account_type" example="com.google">%2$s</xliff:g>)</string>
     <string name="include_year">تضمين السنة</string>
     <string name="display">العرض</string>
-    <string name="no_contacts_yet_message"></string>
-    <string name="name_prefix"></string>
-    <string name="sim_slot_label"></string>
-    <string name="no_groups_yet"></string>
-    <string name="select_ringtone"></string>
-    <string name="name_suffix"></string>
-    <string name="ringtone"></string>
-    <string name="sim_name_or_phone_required"></string>
-    <string name="no_contacts_yet"></string>
-    <string name="no_groups_yet_message"></string>
 </resources>
