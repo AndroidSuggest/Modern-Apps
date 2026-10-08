@@ -86,7 +86,15 @@ private fun findNameInObject(reader: JsonReader): String? {
     reader.beginObject()
     while (reader.hasNext()) {
         val key = reader.nextName()
-        found = found ?: readNameOrNested(reader, key)
+        found = if (found == null) {
+            readNameOrNested(reader, key)
+        } else {
+            // The name is already in hand, but the value still has to be consumed —
+            // leaving it on the stream desyncs the reader and everything after this
+            // object misparses (every icon-bearing package dropped from the index).
+            reader.skipValue()
+            found
+        }
     }
     reader.endObject()
     return found
