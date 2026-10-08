@@ -30,4 +30,5 @@
     <string name="bypass_lockdown_warning">Kui Androidi VPN-seadistustes on sisse lülitatud valik „Blokeeri ühendused ilma VPN-ita“, ei saa need rakendused üldse internetiühendust kasutada. Kui tahad, et ümbersuunamine toimiks, lülita see välja.</string>
     <string name="need_activity_to_grant_vpn_permission">VPN-i õiguste lubamiseks vajad tegevust</string>
     <string name="imported_from_wireguard_conf_using_gotat">Imporditud WireGuardi .conf-failist gotatuni abil (mullvad/gotatun), kasutusel on Noise IK / X25519 + ChaCha20Poly1305. Uuendamiseks impordi uus .conf-fail.</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
