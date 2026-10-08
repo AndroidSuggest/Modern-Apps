@@ -24,5 +24,4 @@
     <string name="play">玩</string>
     <string name="level_complete_body">您已解决 <xliff:g id="level_name" example="XOR">%1$s</xliff:g>。</string>
     <string name="done">完成</string>
-    <string name="app_name" translatable="false"></string>
 </resources>
