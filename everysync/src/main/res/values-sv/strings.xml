@@ -30,5 +30,4 @@
     <string name="conflict_local">Föredra enheten</string>
     <string name="need_permissions">EverySync behöver åtkomst till kontakter och kalender för att synkronisera dina konton.</string>
     <string name="everysync_privacy_policy">EverySync synkroniserar kontakter, kalendrar och hälsodata mellan dina molnkonton och den här enheten. Data lagras endast på den här enheten och de servrar du konfigurerar.</string>
-    <string name="app_name" translatable="false"></string>
 </resources>

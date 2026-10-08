@@ -30,5 +30,4 @@
     <string name="conflict_local">首选设备</string>
     <string name="need_permissions">EverySync 需要访问联系人和日历才能同步您的账号。</string>
     <string name="everysync_privacy_policy">EverySync 会在您的云账号和此设备之间同步联系人、日历和健康数据。数据仅存储在此设备和您配置的服务器上。</string>
-    <string name="app_name" translatable="false"></string>
 </resources>

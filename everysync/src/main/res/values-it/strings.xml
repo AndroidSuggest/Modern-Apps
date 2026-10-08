@@ -30,5 +30,4 @@
     <string name="conflict_local">Preferisci dispositivo</string>
     <string name="need_permissions">EverySync richiede l\'accesso ai contatti e al calendario per sincronizzare i tuoi account.</string>
     <string name="everysync_privacy_policy">EverySync sincronizza contatti, calendari e dati sulla salute tra i tuoi account cloud e questo dispositivo. I dati vengono memorizzati esclusivamente su questo dispositivo e sui server da te configurati.</string>
-    <string name="app_name" translatable="false"></string>
 </resources>

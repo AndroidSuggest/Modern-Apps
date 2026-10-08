@@ -30,5 +30,4 @@
     <string name="syncing">Synchronisation…</string>
     <string name="sync_now">Synchroniser maintenant</string>
     <string name="login">Se connecter</string>
-    <string name="app_name" translatable="false"></string>
 </resources>
