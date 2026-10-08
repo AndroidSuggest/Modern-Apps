@@ -10,4 +10,10 @@
     <string name="grant_camera_access">見ているものを翻訳するにはカメラの権限の許可が必要</string>
     <string name="no_voice_installed">%1$s の音声が未インストール</string>
     <string name="install_voice">インストール</string>
+    <string name="recent_languages"></string>
+    <string name="all_languages"></string>
+    <string name="search_languages"></string>
+    <string name="no_languages_match"></string>
+    <string name="select_target_language"></string>
+    <string name="select_source_language"></string>
 </resources>
