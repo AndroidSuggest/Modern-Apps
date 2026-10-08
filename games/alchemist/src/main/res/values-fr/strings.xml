@@ -13,4 +13,5 @@
     <plurals name="locked_recipes">
         <item quantity="other">+ %1$d recettes verrouillées.</item>
     </plurals>
+    <string name="app_name" translatable="false"></string>
 </resources>
