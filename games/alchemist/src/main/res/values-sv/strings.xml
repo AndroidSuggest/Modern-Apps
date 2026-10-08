@@ -22,4 +22,5 @@
     </plurals>
     <string name="cd_final_item">Slutobjekt</string>
     <string name="cd_delete">Ta bort</string>
+    <string name="app_name" translatable="false"></string>
 </resources>
