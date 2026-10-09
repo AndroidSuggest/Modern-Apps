@@ -139,7 +139,7 @@ fun GalleryScreen(
 
     // RAW SCAFFOLD EXCEPTION: top bar is an expandable SearchBar (with in-bar search
     // results) swapped for a selection TopAppBar, and the body is a pinch-to-zoom photo
-    // grid wrapped in PullToRefreshBox. Neither AppScaffold (title/actions only) nor
+    // grid wrapped in AppPullToRefreshBox. Neither AppScaffold (title/actions only) nor
     // LazyListScaffold (LazyColumn body) can represent this without changing the UI.
     Scaffold(
         topBar = {
@@ -270,14 +270,17 @@ fun GalleryScreen(
         },
         bottomBar = { if (!isSelectionMode) NavigationBar(Route.Gallery, backStack) }
     ) { paddingValues ->
-        com.vayunmathur.library.ui.PullToRefreshBox(
+        com.vayunmathur.library.ui.AppPullToRefreshBox(
             isRefreshing = state.isRefreshing,
             onRefresh = { actions.runSync() },
-            modifier = Modifier.fillMaxSize().padding(paddingValues),
+            modifier = Modifier.fillMaxSize(),
+            // Below the top search bar: the scaffold's top inset is the exact clearance.
+            topClearance = paddingValues.calculateTopPadding(),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(paddingValues)
                     .pinchToZoomColumns({ columnCount }, { columnCount = it })
             ) {
                 LazyVerticalGrid(

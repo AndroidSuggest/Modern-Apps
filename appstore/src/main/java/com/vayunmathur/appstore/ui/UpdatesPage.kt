@@ -36,7 +36,7 @@ import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconDownload
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
-import com.vayunmathur.library.ui.PullToRefreshBox
+import com.vayunmathur.library.ui.AppPullToRefreshBox
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 
@@ -69,12 +69,14 @@ fun UpdatesScreen(
         },
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
-        PullToRefreshBox(
+        AppPullToRefreshBox(
             isRefreshing = state.isChecking,
             onRefresh = { actions.checkForUpdates() },
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier.fillMaxSize(),
+            // Below the top app bar: the scaffold's top inset is the exact clearance.
+            topClearance = padding.calculateTopPadding(),
         ) {
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().padding(padding)) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),

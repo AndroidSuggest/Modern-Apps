@@ -22,7 +22,7 @@ import com.vayunmathur.library.ui.IconImage
 import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedTextField
-import com.vayunmathur.library.ui.PullToRefreshBox
+import com.vayunmathur.library.ui.AppPullToRefreshBox
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
@@ -151,14 +151,17 @@ fun AlbumDetailScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
             )
         } else {
-            PullToRefreshBox(
+            AppPullToRefreshBox(
                 isRefreshing = isRefreshing,
                 onRefresh = onRefresh,
-                modifier = Modifier.fillMaxSize().padding(padding),
+                modifier = Modifier.fillMaxSize(),
+                // Below the top app bar: the scaffold's top inset is the exact clearance.
+                topClearance = padding.calculateTopPadding(),
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .padding(padding)
                         .pinchToZoomColumns({ columnCount }, { columnCount = it })
                 ) {
                     LazyVerticalGrid(

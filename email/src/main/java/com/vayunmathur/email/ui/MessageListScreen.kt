@@ -211,7 +211,14 @@ fun MessageListScreen(
                             "email-subject-${msg.accountEmail}-${msg.threadId ?: msg.id}"
                     }
             }
-            com.vayunmathur.library.ui.PullToRefreshBox(isRefreshing = state.isSyncing, onRefresh = { actions.refresh(context) }, modifier = Modifier.fillMaxSize()) {
+            com.vayunmathur.library.ui.AppPullToRefreshBox(
+                isRefreshing = state.isSyncing,
+                onRefresh = { actions.refresh(context) },
+                modifier = Modifier.fillMaxSize(),
+                // The box sits below the top bar, sync bar, and filter-chip row,
+                // so only a small clearance is needed; the slot stays centered.
+                topClearance = 8.dp,
+            ) {
                 if (state.messages.isEmpty() && state.searchQuery.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Text(text = stringResource(R.string.no_messages_found_pull_down_to_refresh), modifier = Modifier.align(Alignment.Center))
