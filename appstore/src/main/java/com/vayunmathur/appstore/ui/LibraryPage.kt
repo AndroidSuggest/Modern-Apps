@@ -21,12 +21,11 @@ import com.vayunmathur.appstore.util.AppStoreViewModel
 import com.vayunmathur.appstore.util.LibraryActions
 import com.vayunmathur.appstore.util.LibraryUiState
 import com.vayunmathur.appstore.util.SourceFilter
-import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.IconPackage
+import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.appBarScrollBehavior
 
 /** Binds [AppStoreViewModel] to the stateless [LibraryScreen]. */
 @Composable
@@ -47,14 +46,8 @@ fun LibraryScreen(
     actions: LibraryActions,
     onAppClick: (UnifiedApp) -> Unit = {},
 ) {
-    AppScaffold(
-        title = stringResource(
-            R.string.library_title,
-            state.counts[SourceFilter.ALL] ?: state.apps.size,
-        ),
-        scrollBehavior = appBarScrollBehavior(),
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+    Scaffold { padding ->
+        Column(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
             LazyRow(
                 Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -84,7 +77,10 @@ fun LibraryScreen(
                     icon = { IconPackage() },
                 )
             } else {
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 24.dp),
+                ) {
                     items(state.apps, key = { it.packageName }) { app ->
                         AppRow(
                             app = app,

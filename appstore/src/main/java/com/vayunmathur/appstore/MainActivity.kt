@@ -39,6 +39,7 @@ import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.ui.IconDownload
 import com.vayunmathur.library.ui.IconHome
 import com.vayunmathur.library.ui.IconPackage
+import com.vayunmathur.library.ui.IconProvider
 import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.PagerTab
 import com.vayunmathur.library.ui.TabStyle
@@ -117,18 +118,17 @@ class MainActivity : ComponentActivity() {
 @Serializable
 sealed interface Route : NavKey {
     @Serializable data object Main : Route
-    @Serializable data object Sources : Route
     @Serializable data object Trust : Route
     @Serializable data object Detail : Route
 }
 
 /**
- * Four tabs and three pushed screens.
+ * Five tabs and two pushed screens.
  *
- * Sources and the trust explainer used to be a tab each, which spent a quarter of the
- * bottom bar on screens opened perhaps once. They are now behind the gear on the home
- * bar, and the freed slot went to search — which was previously a text field wedged above
- * the browse list, so browsing and searching fought over the same screen.
+ * Sources used to be behind the gear on the home bar, which spent a settings icon on a
+ * screen opened perhaps once. It is now a tab of its own, and search — previously a text
+ * field wedged above the browse list — has its own tab so browsing and searching no
+ * longer fight over the same screen.
  */
 @Composable
 private fun AppRoot(
@@ -155,13 +155,6 @@ private fun AppRoot(
             AppTabs(
                 viewModel = viewModel,
                 onAppClick = ::openDetail,
-                onOpenSources = { backStack.add(Route.Sources) },
-            )
-        }
-        entry<Route.Sources> {
-            SourcesPage(
-                viewModel = viewModel,
-                onBack = { backStack.pop() },
                 onOpenTrust = { backStack.add(Route.Trust) },
             )
         }
@@ -185,16 +178,16 @@ private fun AppRoot(
 }
 
 /**
- * The four bottom-nav tabs, hosted in a swipeable pager (see [TabbedPagerScaffold]).
- * Sources, Trust and Detail are pushed on top of this host as ordinary routes.
+ * The five bottom-nav tabs, hosted in a swipeable pager (see [TabbedPagerScaffold]).
+ * Trust and Detail are pushed on top of this host as ordinary routes.
  */
 @Composable
 private fun AppTabs(
     viewModel: AppStoreViewModel,
     onAppClick: (UnifiedApp) -> Unit,
-    onOpenSources: () -> Unit,
+    onOpenTrust: () -> Unit,
 ) {
-    val pagerState = rememberPagerState(pageCount = { 4 })
+    val pagerState = rememberPagerState(pageCount = { 5 })
     val scope = rememberCoroutineScope()
     val tabs = listOf(
         PagerTab(stringResource(R.string.nav_home), { IconHome() }) {
@@ -202,7 +195,6 @@ private fun AppTabs(
                 viewModel = viewModel,
                 onAppClick = onAppClick,
                 onOpenUpdates = { scope.launch { pagerState.animateScrollToPage(PAGE_UPDATES) } },
-                onOpenSources = onOpenSources,
             )
         },
         PagerTab(stringResource(R.string.nav_search), { IconSearch() }) {
@@ -221,6 +213,9 @@ private fun AppTabs(
         },
         PagerTab(stringResource(R.string.nav_library), { IconPackage() }) {
             LibraryPage(viewModel = viewModel, onAppClick = onAppClick)
+        },
+        PagerTab(stringResource(R.string.nav_sources), { IconProvider() }) {
+            SourcesPage(viewModel = viewModel, onOpenTrust = onOpenTrust)
         },
     )
     TabbedPagerScaffold(tabs = tabs, pagerState = pagerState, tabStyle = TabStyle.BottomNav)

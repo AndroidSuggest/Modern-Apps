@@ -423,7 +423,7 @@ class AppStoreViewModel(
     override fun refresh() = syncSources()
 
     /** Re-download both offline catalogues, then reload the home rows from them. */
-    // Implemented in AppStoreHomeOps.kt as a public extension (called from SourcesPage).
+    // Implemented in AppStoreHomeOps.kt as a public extension (called from refresh()).
 
     /**
      * Turn a source on or off, and make the rest of the store agree immediately.

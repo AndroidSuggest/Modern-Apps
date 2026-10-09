@@ -31,21 +31,18 @@ import com.vayunmathur.appstore.util.AppStoreViewModel
 import com.vayunmathur.appstore.util.HomeActions
 import com.vayunmathur.appstore.util.HomeUiState
 import com.vayunmathur.appstore.util.SectionLayout
-import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.AppPullToRefreshBox
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.FilterChip
-import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconChevronRight
 import com.vayunmathur.library.ui.IconDownload
 import com.vayunmathur.library.ui.IconPackage
-import com.vayunmathur.library.ui.IconRefresh
-import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.appBarScrollBehavior
 
 /** Binds [AppStoreViewModel] to the stateless [HomeScreen]. */
 @Composable
@@ -53,7 +50,6 @@ fun HomePage(
     viewModel: AppStoreViewModel,
     onAppClick: (UnifiedApp) -> Unit,
     onOpenUpdates: () -> Unit,
-    onOpenSources: () -> Unit,
 ) {
     val state by viewModel.home.collectAsState()
     HomeScreen(
@@ -61,7 +57,6 @@ fun HomePage(
         actions = viewModel,
         onAppClick = onAppClick,
         onOpenUpdates = onOpenUpdates,
-        onOpenSources = onOpenSources,
     )
 }
 
@@ -82,100 +77,97 @@ fun HomeScreen(
     actions: HomeActions,
     onAppClick: (UnifiedApp) -> Unit = {},
     onOpenUpdates: () -> Unit = {},
-    onOpenSources: () -> Unit = {},
 ) {
-    AppScaffold(
-        title = stringResource(R.string.app_name),
-        actions = {
-            IconButton(onClick = { actions.refresh() }, enabled = !state.isSyncing) {
-                IconRefresh()
-            }
-            IconButton(onClick = onOpenSources) { IconSettings() }
-        },
-        scrollBehavior = appBarScrollBehavior(),
-    ) { padding ->
-        // A package can legitimately sit in several sections at once - a new release is also a
-        // top download - but one detail page cannot morph from two origins. The first section
-        // listing a package owns the morph; later copies of it open without one.
-        val morphOwner = remember(state.sections) {
-            buildMap<String, String> {
-                state.sections.forEach { section ->
-                    section.apps.forEach { putIfAbsent(it.packageName, section.id) }
-                }
-            }
-        }
-        fun sharedKeyFor(section: AppSection, app: UnifiedApp): Any? =
-            if (morphOwner[app.packageName] == section.id) {
-                "appstore-app-${app.packageName}"
-            } else {
-                null
-            }
-
-        LazyColumn(
-            Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+    Scaffold { padding ->
+        AppPullToRefreshBox(
+            isRefreshing = state.isSyncing,
+            onRefresh = { actions.refresh() },
+            modifier = Modifier.fillMaxSize(),
+            topClearance = padding.calculateTopPadding(),
         ) {
-            if (state.isSyncing || state.statusMessage.isNotBlank()) {
-                item("status") { StatusLine(state.statusMessage, state.isSyncing) }
-            }
-
-            if (state.updateCount > 0) {
-                item("updates") { UpdatesBanner(state.updateCount, onOpenUpdates) }
-            }
-
-            if (state.categories.isNotEmpty()) {
-                item("categories") {
-                    CategoryRow(
-                        categories = state.categories,
-                        selected = state.selectedCategory,
-                        onSelect = actions::selectCategory,
-                    )
-                }
-            }
-
-            if (state.sections.isEmpty()) {
-                item("empty") {
-                    if (state.isLoading) {
-                        LoadingRow()
-                    } else {
-                        EmptyState(
-                            title = stringResource(R.string.home_empty_title),
-                            message = stringResource(R.string.home_empty_message),
-                            icon = { IconPackage() },
-                            modifier = Modifier.height(320.dp),
-                        )
+            // A package can legitimately sit in several sections at once - a new release is also a
+            // top download - but one detail page cannot morph from two origins. The first section
+            // listing a package owns the morph; later copies of it open without one.
+            val morphOwner = remember(state.sections) {
+                buildMap<String, String> {
+                    state.sections.forEach { section ->
+                        section.apps.forEach { putIfAbsent(it.packageName, section.id) }
                     }
                 }
             }
-
-            state.sections.forEach { section ->
-                item("${section.id}-header") {
-                    SectionHeader(section.title, section.subtitle)
+            fun sharedKeyFor(section: AppSection, app: UnifiedApp): Any? =
+                if (morphOwner[app.packageName] == section.id) {
+                    "appstore-app-${app.packageName}"
+                } else {
+                    null
                 }
-                when (section.layout) {
-                    SectionLayout.CAROUSEL -> item("${section.id}-body") {
-                        AppCarousel(
-                            apps = section.apps,
-                            installedPackages = state.installedPackages,
-                            installedIcons = state.installedIcons,
-                            onAppClick = onAppClick,
-                            stages = state.stages,
-                            sharedKey = { sharedKeyFor(section, it) },
+
+            LazyColumn(
+                Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (state.isSyncing || state.statusMessage.isNotBlank()) {
+                    item("status") { StatusLine(state.statusMessage, state.isSyncing) }
+                }
+
+                if (state.updateCount > 0) {
+                    item("updates") { UpdatesBanner(state.updateCount, onOpenUpdates) }
+                }
+
+                if (state.categories.isNotEmpty()) {
+                    item("categories") {
+                        CategoryRow(
+                            categories = state.categories,
+                            selected = state.selectedCategory,
+                            onSelect = actions::selectCategory,
                         )
                     }
-                    SectionLayout.LIST -> items(
-                        section.apps,
-                        key = { "${section.id}-${it.packageName}" },
-                    ) { app ->
-                        AppRow(
-                            app = app,
-                            isInstalled = app.packageName in state.installedPackages,
-                            stage = state.stages[app.packageName],
-                            installedIcon = state.installedIcons[app.packageName],
-                            onClick = { onAppClick(app) },
-                            sharedKey = sharedKeyFor(section, app),
-                        )
+                }
+
+                if (state.sections.isEmpty()) {
+                    item("empty") {
+                        if (state.isLoading) {
+                            LoadingRow()
+                        } else {
+                            EmptyState(
+                                title = stringResource(R.string.home_empty_title),
+                                message = stringResource(R.string.home_empty_message),
+                                icon = { IconPackage() },
+                                modifier = Modifier.height(320.dp),
+                            )
+                        }
+                    }
+                }
+
+                state.sections.forEach { section ->
+                    item("${section.id}-header") {
+                        SectionHeader(section.title, section.subtitle)
+                    }
+                    when (section.layout) {
+                        SectionLayout.CAROUSEL -> item("${section.id}-body") {
+                            AppCarousel(
+                                apps = section.apps,
+                                installedPackages = state.installedPackages,
+                                installedIcons = state.installedIcons,
+                                onAppClick = onAppClick,
+                                stages = state.stages,
+                                sharedKey = { sharedKeyFor(section, it) },
+                            )
+                        }
+                        SectionLayout.LIST -> items(
+                            section.apps,
+                            key = { "${section.id}-${it.packageName}" },
+                        ) { app ->
+                            AppRow(
+                                app = app,
+                                isInstalled = app.packageName in state.installedPackages,
+                                stage = state.stages[app.packageName],
+                                installedIcon = state.installedIcons[app.packageName],
+                                onClick = { onAppClick(app) },
+                                sharedKey = sharedKeyFor(section, app),
+                            )
+                        }
                     }
                 }
             }

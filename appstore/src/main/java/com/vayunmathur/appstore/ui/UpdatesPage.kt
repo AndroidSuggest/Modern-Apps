@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,17 +27,14 @@ import com.vayunmathur.appstore.data.installer.InstallStage
 import com.vayunmathur.appstore.util.AppStoreViewModel
 import com.vayunmathur.appstore.util.UpdatesActions
 import com.vayunmathur.appstore.util.UpdatesUiState
-import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.AppPullToRefreshBox
 import com.vayunmathur.library.ui.Button
-import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconDownload
 import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.OutlinedButton
-import com.vayunmathur.library.ui.AppPullToRefreshBox
+import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.appBarScrollBehavior
 
 /** Binds [AppStoreViewModel] to the stateless [UpdatesScreen]. */
 @Composable
@@ -60,29 +56,21 @@ fun UpdatesScreen(
 ) {
     val anyInstalling = state.stages.values.any { it !is InstallStage.Failed }
 
-    AppScaffold(
-        title = {},
-        actions = {
-            if (state.isChecking) {
-                CircularProgressIndicator(Modifier.size(18.dp).padding(end = 4.dp))
-            }
-        },
-        scrollBehavior = appBarScrollBehavior(),
-    ) { padding ->
+    Scaffold { padding ->
         AppPullToRefreshBox(
             isRefreshing = state.isChecking,
             onRefresh = { actions.checkForUpdates() },
             modifier = Modifier.fillMaxSize(),
-            // Below the top app bar: the scaffold's top inset is the exact clearance.
+            // Below the status bar: the scaffold's top inset is the exact clearance.
             topClearance = padding.calculateTopPadding(),
         ) {
             Column(Modifier.fillMaxSize().padding(padding)) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (state.updates.isNotEmpty()) {
+                if (state.updates.isNotEmpty()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Button(
                             onClick = { actions.updateAll() },
                             enabled = !anyInstalling,
@@ -92,13 +80,6 @@ fun UpdatesScreen(
                             Spacer(Modifier.width(8.dp))
                             Text(stringResource(R.string.update_all, state.updates.size))
                         }
-                    }
-                    OutlinedButton(
-                        onClick = { actions.checkForUpdates() },
-                        enabled = !state.isChecking,
-                        modifier = if (state.updates.isEmpty()) Modifier.weight(1f) else Modifier,
-                    ) {
-                        Text(stringResource(R.string.action_check_again))
                     }
                 }
 
