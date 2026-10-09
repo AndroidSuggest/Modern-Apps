@@ -70,6 +70,16 @@ fn junctions_for_node(
     if degree.len() < 3 {
         return out;
     }
+    // Thinning rule: a junction with no arterial arm emits nothing. Quiet
+    // residential crossings keep their carriageways; they lose only the lane
+    // markings, which is where the layer's bytes concentrate.
+    if !in_arms
+        .iter()
+        .chain(&out_arms)
+        .any(|a| a.road_class <= super::junction::ARTERIAL_MAX_CLASS)
+    {
+        return out;
+    }
 
     let (tx, ty) = tile_build::geom::project(
         f64::from(node.1) * 1e-7,
@@ -172,6 +182,14 @@ fn junctions_for_node(
             if *turn == Turn::Through {
                 continue;
             };
+            // Thinning rule: a slight (20–45°) movement at a three-way node is
+            // a road bend, not a turn — the carriageway already shows the path.
+            // Kept at degree 4+, where a slight exit is a real choice.
+            if degree.len() == 3
+                && matches!(*turn, Turn::SlightLeft | Turn::SlightRight)
+            {
+                continue;
+            }
             let out_lanes = effective_lanes(exit);
             // This lane's place among the lanes making the same movement into the same exit.
             let siblings: Vec<usize> =

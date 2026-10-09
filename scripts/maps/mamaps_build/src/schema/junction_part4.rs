@@ -83,7 +83,7 @@ mod tests2 {
             (350_009_000, -1_199_999_000), // 2: north, the opposing carriageway across the median
             (350_000_000, -1_199_988_000), // 3: east, so the node has three neighbours
         ];
-        let edge = |source, target| EdgeSpec { source, target, type_: 7, interior: Vec::new() };
+        let edge = |source, target| EdgeSpec { source, target, type_: 3, interior: Vec::new() };
         write_graph(
             "junction_divided",
             &coords,
@@ -140,7 +140,7 @@ mod tests2 {
             (350_000_000, -1_199_988_000), // 2: east
             (349_991_000, -1_200_000_000), // 3: south
         ];
-        let edge = |source, target| EdgeSpec { source, target, type_: 7, interior: Vec::new() };
+        let edge = |source, target| EdgeSpec { source, target, type_: 3, interior: Vec::new() };
         let fixture = write_graph(
             "junction_oneway",
             &coords,
@@ -166,6 +166,75 @@ mod tests2 {
         // nothing runs north (1). From the south: east only (1). One of the
         // four is a through movement and carries no connector.
         assert_eq!(emitted, 3, "the one-way approach contributes its two turns");
+    }
+
+    /// A three-way node with one arm 30° off: north, south, and an arm
+    /// bearing ~030°. `edge_type` is the caller's to choose, so the arterial
+    /// gate and the slight-turn rule can be pinned on identical geometry.
+    fn tee_with_slight_arm(edge_type: u8) -> GraphFixture {
+        let coords: [(i32, i32); 4] = [
+            (350_000_000, -1_200_000_000), // 0: the junction
+            (350_009_000, -1_200_000_000), // 1: north, ~100 m
+            (349_991_000, -1_200_000_000), // 2: south, ~100 m
+            (350_007_779, -1_199_994_517), // 3: ~30° east of north, ~100 m
+        ];
+        let edge = |source, target| EdgeSpec { source, target, type_: edge_type, interior: Vec::new() };
+        write_graph(
+            "junction_tee",
+            &coords,
+            &[
+                edge(0, 1),
+                edge(0, 2),
+                edge(0, 3),
+                edge(1, 0),
+                edge(2, 0),
+                edge(3, 0),
+            ],
+            &[],
+        )
+    }
+
+    /// **Slight turns at a degree-3 node are road bends, not turns.**
+    ///
+    /// From the south approach the 30° arm is a slight right, and from that
+    /// arm south is a slight left — both dropped. The sharp pair
+    /// (north ↔ 30° arm, ±150°) survives. Two connectors, not four.
+    #[test]
+    fn a_slight_turn_at_a_three_way_node_is_not_emitted() {
+        let (emitted, lines) = stream(&tee_with_slight_arm(3));
+        assert_eq!(emitted, 2, "only the sharp pair survives at degree 3");
+        assert_eq!(lines.len(), 2);
+    }
+
+    /// **The same geometry at degree 4 keeps everything.** The crossroads
+    /// fixture's arms leave at 90°, so no movement is slight — but the pin
+    /// matters in the other direction: the rule must not fire where it
+    /// should not.
+    #[test]
+    fn a_four_way_node_keeps_all_of_its_turns() {
+        let (emitted, _) = stream(&crossroads(&[]));
+        assert_eq!(emitted, 8, "four approaches x two turns, none slight");
+    }
+
+    /// **A junction no arterial touches emits nothing.** Identical geometry
+    /// to the tee above, but every arm residential: the whole node goes
+    /// quiet rather than a subset of its movements.
+    #[test]
+    fn a_junction_with_no_arterial_arm_emits_nothing() {
+        let (emitted, lines) = stream(&tee_with_slight_arm(7));
+        assert_eq!(emitted, 0, "no arm is tertiary or better");
+        assert!(lines.is_empty());
+    }
+
+    /// **Connectors sample at roughly half the old density.** A 90° turn
+    /// used to walk 9 points (`4 + 90/18`); now it walks 6 (`3 + 90/36`).
+    #[test]
+    fn a_right_angle_connector_is_sampled_sparsely_but_still_a_curve() {
+        let (_, lines) = stream(&crossroads(&[]));
+        assert!(!lines.is_empty());
+        for line in &lines {
+            assert_eq!(line.len(), 6, "every crossroads turn is 90°: 3 + 90/36 rounds to 6");
+        }
     }
 
     /// Left-hand traffic mirrors the connectors rather than leaving them on the wrong side.

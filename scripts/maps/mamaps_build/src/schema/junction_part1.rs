@@ -343,6 +343,10 @@ struct Arm {
     /// deliberately the one way to ask, so a count can never be fabricated from something that
     /// merely happened to be in scope.
     masks: Option<Vec<u16>>,
+    /// The edge's road class (`graph.edge_type & ROAD_TYPE_MASK`: motorway=1 …
+    /// tertiary=5, unclassified=6, …). Read off the edge, never inferred, so the
+    /// arterial gate in `junctions_for_node` is data rather than a second guess.
+    road_class: u8,
 }
 
 /// Resolve one incident edge, or `None` when it is not usable as an arm of this junction.
@@ -379,7 +383,8 @@ fn arm(
     }
     let masks = lanes.and_then(|table| table.masks(idx)).filter(|m| !m.is_empty());
     let two_way = graph.has_drivable_twin(to, from).unwrap_or(false);
-    Some(Arm { neighbour: if outgoing { to } else { from }, heading, length_m, two_way, masks })
+    let road_class = graph.edge_type(idx) & ROAD_TYPE_MASK;
+    Some(Arm { neighbour: if outgoing { to } else { from }, heading, length_m, two_way, masks, road_class })
 }
 
 /// A lane's centre, in metres right of the road's centreline as seen by traffic travelling this
@@ -480,11 +485,15 @@ fn connector(
 
     // A straight-through movement needs two points; a U-turn needs every one of these. Anything
     // flatter than the sampling would resolve is dropped by the tiler's simplifier anyway.
+    //
+    // Sampled at roughly half the historical density: a z14 connector spans
+    // tens of metres, so ~5 points resolve its curve at display scale and the
+    // rest were coordinate bytes. Minimum 3 keeps a curve a curve.
     let sweep = normalise_degrees(exit.heading - approach.heading).abs();
     let samples = if turn == Turn::Through && sweep < 3.0 && (in_off - out_off).abs() < 0.05 {
         2
     } else {
-        (4.0 + sweep / 18.0).round().clamp(4.0, 14.0) as usize
+        (3.0 + sweep / 36.0).round().clamp(3.0, 7.0) as usize
     };
 
     let mut out = Vec::with_capacity(samples);

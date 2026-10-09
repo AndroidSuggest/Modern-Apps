@@ -4,7 +4,8 @@ mod tests {
     use crate::schema::traffic_extra::tests::{write_graph, EdgeSpec, GraphFixture};
 
     /// A four-arm crossroads: node 0 in the middle, nodes 1..4 due north, east, south and west of
-    /// it, every arm two-way and residential. Roughly 100 m out on each side, which is a real
+    /// it, every arm two-way and primary (arterial, so the arterial gate keeps
+    /// the node). Roughly 100 m out on each side, which is a real
     /// intersection's scale and comfortably longer than [`SETBACK_M`].
     ///
     /// Built with the traffic layer's own byte-for-byte v6 writer, so the reader here is exercised
@@ -27,7 +28,7 @@ mod tests {
             (lat_e7 - 9_000, -1_200_000_000),     // 3: south
             (lat_e7, -1_200_000_000 - lon_step_e7), // 4: west
         ];
-        let edge = |source, target| EdgeSpec { source, target, type_: 7, interior: Vec::new() };
+        let edge = |source, target| EdgeSpec { source, target, type_: 3, interior: Vec::new() };
         write_graph(
             "junction",
             &coords,
@@ -198,6 +199,7 @@ mod tests {
             length_m: 100.0,
             two_way,
             masks,
+            road_class: 7,
         };
         assert_eq!(
             effective_lanes(&arm_with(Some(vec![LANE_LEFT, LANE_THROUGH]), true)),

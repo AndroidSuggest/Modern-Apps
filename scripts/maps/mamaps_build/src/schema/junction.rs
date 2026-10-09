@@ -36,6 +36,21 @@
 //! Ordinary urban intersections are a heuristic and will need tuning against screenshots. Nothing
 //! here should be read as knowing where the paint is.
 //!
+//! # Thinning (size)
+//!
+//! The junction layer is the archive's largest single line item, so three
+//! principled rules thin it — predicates, never count caps, so no junction is
+//! thinned arbitrarily:
+//!
+//! * **Arterial gate.** A junction emits nothing unless at least one arm is
+//!   [`ARTERIAL_MAX_CLASS`] or better. Residential-only crossings keep their
+//!   carriageways; they lose only the lane markings.
+//! * **Slight turns at degree 3.** A 20–45° movement at a three-way node is a
+//!   road bend, not a turn, and the carriageway already shows the path. Kept
+//!   at degree ≥ 4, where a slight exit is a real choice.
+//! * **Halved sampling.** Connectors sample at roughly half the old density;
+//!   the curve shape is unchanged to the eye at display scale.
+//!
 //! # Both ends of a connector are placed by the same rule, and a lane count is never invented
 //!
 //! A connector runs from a lane to a lane, so both ends need a lane index and a lane count. Those
@@ -215,6 +230,15 @@ use crate::store::Sink;
 /// `junction-connector` layer's `minzoom`, which is 16 — and the renderer overzooms the z14 tile
 /// above it. That split is how `roads-lanes` already carries lane detail.
 pub const MIN_ZOOM: u8 = 14;
+
+/// The largest (least significant) road class that still counts as an arterial.
+///
+/// Graph edge types share OSM's highway vocabulary as integers
+/// (`osm_ingest::tags`: motorway=1 … tertiary=5, unclassified=6,
+/// residential=7, …). A junction emits connectors only when at least one arm
+/// is this class or better: quiet residential crossings lose lane markings
+/// they barely show, while every junction an arterial touches keeps its own.
+pub const ARTERIAL_MAX_CLASS: u8 = 5;
 
 /// Width of one lane, in **Web Mercator metres** — ground metres at the equator, which at any
 /// other latitude is a smaller ground distance and the same projected one. That is what makes it a
