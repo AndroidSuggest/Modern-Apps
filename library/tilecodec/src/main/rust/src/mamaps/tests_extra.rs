@@ -219,6 +219,92 @@ fn a_zstd_body_decodes_to_the_bytes_it_was_encoded_from() {
     assert_eq!(d_back, raw);
 }
 
+/// Phase 5: each leaf is one raw-DEFLATE frame; the root stays raw at 32 B stride inside the
+/// opening prefix. A compressed archive opens in one request, reads back exactly, and its leaf
+/// section is smaller than the raw one — while the legacy all-raw layout still opens too.
+#[test]
+fn compressed_leaves_round_trip_and_keep_the_prefix_budget() {
+    use crate::mamaps::header::FLAG_LEAVES_COMPRESSED;
+    use crate::mamaps::index::{LEAF_ENTRY_LEN, ROOT_ENTRY_LEN};
+    // Enough tiles for several leaves, with repeats so runs and content dedup both fire.
+    let mut tiles: Vec<(u8, u64, u64, i16)> = Vec::new();
+    for z in 0..=4u8 {
+        for x in 0..(1u64 << z) {
+            for y in 0..(1u64 << z) {
+                tiles.push((z, x, y, ((x + y) % 3) as i16));
+            }
+        }
+    }
+    let options = Options { leaf_entry_capacity: 16, ..Options::default() };
+    assert!(options.compress_leaves, "leaf compression is on by default");
+    let bytes = archive(&tiles, Options { leaf_entry_capacity: 16, ..Options::default() });
+    let header = Header::parse(&bytes).expect("header");
+    assert!(header.leaves_compressed(), "the flag is set");
+    assert_eq!(bytes[7], crate::mamaps::header::FORMAT_VERSION_V9, "a v9 version byte");
+    assert!(header.leaf_count > 1, "this test needs several leaves");
+    // The root is still raw fixed stride inside the opening prefix.
+    let prefix = header::HEADER_LEN as u64 + header.dict_len as u64 + header.root_len as u64;
+    assert!(prefix <= OPEN_PREFIX_BYTES as u64, "the prefix is {prefix} bytes");
+    assert_eq!(header.root_len as usize % ROOT_ENTRY_LEN, 0, "raw 32 B stride");
+    // Every leaf's stored length comes from its root entry, and inflates to count * 16.
+    let (h2, _, root) = read::open_prefix(&bytes).expect("open_prefix");
+    assert_eq!(h2.leaf_count as usize, root.len());
+    let mut raw_total: u64 = 0;
+    for e in &root {
+        let raw_len = e.leaf_entry_count as usize * LEAF_ENTRY_LEN;
+        raw_total += raw_len as u64;
+        let at = (h2.leaf_offset + e.leaf_offset) as usize;
+        if e.stored_len == 0 {
+            assert_eq!(raw_len, bytes[at..at + raw_len].len());
+        } else {
+            let back = crate::mamaps::index::decompress_leaf(
+                &bytes[at..at + e.stored_len as usize],
+                raw_len,
+            )
+            .expect("leaf frame");
+            assert_eq!(back.len(), raw_len, "exactly count * 16, allocated once");
+        }
+    }
+    assert!(header.leaf_len < raw_total, "the stored section is smaller than the raw leaves");
+    // And the whole archive reads back tile-for-tile through the range-reader path.
+    let mut a = open(bytes);
+    assert_eq!(a.reader.requests.borrow().len(), 1, "open is still one request");
+    for (z, x, y, seed) in &tiles {
+        let tile = a.tile(*z, *x as u32, *y as u32).expect("read").expect("present");
+        assert_eq!(tile, body_for(*seed), "z{z}/{x}/{y}");
+    }
+}
+
+/// Phase 5: `compress_leaves: false` is the legacy layout bit for bit — no flag, v8 version
+/// byte, zero stored words — and it opens on the same reader.
+#[test]
+fn raw_leaves_stay_byte_identical_and_still_open() {
+    let tiles: Vec<(u8, u64, u64, i16)> =
+        (0..4u64).flat_map(|x| (0..4u64).map(move |y| (2u8, x, y, (x * 4 + y) as i16))).collect();
+    let raw_opts = Options { compress_leaves: false, ..Options::default() };
+    let raw = archive(&tiles, raw_opts);
+    let header = Header::parse(&raw).expect("header");
+    assert!(!header.leaves_compressed(), "no flag");
+    assert_eq!(raw[7], crate::mamaps::header::FORMAT_VERSION, "a v8 version byte");
+    let (_, _, root) = read::open_prefix(&raw).expect("open_prefix");
+    assert!(root.iter().all(|e| e.stored_len == 0), "zero stored words");
+    // Legacy determinism holds: two builds are still byte-identical.
+    let raw2 = archive(
+        &tiles,
+        Options { compress_leaves: false, ..Options::default() },
+    );
+    assert_eq!(raw, raw2);
+    // And compressed builds are deterministic too.
+    let c1 = archive(&tiles, Options::default());
+    let c2 = archive(&tiles, Options::default());
+    assert_eq!(c1, c2);
+    // Both open and read on the same reader.
+    for bytes in [raw, c1] {
+        let mut a = open(bytes);
+        assert_eq!(a.tile(2, 3, 3).expect("read").expect("present"), body_for(15));
+    }
+}
+
 /// Planet per-leaf data-span overflow: a leaf whose entries' max(offset)-
 /// min(offset) would exceed u32::MAX (planet: 4294968552 = u32::MAX+1257)
 /// must be split, otherwise LeafEntry.offset_delta (u32) overflows.

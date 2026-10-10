@@ -2,7 +2,9 @@
 //!
 //! Pure moves out of the former single-file header module; nothing here changed.
 
-use super::consts::{FLAG_LEAF_LEN_64, FORMAT_VERSION, HEADER_LEN, MAGIC};
+use super::consts::{
+    FLAG_LEAF_LEN_64, FLAG_LEAVES_COMPRESSED, FORMAT_VERSION, FORMAT_VERSION_V9, HEADER_LEN, MAGIC,
+};
 use super::types::Header;
 
 impl Header {
@@ -10,7 +12,10 @@ impl Header {
     pub fn serialize(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(HEADER_LEN);
         out.extend_from_slice(MAGIC);
-        out.push(FORMAT_VERSION);
+        // Compressed leaves are a v9 frame: the flag is unknown to a v8
+        // reader, which refuses cleanly rather than misreading the leaf
+        // section. Everything else keeps the v8 byte (and v8 readers).
+        out.push(if (self.flags & FLAG_LEAVES_COMPRESSED) != 0 { FORMAT_VERSION_V9 } else { FORMAT_VERSION });
         out.extend_from_slice(&(HEADER_LEN as u16).to_le_bytes());
         out.extend_from_slice(&self.flags.to_le_bytes());
         out.push(self.compression);

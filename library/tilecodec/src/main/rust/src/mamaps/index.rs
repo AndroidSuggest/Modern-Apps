@@ -1,10 +1,11 @@
 //! The two-level index: a root of fixed-stride entries, each pointing at one leaf.
 //!
-//! Both levels are **uncompressed and fixed stride**, which is the whole design. The root can
-//! then be used straight out of the bytes a reader already fetched to read the header, with no
-//! inflate step and no sequential decode — and a leaf can be binary-searched, because
-//! [`LeafEntry::tile_id_lo`] is absolute within its leaf rather than a delta from the entry
-//! before it.
+//! The root is **uncompressed and fixed stride**, which is the load-bearing half of the design.
+//! It is used straight out of the bytes a reader already fetched to read the header, with no
+//! inflate step and no sequential decode. Each leaf is independently compressed (one raw-DEFLATE
+//! frame per leaf, see [`compress_leaf`]); the reader inflates a leaf whole and then
+//! binary-searches in memory, because [`LeafEntry::tile_id_lo`] is absolute within its leaf
+//! rather than a delta from the entry before it.
 //!
 //! # The prefix budget
 //!
@@ -17,11 +18,25 @@
 //! [`super::write`] **asserts** the budget. A root that does not fit is a build failure, never a
 //! silent third round trip charged to every reader forever.
 //!
+//! Leaf compression does not touch the budget: the root stays raw at the same 32-byte stride,
+//! and each leaf's stored length rides in its root entry's formerly-reserved word.
+//!
 //! # Addressing
 //!
 //! Tile ids are `pmtiles::tile_id` unchanged: space-filling, zoom-major and monotonic. Those are
 //! exactly the three properties the generator's spill bucketing and pyramid ranges already depend
 //! on, so inventing a curve here would buy nothing and break that coupling.
+//!
+//! # Leaf framing (v9)
+//!
+//! A stored leaf is one raw-DEFLATE frame over exactly `leaf_entry_count * 16` bytes of
+//! [`serialize_leaf`] output. The frame's length is the root entry's `stored_len`; the inflated
+//! length is known before the first byte inflates, so the reader allocates exactly once — the
+//! same property bodies get from their uncompressed 16-byte header. DEFLATE, not zstd: leaves
+//! must inflate on the `aarch64-linux-android` cdylib, where the only codec is `miniz_oxide`
+//! (pure Rust, no C toolchain). Measured 0.39 on twenty random California leaves (2.54 GB →
+//! ~1.00 GB); the root's reserved word stays zero for a raw legacy leaf, so old files keep
+//! parsing without a version check on the read path.
 
 use crate::proto::{err, Result};
 
@@ -43,6 +58,15 @@ pub struct RootEntry {
     /// data section is past 4 GiB, but one leaf's 4096 bodies are not.
     pub base_data_offset: u64,
     pub leaf_entry_count: u32,
+    /// The leaf's stored length in the leaf section.
+    ///
+    /// Zero for a raw legacy leaf (`leaf_entry_count * 16` bytes); otherwise the length of the
+    /// one raw-DEFLATE frame ([`compress_leaf`]) that inflates to exactly that many bytes.
+    /// Carried in the root entry's formerly-reserved word, so the root keeps its 32-byte stride
+    /// and the opening-prefix budget is untouched. A reader never guesses: the length always
+    /// comes from this field, which is what keeps a short range reply from poisoning a disk
+    /// cache entry (see [`super::read`]).
+    pub stored_len: u32,
 }
 
 /// One tile, or a run of consecutive tiles that share a body.
@@ -72,7 +96,7 @@ pub fn serialize_root(entries: &[RootEntry]) -> Vec<u8> {
         out.extend_from_slice(&e.leaf_offset.to_le_bytes());
         out.extend_from_slice(&e.base_data_offset.to_le_bytes());
         out.extend_from_slice(&e.leaf_entry_count.to_le_bytes());
-        out.extend_from_slice(&0u32.to_le_bytes());
+        out.extend_from_slice(&e.stored_len.to_le_bytes());
     }
     debug_assert_eq!(out.len(), entries.len() * ROOT_ENTRY_LEN);
     out
@@ -87,14 +111,14 @@ pub fn parse_root(buf: &[u8]) -> Result<Vec<RootEntry>> {
     }
     let mut out = Vec::with_capacity(buf.len() / ROOT_ENTRY_LEN);
     for chunk in buf.chunks_exact(ROOT_ENTRY_LEN) {
-        if u32::from_le_bytes([chunk[28], chunk[29], chunk[30], chunk[31]]) != 0 {
-            return err("a .mamaps root entry has a non-zero reserved word");
-        }
         out.push(RootEntry {
             base_tile_id: u64_at(chunk, 0),
             leaf_offset: u64_at(chunk, 8),
             base_data_offset: u64_at(chunk, 16),
             leaf_entry_count: u32::from_le_bytes([chunk[24], chunk[25], chunk[26], chunk[27]]),
+            // Zero is a raw legacy leaf; non-zero is a DEFLATE frame of that stored length.
+            // Either way the reader takes the length from here, never from arithmetic.
+            stored_len: u32::from_le_bytes([chunk[28], chunk[29], chunk[30], chunk[31]]),
         });
     }
     // Ascending, or the binary search below would silently return the wrong leaf rather than
@@ -141,6 +165,45 @@ pub fn parse_leaf(buf: &[u8]) -> Result<Vec<LeafEntry>> {
     }
     if out.windows(2).any(|pair| pair[1].tile_id_lo <= pair[0].tile_id_lo) {
         return err("a .mamaps leaf is not ordered by tile id");
+    }
+    Ok(out)
+}
+
+/// One raw-DEFLATE frame over [`serialize_leaf`] output.
+///
+/// Deterministic for fixed input (same bytes in, same bytes out), which is what keeps builds
+/// byte-identical. Level 9 is the archive setting — leaves are written once and fetched per
+/// cold tile, so bytes matter more than build time; see [`crate::gz`] for the measured
+/// non-trade behind the same choice on bodies. A leaf that would grow is stored raw instead
+/// (the caller keeps `stored_len` zero), so compression never costs a byte.
+pub fn compress_leaf(raw: &[u8]) -> Vec<u8> {
+    miniz_oxide::deflate::compress_to_vec(raw, 9)
+}
+
+/// Inflate one leaf frame, allocating exactly once.
+///
+/// The output length is `leaf_entry_count * 16`, known from the root entry before the first
+/// byte inflates — so there is no grow-and-copy and no guess, and a corrupt frame fails here
+/// rather than as a wrong tile somewhere later. Raw DEFLATE (no zlib wrapper), matching what
+/// [`compress_leaf`] emits.
+pub fn decompress_leaf(stored: &[u8], raw_len: usize) -> Result<Vec<u8>> {
+    if raw_len % LEAF_ENTRY_LEN != 0 {
+        return err(format!(
+            "a .mamaps leaf of {raw_len} bytes is not a whole number of {LEAF_ENTRY_LEN} byte entries",
+        ));
+    }
+    let mut out = vec![0u8; raw_len];
+    let written = miniz_oxide::inflate::decompress_slice_iter_to_slice(
+        &mut out,
+        std::iter::once(stored),
+        false,
+        false,
+    )
+    .map_err(|e| crate::proto::Error(format!("a .mamaps leaf will not inflate: {e:?}")))?;
+    if written != raw_len {
+        return err(format!(
+            "a .mamaps leaf inflated to {written} bytes, not the {raw_len} its root entry declares",
+        ));
     }
     Ok(out)
 }
@@ -205,6 +268,7 @@ mod tests {
                 leaf_offset: (i * 64) as u64,
                 base_data_offset: (i * 1000) as u64,
                 leaf_entry_count: 4,
+                stored_len: 0,
             })
             .collect()
     }
@@ -317,10 +381,41 @@ mod tests {
     }
 
     #[test]
-    fn a_reserved_word_a_later_version_may_claim_is_checked() {
-        let mut bytes = serialize_root(&root_of(&[0]));
-        bytes[28] = 1;
-        assert!(parse_root(&bytes).is_err());
+    fn a_stored_length_a_later_version_may_claim_is_carried() {
+        // Zero is a raw legacy leaf; non-zero is a DEFLATE frame of that length. Either way the
+        // length round-trips through the word v8 reserved, and the root keeps its 32-byte stride.
+        let mut root = root_of(&[0]);
+        root[0].stored_len = 1234;
+        let bytes = serialize_root(&root);
+        assert_eq!(bytes.len(), ROOT_ENTRY_LEN);
+        assert_eq!(&bytes[28..32], &1234u32.to_le_bytes());
+        assert_eq!(parse_root(&bytes).expect("root"), root);
+        // And the legacy all-zero word still parses, as a raw leaf.
+        assert_eq!(parse_root(&serialize_root(&root_of(&[0]))).expect("legacy"), root_of(&[0]));
+    }
+
+    #[test]
+    fn a_leaf_frame_round_trips_and_refuses_garbage() {
+        let leaf = vec![
+            LeafEntry { tile_id_lo: 0, run_length: 3, offset_delta: 0, length: 40 },
+            LeafEntry { tile_id_lo: 3, run_length: 1, offset_delta: 40, length: 12 },
+            LeafEntry { tile_id_lo: 9, run_length: 2, offset_delta: 52, length: 7 },
+        ];
+        let raw = serialize_leaf(&leaf);
+        let stored = compress_leaf(&raw);
+        let back = decompress_leaf(&stored, raw.len()).expect("inflate");
+        assert_eq!(parse_leaf(&back).expect("parse"), leaf);
+        // Deterministic: the same bytes in give the same bytes out, which is what keeps builds
+        // byte-identical.
+        assert_eq!(compress_leaf(&raw), stored);
+        // A corrupt frame fails here rather than as a wrong tile later.
+        let mut bad = stored.clone();
+        let last = bad.len() - 1;
+        bad[last] ^= 0xFF;
+        assert!(decompress_leaf(&bad, raw.len()).is_err(), "a corrupt frame");
+        // And a declared length that is not whole entries is refused before inflating.
+        assert!(decompress_leaf(&stored, raw.len() + 1).is_err(), "a partial entry");
+        assert!(decompress_leaf(&stored, raw.len() + LEAF_ENTRY_LEN).is_err(), "a wrong length");
     }
 
     /// **Invariant 4.** The generator's spill buckets and its per-zoom passes both key on

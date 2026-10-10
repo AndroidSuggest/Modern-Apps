@@ -3,7 +3,7 @@
 //!
 //! Pure moves out of the former single-file header module; nothing here changed.
 
-use super::consts::{FLAG_BODIES_COMPRESSED, FLAG_RINGS_VALIDATED, HEADER_LEN};
+use super::consts::{FLAG_BODIES_COMPRESSED, FLAG_LEAVES_COMPRESSED, FLAG_RINGS_VALIDATED, HEADER_LEN};
 
 /// What a reader must know before it can address anything.
 ///
@@ -58,6 +58,14 @@ impl Header {
 
     pub fn rings_validated(&self) -> bool {
         self.flags & FLAG_RINGS_VALIDATED != 0
+    }
+
+    /// Each leaf is one raw-DEFLATE frame whose stored length rides in its
+    /// root entry, rather than raw fixed-stride entries. The root itself is
+    /// unchanged — still raw, still 32-byte stride, still inside the opening
+    /// prefix.
+    pub fn leaves_compressed(&self) -> bool {
+        self.flags & FLAG_LEAVES_COMPRESSED != 0
     }
 
     /// This header's wire length: always 128 (v8 only).

@@ -107,12 +107,18 @@ pub fn read_all(bytes: &[u8]) -> Result<Vec<(u64, u32, Vec<u8>)>> {
     dictionary.check_matches_schema()?;
     let mut out = Vec::new();
     for entry in &root {
-        let len = entry.leaf_entry_count as usize * index::LEAF_ENTRY_LEN;
+        let raw_len = entry.leaf_entry_count as usize * index::LEAF_ENTRY_LEN;
+        let stored_len = if entry.stored_len == 0 { raw_len } else { entry.stored_len as usize };
         let at = (header.leaf_offset + entry.leaf_offset) as usize;
-        if at + len > bytes.len() {
+        if at + stored_len > bytes.len() {
             return err("a .mamaps root entry runs past the file");
         }
-        for tile in index::parse_leaf(&bytes[at..at + len])? {
+        let raw = if entry.stored_len == 0 {
+            bytes[at..at + stored_len].to_vec()
+        } else {
+            index::decompress_leaf(&bytes[at..at + stored_len], raw_len)?
+        };
+        for tile in index::parse_leaf(&raw)? {
             let start = (header.data_offset + entry.base_data_offset + tile.offset_delta as u64)
                 as usize;
             let end = start + tile.length as usize;

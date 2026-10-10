@@ -105,6 +105,10 @@ impl<R: RangeReader> MamapsArchive<R> {
     }
 
     /// The parsed leaf a root entry addresses, from the cache or over the wire.
+    ///
+    /// A stored leaf is one raw-DEFLATE frame; it inflates whole to exactly
+    /// `leaf_entry_count * 16` bytes and then binary-searches in memory like a raw leaf always
+    /// did. The request count is unchanged: one range read per cold leaf, whatever it stores.
     fn leaf(&mut self, root: &RootEntry) -> Result<Vec<LeafEntry>> {
         if let Some(position) = self.leaves.iter().position(|(offset, _)| *offset == root.leaf_offset)
         {
@@ -114,13 +118,31 @@ impl<R: RangeReader> MamapsArchive<R> {
             self.leaves.push(hit);
             return Ok(entries);
         }
-        let len = root.leaf_entry_count as u64 * index::LEAF_ENTRY_LEN as u64;
-        if root.leaf_offset + len > self.header.leaf_len as u64 {
+        let raw_len = root.leaf_entry_count as u64 * index::LEAF_ENTRY_LEN as u64;
+        let stored_len = if root.stored_len == 0 { raw_len } else { root.stored_len as u64 };
+        if root.leaf_offset + stored_len > self.header.leaf_len as u64 {
             return err("a .mamaps root entry runs past the leaf section");
         }
-        let length = u32::try_from(len)
+        let length = u32::try_from(stored_len)
             .map_err(|_| Error("a .mamaps leaf is larger than a single read".to_string()))?;
-        let raw = self.exact(self.header.leaf_offset + root.leaf_offset, length, "a leaf")?;
+        let stored = self.exact(self.header.leaf_offset + root.leaf_offset, length, "a leaf")?;
+        // Zero is a raw legacy leaf; anything else is the frame length. The inflated length is
+        // known from the entry count either way, so a corrupt frame fails here rather than as a
+        // wrong tile later — and a read of the wrong length never reaches the disk cache.
+        let raw = if root.stored_len == 0 {
+            if stored.len() as u64 != raw_len {
+                return err(format!(
+                    "a .mamaps read of a leaf wanted {raw_len} bytes at {}, got {}",
+                    self.header.leaf_offset + root.leaf_offset,
+                    stored.len(),
+                ));
+            }
+            stored
+        } else {
+            let raw_len = usize::try_from(raw_len)
+                .map_err(|_| Error("a .mamaps leaf is larger than a single read".to_string()))?;
+            index::decompress_leaf(&stored, raw_len)?
+        };
         let entries = index::parse_leaf(&raw)?;
         if self.leaves.len() >= MAX_CACHED_LEAVES {
             self.leaves.remove(0);

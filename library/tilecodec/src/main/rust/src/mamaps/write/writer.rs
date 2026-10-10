@@ -463,6 +463,10 @@ impl StreamWriter {
                 leaf_offset: leaf_data_offset,
                 base_data_offset,
                 leaf_entry_count: chunk.len() as u32,
+                // Filled in by `prefix`, which is the only place that knows whether leaves
+                // store compressed: zero here keeps `partition` (and its byte-identity test)
+                // about boundaries only, never about bytes.
+                stored_len: 0,
             });
             leaf_data_offset += leaf_len_before * index::LEAF_ENTRY_LEN as u64;
             leaves.push(leaf);

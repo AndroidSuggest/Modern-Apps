@@ -97,9 +97,21 @@ pub const FLAG_RINGS_VALIDATED: u16 = 1 << 2;
 /// (instead of u32 leaf_len at 72..76 plus 0-reserved at 76..80). Common
 /// path (NA ~418 MB) stays flag 0 + u32 + 0 — byte-identical to v1.
 pub const FLAG_LEAF_LEN_64: u16 = 1 << 3;
+/// Each leaf is stored as one raw-DEFLATE frame (v9 only) rather than raw
+/// fixed-stride entries.
+///
+/// The root stays raw — 32-byte stride, usable straight out of the opening
+/// prefix — and each root entry's formerly-reserved word carries the frame's
+/// stored length ([`crate::mamaps::index::RootEntry::stored_len`]). The reader
+/// inflates one leaf to exactly `leaf_entry_count * 16` bytes and binary
+/// searches in memory, so lookups keep their shape and their request count.
+/// An older reader refuses cleanly: the flag is unknown to it, and so is the
+/// non-zero reserved word. See [`crate::mamaps::index`] for the framing.
+pub const FLAG_LEAVES_COMPRESSED: u16 = 1 << 4;
 
 pub(super) const KNOWN_FLAGS: u16 =
-    FLAG_BODIES_COMPRESSED | FLAG_RUN_LENGTH_PRESENT | FLAG_RINGS_VALIDATED | FLAG_LEAF_LEN_64;
+    FLAG_BODIES_COMPRESSED | FLAG_RUN_LENGTH_PRESENT | FLAG_RINGS_VALIDATED | FLAG_LEAF_LEN_64
+    | FLAG_LEAVES_COMPRESSED;
 
 /// Bodies stored as written.
 pub const COMPRESSION_NONE: u8 = 0;

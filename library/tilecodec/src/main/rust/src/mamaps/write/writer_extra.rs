@@ -1,8 +1,8 @@
 use super::writer::StreamWriter;
 use crate::mamaps::dict;
 use crate::mamaps::header::{
-    COMPRESSION_DEFLATE, COMPRESSION_NONE, FLAG_BODIES_COMPRESSED, FLAG_RINGS_VALIDATED,
-    FLAG_RUN_LENGTH_PRESENT, HEADER_LEN, Header,
+    COMPRESSION_DEFLATE, COMPRESSION_NONE, FLAG_BODIES_COMPRESSED, FLAG_LEAVES_COMPRESSED,
+    FLAG_RINGS_VALIDATED, FLAG_RUN_LENGTH_PRESENT, HEADER_LEN, Header,
 };
 use crate::mamaps::index::{self};
 use crate::proto::{Result, err};
@@ -28,15 +28,18 @@ impl StreamWriter {
         // PMTiles writer takes and for the same reason. Twelve doublings takes 4096 to 16 M
         // entries per leaf; a root that still does not fit is a build failure, never a silent
         // third round trip charged to every reader forever.
-        let (root, leaves) = loop {
+        let (mut root, leaves) = loop {
             // A `None` is a leaf whose tile-id span will not fit a `u32`. A wider leaf spans more
             // ids, not fewer, so growing the capacity does not fix that one -- it runs out at the
             // cap below and reports. Kept distinct from the root-too-large case because the two want
             // opposite things from the capacity and a future fix has to choose between them.
+            //
+            // The root length is what the budget accounts: the root stays raw at 32 bytes an
+            // entry whatever the leaves store, so leaf compression never moves this loop.
             if let Some(split) = self.partition(capacity)? {
                 let root_len = split.0.len() * index::ROOT_ENTRY_LEN;
                 if HEADER_LEN + dictionary.len() + root_len <= OPEN_PREFIX_BYTES as usize {
-                    break split;
+                    break (split.0, split.1);
                 }
             }
             if capacity >= 1 << 24 {
@@ -58,9 +61,36 @@ impl StreamWriter {
         if self.options.rings_validated {
             flags |= FLAG_RINGS_VALIDATED;
         }
-
-        let leaf_bytes: Vec<u8> =
-            leaves.iter().flat_map(|leaf| index::serialize_leaf(leaf)).collect();
+        // One raw-DEFLATE frame per leaf, decided here — after the budget loop, exactly once
+        // per finish — so `partition` stays about boundaries and the frame bytes are a pure
+        // function of the leaf: the same leaf always stores the same bytes, which is what keeps
+        // `finish` and `finish_to_path` two ways of emitting one archive. A frame that would
+        // grow its leaf is stored raw instead (`stored_len` zero), so this never costs a byte;
+        // with `compress_leaves` off every leaf stores raw and the file is the legacy layout
+        // bit for bit.
+        let mut leaf_bytes = Vec::new();
+        for (entry, leaf) in root.iter_mut().zip(leaves.iter()) {
+            let raw = index::serialize_leaf(leaf);
+            let stored = if self.options.compress_leaves {
+                let frame = index::compress_leaf(&raw);
+                if frame.len() < raw.len() { frame } else { raw }
+            } else {
+                raw
+            };
+            entry.leaf_offset = leaf_bytes.len() as u64;
+            entry.stored_len = if stored.len() == leaf.len() * index::LEAF_ENTRY_LEN {
+                0
+            } else {
+                u32::try_from(stored.len()).map_err(|_| {
+                    crate::proto::Error("a .mamaps leaf frame is larger than 4 GiB".to_string())
+                })?
+            };
+            leaf_bytes.extend_from_slice(&stored);
+        }
+        let any_compressed = root.iter().any(|e| e.stored_len != 0);
+        if any_compressed {
+            flags |= FLAG_LEAVES_COMPRESSED;
+        }
         let leaf_len = leaf_bytes.len() as u64;
         // Planet scale: ~268M bodies ×16 B ≈4.29 GB > u32::MAX (1257 B overflow
         // in the failed run). Common path (NA ~418 MB, CA ~tens of MB) stays
