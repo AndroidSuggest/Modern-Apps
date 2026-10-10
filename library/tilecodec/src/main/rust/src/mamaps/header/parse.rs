@@ -7,8 +7,8 @@
 use crate::proto::{err, Result};
 
 use super::consts::{
-    COMPRESSION_DEFLATE, COMPRESSION_NONE, FLAG_LEAF_LEN_64, FORMAT_VERSION, HEADER_LEN,
-    KNOWN_FLAGS, MAGIC, MAX_ZOOM,
+    COMPRESSION_DEFLATE, COMPRESSION_NONE, COMPRESSION_ZSTD, FLAG_LEAF_LEN_64, FORMAT_VERSION,
+    FORMAT_VERSION_V9, HEADER_LEN, KNOWN_FLAGS, MAGIC, MAX_ZOOM,
 };
 use super::types::Header;
 
@@ -32,9 +32,9 @@ impl Header {
             return err("not a .mamaps archive (bad magic)");
         }
         let version = buf[7];
-        if version != FORMAT_VERSION {
+        if version != FORMAT_VERSION && version != FORMAT_VERSION_V9 {
             return err(format!(
-                "unsupported .mamaps format version {version} (this reader speaks v{FORMAT_VERSION})",
+                "unsupported .mamaps format version {version} (this reader speaks v{FORMAT_VERSION} and v{FORMAT_VERSION_V9})",
             ));
         }
         let u16_at = |o: usize| u16::from_le_bytes([buf[o], buf[o + 1]]);
@@ -132,7 +132,10 @@ impl Header {
     /// from a field here, and a wrong length is a read that either fails somewhere uninformative
     /// or poisons a disk cache entry with a body of the wrong size.
     pub(super) fn check(&self) -> Result<()> {
-        if !matches!(self.compression, COMPRESSION_NONE | COMPRESSION_DEFLATE) {
+        if !matches!(
+            self.compression,
+            COMPRESSION_NONE | COMPRESSION_DEFLATE | COMPRESSION_ZSTD
+        ) {
             return err(format!("unknown .mamaps compression {}", self.compression));
         }
         if self.compressed() != (self.compression != COMPRESSION_NONE) {

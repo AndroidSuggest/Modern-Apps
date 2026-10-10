@@ -65,8 +65,8 @@ fn a_truncated_or_foreign_header_is_refused() {
     wrong_magic[0] = b'P';
     assert!(Header::parse(&wrong_magic).is_err(), "PMTiles is not this format");
     let mut wrong_version = bytes.clone();
-    wrong_version[7] = FORMAT_VERSION + 1;
-    assert!(Header::parse(&wrong_version).is_err(), "a version past v8");
+    wrong_version[7] = FORMAT_VERSION_V9 + 1;
+    assert!(Header::parse(&wrong_version).is_err(), "a version past v9");
     let mut wrong_len = bytes.clone();
     wrong_len[8..10].copy_from_slice(&160u16.to_le_bytes());
     assert!(Header::parse(&wrong_len).is_err(), "a v8 version declaring 160");
@@ -117,6 +117,28 @@ fn an_offset_length_pair_cannot_overflow_into_looking_valid() {
     header.data_offset = u64::MAX - 8;
     header.data_len = 64;
     assert!(Header::parse(&header.serialize()).is_err(), "the end wraps");
+}
+
+/// v9 parses wherever v8 does: same 128 bytes, new version byte only.
+/// A v9 reader must accept both; anything else is refused.
+#[test]
+fn a_v9_header_parses_and_anything_past_v9_is_refused() {
+    let mut bytes = plausible().serialize();
+    bytes[7] = FORMAT_VERSION_V9;
+    assert!(Header::parse(&bytes).is_ok(), "v9 must parse");
+    for v in [0u8, 1, 7, 10, 255] {
+        let mut bad = bytes.clone();
+        bad[7] = v;
+        assert!(Header::parse(&bad).is_err(), "version {v} must be refused");
+    }
+}
+
+/// zstd is a known compression: the header carries it, the flag agrees.
+#[test]
+fn a_zstd_header_parses() {
+    let mut header = plausible();
+    header.compression = COMPRESSION_ZSTD;
+    assert!(Header::parse(&header.serialize()).is_ok());
 }
 
 /// Planet scale: leaf index is ~268M bodies ×16 B ≈4.29 GB > u32::MAX,

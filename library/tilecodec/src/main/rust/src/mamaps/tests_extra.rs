@@ -201,6 +201,24 @@ fn an_archive_whose_dictionary_is_not_this_schema_is_refused_on_open() {
     assert!(failure.0.contains("disagrees with this build's schema"), "{}", failure.0);
 }
 
+/// A zstd body round-trips through the reader: same framing as DEFLATE (raw
+/// frame behind the uncompressed 16-byte header), decoded by `ruzstd`.
+#[test]
+fn a_zstd_body_decodes_to_the_bytes_it_was_encoded_from() {
+    use crate::mamaps::body::serialize;
+    use crate::mamaps::read::decompress;
+    use crate::mamaps::write::{compress_body, compress_body_zstd};
+    let raw = serialize(&body_for(7)).expect("serialize");
+    let stored = compress_body_zstd(&raw);
+    assert_eq!(&stored[..16], &raw[..16], "header stays outside the frame");
+    let back = decompress(crate::mamaps::header::COMPRESSION_ZSTD, &stored).expect("decode");
+    assert_eq!(back, raw);
+    // And the DEFLATE path is untouched by the new arm.
+    let d_stored = compress_body(&raw);
+    let d_back = decompress(crate::mamaps::header::COMPRESSION_DEFLATE, &d_stored).expect("inflate");
+    assert_eq!(d_back, raw);
+}
+
 /// Planet per-leaf data-span overflow: a leaf whose entries' max(offset)-
 /// min(offset) would exceed u32::MAX (planet: 4294968552 = u32::MAX+1257)
 /// must be split, otherwise LeafEntry.offset_delta (u32) overflows.

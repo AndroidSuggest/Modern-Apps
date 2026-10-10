@@ -65,6 +65,22 @@ pub const MAGIC: &[u8; 7] = b"MAMAPS\0";
 /// The reader speaks v8 only: any other version byte is refused on open.
 pub const FORMAT_VERSION: u8 = 8;
 
+/// The v9 format version: zstd bodies, compressed leaves, packed sidecars.
+///
+/// Bumped for the structural-savings rebuild. A v9 archive is refused by a v8
+/// reader (clean rejection, not a wrong map); a v9 reader still refuses
+/// anything it does not speak. See the v8 history above for what forces a bump.
+pub const FORMAT_VERSION_V9: u8 = 9;
+
+/// The v10 format version: narrowed body records.
+///
+/// v10 bodies drop dead bytes from feature records (per-layer classes),
+/// shrink part entries 12 B to 4 B, and store side tables bitset+sparse. The
+/// header/index framing is unchanged from v9; only body payloads differ, gated
+/// by the per-body version byte. A v10 body in a v8 archive is refused at the
+/// body, not the header — but builders ship v10 bodies under v9+ headers.
+pub const FORMAT_VERSION_V10: u8 = 10;
+
 pub const HEADER_LEN: usize = 128;
 
 /// Bodies are compressed frames; clear means the body is stored raw.
@@ -95,6 +111,13 @@ pub const COMPRESSION_NONE: u8 = 0;
 /// would end that. Not gzip either: gzip costs 18 bytes of framing per body and existed only
 /// because MapLibre requires it, which nothing reading this format does.
 pub const COMPRESSION_DEFLATE: u8 = 1;
+/// zstd, one independent frame per body (v9 only).
+///
+/// Same framing as DEFLATE (raw frame behind the uncompressed 16-byte body
+/// header), different codec. Encoder and decoder are pure Rust (`zstd-rs` /
+/// `ruzstd`) so the aarch64-linux-android cdylib keeps its no-C-toolchain
+/// property — see the crate docs in `Cargo.toml`.
+pub const COMPRESSION_ZSTD: u8 = 2;
 
 /// The deepest zoom a `tile_id_lo` can span inside one leaf. See [`crate::mamaps::index`].
 pub const MAX_ZOOM: u8 = 22;

@@ -1,8 +1,11 @@
 use crate::mamaps::body::Body;
 use crate::mamaps::dict::Dictionary;
-use crate::mamaps::header::{COMPRESSION_DEFLATE, COMPRESSION_NONE, Header, HEADER_LEN};
+use crate::mamaps::header::{
+    COMPRESSION_DEFLATE, COMPRESSION_NONE, COMPRESSION_ZSTD, Header, HEADER_LEN,
+};
 use crate::mamaps::index::{self, RootEntry};
 use crate::proto::{Error, Result, err};
+use std::io::Read as _;
 
 /// Inflate one body frame, allocating exactly once.
 ///
@@ -36,6 +39,39 @@ pub fn decompress(compression: u8, stored: &[u8]) -> Result<Vec<u8>> {
                     "a .mamaps body inflated to {} bytes, not the {} it declares",
                     written + header_len,
                     raw_len,
+                ));
+            }
+            Ok(out)
+        }
+        COMPRESSION_ZSTD => {
+            let raw_len = Body::raw_len(stored)? as usize;
+            if raw_len < crate::mamaps::body::BODY_HEADER_LEN {
+                return err("a .mamaps body frame declares a length shorter than a body header");
+            }
+            let mut out = vec![0u8; raw_len];
+            let header_len = crate::mamaps::body::BODY_HEADER_LEN;
+            out[..header_len].copy_from_slice(&stored[..header_len]);
+            // Same framing as DEFLATE (raw frame behind the uncompressed
+            // header), different codec. `ruzstd` is decode-only pure Rust.
+            let mut decoder = ruzstd::decoding::StreamingDecoder::new(&stored[header_len..])
+                .map_err(|e| Error(format!("a .mamaps zstd body will not decode: {e:?}")))?;
+            let mut at = header_len;
+            loop {
+                if at >= raw_len {
+                    break;
+                }
+                let n = decoder
+                    .read(&mut out[at..])
+                    .map_err(|e| Error(format!("a .mamaps zstd body will not decode: {e:?}")))?;
+                if n == 0 {
+                    break;
+                }
+                at += n;
+            }
+            if at != raw_len {
+                return err(format!(
+                    "a .mamaps zstd body decoded to {} bytes, not the {} it declares",
+                    at, raw_len,
                 ));
             }
             Ok(out)

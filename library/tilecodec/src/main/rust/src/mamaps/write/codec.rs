@@ -36,6 +36,30 @@ pub fn compress_body_with(deflate: &mut crate::gz::Compressor, encoded: &[u8]) -
     out
 }
 
+/// zstd over everything but the body header (v9 only).
+///
+/// Same framing as [`compress_body`] — 16-byte header ahead of one independent
+/// frame — different codec. Host-side only (`write` feature): the device reads
+/// v9 bodies with `ruzstd` and never encodes. Level 19 is zstd's archive
+/// default (bytes over build seconds, same trade DEFLATE-9 makes).
+/// Deterministic for fixed input + config, which is what keeps builds
+/// byte-identical.
+#[cfg(feature = "write")]
+pub fn compress_body_zstd(encoded: &[u8]) -> Vec<u8> {
+    let header_len = body::BODY_HEADER_LEN;
+    let mut out = Vec::with_capacity(encoded.len());
+    out.extend_from_slice(&encoded[..header_len]);
+    let cfg = zstd_rs::CompressionConfig {
+        level: 19,
+        ..zstd_rs::CompressionConfig::DEFAULT
+    };
+    let mut enc =
+        zstd_rs::Compressor::new(cfg).expect("zstd compressor with a valid level");
+    enc.compress(&encoded[header_len..], None, &mut out)
+        .expect("zstd encode of an in-memory body");
+    out
+}
+
 /// FNV-1a. Only ever a bucket key — every hit is confirmed by comparing bytes — so it needs to be
 /// fast and well spread, not collision-proof.
 ///

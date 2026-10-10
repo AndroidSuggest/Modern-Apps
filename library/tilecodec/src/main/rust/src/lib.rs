@@ -37,3 +37,8 @@ pub mod mvt;
 pub mod pmtiles;
 pub mod proto;
 pub mod stream;
+
+/// Blocked zstd sections ([`blocked`]): random-access compression for graph
+/// tables. Read side always linked; the writer ([`blocked::write_blocked`])
+/// is behind the `write` feature like the tile writer.
+pub mod blocked;

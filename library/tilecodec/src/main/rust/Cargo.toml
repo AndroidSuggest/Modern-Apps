@@ -34,7 +34,7 @@ description = "PMTiles v3, Mapbox Vector Tile 2.1 and .mamaps codecs shared by t
 # so gating it keeps the interner out of the cdylib and, more usefully, makes it a
 # compile error rather than a review comment if the read path ever grows a dependency
 # on the write path. `scripts/maps` enables it.
-write = []
+write = ["dep:zstd-rs"]
 
 [lib]
 name = "tilecodec"
@@ -42,6 +42,14 @@ path = "src/lib.rs"
 
 [dependencies]
 miniz_oxide = "0.8"
+# Pure-Rust zstd decoder for v9 bodies (no C toolchain, so the
+# aarch64-linux-android cdylib keeps its single-pure-Rust-dependency
+# property — see the crate docs above). Decode-only here; the host-side
+# encoder arrives with the writer change.
+ruzstd = "0.8"
+# Pure-Rust zstd encoder, host-side only (writer): v9 bodies. Optional so the
+# cdylib never links it — Android reads archives, it never writes one.
+zstd-rs = { version = "0.1", optional = true }
 
 # Detach from both the repo-root Android workspace and `tile_build`'s.
 [workspace]
