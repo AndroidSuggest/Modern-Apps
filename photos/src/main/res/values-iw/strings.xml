@@ -50,4 +50,5 @@
     <string name="wallpaper_lock">מסך הנעילה</string>
     <string name="wallpaper_both">שניהם</string>
     <string name="label_albums">אלבומים</string>
+    <string name="gif_badge">GIF</string>
 </resources>
