@@ -286,7 +286,14 @@ fn encode_tile(
         region_links: region_links_table,
     };
     let encoded_body = timed(on, &SERIALIZE_NANOS, || {
-        tilecodec::mamaps::body::serialize_into(&body, scratch)
+        // v10 narrowed records behind `MAMAPS_V10=1` until the side tables
+        // land and the default flips. Same geometry either way — only the
+        // fixed records shrink — so this gate changes bytes, never shapes.
+        if std::env::var("MAMAPS_V10").is_ok() {
+            tilecodec::mamaps::body::serialize_into_v10(&body, scratch)
+        } else {
+            tilecodec::mamaps::body::serialize_into(&body, scratch)
+        }
     })?;
     let raw_len = encoded_body.len();
     let stored = timed(on, &DEFLATE_NANOS, || {

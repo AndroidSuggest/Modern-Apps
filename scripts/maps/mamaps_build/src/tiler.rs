@@ -126,9 +126,14 @@ pub const DEFAULT_SIMPLIFICATION: f64 = 1.0;
 
 /// Extra simplification for the boundary wash: a multiple of the per-zoom policy tolerance,
 /// applied in `tolerance_for_layer` beside the buildings floor. 1.5x — boundaries are lines,
-/// and lines carry sub-10m wiggles a 2x grid stretch could straighten. `landtype` tiles to z14
-/// at 1.0x like roads — crisp parks and shorelines, not a wash.
+/// and lines carry sub-10m wiggles a 2x grid stretch could straighten.
 pub const WASH_SIMPLIFICATION: f64 = 1.5;
+
+/// Extra simplification for the landtype wash: natural boundaries are looked
+/// at closer than admin ones, so the factor stays at the wash level rather
+/// than above it. Same mechanism as [`WASH_SIMPLIFICATION`], own constant so
+/// the two tune independently.
+pub const LANDTYPE_SIMPLIFICATION: f64 = 1.5;
 
 /// The simplification floor for the `buildings` layer, in extent units.
 ///

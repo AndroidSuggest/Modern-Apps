@@ -180,14 +180,15 @@ mod tests {
         assert_eq!(out[0][0].len(), 5, "the 0.4-unit bump goes: {out:?}");
         // The same shape on landtype at a zero tolerance keeps it.
         let landtype_tol = tolerance_for_layer(dict::LAYER_LANDTYPE, 14, 0.0);
-        assert_eq!(landtype_tol, 0.0, "other layers keep the policy tolerance");
+        assert_eq!(landtype_tol, 0.0, "the wash scales the policy, and 1.5x of zero is zero");
         let Geometry::Polygons(kept) = simplify::filter(&g, landtype_tol) else { panic!() };
         assert_eq!(kept[0][0].len(), 6, "at zero tolerance nothing moves");
         // A coarser global tolerance still wins over the floor.
         assert_eq!(tolerance_for_layer(dict::LAYER_BUILDINGS, 14, 2.0), 2.0);
         // And below the buildings floor the policy stands: z13 keeps 1.0, not 0.5.
         assert_eq!(tolerance_for_layer(dict::LAYER_BUILDINGS, 13, 1.0), 1.0);
-        assert_eq!(tolerance_for_layer(dict::LAYER_LANDTYPE, 13, 1.0), 1.0, "landtype keeps policy");
+        assert_eq!(tolerance_for_layer(dict::LAYER_LANDTYPE, 13, 1.0), 1.5, "the landtype wash scales the policy");
+        assert_eq!(tolerance_for_layer(dict::LAYER_ROADS, 13, 1.0), 1.0, "roads keep policy");
         assert_eq!(tolerance_for_layer(dict::LAYER_ROADS, 13, 1.0), 1.0, "roads keep policy");
         assert_eq!(tolerance_for_layer(dict::LAYER_BOUNDARIES, 10, 2.0), 3.0, "the boundary wash scales the policy");
     }
@@ -402,6 +403,70 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// **The v10 narrowed-record path, end to end.** Buildings (minimal
+    /// records, no names/details/transit/lanes), roads (roads records) and
+    /// landtype survive a v10 serialize/parse round trip with identical
+    /// geometry, and the S3DB attrs survive the sparse table — through the
+    /// same `Body` API the renderer reads. Bridge coverage until tilecodec's
+    /// own test target builds again.
+    #[test]
+    fn a_v10_body_round_trips_narrowed_records_and_sparse_buildings() {
+        use tilecodec::mamaps::body::{
+            serialize_into_v10, BuildingAttrs, Feature as BodyFeature, Layer as BodyLayer,
+            Part, Scratch, GEOM_POLYGON, ROOF_GABLED, ROOF_ORIENT_ACROSS, WINDING_OUTER,
+        };
+        let mut buildings = BodyLayer::new(dict::LAYER_BUILDINGS);
+        buildings.features.push(BodyFeature {
+            kind: 1,
+            kind_detail: 0,
+            geom_type: GEOM_POLYGON,
+            flags: 0,
+            name_idx: tilecodec::mamaps::body::NAME_NONE,
+            parts_offset: 0,
+            part_count: 1,
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+        });
+        buildings.parts.push(Part { coord_start: 0, point_count: 4, winding: WINDING_OUTER });
+        buildings.coords = vec![(0, 0), (100, 0), (100, 100), (0, 100)];
+        let attrs = BuildingAttrs {
+            height: 420,
+            min_height: 0,
+            roof_height: 0,
+            roof_shape: ROOF_GABLED,
+            roof_direction: 64,
+            roof_orientation: ROOF_ORIENT_ACROSS,
+            building_colour: 0xFF_C8_A0_78,
+            roof_colour: 0,
+        };
+        let body = Body {
+            extent: 4096,
+            layers: vec![buildings],
+            names: Vec::new(),
+            ids: Vec::new(),
+            turn_lanes: Vec::new(),
+            buildings: vec![(dict::LAYER_BUILDINGS, vec![attrs])],
+            heightmap: None,
+            carriageways: Vec::new(),
+            convention: None,
+            region_links: Vec::new(),
+        };
+        let mut scratch = Scratch::default();
+        let bytes = serialize_into_v10(&body, &mut scratch).expect("v10 serialize");
+        assert_eq!(bytes[3], tilecodec::mamaps::header::FORMAT_VERSION_V10);
+        let back = Body::parse(bytes).expect("v10 parse");
+        let layer = back.layer(dict::LAYER_BUILDINGS).expect("buildings layer");
+        assert_eq!(layer.features.len(), 1);
+        assert_eq!(layer.coords.len(), 4, "arena survives narrowing");
+        let got = back
+            .building_attrs(dict::LAYER_BUILDINGS, 0)
+            .expect("sparse table expands");
+        assert_eq!(got, attrs, "S3DB attrs survive sparse + narrowed");
     }
 
     /// **The DEM heightmap path, end to end.** A synthetic per-tile grid handed to the tiler reaches

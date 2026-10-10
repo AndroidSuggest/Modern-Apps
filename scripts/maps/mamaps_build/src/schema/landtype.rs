@@ -276,11 +276,11 @@ const LANDUSE: &[(&str, &str, &str, u8, f64)] = &[
     ("landuse", "orchard", "orchard", 9, 16.0),
     ("landuse", "vineyard", "vineyard", 9, 16.0),
     ("landuse", "meadow", "meadow", 8, 16.0),
-    ("landuse", "grass", "grass", 10, 4.0),
+    ("landuse", "grass", "grass", 10, 8.0),
     ("landuse", "residential", "residential", 10, 8.0),
-    ("landuse", "commercial", "commercial", 11, 4.0),
-    ("landuse", "industrial", "industrial", 10, 4.0),
-    ("landuse", "quarry", "quarry", 10, 4.0),
+    ("landuse", "commercial", "commercial", 11, 8.0),
+    ("landuse", "industrial", "industrial", 10, 8.0),
+    ("landuse", "quarry", "quarry", 10, 8.0),
     ("landuse", "railway", "railway", 12, 4.0),
     ("landuse", "cemetery", "cemetery", 11, 2.0),
     ("landuse", "allotments", "allotments", 12, 2.0),
@@ -288,21 +288,21 @@ const LANDUSE: &[(&str, &str, &str, u8, f64)] = &[
     ("landuse", "recreation_ground", "recreation_ground", 12, 2.0),
     ("leisure", "park", "park", 8, 2.0),
     ("leisure", "golf_course", "golf_course", 10, 2.0),
-    ("leisure", "garden", "garden", 13, 1.0),
+    ("leisure", "garden", "garden", 13, 2.0),
     ("leisure", "swimming_pool", "swimming_pool", 14, 1.0),
     ("leisure", "dog_park", "dog_park", 14, 1.0),
     ("leisure", "playground", "playground", 14, 1.0),
     ("leisure", "pitch", "pitch", 14, 1.0),
     ("amenity", "hospital", "hospital", 12, 2.0),
-    ("amenity", "school", "school", 13, 1.0),
+    ("amenity", "school", "school", 13, 2.0),
     ("amenity", "university", "university", 11, 2.0),
     ("amenity", "college", "college", 12, 2.0),
     ("amenity", "kindergarten", "kindergarten", 14, 1.0),
     ("tourism", "zoo", "zoo", 12, 2.0),
-    ("aeroway", "runway", "runway", 11, 1.0),
-    ("aeroway", "taxiway", "taxiway", 13, 1.0),
-    ("highway", "pedestrian", "pedestrian", 13, 1.0),
-    ("man_made", "pier", "pier", 13, 1.0),
+    ("aeroway", "runway", "runway", 11, 2.0),
+    ("aeroway", "taxiway", "taxiway", 13, 2.0),
+    ("highway", "pedestrian", "pedestrian", 13, 2.0),
+    ("man_made", "pier", "pier", 13, 2.0),
     ("waterway", "dam", "dam", 12, 1.0),
     ("public_transport", "platform", "platform", 14, 1.0),
 ];
@@ -800,7 +800,7 @@ mod tests {
         let quarry = at(&[("landuse", "quarry")]);
         assert_eq!(kind_name(&quarry), "quarry");
         assert_eq!(quarry.min_zoom, 10);
-        assert_eq!(quarry.min_area_px, 4.0);
+        assert_eq!(quarry.min_area_px, 8.0);
         let pool = at(&[("leisure", "swimming_pool")]);
         assert_eq!(kind_name(&pool), "swimming_pool");
         assert_eq!(pool.min_zoom, 14);

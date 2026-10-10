@@ -378,8 +378,11 @@ fn tile_chunk(
 /// (`max`, not replace), and a zero/negative policy for a non-building layer is unchanged.
 ///
 /// `boundaries` alone keeps the [`WASH_SIMPLIFICATION`] multiplier: a low-zoom line backdrop.
-/// `landtype` tiles to z14 at 1.0x like roads — crisp parks and shorelines, not a wash.
-/// Roads, buildings and the point layers keep 1.0 — navigation geometry and labels, not a wash.
+/// `landtype` simplifies at 1.5x: natural boundaries (forest edges, shorelines,
+/// farmland) are washes, not navigation geometry — same reasoning as
+/// boundaries, smaller factor because parks and lakes are looked at closer.
+/// Roads, buildings and the point layers keep 1.0 — navigation geometry and
+/// labels, not a wash.
 ///
 /// The prototype at `analysis/mamaps_building_savings.py` estimates this plus the snap below at
 /// ~2% + ~4% of building-tile bytes; buildings are z14-only, 9.76M features, ~20% of the archive.
@@ -391,6 +394,8 @@ fn tolerance_for_layer(layer: u8, z: u8, tolerance: f64) -> f64 {
         tolerance.max(BUILDING_TOLERANCE)
     } else if layer == dict::LAYER_BOUNDARIES {
         tolerance * WASH_SIMPLIFICATION
+    } else if layer == dict::LAYER_LANDTYPE {
+        tolerance * LANDTYPE_SIMPLIFICATION
     } else {
         tolerance
     }
