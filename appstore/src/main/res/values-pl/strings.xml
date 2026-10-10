@@ -128,8 +128,8 @@
     <string name="trust_modern_apps_practice_one_key">Każda aplikacja pochodzi z jednej oznaczonej wersji, podpisanej jednym kluczem</string>
     <string name="trust_modern_apps_check_index_signed">Indeks repozytorium jest podpisany i sprawdzany na podstawie klucza przypiętego do tego sklepu</string>
     <string name="trust_modern_apps_check_key">Podpisane własnym kluczem tej aplikacji, odczytywanym bezpośrednio z telefonu podczas instalacji</string>
-    <string name="trust_modern_apps_check_hash">Plik jest zgodny z hashem w podpisanym indeksie repozytorium</string>
-    <string name="trust_modern_apps_limits">Jeden programista, jeden klucz, brak niezależnej weryfikacji i brak możliwości ponownej kompilacji kodu źródłowego w celu potwierdzenia jego zgodności z aplikacją. Brak skanowania bezpieczeństwa oraz brak możliwości wycofania wadliwej wersji z telefonów, na których została już zainstalowana.</string>
+    <string name="trust_modern_apps_check_hash">Plik odpowiada sumie kontrolnej w podpisanym indeksie repozytorium</string>
+    <string name="trust_modern_apps_limits">Jeden deweloper, jeden klucz, brak niezależnej weryfikacji i brak możliwości ponownej kompilacji kodu źródłowego, aby potwierdzić, że aplikacja mu odpowiada. Kod nie jest skanowany.</string>
     <string name="trust_fdroid_title">F-Droid</string>
     <string name="trust_fdroid_summary">Zbudowane z publicznego kodu źródłowego. Wersje, które druga maszyna niezależnie przebudowała do identycznego pliku, są oznaczone jako możliwe do odtworzenia.</string>
     <string name="trust_fdroid_practice_source">Każda aplikacja jest tworzona na podstawie kodu źródłowego publikowanego przez F-Droid, a nie na podstawie pliku binarnego przesłanego przez programistę</string>
@@ -138,18 +138,18 @@
     <string name="trust_fdroid_check_index_signed">Lista aplikacji F-Droid jest podpisana i sprawdzana pod kątem klucza wbudowanego w ten sklep</string>
     <string name="trust_fdroid_check_chained">Każdy wpis na tej liście jest powiązany z podpisem</string>
     <string name="trust_fdroid_check_rebuilt">Wersje drugiego serwera kompilacji F-Droida, odtwarzane bit po bicie, są oznaczone jako możliwe do odtworzenia</string>
-    <string name="trust_fdroid_check_hash_and_key">Zarówno hash, jak i klucz podpisu pochodzą z listy podpisów</string>
-    <string name="trust_fdroid_limits">Klucz podpisu należy do F-Droid, a nie do programisty, więc serwery kompilacji mogą podpisać cokolwiek. Nikt nie sprawdza, co robi aplikacja, a jedynie to, czy jest zgodna z kodem źródłowym. Aktualizacje czekają na ponowną kompilację, co może zająć dni lub tygodnie – w tym poprawki bezpieczeństwa – i nie ma możliwości wycofania wadliwej aplikacji z telefonów.</string>
+    <string name="trust_fdroid_check_hash_and_key">Zarówno suma kontrolna, jak i klucz podpisujący pochodzą z podpisanej listy</string>
+    <string name="trust_fdroid_limits">Klucz podpisywania aplikacji posiada F-Droid, a nie deweloper, więc serwery kompilacji mogą podpisać cokolwiek. Nikt nie sprawdza, co robi aplikacja – weryfikuje się jedynie jej zgodność z kodem źródłowym. Aktualizacje, w tym poprawki zabezpieczeń, oczekują na ponowną kompilację, co może zająć dni lub tygodnie.</string>
     <string name="trust_play_title">Google Play</string>
     <string name="trust_play_summary">Przejrzane, zeskanowane i podpisane przez Google, które weryfikuje tożsamość programisty i może pobrać aplikację z każdego telefonu jednocześnie.</string>
     <string name="trust_play_practice_identity">Deweloperzy muszą udowodnić swoją tożsamość, podając w aktach prawdziwe imię i nazwisko oraz adres</string>
     <string name="trust_play_practice_scanning">Każde przesłanie jest skanowane, a Play Protect kontynuuje skanowanie aplikacji w telefonie</string>
     <string name="trust_play_practice_hsm">Klucze podpisu są przechowywane w modułach bezpieczeństwa sprzętowego, a nie na serwerze kompilacji</string>
     <string name="trust_play_practice_takedown">Złośliwą aplikację można usunąć ze sklepu i wyłączyć na telefonach w ciągu kilku godzin</string>
-    <string name="trust_play_check_hash">Każdy pobrany plik jest zgodny z hashem przesłanym przez Google</string>
+    <string name="trust_play_check_hash">Każdy pobrany plik jest zgodny z sumą kontrolną przesłaną przez Google</string>
     <string name="trust_play_check_key">Podpisano przez kluczowe listy Google dla tej aplikacji</string>
     <string name="trust_play_check_stamp">Pieczęć wydawcy aplikacji jest zapisywana podczas pierwszej instalacji i musi pozostać taka sama później</string>
-    <string name="trust_play_limits">Brak kodu źródłowego i brak niezależnej kompilacji, więc nic nie potwierdza zgodności aplikacji z jakimkolwiek opublikowanym kodem. Google dostarcza zarówno plik, jak i wzorzec do jego weryfikacji, więc te testy wykryją zmodyfikowane pobieranie, ale nie złośliwą aktualizację podpisaną przez samo Google. Ten sklep łączy się z Play przez konto anonimowe, a nie oficjalnego klienta, przez co widzi mniej niż aplikacja Play.</string>
+    <string name="trust_play_limits">Brak kodu źródłowego i brak niezależnej kompilacji oznacza, że nic nie potwierdza zgodności aplikacji z jakimkolwiek źródłem. Google dostarcza zarówno plik, jak i kryteria weryfikacji – pozwala to wykryć zmodyfikowany plik podczas pobierania, ale nie wadliwą aktualizację, którą Google podpisze samodzielnie. Anonimowe konto w tym sklepie widzi mniej niż aplikacja Google Play.</string>
     <string name="repos_syncing">Synchronizacja…</string>
     <string name="repos_sync_sources">Synchronizuj źródła</string>
     <string name="source_modern_apps_pin">Przypięte do klucza podpisu tej aplikacji</string>
@@ -165,7 +165,7 @@
     <string name="section_accrescent_subtitle">Aplikacje podpisane przez deweloperów z listy podpisanych aplikacji Accrescent</string>
     <string name="action_install_all">Zainstaluj wszystko</string>
     <string name="setting_auto_install_updates_title">Automatyczna instalacja aktualizacji</string>
-    <string name="setting_auto_install_updates_summary">Instaluj aktualizacje automatycznie zaraz po ich wykryciu. Gdy opcja jest wyłączona, wymagane jest ręczne kliknięcie „Aktualizuj”. W obu przypadkach aplikacje z tego sklepu aktualizują się bez pytania o zgodę; dla innych pozycji otrzymasz tylko powiadomienie.</string>
+    <string name="setting_auto_install_updates_summary">Po włączeniu aktualizacje są instalowane natychmiast po ich znalezieniu. Po wyłączeniu oczekują na zatwierdzenie. Aplikacje zainstalowane przez ten sklep aktualizują się w tle, a pozostałe wysyłają tylko powiadomienie.</string>
     <plurals name="updates_installing">
         <item quantity="one">Instalowanie %1$d aktualizacji…</item>
         <item quantity="few">Instalowanie %1$d aktualizacji…</item>
@@ -187,7 +187,7 @@
     <string name="trust_accrescent_check_min_version">Wersja do pobrania jest równa lub wyższa od minimalnej wersji dozwolonej na liście podpisów</string>
     <string name="store_rule_modern_android_title">Tylko Modern Android</string>
     <string name="trust_accrescent_practice_signed_list">Lista zaufanych aplikacji oraz klucz oczekiwany dla każdej z nich pochodzą z jednego dokumentu podpisanego kluczem Ed25519.”</string>
-    <string name="trust_accrescent_limits">Accrescent nie publikuje żadnych skrótów dla poszczególnych plików ani powtarzalnych kompilacji, więc gwarancją jest podpis i minimalna wersja, a nie zgodność ze źródłem. Listy i linki do pobrania pochodzą ze zwykłego serwera za pośrednictwem gRPC; błędna odpowiedź może skutkować jedynie plikiem, który nie przejdzie kontroli podpisu i wersji. Nikt nie skanuje aplikacji i nie ma możliwości wycofania wadliwej wersji z telefonów.</string>
+    <string name="trust_accrescent_limits">Accrescent nie publikuje sum kontrolnych dla poszczególnych plików ani nie korzysta z powtarzalnych kompilacji, więc gwarancją bezpieczeństwa jest podpis oraz wersja minimalna, a nie kod źródłowy. Wykazy aplikacji pochodzą ze zwykłego serwera za pośrednictwem gRPC – błędna odpowiedź może skutkować jedynie wygenerowaniem pliku, który nie przejdzie tych weryfikacji. Aplikacje nie są przez nikogo skanowane.</string>
     <string name="source_accrescent">Accrescent</string>
     <string name="source_accrescent_pin">Przypięto do klucza podpisu repodata Accrescent (ed25519)</string>
     <string name="updates_confirm_notification_body">System Android pozwala sklepowi na aktualizowanie tylko tych aplikacji, które sam zainstalował, dlatego te pozycje wymagają Twojego zatwierdzenia. Otwórz App Store, aby je zainstalować.</string>
@@ -232,4 +232,13 @@
     <string name="section_fdroid_recent_subtitle">Najnowsze wersje w serwisie F-Droid</string>
     <string name="sync_step_proprietary">Sprawdzanie własnościowego serwera lustrzanego…</string>
     <string name="sync_failed_proprietary">Własnościowy serwer lustrzany nie zsynchronizował się. Istniejące aplikacje pozostają bez zmian.</string>
+    <string name="trust_no_takedown">Nie ma możliwości wycofania wadliwej wersji z telefonów, na których została już zainstalowana.</string>
+    <string name="trust_proprietary_summary">Zweryfikowane darmowe aplikacje własnościowe, pobierane z Google Play przez serwer tego sklepu i publikowane w podpisanym indeksie z podaniem hasha oraz klucza podpisującego każdej wersji.</string>
+    <string name="trust_proprietary_practice_curated">Kopiowana jest wyłącznie jawna lista dozwolonych aplikacji, wybrana przez operatora sklepu</string>
+    <string name="trust_proprietary_practice_signed_index">Wersje, sumy kontrolne plików oraz oczekiwane klucze podpisujące są publikowane w indeksie podpisanym kluczem wydawniczym tego sklepu</string>
+    <string name="trust_proprietary_practice_play_origin">Pliki to oryginalne wersje deweloperskie z Google Play, pobierane w niezmienionej formie, a nie kompilowane na nowo</string>
+    <string name="trust_proprietary_check_index_signed">Ten podpisany indeks jest weryfikowany przy użyciu klucza wbudowanego w ten sklep</string>
+    <string name="trust_proprietary_check_hash_and_key">Każdy pobrany plik odpowiada sumie kontrolnej oraz kluczowi podpisującemu, które zostały dla niego wskazane w tym indeksie</string>
+    <string name="trust_proprietary_limits">Są to aplikacje o zamkniętym kodzie źródłowym pobierane przez operatora, więc musisz zaufać, że operator pobrał oryginalny plik. Nie ma tu kodu źródłowego do przeprowadzenia audytu ani powtarzalnej kompilacji. Aplikacje nie są przez nikogo skanowane.</string>
+    <string name="source_proprietary_pin">Przypięty do klucza podpisującego serwera lustrzanego Play tego sklepu</string>
 </resources>
