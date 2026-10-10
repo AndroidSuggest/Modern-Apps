@@ -107,6 +107,14 @@ fn encode_tile(
     if layers.is_empty() {
         return Ok((id, None, rings, lines));
     }
+    // Phase B: a full-bleed single-water-polygon tile is water, not a tile. One
+    // water polygon covering the whole tile draws exactly what the style's water
+    // background already paints, so storing it buys a body, an index entry and a
+    // fetch for zero pixels. `None` (not stored) like an emptied tile, and the
+    // reader overzooms the parent whose background shows through.
+    if is_water_background(&layers) {
+        return Ok((id, None, rings, lines));
+    }
     // What the `u16` feature index in the body format has to hold. Sampled here because this is the
     // shape that reaches the encoder: after coalescing merged the line fragments and after stage C
     // dropped what it drops.

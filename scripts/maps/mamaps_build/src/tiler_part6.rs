@@ -206,6 +206,73 @@ fn is_empty(g: &Geometry<SigPt>) -> bool {
     }
 }
 
+/// Whether a merged tile is pure water background: one `landtype` layer, one polygon
+/// feature of a water kind, one exterior ring covering the whole tile, no holes.
+///
+/// Such a tile draws exactly what the style's water background already paints, so
+/// [`encode_tile`](super::tiler_part5::encode_tile) drops it (`None`, not stored) and the
+/// reader overzooms the parent. The checks are deliberately narrow — one layer, one
+/// feature, one part, water kind, full bleed, no holes — so a tile carrying anything
+/// drawable (an island hole, a named water label, a second layer) keeps its body.
+///
+/// `extent` is the tile grid ([`super::EXTENT`]); the full-bleed bar is half a unit, the
+/// same sub-pixel magnitude as [`super::BUILDING_TOLERANCE`]. Clipped water rings run along
+/// the tile edge but rarely exactly on it, so exact equality would never fire.
+fn is_water_background(layers: &[ChunkEntry]) -> bool {
+    use tilecodec::mamaps::dict;
+    let [entry] = layers else { return false };
+    if entry.layer.layer_id != dict::LAYER_LANDTYPE || entry.layer.features.len() != 1 {
+        return false;
+    }
+    let feature = &entry.layer.features[0];
+    if feature.geom_type != GEOM_POLYGON || feature.part_count != 1 {
+        return false;
+    }
+    if !is_water_kind_id(feature.kind) {
+        return false;
+    }
+    // No holes: a holed polygon is an island (or a lake ring), which is drawable land.
+    let part = &entry.layer.parts[feature.parts_offset as usize];
+    if part.winding != WINDING_OUTER {
+        return false;
+    }
+    let start = part.coord_start as usize;
+    let points = &entry.layer.coords[start..start + part.point_count as usize];
+    if points.len() < 4 {
+        return false;
+    }
+    let extent = EXTENT as f64;
+    let (mut min_x, mut min_y) = (f64::MAX, f64::MAX);
+    let (mut max_x, mut max_y) = (f64::MIN, f64::MIN);
+    for &(x, y) in points {
+        min_x = min_x.min(x as f64);
+        min_y = min_y.min(y as f64);
+        max_x = max_x.max(x as f64);
+        max_y = max_y.max(y as f64);
+    }
+    const BLEED: f64 = 0.5;
+    min_x <= BLEED && min_y <= BLEED && max_x >= extent - BLEED && max_y >= extent - BLEED
+}
+
+/// Whether an interned `landtype` kind id is one the style paints as water.
+///
+/// Name-resolved (not hard-coded ids) so the check cannot drift when the dictionary
+/// grows. Mirrors the renderer's own water list (`tile::geometry::terrain::WATER_KINDS`)
+/// minus `fountain`/`swimming_pool`: those are street furniture, never full-bleed tiles.
+fn is_water_kind_id(kind: u16) -> bool {
+    use tilecodec::mamaps::dict;
+    if kind == dict::NONE {
+        return false;
+    }
+    matches!(
+        dict::KINDS.get(kind as usize - 1).copied(),
+        Some(
+            "ocean" | "sea" | "lake" | "water" | "river" | "stream" | "bay" | "strait"
+                | "fjord" | "reef" | "canal" | "dock",
+        ),
+    )
+}
+
 
 
 /// A build that produced nothing is a build whose schema matched nothing, which is worth failing on

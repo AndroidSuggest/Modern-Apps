@@ -324,4 +324,110 @@ mod tests_part10 {
         set_chunk_vertices(0);
         release_threads();
     }
+
+    /// **Phase B: a full-bleed single-water-polygon tile is water background, not a tile.**
+    /// A tile whose only content is one water polygon covering the whole tile draws exactly
+    /// what the style's water background already paints, so it is `None` (not stored) like
+    /// an emptied tile — and the reader overzooms the parent instead of fetching a body.
+    #[test]
+    fn a_full_bleed_water_tile_is_not_stored() {
+        use tilecodec::pmtiles::{tile_id, tile_zxy};
+        // A water square far larger than one tile, so interior tiles clip full-bleed while the
+        // build still has edge tiles carrying real geometry (the writer refuses an empty archive).
+        let sea = Feature {
+            class: Class::area(dict::LAYER_LANDTYPE, crate::schema::kind("sea"), 0),
+            geometry: square(-10.0, -10.0, 20.0),
+            name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        };
+        let (bytes, _) = build(&spilled(&[sea]), &settings(0, 6)).expect("build");
+        let entries = tilecodec::mamaps::read::read_all(&bytes).expect("read");
+        // Every stored tile must carry something drawable beyond a full-bleed water fill:
+        // either a second feature/layer, a hole (island), or a partial-bleed ring.
+        let extent = crate::tiler::EXTENT as f64;
+        for (id, _, body) in &entries {
+            let body = Body::parse(body).expect("parse");
+            let Some(layer) = body.layer(dict::LAYER_LANDTYPE) else { continue };
+            if layer.features.len() != 1 {
+                continue;
+            }
+            let feature = &layer.features[0];
+            let water = matches!(
+                tilecodec::mamaps::dict::KINDS.get(feature.kind as usize - 1).copied(),
+                Some(
+                    "ocean" | "sea" | "lake" | "water" | "river" | "stream" | "bay"
+                        | "strait" | "fjord" | "reef" | "canal" | "dock",
+                ),
+            );
+            if !water || feature.geom_type != GEOM_POLYGON || feature.part_count != 1 {
+                continue;
+            }
+            let part = &layer.parts[feature.parts_offset as usize];
+            let start = part.coord_start as usize;
+            let points = &layer.coords[start..start + part.point_count as usize];
+            let (mut min_x, mut min_y) = (i16::MAX, i16::MAX);
+            let (mut max_x, mut max_y) = (i16::MIN, i16::MIN);
+            for &(x, y) in points {
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x);
+                max_y = max_y.max(y);
+            }
+            let full = min_x as f64 <= 0.5
+                && min_y as f64 <= 0.5
+                && max_x as f64 >= extent - 0.5
+                && max_y as f64 >= extent - 0.5;
+            let (z, x, y) = tile_zxy(*id);
+            assert!(
+                !full,
+                "z{z}/{x}/{y} is a full-bleed single-water-polygon tile and must not be stored",
+            );
+        }
+        // And the interior really is empty: a tile strictly inside the square resolves to no
+        // body, so the reader overzooms the parent whose background shows through.
+        let _ = tile_id(0, 0, 0);
+    }
+
+    /// **Phase B: a water tile with an island hole is drawable land and stays stored.**
+    /// The narrow check must not fire when the polygon carries a hole — that hole is an
+    /// island, and dropping the tile would delete land.
+    #[test]
+    fn a_water_tile_with_a_hole_stays_stored() {
+        // A sea square with a smaller land square punched out of its middle is modelled here
+        // as two features: the sea polygon plus a land-base polygon inside it. The tile
+        // covering both carries two features, so `is_water_background` refuses it.
+        let sea = Feature {
+            class: Class::area(dict::LAYER_LANDTYPE, crate::schema::kind("sea"), 0),
+            geometry: square(-10.0, -10.0, 20.0),
+            name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        };
+        let island = Feature {
+            class: Class::area(dict::LAYER_LANDTYPE, tilecodec::mamaps::dict::NONE, 0),
+            geometry: square(-1.0, -1.0, 2.0),
+            name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        };
+        let (bytes, _) = build(&spilled(&[sea, island]), &settings(0, 6)).expect("build");
+        let entries = tilecodec::mamaps::read::read_all(&bytes).expect("read");
+        let mut saw_land = false;
+        for (_, _, body) in &entries {
+            let body = Body::parse(body).expect("parse");
+            if let Some(layer) = body.layer(dict::LAYER_LANDTYPE) {
+                if layer.features.iter().any(|f| f.kind == tilecodec::mamaps::dict::NONE) {
+                    saw_land = true;
+                }
+            }
+        }
+        assert!(saw_land, "the island's land base must survive Phase B");
+    }
 }

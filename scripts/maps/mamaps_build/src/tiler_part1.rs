@@ -163,8 +163,17 @@ fn tile_zooms(
                 let _ = std::io::Write::flush(&mut std::io::stderr());
             }
             let encoding = std::time::Instant::now();
-            let done = encode_batch(batch, &settings.dem, store.conventions(), &settings.region_links)?;
+            let mut done = encode_batch(batch, &settings.dem, store.conventions(), &settings.region_links)?;
             stats.encode_ms += encoding.elapsed().as_millis() as u64;
+            // Phase B: prune barren subtrees. A tile whose four children all came back
+            // empty (`None` — genuinely featureless, or full-bleed water background) is
+            // itself the end of the tree: drop the children and let the reader stop at
+            // the parent (overzoom). Applies recursively up the pyramid, so a z13 tile
+            // whose z14 children are all ocean ends the tree at z13. Only above z0 (the
+            // world tile is never pruned) and only when all four children of a parent
+            // are present-and-empty in this batch — never across batch boundaries, so
+            // the archive stays independent of batching and thread count.
+            prune_barren_subtree(z, &mut done);
             let appending = std::time::Instant::now();
             for (id, encoded, rings, lines) in done {
                 stats.rings.add(rings);
@@ -210,6 +219,11 @@ fn tile_zooms(
 /// own still makes progress. The pulled prefix is contiguous merge order, so feeding it to
 /// `encode_batch` (which preserves tile order) keeps the archive byte-identical: the only
 /// change is how many tiles one batch holds.
+///
+/// Contiguity is also what [`prune_barren_subtree`] relies on: four siblings of one parent
+/// occupy consecutive tile ids, so a parent's whole child set is either inside one batch or
+/// split across a batch boundary — and only the first case prunes, which keeps the archive
+/// independent of where the batcher cut.
 fn merge_batch(
     merged: &mut Merged<'_>,
     max_tiles: usize,
@@ -227,6 +241,79 @@ fn merge_batch(
         }
     }
     Ok(batch)
+}
+
+/// Prune barren subtrees within one encoded batch: drop the four empty children of a
+/// tile whose whole child set came back `None`.
+///
+/// A `None` child is a tile with nothing drawable — genuinely featureless, or full-bleed
+/// water background (Phase B). The reader's miss path already overzooms: a missing tile
+/// falls back to its parent, whose background (or whose own body) shows through. So four
+/// empty siblings carry no information their parent does not, and storing them buys index
+/// entries, leaf span and fetches for zero pixels.
+///
+/// The conditions are deliberately strict, because a wrong prune deletes drawable map:
+///
+/// * `z == 0` never prunes: the world tile has no parent to overzoom to.
+/// * All four children of a parent must be present **in this batch** and all `None`.
+///   A parent split across a batch boundary keeps its children — the archive must not
+///   depend on where the cost-batcher cut, and a partial set cannot prove barrenness.
+/// * Only `None` children prune. A stored child (even a tiny one) means drawable content.
+/// * The parent itself is untouched: it was merged and encoded in its own zoom pass (zooms
+///   tile independently), so pruning children never orphans a stored parent.
+///
+/// Recursion across zooms falls out of the zoom loop: a z13 tile whose z14 children were
+/// all pruned is itself absent-or-water, so when z13 encodes, *its* parent sees four empty
+/// children and prunes again — the tree ends where the content does.
+///
+/// Runs on the serial append thread over the encoded batch (not in the parallel encode
+/// workers): it inspects batch adjacency, which only the ordered batch has. Pure function
+/// of the batch's `(id, Option)` pairs, so thread count and chunk boundaries cannot move it.
+fn prune_barren_subtree(z: u8, done: &mut Vec<Encoded>) {
+    if z == 0 || done.len() < 4 {
+        return;
+    }
+    // Index by tile id for sibling lookup. The batch is ascending by id (merge order
+    // through `encode_batch`'s positional collect), so positions are found by search
+    // rather than assumed adjacent: siblings are consecutive ids but not necessarily
+    // consecutive positions (a stored neighbour may sit between them — which itself
+    // vetoes the prune, correctly).
+    let mut drop_ids: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
+    let mut at: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
+    for (index, (id, _, _, _)) in done.iter().enumerate() {
+        at.insert(*id, index);
+    }
+    for (index, (id, encoded, _, _)) in done.iter().enumerate() {
+        let _ = index;
+        if encoded.is_some() {
+            continue;
+        }
+        let (tz, tx, ty) = tilecodec::pmtiles::tile_zxy(*id);
+        if tz != z {
+            continue;
+        }
+        // Only the top-left child starts the check, so each parent is considered once.
+        if tx % 2 != 0 || ty % 2 != 0 {
+            continue;
+        }
+        let (px, py) = (tx / 2, ty / 2);
+        let mut siblings: Vec<u64> = Vec::with_capacity(4);
+        for (dx, dy) in [(0u64, 0u64), (1, 0), (0, 1), (1, 1)] {
+            siblings.push(tilecodec::pmtiles::tile_id(z, px * 2 + dx, py * 2 + dy));
+        }
+        // All four present in this batch and all empty: the parent covers them.
+        let all_empty = siblings.iter().all(|sib| {
+            at.get(sib).is_some_and(|&i| done[i].1.is_none())
+        });
+        if all_empty {
+            for sib in siblings {
+                drop_ids.insert(sib);
+            }
+        }
+    }
+    if !drop_ids.is_empty() {
+        done.retain(|(id, _, _, _)| !drop_ids.contains(id));
+    }
 }
 
 /// Cap on one merge pull's merged-geometry cost, in `tile_cost` units (features + coordinates).
@@ -391,4 +478,112 @@ static READ_NANOS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::
 /// Take the accumulated reader time and reset it.
 pub fn read_seconds() -> f64 {
     READ_NANOS.swap(0, Ordering::Relaxed) as f64 / 1e9
+}
+
+#[cfg(test)]
+mod tests_part1 {
+    use super::*;
+
+    fn empty_entry(id: u64) -> Encoded {
+        (id, None, crate::rings::Stats::default(), crate::coalesce::Stats::default())
+    }
+
+    fn stored_entry(id: u64) -> Encoded {
+        (
+            id,
+            Some((vec![7u8; 32], 32, tilecodec::mamaps::write::hash64(&[7u8; 32]))),
+            crate::rings::Stats::default(),
+            crate::coalesce::Stats::default(),
+        )
+    }
+
+    fn ids_of(done: &[Encoded]) -> Vec<u64> {
+        done.iter().map(|(id, _, _, _)| *id).collect()
+    }
+
+    /// **Phase B subtree pruning: four empty siblings end the tree at the parent.**
+    /// All four children of one z12 parent arrive `None` in one batch: all four are
+    /// dropped, so the reader stops at the z11 parent (overzoom) instead of fetching
+    /// four empty bodies.
+    #[test]
+    fn four_empty_siblings_are_pruned_to_the_parent() {
+        use tilecodec::pmtiles::tile_id;
+        let (px, py) = (1_200u64, 1_500u64);
+        let z = 12u8;
+        let mut done = vec![
+            empty_entry(tile_id(z, px * 2, py * 2)),
+            empty_entry(tile_id(z, px * 2 + 1, py * 2)),
+            empty_entry(tile_id(z, px * 2, py * 2 + 1)),
+            empty_entry(tile_id(z, px * 2 + 1, py * 2 + 1)),
+        ];
+        prune_barren_subtree(z, &mut done);
+        assert!(done.is_empty(), "all four empty siblings must go: {done:?}");
+    }
+
+    /// **A stored sibling vetoes the prune.** One child carries drawable content, so the
+    /// parent cannot cover the set — dropping the other three would delete the map's
+    /// answer for their ground (the reader would overzoom a parent that draws coarsely).
+    #[test]
+    fn a_stored_sibling_vetoes_the_prune() {
+        use tilecodec::pmtiles::tile_id;
+        let (px, py) = (1_200u64, 1_500u64);
+        let z = 12u8;
+        let mut done = vec![
+            empty_entry(tile_id(z, px * 2, py * 2)),
+            stored_entry(tile_id(z, px * 2 + 1, py * 2)),
+            empty_entry(tile_id(z, px * 2, py * 2 + 1)),
+            empty_entry(tile_id(z, px * 2 + 1, py * 2 + 1)),
+        ];
+        prune_barren_subtree(z, &mut done);
+        assert_eq!(done.len(), 4, "a stored child keeps the whole set");
+    }
+
+    /// **A partial set never prunes.** The parent split across a batch boundary keeps its
+    /// children: the archive must not depend on where the cost-batcher cut, and three
+    /// empties cannot prove the fourth is barren.
+    #[test]
+    fn a_partial_child_set_never_prunes() {
+        use tilecodec::pmtiles::tile_id;
+        let (px, py) = (1_200u64, 1_500u64);
+        let z = 12u8;
+        let mut done = vec![
+            empty_entry(tile_id(z, px * 2, py * 2)),
+            empty_entry(tile_id(z, px * 2 + 1, py * 2)),
+            empty_entry(tile_id(z, px * 2, py * 2 + 1)),
+        ];
+        prune_barren_subtree(z, &mut done);
+        assert_eq!(done.len(), 3, "a split parent keeps its children");
+    }
+
+    /// **z0 never prunes.** The world tile has no parent to overzoom to; dropping it
+    /// would delete the map's coarsest answer.
+    #[test]
+    fn the_world_tile_is_never_pruned() {
+        use tilecodec::pmtiles::tile_id;
+        let mut done = vec![
+            empty_entry(tile_id(0, 0, 0)),
+            empty_entry(tile_id(0, 1, 0)),
+            empty_entry(tile_id(0, 0, 1)),
+            empty_entry(tile_id(0, 1, 1)),
+        ];
+        let before = ids_of(&done);
+        prune_barren_subtree(0, &mut done);
+        assert_eq!(ids_of(&done), before, "z0 keeps everything");
+    }
+
+    /// **Unrelated tiles are untouched.** A batch of four empties from different parents
+    /// prunes nothing — the check is per-parent, not per-batch.
+    #[test]
+    fn empties_from_different_parents_do_not_prune() {
+        use tilecodec::pmtiles::tile_id;
+        let z = 12u8;
+        let mut done = vec![
+            empty_entry(tile_id(z, 0, 0)),
+            empty_entry(tile_id(z, 100, 100)),
+            empty_entry(tile_id(z, 200, 200)),
+            empty_entry(tile_id(z, 300, 300)),
+        ];
+        prune_barren_subtree(z, &mut done);
+        assert_eq!(done.len(), 4, "no parent has its full set here");
+    }
 }
