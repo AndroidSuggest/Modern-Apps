@@ -158,4 +158,9 @@
     <string name="default_reminders">默认提醒</string>
     <string name="default_reminders_description">提醒自动添加到 <xliff:g id="calendar_name" example="Work">%1$s</xliff:g> 中的新活动中。</string>
     <string name="apply_to_existing_events">应用于现有活动</string>
+    <string name="save_this_event">保存此事件</string>
+    <string name="save_this_and_following_events">保存此事件以及后续</string>
+    <string name="save_all_events">保存所有事件</string>
+    <string name="edit_occurrence_not_found">找不到此事件——什么也没保存</string>
+    <string name="calendar_not_found">未找到日历</string>
 </resources>
