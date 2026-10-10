@@ -146,12 +146,12 @@ mod tests {
         features
     }
 
-    /// **The sub-pixel drop.** A footprint under one display pixel at z14 is a speck, not detail:
+    /// **The sub-2px drop.** A footprint under two display pixels at z14 is a speck, not detail:
     /// dropped by the `min_area_px` floor, while a house-sized one on the same build survives.
     #[test]
     fn a_speck_sized_footprint_is_dropped_but_a_house_survives() {
         // A degree at z14 is ~186k extent units at this latitude, so 0.00005 deg is ~9
-        // units a side (area ~85 < the 256-unit floor) and 0.0005 deg is ~93 units a side
+        // units a side (area ~85 < the 512-unit floor) and 0.0005 deg is ~93 units a side
         // (area ~8700, well above it). Both sit inside one 0.022-deg tile; one build, because
         // a speck alone would leave zero tiles and the writer refuses an empty archive.
         let speck = shed(-120.001, 35.001, 0.00005);
