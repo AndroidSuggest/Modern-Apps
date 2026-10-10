@@ -62,6 +62,7 @@ body:
         - sudoku
         - taxi
         - things
+        - todo
         - tools:holidaygen
         - translate
         - travel

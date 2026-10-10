@@ -50,15 +50,21 @@ class PasswordRepository private constructor(context: Context) :
 
     suspend fun getAllPasswords(): List<Password> = passwordDao.getAll()
     suspend fun getPasswordById(id: Long): Password? = passwordDao.getById(id)
+    suspend fun getPasswordBySyncId(syncId: String): Password? = passwordDao.getBySyncId(syncId)
+    suspend fun getPasswordsUpdatedSince(since: Long): List<Password> = passwordDao.getUpdatedSince(since)
     suspend fun upsertPassword(password: Password): Long = passwordDao.upsert(password)
     suspend fun upsertPasswordRaw(password: Password): Long = passwordDao.upsertRaw(password)
     suspend fun deletePassword(password: Password): Int = passwordDao.delete(password)
+    suspend fun deletePasswordBySyncId(syncId: String): Int = passwordDao.deleteBySyncId(syncId)
+    suspend fun deleteAllPasswords() = passwordDao.deleteAll()
 
     // ------------------------------------------------------------------
     // Passkey reads / writes
     // ------------------------------------------------------------------
 
     suspend fun getAllPasskeys(): List<Passkey> = passkeyDao.getAll()
+    suspend fun getPasskeyBySyncId(syncId: String): Passkey? = passkeyDao.getBySyncId(syncId)
+    suspend fun getPasskeysUpdatedSince(since: Long): List<Passkey> = passkeyDao.getUpdatedSince(since)
     override suspend fun getPasskeysByRpId(rpId: String): List<Passkey> = passkeyDao.getByRpId(rpId)
     override suspend fun getPasskeyByCredentialId(credentialId: String): Passkey? =
         passkeyDao.getByCredentialId(credentialId)
@@ -66,6 +72,8 @@ class PasswordRepository private constructor(context: Context) :
     override suspend fun upsertPasskey(passkey: Passkey): Long = passkeyDao.upsert(passkey)
     suspend fun upsertPasskeyRaw(passkey: Passkey): Long = passkeyDao.upsertRaw(passkey)
     suspend fun deletePasskey(passkey: Passkey): Int = passkeyDao.delete(passkey)
+    suspend fun deletePasskeyBySyncId(syncId: String): Int = passkeyDao.deleteBySyncId(syncId)
+    suspend fun deleteAllPasskeys() = passkeyDao.deleteAll()
 
     // ------------------------------------------------------------------
     // SyncSnapshot reads / writes
@@ -75,6 +83,7 @@ class PasswordRepository private constructor(context: Context) :
     suspend fun upsertSnapshot(snapshot: SyncSnapshot) = syncSnapshotDao.upsert(snapshot)
     suspend fun deleteSnapshotBySyncId(syncId: String) = syncSnapshotDao.deleteBySyncId(syncId)
     suspend fun deleteAllSnapshots() = syncSnapshotDao.deleteAll()
+    suspend fun deleteSnapshotsByKind(kind: String) = syncSnapshotDao.deleteByKind(kind)
 
     // ------------------------------------------------------------------
     // Transaction

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Relay IPC for the everysync app's TodoSink. Signature-level: only apps signed
+        with the Modern Apps key can hold it, and the provider additionally narrows the
+        caller to com.vayunmathur.everysync at runtime. -->
+    <permission
+        android:name="com.vayunmathur.todo.permission.RELAY"
+        android:protectionLevel="signature" />
+
+    <application
+        android:name=".TodoApplication"
+        android:allowBackup="true"
+        android:backupAgent=".platform.AppBackupAgent"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.General">
+        <activity
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.General">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name=".sync.RelayTodoProvider"
+            android:authorities="com.vayunmathur.todo.relay"
+            android:exported="true"
+            android:readPermission="com.vayunmathur.todo.permission.RELAY"
+            android:writePermission="com.vayunmathur.todo.permission.RELAY" />
+    </application>
+
+</manifest>

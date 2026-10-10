@@ -15,6 +15,9 @@ interface SyncSnapshotDao {
     @Query("DELETE FROM SyncSnapshot WHERE syncId = :syncId")
     suspend fun deleteBySyncId(syncId: String)
 
+    @Query("DELETE FROM SyncSnapshot WHERE kind = :kind")
+    suspend fun deleteByKind(kind: String)
+
     @Query("DELETE FROM SyncSnapshot")
     suspend fun deleteAll()
 }

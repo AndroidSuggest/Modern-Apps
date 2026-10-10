@@ -12,12 +12,15 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * Persists [AccountConfig]s in DataStore and keeps the AccountManager entries in
- * sync. All EverySync accounts share the account type `com.vayunmathur.everysync`
- * (see [ACCOUNT_TYPE]) so the sync-adapter framework can drive them.
+ * Persists [AccountConfig]s in DataStore and keeps the system account entries
+ * in sync. All EverySync accounts share the account type
+ * `com.vayunmathur.everysync` (see [ACCOUNT_TYPE]) so synced contacts/calendar
+ * rows are owned by a real system account — the system providers key rows by
+ * (name, type) and some OEMs reject rows whose type has no registered
+ * authenticator.
  */
-class AccountStore private constructor(private val context: Application) {
-    private val ds = DataStoreUtils.getInstance(context)
+class AccountStore private constructor(private val appContext: Application) {
+    private val ds = DataStoreUtils.getInstance(appContext)
     private val json = Json { ignoreUnknownKeys = true }
 
     fun accountsFlow(): Flow<List<AccountConfig>> =
@@ -37,13 +40,13 @@ class AccountStore private constructor(private val context: Application) {
     suspend fun remove(accountName: String) {
         val current = getAll().filterNot { it.accountName == accountName }
         ds.setString(KEY, json.encodeToString(current))
-        TokenStore.getInstance(context).clear(accountName)
+        TokenStore.getInstance(appContext).clear(accountName)
         removeSystemAccount(accountName)
     }
 
     private fun ensureSystemAccount(accountName: String) {
         try {
-            val am = AccountManager.get(context)
+            val am = AccountManager.get(appContext)
             val exists = am.getAccountsByType(ACCOUNT_TYPE).any { it.name == accountName }
             if (!exists) {
                 am.addAccountExplicitly(Account(accountName, ACCOUNT_TYPE), null, null)
@@ -55,7 +58,7 @@ class AccountStore private constructor(private val context: Application) {
 
     private fun removeSystemAccount(accountName: String) {
         try {
-            val am = AccountManager.get(context)
+            val am = AccountManager.get(appContext)
             am.getAccountsByType(ACCOUNT_TYPE)
                 .firstOrNull { it.name == accountName }
                 ?.let { am.removeAccountExplicitly(it) }
@@ -63,8 +66,6 @@ class AccountStore private constructor(private val context: Application) {
             Log.error(TAG, "Failed to remove system account", expected)
         }
     }
-
-    fun systemAccount(accountName: String) = Account(accountName, ACCOUNT_TYPE)
 
     private fun decode(raw: String?): List<AccountConfig> {
         if (raw.isNullOrBlank()) return emptyList()

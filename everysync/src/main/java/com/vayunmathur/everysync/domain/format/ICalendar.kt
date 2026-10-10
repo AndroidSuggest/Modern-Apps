@@ -43,6 +43,7 @@ object ICalendar {
         append("PRODID:-//vayunmathur//EverySync//EN\r\n")
         append("BEGIN:VEVENT\r\n")
         append("UID:${e.uid}\r\n")
+        e.recurrenceId?.takeIf { it.isNotBlank() }?.let { append("RECURRENCE-ID:${it}\r\n") }
         if (e.allDay) {
             append("DTSTART;VALUE=DATE:${dateOnly(e.startMillis)}\r\n")
             append("DTEND;VALUE=DATE:${dateOnly(e.endMillis)}\r\n")
@@ -80,6 +81,7 @@ object ICalendar {
             allDay = startAllDay,
             timezone = tz ?: "UTC",
             rrule = props["RRULE"]?.second?.ifBlank { null },
+            recurrenceId = props["RECURRENCE-ID"]?.second?.ifBlank { null },
         )
     }
 

@@ -1,22 +1,28 @@
 package com.vayunmathur.everysync.provider
 
-/** The three domains EverySync can land into on-device system providers. */
+import kotlinx.serialization.Serializable
+
+/** Every domain EverySync can land on-device: system providers or app IPC vaults, all relay-synced. */
+@Serializable
 enum class DataType {
     CONTACTS,
     CALENDAR,
-    HEALTH,
+    /** E2EE relay vault tasks (no system provider; the todo/ app owns storage). */
+    TODOS,
+    /** E2EE relay vault passwords (passwords app owns storage via its relay ContentProvider). */
+    PASSWORDS,
+    /** E2EE relay vault notes (notes app owns storage via its relay ContentProvider). */
+    NOTES,
 }
 
-/** How an account authenticates against its provider. */
+/** How an account authenticates. Only relay pairing remains: the relay is an untrusted log. */
 enum class AuthType {
-    /** OAuth2 Authorization Code + PKCE via Custom Tabs (Google, Google Health). */
-    OAUTH,
-
-    /** CalDAV / CardDAV with a base URL + app-specific password (generic, Apple/iCloud). */
-    DAV,
-
-    /** No remote auth: data already lives in Health Connect (Samsung / Google Health). */
-    HEALTH_CONNECT,
+    /**
+     * No remote auth: all authority is client-side (owner-signed roster/epochs/
+     * transfers). The vault key lives in [com.vayunmathur.everysync.auth.TokenStore]
+     * per (account, type).
+     */
+    RELAY,
 }
 
 /** Direction a sync runs in. */

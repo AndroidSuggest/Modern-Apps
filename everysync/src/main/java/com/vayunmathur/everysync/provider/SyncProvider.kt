@@ -3,14 +3,13 @@ package com.vayunmathur.everysync.provider
 import android.content.Context
 import androidx.compose.runtime.Composable
 import com.vayunmathur.everysync.auth.AccountConfig
-import com.vayunmathur.everysync.auth.OAuthConfig
-import com.vayunmathur.everysync.auth.OAuthTokens
 
 /**
- * A cloud service EverySync can sync into the on-device system providers.
+ * An E2EE vault source EverySync can sync into the on-device stores.
  *
- * Direct-cloud providers (Google, generic CalDAV/CardDAV, Apple/iCloud, Google
- * Health) make real network round-trips.
+ * The only implementation is the personal-vaults relay ([AuthType.RELAY]):
+ * there is no remote auth and no cloud API — the relay is an untrusted log
+ * and all authority is client-side (owner-signed roster/epochs/transfers).
  */
 interface SyncProvider {
     val id: String
@@ -18,26 +17,6 @@ interface SyncProvider {
     val icon: @Composable () -> Unit
     val authType: AuthType
     val capabilities: Set<DataType>
-
-    /** OAuth configuration for [AuthType.OAUTH] providers, else null. */
-    fun oauthConfig(): OAuthConfig? = null
-
-    /** Preset DAV base URL for [AuthType.DAV] providers (e.g. iCloud), else null (user enters one). */
-    val davPresetUrl: String? get() = null
-
-    /** Whether this provider is serviced through Health Connect rather than a direct cloud API. */
-    val viaHealthConnect: Boolean get() = false
-
-    /**
-     * Resolve a stable, human-readable account name from freshly obtained OAuth
-     * tokens (e.g. the user's email). Default returns a short token fingerprint.
-     */
-    suspend fun resolveAccountName(context: Context, tokens: OAuthTokens): String =
-        "$displayName (${tokens.accessToken.take(TOKEN_FINGERPRINT_LEN)})"
-
-    companion object {
-        private const val TOKEN_FINGERPRINT_LEN = 6
-    }
 
     /** Run one sync pass for [config] in the requested [direction]. */
     suspend fun sync(context: Context, config: AccountConfig, direction: SyncDirection)

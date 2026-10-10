@@ -15,6 +15,9 @@ data class Note(
     // JSON list of [NoteBlock] (text / image / ink). Null for legacy text-only
     // notes, which are read back as a single text block built from [content].
     val blocks: String? = null,
+    val syncId: String = newSyncId(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val deleted: Boolean = false,
 ): ReorderableDatabaseItem<Note> {
     override fun withPosition(position: Double) = copy(position = position)
 }

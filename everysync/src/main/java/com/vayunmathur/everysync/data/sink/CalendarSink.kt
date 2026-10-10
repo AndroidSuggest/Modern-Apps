@@ -19,9 +19,10 @@ data class LocalEventChange(
 )
 
 /**
- * Creates one CalendarContract calendar per remote collection under the EverySync
- * account and writes events via sync-adapter URIs. The remote UID goes in
- * Events._SYNC_ID, the ETag in SYNC_DATA1 and the href in SYNC_DATA2.
+ * Creates one CalendarContract calendar per relay vault under the EverySync
+ * account and writes events via caller-is-syncadapter URIs. The relay UID goes
+ * in Events._SYNC_ID, the relay updatedAt stamp in SYNC_DATA1 and the vault id
+ * in SYNC_DATA2.
  */
 object CalendarSink {
     private const val TAG = "CalendarSink"
@@ -136,6 +137,69 @@ object CalendarSink {
         return out
     }
 
+    /**
+     * Every live event in one calendar in relay form, for the merge's local
+     * side. `updatedAt` comes from SYNC_DATA1 (the relay stamp mirrors into
+     * `etag` on every relay write); rows that predate relay sync carry no
+     * stamp and merge as fresh local creates via the adoption path.
+     */
+    fun listLocal(context: Context, localCalendarId: Long): List<RemoteEvent> {
+        val out = mutableListOf<RemoteEvent>()
+        // Local column positions for the projection below (not the shared
+        // CURSOR_INDEX_* constants, which map a different 12-column query).
+        val colUid = 0
+        val colStamp = 1
+        val colTitle = 2
+        val colDesc = 3
+        val colLoc = 4
+        val colStart = 5
+        val colEnd = 6
+        val colAllDay = 7
+        val colTz = 8
+        val colRrule = 9
+        try {
+            context.contentResolver.query(
+                CalendarContract.Events.CONTENT_URI,
+                arrayOf(
+                    CalendarContract.Events._SYNC_ID,
+                    CalendarContract.Events.SYNC_DATA1,
+                    CalendarContract.Events.TITLE,
+                    CalendarContract.Events.DESCRIPTION,
+                    CalendarContract.Events.EVENT_LOCATION,
+                    CalendarContract.Events.DTSTART,
+                    CalendarContract.Events.DTEND,
+                    CalendarContract.Events.ALL_DAY,
+                    CalendarContract.Events.EVENT_TIMEZONE,
+                    CalendarContract.Events.RRULE,
+                ),
+                "${CalendarContract.Events.CALENDAR_ID} = ? AND ${CalendarContract.Events.DELETED} = 0",
+                arrayOf(localCalendarId.toString()),
+                null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val uid = c.getStringOrNull(colUid).orEmpty()
+                    out += RemoteEvent(
+                        uid = uid,
+                        etag = c.getStringOrNull(colStamp),
+                        calendarId = localCalendarId.toString(),
+                        summary = c.getStringOrNull(colTitle) ?: "",
+                        description = c.getStringOrNull(colDesc) ?: "",
+                        location = c.getStringOrNull(colLoc) ?: "",
+                        startMillis = c.getLong(colStart),
+                        endMillis = c.getLong(colEnd),
+                        allDay = c.getInt(colAllDay) == 1,
+                        timezone = c.getStringOrNull(colTz) ?: "UTC",
+                        rrule = c.getStringOrNull(colRrule),
+                        updatedAt = c.getStringOrNull(colStamp)?.toLongOrNull() ?: 0L,
+                    )
+                }
+            }
+        } catch (expected: Exception) {
+            Log.error(TAG, "listLocal failed", expected)
+        }
+        return out
+    }
+
     private fun eventId(context: Context, localCalendarId: Long, uid: String): Long? =
         try {
             context.contentResolver.query(
@@ -213,7 +277,7 @@ object CalendarSink {
      * Removes every calendar (and, by cascade, its events) for this account from
      * the on-device provider. Used when the user turns calendar sync off; the
      * account itself stays, so a later re-enable can repopulate it from a fresh
-     * pull. Deleting via the sync-adapter URI hard-removes the rows.
+     * pull. Deleting via the caller-is-syncadapter URI hard-removes the rows.
      */
     fun purge(context: Context, accountName: String) {
         try {

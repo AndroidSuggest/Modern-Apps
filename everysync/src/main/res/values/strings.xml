@@ -17,37 +17,49 @@
 
     <!-- AddAccountScreen: TopAppBar title for provider chooser screen -->
     <string name="add_account_title">Add account</string>
-    <!-- AddAccountScreen: Supporting label for providers using Health Connect integration -->
-    <string name="provider_via_health_connect">via Health Connect</string>
-
-    <!-- DavLoginScreen: Dialog title for DAV login. %1$s = provider display name e.g. iCloud -->
-    <string name="dav_login_title"><xliff:g id="provider" example="iCloud">%1$s</xliff:g> login</string>
-    <!-- DavLoginScreen: Text field label for CalDAV/CardDAV server URL. Noun phrase -->
-    <string name="dav_base_url">Server URL</string>
-    <!-- DavLoginScreen: Text field label for DAV username or email. Noun phrase -->
-    <string name="dav_username">Username / email</string>
-    <!-- DavLoginScreen: Text field label for DAV password hinting app-specific. Noun phrase -->
-    <string name="dav_password">Password (app-specific)</string>
-    <!-- Generic verb. Confirm button to log in to DAV server -->
-    <string name="login">Log in</string>
-
-    <!-- DavLoginScreen iCloud variant: Long explanatory text guiding user to create app-specific password at account.apple.com -->
-    <string name="icloud_app_password_steps">iCloud needs an app-specific password (not your Apple ID password):\n\n1. Sign in at account.apple.com\n2. Open Sign-In &amp; Security → App-Specific Passwords\n3. Create one and name it \"EverySync\"\n4. Enter your Apple ID email and that password below</string>
-    <!-- DavLoginScreen iCloud: Button that opens account.apple.com to create app-specific password -->
-    <string name="icloud_create_password">Create app-specific password</string>
-    <!-- DavLoginScreen iCloud variant: Label for Apple ID email field. Noun phrase -->
-    <string name="apple_id_email">Apple ID email</string>
-    <!-- DavLoginScreen iCloud variant: Label for app-specific password field -->
-    <string name="app_specific_password">App-specific password</string>
 
     <!-- AccountDetailScreen: Toggle label for contacts sync capability. Verb phrase -->
     <string name="sync_contacts">Sync contacts</string>
     <!-- AccountDetailScreen: Toggle label for calendar sync capability. Verb phrase -->
     <string name="sync_calendar">Sync calendars</string>
-    <!-- AccountDetailScreen: Toggle label for health data sync capability. Verb phrase -->
-    <string name="sync_health">Sync health</string>
+    <!-- AccountDetailScreen: Toggle label for passwords vault sync capability. Verb phrase -->
+    <string name="sync_passwords">Sync passwords</string>
+    <!-- AccountDetailScreen: Toggle label for notes vault sync capability. Verb phrase -->
+    <string name="sync_notes">Sync notes</string>
+    <!-- AccountDetailScreen: Toggle label for todos vault sync capability. Verb phrase -->
+    <string name="sync_todos">Sync todos</string>
     <!-- AccountDetailScreen: Destructive button to remove account from app. Verb phrase -->
     <string name="remove_account">Remove account</string>
+    <!-- VaultSharingSection: Section header over personal E2EE vaults. Noun, plural -->
+    <string name="vaults_title">Personal vaults</string>
+    <!-- VaultSharingSection: Label for the new-vault title field. Noun phrase -->
+    <string name="vault_new_title">New vault title</string>
+    <!-- VaultSharingSection: Button creating a contacts vault. Verb + noun -->
+    <string name="vault_create_contacts">Contacts vault</string>
+    <!-- VaultSharingSection: Button creating a calendar vault. Verb + noun -->
+    <string name="vault_create_calendar">Calendar vault</string>
+    <!-- VaultSharingSection: Empty state when no vaults exist yet. Full sentence -->
+    <string name="vaults_empty">No vaults yet. Name one above to create an end-to-end encrypted vault.</string>
+    <!-- VaultRow: Button opening the share dialog. Verb -->
+    <string name="vault_share">Share</string>
+    <!-- VaultSharingSection: Chooser title for the share-link sheet. Noun phrase -->
+    <string name="share_link_chooser">Share vault link</string>
+    <!-- Vault flow: Snackbar after a sealed invite is delivered. Short confirmation -->
+    <string name="invite_sent">Invite sent</string>
+    <!-- Vault flow: Snackbar when sealing or delivering an invite fails. Short error -->
+    <string name="invite_failed">Could not send invite</string>
+    <!-- Vault flow: Snackbar after creating a vault. Short confirmation -->
+    <string name="vault_created">Vault created</string>
+    <!-- Vault flow: Snackbar when vault creation fails. Short error -->
+    <string name="vault_create_failed">Could not create vault</string>
+    <!-- Vault flow: Snackbar when the safety code cannot be computed. Short error -->
+    <string name="safety_code_failed">Could not compute safety code</string>
+    <!-- Join-link flow: Snackbar while the join request sends. Verb, progressive -->
+    <string name="join_request_sending">Sending join request…</string>
+    <!-- Join-link flow: Snackbar after the join request is delivered. Short confirmation -->
+    <string name="join_request_sent">Join request sent</string>
+    <!-- Join-link flow: Snackbar when the join request fails. Short error -->
+    <string name="join_request_failed">Could not send join request</string>
 
     <!-- SettingsScreen: TopAppBar title for global settings -->
     <string name="settings_title">Settings</string>
@@ -65,8 +77,5 @@
     <string name="conflict_local">Prefer device</string>
 
     <!-- AccountsScreen PermissionsChecker: Rationale text explaining why contacts/calendar permission needed -->
-    <string name="need_permissions">EverySync needs contacts and calendar access to sync your accounts.</string>
-
-    <!-- PermissionsRationaleActivity: Full privacy policy text shown in Health Connect rationale activity -->
-    <string name="everysync_privacy_policy">EverySync syncs contacts, calendars and health data between your cloud accounts and this device. Data is only stored on this device and the servers you configure.</string>
+    <string name="need_permissions">EverySync needs contacts and calendar access to sync your vaults.</string>
 </resources>

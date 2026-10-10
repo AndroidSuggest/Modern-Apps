@@ -11,9 +11,10 @@ import android.os.IBinder
 
 /**
  * Bare authenticator so EverySync accounts (type `com.vayunmathur.everysync`)
- * appear to the system and the sync-adapter framework. Account creation happens
- * in-app (OAuth / DAV login), not via the system "Add account" flow, so all
- * methods are no-ops — mirrors `contacts/.../auth/Authenticator.kt`.
+ * appear to the system (contacts/calendar rows are owned by the account).
+ * Account creation happens in-app (personal vaults), not via the system
+ * "Add account" flow, so all methods are no-ops — mirrors
+ * `contacts/.../auth/Authenticator.kt`.
  */
 class Authenticator(context: Context) : AbstractAccountAuthenticator(context) {
     override fun editProperties(

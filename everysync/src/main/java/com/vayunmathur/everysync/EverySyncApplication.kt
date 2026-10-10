@@ -8,15 +8,15 @@ import com.vayunmathur.library.network.TrustBundle
 
 /**
  * Ensures the periodic background sync is scheduled whenever the process starts —
- * including when WorkManager or the sync framework spins the app up in the
- * background — so syncing keeps running without the user reopening the UI.
+ * including when WorkManager spins the app up in the background — so syncing
+ * keeps running without the user reopening the UI.
  */
 class EverySyncApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         Log.init(BuildConfig.DEV_BUILD)
-        // EXTENDED covers Google GTS (accounts.google.com, apis) + Apple roots (caldav.icloud.com)
-        NetworkClient.init(this, TrustBundle.EXTENDED)
+        // FIRST_PARTY covers the relay host (same bundle the office twin uses).
+        NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         SyncScheduler.schedulePeriodic(this)
     }
 }

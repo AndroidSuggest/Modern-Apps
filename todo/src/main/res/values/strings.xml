@@ -1,0 +1,26 @@
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher -->
+    <string name="app_name">Todo</string>
+    <!-- TodoDetailScreen: screen title. Noun. -->
+    <string name="todo_details">Task</string>
+    <!-- TodoDetailScreen: Label for the task title field. Noun. -->
+    <string name="todo_title">Task</string>
+    <!-- TodoDetailScreen: Checkbox label marking a task complete. Adjective. -->
+    <string name="done">Done</string>
+    <!-- TodoDetailScreen: Placeholder for the due-date row when no date is set. -->
+    <string name="no_due_date">No due date</string>
+    <!-- TodoDetailScreen: Clears the due date. Verb phrase. -->
+    <string name="clear_date">Clear date</string>
+    <!-- TodoDetailScreen: Delete confirmation dialog title. Noun phrase. -->
+    <string name="delete_todo">Delete task?</string>
+    <!-- TodoDetailScreen: Delete confirmation dialog message. -->
+    <string name="delete_todo_confirm">This task will be deleted everywhere it is synced.</string>
+    <!-- TodoDetailScreen: Delete confirmation confirm button. Verb. -->
+    <string name="delete">Delete</string>
+    <!-- Dialog dismiss button. Verb. -->
+    <string name="cancel">Cancel</string>
+    <!-- Dialog confirm button. Noun. -->
+    <string name="ok">OK</string>
+    <!-- TodoListScreen: fallback title for untitled tasks. Noun. -->
+    <string name="untitled">Untitled</string>
+</resources>

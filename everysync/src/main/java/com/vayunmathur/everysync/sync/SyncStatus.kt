@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.update
 
 /**
  * In-process set of account names currently syncing. Fed by [SyncEngine] (which
- * both the WorkManager worker and the SyncAdapter route through) and observed by
- * the UI to show a live progress indicator.
+ * the WorkManager worker routes through) and observed by the UI to show a live
+ * progress indicator.
  */
 object SyncStatus {
     private val _syncing = MutableStateFlow<Set<String>>(emptySet())

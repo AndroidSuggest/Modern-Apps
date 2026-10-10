@@ -40,6 +40,11 @@ data class AccountDetailUiState(
     /** Null when the account is gone or not loaded yet, which shows the empty text. */
     val providerId: String? = null,
     val enabledTypes: Set<DataType> = emptySet(),
+    /** Personal E2EE vaults (EverySync-only sharing). */
+    val vaults: List<VaultUiState> = emptyList(),
+    val deviceId: String = "",
+    val safetyCode: String? = null,
+    val computingCode: Boolean = false,
 )
 
 /** Everything the settings screen draws. */
@@ -66,9 +71,7 @@ interface AccountsActions {
 
 /** Provider-chooser callbacks. Same no-op-default arrangement as [AccountsActions]. */
 interface AddAccountActions {
-    fun startOAuth(providerId: String) {}
-    fun openDavLogin(providerId: String) {}
-    fun addHealthConnectAccount(providerId: String) {}
+    fun addRelayAccount(providerId: String) {}
     fun back() {}
 
     companion object {
@@ -82,6 +85,27 @@ interface AccountDetailActions {
     fun syncNow(accountName: String) {}
     fun removeAccount(accountName: String) {}
     fun back() {}
+
+    /** Creates a new owned personal vault for [dataType] (`contacts`/`calendar`) with [title]. */
+    fun createVault(dataType: String, title: String) {}
+
+    /** Reloads vault members + pending requests from the relay. */
+    fun refreshVaults() {}
+
+    /** Seals a vault invite to [recipientId]'s inbox with [role]. */
+    fun sendInvite(vaultId: String, recipientId: String, role: String, onResult: (Boolean) -> Unit = {}) {}
+
+    /** Approves [requesterId]'s join request on [vaultId], sealing them the invite. */
+    fun approveRequest(vaultId: String, requesterId: String) {}
+
+    /** Drops [requesterId]'s join request on [vaultId] without granting access. */
+    fun denyRequest(vaultId: String, requesterId: String) {}
+
+    /** Computes the out-of-band safety code for [recipientId]. */
+    fun computeSafetyCode(recipientId: String) {}
+
+    /** Roles offerable for [dataType] — passwords exclude viewer (read-only still discloses secrets). */
+    fun offerableRoles(dataType: String): List<String> = emptyList()
 
     companion object {
         val Noop: AccountDetailActions = object : AccountDetailActions {}

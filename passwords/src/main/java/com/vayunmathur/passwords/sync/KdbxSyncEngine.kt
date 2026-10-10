@@ -86,8 +86,15 @@ class KdbxSyncEngine(
             override suspend fun getAll(): List<Password> = repository.getAllPasswords()
             override fun getByIdFlow(id: Long): Flow<Password?> = repository.getPasswordByIdFlow(id)
             override suspend fun getById(id: Long): Password? = repository.getPasswordById(id)
+            override suspend fun getBySyncId(syncId: String): Password? =
+                repository.getPasswordBySyncId(syncId)
+            override suspend fun getUpdatedSince(since: Long): List<Password> =
+                repository.getPasswordsUpdatedSince(since)
             override suspend fun upsertRaw(value: Password): Long = repository.upsertPasswordRaw(value)
             override suspend fun delete(value: Password): Int = repository.deletePassword(value)
+            override suspend fun deleteBySyncId(syncId: String): Int =
+                repository.deletePasswordBySyncId(syncId)
+            override suspend fun deleteAll() = repository.deleteAllPasswords()
         },
         passkeyDao = object : PasskeyDao() {
             override fun getAllFlow(): Flow<List<Passkey>> = repository.passkeys
@@ -95,13 +102,21 @@ class KdbxSyncEngine(
             override suspend fun getByRpId(rpId: String): List<Passkey> = repository.getPasskeysByRpId(rpId)
             override suspend fun getByCredentialId(credentialId: String): Passkey? =
                 repository.getPasskeyByCredentialId(credentialId)
+            override suspend fun getBySyncId(syncId: String): Passkey? =
+                repository.getPasskeyBySyncId(syncId)
+            override suspend fun getUpdatedSince(since: Long): List<Passkey> =
+                repository.getPasskeysUpdatedSince(since)
             override suspend fun upsertRaw(passkey: Passkey): Long = repository.upsertPasskeyRaw(passkey)
             override suspend fun delete(passkey: Passkey): Int = repository.deletePasskey(passkey)
+            override suspend fun deleteBySyncId(syncId: String): Int =
+                repository.deletePasskeyBySyncId(syncId)
+            override suspend fun deleteAll() = repository.deleteAllPasskeys()
         },
         snapshotDao = object : SyncSnapshotDao {
             override suspend fun getAll(): List<SyncSnapshot> = repository.getAllSnapshots()
             override suspend fun upsert(snapshot: SyncSnapshot) = repository.upsertSnapshot(snapshot)
             override suspend fun deleteBySyncId(syncId: String) = repository.deleteSnapshotBySyncId(syncId)
+            override suspend fun deleteByKind(kind: String) = repository.deleteSnapshotsByKind(kind)
             override suspend fun deleteAll() = repository.deleteAllSnapshots()
         },
         codec = codec,

@@ -10,26 +10,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-
-/** OAuth token triple persisted (encrypted) per account. */
-@Serializable
-data class OAuthTokens(
-    val accessToken: String,
-    val refreshToken: String? = null,
-    /** Absolute expiry (epoch ms). 0 = unknown. */
-    val expiresAtMs: Long = 0L,
-)
-
-/** DAV credentials persisted (encrypted) per account. */
-@Serializable
-data class DavCredentials(
-    val baseUrl: String,
-    val username: String,
-    val password: String,
-)
 
 /**
  * Encrypted secret storage. Secrets are AES-GCM encrypted with a non-exportable
@@ -76,28 +57,20 @@ class TokenStore private constructor(context: Context) {
         return cipher.doFinal(ct)
     }
 
-    suspend fun putTokens(accountName: String, tokens: OAuthTokens) {
-        store("$OAUTH_PREFIX$accountName", json.encodeToString(tokens))
+    suspend fun putSyncKey(accountName: String, dataType: String, keyB64: String) {
+        store("$SYNC_KEY_PREFIX$accountName:$dataType", keyB64)
     }
 
-    fun getTokens(accountName: String): OAuthTokens? =
-        load("$OAUTH_PREFIX$accountName")?.let {
-            runCatching { json.decodeFromString<OAuthTokens>(it) }.getOrNull()
-        }
-
-    suspend fun putDav(accountName: String, creds: DavCredentials) {
-        store("$DAV_PREFIX$accountName", json.encodeToString(creds))
-    }
-
-    fun getDav(accountName: String): DavCredentials? =
-        load("$DAV_PREFIX$accountName")?.let {
-            runCatching { json.decodeFromString<DavCredentials>(it) }.getOrNull()
-        }
+    fun getSyncKey(accountName: String, dataType: String): String? =
+        load("$SYNC_KEY_PREFIX$accountName:$dataType")
 
     suspend fun clear(accountName: String) {
         // Overwrite with empty blobs; DataStore has no per-key delete here.
-        ds.setByteArray("$OAUTH_PREFIX$accountName", ByteArray(0))
-        ds.setByteArray("$DAV_PREFIX$accountName", ByteArray(0))
+        // Vault keys are per (account, type); clear the known relay types. Personal
+        // vaults use the five relay data types below.
+        for (type in SYNC_KEY_TYPES) {
+            ds.setByteArray("$SYNC_KEY_PREFIX$accountName:$type", ByteArray(0))
+        }
     }
 
     private suspend fun store(key: String, value: String) {
@@ -125,8 +98,9 @@ class TokenStore private constructor(context: Context) {
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_IV_LEN = 12
         private const val GCM_TAG_BITS = 128
-        private const val OAUTH_PREFIX = "tok_oauth_"
-        private const val DAV_PREFIX = "tok_dav_"
+        private const val SYNC_KEY_PREFIX = "tok_synckey_"
+        /** Relay data types with per-type vault keys (mirrors the five relay channels). */
+        private val SYNC_KEY_TYPES = listOf("contacts", "calendar", "passwords", "notes", "todos")
         private const val TAG = "TokenStore"
 
         @Volatile

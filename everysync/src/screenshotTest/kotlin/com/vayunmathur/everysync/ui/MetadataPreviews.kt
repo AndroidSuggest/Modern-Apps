@@ -19,6 +19,9 @@ import com.vayunmathur.everysync.platform.AddAccountActions
 import com.vayunmathur.everysync.platform.SettingsActions
 import com.vayunmathur.everysync.platform.SettingsUiState
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.ShareVaultDialog
+import com.vayunmathur.library.ui.VaultJoinRequest
+import com.vayunmathur.library.ui.VaultMember
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
@@ -52,24 +55,9 @@ class MetadataPreviews {
                 state = AccountsUiState(
                     accounts = listOf(
                         AccountRow(
-                            accountName = "jane@gmail.com (Google)",
-                            providerId = "google",
+                            accountName = "Personal vaults",
+                            providerId = "e2ee",
                             lastSyncedAt = "3/12/25 9:41 AM",
-                        ),
-                        AccountRow(
-                            accountName = "jane@icloud.com (Apple / iCloud)",
-                            providerId = "icloud",
-                            syncing = true,
-                        ),
-                        AccountRow(
-                            accountName = "jane (CalDAV server)",
-                            providerId = "caldav",
-                            lastSyncedAt = "3/12/25 9:05 AM",
-                        ),
-                        AccountRow(
-                            accountName = "jane@gmail.com (Google Health)",
-                            providerId = "google_health",
-                            lastSyncedAt = "3/12/25 8:15 AM",
                         ),
                     ),
                 ),
@@ -94,8 +82,8 @@ class MetadataPreviews {
         DynamicTheme(darkTheme = true) {
             AccountDetailScreen(
                 state = AccountDetailUiState(
-                    accountName = "jane@gmail.com (Google)",
-                    providerId = "google",
+                    accountName = "Personal vaults",
+                    providerId = "e2ee",
                     enabledTypes = setOf(DataType.CONTACTS, DataType.CALENDAR),
                 ),
                 actions = AccountDetailActions.Noop,
@@ -132,24 +120,9 @@ class MetadataPreviews {
                         state = AccountsUiState(
                             accounts = listOf(
                                 AccountRow(
-                                    accountName = "jane@gmail.com (Google)",
-                                    providerId = "google",
+                                    accountName = "Personal vaults",
+                                    providerId = "e2ee",
                                     lastSyncedAt = "3/12/25 9:41 AM",
-                                ),
-                                AccountRow(
-                                    accountName = "jane@icloud.com (Apple / iCloud)",
-                                    providerId = "icloud",
-                                    syncing = true,
-                                ),
-                                AccountRow(
-                                    accountName = "jane (CalDAV server)",
-                                    providerId = "caldav",
-                                    lastSyncedAt = "3/12/25 9:05 AM",
-                                ),
-                                AccountRow(
-                                    accountName = "jane@gmail.com (Google Health)",
-                                    providerId = "google_health",
-                                    lastSyncedAt = "3/12/25 8:15 AM",
                                 ),
                             ),
                         ),
@@ -159,14 +132,44 @@ class MetadataPreviews {
                 Box(Modifier.weight(0.6f).fillMaxHeight()) {
                     AccountDetailScreen(
                         state = AccountDetailUiState(
-                            accountName = "jane@gmail.com (Google)",
-                            providerId = "google",
+                            accountName = "Personal vaults",
+                            providerId = "e2ee",
                             enabledTypes = setOf(DataType.CONTACTS, DataType.CALENDAR),
                         ),
                         actions = AccountDetailActions.Noop,
                     )
                 }
             }
+        }
+    }
+    @PreviewTest
+    @Preview(name = "6-share-vault", device = PHONE, showSystemUi = true)
+    @Composable
+    fun Preview6ShareVault() {
+        DynamicTheme(darkTheme = true) {
+            // The shared vault dialog with sample data: title, link, members,
+            // one pending request and a computed safety code. All literals so
+            // re-running `:everysync:metadata` produces the same PNG.
+            ShareVaultDialog(
+                vaultTitle = "Family contacts",
+                shareLink = "https://ma.vayunmathur.com/es/share#id=abc&owner=device-1&type=contacts",
+                deviceId = "device-1",
+                roles = listOf("owner", "editor", "viewer"),
+                members = listOf(
+                    VaultMember(id = "device-1", name = "", role = "owner"),
+                    VaultMember(id = "device-2", name = "Sam", role = "editor"),
+                ),
+                pendingRequests = listOf(VaultJoinRequest(requesterId = "device-3", name = "Alex")),
+                isOwner = true,
+                safetyCode = "12345 67890",
+                computingCode = false,
+                onShareLink = {},
+                onSendInvite = { _, _ -> },
+                onApproveRequest = {},
+                onDenyRequest = {},
+                onComputeSafetyCode = {},
+                onDismiss = {},
+            )
         }
     }
 }

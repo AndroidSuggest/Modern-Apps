@@ -27,9 +27,11 @@ data class LocalContactChange(
 )
 
 /**
- * Writes [RemoteContact]s into ContactsContract under the EverySync account using
- * sync-adapter URIs (so our writes don't get flagged DIRTY). The remote UID is
- * stored in RawContacts.SOURCE_ID, the ETag in SYNC1 and the server href in SYNC2.
+ * Writes [RemoteContact]s into ContactsContract under the EverySync account.
+ * Writes go through URIs carrying the `CALLER_IS_SYNCADAPTER` + account query
+ * params (so our writes don't get flagged DIRTY). The relay UID is stored in
+ * RawContacts.SOURCE_ID, the relay updatedAt stamp in SYNC1 and the vault id
+ * in SYNC2.
  */
 object ContactsSink {
     private const val TAG = "ContactsSink"
@@ -75,6 +77,42 @@ object ContactsSink {
             Log.error(TAG, "localUidToEtag failed", expected)
         }
         return result
+    }
+
+    /**
+     * Every live contact for this account in relay form, for the merge's
+     * local side. `updatedAt` comes from SYNC1 (the relay stamp mirrors into
+     * `etag` on every relay write); rows that predate relay sync carry no
+     * stamp and merge as fresh local creates via the adoption path.
+     */
+    fun listLocal(context: Context, accountName: String): List<RemoteContact> {
+        val out = mutableListOf<RemoteContact>()
+        try {
+            context.contentResolver.query(
+                ContactsContract.RawContacts.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.RawContacts._ID,
+                    ContactsContract.RawContacts.SOURCE_ID,
+                    ContactsContract.RawContacts.SYNC1,
+                ),
+                "${ContactsContract.RawContacts.ACCOUNT_NAME} = ? AND " +
+                    "${ContactsContract.RawContacts.ACCOUNT_TYPE} = ? AND " +
+                    "${ContactsContract.RawContacts.DELETED} = 0",
+                arrayOf(accountName, ACCOUNT_TYPE),
+                null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val rawId = c.getLong(CURSOR_RAW_ID)
+                    val uid = c.getStringOrNull(CURSOR_SOURCE_ID).orEmpty()
+                    val stamp = c.getStringOrNull(CURSOR_SYNC1)?.toLongOrNull() ?: 0L
+                    val contact = readContact(context, rawId, uid.ifBlank { null })
+                    out += contact.copy(uid = uid, updatedAt = stamp)
+                }
+            }
+        } catch (expected: Exception) {
+            Log.error(TAG, "listLocal failed", expected)
+        }
+        return out
     }
 
     private fun rawContactId(context: Context, accountName: String, uid: String): Long? {
@@ -147,7 +185,8 @@ object ContactsSink {
      * Removes every raw contact for this account from the on-device provider.
      * Used when the user turns contact sync off; the account itself stays, so a
      * later re-enable can repopulate it from a fresh pull. Deleting via the
-     * sync-adapter URI hard-removes the rows rather than marking them DELETED.
+     * caller-is-syncadapter URI hard-removes the rows rather than marking them
+     * DELETED.
      */
     fun purge(context: Context, accountName: String) {
         try {

@@ -269,6 +269,8 @@ private class FakePasswordDao(initial: List<Password>) : PasswordDao() {
     override suspend fun getAll(): List<Password> = store.toList()
     override fun getByIdFlow(id: Long): Flow<Password?> = flowOf(store.firstOrNull { it.id == id })
     override suspend fun getById(id: Long): Password? = store.firstOrNull { it.id == id }
+    override suspend fun getBySyncId(syncId: String): Password? = store.firstOrNull { it.syncId == syncId }
+    override suspend fun getUpdatedSince(since: Long): List<Password> = store.filter { it.updatedAt > since }
 
     override suspend fun upsertRaw(value: Password): Long {
         val row = if (value.id == 0L) value.copy(id = nextId++) else value
@@ -279,6 +281,11 @@ private class FakePasswordDao(initial: List<Password>) : PasswordDao() {
 
     override suspend fun delete(value: Password): Int =
         if (store.removeAll { it.id == value.id }) 1 else 0
+
+    override suspend fun deleteBySyncId(syncId: String): Int =
+        if (store.removeAll { it.syncId == syncId }) 1 else 0
+
+    override suspend fun deleteAll() = store.clear()
 }
 
 private class FakePasskeyDao(initial: List<Passkey>) : PasskeyDao() {
@@ -290,6 +297,8 @@ private class FakePasskeyDao(initial: List<Passkey>) : PasskeyDao() {
     override suspend fun getByRpId(rpId: String): List<Passkey> = store.filter { it.rpId == rpId }
     override suspend fun getByCredentialId(credentialId: String): Passkey? =
         store.firstOrNull { it.credentialId == credentialId }
+    override suspend fun getBySyncId(syncId: String): Passkey? = store.firstOrNull { it.syncId == syncId }
+    override suspend fun getUpdatedSince(since: Long): List<Passkey> = store.filter { it.updatedAt > since }
 
     override suspend fun upsertRaw(passkey: Passkey): Long {
         val row = if (passkey.id == 0L) passkey.copy(id = nextId++) else passkey
@@ -300,6 +309,11 @@ private class FakePasskeyDao(initial: List<Passkey>) : PasskeyDao() {
 
     override suspend fun delete(passkey: Passkey): Int =
         if (store.removeAll { it.id == passkey.id }) 1 else 0
+
+    override suspend fun deleteBySyncId(syncId: String): Int =
+        if (store.removeAll { it.syncId == syncId }) 1 else 0
+
+    override suspend fun deleteAll() = store.clear()
 }
 
 private class FakeSyncSnapshotDao : SyncSnapshotDao {
@@ -308,5 +322,6 @@ private class FakeSyncSnapshotDao : SyncSnapshotDao {
     override suspend fun getAll(): List<SyncSnapshot> = store.values.toList()
     override suspend fun upsert(snapshot: SyncSnapshot) { store[snapshot.syncId] = snapshot }
     override suspend fun deleteBySyncId(syncId: String) { store.remove(syncId) }
+    override suspend fun deleteByKind(kind: String) { store.entries.removeAll { it.value.kind == kind } }
     override suspend fun deleteAll() = store.clear()
 }

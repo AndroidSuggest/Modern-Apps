@@ -1,24 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contacts/calendar/health sync client. Overrides the permissive default in the shared
+<!-- E2EE personal-vault sync client. Overrides the permissive default in the shared
      :library module.
 
      Storage audit:
        file  datastore_default.preferences_pb   One shared DataStore holding everything:
-             - tok_oauth_<account>  OAuth access + refresh tokens (TokenStore)
-             - tok_dav_<account>    CalDAV/CardDAV base URL, username and password, including
-                                    iCloud app-specific passwords
-             - the AccountConfig list (account names, providers, endpoints, enabled data types)
+             - tok_synckey_<account>:<type>  AES vault keys per account + data type (TokenStore)
+             - the AccountConfig list (account names, providers, enabled data types)
+             - vault metadata (vault ids, titles, owner bundles — no secrets)
+             - relay pull cursors per (vault, channel)
              - global settings: global_interval_minutes, wifi_only, conflict_policy
-       No database, no SharedPreferences, no app-private files or caches. Synced contacts,
-       calendars and health records land in the system providers, not in app storage.
+       No database, no SharedPreferences, no app-private files or caches. Synced contacts and
+       calendars land in the system providers; passwords/notes/todos live in their apps.
 
      Secrets are AES-GCM sealed under an AndroidKeyStore key that cannot leave the device, so a
-     cloud copy would be undecryptable ciphertext — but shipping a user's refresh tokens and
-     DAV passwords to Google's servers at all is not a trade worth making, and they are not
-     separable from the settings because they share one DataStore file. Cloud backup is denied.
-     Device transfer keeps the file so account configuration and settings survive a migration;
-     the sealed blobs will fail to decrypt on the new device and TokenStore.load() already
-     returns null in that case, which re-prompts for sign-in. -->
+     cloud copy would be undecryptable ciphertext — but shipping a user's vault keys to any
+     server at all is not a trade worth making, and they are not separable from the settings
+     because they share one DataStore file. Cloud backup is denied. Device transfer keeps the
+     file so account configuration and settings survive a migration; the sealed blobs will
+     fail to decrypt on the new device and TokenStore.load() already returns null in that
+     case, which re-runs vault pairing. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" path="." />

@@ -16,6 +16,7 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.IntentHelper
 import com.vayunmathur.library.util.onFileDrop
 import com.vayunmathur.notes.data.NotesRepository
+import com.vayunmathur.notes.platform.NoteImageStore
 import com.vayunmathur.notes.platform.NotesViewModel
 import com.vayunmathur.notes.platform.NotesViewModelFactory
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,13 @@ class MainActivity : ComponentActivity() {
             notesRepository = NotesRepository.get(applicationContext)
             val legacyNotes = notesRepository.readAndClearLegacyNotes()
             if (legacyNotes.isNotEmpty()) notesRepository.upsertAll(legacyNotes)
+            // One-time: img_<uuid>.jpg -> sha256.jpg content-addressed copy, then
+            // rewrite block references and prune the superseded sources.
+            val renames = NoteImageStore.migrateToContentAddressed(applicationContext)
+            if (renames.isNotEmpty()) {
+                notesRepository.migrateImageReferences(renames)
+                NoteImageStore.pruneMigratedSources(applicationContext, renames)
+            }
             withContext(Dispatchers.Main) {
                 handleIntent(intent)
                 ready.value = true

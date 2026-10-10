@@ -9,6 +9,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
+    <!-- Relay IPC for the everysync app's PasswordSink. Signature-level: only apps signed
+        with the Modern Apps key can hold it, and the provider additionally narrows the
+        caller to com.vayunmathur.everysync at runtime. -->
+    <permission
+        android:name="com.vayunmathur.passwords.permission.RELAY"
+        android:protectionLevel="signature" />
+
     <uses-feature
         android:name="android.hardware.bluetooth_le"
         android:required="false" />
@@ -88,6 +95,13 @@
             android:name=".platform.cable.CableService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <provider
+            android:name=".sync.RelayPasswordProvider"
+            android:authorities="com.vayunmathur.passwords.relay"
+            android:exported="true"
+            android:readPermission="com.vayunmathur.passwords.permission.RELAY"
+            android:writePermission="com.vayunmathur.passwords.permission.RELAY" />
     </application>
 
 </manifest>

@@ -5,6 +5,13 @@
         android:name="com.vayunmathur.notes.permissions.ACCESS_NOTES"
         android:protectionLevel="signature" />
 
+    <!-- Relay IPC for the everysync app's NoteSink. Signature-level: only apps signed
+        with the Modern Apps key can hold it, and the provider additionally narrows the
+        caller to com.vayunmathur.everysync at runtime. -->
+    <permission
+        android:name="com.vayunmathur.notes.permission.RELAY"
+        android:protectionLevel="signature" />
+
     <application
         android:name=".NotesApplication"
         android:allowBackup="true"
@@ -79,6 +86,13 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <provider
+            android:name=".sync.RelayNoteProvider"
+            android:authorities="com.vayunmathur.notes.relay"
+            android:exported="true"
+            android:readPermission="com.vayunmathur.notes.permission.RELAY"
+            android:writePermission="com.vayunmathur.notes.permission.RELAY" />
     </application>
 
 </manifest>

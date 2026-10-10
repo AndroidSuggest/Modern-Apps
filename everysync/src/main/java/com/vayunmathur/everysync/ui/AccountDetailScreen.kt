@@ -1,21 +1,23 @@
 package com.vayunmathur.everysync.ui
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import com.vayunmathur.library.ui.SettingsSwitchRow
-import com.vayunmathur.library.ui.Button
-import com.vayunmathur.library.ui.DetailScaffold
-import com.vayunmathur.library.ui.ExperimentalMaterial3Api
-import com.vayunmathur.library.ui.ListItem
-import com.vayunmathur.library.ui.OutlinedButton
-import com.vayunmathur.library.ui.Switch
-import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.appBarScrollBehavior
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.DetailScaffold
+import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.OutlinedButton
+import com.vayunmathur.library.ui.SettingsSwitchRow
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.everysync.R
 import com.vayunmathur.everysync.Route
 import com.vayunmathur.everysync.provider.DataType
@@ -31,6 +33,12 @@ import com.vayunmathur.library.util.sharedText
 fun AccountDetailScreen(backStack: NavBackStack<Route>, viewModel: EverySyncViewModel, accountName: String) {
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val config = accounts.firstOrNull { it.accountName == accountName }
+    val vaults by viewModel.vaults.vaults.collectAsStateWithLifecycle()
+    val deviceId by viewModel.vaults.deviceId.collectAsStateWithLifecycle()
+    val vaultUi by viewModel.vaults.vaultUi.collectAsStateWithLifecycle()
+    val safetyCode by viewModel.safetyCode.collectAsStateWithLifecycle()
+    val computingCode by viewModel.computingCode.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { viewModel.vaults.load() }
     val actions = remember(viewModel, backStack) {
         object : AccountDetailActions {
             override fun toggleType(accountName: String, type: DataType, enabled: Boolean) =
@@ -44,6 +52,29 @@ fun AccountDetailScreen(backStack: NavBackStack<Route>, viewModel: EverySyncView
             }
 
             override fun back() = backStack.pop()
+
+            override fun createVault(dataType: String, title: String) {
+                viewModel.vaults.createVault(dataType, title) { ok ->
+                    viewModel.announce(if (ok) R.string.vault_created else R.string.vault_create_failed)
+                }
+            }
+
+            override fun refreshVaults() {
+                viewModel.vaults.refreshInbox()
+            }
+
+            override fun sendInvite(vaultId: String, recipientId: String, role: String, onResult: (Boolean) -> Unit) =
+                viewModel.vaults.sendInvite(vaultId, recipientId, role, onResult)
+
+            override fun approveRequest(vaultId: String, requesterId: String) =
+                viewModel.vaults.approveRequest(vaultId, requesterId)
+
+            override fun denyRequest(vaultId: String, requesterId: String) =
+                viewModel.vaults.denyRequest(vaultId, requesterId)
+
+            override fun computeSafetyCode(recipientId: String) = viewModel.computeSafetyCode(recipientId)
+
+            override fun offerableRoles(dataType: String) = viewModel.offerableRoles(dataType)
         }
     }
 
@@ -52,6 +83,10 @@ fun AccountDetailScreen(backStack: NavBackStack<Route>, viewModel: EverySyncView
             accountName = accountName,
             providerId = config?.providerId,
             enabledTypes = config?.enabledTypes.orEmpty(),
+            vaults = vaults.mapNotNull { vaultUi[it.vaultId] },
+            deviceId = deviceId,
+            safetyCode = safetyCode,
+            computingCode = computingCode,
         ),
         actions = actions,
     )
@@ -91,9 +126,19 @@ fun AccountDetailScreen(state: AccountDetailUiState, actions: AccountDetailActio
                 actions.toggleType(state.accountName, DataType.CALENDAR, it)
             }
         }
-        if (DataType.HEALTH in provider.capabilities) {
-            TypeToggle(R.string.sync_health, DataType.HEALTH in state.enabledTypes) {
-                actions.toggleType(state.accountName, DataType.HEALTH, it)
+        if (DataType.PASSWORDS in provider.capabilities) {
+            TypeToggle(R.string.sync_passwords, DataType.PASSWORDS in state.enabledTypes) {
+                actions.toggleType(state.accountName, DataType.PASSWORDS, it)
+            }
+        }
+        if (DataType.NOTES in provider.capabilities) {
+            TypeToggle(R.string.sync_notes, DataType.NOTES in state.enabledTypes) {
+                actions.toggleType(state.accountName, DataType.NOTES, it)
+            }
+        }
+        if (DataType.TODOS in provider.capabilities) {
+            TypeToggle(R.string.sync_todos, DataType.TODOS in state.enabledTypes) {
+                actions.toggleType(state.accountName, DataType.TODOS, it)
             }
         }
 
@@ -102,6 +147,17 @@ fun AccountDetailScreen(state: AccountDetailUiState, actions: AccountDetailActio
             modifier = Modifier.fillMaxWidth(),
         ) { Text(stringResource(R.string.sync_now)) }
 
+        Spacer(Modifier.height(16.dp))
+        VaultSharingSection(
+            vaults = state.vaults,
+            deviceId = state.deviceId,
+            safetyCode = state.safetyCode,
+            computingCode = state.computingCode,
+            actions = actions,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Spacer(Modifier.height(16.dp))
         OutlinedButton(
             onClick = { actions.removeAccount(state.accountName) },
             modifier = Modifier.fillMaxWidth(),

@@ -26,12 +26,24 @@ abstract class PasswordDao {
     @Query("SELECT * FROM Password WHERE id = :id")
     abstract suspend fun getById(id: Long): Password?
 
+    @Query("SELECT * FROM Password WHERE syncId = :syncId")
+    abstract suspend fun getBySyncId(syncId: String): Password?
+
+    @Query("SELECT * FROM Password WHERE updatedAt > :since")
+    abstract suspend fun getUpdatedSince(since: Long): List<Password>
+
     /** Writes [value] verbatim. Only the kdbx sync uses this, to preserve a pulled timestamp. */
     @Upsert
     abstract suspend fun upsertRaw(value: Password): Long
 
     @Delete
     abstract suspend fun delete(value: Password): Int
+
+    @Query("DELETE FROM Password WHERE syncId = :syncId")
+    abstract suspend fun deleteBySyncId(syncId: String): Int
+
+    @Query("DELETE FROM Password")
+    abstract suspend fun deleteAll()
 
     suspend fun upsert(value: Password): Long =
         upsertRaw(value.copy(updatedAt = System.currentTimeMillis()))
@@ -51,12 +63,24 @@ abstract class PasskeyDao {
     @Query("SELECT * FROM Passkey WHERE credentialId = :credentialId")
     abstract suspend fun getByCredentialId(credentialId: String): Passkey?
 
+    @Query("SELECT * FROM Passkey WHERE syncId = :syncId")
+    abstract suspend fun getBySyncId(syncId: String): Passkey?
+
+    @Query("SELECT * FROM Passkey WHERE updatedAt > :since")
+    abstract suspend fun getUpdatedSince(since: Long): List<Passkey>
+
     /** Writes [passkey] verbatim. Only the kdbx sync uses this, to preserve a pulled timestamp. */
     @Upsert
     abstract suspend fun upsertRaw(passkey: Passkey): Long
 
     @Delete
     abstract suspend fun delete(passkey: Passkey): Int
+
+    @Query("DELETE FROM Passkey WHERE syncId = :syncId")
+    abstract suspend fun deleteBySyncId(syncId: String): Int
+
+    @Query("DELETE FROM Passkey")
+    abstract suspend fun deleteAll()
 
     suspend fun upsert(passkey: Passkey): Long =
         upsertRaw(passkey.copy(updatedAt = System.currentTimeMillis()))

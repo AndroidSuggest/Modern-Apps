@@ -100,10 +100,17 @@ suspend fun buildGetCredentialResponse(
                 repository.getPasskeysByRpId(rpId)
             override suspend fun getByCredentialId(credentialId: String): com.vayunmathur.passwords.data.Passkey? =
                 repository.getPasskeyByCredentialId(credentialId)
+            override suspend fun getBySyncId(syncId: String): com.vayunmathur.passwords.data.Passkey? =
+                repository.getPasskeyBySyncId(syncId)
+            override suspend fun getUpdatedSince(since: Long): List<com.vayunmathur.passwords.data.Passkey> =
+                repository.getPasskeysUpdatedSince(since)
             override suspend fun upsertRaw(passkey: com.vayunmathur.passwords.data.Passkey): Long =
                 repository.upsertPasskeyRaw(passkey)
             override suspend fun delete(passkey: com.vayunmathur.passwords.data.Passkey): Int =
                 repository.deletePasskey(passkey)
+            override suspend fun deleteBySyncId(syncId: String): Int =
+                repository.deletePasskeyBySyncId(syncId)
+            override suspend fun deleteAll() = repository.deleteAllPasskeys()
         },
         passwordDao = object : PasswordDao() {
             override fun getAllFlow(): kotlinx.coroutines.flow.Flow<List<com.vayunmathur.passwords.data.Password>> =
@@ -114,9 +121,16 @@ suspend fun buildGetCredentialResponse(
                 repository.getPasswordByIdFlow(id)
             override suspend fun getById(id: Long): com.vayunmathur.passwords.data.Password? =
                 repository.getPasswordById(id)
+            override suspend fun getBySyncId(syncId: String): com.vayunmathur.passwords.data.Password? =
+                repository.getPasswordBySyncId(syncId)
+            override suspend fun getUpdatedSince(since: Long): List<com.vayunmathur.passwords.data.Password> =
+                repository.getPasswordsUpdatedSince(since)
             override suspend fun upsertRaw(value: com.vayunmathur.passwords.data.Password): Long =
                 repository.upsertPasswordRaw(value)
             override suspend fun delete(value: com.vayunmathur.passwords.data.Password): Int =
                 repository.deletePassword(value)
+            override suspend fun deleteBySyncId(syncId: String): Int =
+                repository.deletePasswordBySyncId(syncId)
+            override suspend fun deleteAll() = repository.deleteAllPasswords()
         },
     )

@@ -1,10 +1,13 @@
 package com.vayunmathur.everysync.data
 
-/** A contact resolved from a remote source (CardDAV vCard or Google People). */
+import kotlinx.serialization.Serializable
+
+/** A contact resolved from a relay vault record. */
+@Serializable
 data class RemoteContact(
-    /** Stable remote identifier (vCard UID or People resourceName). */
+    /** Stable relay sync identity (opaque 32-char id). */
     val uid: String,
-    /** Server ETag for change detection, if known. */
+    /** Relay updatedAt stamp as a string, for change detection; null when unknown. */
     val etag: String? = null,
     val displayName: String = "",
     val prefix: String = "",
@@ -20,27 +23,21 @@ data class RemoteContact(
     val addresses: List<TypedValue> = emptyList(),
     /** ISO-8601 birthday (yyyy-MM-dd) or null. */
     val birthday: String? = null,
-    /** For CardDAV: the resource path on the server (collection-relative). */
+    /** Relay sync identity of the vault this record belongs to. */
     val href: String? = null,
     val deleted: Boolean = false,
+    /** Last local-or-remote modification (epoch ms); drives relay LWW. */
+    val updatedAt: Long = 0L,
 )
 
+@Serializable
 data class TypedValue(val value: String, val type: Int)
 
-/** A calendar collection (CalDAV collection or Google calendarList entry). */
-data class RemoteCalendar(
-    val id: String,
-    val displayName: String,
-    val color: Int? = null,
-    /** CalDAV collection ctag for cheap change detection. */
-    val ctag: String? = null,
-    /** CalDAV collection URL. */
-    val url: String? = null,
-)
-
-/** A calendar event resolved from a remote source. */
+/** A calendar event resolved from a relay vault record. */
+@Serializable
 data class RemoteEvent(
     val uid: String,
+    /** Relay updatedAt stamp as a string, for change detection; null when unknown. */
     val etag: String? = null,
     val calendarId: String,
     val summary: String = "",
@@ -52,82 +49,91 @@ data class RemoteEvent(
     val timezone: String = "UTC",
     /** Raw RRULE line (without the "RRULE:" prefix), or null. */
     val rrule: String? = null,
+    /** RECURRENCE-ID of an overridden instance; null for the master. */
+    val recurrenceId: String? = null,
+    /** Relay sync identity of the vault this record belongs to. */
     val href: String? = null,
     val deleted: Boolean = false,
-)
-
-/** A health measurement destined for Health Connect. */
-data class RemoteMeasurement(
-    /** Provider-scoped stable id, used as Health Connect clientRecordId. */
-    val clientRecordId: String,
-    val type: MeasurementType,
-    /** Primary value in the type's canonical unit (see [MeasurementType]). */
-    val value: Double = 0.0,
-    /** Start instant; equals [endMillis] for instantaneous sample/daily records. */
-    val startMillis: Long,
-    /** End instant for interval/session records (steps, distance, sleep, ...). */
-    val endMillis: Long = startMillis,
-    /** Sleep-stage segments; populated only for [MeasurementType.SLEEP]. */
-    val sleepStages: List<RemoteSleepStage> = emptyList(),
-    /** Health Connect `ExerciseSessionRecord.EXERCISE_TYPE_*`; only for [MeasurementType.EXERCISE]. */
-    val exerciseType: Int = 0,
-    /** Session title (exercise) or food name (nutrition). */
-    val title: String? = null,
-    /** Free-form notes; only for [MeasurementType.EXERCISE]. */
-    val notes: String? = null,
-    /** Nutrition payload; populated only for [MeasurementType.NUTRITION]. */
-    val nutrition: RemoteNutrition? = null,
-)
-
-/** One sleep-stage segment. [stage] is a Health Connect `SleepSessionRecord.STAGE_TYPE_*` value. */
-data class RemoteSleepStage(
-    val startMillis: Long,
-    val endMillis: Long,
-    val stage: Int,
+    /** Last local-or-remote modification (epoch ms); drives relay LWW. */
+    val updatedAt: Long = 0L,
 )
 
 /**
- * A logged food / nutrition entry. Energy is in kilocalories; [nutrientGrams] holds
- * each nutrient's mass in grams keyed by Google Health nutrient name (e.g. "PROTEIN",
- * "SODIUM"), plus the synthetic keys "TOTAL_FAT" and "TOTAL_CARBOHYDRATE".
+ * A password or passkey record for the encrypted relay. Mirrors the native
+ * vault fields so no KDBX mapping is needed: passwords use the name/username/
+ * email/password/note/totp/websites half, passkeys ([isPasskey]) use the
+ * rp/credential half. The relay envelope is the JSON of this class.
  */
-data class RemoteNutrition(
-    val energyKcal: Double? = null,
-    val nutrientGrams: Map<String, Double> = emptyMap(),
+@Serializable
+data class RemotePassword(
+    /** Relay sync identity (opaque 32-char id). */
+    val uid: String,
+    /** True for a passkey record, false for a password record. */
+    val isPasskey: Boolean = false,
+    val name: String = "",
+    val username: String = "",
+    val email: String = "",
+    val password: String = "",
+    val note: String = "",
+    val totpSecret: String? = null,
+    val websites: List<String> = emptyList(),
+    // Passkey half (empty for passwords).
+    val rpId: String = "",
+    val rpName: String = "",
+    val credentialId: String = "",
+    val userId: String = "",
+    val userName: String = "",
+    val userDisplayName: String = "",
+    /** Base64 of the private-key bytes. */
+    val privateKeyB64: String = "",
+    val creationTime: Long = 0L,
+    val lastUsedTime: Long = 0L,
+    val signCount: Int = 0,
+    val linkedPasswordSyncId: String? = null,
+    val deleted: Boolean = false,
+    /** Last local-or-remote modification (epoch ms); drives relay LWW. */
+    val updatedAt: Long = 0L,
 )
 
 /**
- * Health metrics synced from Google Health into Health Connect. Each maps to one
- * Health Connect record type; the trailing comment is the canonical unit stored in
- * [RemoteMeasurement.value].
+ * A note record for the encrypted relay. [blocksJson] is the stored
+ * NoteBody JSON (text / image / ink blocks); image bytes themselves live in
+ * the blob channel (see RelayBlobStore) and are referenced by file name.
+ * The relay envelope is the JSON of this class.
  */
-enum class MeasurementType {
-    // Body composition (instantaneous samples)
-    WEIGHT, // kilograms
-    HEIGHT, // meters
-    BODY_FAT, // percent (0-100)
+@Serializable
+data class RemoteNote(
+    /** Relay sync identity (opaque 32-char id). */
+    val uid: String,
+    val title: String = "",
+    val content: String = "",
+    /** Serialized NoteBody, or null for legacy text-only notes. */
+    val blocksJson: String? = null,
+    val position: Double = 0.0,
+    val deleted: Boolean = false,
+    /** Last local-or-remote modification (epoch ms); drives relay LWW. */
+    val updatedAt: Long = 0L,
+)
 
-    // Vitals (instantaneous)
-    HEART_RATE, // beats/min
-    RESTING_HEART_RATE, // beats/min
-    HEART_RATE_VARIABILITY, // milliseconds (RMSSD)
-    OXYGEN_SATURATION, // percent (0-100)
-    RESPIRATORY_RATE, // breaths/min
-    BLOOD_GLUCOSE, // mg/dL
-    BODY_TEMPERATURE, // degrees Celsius
-    VO2_MAX, // mL/kg/min
-
-    // Activity (intervals)
-    STEPS, // count
-    DISTANCE, // meters
-    FLOORS, // count
-    ELEVATION, // meters gained
-    ACTIVE_CALORIES, // kilocalories
-    TOTAL_CALORIES, // kilocalories
-
-    // Sessions / lifestyle
-    HYDRATION, // liters
-    SLEEP, // session (start/end + sleepStages)
-    EXERCISE, // session (exerciseType/title)
-    NUTRITION, // logged food (nutrition payload)
-}
+/**
+ * A todo task record for the encrypted relay. The relay envelope is the JSON
+ * of this class on the `todos:<vaultId>` channel. The todo/ app owns on-device
+ * storage; this shape is the contract between RelayMerge and its TodoSink.
+ */
+@Serializable
+data class RemoteTodo(
+    /** Relay sync identity (opaque 32-char id). */
+    val uid: String,
+    val title: String = "",
+    val notes: String = "",
+    val done: Boolean = false,
+    /** Epoch ms the task is due, or null. */
+    val dueAt: Long? = null,
+    /** Sort position; excluded from the merge hash so reorder is not an edit. */
+    val position: Double = 0.0,
+    /** Epoch ms the task was created; part of the adoption content key. */
+    val createdAt: Long = 0L,
+    val deleted: Boolean = false,
+    /** Last local-or-remote modification (epoch ms); drives relay LWW. */
+    val updatedAt: Long = 0L,
+)

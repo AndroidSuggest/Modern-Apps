@@ -161,6 +161,44 @@
     <string name="ringtone_silent">Silent</string>
     <!-- Shared library: UI - RingtonePicker: fallback label when the picked sound file has no readable title -->
     <string name="ringtone_custom">Custom</string>
+    <!-- Shared library: UI – ShareVaultDialog: dialog title. Noun phrase -->
+    <string name="share_vault_title">Share vault</string>
+    <!-- Shared library: UI – ShareVaultDialog: section header over the member list. Noun, plural -->
+    <string name="share_vault_members">Members</string>
+    <!-- Shared library: UI – ShareVaultDialog: suffix marking this device in the member list. Pronoun -->
+    <string name="share_vault_you">you</string>
+    <!-- Shared library: UI – ShareVaultDialog: note shown to non-owners. Full sentence -->
+    <string name="share_vault_viewer_note">You have access. Only the owner can change sharing.</string>
+    <!-- Shared library: UI – ShareVaultDialog: share-sheet button that sends the invite link. Noun phrase -->
+    <string name="share_vault_link">Share link</string>
+    <!-- Shared library: UI – ShareVaultDialog: snackbar after copying the share link. Short confirmation -->
+    <string name="share_vault_link_copied">Share link copied</string>
+    <!-- Shared library: UI – ShareVaultDialog: instruction above the device-id field. Full sentence -->
+    <string name="share_vault_add_by_device">Add someone by device ID. They approve out-of-band, then request access with the link.</string>
+    <!-- Shared library: UI – ShareVaultDialog: label for the recipient device-id field. Noun phrase -->
+    <string name="share_vault_recipient">Recipient device ID</string>
+    <!-- Shared library: UI – ShareVaultDialog: label before the role dropdown. Noun -->
+    <string name="share_vault_role">Role</string>
+    <!-- Shared library: UI – ShareVaultDialog: fallback role label when none offered. Noun -->
+    <string name="share_vault_role_editor">editor</string>
+    <!-- Shared library: UI – ShareVaultDialog: button sealing an invite to the entered device. Verb phrase -->
+    <string name="share_vault_send_invite">Send invite</string>
+    <!-- Shared library: UI – ShareVaultDialog: section header over pending join requests. Noun, plural -->
+    <string name="share_vault_requests">Requests</string>
+    <!-- Shared library: UI – ShareVaultDialog: approves a join request, sealing the invite. Verb -->
+    <string name="share_vault_approve">Approve</string>
+    <!-- Shared library: UI – ShareVaultDialog: drops a join request without granting access. Verb -->
+    <string name="share_vault_deny">Deny</string>
+    <!-- Shared library: UI – ShareVaultDialog: button computing the safety code. Verb phrase -->
+    <string name="share_vault_show_code">Show safety code</string>
+    <!-- Shared library: UI – ShareVaultDialog: label while the safety code computes. Verb, progressive -->
+    <string name="share_vault_computing">Computing…</string>
+    <!-- Shared library: UI – ShareVaultDialog: instruction under the safety code. Full sentence -->
+    <string name="share_vault_code_hint">Compare with the recipient out-of-band before inviting.</string>
+    <!-- Shared library: UI – ShareVaultDialog: label above this device's id. Noun phrase -->
+    <string name="share_vault_your_device">Your device ID</string>
+    <!-- Shared library: UI – ShareVaultDialog: snackbar after copying the device id. Short confirmation -->
+    <string name="share_vault_device_copied">Device ID copied</string>
 
     <!-- Shared library: UI - HeartsRow: content description of the attempts left on the current board. %1$d = hearts remaining, e.g. 2 -->
     <plurals name="game_hearts_left">

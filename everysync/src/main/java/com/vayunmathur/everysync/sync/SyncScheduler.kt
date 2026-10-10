@@ -1,10 +1,6 @@
 package com.vayunmathur.everysync.sync
 
-import android.content.ContentResolver
 import android.content.Context
-import android.os.Bundle
-import android.provider.CalendarContract
-import android.provider.ContactsContract
 import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -14,10 +10,9 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.vayunmathur.everysync.data.Settings
-import com.vayunmathur.everysync.auth.AccountStore
 import java.util.concurrent.TimeUnit
 
-/** Schedules background + on-demand syncs via WorkManager and the SyncAdapter framework. */
+/** Schedules background + on-demand syncs via WorkManager. */
 object SyncScheduler {
     private const val PERIODIC_WORK = "EverySyncPeriodic"
     private const val IMMEDIATE_WORK = "EverySyncNow"
@@ -44,7 +39,6 @@ object SyncScheduler {
         WorkManager.getInstance(context).enqueueUniqueWork(
             "$IMMEDIATE_WORK-$accountName", ExistingWorkPolicy.REPLACE, request,
         )
-        requestSystemSync(context, accountName)
     }
 
     /** Immediately sync every account. */
@@ -53,16 +47,5 @@ object SyncScheduler {
         WorkManager.getInstance(context).enqueueUniqueWork(
             IMMEDIATE_WORK, ExistingWorkPolicy.REPLACE, request,
         )
-    }
-
-    /** Ask the SyncAdapter framework to run for the contacts + calendar authorities. */
-    private fun requestSystemSync(context: Context, accountName: String) {
-        val account = AccountStore.getInstance(context).systemAccount(accountName)
-        val extras = Bundle().apply {
-            putBoolean(ContentResolver.SYNC_EXTRAS_MANUAL, true)
-            putBoolean(ContentResolver.SYNC_EXTRAS_EXPEDITED, true)
-        }
-        runCatching { ContentResolver.requestSync(account, ContactsContract.AUTHORITY, extras) }
-        runCatching { ContentResolver.requestSync(account, CalendarContract.AUTHORITY, extras) }
     }
 }
