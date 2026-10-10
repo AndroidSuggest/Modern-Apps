@@ -35,4 +35,9 @@
     <string name="time">Godzina</string>
     <string name="saved">Zapisano</string>
     <string name="unknown">Nieznany</string>
+    <string name="backup_dialog_title_export">Eksportuj hasło</string>
+    <string name="backup_dialog_title_import">Importuj hasło</string>
+    <string name="backup_password_prompt">Wprowadź hasło główne dla pliku KDBX:</string>
+    <string name="backup_export_success">Kopia zapasowa została pomyślnie wyeksportowana</string>
+    <string name="backup_import_success">Kopia zapasowa pomyślnie zaimportowana. Ponowne uruchamianie aplikacji…</string>
 </resources>
