@@ -106,29 +106,56 @@ impl Graph {
         let edge_count = edges;
         let escape_count = escapes;
         let named_edges = named;
+        let blocked_v7 = version >= GRAPH_VERSION;
 
         // `edge_count` comes from the header rather than from the edges
         // payload's length. That is the point of graph version 4, and 5 and 6
         // are why: the record is 7 bytes and the payload has four more
         // sections behind it, so its length is no longer any simple multiple
-        // of anything.
+        // of anything. Under v7 the record array is a ZBLK section whose end
+        // the view reports.
         let nodes_bytes = sections.nodes;
         let edges_bytes = sections.edges;
         // nodes payload is `NodeRec[node_count + 1]`: one sentinel record past
         // the real nodes, whose `edge_ptr` is `edge_count`. Eight call sites
         // read it.
         let want_nodes = (u64::from(node_count) + 1) * std::mem::size_of::<NodeRec>() as u64;
-        if nodes_bytes.len() as u64 != want_nodes {
-            return None;
-        }
+        let nodes_view = if blocked_v7 {
+            let view = BlockedView::parse(nodes_bytes)?;
+            if view.unpacked_len != want_nodes || view.record_len != 12 {
+                return None;
+            }
+            Some(view)
+        } else {
+            if nodes_bytes.len() as u64 != want_nodes {
+                return None;
+            }
+            None
+        };
 
         // Edges payload's five sections, computed forwards from the metadata
         // counts. The total-length assertion below is what replaces v3's
         // self-locating trailer: if the computed sections do not exactly
         // consume the payload, it is not the one these counts describe.
         let escape_blocks = edge_count.div_ceil(ESCAPE_BLOCK) + 1;
-        let escape_first_off =
-            align_up(edge_count * std::mem::size_of::<EdgeRec>() as u64, SECTION_ALIGN);
+        let (escape_first_off, edges_view) = if blocked_v7 {
+            let view = BlockedView::parse(edges_bytes)?;
+            if view.unpacked_len != edge_count * std::mem::size_of::<EdgeRec>() as u64
+                || view.record_len != 7
+            {
+                return None;
+            }
+            let rec_end = view.offsets[view.offsets.len() - 1];
+            (align_up(rec_end, SECTION_ALIGN), Some(view))
+        } else {
+            (
+                align_up(
+                    edge_count * std::mem::size_of::<EdgeRec>() as u64,
+                    SECTION_ALIGN,
+                ),
+                None,
+            )
+        };
         let escapes_off =
             escape_first_off + escape_blocks * std::mem::size_of::<u32>() as u64;
         let names_off = align_up(
@@ -140,7 +167,11 @@ impl Graph {
         if edges_bytes.len() as u64 != want_edges {
             return None;
         }
-        let edges_ptr = edges_bytes.as_ptr();
+        let edges_ptr = if edges_view.is_some() {
+            ptr::null()
+        } else {
+            edges_bytes.as_ptr()
+        };
         let escape_first = unsafe { edges_ptr.add(escape_first_off as usize) };
         let escapes_ptr = unsafe { edges_ptr.add(escapes_off as usize) };
         let names = EdgeBitmap {
@@ -286,14 +317,25 @@ impl Graph {
         // order. Optional and validated by length alone — a stale-vintage
         // payload whose node_count differs is simply disabled (elevation reads
         // 0), the same self-check the lanes payload does against `edge_count`.
-        let elevation = match sections.elevation {
+        // Under v7 the payload is a ZBLK section, dispatched on its magic.
+        let (elevation, elevation_view) = match sections.elevation {
+            Some(b) if blocked_v7 => match BlockedView::parse(b) {
+                Some(view)
+                    if view.unpacked_len
+                        == u64::from(node_count) * std::mem::size_of::<i16>() as u64
+                        && view.record_len == 2 =>
+                {
+                    (ptr::null(), Some(view))
+                }
+                _ => (ptr::null(), None),
+            },
             Some(b)
                 if b.len() as u64
                     == u64::from(node_count) * std::mem::size_of::<i16>() as u64 =>
             {
-                b.as_ptr()
+                (b.as_ptr(), None)
             }
-            _ => ptr::null(),
+            _ => (ptr::null(), None),
         };
 
         // A wrong-length elevation payload is dropped, not kept mapped:
@@ -303,7 +345,11 @@ impl Graph {
             own.elevation = None;
         }
 
-        let nodes = nodes_bytes.as_ptr();
+        let nodes = if nodes_view.is_some() {
+            ptr::null()
+        } else {
+            nodes_bytes.as_ptr()
+        };
         // --- Derived tables (identical formulas to the C++ init) ---
         let mut lon_to_mm_scale = [0u32; 4096];
         for (i, scale) in lon_to_mm_scale.iter_mut().enumerate() {
@@ -402,50 +448,15 @@ impl Graph {
             road_names,
             road_names_size,
             elevation,
+            nodes_view,
+            edges_view,
+            elevation_view,
+            unpacked_nodes: std::sync::OnceLock::new(),
+            unpacked_edges: std::sync::OnceLock::new(),
+            unpacked_elevation: std::sync::OnceLock::new(),
             lon_to_mm_scale,
             time_scale_fixed,
             edge_time_multipliers,
         })
-    }
-
-    /// Load the graph from a single-archive `.mamaps` file.
-    ///
-    /// Maps the one file, parses the tile header and the sidecar directory
-    /// (which refuses a corrupt container, a build-id mismatch and any
-    /// section the header's counts do not describe), then hands the seven
-    /// graph payloads to [`Graph::assemble`]. Optional sections absent from
-    /// the directory degrade exactly as absent files do today: no names pool,
-    /// topology-inferred lanes, a flat profile.
-    pub fn load_archive(path: &str) -> Option<Graph> {
-        let region = MmapRegion::map(path)?;
-        // The mapping must cover the whole file: ArchiveView::parse checks
-        // `bytes.len() == header.file_len`, and a short mapping would refuse
-        // a good archive rather than read past it.
-        let bytes = unsafe { std::slice::from_raw_parts(region.base(), region.len) };
-        let header = Header::parse(bytes).ok()?;
-        let view = ArchiveView::parse(bytes, &header).ok()?;
-        let section = |kind| view.section(bytes, kind);
-        let sections = GraphSections {
-            meta: section(ARCHIVE_KIND_GRAPH_META)?,
-            nodes: section(ARCHIVE_KIND_GRAPH_NODES)?,
-            edges: section(ARCHIVE_KIND_GRAPH_EDGES)?,
-            intermediate: section(ARCHIVE_KIND_GRAPH_INTERMEDIATE)?,
-            road_names: section(ARCHIVE_KIND_GRAPH_NAMES),
-            lanes: section(ARCHIVE_KIND_GRAPH_LANES),
-            elevation: section(ARCHIVE_KIND_GRAPH_ELEVATION),
-        };
-        Graph::assemble(
-            sections,
-            GraphOwnership {
-                nodes: None,
-                edges: None,
-                intermediate: None,
-                road_names: None,
-                lanes: None,
-                elevation: None,
-                archive: Some(region),
-                buffers: Vec::new(),
-            },
-        )
     }
 }

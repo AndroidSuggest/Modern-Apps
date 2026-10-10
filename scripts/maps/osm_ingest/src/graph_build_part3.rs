@@ -233,7 +233,11 @@ fn write_graph(
     println!("Writing {edge_count} edge(s) in {rounds} round(s)...");
     let chain_total = spill.chain_count()?;
 
-    let mut nodes_out = BufWriter::new(create(&out_dir.join("nodes.bin"))?);
+    let mut nodes_blocked = tilecodec::blocked::BlockedStreamWriter::create(
+        12,
+        &out_dir.join("nodes.blocked.tmp"),
+    )
+    .map_err(|e| Error(format!("cannot stage nodes.bin: {e}")))?;
     let mut edges_out = EdgeFile::create(out_dir, "edges.bin", edge_count)?;
 
     // `intermediate.bin` puts its blob at offset 0 and everything that indexes it
@@ -326,7 +330,13 @@ fn write_graph(
         );
         for v in lo..hi {
             let node = node_coords[v as usize];
-            write_node(&mut nodes_out, node.0, node.1, edge_ptr as u32).map_err(io_err)?;
+            let mut rec = [0u8; 12];
+            rec[0..4].copy_from_slice(&node.0.to_le_bytes());
+            rec[4..8].copy_from_slice(&node.1.to_le_bytes());
+            rec[8..12].copy_from_slice(&(edge_ptr as u32).to_le_bytes());
+            nodes_blocked
+                .push(&rec)
+                .map_err(|e| Error(format!("cannot stage node record: {e}")))?;
             let degree_base = edge_ptr;
             while cursor < buffer.len() && buffer[cursor].source == v {
                 let e = &buffer[cursor];
@@ -404,8 +414,28 @@ fn write_graph(
     }
     // Trailing sentinel so `graph.rs` can read node(v + 1).edge_ptr as the end of
     // node v's edge range.
-    write_node(&mut nodes_out, 0, 0, edge_ptr as u32).map_err(io_err)?;
-    nodes_out.flush().map_err(io_err)?;
+    let mut sentinel = [0u8; 12];
+    sentinel[8..12].copy_from_slice(&(edge_ptr as u32).to_le_bytes());
+    nodes_blocked
+        .push(&sentinel)
+        .map_err(|e| Error(format!("cannot stage node sentinel: {e}")))?;
+    let nodes_bytes = nodes_blocked
+        .finish()
+        .map_err(|e| Error(format!("cannot finish nodes.bin: {e}")))?;
+    // Sanity: the blocked section must unpack to exactly the pushed records.
+    let parsed = tilecodec::blocked::Blocked::parse(&nodes_bytes).map_err(|e| {
+        Error(format!(
+            "freshly blocked nodes.bin does not parse: {e}"
+        ))
+    })?;
+    if parsed.unpacked_len() != (u64::from(kept) + 1) * 12 {
+        return Err(Error(format!(
+            "nodes.bin unpacks to {} byte(s), not {} 12-byte records",
+            parsed.unpacked_len(),
+            u64::from(kept) + 1
+        )));
+    }
+    std::fs::write(out_dir.join("nodes.bin"), &nodes_bytes).map_err(io_err)?;
     let escape_count = edges_out.escapes.len() as u64;
     let named_edges = edges_out.name_offsets.len() as u64;
     let edges_bytes = edges_out.finish(edge_count)?;
@@ -428,18 +458,27 @@ fn write_graph(
     // elevation.bin: `i16[node_count]` metres, one per node in final-id order — an OPTIONAL sidecar
     // like road_names.bin/lanes.bin, so a build without a DEM simply omits it and the device reads
     // every node's elevation as 0. `node_coords` is already indexed by final node id, so a single
-    // forward pass matches the order `nodes.bin` was written in. No metadata count and no
-    // GRAPH_VERSION bump: the reader validates its length against node_count and disables it on a
-    // mismatch, exactly as it does for lanes.bin.
+    // forward pass matches the order `nodes.bin` was written in. Blocked like
+    // nodes/edges under the v7 layout (magic-dispatched on read, so absence
+    // still reads as all-zero).
     if let Some(dem) = dem {
-        let mut elev_out = BufWriter::new(create(&out_dir.join("elevation.bin"))?);
+        let mut elev_blocked = tilecodec::blocked::BlockedStreamWriter::create(
+            2,
+            &out_dir.join("elevation.blocked.tmp"),
+        )
+        .map_err(|e| Error(format!("cannot stage elevation.bin: {e}")))?;
         for &(lat_e7, lon_e7) in node_coords {
             let lat = f64::from(lat_e7) * 1e-7;
             let lon = f64::from(lon_e7) * 1e-7;
             let metres = dem.sample_metres(lon, lat).unwrap_or(0);
-            elev_out.write_all(&metres.to_le_bytes()).map_err(io_err)?;
+            elev_blocked
+                .push(&metres.to_le_bytes())
+                .map_err(|e| Error(format!("cannot stage elevation record: {e}")))?;
         }
-        elev_out.flush().map_err(io_err)?;
+        let elev_bytes = elev_blocked
+            .finish()
+            .map_err(|e| Error(format!("cannot finish elevation.bin: {e}")))?;
+        std::fs::write(out_dir.join("elevation.bin"), &elev_bytes).map_err(io_err)?;
     }
 
     Ok(Written {

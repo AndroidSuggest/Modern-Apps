@@ -29,16 +29,11 @@
         let spec: Vec<(u32, u32, u32)> = (0..100u32).map(|i| (1000, 1000 + i, i)).collect();
         let (decoded, bytes, escapes) = roundtrip_edges("no_escapes", &spec);
         assert_eq!(escapes, 0);
-        // Only padding separates the record array from the block index, so it is the
-        // only thing keeping a wide load of the last record in bounds.
-        let records = 100 * EDGE_REC_BYTES;
-        let pad = align_up(records, SECTION_ALIGN) - records;
-        assert_eq!(pad, 4, "100 x 7 = 700, which is 4 short of a multiple of 8");
-        assert!(
-            bytes[records as usize..(records + pad) as usize].iter().all(|b| *b == 0),
-            "the padding must be zeroed, not whatever the buffer held"
-        );
-        assert_eq!(bytes.len() as u64, EdgeFile::total_bytes(100, 0, 0));
+        // The record array is blocked (v7): it parses and unpacks to exactly
+        // the 100 pushed records. Padding assertions belong to the v6 fixed
+        // stride; the blocked container carries its own alignment instead.
+        let blocked = tilecodec::blocked::Blocked::parse(&bytes).expect("blocked records");
+        assert_eq!(blocked.unpacked_len(), 100 * EDGE_REC_BYTES);
         for (i, d) in decoded.iter().enumerate() {
             assert_eq!((d.0, d.1), (1000 + i as u32, i as u32));
             assert_eq!(d.2, NO_NAME, "no fixture edge is named");
@@ -138,7 +133,9 @@
             let total = f.finish(n).unwrap();
             let bytes = std::fs::read(dir.join("edges.bin")).unwrap();
             assert_eq!(bytes.len() as u64, total);
-            assert_eq!(total, EdgeFile::total_bytes(n, 0, named_count));
+            // v7 record array: blocked, unpacking to exactly the pushed records.
+            let blocked = tilecodec::blocked::Blocked::parse(&bytes).expect("blocked records");
+            assert_eq!(blocked.unpacked_len(), n * EDGE_REC_BYTES);
             let e = Edges::new(&bytes, n, 0, named_count);
             for i in 0..n {
                 let want = if all_named { i as u32 * 3 } else { NO_NAME };

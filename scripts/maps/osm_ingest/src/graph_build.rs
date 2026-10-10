@@ -83,7 +83,13 @@ const GRAPH_MAGIC: u32 = 0x4752_414D;
 /// GB, and every value stays *exact*.
 /// Version 6 moves `name_offset` out of the record into a sparse side table — two
 /// thirds of edges have no name — taking the record to 7 bytes and planet to ~23.3 GB.
-const GRAPH_VERSION: u32 = 6;
+/// Version 7 blocked-compresses `nodes.bin`, `edges.bin` records and
+/// `elevation.bin` (ZBLK sections: zstd frames over 4096-record blocks behind
+/// a `u64` offset table). Same records, same order — only the container
+/// changes. Readers accept 6 and 7; writers emit 7.
+const GRAPH_VERSION: u32 = 7;
+/// Oldest graph version accepted: v6 raw tables still decode.
+const GRAPH_VERSION_MIN: u32 = 6;
 
 /// Geometry edges per coarse block in `intermediate.bin`'s two-level offset table
 /// — `INTERMEDIATE_BLOCK` in `graph.rs`, and the two must agree.

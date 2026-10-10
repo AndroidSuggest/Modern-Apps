@@ -88,10 +88,13 @@ pub fn traffic_class() -> Class {
     }
 }
 
-// --- v6 graph on-disk constants (see traffic_id_contract.md §2 / graph.rs) -----------------
+// --- v6/v7 graph on-disk constants (see traffic_id_contract.md §2 / graph.rs) -----------------
 
 pub(crate) const MARG_MAGIC: u32 = 0x4752_414D; // "MARG"
-pub(crate) const GRAPH_VERSION: u32 = 6;
+/// Newest graph version: v7 blocked record sections.
+pub(crate) const GRAPH_VERSION: u32 = 7;
+/// Oldest graph version accepted: v6 raw tables still read directly.
+pub(crate) const GRAPH_VERSION_MIN: u32 = 6;
 /// One escape block index per 1024 edges (`graph.rs` ESCAPE_BLOCK).
 pub(crate) const ESCAPE_BLOCK: u64 = 1024;
 /// One coarse geometry offset per 32 geometry edges (`graph.rs` INTERMEDIATE_BLOCK).
@@ -138,6 +141,26 @@ fn align_up8(n: usize) -> usize {
     (n + 7) & !7
 }
 
+/// Inflate every block of a validated section and concatenate.
+///
+/// Batch-tool path (traffic/junction stream whole tables), so one pass beats
+/// per-block caching. The device inflates lazily instead — see
+/// `maps/.../graph_part1.rs::BlockedView`.
+fn inflate_all(view: &tilecodec::blocked::Blocked) -> Result<Vec<u8>> {
+    let mut cache = tilecodec::blocked::BlockCache::new(0);
+    let mut out = Vec::with_capacity(view.unpacked_len() as usize);
+    for b in 0..view.block_count() {
+        let block = cache
+            .get(view, b)
+            .map_err(|e| osm_ingest::proto::Error(e.0))?;
+        out.extend_from_slice(block);
+    }
+    if out.len() as u64 != view.unpacked_len() {
+        return err("a blocked section inflated short of its unpacked length".to_string());
+    }
+    Ok(out)
+}
+
 /// Bytes an [`EdgeBitmap`] over `edges` edges occupies: a `u64` rank word per 512 edges plus one
 /// present byte per 8 edges (`graph.rs` `EdgeBitmap`).
 fn present_offset(edges: u64) -> usize {
@@ -147,14 +170,20 @@ fn edge_bitmap_bytes(edges: u64) -> usize {
     present_offset(edges) + edges.div_ceil(8) as usize
 }
 
-/// The subset of the v6 graph reader the traffic layer needs: node coordinates, edge targets and
-/// types, and big-edge geometry. Names, distances and speed limits are skipped — the server reads
-/// those; the archive carries only geometry and the id.
+/// The subset of the v6/v7 graph reader the traffic layer needs: node coordinates,
+/// edge targets and types, and big-edge geometry. Names, distances and speed
+/// limits are skipped — the server reads those; the archive carries only
+/// geometry and the id.
 ///
 /// The three tables are file mappings rather than heap `Vec`s: a planet graph is gigabytes, and
 /// `Graph::load` runs while the OSM tables are still alive, so reading them whole would stack that
 /// many gigabytes of commit on top of the peak. Mapped, the OS pages the working set (junction
 /// walks nodes in order) and no commit is charged. Same bytes, same layout, same readers.
+///
+/// Under v7 the record arrays are ZBLK sections, inflated eagerly at load
+/// into `nodes_owned`/`rec_owned` (a batch tool, unlike the device's lazy
+/// sections — the whole graph is walked anyway). The escapes, names and
+/// intermediate tables stay mapped in both versions.
 ///
 /// `pub(crate)` because [`crate::schema::junction`] reads the same four files for the same reason
 /// and must not carry a second copy of this byte layout.
@@ -162,6 +191,11 @@ pub(crate) struct Graph {
     nodes: osm_ingest::mem::Mapped,
     edges: osm_ingest::mem::Mapped,
     inter: osm_ingest::mem::Mapped,
+    /// Inflated v7 nodes table. Empty on the v6 path, where `nodes` serves.
+    nodes_owned: Vec<u8>,
+    /// Inflated v7 edge-record array. Empty on the v6 path, where the head of
+    /// `edges` serves. Escapes/names always read from `edges` at computed offsets.
+    rec_owned: Vec<u8>,
     pub(crate) node_count: u64,
     escape_first_off: usize,
     escapes_off: usize,
@@ -170,6 +204,26 @@ pub(crate) struct Graph {
     geom_present_off: usize,
     coarse_off: usize,
     within_off: usize,
+}
+
+impl Graph {
+    /// Node records: mapped on v6, inflated on v7.
+    fn nb(&self) -> &[u8] {
+        if self.nodes_owned.is_empty() {
+            &self.nodes
+        } else {
+            &self.nodes_owned
+        }
+    }
+
+    /// Edge records: mapped head on v6, inflated on v7.
+    fn rb(&self) -> &[u8] {
+        if self.rec_owned.is_empty() {
+            &self.edges
+        } else {
+            &self.rec_owned
+        }
+    }
 }
 
 impl Graph {
@@ -187,11 +241,12 @@ impl Graph {
             return err("metadata.bin is not a MARG graph header".to_string());
         }
         let version = u32_at(&meta, 4);
-        if version != GRAPH_VERSION {
+        if !(GRAPH_VERSION_MIN..=GRAPH_VERSION).contains(&version) {
             return err(format!(
-                "the graph is version {version}; the traffic layer reads v{GRAPH_VERSION}"
+                "the graph is version {version}; the traffic layer reads v{GRAPH_VERSION_MIN}..=v{GRAPH_VERSION}"
             ));
         }
+        let blocked_v7 = version >= GRAPH_VERSION;
         let node_count = u64_at(&meta, 8);
         let edge_count = u64_at(&meta, 16);
         let escape_count = u64_at(&meta, 24);
@@ -225,15 +280,51 @@ impl Graph {
         let want_nodes = (node_count + 1)
             .checked_mul(12)
             .ok_or_else(|| osm_ingest::proto::Error("node table size overflows".to_string()))?;
-        if nodes.len() as u64 != want_nodes {
-            return err(format!(
-                "nodes.bin is {} bytes, expected {} for {node_count}+1 records",
-                nodes.len(),
-                want_nodes,
-            ));
-        }
+        // v7 nodes are a ZBLK section: parse, check the unpacked length, and
+        // inflate eagerly (batch tool — the whole table is walked).
+        let nodes_owned = if blocked_v7 {
+            let view = tilecodec::blocked::Blocked::parse(&nodes).map_err(|e| {
+                osm_ingest::proto::Error(format!("nodes.bin is not a blocked section: {e}"))
+            })?;
+            if view.unpacked_len() != want_nodes || view.record_len() != 12 {
+                return err(format!(
+                    "nodes.bin unpacks to {} byte(s), expected {want_nodes}",
+                    view.unpacked_len()
+                ));
+            }
+            inflate_all(&view)?
+        } else {
+            if nodes.len() as u64 != want_nodes {
+                return err(format!(
+                    "nodes.bin is {} bytes, expected {} for {node_count}+1 records",
+                    nodes.len(),
+                    want_nodes,
+                ));
+            }
+            Vec::new()
+        };
 
-        let escape_first_off = align_up8((edge_count as usize) * 7);
+        // v7 edge records are a ZBLK section at the file head; escapes and
+        // names follow it exactly as before. The records' end comes from the
+        // section, not from `edge_count * 7`.
+        let (escape_first_off, rec_owned) = if blocked_v7 {
+            let view = tilecodec::blocked::Blocked::parse(&edges).map_err(|e| {
+                osm_ingest::proto::Error(format!("edges.bin is not a blocked section: {e}"))
+            })?;
+            if view.unpacked_len() != edge_count * 7 || view.record_len() != 7 {
+                return err(format!(
+                    "edges.bin unpacks to {} byte(s), expected {} 7-byte records",
+                    view.unpacked_len(),
+                    edge_count
+                ));
+            }
+            let rec_end = view.block_offset(view.block_count()).ok_or_else(|| {
+                osm_ingest::proto::Error("edges.bin block table has no end".to_string())
+            })? as usize;
+            (align_up8(rec_end), inflate_all(&view)?)
+        } else {
+            (align_up8((edge_count as usize) * 7), Vec::new())
+        };
         let escape_blocks = edge_count.div_ceil(ESCAPE_BLOCK) + 1;
         let escapes_off = escape_first_off + (escape_blocks as usize) * 4;
         let want_edges_min = escapes_off + (escape_count as usize) * 12;
@@ -273,6 +364,8 @@ impl Graph {
             nodes,
             edges,
             inter,
+            nodes_owned,
+            rec_owned,
             node_count,
             escape_first_off,
             escapes_off,
@@ -286,27 +379,28 @@ impl Graph {
     /// A node's `(lat_e7, lon_e7)`.
     pub(crate) fn node(&self, n: u64) -> (i32, i32) {
         let base = (n as usize) * 12;
-        (i32_at(&self.nodes, base), i32_at(&self.nodes, base + 4))
+        (i32_at(self.nb(), base), i32_at(self.nb(), base + 4))
     }
 
     /// A node's first outgoing edge index. The sentinel record (index `node_count`) holds
     /// `edge_count`, so `edge_ptr(n+1)` is always defined for a real node `n`.
     pub(crate) fn edge_ptr(&self, n: u64) -> u32 {
-        u32_at(&self.nodes, (n as usize) * 12 + 8)
+        u32_at(self.nb(), (n as usize) * 12 + 8)
     }
 
     pub(crate) fn edge_type(&self, idx: u32) -> u8 {
-        self.edges[(idx as usize) * 7 + 5]
+        self.rb()[(idx as usize) * 7 + 5]
     }
 
     /// The target node of edge `idx` whose source is `s`, decoding the escape table when the
     /// delta or distance is sentinelled.
     pub(crate) fn edge_target(&self, idx: u32, s: u32) -> Result<u32> {
         let base = (idx as usize) * 7;
-        let delta = i16_at(&self.edges, base);
-        let dist = (self.edges[base + 2] as u32)
-            | ((self.edges[base + 3] as u32) << 8)
-            | ((self.edges[base + 4] as u32) << 16);
+        let rb = self.rb();
+        let delta = i16_at(rb, base);
+        let dist = (rb[base + 2] as u32)
+            | ((rb[base + 3] as u32) << 8)
+            | ((rb[base + 4] as u32) << 16);
         if delta == TARGET_DELTA_ESCAPE || dist == DIST_MM_ESCAPE {
             self.escape_target(idx)
         } else {

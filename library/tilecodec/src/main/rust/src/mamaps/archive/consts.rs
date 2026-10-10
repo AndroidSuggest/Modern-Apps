@@ -38,8 +38,11 @@ pub const ARCHIVE_KIND_TRANSIT: u8 = 13;
 
 /// `metadata.bin` (`MARG`) magic, little-endian `u32`.
 pub const GRAPH_MAGIC: u32 = 0x4752_414D;
-/// Newest (and only, for the single archive) graph version.
-pub const GRAPH_VERSION: u32 = 6;
+/// Newest (and only, for the single archive) graph version: v7 blocked record
+/// sections (nodes, edges records, elevation).
+pub const GRAPH_VERSION: u32 = 7;
+/// Oldest graph version accepted: v6 raw tables still validate by length.
+pub const GRAPH_VERSION_MIN: u32 = 6;
 /// `metadata.bin` wire length: magic + version + 4 counts.
 pub const GRAPH_META_LEN: u64 = 40;
 /// `transit` (`TRIX`) magic, little-endian `u32`.

@@ -39,14 +39,16 @@ impl Graph {
         // Explicit count fields rather than a generic section directory: each
         // version adds one, and a named field is more debuggable than speculative
         // generality.
-        let (node_count, edge_count, escape_count, named_edges) = {
+        let (node_count, edge_count, escape_count, named_edges, blocked_v7) = {
             let meta = MmapRegion::map(&format!("{base}metadata.bin"))?;
             if meta.len < 40 {
                 return None;
             }
             let magic = unsafe { read_at::<u32>(meta.base(), 0) };
             let version = unsafe { read_at::<u32>(meta.base(), 1) };
-            if magic != GRAPH_MAGIC || version != GRAPH_VERSION {
+            if magic != GRAPH_MAGIC
+                || !(GRAPH_VERSION_MIN..=GRAPH_VERSION).contains(&version)
+            {
                 return None;
             }
             let nodes = unsafe { read_at::<u64>(meta.base().add(8), 0) };
@@ -60,30 +62,82 @@ impl Graph {
             if u32::try_from(edges).is_err() || escapes > edges || named > edges {
                 return None;
             }
-            (u32::try_from(nodes).ok()?, edges, escapes, named)
+            (
+                u32::try_from(nodes).ok()?,
+                edges,
+                escapes,
+                named,
+                version >= GRAPH_VERSION,
+            )
         };
 
         // `edge_count` now comes from the header rather than from `edges.bin`'s
         // length. That is the point of version 4, and 5 and 6 are why: the record is
         // 7 bytes and the file has four more sections behind it, so its length is no
         // longer any simple multiple of anything.
+        //
+        // v7 packs the record arrays as ZBLK sections, so their lengths are
+        // data-dependent: the blocked views below replace the exact-length
+        // assertions, validating unpacked lengths instead.
+        //
+        // `version` is scoped to the metadata block above; `blocked_v7` rides
+        // out with the counts.
         let nodes_region = MmapRegion::map(&format!("{base}nodes.bin"))?;
         let edges_region = MmapRegion::map(&format!("{base}edges.bin"))?;
         // nodes.bin is `NodeRec[node_count + 1]`: one sentinel record past the real
         // nodes, whose `edge_ptr` is `edge_count`. Eight call sites read it.
         let want_nodes =
             (u64::from(node_count) + 1) * std::mem::size_of::<NodeRec>() as u64;
-        if nodes_region.len as u64 != want_nodes {
-            return None;
-        }
+        let nodes_view = if blocked_v7 {
+            let bytes = unsafe {
+                std::slice::from_raw_parts(nodes_region.base(), nodes_region.len)
+            };
+            let view = BlockedView::parse(bytes)?;
+            if view.unpacked_len != want_nodes || view.record_len != 12 {
+                return None;
+            }
+            Some(view)
+        } else {
+            if nodes_region.len as u64 != want_nodes {
+                return None;
+            }
+            None
+        };
+        let nodes = if nodes_view.is_some() {
+            ptr::null()
+        } else {
+            nodes_region.base()
+        };
 
         // edges.bin's five sections, computed forwards from the metadata counts.
         // The total-length assertion below is what replaces v3's self-locating
         // trailer: if the computed sections do not exactly consume the region, the
-        // file is not the one these counts describe.
+        // file is not the one these counts describe. Under v7 the record array
+        // is a ZBLK section whose end the view reports; the escapes and names
+        // follow it exactly as before.
         let escape_blocks = edge_count.div_ceil(ESCAPE_BLOCK) + 1;
-        let escape_first_off =
-            align_up(edge_count * std::mem::size_of::<EdgeRec>() as u64, SECTION_ALIGN);
+        let (escape_first_off, edges_view) = if blocked_v7 {
+            let bytes = unsafe {
+                std::slice::from_raw_parts(edges_region.base(), edges_region.len)
+            };
+            let view = BlockedView::parse(bytes)?;
+            if view.unpacked_len != edge_count * std::mem::size_of::<EdgeRec>() as u64
+                || view.record_len != 7
+            {
+                return None;
+            }
+            // The records section ends at the last block offset; escapes follow.
+            let rec_end = view.offsets[view.offsets.len() - 1];
+            (align_up(rec_end, SECTION_ALIGN), Some(view))
+        } else {
+            (
+                align_up(
+                    edge_count * std::mem::size_of::<EdgeRec>() as u64,
+                    SECTION_ALIGN,
+                ),
+                None,
+            )
+        };
         let escapes_off =
             escape_first_off + escape_blocks * std::mem::size_of::<u32>() as u64;
         let names_off = align_up(
@@ -95,7 +149,11 @@ impl Graph {
         if edges_region.len as u64 != want_edges {
             return None;
         }
-        let edges = edges_region.base();
+        let edges = if edges_view.is_some() {
+            ptr::null()
+        } else {
+            edges_region.base()
+        };
         let escape_first = unsafe { edges.add(escape_first_off as usize) };
         let escapes = unsafe { edges.add(escapes_off as usize) };
         let names = EdgeBitmap {
@@ -223,12 +281,32 @@ impl Graph {
         // elevation.bin: `i16[node_count]`, one per real node in node-id order. Optional and
         // validated by length alone — a stale-vintage file whose node_count differs is simply
         // disabled (elevation reads 0), the same self-check lanes.bin does against `edge_count`.
+        // Under v7 the file is a ZBLK section, dispatched on its magic: blocked
+        // parses as blocked, a raw `N * 2` file as raw, anything else as absent.
         let elevation_region = MmapRegion::map(&format!("{base}elevation.bin"));
-        let elevation = match &elevation_region {
-            Some(r) if r.len as u64 == u64::from(node_count) * std::mem::size_of::<i16>() as u64 => {
-                r.base()
+        let (elevation, elevation_view) = match &elevation_region {
+            Some(r) if blocked_v7 => {
+                let bytes =
+                    unsafe { std::slice::from_raw_parts(r.base(), r.len) };
+                match BlockedView::parse(bytes) {
+                    Some(view)
+                        if view.unpacked_len
+                            == u64::from(node_count)
+                                * std::mem::size_of::<i16>() as u64
+                            && view.record_len == 2 =>
+                    {
+                        (ptr::null(), Some(view))
+                    }
+                    _ => (ptr::null(), None),
+                }
             }
-            _ => ptr::null(),
+            Some(r)
+                if r.len as u64
+                    == u64::from(node_count) * std::mem::size_of::<i16>() as u64 =>
+            {
+                (r.base(), None)
+            }
+            _ => (ptr::null(), None),
         };
         // A wrong-length elevation.bin is dropped, not kept mapped: nothing should read a stale
         // vintage's bytes, and holding the region alive would imply it is usable.
@@ -308,153 +386,16 @@ impl Graph {
             road_names,
             road_names_size,
             elevation,
+            nodes_view,
+            edges_view,
+            elevation_view,
+            unpacked_nodes: std::sync::OnceLock::new(),
+            unpacked_edges: std::sync::OnceLock::new(),
+            unpacked_elevation: std::sync::OnceLock::new(),
             lon_to_mm_scale,
             time_scale_fixed,
             edge_time_multipliers,
         })
     }
 
-    // --- Raw accessors (all unaligned-safe) ---
-
-    #[inline]
-    pub fn node(&self, id: u32) -> NodeMaster {
-        // Callers guarantee id <= node_count (sentinel index is valid).
-        let r = unsafe { read_at::<NodeRec>(self.nodes, id as usize) };
-        NodeMaster {
-            lat_e7: r.lat_e7,
-            lon_e7: r.lon_e7,
-            edge_ptr: u64::from(r.edge_ptr),
-        }
-    }
-
-    /// Safe node fetch: returns a zeroed node for out-of-range ids, mirroring
-    /// the C++ `get_node` fallback.
-    ///
-    /// Deliberately asymmetric with [`Graph::node`], which is unchecked: the
-    /// sentinel index `node_count` is a *valid* read that this method rejects, and
-    /// [`Graph::edge_range`] depends on being able to make it.
-    #[inline]
-    pub fn get_node(&self, id: u32) -> NodeMaster {
-        if self.nodes.is_null() || id >= self.node_count {
-            return NodeMaster {
-                lat_e7: 0,
-                lon_e7: 0,
-                edge_ptr: 0,
-            };
-        }
-        self.node(id)
-    }
-
-    /// Ground elevation of node `id` in metres, or 0 when the graph carries no `elevation.bin` or
-    /// `id` is out of range. Baked from the DEM at build time (WS-G); a build without a DEM, or a
-    /// node off the DEM's coverage, reads as 0 so the route profile is simply flat there.
-    #[inline]
-    pub fn node_elevation(&self, id: u32) -> i16 {
-        if self.elevation.is_null() || id >= self.node_count {
-            return 0;
-        }
-        unsafe { read_at::<i16>(self.elevation, id as usize) }
-    }
-
-    /// `[start, end)` of node `id`'s outgoing edges in `edges.bin`. `id` must be a
-    /// real node, i.e. `id < node_count`.
-    ///
-    /// The only way to ask that question. Every caller that reads an `edge_ptr`
-    /// wants a range, not an offset, so the pairing is expressed once here rather
-    /// than transcribed at eight sites — which is also what stops a future
-    /// `nodes.bin` layout from leaking out of this file.
-    ///
-    /// # What the sentinel record is for
-    ///
-    /// `nodes.bin` carries one record past the real nodes whose `edge_ptr` is
-    /// `edge_count`. That is what makes this well-defined for the *last* real node:
-    /// `id + 1` is read for every node, so without it the last one would read past
-    /// the mapping and every other node's range would be one short of correct.
-    /// `edge_range(node_count - 1).1 == edge_count` is the property, and it is
-    /// load-bearing at eight sites.
-    ///
-    /// The sentinel index itself is the highest `id` this may be *passed plus one* —
-    /// `edge_range(node_count)` would read `node_count + 1`, which does not exist.
-    /// Every caller either iterates `0..node_count` or rejects `id >= node_count`
-    /// first.
-    ///
-    /// Note that this goes through [`Graph::node`], which is unchecked, *not*
-    /// [`Graph::get_node`], which would reject the sentinel index and silently
-    /// return `edge_ptr = 0` — turning the last node's range into an empty one.
-    #[inline]
-    pub fn edge_range(&self, id: u32) -> (u64, u64) {
-        debug_assert!(id < self.node_count, "node {id} is not a real node");
-        (self.node(id).edge_ptr, self.node(id + 1).edge_ptr)
-    }
-
-    /// Edge `idx`, which must be one of node `source`'s outgoing edges.
-    ///
-    /// `source` is what makes the record readable at all: it stores `target` as a
-    /// signed delta from it. Passing the wrong one produces a plausible node id
-    /// rather than a crash, which is why the debug assertion below exists — it is the
-    /// cheapest available guard against the one bug class delta coding introduces.
-    #[inline]
-    pub fn edge(&self, source: u32, idx: u64) -> Edge {
-        debug_assert!(
-            {
-                let (s, e) = self.edge_range(source);
-                (s..e).contains(&idx)
-            },
-            "edge {idx} is not in node {source}'s range {:?}",
-            self.edge_range(source)
-        );
-        let r = unsafe { read_at::<EdgeRec>(self.edges, idx as usize) };
-        let (target, dist_mm) = if r.escaped() {
-            self.escaped_fields(idx)
-        } else {
-            (
-                source.wrapping_add_signed(i32::from(r.target_delta)),
-                r.dist_mm(),
-            )
-        };
-        Edge {
-            target,
-            dist_mm,
-            type_: r.type_,
-            speed_limit: r.speed_limit,
-        }
-    }
-
-    /// `(target, dist_mm)` from the escape table, for an edge whose record carries a
-    /// sentinel.
-    ///
-    /// One load from the block index, then a scan of that block's rows — ~3 of them
-    /// at a 0.3% escape rate, usually within one cache line. See [`ESCAPE_BLOCK`].
-    ///
-    /// A record with a sentinel and no matching row is a corrupt pack that the load-
-    /// time checks cannot catch without an O(E) scan. It returns `u32::MAX` as the
-    /// target, which every caller already rejects as out of range, so the edge is
-    /// skipped rather than followed somewhere arbitrary.
-    #[cold]
-    fn escaped_fields(&self, idx: u64) -> (u32, u32) {
-        let block = (idx / ESCAPE_BLOCK) as usize;
-        let lo = unsafe { read_at::<u32>(self.escape_first, block) };
-        let hi = unsafe { read_at::<u32>(self.escape_first, block + 1) };
-        for r in lo..hi {
-            let row = unsafe { read_at::<EscapeRow>(self.escapes, r as usize) };
-            if u64::from(row.edge_idx) == idx {
-                return (row.target, row.dist_mm);
-            }
-        }
-        debug_assert!(false, "edge {idx} is escaped but has no escape row");
-        (u32::MAX, DIST_MM_ESCAPE)
-    }
-
-    /// Whether edge `idx` of node `source` points at `want`.
-    ///
-    /// Four call sites scan a node's edge range looking for the one edge that reaches
-    /// a given node and never use the target as a value. Delegating to [`Graph::edge`]
-    /// rather than comparing in delta space keeps the escape handling in one place:
-    /// the delta form would have to handle both an escaped record that could still
-    /// match and a `want − source` outside `i16` range, and the saving over one
-    /// sign-extend and one add is nothing.
-    #[inline]
-    pub fn edge_targets(&self, idx: u64, source: u32, want: u32) -> bool {
-        self.edge(source, idx).target == want
-    }
 }

@@ -431,7 +431,14 @@
         let total = f.finish(count).unwrap();
         let bytes = std::fs::read(dir.join("edges.bin")).unwrap();
         assert_eq!(bytes.len() as u64, total, "finish() lied about the length");
-        assert_eq!(total, EdgeFile::total_bytes(count, escapes, named));
+        // v7: the record array is a ZBLK section unpacking to exactly the
+        // pushed records; the escapes/names tail follows it. (The v6
+        // `total_bytes` formula no longer applies — the records' length is
+        // data-dependent.)
+        let blocked = tilecodec::blocked::Blocked::parse(&bytes)
+            .expect("the record array is a blocked section");
+        assert_eq!(blocked.unpacked_len(), count * EDGE_REC_BYTES);
+        assert_eq!(blocked.record_len(), EDGE_REC_BYTES as usize);
         let e = Edges::new(&bytes, count, escapes, named);
         // The block index's last entry is the row total, which is what the reader
         // cross-checks `escape_count` against.

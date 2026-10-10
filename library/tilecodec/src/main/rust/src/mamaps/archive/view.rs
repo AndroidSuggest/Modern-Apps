@@ -4,6 +4,18 @@ use super::footer::ArchiveFooter;
 use super::layout::{align_up, sidecar_start};
 use crate::proto::{err, Result};
 
+/// A v7 blocked section must parse and unpack to exactly `want` bytes of
+/// `stride`-byte records. Used by the nodes/elevation checks; the edges
+/// check inlines its own (records share the section with escapes/names).
+fn check_blocked(b: &[u8], want: u64, stride: usize, what: &str) -> Result<()> {
+    match crate::blocked::Blocked::parse(b) {
+        Ok(v) if v.unpacked_len() == want && v.record_len() == stride => Ok(()),
+        _ => err(format!(
+            "a single-archive {what} section is not the blocked records it claims"
+        )),
+    }
+}
+
 /// A parsed sidecar: footer + directory, with payload accessors.
 ///
 /// Parse validates everything a later slice would discover the hard way:
@@ -175,12 +187,12 @@ impl ArchiveView {
             )
         });
         let meta = slice(ARCHIVE_KIND_GRAPH_META)?;
-        let (node_count, edge_count, escape_count, named_edges) = match meta {
+        let (node_count, edge_count, escape_count, named_edges, blocked_v7) = match meta {
             None => {
                 if graph_present {
                     return err("a single-archive carries graph sections but no graph meta");
                 }
-                (0, 0, 0, 0)
+                (0, 0, 0, 0, false)
             }
             Some(m) => {
                 if m.len() as u64 != GRAPH_META_LEN {
@@ -201,10 +213,10 @@ impl ArchiveView {
                 if u32_at(0) != GRAPH_MAGIC {
                     return err("a single-archive graph meta has bad MARG magic");
                 }
-                if u32_at(4) != GRAPH_VERSION {
+                let graph_version = u32_at(4);
+                if !(GRAPH_VERSION_MIN..=GRAPH_VERSION).contains(&graph_version) {
                     return err(format!(
-                        "a single-archive graph meta is version {}, not {GRAPH_VERSION}",
-                        u32_at(4)
+                        "a single-archive graph meta is version {graph_version}, not {GRAPH_VERSION_MIN}..={GRAPH_VERSION}",
                     ));
                 }
                 let (n, e, esc, named) = (u64_at(8), u64_at(16), u64_at(24), u64_at(32));
@@ -215,13 +227,16 @@ impl ArchiveView {
                     return err("a single-archive graph node count overflows u32");
                 }
                 let _ = header;
-                (n, e, esc, named)
+                (n, e, esc, named, graph_version >= GRAPH_VERSION)
             }
         };
-        // Nodes: (N+1) 12-byte records (the sentinel).
+        // Nodes: (N+1) 12-byte records (the sentinel). Under v7 a ZBLK
+        // section unpacking to exactly that.
         if let Some(b) = slice(ARCHIVE_KIND_GRAPH_NODES)? {
             let want = (node_count + 1) * 12;
-            if b.len() as u64 != want {
+            if blocked_v7 {
+                check_blocked(b, want, 12, "nodes")?;
+            } else if b.len() as u64 != want {
                 return err(format!(
                     "a single-archive nodes section is {} bytes for {node_count} nodes, want {want}",
                     b.len()
@@ -229,10 +244,27 @@ impl ArchiveView {
             }
         }
         // Edges: records + escape index + escape rows + name bitmap + name offs.
+        // Under v7 the records are a ZBLK section; the escapes and names follow
+        // it exactly as before.
         if let Some(b) = slice(ARCHIVE_KIND_GRAPH_EDGES)? {
             let escape_blocks = edge_count.div_ceil(1024) + 1;
-            let rec = edge_count * 7;
-            let first_off = align_up(rec);
+            let (rec_end, rec_ok) = if blocked_v7 {
+                match crate::blocked::Blocked::parse(b) {
+                    Ok(v)
+                        if v.unpacked_len() == edge_count * 7
+                            && v.record_len() == 7 =>
+                    {
+                        (v.block_offset(v.block_count()).unwrap_or(b.len() as u64), true)
+                    }
+                    _ => (0, false),
+                }
+            } else {
+                (edge_count * 7, true)
+            };
+            if !rec_ok {
+                return err("a single-archive edges records section is not the blocked records it claims".to_string());
+            }
+            let first_off = align_up(rec_end);
             let escapes_off = first_off + escape_blocks * 4;
             let names_off = align_up(escapes_off + escape_count * 12);
             // Bitmap bytes: rank + present, same as graph::EdgeBitmap::bytes.
@@ -263,9 +295,12 @@ impl ArchiveView {
                 ));
             }
         }
-        // Elevation: i16[N] when present.
+        // Elevation: i16[N] when present — or a ZBLK section unpacking to
+        // exactly that under v7.
         if let Some(b) = slice(ARCHIVE_KIND_GRAPH_ELEVATION)? {
-            if b.len() as u64 != node_count * 2 {
+            if blocked_v7 {
+                check_blocked(b, node_count * 2, 2, "elevation")?;
+            } else if b.len() as u64 != node_count * 2 {
                 return err(format!(
                     "a single-archive elevation section is {} bytes for {node_count} nodes",
                     b.len()

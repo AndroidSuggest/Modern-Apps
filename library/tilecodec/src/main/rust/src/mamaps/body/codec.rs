@@ -1,7 +1,7 @@
-use super::consts::{BODY_FLAG_BUILDING_TABLE, BODY_FLAG_EXTENDED_COUNTS, BODY_FLAG_HEIGHTMAP, BODY_FLAG_ID_TABLE, BODY_FLAG_LANE_TABLE, BODY_FLAG_NAME_TABLE, BODY_FLAG_REGION_LINKS, BODY_FLAG_ROAD_LANES, BODY_HEADER_LEN, FEATURE_RECORD_LEN, GEOM_LINE, GEOM_POINT, GEOM_POLYGON, KNOWN_BODY_FLAGS, KNOWN_FEATURE_FLAGS, LAYER_INDEX_LEN, PART_ENTRY_LEN, WINDING_HOLE, WINDING_OUTER};
+use super::consts::{BODY_FLAG_BUILDING_TABLE, BODY_FLAG_EXTENDED_COUNTS, BODY_FLAG_HEIGHTMAP, BODY_FLAG_ID_TABLE, BODY_FLAG_LANE_TABLE, BODY_FLAG_NAME_TABLE, BODY_FLAG_REGION_LINKS, BODY_FLAG_ROAD_LANES, BODY_HEADER_LEN, FEATURE_RECORD_LEN, GEOM_LINE, GEOM_POINT, GEOM_POLYGON, KNOWN_BODY_FLAGS, KNOWN_FEATURE_FLAGS, LAYER_INDEX_LEN, PART_ENTRY_LEN, PART_ENTRY_V10_LEN, WINDING_HOLE, WINDING_OUTER};
 use super::model::{Body, BuildingAttrs, Carriageway, Feature, LaneTurns, Layer, NAME_NONE, Part};
 use super::tables::{align4, parse_carriageways, parse_heightmap, parse_ids, parse_lanes, parse_names, parse_region_links, payloads_end};
-use super::tables_extra::parse_buildings;
+use super::tables_extra::{parse_buildings, parse_sparse_buildings};
 use crate::proto::{Result, err};
 
 impl Body {
@@ -108,9 +108,13 @@ impl Body {
             return err("not a .mamaps tile body (bad magic)");
         }
         let version = buf[3];
-        if version != crate::mamaps::header::FORMAT_VERSION {
+        if version != crate::mamaps::header::FORMAT_VERSION
+            && version != crate::mamaps::header::FORMAT_VERSION_V9
+            && version != crate::mamaps::header::FORMAT_VERSION_V10
+        {
             return err(format!("unsupported .mamaps body version {version}"));
         }
+        let v10 = version == crate::mamaps::header::FORMAT_VERSION_V10;
         let raw_len = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]) as usize;
         if raw_len != buf.len() {
             return err(format!(
@@ -177,7 +181,11 @@ impl Body {
             if offset < index_end || end > buf.len() {
                 return err("a .mamaps layer's payload is outside the body");
             }
-            layers.push(parse_layer(layer_id, feature_count, &buf[offset..end])?);
+            layers.push(if v10 {
+                parse_layer_v10(layer_id, feature_count, &buf[offset..end])?
+            } else {
+                parse_layer(layer_id, feature_count, &buf[offset..end])?
+            });
         }
         // The optional trailing sections, in order: the name table, then the id table, then the
         // turn-lane table, then the building table, then the heightmap, then the carriageway
@@ -236,7 +244,12 @@ impl Body {
                 turn_lanes = table;
             }
             if has_buildings {
-                let (table, used) = parse_buildings(&buf[at..], &layers)?;
+                let (table, used) = if v10 {
+                    parse_sparse_buildings(&buf[at..], &layers)?
+                } else {
+                    parse_buildings(&buf[at..], &layers)?
+                };
+                // v10 sparse expands to the dense model, so the shapes agree.
                 at += used;
                 buildings = table;
             }
@@ -282,6 +295,11 @@ impl Body {
 /// Every count is bounded by the slice it is read from before anything is allocated, so a corrupt
 /// body cannot ask for a gigabyte of `Vec`.
 pub(crate) fn parse_layer(layer_id: u8, feature_count: usize, buf: &[u8]) -> Result<Layer> {
+    parse_layer_v8(layer_id, feature_count, buf)
+}
+
+/// v8 payload: 24-byte records, 12-byte parts.
+fn parse_layer_v8(layer_id: u8, feature_count: usize, buf: &[u8]) -> Result<Layer> {
     let features_len = feature_count * FEATURE_RECORD_LEN;
     if features_len > buf.len() {
         return err("a .mamaps layer's features run past its payload");
@@ -359,6 +377,168 @@ pub(crate) fn parse_layer(layer_id: u8, feature_count: usize, buf: &[u8]) -> Res
     }
     // Walked in parts-table order, because a varint arena has no random access: each part's points
     // are deltas from the one before it, restarting at every part.
+    let mut coords = Vec::with_capacity(coords_needed);
+    let mut reader = crate::proto::Reader::new(&buf[coords_at..]);
+    for part in &parts {
+        if part.coord_start as usize != coords.len() {
+            return err(format!(
+                "a .mamaps part claims to start at point {} but the arena is {} points in",
+                part.coord_start,
+                coords.len(),
+            ));
+        }
+        let (mut x, mut y) = (0i32, 0i32);
+        for _ in 0..part.point_count {
+            x += zigzag(reader.uvarint()?);
+            y += zigzag(reader.uvarint()?);
+            let (Ok(x), Ok(y)) = (i16::try_from(x), i16::try_from(y)) else {
+                return err("a .mamaps coordinate delta walks outside the extent an i16 holds");
+            };
+            coords.push((x, y));
+        }
+    }
+    if coords.len() != coords_needed {
+        return err(format!(
+            "a .mamaps layer decoded {} points where its parts want {coords_needed}",
+            coords.len(),
+        ));
+    }
+    Ok(Layer { layer_id, features, parts, coords })
+}
+
+/// v10 payload: narrowed per-layer records, 4-byte parts, shared arena.
+///
+/// The class is a pure function of the layer id (see
+/// `emit_extra::record_class`), so the reader derives the same layout the
+/// writer used without a wire bit. Dropped fields read back as their defaults
+/// (zero names/details/transit/lanes), and `coord_start` is reconstructed by
+/// the arena walk — v10 parts are validated contiguous exactly as v8 requires.
+pub(crate) fn parse_layer_v10(layer_id: u8, feature_count: usize, buf: &[u8]) -> Result<Layer> {
+    use super::consts::{FEATURE_RECORD_MIN_LEN, FEATURE_RECORD_ROAD_LEN, PART_ENTRY_V10_LEN};
+    use super::emit_extra::{RecordClass, record_class};
+    let class = record_class(layer_id);
+    let reclen = match class {
+        RecordClass::Min => FEATURE_RECORD_MIN_LEN,
+        RecordClass::Road => FEATURE_RECORD_ROAD_LEN,
+        RecordClass::Full => FEATURE_RECORD_LEN,
+    };
+    let features_len = feature_count * reclen;
+    if features_len > buf.len() {
+        return err("a .mamaps layer's features run past its payload");
+    }
+    let mut features = Vec::with_capacity(feature_count);
+    let mut parts_needed = 0usize;
+    for i in 0..feature_count {
+        let at = i * reclen;
+        let u16_at = |o: usize| u16::from_le_bytes([buf[at + o], buf[at + o + 1]]);
+        let u32_at = |o: usize| {
+            u32::from_le_bytes([buf[at + o], buf[at + o + 1], buf[at + o + 2], buf[at + o + 3]])
+        };
+        // Field offsets within the class. Min: kind(0) geom(2) flags(3)
+        // off(4) cnt(8). Road adds detail(2 in v8 order...) — laid out in
+        // emit order: kind, [detail,] geom, flags, [name,] off, cnt, [lane].
+        let (kind_detail, name_idx, lane_count, transit);
+        let (geom_type, flags, parts_offset, part_count);
+        match class {
+            RecordClass::Min => {
+                kind_detail = 0;
+                name_idx = NAME_NONE;
+                lane_count = 0;
+                transit = (0u32, 0u8, 0u8, 0u8);
+                geom_type = buf[at + 2];
+                flags = buf[at + 3];
+                parts_offset = u32_at(4);
+                part_count = u32_at(8);
+            }
+            RecordClass::Road => {
+                kind_detail = u16_at(2);
+                name_idx = u16_at(6);
+                lane_count = buf[at + 16];
+                transit = (0u32, 0u8, 0u8, 0u8);
+                geom_type = buf[at + 4];
+                flags = buf[at + 5];
+                parts_offset = u32_at(8);
+                part_count = u32_at(12);
+            }
+            RecordClass::Full => {
+                kind_detail = u16_at(2);
+                name_idx = u16_at(6);
+                lane_count = buf[at + 23];
+                transit = (u32_at(16), buf[at + 20], buf[at + 21], buf[at + 22]);
+                geom_type = buf[at + 4];
+                flags = buf[at + 5];
+                parts_offset = u32_at(8);
+                part_count = u32_at(12);
+            }
+        }
+        if !matches!(geom_type, GEOM_LINE | GEOM_POLYGON | GEOM_POINT) {
+            return err(format!("a .mamaps feature has geometry type {geom_type}, which this format does not carry"));
+        }
+        if flags & !KNOWN_FEATURE_FLAGS != 0 {
+            return err("a .mamaps feature sets unknown flags");
+        }
+        let feature = Feature {
+            kind: u16_at(0),
+            kind_detail,
+            geom_type,
+            flags,
+            name_idx,
+            parts_offset,
+            part_count,
+            transit_color: transit.0,
+            transit_ordinal: transit.1,
+            transit_lanes: transit.2,
+            transit_taper: transit.3,
+            lane_count,
+        };
+        if feature.part_count == 0 {
+            return err("a .mamaps feature has no geometry");
+        }
+        let end = (feature.parts_offset as usize)
+            .checked_add(feature.part_count as usize)
+            .ok_or_else(|| crate::proto::Error("a .mamaps feature's parts overflow".to_string()))?;
+        parts_needed = parts_needed.max(end);
+        features.push(feature);
+    }
+
+    let parts_at = features_len;
+    let parts_len = parts_needed * PART_ENTRY_V10_LEN;
+    if parts_at + parts_len > buf.len() {
+        return err("a .mamaps layer's parts run past its payload");
+    }
+    let mut parts = Vec::with_capacity(parts_needed);
+    let mut coords_needed = 0usize;
+    for i in 0..parts_needed {
+        let at = parts_at + i * PART_ENTRY_V10_LEN;
+        let point_count = u32::from(u16::from_le_bytes([buf[at], buf[at + 1]]));
+        let pflags = buf[at + 2];
+        if pflags & !0x01 != 0 {
+            return err(format!("a .mamaps part sets unknown flags {pflags:#04x}"));
+        }
+        if buf[at + 3] != 0 {
+            return err("a .mamaps part has a non-zero reserved byte");
+        }
+        let winding = if pflags & 0x01 != 0 {
+            WINDING_HOLE
+        } else {
+            WINDING_OUTER
+        };
+        // coord_start is reconstructed: v10 parts are contiguous by
+        // construction (the writer validates), so the Nth part starts where
+        // the arena walk ends.
+        let part = Part { coord_start: coords_needed as u32, point_count, winding };
+        let end = (part.coord_start as usize)
+            .checked_add(part.point_count as usize)
+            .ok_or_else(|| crate::proto::Error("a .mamaps part's coordinates overflow".to_string()))?;
+        coords_needed = coords_needed.max(end);
+        parts.push(part);
+    }
+
+    let coords_at = align4(parts_at + parts_len);
+    if coords_at > buf.len() {
+        return err("a .mamaps layer's coordinate arena starts past its payload");
+    }
+    // Identical arena walk to v8: varint deltas restarting at each part.
     let mut coords = Vec::with_capacity(coords_needed);
     let mut reader = crate::proto::Reader::new(&buf[coords_at..]);
     for part in &parts {

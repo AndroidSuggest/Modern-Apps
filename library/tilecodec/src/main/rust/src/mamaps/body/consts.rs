@@ -4,9 +4,21 @@ pub const LAYER_INDEX_LEN: usize = 12;
 /// part_count, transit_color (u32), the three transit lane bytes (ordinal, lanes, taper) and
 /// the roads lane count (byte 23) — 24, with no byte reserved any longer.
 pub const FEATURE_RECORD_LEN: usize = 24;
+/// v10 minimal record: kind (u16), geom (u8), flags (u8), parts offset (u32),
+/// part count (u32) — 12. Layers whose features carry no names, details,
+/// transit bytes or lane counts (`landtype`, `buildings`, `junction`).
+pub const FEATURE_RECORD_MIN_LEN: usize = 12;
+/// v10 roads record: minimal + kind_detail (u16) + name_idx (u16) + lane
+/// count (u8) — 17. Transit bytes are transit-layer-only.
+pub const FEATURE_RECORD_ROAD_LEN: usize = 17;
 /// One carriageway record: `u8` forward lanes, `u8` backward lanes, `u32` solid divider bits.
 pub const CARRIAGEWAY_RECORD_LEN: usize = 6;
+/// v10 part entry: point count (u16) + flags (u8: winding in bit 0) +
+/// reserved (u8, zero) — 4. `coord_start` is deleted: parts are validated
+/// contiguous, so the Nth part starts where the arena walk ends.
 pub const PART_ENTRY_LEN: usize = 12;
+/// v10 part entry length. See above.
+pub const PART_ENTRY_V10_LEN: usize = 4;
 pub const BODY_FLAG_EXTENDED_COUNTS: u8 = 0x01;
 /// A feature id table follows the name table. See [`Body::ids`].
 pub const BODY_FLAG_ID_TABLE: u8 = 0x02;

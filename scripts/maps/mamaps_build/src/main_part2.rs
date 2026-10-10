@@ -67,30 +67,81 @@ fn check_graph_dir(dir: &std::path::Path, region: osm_ingest::region::Region) ->
         return Err(format!("{} is not a MARG graph header", dir.join("metadata.bin").display()));
     }
     let version = u32_at(&meta, 4);
-    if version != 6 {
-        return Err(format!("the graph is version {version}; this build reads v6"));
+    if version != 6 && version != 7 {
+        return Err(format!("the graph is version {version}; this build reads v6..=v7"));
     }
+    let blocked_v7 = version >= 7;
     let node_count = u64_at(&meta, 8);
     let edge_count = u64_at(&meta, 16);
     if node_count == 0 {
         return Err(format!("the graph at {} has 0 nodes — road_graph wrote nothing?", dir.display()));
     }
     // The remaining files must exist and match the header's counts.
-    let nodes = read("nodes.bin")?;
-    let want_nodes = (node_count + 1).checked_mul(12).ok_or_else(|| "node table size overflows".to_string())?;
-    if nodes.len() as u64 != want_nodes {
-        return Err(format!(
-            "nodes.bin is {} bytes, expected {want_nodes} for {node_count}+1 records — stale graph dir?",
-            nodes.len(),
-        ));
+    // Under v7 the record arrays are ZBLK sections: unpack at the boundary
+    // (this is a preflight check, not the hot path, so whole-section inflate
+    // is fine).
+    fn inflate_all(v: &tilecodec::blocked::Blocked) -> Result<Vec<u8>, String> {
+        let mut cache = tilecodec::blocked::BlockCache::new(0);
+        let mut out = Vec::with_capacity(v.unpacked_len() as usize);
+        for b in 0..v.block_count() {
+            out.extend_from_slice(
+                cache
+                    .get(v, b)
+                    .map_err(|e| format!("blocked inflate failed: {e}"))?,
+            );
+        }
+        if out.len() as u64 != v.unpacked_len() {
+            return Err("blocked inflate came up short".to_string());
+        }
+        Ok(out)
     }
+    let want_nodes = (node_count + 1)
+        .checked_mul(12)
+        .ok_or_else(|| "node table size overflows".to_string())?;
+    let nodes_raw = read("nodes.bin")?;
+    let nodes: Vec<u8> = if blocked_v7 {
+        let v = tilecodec::blocked::Blocked::parse(&nodes_raw).map_err(|e| {
+            format!("nodes.bin is not a blocked section: {e}")
+        })?;
+        if v.unpacked_len() != want_nodes || v.record_len() != 12 {
+            return Err(format!(
+                "nodes.bin unpacks to {} byte(s), expected {want_nodes} for {node_count}+1 records",
+                v.unpacked_len(),
+            ));
+        }
+        inflate_all(&v)?
+    } else {
+        if nodes_raw.len() as u64 != want_nodes {
+            return Err(format!(
+                "nodes.bin is {} bytes, expected {want_nodes} for {node_count}+1 records — stale graph dir?",
+                nodes_raw.len(),
+            ));
+        }
+        nodes_raw
+    };
     let edges = read("edges.bin")?;
-    let want_edges_min = ((edge_count * 7 + 7) & !7) as usize;
-    if edges.len() < want_edges_min {
-        return Err(format!(
-            "edges.bin is {} bytes, too short for {edge_count} edges — stale graph dir?",
-            edges.len(),
-        ));
+    if blocked_v7 {
+        // v7: the record array is blocked (data-dependent length), so only
+        // the tail minimum applies. The real validation (blocked parse +
+        // unpacked lengths + escape/name checks) lives in `traffic::Graph::load`,
+        // which reads this same dir next.
+        let v = tilecodec::blocked::Blocked::parse(&edges).map_err(|e| {
+            format!("edges.bin is not a blocked section: {e}")
+        })?;
+        if v.unpacked_len() != edge_count * 7 || v.record_len() != 7 {
+            return Err(format!(
+                "edges.bin unpacks to {} byte(s), expected {edge_count} 7-byte records",
+                v.unpacked_len(),
+            ));
+        }
+    } else {
+        let want_edges_min = ((edge_count * 7 + 7) & !7) as usize;
+        if edges.len() < want_edges_min {
+            return Err(format!(
+                "edges.bin is {} bytes, too short for {edge_count} edges — stale graph dir?",
+                edges.len(),
+            ));
+        }
     }
     let inter = read("intermediate.bin")?;
     if inter.len() < 8 {

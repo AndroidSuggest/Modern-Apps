@@ -274,11 +274,11 @@ impl PresenceBitmap {
     }
 }
 
-/// `edges.bin`, in five sections:
+/// `edges.bin`, in five sections (v7: the record array is blocked):
 ///
 /// ```text
-/// [ EdgeRec[E] ]                     7 B: i16 target_delta, u24 dist_mm,
-///                                         u8 type_, u8 speed_limit
+/// [ ZBLK records[E] ]                7 B each, blocked zstd (see
+///                                    `tilecodec::blocked`); v6 is raw E*7
 /// [ pad to SECTION_ALIGN ]
 /// [ u32 escape_first[E.div_ceil(1024) + 1] ]   first escape row of each block
 /// [ { u32 edge_idx, u32 target, u32 dist_mm } x escapes ]   ascending by edge_idx
@@ -300,14 +300,18 @@ impl PresenceBitmap {
 /// # Why the tables come last, and why they fit in memory
 ///
 /// Neither the escape count nor the named-edge count is known until the final round
-/// has run, so a reserved prefix cannot be sized. But unlike `intermediate.bin` the
-/// record array is a fixed stride, so this needs no trailer to be self-locating: the
-/// reader computes all five offsets from `metadata.bin`'s counts. The escape rows
-/// accumulate in memory — 39 MB at planet scale against `edges.bin`'s 8.6 GB — as do
-/// the name offsets (1.6 GB, the largest of them) and the bitmap (134 MB).
+/// has run, so a reserved prefix cannot be sized. The blocked record array is
+/// likewise data-dependent in length, so — unlike the v6 fixed stride — the
+/// reader cannot compute offsets from `metadata.bin`'s counts alone: it parses
+/// the ZBLK header for the records' end, then the escapes and names exactly as
+/// before. The escape rows accumulate in memory — 39 MB at planet scale against
+/// `edges.bin`'s 8.6 GB — as do the name offsets (1.6 GB, the largest of them)
+/// and the bitmap (134 MB).
 struct EdgeFile {
     path: PathBuf,
-    out: BufWriter<File>,
+    /// Blocked record staging: 7 B records stream here (one block in memory,
+    /// frames to scratch), finished into the file head at [`EdgeFile::finish`].
+    blocked: tilecodec::blocked::BlockedStreamWriter,
     /// `(edge_idx, target, dist_mm)` for the edges a record cannot hold, in
     /// ascending `edge_idx` — which is the order they are pushed in, because the
     /// rounds ascend and each round writes its edges in index order.
@@ -321,8 +325,10 @@ struct EdgeFile {
 }
 
 impl EdgeFile {
-    /// Byte size of the whole file. The reader computes it the same way, from
-    /// `metadata.bin`.
+    /// Byte size of the whole file. Only the v6 fixed-stride layout is
+    /// computable from counts; the v7 blocked layout is data-dependent, so
+    /// this covers the trailer and the reader parses the records' end out of
+    /// the ZBLK header instead.
     fn total_bytes(edge_count: u64, escapes: u64, named: u64) -> u64 {
         let rows = align_up(edge_count * EDGE_REC_BYTES, SECTION_ALIGN)
             + (edge_count.div_ceil(ESCAPE_BLOCK) + 1) * 4
@@ -332,8 +338,10 @@ impl EdgeFile {
 
     fn create(dir: &Path, name: &str, edge_count: u64) -> Result<EdgeFile> {
         let path = dir.join(name);
+        let scratch = dir.join(format!("{name}.blocked.tmp"));
         Ok(EdgeFile {
-            out: BufWriter::new(create(&path)?),
+            blocked: tilecodec::blocked::BlockedStreamWriter::create(EDGE_REC_BYTES as usize, &scratch)
+                .map_err(|e| Error(format!("cannot stage {}: {e}", scratch.display())))?,
             path,
             escapes: Vec::new(),
             named: PresenceBitmap::new(edge_count),
@@ -356,9 +364,14 @@ impl EdgeFile {
                 (TARGET_DELTA_ESCAPE, DIST_MM_ESCAPE)
             }
         };
-        self.out.write_all(&delta.to_le_bytes()).map_err(io_err)?;
-        self.out.write_all(&dist.to_le_bytes()[..3]).map_err(io_err)?;
-        self.out.write_all(&[type_, e.speed_limit]).map_err(io_err)?;
+        let mut rec = [0u8; EDGE_REC_BYTES as usize];
+        rec[0..2].copy_from_slice(&delta.to_le_bytes());
+        rec[2..5].copy_from_slice(&dist.to_le_bytes()[..3]);
+        rec[5] = type_;
+        rec[6] = e.speed_limit;
+        self.blocked
+            .push(&rec)
+            .map_err(|e| Error(format!("cannot stage edge record: {e}")))?;
         if e.name_offset != NO_NAME {
             self.named.set(self.pushed);
             self.name_offsets.push(e.name_offset);
@@ -367,9 +380,10 @@ impl EdgeFile {
         Ok(())
     }
 
-    /// Pad to the section boundary, then append the block index, the escape rows, the
-    /// name bitmap and the name offsets. Returns the finished file's size.
-    fn finish(mut self, edge_count: u64) -> Result<u64> {
+    /// Finish the blocked records into the file head, then pad and append the
+    /// block index, the escape rows, the name bitmap and the name offsets.
+    /// Returns the finished file's size.
+    fn finish(self, edge_count: u64) -> Result<u64> {
         if self.pushed != edge_count {
             return Err(Error(format!(
                 "{} holds {} edge(s), not the {edge_count} the pack is sized for",
@@ -377,8 +391,25 @@ impl EdgeFile {
                 self.pushed
             )));
         }
-        let mut at = edge_count * EDGE_REC_BYTES;
-        at = self.pad_to(at)?;
+        let EdgeFile { path, blocked, escapes, named, name_offsets, pushed: _ } = self;
+        let records = blocked
+            .finish()
+            .map_err(|e| Error(format!("cannot finish {}: {e}", path.display())))?;
+        // Sanity: the blocked section must unpack to exactly the pushed records.
+        let parsed = tilecodec::blocked::Blocked::parse(&records).map_err(|e| {
+            Error(format!("freshly blocked {} does not parse: {e}", path.display()))
+        })?;
+        if parsed.unpacked_len() != edge_count * EDGE_REC_BYTES {
+            return Err(Error(format!(
+                "{} unpacks to {} byte(s), not {edge_count} 7-byte records",
+                path.display(),
+                parsed.unpacked_len()
+            )));
+        }
+        let mut out = BufWriter::new(create(&path)?);
+        out.write_all(&records).map_err(io_err)?;
+        let mut at = records.len() as u64;
+        at = pad_to(&mut out, &path, at)?;
 
         // `escape_first[b]` is the index of the first row in block `b`, i.e. the
         // count of rows below `b * ESCAPE_BLOCK`. The rows ascend, so one walk over
@@ -388,61 +419,57 @@ impl EdgeFile {
         let mut row = 0usize;
         for b in 0..blocks {
             let limit = b * ESCAPE_BLOCK;
-            while row < self.escapes.len() && u64::from(self.escapes[row].0) < limit {
+            while row < escapes.len() && u64::from(escapes[row].0) < limit {
                 row += 1;
             }
-            self.out.write_all(&(row as u32).to_le_bytes()).map_err(io_err)?;
+            out.write_all(&(row as u32).to_le_bytes()).map_err(io_err)?;
         }
-        if row != self.escapes.len() {
+        if row != escapes.len() {
             return Err(Error(format!(
                 "{}: the block index reached row {row} of {}, so a row is past the \
                  last block",
-                self.path.display(),
-                self.escapes.len()
+                path.display(),
+                escapes.len()
             )));
         }
         at += blocks * 4;
 
-        for (idx, target, dist_mm) in &self.escapes {
-            self.out.write_all(&idx.to_le_bytes()).map_err(io_err)?;
-            self.out.write_all(&target.to_le_bytes()).map_err(io_err)?;
-            self.out.write_all(&dist_mm.to_le_bytes()).map_err(io_err)?;
+        for (idx, target, dist_mm) in &escapes {
+            out.write_all(&idx.to_le_bytes()).map_err(io_err)?;
+            out.write_all(&target.to_le_bytes()).map_err(io_err)?;
+            out.write_all(&dist_mm.to_le_bytes()).map_err(io_err)?;
         }
-        at += self.escapes.len() as u64 * 12;
-        self.pad_to(at)?;
+        at += escapes.len() as u64 * 12;
+        at = pad_to(&mut out, &path, at)?;
 
-        let named = self.named.write(&mut self.out)?;
-        if named != self.name_offsets.len() as u64 {
+        let named = named.write(&mut out)?;
+        if named != name_offsets.len() as u64 {
             return Err(Error(format!(
                 "{}: the name bitmap has {named} bit(s) set but {} offset(s) were \
                  collected",
-                self.path.display(),
-                self.name_offsets.len()
+                path.display(),
+                name_offsets.len()
             )));
         }
-        for off in &self.name_offsets {
-            self.out.write_all(&off.to_le_bytes()).map_err(io_err)?;
+        for off in &name_offsets {
+            out.write_all(&off.to_le_bytes()).map_err(io_err)?;
         }
-        self.out.flush().map_err(io_err)?;
+        out.flush().map_err(io_err)?;
 
-        let want = EdgeFile::total_bytes(edge_count, self.escapes.len() as u64, named);
-        let got = std::fs::metadata(&self.path)
-            .map_err(|e| Error(format!("cannot stat {}: {e}", self.path.display())))?
+        let got = std::fs::metadata(&path)
+            .map_err(|e| Error(format!("cannot stat {}: {e}", path.display())))?
             .len();
-        if got != want {
-            return Err(Error(format!(
-                "{} came out {got} byte(s) long, not the {want} the reader will compute",
-                self.path.display()
-            )));
-        }
-        Ok(want)
+        Ok(got)
     }
+}
 
-    /// Write zeroes up to the next section boundary, returning the new offset.
-    fn pad_to(&mut self, at: u64) -> Result<u64> {
-        let aligned = align_up(at, SECTION_ALIGN);
-        let zeroes = [0u8; SECTION_ALIGN as usize];
-        self.out.write_all(&zeroes[..(aligned - at) as usize]).map_err(io_err)?;
-        Ok(aligned)
-    }
+/// Write zeroes up to the next section boundary, returning the new offset.
+///
+/// Free function (not a method): [`EdgeFile::finish`] destructures `self`
+/// before the trailer, so there is no receiver left to hang it on.
+fn pad_to(out: &mut BufWriter<File>, path: &Path, at: u64) -> Result<u64> {
+    let aligned = align_up(at, SECTION_ALIGN);
+    let zeroes = [0u8; SECTION_ALIGN as usize];
+    out.write_all(&zeroes[..(aligned - at) as usize]).map_err(io_err)?;
+    Ok(aligned)
 }

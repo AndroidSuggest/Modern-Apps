@@ -25,4 +25,10 @@ flate2.workspace = true
 # Cargo.toml), the same way library/map's Rust consumes it.
 tilecodec = { path = "../../../../library/tilecodec/src/main/rust" }
 
+# Test-only writer access: device tests synthesize v7 blocked payloads with
+# `write_blocked`. Same package id, so cargo unifies features for the test
+# build only — the cdylib keeps its read-only rule.
+[dev-dependencies]
+tilecodec = { path = "../../../../library/tilecodec/src/main/rust", features = ["write"] }
+
 # Patch inherited from workspace root Cargo.toml.

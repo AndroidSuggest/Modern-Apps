@@ -62,6 +62,10 @@ rayon = "1"
 # that: materialisation walks ways in id order and a way's nodes are close together in a PBF.
 memmap2 = "0.9"
 
+# Blocked-section writer for the v7 graph (`tilecodec::blocked`, write side).
+# Host tool only — same pure-Rust bar as every other dependency here.
+tilecodec = { path = "../../../library/tilecodec/src/main/rust", features = ["write"] }
+
 # `libc::statvfs` for the budget gate (`mem::disk_free_bytes`): already in the
 # lockfile via memmap2, so this adds a name to link, not a crate to fetch.
 [target.'cfg(target_os = "linux")'.dependencies]

@@ -13,14 +13,62 @@
 
     fn read_outputs(dir: &Path) -> Outputs {
         let f = |n: &str| std::fs::read(dir.join(n)).unwrap();
+        let meta = f("metadata.bin");
+        let edge_count = u64::from_le_bytes(meta[16..24].try_into().unwrap());
+        // v7 stores the record arrays as ZBLK sections. The helpers below
+        // mirror the device's raw-table reads, so the boundary inflates back
+        // to the v6 shape (records + original tail): the container has its
+        // own unit tests in tilecodec, and these tests own the content.
+        // `local_of`/`node_at` read nodes the same way.
+        let nodes = unpack_or_raw(&f("nodes.bin"));
+        let edges_raw = f("edges.bin");
+        let edges = match tilecodec::blocked::Blocked::parse(&edges_raw) {
+            Ok(v) => {
+                if v.unpacked_len() != edge_count * 7 || v.record_len() != 7 {
+                    panic!("blocked edges unpack to the wrong records");
+                }
+                let mut cache = tilecodec::blocked::BlockCache::new(0);
+                let mut recs = Vec::with_capacity(v.unpacked_len() as usize);
+                for b in 0..v.block_count() {
+                    recs.extend_from_slice(cache.get(&v, b).unwrap());
+                }
+                // The v6 tail (pad + escapes + names) starts pad-aligned after
+                // the records section — NOT at the section end, which carries
+                // its own alignment padding. Slice from there.
+                let rec_end = v.block_offset(v.block_count()).unwrap() as usize;
+                let tail_at = (rec_end + 7) & !7;
+                let mut out = recs;
+                while out.len() % 8 != 0 {
+                    out.push(0);
+                }
+                out.extend_from_slice(&edges_raw[tail_at..]);
+                out
+            }
+            Err(_) => edges_raw,
+        };
         Outputs {
-            meta: f("metadata.bin"),
-            nodes: f("nodes.bin"),
-            edges: f("edges.bin"),
+            meta,
+            nodes,
+            edges,
             lanes: f("lanes.bin"),
             names: f("road_names.bin"),
             inter: f("intermediate.bin"),
         }
+    }
+
+    /// Inflate a ZBLK section, or return the bytes untouched when they are not
+    /// one (v6 raw tables pass through).
+    fn unpack_or_raw(bytes: &[u8]) -> Vec<u8> {
+        let Ok(v) = tilecodec::blocked::Blocked::parse(bytes) else {
+            return bytes.to_vec();
+        };
+        let mut cache = tilecodec::blocked::BlockCache::new(0);
+        let mut out = Vec::with_capacity(v.unpacked_len() as usize);
+        for b in 0..v.block_count() {
+            out.extend_from_slice(cache.get(&v, b).unwrap());
+        }
+        assert_eq!(out.len() as u64, v.unpacked_len());
+        out
     }
 
     fn node_at(o: &Outputs, i: usize) -> (i32, i32, u64) {
@@ -43,8 +91,14 @@
     ///
     /// Every accessor below is a literal mirror of the device's, which is what makes
     /// these contract tests rather than a re-read of our own tables.
+    ///
+    /// The record array itself is owned: v6 files read it in place, v7 files
+    /// inflate their ZBLK records here (the writer emits v7 only). The tail
+    /// (escapes, names) stays borrowed — its layout relative to its own start
+    /// is identical in both versions.
     struct Edges<'a> {
         bytes: &'a [u8],
+        records: Vec<u8>,
         edge_count: u64,
         first_at: usize,
         rows_at: usize,
@@ -62,14 +116,41 @@
             escape_count: u64,
             named_edges: u64,
         ) -> Edges<'a> {
-            let first_at = align_up(edge_count * EDGE_REC_BYTES, SECTION_ALIGN) as usize;
+            // The records may be a ZBLK section (v7 writer) or raw (v6
+            // fixtures). Either way `records` holds the unpacked array and
+            // the tail offsets below are relative to the tail start.
+            let (records, tail_base) = match tilecodec::blocked::Blocked::parse(bytes) {
+                Ok(v) => {
+                    assert_eq!(v.unpacked_len(), edge_count * EDGE_REC_BYTES);
+                    assert_eq!(v.record_len(), EDGE_REC_BYTES as usize);
+                    let mut cache = tilecodec::blocked::BlockCache::new(0);
+                    let mut recs = Vec::with_capacity(v.unpacked_len() as usize);
+                    for b in 0..v.block_count() {
+                        recs.extend_from_slice(cache.get(&v, b).unwrap());
+                    }
+                    let tail = v.block_offset(v.block_count()).unwrap() as usize;
+                    // The tail the writer appended starts pad-aligned after
+                    // the records section.
+                    (recs, (tail + 7) & !7)
+                }
+                Err(_) => {
+                    // v6 raw tail (or a reassembled v6-shape buffer): records
+                    // are the first E*7 bytes, the tail starts pad-aligned.
+                    let n = (edge_count * EDGE_REC_BYTES) as usize;
+                    (bytes[..n].to_vec(), align_up(n as u64, SECTION_ALIGN) as usize)
+                }
+            };
+            // Tail layout from its own start: pad, escape index, rows, pad,
+            // names. Identical in both versions; only the base moves.
+            let first_at = 0usize;
             let blocks = edge_count.div_ceil(ESCAPE_BLOCK) + 1;
             let rows_at = first_at + (blocks * 4) as usize;
             let name_rank_at =
                 align_up(rows_at as u64 + escape_count * 12, SECTION_ALIGN) as usize;
             let rank_bytes = ((edge_count.div_ceil(RANK_BLOCK_BITS) + 1) * 8) as usize;
             Edges {
-                bytes,
+                bytes: &bytes[tail_base..],
+                records,
                 edge_count,
                 first_at,
                 rows_at,
@@ -82,6 +163,11 @@
 
         fn of(o: &'a Outputs) -> Edges<'a> {
             Edges::new(&o.edges, meta_u64(o, 16), meta_u64(o, 24), meta_u64(o, 32))
+        }
+
+        /// Unpacked record-array length. The v7 container check.
+        fn records_len(&self) -> usize {
+            self.records.len()
         }
 
         /// What the reader will compute the file's length to be.
@@ -137,7 +223,7 @@
         /// `Graph::edge_name_offset` do, escape table and name bitmap included.
         fn get(&self, source: u32, idx: u64) -> (u32, u32, u32, u8, u8) {
             assert!(idx < self.edge_count, "edge {idx} is past the pack");
-            let b = &self.bytes[(idx * EDGE_REC_BYTES) as usize..];
+            let b = &self.records[(idx * EDGE_REC_BYTES) as usize..];
             let delta = i16::from_le_bytes([b[0], b[1]]);
             let dist = u32::from_le_bytes([b[2], b[3], b[4], 0]);
             let (type_, speed) = (b[5], b[6]);

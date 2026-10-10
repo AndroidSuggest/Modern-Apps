@@ -145,30 +145,79 @@ fn validate_sidecars(graph: &Path, poi: &Path, staged: &[Staged]) -> Result<(), 
     if u32_at(&meta, 0) != 0x4752_414D {
         return Err("metadata.bin is not a MARG graph header".to_string());
     }
-    if u32_at(&meta, 4) != 6 {
-        return Err(format!("the graph is version {}, this pack reads v6", u32_at(&meta, 4)));
+    let graph_version = u32_at(&meta, 4);
+    if graph_version != 6 && graph_version != 7 {
+        return Err(format!("the graph is version {graph_version}, this pack reads v6..=v7"));
     }
+    let blocked_v7 = graph_version >= 7;
     let (node_count, edge_count) = (u64_at(&meta, 8), u64_at(&meta, 16));
     if node_count == 0 {
         return Err("the graph has 0 nodes -- road_graph wrote nothing?".to_string());
     }
     let len_of = |kind: u8| staged.iter().find(|s| s.kind == kind).map(|s| s.len);
-    // Nodes: (N+1) 12-byte records (the sentinel).
+    // Nodes: (N+1) 12-byte records (the sentinel) — or a ZBLK section
+    // unpacking to exactly that under v7. Length-checked only (nodes.bin is
+    // ~5 GB on planet): the packed archive is re-validated by `ArchiveView`.
     if let Some(len) = len_of(ARCHIVE_KIND_GRAPH_NODES) {
         let want = (node_count + 1) * 12;
-        if len != want {
+        if blocked_v7 {
+            let path = graph.join("nodes.bin");
+            let mut f = std::fs::File::open(&path)
+                .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+            let mut head = [0u8; 28];
+            use std::io::Read as _;
+            f.read_exact(&mut head)
+                .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+            let unpacked = u64::from_le_bytes(head[16..24].try_into().unwrap());
+            if unpacked != want {
+                return Err(format!("nodes.bin unpacks to {unpacked} bytes, expected {want}"));
+            }
+        } else if len != want {
             return Err(format!("nodes.bin is {len} bytes, expected {want} for {node_count}+1 records"));
         }
     }
     // Edges: records + escape index + escape rows + name bitmap + name offs (mirrors
     // `ArchiveView::check_counts`). Length-checked only: edges.bin is ~8 GB on planet, so
-    // its bytes stream at pack time rather than loading here.
+    // its bytes stream at pack time rather than loading here. Under v7 the
+    // records are a ZBLK prefix: validate its unpacked length from the header,
+    // then the tail formula from its end.
     if let Some(len) = len_of(ARCHIVE_KIND_GRAPH_EDGES) {
         let escape_count = u64_at(&meta, 24);
         let named_edges = u64_at(&meta, 32);
         let escape_blocks = edge_count.div_ceil(1024) + 1;
-        let rec = edge_count * 7;
-        let first_off = (rec + 7) & !7;
+        let (rec_end, rec_ok) = if blocked_v7 {
+            let path = graph.join("edges.bin");
+            let mut f = std::fs::File::open(&path)
+                .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+            let mut head = [0u8; 28];
+            use std::io::Read as _;
+            f.read_exact(&mut head)
+                .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+            let unpacked = u64::from_le_bytes(head[16..24].try_into().unwrap());
+            if unpacked != edge_count * 7 {
+                return Err(format!(
+                    "edges.bin unpacks to {unpacked} bytes, expected {} 7-byte records",
+                    edge_count
+                ));
+            }
+            // Block count -> table end -> last offset = records end.
+            let blocks = u32::from_le_bytes(head[24..28].try_into().unwrap()) as u64;
+            let mut offbytes = vec![0u8; ((blocks + 1) * 8) as usize];
+            f.read_exact(&mut offbytes)
+                .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+            let end = u64::from_le_bytes(
+                offbytes[blocks as usize * 8..(blocks as usize + 1) * 8]
+                    .try_into()
+                    .unwrap(),
+            );
+            (end, true)
+        } else {
+            (edge_count * 7, true)
+        };
+        if !rec_ok {
+            return Err("edges.bin records section failed validation".to_string());
+        }
+        let first_off = (rec_end + 7) & !7;
         let escapes_off = first_off + escape_blocks * 4;
         let names_off = (escapes_off + escape_count * 12 + 7) & !7;
         let rank = (edge_count.div_ceil(512) + 1) * 8;

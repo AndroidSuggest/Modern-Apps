@@ -130,3 +130,181 @@ pub fn serialize_buildings(buildings: &[(u8, Vec<BuildingAttrs>)], out: &mut Vec
         out.push(0);
     }
 }
+
+/// The v10 narrowed S3DB entry width: heights (6) + packed shape/orient/colour
+/// flags (1) + direction (1) + two RGB24 colours (6) = 14, down from 20.
+pub const BUILDING_ATTRS_V10_LEN: usize = 14;
+
+/// True when a building carries no S3DB tags at all: the sparse table omits
+/// it and the reader restores [`BuildingAttrs::default`].
+fn is_default_attrs(a: &BuildingAttrs) -> bool {
+    *a == BuildingAttrs::default()
+}
+
+/// Pack shape/orientation/colour presence into one byte.
+///
+/// Bits: 0..3 shape (≤ 5), 3 orientation, 4 has-building-colour, 5
+/// has-roof-colour, 6..8 reserved zero. Colours are RGB24 on the wire (alpha
+/// is always `FF` or absent); the presence bits keep opaque black distinct
+/// from "no colour".
+fn pack_attrs(a: &BuildingAttrs) -> u8 {
+    let mut packed = a.roof_shape & 0x07;
+    if a.roof_orientation == super::model::ROOF_ORIENT_ACROSS {
+        packed |= 0x08;
+    }
+    if a.building_colour != 0 {
+        packed |= 0x10;
+    }
+    if a.roof_colour != 0 {
+        packed |= 0x20;
+    }
+    packed
+}
+
+/// Parse the v10 sparse S3DB table: `u32` layer count, then per layer a `u8`
+/// id, a `u32` feature count, a bitset of the features carrying tags
+/// (`(n+7)/8` bytes), and the packed 14-byte non-default entries in feature
+/// order. Expands to the dense model (defaults filled), so the reader API is
+/// unchanged. Returns the table and the bytes consumed.
+pub(crate) fn parse_sparse_buildings(
+    buf: &[u8],
+    layers: &[Layer],
+) -> Result<(Vec<(u8, Vec<BuildingAttrs>)>, usize)> {
+    use super::model::{ROOF_ORIENT_ACROSS, ROOF_ORIENT_ALONG};
+    if buf.len() < 4 {
+        return err("a .mamaps sparse building table ends before its count");
+    }
+    let count = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
+    if count > layers.len() {
+        return err(format!(
+            "a .mamaps sparse building table has {count} entries for a body with {} layer(s)",
+            layers.len(),
+        ));
+    }
+    let mut at = 4usize;
+    let mut table = Vec::with_capacity(count);
+    let mut previous: Option<u8> = None;
+    for _ in 0..count {
+        if at + 5 > buf.len() {
+            return err("a .mamaps sparse building table ends inside an entry header");
+        }
+        let layer_id = buf[at];
+        let n =
+            u32::from_le_bytes([buf[at + 1], buf[at + 2], buf[at + 3], buf[at + 4]]) as usize;
+        at += 5;
+        if previous.is_some_and(|p| layer_id <= p) {
+            return err("a .mamaps sparse building table's entries are not ordered by layer id");
+        }
+        previous = Some(layer_id);
+        let Some(layer) = layers.iter().find(|l| l.layer_id == layer_id) else {
+            return err(format!(
+                "a .mamaps sparse building table names layer {layer_id}, which the body does not carry"
+            ));
+        };
+        if n != layer.features.len() {
+            return err(format!(
+                "a .mamaps sparse building table gives layer {layer_id} {n} bit(s) for {} feature(s)",
+                layer.features.len(),
+            ));
+        }
+        let bitlen = n.div_ceil(8);
+        if at + bitlen > buf.len() {
+            return err("a .mamaps sparse building table ends inside its bitset");
+        }
+        let bits = &buf[at..at + bitlen];
+        at += bitlen;
+        let mut attrs = Vec::with_capacity(n);
+        for i in 0..n {
+            if bits[i / 8] & (1u8 << (i % 8)) == 0 {
+                attrs.push(BuildingAttrs::default());
+                continue;
+            }
+            if at + BUILDING_ATTRS_V10_LEN > buf.len() {
+                return err("a .mamaps sparse building record runs past the table");
+            }
+            let o = at;
+            let roof_shape = buf[o + 6] & 0x07;
+            if roof_shape > ROOF_SHAPE_MAX {
+                return err(format!("a .mamaps sparse building record has roof shape {roof_shape}"));
+            }
+            let roof_orientation = if buf[o + 6] & 0x08 != 0 {
+                ROOF_ORIENT_ACROSS
+            } else {
+                ROOF_ORIENT_ALONG
+            };
+            let has_bcol = buf[o + 6] & 0x10 != 0;
+            let has_rcol = buf[o + 6] & 0x20 != 0;
+            if buf[o + 6] & 0xC0 != 0 {
+                return err("a .mamaps sparse building record sets reserved flag bits");
+            }
+            let bcol = u32::from_le_bytes([buf[o + 8], buf[o + 9], buf[o + 10], 0xFF]);
+            let rcol = u32::from_le_bytes([buf[o + 11], buf[o + 12], buf[o + 13], 0xFF]);
+            if !has_bcol && (buf[o + 8] != 0 || buf[o + 9] != 0 || buf[o + 10] != 0) {
+                return err("a .mamaps sparse building record carries a colour it disclaims");
+            }
+            if !has_rcol && (buf[o + 11] != 0 || buf[o + 12] != 0 || buf[o + 13] != 0) {
+                return err("a .mamaps sparse building record carries a colour it disclaims");
+            }
+            attrs.push(BuildingAttrs {
+                height: u16::from_le_bytes([buf[o], buf[o + 1]]),
+                min_height: u16::from_le_bytes([buf[o + 2], buf[o + 3]]),
+                roof_height: u16::from_le_bytes([buf[o + 4], buf[o + 5]]),
+                roof_shape,
+                roof_direction: buf[o + 7],
+                roof_orientation,
+                building_colour: if has_bcol { bcol } else { 0 },
+                roof_colour: if has_rcol { rcol } else { 0 },
+            });
+            at += BUILDING_ATTRS_V10_LEN;
+        }
+        table.push((layer_id, attrs));
+    }
+    let aligned = align4(at);
+    if aligned > buf.len() {
+        return err("a .mamaps sparse building table's padding runs past the body");
+    }
+    Ok((table, aligned))
+}
+
+/// Serialise a sparse S3DB table, 4-byte aligned. Layers with no tagged
+/// buildings are omitted entirely (the reader restores all-default); the
+/// inverse of [`parse_sparse_buildings`].
+pub fn serialize_sparse_buildings(buildings: &[(u8, Vec<BuildingAttrs>)], out: &mut Vec<u8>) {
+    let present: Vec<(&u8, &Vec<BuildingAttrs>)> = buildings
+        .iter()
+        .map(|(id, v)| (id, v))
+        .filter(|(_, v)| v.iter().any(|a| !is_default_attrs(a)))
+        .collect();
+    out.extend_from_slice(&(present.len() as u32).to_le_bytes());
+    for (layer_id, entries) in present {
+        out.push(*layer_id);
+        out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+        let mut bits = vec![0u8; entries.len().div_ceil(8)];
+        for (i, a) in entries.iter().enumerate() {
+            if !is_default_attrs(a) {
+                bits[i / 8] |= 1u8 << (i % 8);
+            }
+        }
+        out.extend_from_slice(&bits);
+        for a in entries {
+            if is_default_attrs(a) {
+                continue;
+            }
+            out.extend_from_slice(&a.height.to_le_bytes());
+            out.extend_from_slice(&a.min_height.to_le_bytes());
+            out.extend_from_slice(&a.roof_height.to_le_bytes());
+            out.push(pack_attrs(a));
+            out.push(a.roof_direction);
+            // RGB24: alpha is always FF-or-absent, presence in the packed flags.
+            out.push((a.building_colour & 0xFF) as u8);
+            out.push(((a.building_colour >> 8) & 0xFF) as u8);
+            out.push(((a.building_colour >> 16) & 0xFF) as u8);
+            out.push((a.roof_colour & 0xFF) as u8);
+            out.push(((a.roof_colour >> 8) & 0xFF) as u8);
+            out.push(((a.roof_colour >> 16) & 0xFF) as u8);
+        }
+    }
+    while out.len() % 4 != 0 {
+        out.push(0);
+    }
+}

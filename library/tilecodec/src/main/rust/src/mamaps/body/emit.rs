@@ -3,8 +3,10 @@ use super::model::{
     Body, Layer, NAME_NONE, ROOF_ORIENT_MAX, ROOF_SHAPE_MAX,
 };
 use super::emit_extra::write_full_layer_payload;
+use super::emit_extra::write_v10_layer_payload;
 use super::tables::{serialize_carriageways, serialize_heightmap, serialize_ids, serialize_lanes, serialize_names, serialize_region_links, align4};
 use super::tables_extra::serialize_buildings;
+use super::tables_extra::serialize_sparse_buildings;
 use crate::proto::{Result, err};
 
 /// Serialise a body.
@@ -30,6 +32,24 @@ pub struct Scratch {
 ///
 /// Byte for byte what [`serialize`] returns; that function is this one with a fresh [`Scratch`].
 pub fn serialize_into<'s>(body: &Body, scratch: &'s mut Scratch) -> Result<&'s [u8]> {
+    serialize_into_version(body, scratch, crate::mamaps::header::FORMAT_VERSION)
+}
+
+/// Serialise a body with v10 narrowed records into `scratch`.
+///
+/// Same validation as [`serialize_into`]; layer payloads use the per-layer
+/// record classes and 4-byte parts, and the version byte stamps v10. Side
+/// tables are unchanged in this path (see the sparse-table serializers for
+/// the full v10 body).
+pub fn serialize_into_v10<'s>(body: &Body, scratch: &'s mut Scratch) -> Result<&'s [u8]> {
+    serialize_into_version(body, scratch, crate::mamaps::header::FORMAT_VERSION_V10)
+}
+
+fn serialize_into_version<'s>(
+    body: &Body,
+    scratch: &'s mut Scratch,
+    version: u8,
+) -> Result<&'s [u8]> {
     // Borrowed and sorted by reference, never cloned. Cloning to sort copied every layer's whole
     // coordinate arena per tile, which is 2.5 GB of memcpy on a us-west z14 build. Nothing here
     // mutates a layer, so the sort only ever needed the order.
@@ -261,7 +281,11 @@ pub fn serialize_into<'s>(body: &Body, scratch: &'s mut Scratch) -> Result<&'s [
         }
         let out = &mut payloads[i];
         out.clear();
-        write_full_layer_payload(layer, out);
+        if version == crate::mamaps::header::FORMAT_VERSION_V10 {
+            write_v10_layer_payload(layer, out)?;
+        } else {
+            write_full_layer_payload(layer, out);
+        }
         meta.push((layer.layer_id, layer.features.len() as u32));
     }
 
@@ -269,7 +293,7 @@ pub fn serialize_into<'s>(body: &Body, scratch: &'s mut Scratch) -> Result<&'s [
     assembled.clear();
     assembled.reserve(index_end + payloads[..layers.len()].iter().map(Vec::len).sum::<usize>() + 4);
     assembled.extend_from_slice(b"MBD");
-    assembled.push(crate::mamaps::header::FORMAT_VERSION);
+    assembled.push(version);
     // Patched below, once the length is known.
     assembled.extend_from_slice(&0u32.to_le_bytes());
     assembled.extend_from_slice(&body.extent.to_le_bytes());
@@ -287,6 +311,7 @@ pub fn serialize_into<'s>(body: &Body, scratch: &'s mut Scratch) -> Result<&'s [
     if !body.buildings.is_empty() {
         body_flags |= BODY_FLAG_BUILDING_TABLE;
     }
+    let v10 = version == crate::mamaps::header::FORMAT_VERSION_V10;
     if body.heightmap.is_some() {
         body_flags |= BODY_FLAG_HEIGHTMAP;
     }
@@ -350,7 +375,11 @@ pub fn serialize_into<'s>(body: &Body, scratch: &'s mut Scratch) -> Result<&'s [
         serialize_lanes(&body.turn_lanes, assembled);
     }
     if !body.buildings.is_empty() {
-        serialize_buildings(&body.buildings, assembled);
+        if v10 {
+            serialize_sparse_buildings(&body.buildings, assembled);
+        } else {
+            serialize_buildings(&body.buildings, assembled);
+        }
     }
     if let Some(grid) = &body.heightmap {
         serialize_heightmap(grid, assembled);

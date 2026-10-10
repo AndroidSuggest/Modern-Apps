@@ -38,22 +38,22 @@ mod archive_tests {
             min_lat_e7: 0,
             max_lon_e7: 0,
             max_lat_e7: 0,
-            shared_offset: 0,
-            shared_len: 0,
-            shared_flags: 0,
-            shared_pools: 0,
         }
     }
 
-    fn meta(node_count: u64, edge_count: u64, escapes: u64, named: u64) -> Vec<u8> {
+    fn meta_at(version: u32, node_count: u64, edge_count: u64, escapes: u64, named: u64) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(&GRAPH_MAGIC.to_le_bytes());
-        out.extend_from_slice(&GRAPH_VERSION.to_le_bytes());
+        out.extend_from_slice(&version.to_le_bytes());
         out.extend_from_slice(&node_count.to_le_bytes());
         out.extend_from_slice(&edge_count.to_le_bytes());
         out.extend_from_slice(&escapes.to_le_bytes());
         out.extend_from_slice(&named.to_le_bytes());
         out
+    }
+
+    fn meta(node_count: u64, edge_count: u64, escapes: u64, named: u64) -> Vec<u8> {
+        meta_at(GRAPH_VERSION_MIN, node_count, edge_count, escapes, named)
     }
 
     // Whole file: tile prefix (zeroes under a real serialized header) +
@@ -162,11 +162,36 @@ mod archive_tests {
     // is 26 bytes of trailer with G = 0 and a zero blob. Zeros satisfy every
     // totals check, which is the point: the test would catch a validator that
     // stopped validating.
+    //
+    // v6 raw tables: the container-path tests pin the old layout so the
+    // version dispatch has both sides covered (`*_v7` below pins blocked).
     fn minimal_payloads() -> Vec<(u8, Vec<u8>, u64)> {
         vec![
             (ARCHIVE_KIND_GRAPH_META, meta(1, 0, 0, 0), 0),
             (ARCHIVE_KIND_GRAPH_NODES, vec![0u8; 24], 1),
             (ARCHIVE_KIND_GRAPH_EDGES, vec![0u8; 16], 0),
+            (ARCHIVE_KIND_GRAPH_INTERMEDIATE, vec![0u8; 26], 0),
+        ]
+    }
+
+    /// The same minimal graph with v7 blocked record sections.
+    fn minimal_payloads_v7() -> Vec<(u8, Vec<u8>, u64)> {
+        let nodes = tilecodec::blocked::write_blocked(&[0u8; 24], 12);
+        // Edges v7: blocked records (empty) + the same 16-byte tail.
+        let recs = tilecodec::blocked::write_blocked(&[], 7);
+        let mut edges = recs;
+        while edges.len() % 8 != 0 {
+            edges.push(0);
+        }
+        edges.extend_from_slice(&[0u8; 16]);
+        vec![
+            (
+                ARCHIVE_KIND_GRAPH_META,
+                meta_at(GRAPH_VERSION, 1, 0, 0, 0),
+                0,
+            ),
+            (ARCHIVE_KIND_GRAPH_NODES, nodes, 1),
+            (ARCHIVE_KIND_GRAPH_EDGES, edges, 0),
             (ARCHIVE_KIND_GRAPH_INTERMEDIATE, vec![0u8; 26], 0),
         ]
     }
@@ -188,6 +213,29 @@ mod archive_tests {
         assert_eq!(g.named_edges, 0);
         let node = g.node(0);
         assert_eq!((node.lat_e7, node.lon_e7), (0, 0));
+    }
+
+    #[test]
+    fn a_minimal_v7_archive_loads_and_reads_through_the_inflate() {
+        let g = load_slices(&minimal_payloads_v7()).expect("a minimal v7 archive loads");
+        assert_eq!(g.node_count, 1);
+        assert_eq!(g.edge_count, 0);
+        // Nodes are zeros (sentinel + one zero node): the read went through
+        // the blocked section, not past it.
+        let node = g.node(0);
+        assert_eq!((node.lat_e7, node.lon_e7), (0, 0));
+        assert!(g.uses_blocked_sections(), "v7 takes the blocked path");
+    }
+
+    #[test]
+    fn a_v7_nodes_payload_with_the_wrong_unpacked_length_is_refused() {
+        let mut payloads = minimal_payloads_v7();
+        // Corrupt the unpacked length (N = 1 node + sentinel wants 24).
+        payloads[1].1[16] = 25;
+        assert!(
+            load_slices(&payloads).is_none(),
+            "unpacked length, not file length, gates v7"
+        );
     }
 
     #[test]

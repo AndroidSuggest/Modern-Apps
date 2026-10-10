@@ -57,7 +57,9 @@ pub(crate) mod tests {
         // metadata.bin (40 bytes).
         let mut meta = Vec::new();
         meta.extend_from_slice(&MARG_MAGIC.to_le_bytes());
-        meta.extend_from_slice(&GRAPH_VERSION.to_le_bytes());
+        // v6: the fixture hand-encodes raw record tables, so it stamps the
+        // version those bytes are.
+        meta.extend_from_slice(&GRAPH_VERSION_MIN.to_le_bytes());
         meta.extend_from_slice(&node_count.to_le_bytes());
         meta.extend_from_slice(&edge_count.to_le_bytes());
         meta.extend_from_slice(&0u64.to_le_bytes()); // escape_count

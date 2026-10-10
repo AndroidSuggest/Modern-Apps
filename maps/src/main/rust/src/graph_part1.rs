@@ -64,12 +64,119 @@ pub struct Graph {
     // length does not match `node_count`, in which case [`Graph::node_elevation`] reads 0 for every
     // node and the route profile comes out flat. A sidecar like `road_names.bin`/`lanes.bin`: no
     // metadata count and no GRAPH_VERSION bump, validated by its own length instead.
+    //
+    // Under v7 the file is a ZBLK section ([`elevation_blocked`]); the loader
+    // dispatches on the magic, so absence still reads as all-zero.
     elevation: *const u8,
+
+    /// v7 blocked views, parsed (not inflated) at load. `None` on the v6 path,
+    /// where the raw pointers above serve directly. The unpacked bytes live in
+    /// the [`Graph::unpacked`] caches below on first use.
+    nodes_view: Option<BlockedView>,
+    edges_view: Option<BlockedView>,
+    elevation_view: Option<BlockedView>,
+
+    /// Lazily inflated v7 sections, one per blocked file. Empty (and the raw
+    /// pointers above null) on the v6 path.
+    ///
+    /// Full-section inflate on first use rather than a per-block cache: routing
+    /// touches the whole graph anyway, so steady-state memory equals the v6
+    /// resident set and the hot accessors keep their pointer arithmetic. The
+    /// cost is a one-time inflate per section on first route, not per lookup.
+    unpacked_nodes: std::sync::OnceLock<Vec<u8>>,
+    unpacked_edges: std::sync::OnceLock<Vec<u8>>,
+    unpacked_elevation: std::sync::OnceLock<Vec<u8>>,
 
     // Derived cost tables (computed in `load`, matching the C++ `init`).
     pub lon_to_mm_scale: [u32; 4096],
     pub time_scale_fixed: [u64; 4],
     pub edge_time_multipliers: [[u64; 16]; 4],
+}
+
+/// A parsed ZBLK section that borrows nothing.
+///
+/// The offset table is copied (8 bytes per block — 524 KB for 268 M planet
+/// bodies) so this owns everything it needs except the frames themselves,
+/// which stay in the mmap region (or archive slice) the caller keeps alive
+/// exactly like the raw tables. No lifetime ties the two structs together.
+pub(crate) struct BlockedView {
+    record_len: usize,
+    records_per_block: u64,
+    unpacked_len: u64,
+    /// Absolute file offsets of each block start, plus the file end.
+    offsets: Vec<u64>,
+    frames: *const u8,
+    frames_len: u64,
+}
+
+// Raw pointers into a mapping the graph owns: Send exactly like the tables.
+unsafe impl Send for BlockedView {}
+unsafe impl Sync for BlockedView {}
+
+impl BlockedView {
+    /// Parse over `bytes` (the whole section file/slice). Refuses bad magic,
+    /// unknown flags, zero stride, and offsets outside the section. Mirrors
+    /// `tilecodec::blocked::Blocked::parse` without borrowing it, so no
+    /// lifetime ties this view to the mapping.
+    pub(crate) fn parse(bytes: &[u8]) -> Option<BlockedView> {
+        if bytes.len() < 28 {
+            return None;
+        }
+        let u32_at = |o: usize| {
+            u32::from_le_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]])
+        };
+        let u64_at = |o: usize| {
+            u64::from_le_bytes([
+                bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3], bytes[o + 4],
+                bytes[o + 5], bytes[o + 6], bytes[o + 7],
+            ])
+        };
+        if u32_at(0) != tilecodec::blocked::BLOCKED_MAGIC || u32_at(4) != 0 {
+            return None;
+        }
+        let record_len = u32_at(8) as usize;
+        let records_per_block = u32_at(12) as u64;
+        let unpacked_len = u64_at(16);
+        if record_len == 0 || records_per_block == 0 {
+            return None;
+        }
+        let block_count = u32_at(24) as usize;
+        let mut offsets = Vec::with_capacity(block_count + 1);
+        for i in 0..=block_count {
+            let o = u64_at(28 + i * 8);
+            if o > bytes.len() as u64 || (i > 0 && o < offsets[i - 1]) {
+                return None;
+            }
+            offsets.push(o);
+        }
+        // No end-equality check: a blocked record array may share its file
+        // with trailing tables (`edges.bin`'s escapes/names). Truncation is
+        // still refused above — an offset past the bytes fails.
+        Some(BlockedView {
+            record_len,
+            records_per_block,
+            unpacked_len,
+            offsets,
+            frames: bytes.as_ptr(),
+            frames_len: bytes.len() as u64,
+        })
+    }
+
+    /// Inflate every block and concatenate, verifying the unpacked length.
+    /// Called once per section via the graph's `OnceLock`s.
+    pub(crate) fn unpack(&self) -> Option<Vec<u8>> {
+        let bytes = unsafe { std::slice::from_raw_parts(self.frames, self.frames_len as usize) };
+        let parsed = tilecodec::blocked::Blocked::parse(bytes).ok()?;
+        let mut cache = tilecodec::blocked::BlockCache::new(0);
+        let mut out = Vec::with_capacity(self.unpacked_len as usize);
+        for b in 0..parsed.block_count() {
+            out.extend_from_slice(cache.get(&parsed, b).ok()?);
+        }
+        if out.len() as u64 != self.unpacked_len {
+            return None;
+        }
+        Some(out)
+    }
 }
 
 unsafe impl Send for Graph {}

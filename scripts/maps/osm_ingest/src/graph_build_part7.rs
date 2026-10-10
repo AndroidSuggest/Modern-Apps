@@ -26,12 +26,17 @@
             want
         });
 
-        // nodes.bin holds node_count + 1 12-byte records; edges.bin is the record
-        // array padded to a section boundary, then the escape index and rows, then
-        // the sparse name table — exactly the length the reader computes, not merely
-        // a multiple of anything.
+        // nodes.bin holds node_count + 1 12-byte records (inflated at the
+        // test boundary — `read_outputs` unpacks the v7 ZBLK section, so this
+        // still pins the record count, not the container).
         assert_eq!(o.nodes.len(), 12 * 5);
-        assert_eq!(o.edges.len(), Edges::of(&o).total_bytes());
+        // edges.bin is the blocked record array plus the escape/name tail.
+        // The blocked section must unpack to exactly the pushed records; the
+        // tail decodes through the version-aware `Edges` mirror below (escape
+        // totals, name offsets, content), which is the coverage the old
+        // exact-length assert provided.
+        let e = Edges::of(&o);
+        assert_eq!(e.records_len(), 7 * 7, "7 pushed 7-byte records");
         assert_eq!(stats.escape_count, 0, "no fixture edge is long enough to escape");
         // Main St runs 1-2 and 2-4 in both directions; the service road and the two
         // synthetic stop connectors carry no name.
@@ -391,9 +396,12 @@
         )
         .unwrap();
 
-        // elevation.bin is `i16[node_count]` in final-node-id order, parallel to nodes.bin.
-        let nodes = std::fs::read(dir.join("nodes.bin")).unwrap();
-        let elev = std::fs::read(dir.join("elevation.bin")).unwrap();
+        // elevation.bin is `i16[node_count]` in final-node-id order, parallel to nodes.bin
+        // (blocked under v7 — inflate at the boundary like `read_outputs` does).
+        let nodes_raw = std::fs::read(dir.join("nodes.bin")).unwrap();
+        let nodes = unpack_or_raw(&nodes_raw);
+        let elev_raw = std::fs::read(dir.join("elevation.bin")).unwrap();
+        let elev = unpack_or_raw(&elev_raw);
         let node_count = nodes.len() / 12 - 1; // one trailing sentinel node
         assert_eq!(elev.len(), node_count * 2, "one i16 per real node");
 

@@ -81,7 +81,12 @@ pub const GRAPH_MAGIC: u32 = 0x4752_414D;
 /// Version 6 moves `name_offset` out of the record into a sparse side table, since
 /// two thirds of edges are unnamed, taking the record to 7 bytes and planet to
 /// ~23.3 GB. There is no dual-path reader: an older pack is rejected.
-pub const GRAPH_VERSION: u32 = 6;
+/// Version 7 blocked-compresses `nodes.bin`, `edges.bin` records and
+/// `elevation.bin` (ZBLK sections); readers accept 6 and 7, inflating v7
+/// sections once on first use.
+pub const GRAPH_VERSION: u32 = 7;
+/// Oldest graph version decoded: v6 raw tables still read directly.
+pub const GRAPH_VERSION_MIN: u32 = 6;
 
 /// Sentinel `name_offset` meaning "this edge has no name".
 ///
@@ -433,6 +438,8 @@ pub(crate) unsafe fn read_at<T: Copy>(base: *const u8, idx: usize) -> T {
 
 include!("graph_part1.rs");
 include!("graph_part2.rs");
+include!("graph_part2b.rs");
 include!("graph_part3.rs");
 include!("graph_part4.rs");
+include!("graph_part4b.rs");
 include!("graph_part5.rs");
