@@ -168,4 +168,15 @@
     <string name="section_fdroid_recent">Nuovo su F-Droid</string>
     <string name="section_fdroid_recent_subtitle">Le versioni più recenti su F-Droid</string>
     <string name="section_accrescent">Crescente</string>
+    <string name="section_accrescent_subtitle">App firmate dagli sviluppatori dall\'elenco delle app firmate da Accrescent</string>
+    <string name="sync_step_proprietary">Verifica del mirror proprietario…</string>
+    <string name="sync_failed_proprietary">Il mirror proprietario non si è sincronizzato. Le app già presenti sono rimaste invariate.</string>
+    <string name="install_failed_reason">Impossibile installare %1$s: %2$s</string>
+    <string name="trust_modern_apps_summary">È stato compilato nello stesso repository di questo store e firmato con la stessa chiave, che il tuo telefono può verificare confrontandola con la copia dello store in tuo possesso.</string>
+    <string name="trust_modern_apps_practice_open">Tutto questo è open source, in un unico repository pubblico</string>
+    <string name="section_modern_apps_recent_subtitle">Le versioni più recenti da questo repository</string>
+    <string name="setting_auto_install_updates_summary">Se attiva, gli aggiornamenti vengono installati quando vengono rilevati. Se disattivata, aspettano una conferma. Le app installate dallo Store si aggiornano silenziosamente, mentre le altre inviano una notifica.</string>
+    <string name="updates_confirm_notification_body">Android consente allo store di aggiornare solo le app che ha installato, quindi per queste è necessaria una tua conferma. Apri l\'App Store per installarle.</string>
+    <string name="trust_modern_apps_practice_one_key">Ogni app viene distribuita a partire da una versione contrassegnata, firmata con una chiave</string>
+    <string name="trust_modern_apps_check_index_signed">L\'indice del repository viene firmato e verificato rispetto alla chiave fissa di questo archivio</string>
 </resources>
