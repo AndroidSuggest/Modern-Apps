@@ -155,4 +155,5 @@
     <string name="permission_exact_alarms_rationale">Täpne äratus on vajalik äratuste ja meeldetuletuste jaoks, mis peavad käivituma täpselt etteantud ajal. Lubamiseks ava seadistused.</string>
     <string name="achievement_secret_description">Jätka mängimist, et see eesmärk avaneks</string>
     <string name="achievement_unlocked">Eesmärk on käes!</string>
+    <string name="play">Mängi/esita</string>
 </resources>
