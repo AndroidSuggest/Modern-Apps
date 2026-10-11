@@ -153,4 +153,11 @@
     <string name="add_medication">Lisa ravim</string>
     <string name="edit_medication">Muuda ravimit</string>
     <string name="past_medications">Varasemad ravimid</string>
+    <string name="field_dose">Doos</string>
+    <string name="metric_wheelchair_pushes">Ratastoolis rinnaltsurumisi</string>
+    <string name="metric_vo2_max">Maks VO2</string>
+    <string name="field_note">Märkus</string>
+    <string name="attach_file">Lisa PDF-fail või foto</string>
+    <string name="attachment_untitled">Manus</string>
+    <string name="field_medication">Ravim</string>
 </resources>
