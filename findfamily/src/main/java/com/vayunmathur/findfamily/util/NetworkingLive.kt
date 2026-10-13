@@ -45,7 +45,7 @@ internal suspend fun WsSession.sendSubscribe() {
 internal suspend fun WsSession.superviseConnection(
     connScope: CoroutineScope,
     outerScope: CoroutineScope,
-    onLocations: suspend (List<LocationValue>) -> Unit,
+    onLocations: suspend (List<InboundFix>) -> Unit,
     onUwb: suspend (List<UwbEnvelope>) -> Unit,
 ) {
     val lastInboundMs = AtomicLong(System.currentTimeMillis())
@@ -92,7 +92,7 @@ internal suspend fun WsSession.superviseConnection(
 /** Parse one server frame and dispatch: MSG → decrypt+deliver; KEYRESP → complete the lookup. */
 internal suspend fun dispatchLiveFrame(
     buf: ByteArray,
-    onLocations: suspend (List<LocationValue>) -> Unit,
+    onLocations: suspend (List<InboundFix>) -> Unit,
     onUwb: suspend (List<UwbEnvelope>) -> Unit,
 ) {
     val op = buf.firstOrNull() ?: return
@@ -108,7 +108,7 @@ internal suspend fun dispatchLiveFrame(
 /** MSG frame: [op][flags][ciphertext] — location or UWB envelope after PQC decrypt. */
 private suspend fun handleLiveMsg(
     buf: ByteArray,
-    onLocations: suspend (List<LocationValue>) -> Unit,
+    onLocations: suspend (List<InboundFix>) -> Unit,
     onUwb: suspend (List<UwbEnvelope>) -> Unit,
 ) {
     if (buf.size < Networking.MSG_FRAME_HEADER_LEN) return
@@ -117,9 +117,9 @@ private suspend fun handleLiveMsg(
     if (!isUwb) {
         val decoded = runCatching { decryptLocationPqcBytes(raw) }
             .onFailure { Log.status(Networking.TAG, "live location decrypt fail", it) }.getOrNull() ?: return
-        val (loc, platform) = decoded
+        val (loc, platform, pairId) = decoded
         if (platform != null) runCatching { Networking.repository.setPlatform(loc.userid, platform) }
-        runCatching { onLocations(listOf(loc)) }
+        runCatching { onLocations(listOf(loc.withPairId(pairId))) }
     } else {
         val env = runCatching {
             val plain = Networking.pqcIdentity.decrypt(raw)
@@ -173,10 +173,27 @@ private fun handleReportGetResp(buf: ByteArray) {
     Networking.pendingReportGets.poll()?.complete(out)
 }
 
-private fun decryptLocationPqcBytes(raw: ByteArray): Pair<LocationValue, String?> {
+/**
+ * A decrypted inbound fix plus its envelope metadata (never persisted as-is).
+ *
+ * [pairId] is the sender's claimed outbound secret (GHSA-x94x-v6f7-wwpp). It rides
+ * beside the fix rather than inside [LocationValue] because Room must never store an
+ * unauthenticated claim — the inbound pipeline checks it against the pinned
+ * `User.inboundPairId` first and drops the fix on mismatch (see
+ * `processIncomingLocations`).
+ *
+ * Public (not internal): [Networking.startLive] is public API, so its parameter type
+ * must be visible at the call site in [LocationTrackingService].
+ */
+data class InboundFix(val location: LocationValue, val pairId: String?)
+
+/** Attach the claimed pair ID to a freshly-decrypted fix for the inbound pipeline. */
+internal fun LocationValue.withPairId(pairId: String?): InboundFix = InboundFix(this, pairId)
+
+private fun decryptLocationPqcBytes(raw: ByteArray): Triple<LocationValue, String?, String?> {
     val plainBytes = Networking.pqcIdentity.decrypt(raw)
     val compat = Networking.json.decodeFromString<LocationValueCompatible>(plainBytes.decodeToString())
-    return compat.toLocationValue() to compat.senderPlatform
+    return Triple(compat.toLocationValue(), compat.senderPlatform, compat.pairId)
 }
 
 /** Reads a big-endian u16 at [off]. */

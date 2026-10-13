@@ -322,7 +322,7 @@ object Networking {
     @Synchronized
     fun startLive(
         scope: CoroutineScope,
-        onLocations: suspend (List<LocationValue>) -> Unit,
+        onLocations: suspend (List<InboundFix>) -> Unit,
         onUwb: suspend (List<UwbEnvelope>) -> Unit,
     ) {
         if (liveJob?.isActive == true) return
@@ -428,7 +428,8 @@ object Networking {
             return false
         }
         return try {
-            val ok = sendLivePublish(user.id, "location", sealLocation(location, bundle))
+            val pairId = outboundPairIdFor(user)
+            val ok = sendLivePublish(user.id, "location", sealLocation(location, bundle, pairId))
             Log.dev(TAG, "publishLocation PQC to ${user.id.toULong()} (${user.name}) ok=$ok")
             ok
         } catch (e: Exception) {
@@ -443,7 +444,9 @@ object Networking {
     suspend fun publishLocation(location: LocationValue, link: TemporaryLink): Boolean {
         return try {
             val bundle = Base64.decode(link.pqcPublicKey)
-            val ok = sendLivePublish(link.id, "location", sealLocation(location, bundle))
+            // Anonymous link viewers prove nothing about identity and expect no auth:
+            // pair ID stays null so nothing link-specific is pinned or leaked.
+            val ok = sendLivePublish(link.id, "location", sealLocation(location, bundle, pairId = null))
             Log.dev(TAG, "publishLocation PQC to temp link ${link.id} ok=$ok")
             ok
         } catch (e: Exception) {
@@ -456,12 +459,15 @@ object Networking {
      * Publish to a peer identified only by id and cached public bundle. This is the
      * pre-unlock path: it takes the same wire format as the [User] overload but reads
      * nothing from Room, which is unreadable before the passcode is entered.
+     *
+     * [pairId] is the stored outbound secret for this peer, mirrored into
+     * device-protected storage at seed time — the pre-unlock path cannot read Room.
      */
     // Broad catch is deliberate: relay-socket boundary, same as [wsGetKey].
     @Suppress("TooGenericExceptionCaught")
-    suspend fun publishLocation(location: LocationValue, targetId: Long, bundleB64: String): Boolean {
+    suspend fun publishLocation(location: LocationValue, targetId: Long, bundleB64: String, pairId: String? = null): Boolean {
         return try {
-            val ok = sendLivePublish(targetId, "location", sealLocation(location, Base64.decode(bundleB64)))
+            val ok = sendLivePublish(targetId, "location", sealLocation(location, Base64.decode(bundleB64), pairId))
             Log.dev(TAG, "publishLocation PQC to ${targetId.toULong()} (direct boot) ok=$ok")
             ok
         } catch (e: Exception) {
@@ -508,10 +514,27 @@ object Networking {
     // Encryption helpers (post-quantum only)
     // ----------------------------------------------------------------
 
-    private fun sealLocation(location: LocationValue, bundle: ByteArray): ByteArray {
-        val str = json.encodeToString(location.toCompatible(senderPlatform = PLATFORM))
+    private fun sealLocation(location: LocationValue, bundle: ByteArray, pairId: String?): ByteArray {
+        val str = json.encodeToString(location.toCompatible(senderPlatform = PLATFORM, pairId = pairId))
         // PQC hybrid: ML-KEM encapsulate → AES-256-GCM, layout [4B encapLen][encap][aes].
         return Pqc.encryptTo(bundle, str.encodeToByteArray())
+    }
+
+    /**
+     * Our outbound pair-ID secret for [user] (GHSA-x94x-v6f7-wwpp): the hidden value every
+     * packet to this peer carries inside the ciphertext.
+     *
+     * Created once and never rotated: the receiver pins whatever it first sees, so rotating
+     * would look exactly like a forgery and get dropped. Uses the conditional
+     * `setOutboundPairIdIfAbsent` write so two concurrent heartbeats cannot mint different
+     * values — the loser re-reads the winner.
+     */
+    private suspend fun outboundPairIdFor(user: User): String {
+        user.outboundPairId?.let { return it }
+        val fresh = com.vayunmathur.findfamily.domain.PairAuth.generatePairId()
+        runCatching { repository.setOutboundPairIdIfAbsent(user.id, fresh) }
+        return runCatching { repository.getUser(user.id)?.outboundPairId }
+            .getOrNull() ?: fresh
     }
 
     /**
