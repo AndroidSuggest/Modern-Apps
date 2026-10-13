@@ -9,4 +9,8 @@
     <string name="colorblind_mode">Colorblind mode</string>
     <!-- SettingsScreen: Subtitle explaining colorblind mode labels each flow with letter A-Z. Sentence -->
     <string name="colorblind_mode_desc">Label each flow with a letter (A–Z)</string>
+    <!-- GameBoardScreen: Restart confirmation dialog title. Sentence, question -->
+    <string name="restart_confirm_title">Restart level?</string>
+    <!-- GameBoardScreen: Restart confirmation dialog message. Sentence -->
+    <string name="restart_confirm_message">This will clear your current progress on this level.</string>
 </resources>
