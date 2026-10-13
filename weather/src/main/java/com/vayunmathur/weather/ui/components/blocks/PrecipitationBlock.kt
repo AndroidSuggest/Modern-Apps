@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.weather.R
@@ -48,12 +49,14 @@ fun PrecipitationBlock(
             Box(Modifier.fillMaxWidth()) {
                 BlockHeader(icon = { m, c -> IconRain(m, c) }, title = stringResource(R.string.metric_precipitation))
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 8.dp)) {
                 Text(
                     text = value,
                     style = MaterialTheme.typography.displayMediumEmphasized,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = unit,
@@ -63,15 +66,16 @@ fun PrecipitationBlock(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) {
                 if (nowcast != null) {
                     Text(
                         text = nowcast,
                         modifier = Modifier.align(Alignment.Center),
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.bodySmall,
                         textAlign = TextAlign.Center,
                         maxLines = 2,
                         softWrap = true,
+                        overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
