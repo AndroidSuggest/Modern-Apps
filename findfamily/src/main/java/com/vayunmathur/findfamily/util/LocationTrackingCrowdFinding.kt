@@ -5,6 +5,7 @@ import com.vayunmathur.library.log.Log
 import com.vayunmathur.findfamily.data.Coord
 import com.vayunmathur.findfamily.data.LocationValue
 import com.vayunmathur.findfamily.data.UserKind
+import com.vayunmathur.findfamily.domain.PairAuth
 import com.vayunmathur.findfamily.tracker.PoweredOffReporting
 import com.vayunmathur.findfamily.tracker.PoweredOffScanner
 import com.vayunmathur.findfamily.tracker.TrackerBeaconScanner
@@ -74,7 +75,18 @@ internal suspend fun LocationTrackingService.pollTrackerReports() {
         locs += runCatching { TrackerReporting.fetchTrackerLocations(t, store) }
             .getOrDefault(emptyList())
     }
-    if (locs.isNotEmpty()) processIncomingLocations(locs)
+    if (locs.isNotEmpty()) {
+        // Tracker crowd reports are anonymous finder sightings restamped locally — no relay
+        // sender, no pair ID. Time-clamp before storing: finder-set timestamps flow through
+        // the same getLatest() MAX(reportedAt) ranking.
+        val now = Clock.System.now()
+        val timely = locs.filterNot { loc ->
+            val future = PairAuth.isFromTheFuture(loc.reportedAt, loc.timestamp, now)
+            if (future) Log.status("FF-Tracker", "dropped future-dated tracker report")
+            future
+        }
+        if (timely.isNotEmpty()) processIncomingLocations(timely)
+    }
 }
 
 /**
@@ -151,6 +163,16 @@ internal suspend fun LocationTrackingService.pollPoweredOffSightings() {
     }
     if (locs.isNotEmpty()) {
         Log.status(LocationTrackingService.TAG_POWERED_OFF, "retrieved ${locs.size} network sighting(s)")
-        processIncomingLocations(locs)
+        // Powered-off sightings are anonymous finder reports restamped locally — no relay
+        // sender, no pair ID. Time-clamp before storing (same getLatest() ranking).
+        val now = Clock.System.now()
+        val timely = locs.filterNot { loc ->
+            val future = PairAuth.isFromTheFuture(loc.reportedAt, loc.timestamp, now)
+            if (future) {
+                Log.status(LocationTrackingService.TAG_POWERED_OFF, "dropped future-dated sighting")
+            }
+            future
+        }
+        if (timely.isNotEmpty()) processIncomingLocations(timely)
     }
 }

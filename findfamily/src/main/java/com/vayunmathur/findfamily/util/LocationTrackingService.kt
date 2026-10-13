@@ -368,9 +368,11 @@ class LocationTrackingService : Service(), SensorEventListener {
             // Live relay: the server pushes peer locations and UWB envelopes over the
             // WebSocket the instant they arrive, driving the same processing paths the
             // heartbeat used to. This is the only inbound path — there is no HTTP poll.
+            // Inbound fixes arrive with their claimed pair ID attached (see InboundFix);
+            // processIncomingFixes authenticates, pins, and time-clamps before storing.
             Networking.startLive(
                 serviceScope,
-                onLocations = { processIncomingLocations(it) },
+                onLocations = { processIncomingFixes(it) },
                 onUwb = { handleUwbEnvelopes(it) },
             )
 

@@ -5,9 +5,11 @@ import com.vayunmathur.findfamily.R
 import com.vayunmathur.findfamily.data.LocationSource
 import com.vayunmathur.findfamily.data.LocationValue
 import com.vayunmathur.findfamily.data.User
+import com.vayunmathur.findfamily.data.UserKind
 import com.vayunmathur.findfamily.data.havershine
 import com.vayunmathur.findfamily.data.RequestStatus
 import com.vayunmathur.findfamily.domain.NoShowPolicy
+import com.vayunmathur.findfamily.domain.PairAuth
 import com.vayunmathur.findfamily.uwb.UwbEnvelope
 import com.vayunmathur.findfamily.uwb.UwbEnvelopeKind
 import com.vayunmathur.findfamily.uwb.UwbInbox
@@ -38,10 +40,112 @@ private const val LOW_BATTERY_THRESHOLD = 15f
 private const val FULL_BATTERY = 100f
 
 /**
- * Persists a batch of freshly-decrypted peer locations and inserts unknown senders.
+ * Authenticated entry point for every inbound fix carrying a claimed sender.
+ *
+ * Three gates, in order — time-clamp, sender-auth, storage-eligibility — so a forgery
+ * dies at the cheapest check that catches it:
+ *  1. **Time clamp.** A far-future `reportedAt`/`timestamp` lets one forgery pin
+ *     `getLatest()` forever (it ranks on MAX(reportedAt)). Dropped before any DB work.
+ *  2. **Sender auth (GHSA-x94x-v6f7-wwpp).** Ciphertext proves who the packet is FOR,
+ *     not who it is FROM, and `userid` is self-declared. Each *person* peer pins the
+ *     first pair ID it sees; anything else claiming to be them is dropped before it can
+ *     touch Room, the map, or notifications.
+ *  3. **Storage eligibility.** Only fixes from senders with a `User` row *at batch
+ *     start* ([RequestStatus.MUTUAL_CONNECTION] or [RequestStatus.AWAITING_RESPONSE])
+ *     reach storage. Everyone else — strangers, pending requests, trackers — is filed
+ *     as a request below and their coordinates are never stored. The eligibility set is
+ *     snapshotted once so a stranger cannot bootstrap themselves mid-batch.
+ *
+ * Tracker rows ([UserKind.TRACKER]) never pin and never accept pair IDs: their positions
+ * come from anonymous crowd reports, not relay packets. A relay packet claiming a
+ * tracker ID is either a misroute or a forgery — dropped and logged, never pinned.
+ */
+internal suspend fun LocationTrackingService.processIncomingFixes(incoming: List<InboundFix>) {
+    if (incoming.isEmpty()) return
+    val now = Clock.System.now()
+    val usersById = repository.getAllUsers().associateBy { it.id }
+    // Eligible senders: mutual/response PERSON contacts known when this batch arrived.
+    // Trackers excluded (crowd reports, not relay packets). AWAITING_REQUEST excluded:
+    // they filed a request; their coordinates still prove nothing.
+    val eligibleIds = usersById.values
+        .filter {
+            it.kind == UserKind.PERSON &&
+                (it.requestStatus == RequestStatus.MUTUAL_CONNECTION ||
+                    it.requestStatus == RequestStatus.AWAITING_RESPONSE)
+        }
+        .map { it.id }.toSet()
+    val authenticated = ArrayList<LocationValue>(incoming.size)
+    val strangerIds = LinkedHashSet<Long>()
+    for (fix in incoming) {
+        val loc = fix.location
+        val senderId = loc.userid
+        if (senderId == Networking.userid) continue
+        if (PairAuth.isFromTheFuture(loc.reportedAt, loc.timestamp, now)) {
+            Log.status(
+                "FF-Heartbeat",
+                "dropped future-dated fix from ${senderId.toULong()} " +
+                    "reportedAt=${loc.reportedAt} timestamp=${loc.timestamp}"
+            )
+            continue
+        }
+        val peer = usersById[senderId]
+        if (peer == null || peer.kind != UserKind.PERSON || senderId !in eligibleIds) {
+            // Stranger, tracker claim, or not-yet-mutual: request row at most, never a pin,
+            // never storage. Collected for the single insert below.
+            if (peer == null && senderId != Networking.userid) strangerIds.add(senderId)
+            else Log.status(
+                "FF-Heartbeat",
+                "dropped fix from ineligible sender ${senderId.toULong()} " +
+                    "(known=${peer != null} kind=${peer?.kind} status=${peer?.requestStatus})"
+            )
+            continue
+        }
+        when (PairAuth.checkInbound(peer.inboundPairId, fix.pairId)) {
+            PairAuth.InboundVerdict.ACCEPT_MATCH,
+            PairAuth.InboundVerdict.ACCEPT_LEGACY,
+            -> authenticated.add(loc)
+            PairAuth.InboundVerdict.ACCEPT_PIN -> {
+                runCatching { repository.pinInboundPairId(senderId, fix.pairId!!) }
+                Log.dev(
+                    "FF-Heartbeat",
+                    "pinned inbound pair ID for ${senderId.toULong()} " +
+                        "(preview ${PairAuth.logPreview(fix.pairId)})"
+                )
+                authenticated.add(loc)
+            }
+            PairAuth.InboundVerdict.DROP_MISMATCH,
+            PairAuth.InboundVerdict.DROP_MISSING,
+            -> Log.status(
+                "FF-Heartbeat",
+                "dropped unauthenticated fix claiming ${senderId.toULong()} " +
+                    "(pair ${PairAuth.logPreview(fix.pairId)}, " +
+                    "expected ${PairAuth.logPreview(peer.inboundPairId)})"
+            )
+        }
+    }
+    if (strangerIds.isNotEmpty()) {
+        Log.dev("FF-Heartbeat", "newUsers to insert=${strangerIds.map { it.toULong() }}")
+        repository.insertUsersIgnore(strangerIds.map {
+            User(" ", null, "Unknown Location", false, RequestStatus.AWAITING_REQUEST, Clock.System.now(), null, it)
+        })
+    }
+    processIncomingLocations(authenticated)
+}
+
+/**
+ * Persists a batch of authenticated peer locations. Every element must have passed
+ * [processIncomingFixes] (or be a local crowd-report path that vouches for its own
+ * sender, see below) — this function performs NO auth and stores everything it gets.
+ *
  * Runs on the live WebSocket reader coroutine, so it only does fast, durable work;
- * the slow best-effort part is handed to [enrichIncomingLocations]. Self-contained
- * (re-reads users) so it can be driven by any inbound path.
+ * the slow best-effort part is handed to [enrichIncomingLocations].
+ *
+ * Crowd paths ([LocationTrackingService.pollTrackerReports],
+ * [LocationTrackingService.pollPoweredOffSightings]) call this DIRECTLY, bypassing
+ * [processIncomingFixes] on purpose: their fixes are anonymous finder reports restamped
+ * to a tracker/owner ID locally — there is no relay sender to authenticate and no pair
+ * ID to check. They MUST time-clamp before calling: those reports carry finder-set
+ * timestamps through the same `getLatest()` ranking.
  */
 internal suspend fun LocationTrackingService.processIncomingLocations(incoming: List<LocationValue>) {
     // A category this build cannot interpret is dropped rather than stored. Marking it is not
@@ -75,19 +179,11 @@ internal suspend fun LocationTrackingService.processIncomingLocations(incoming: 
         )
     }
     if (locList.isEmpty()) return
-    val currentUsers = repository.getAllUsers()
-    val userIDs = currentUsers.map { it.id }
-
-    val usersRecieved = locList.map { it.userid }.distinct()
-    val receivedIds = usersRecieved.map { it.toULong() }
-    val knownIds = userIDs.map { it.toULong() }
-    val selfId = Networking.userid.toULong()
-    Log.dev("FF-Heartbeat", "received userids=$receivedIds self=$selfId known=$knownIds")
-    val newUsers = usersRecieved.filter { it !in userIDs && it != Networking.userid }
-    Log.dev("FF-Heartbeat", "newUsers to insert=${newUsers.map{ it.toULong() }}")
-    repository.insertUsersIgnore(newUsers.map {
-        User(" ", null, "Unknown Location", false, RequestStatus.AWAITING_REQUEST, Clock.System.now(), null, it)
-    })
+    Log.dev(
+        "FF-Heartbeat",
+        "received userids=${locList.map { it.userid }.distinct().map { it.toULong() }} " +
+            "self=${Networking.userid.toULong()}"
+    )
 
     // Snapshot the previous latest-per-user BEFORE persisting the new fixes, so the
     // battery-threshold and self-waypoint comparisons below still see the prior state
