@@ -157,6 +157,25 @@ interface UserDao {
     @Query("UPDATE User SET pqcEncryptionKey = :pqcEncryptionKey WHERE id = :id")
     suspend fun setPqcEncryptionKey(id: Long, pqcEncryptionKey: String)
 
+    /**
+     * Pin the inbound pair ID we expect from a peer (GHSA-x94x-v6f7-wwpp).
+     * Guarded by `IS NULL` so a reconnect race or a replayed first packet can never
+     * overwrite an already-pinned value — pinning is trust-on-first-use, exactly once.
+     */
+    @Query("UPDATE User SET inboundPairId = :pairId WHERE id = :id AND inboundPairId IS NULL")
+    suspend fun pinInboundPairId(id: Long, pairId: String)
+
+    /** Set the outbound pair ID we send to a peer (our own secret, our choice). */
+    @Query("UPDATE User SET outboundPairId = :pairId WHERE id = :id")
+    suspend fun setOutboundPairId(id: Long, pairId: String)
+
+    /**
+     * Generate-on-first-send for pre-existing rows: only fills when null, so two
+     * concurrent heartbeats cannot rotate an ID the peer already pinned.
+     */
+    @Query("UPDATE User SET outboundPairId = :pairId WHERE id = :id AND outboundPairId IS NULL")
+    suspend fun setOutboundPairIdIfAbsent(id: Long, pairId: String)
+
     @Query("UPDATE User SET platform = :platform WHERE id = :id")
     suspend fun setPlatform(id: Long, platform: String)
 
@@ -184,7 +203,7 @@ interface TemporaryLinkDao {
 
 @Database(
     entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class, NoShowAlert::class],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 @ColumnTypeConverters(DefaultConverters::class)
@@ -323,6 +342,15 @@ abstract class FFDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS `index_NoShowAlert_watchedUserId` " +
                         "ON `NoShowAlert` (`watchedUserId`)"
                 )
+            },
+            // Hidden pair-ID sender auth (GHSA-x94x-v6f7-wwpp): two nullable TEXT columns on
+            // User. Null = unpinned/legacy; pinning happens trust-on-first-use at runtime.
+            // Nullable ADD COLUMN keeps this a pure additive migration — no table rebuild, no
+            // defaults, existing rows read back as unpinned and behave exactly as before until
+            // their peer's first authenticated packet arrives.
+            androidx.room3.migration.Migration(13, 14) {
+                it.execSQL("ALTER TABLE `User` ADD COLUMN `inboundPairId` TEXT")
+                it.execSQL("ALTER TABLE `User` ADD COLUMN `outboundPairId` TEXT")
             }
         )
     }

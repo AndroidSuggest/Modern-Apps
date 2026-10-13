@@ -70,6 +70,16 @@ class FindFamilyRepository private constructor(context: Context) :
     suspend fun setPqcEncryptionKey(id: Long, pqcEncryptionKey: String) =
         userDao.setPqcEncryptionKey(id, pqcEncryptionKey)
 
+    /** Pin the inbound pair ID expected from a peer (once — guarded by IS NULL in SQL). */
+    suspend fun pinInboundPairId(id: Long, pairId: String) = userDao.pinInboundPairId(id, pairId)
+
+    /** Set our outbound pair ID for a peer (unconditional — our own secret, our choice). */
+    suspend fun setOutboundPairId(id: Long, pairId: String) = userDao.setOutboundPairId(id, pairId)
+
+    /** Fill our outbound pair ID only when absent (generate-on-first-send for legacy rows). */
+    suspend fun setOutboundPairIdIfAbsent(id: Long, pairId: String) =
+        userDao.setOutboundPairIdIfAbsent(id, pairId)
+
     suspend fun setSharingAutoToggleAt(id: Long, atEpochSeconds: Long?) =
         userDao.setSharingAutoToggleAt(id, atEpochSeconds)
 
