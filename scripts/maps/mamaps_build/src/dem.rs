@@ -2,10 +2,11 @@
 //! tile — the second half of WS-G's build side, closing the gap the wire format left open.
 //!
 //! `dem_ingest` fetches AWS terrarium PNG tiles and downsamples them into one small square `u16`
-//! grid per map tile at a single zoom (`--out-zoom`, default 14; `--dim`, default 17), each sample
+//! grid per map tile at a single zoom (`--out-zoom`, default 14; `--dim`, default 9), each sample
 //! `metres + 32768` row-major from the tile's top-left. That is exactly the layout
 //! [`tilecodec::mamaps::body::Heightmap`] carries on the wire, so a tile at the dataset's own zoom
-//! is a **verbatim copy** of its grid — no resample, byte for byte what the ingest computed.
+//! is a **verbatim copy** of its grid — no resample, byte for byte what the ingest computed,
+//! unless the tile is flat enough to coarsen (see `FLAT_RELIEF_M`).
 //!
 //! A tile at any other zoom is **resampled**: `dim * dim` points are sampled across the tile's own
 //! extent (the same slippy walk `dem_ingest` does over the terrarium grid), each bilinearly
@@ -35,6 +36,46 @@ const SEA_LEVEL: u16 = 32768;
 /// carries no relief worth a terrain grid. See [`Dem::heightmap_for`] for why such tiles drop it.
 fn all_sea_level(samples: &[u16]) -> bool {
     samples.iter().all(|&s| s == SEA_LEVEL)
+}
+
+/// A tile flatter than this (max sample minus min sample, in metres) carries
+/// a coarse grid: at 5x5 the elevation error is bounded by the relief the
+/// grid cannot see, and below a 10-storey building over a tile (~1 km at
+/// z14) the mesh is indistinguishable from full resolution.
+pub const FLAT_RELIEF_M: u16 = 32;
+
+/// The coarse grid side length for flat tiles. 5x5x2+2 = 52 bytes against
+/// 9x9x2+2 = 164 — a 68% saving where it applies, with zero reader changes
+/// (the wire carries a per-tile `dim`, and sampling/tessellation derive
+/// from it).
+pub const FLAT_DIM: u16 = 5;
+
+/// The relief (max minus min sample) of a grid, in sample units (metres).
+fn relief(samples: &[u16]) -> u16 {
+    let (mut lo, mut hi) = (u16::MAX, u16::MIN);
+    for &s in samples {
+        lo = lo.min(s);
+        hi = hi.max(s);
+    }
+    hi - lo
+}
+
+/// Downsample a `dim x dim` grid to `FLAT_DIM x FLAT_DIM` by picking the
+/// evenly-spaced rows/columns (corners included, so the tile edges agree
+/// with a full-resolution neighbour's skirt). Only called when
+/// `dim >= FLAT_DIM` and the grid is flat — the values barely vary, so
+/// nearest-pick and averaging differ by less than the relief itself.
+fn coarsen(samples: &[u16], dim: usize) -> Vec<u16> {
+    let flat = FLAT_DIM as usize;
+    let mut out = Vec::with_capacity(flat * flat);
+    for row in 0..flat {
+        let src_row = row * (dim - 1) / (flat - 1);
+        for col in 0..flat {
+            let src_col = col * (dim - 1) / (flat - 1);
+            out.push(samples[src_row * dim + src_col]);
+        }
+    }
+    out
 }
 
 /// A loaded `.mdem` dataset: one `u16` grid per output tile, keyed by pmtiles tile id at the
@@ -116,6 +157,11 @@ impl Dem {
             if all_sea_level(samples) {
                 return None;
             }
+            // A flat tile's grid is mostly repetition: coarsen it. Steep
+            // tiles keep the full grid.
+            if relief(samples) <= FLAT_RELIEF_M && self.dim >= FLAT_DIM {
+                return Some(Heightmap { dim: FLAT_DIM, samples: coarsen(samples, self.dim as usize) });
+            }
             return Some(Heightmap { dim: self.dim, samples: samples.clone() });
         }
         self.resample(z, x, y)
@@ -149,6 +195,11 @@ impl Dem {
         // open water rather than a flat earth-coloured terrain grid (see `heightmap_for`).
         if !any || all_sea_level(&samples) {
             return None;
+        }
+        // Same flat-tile coarsening as the verbatim path: the resampled grid
+        // is full resolution, so relief is measured on it directly.
+        if relief(&samples) <= FLAT_RELIEF_M && self.dim >= FLAT_DIM {
+            return Some(Heightmap { dim: FLAT_DIM, samples: coarsen(&samples, dim) });
         }
         Some(Heightmap { dim: self.dim, samples })
     }
@@ -316,7 +367,9 @@ mod tests {
         }
         let dem = Dem::parse(&dataset(oz, dim, &tiles)).expect("parse");
         let hm = dem.heightmap_for(13, 1365, 3167).expect("a resampled heightmap");
-        assert_eq!(hm.dim, dim);
+        // A perfectly flat field coarsens: 5x5 of 100 m everywhere.
+        assert_eq!(hm.dim, FLAT_DIM, "a flat resampled tile coarsens");
+        assert_eq!(hm.samples.len(), FLAT_DIM as usize * FLAT_DIM as usize);
         assert!(
             hm.samples.iter().all(|&s| s == SEA_LEVEL + 100),
             "resampling a flat 100 m field is still 100 m everywhere",
@@ -331,5 +384,35 @@ mod tests {
         let mut short = dataset(14, 17, &[]);
         short[8] = 1; // claim one tile
         assert!(Dem::parse(&short).is_err(), "a claimed tile past the end is refused");
+    }
+
+    /// A flat tile (relief under `FLAT_RELIEF_M`) coarsens to `FLAT_DIM`:
+    /// corners survive so tile edges agree with full-resolution neighbours.
+    #[test]
+    fn a_flat_tile_coarsens_and_a_steep_tile_does_not() {
+        let (z, dim) = (14u8, 9u16);
+        let (x, y) = (2730u64, 6335u64);
+        // Relief 8 m: flat farmland. Corners pinned to distinct values so the
+        // test can tell nearest-pick from averaging.
+        let mut flat = vec![SEA_LEVEL + 100; dim as usize * dim as usize];
+        flat[0] = SEA_LEVEL + 96;
+        flat[8] = SEA_LEVEL + 104;
+        flat[72] = SEA_LEVEL + 97;
+        flat[80] = SEA_LEVEL + 103;
+        let dem = Dem::parse(&dataset(z, dim, &[(tile_id(z, x, y), flat)])).expect("parse");
+        let hm = dem.heightmap_for(z, x, y).expect("a heightmap");
+        assert_eq!(hm.dim, FLAT_DIM, "a flat tile coarsens");
+        assert_eq!(hm.samples.len(), FLAT_DIM as usize * FLAT_DIM as usize);
+        assert_eq!(hm.samples[0], SEA_LEVEL + 96, "top-left corner survives");
+        assert_eq!(hm.samples[4], SEA_LEVEL + 104, "top-right corner survives");
+        assert_eq!(hm.samples[20], SEA_LEVEL + 97, "bottom-left corner survives");
+        assert_eq!(hm.samples[24], SEA_LEVEL + 103, "bottom-right corner survives");
+        // A steep tile (relief over the threshold) keeps the full grid.
+        let steep = ramp(dim);
+        assert!(relief(&steep) > FLAT_RELIEF_M, "the ramp is steep: {}", relief(&steep));
+        let dem = Dem::parse(&dataset(z, dim, &[(tile_id(z, x, y), steep.clone())])).expect("parse");
+        let hm = dem.heightmap_for(z, x, y).expect("a heightmap");
+        assert_eq!(hm.dim, dim, "a steep tile keeps full resolution");
+        assert_eq!(hm.samples, steep);
     }
 }
