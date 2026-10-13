@@ -1,7 +1,7 @@
 use super::consts::{BODY_FLAG_BUILDING_TABLE, BODY_FLAG_EXTENDED_COUNTS, BODY_FLAG_HEIGHTMAP, BODY_FLAG_ID_TABLE, BODY_FLAG_LANE_TABLE, BODY_FLAG_NAME_TABLE, BODY_FLAG_REGION_LINKS, BODY_FLAG_ROAD_LANES, BODY_HEADER_LEN, FEATURE_RECORD_LEN, GEOM_LINE, GEOM_POINT, GEOM_POLYGON, KNOWN_BODY_FLAGS, KNOWN_FEATURE_FLAGS, LAYER_INDEX_LEN, PART_ENTRY_LEN, PART_ENTRY_V10_LEN, WINDING_HOLE, WINDING_OUTER};
 use super::model::{Body, BuildingAttrs, Carriageway, Feature, LaneTurns, Layer, NAME_NONE, Part};
 use super::tables::{align4, parse_carriageways, parse_heightmap, parse_ids, parse_lanes, parse_names, parse_region_links, payloads_end};
-use super::tables_extra::{parse_buildings, parse_sparse_buildings};
+use super::tables_extra::{parse_buildings, parse_sparse_buildings, parse_sparse_carriageways, parse_sparse_lanes};
 use crate::proto::{Result, err};
 
 impl Body {
@@ -239,7 +239,13 @@ impl Body {
                 ids = table;
             }
             if has_lanes {
-                let (table, used) = parse_lanes(&buf[at..], &layers)?;
+                // v10 lanes are sparse (bitset + non-empty masks only); v8 is
+                // dense. Both expand to the same dense model.
+                let (table, used) = if v10 {
+                    parse_sparse_lanes(&buf[at..], &layers)?
+                } else {
+                    parse_lanes(&buf[at..], &layers)?
+                };
                 at += used;
                 turn_lanes = table;
             }
@@ -259,7 +265,12 @@ impl Body {
                 heightmap = Some(grid);
             }
             if has_carriageways {
-                let (table, marking, used) = parse_carriageways(&buf[at..], &layers)?;
+                // v10 carriageways are sparse like v10 lanes; v8 is dense.
+                let (table, marking, used) = if v10 {
+                    parse_sparse_carriageways(&buf[at..], &layers)?
+                } else {
+                    parse_carriageways(&buf[at..], &layers)?
+                };
                 at += used;
                 carriageways = table;
                 convention = Some(marking);

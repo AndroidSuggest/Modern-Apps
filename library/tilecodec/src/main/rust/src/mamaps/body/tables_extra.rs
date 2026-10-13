@@ -1,4 +1,7 @@
-use super::model::{BUILDING_ATTRS_LEN, BuildingAttrs, Layer, ROOF_ORIENT_MAX, ROOF_SHAPE_MAX};
+use super::model::{
+    BUILDING_ATTRS_LEN, BuildingAttrs, Carriageway, LaneTurns, Layer, MarkingConvention,
+    ROOF_ORIENT_MAX, ROOF_SHAPE_MAX,
+};
 use super::tables::align4;
 use crate::proto::{Result, err};
 
@@ -124,6 +127,249 @@ pub fn serialize_buildings(buildings: &[(u8, Vec<BuildingAttrs>)], out: &mut Vec
             out.extend_from_slice(&[0u8; 3]);
             out.extend_from_slice(&a.building_colour.to_le_bytes());
             out.extend_from_slice(&a.roof_colour.to_le_bytes());
+        }
+    }
+    while out.len() % 4 != 0 {
+        out.push(0);
+    }
+}
+
+/// Parse the v10 sparse turn-lane table: like [`parse_sparse_buildings`], a
+/// `u32` layer count, then per layer a `u8` id, a `u32` feature count, a
+/// bitset of the features carrying lane masks (`(n+7)/8` bytes), and the
+/// variable-length mask records (2 count bytes + 2 bytes per mask) for the set
+/// features in order. Expands to the dense model, so the reader API is
+/// unchanged. Returns the table and the bytes consumed.
+pub(crate) fn parse_sparse_lanes(
+    buf: &[u8],
+    layers: &[Layer],
+) -> Result<(Vec<(u8, Vec<LaneTurns>)>, usize)> {
+    if buf.len() < 4 {
+        return err("a .mamaps sparse turn-lane table ends before its count");
+    }
+    let count = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
+    if count > layers.len() {
+        return err(format!(
+            "a .mamaps sparse turn-lane table has {count} entries for a body with {} layer(s)",
+            layers.len(),
+        ));
+    }
+    let mut at = 4usize;
+    let mut table = Vec::with_capacity(count);
+    let mut previous: Option<u8> = None;
+    for _ in 0..count {
+        if at + 5 > buf.len() {
+            return err("a .mamaps sparse turn-lane table ends inside an entry header");
+        }
+        let layer_id = buf[at];
+        let n = u32::from_le_bytes([buf[at + 1], buf[at + 2], buf[at + 3], buf[at + 4]]) as usize;
+        at += 5;
+        if previous.is_some_and(|p| layer_id <= p) {
+            return err("a .mamaps sparse turn-lane table's entries are not ordered by layer id");
+        }
+        previous = Some(layer_id);
+        let Some(layer) = layers.iter().find(|l| l.layer_id == layer_id) else {
+            return err(format!(
+                "a .mamaps sparse turn-lane table names layer {layer_id}, which the body does not carry"
+            ));
+        };
+        if n != layer.features.len() {
+            return err(format!(
+                "a .mamaps sparse turn-lane table gives layer {layer_id} {n} bit(s) for {} feature(s)",
+                layer.features.len(),
+            ));
+        }
+        let bitlen = n.div_ceil(8);
+        if at + bitlen > buf.len() {
+            return err("a .mamaps sparse turn-lane table ends inside its bitset");
+        }
+        let bits = &buf[at..at + bitlen];
+        at += bitlen;
+        let mut turns = Vec::with_capacity(n);
+        for i in 0..n {
+            if bits[i / 8] & (1u8 << (i % 8)) == 0 {
+                turns.push(LaneTurns::default());
+                continue;
+            }
+            if at + 2 > buf.len() {
+                return err("a .mamaps sparse turn-lane record ends inside its counts");
+            }
+            let (fwd_len, bwd_len) = (buf[at] as usize, buf[at + 1] as usize);
+            at += 2;
+            let masks = fwd_len + bwd_len;
+            let bytes = masks.checked_mul(2).ok_or_else(|| {
+                crate::proto::Error("a .mamaps sparse turn-lane record overflows".to_string())
+            })?;
+            if at + bytes > buf.len() {
+                return err("a .mamaps sparse turn-lane record's masks run past the table");
+            }
+            let read = |n: usize, at: &mut usize| -> Vec<u16> {
+                let mut v = Vec::with_capacity(n);
+                for _ in 0..n {
+                    v.push(u16::from_le_bytes([buf[*at], buf[*at + 1]]));
+                    *at += 2;
+                }
+                v
+            };
+            let forward = read(fwd_len, &mut at);
+            let backward = read(bwd_len, &mut at);
+            turns.push(LaneTurns { forward, backward });
+        }
+        table.push((layer_id, turns));
+    }
+    let aligned = align4(at);
+    if aligned > buf.len() {
+        return err("a .mamaps sparse turn-lane table's padding runs past the body");
+    }
+    Ok((table, aligned))
+}
+
+/// Serialise a sparse turn-lane table, 4-byte aligned. Layers with no masked
+/// features are omitted entirely; the inverse of [`parse_sparse_lanes`].
+pub fn serialize_sparse_lanes(turn_lanes: &[(u8, Vec<LaneTurns>)], out: &mut Vec<u8>) {
+    let present: Vec<(&u8, &Vec<LaneTurns>)> = turn_lanes
+        .iter()
+        .map(|(id, v)| (id, v))
+        .filter(|(_, v)| v.iter().any(|t| !t.is_empty()))
+        .collect();
+    out.extend_from_slice(&(present.len() as u32).to_le_bytes());
+    for (layer_id, entries) in present {
+        out.push(*layer_id);
+        out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+        let mut bits = vec![0u8; entries.len().div_ceil(8)];
+        for (i, t) in entries.iter().enumerate() {
+            if !t.is_empty() {
+                bits[i / 8] |= 1u8 << (i % 8);
+            }
+        }
+        out.extend_from_slice(&bits);
+        for t in entries {
+            if t.is_empty() {
+                continue;
+            }
+            out.push(t.forward.len() as u8);
+            out.push(t.backward.len() as u8);
+            for mask in t.forward.iter().chain(&t.backward) {
+                out.extend_from_slice(&mask.to_le_bytes());
+            }
+        }
+    }
+    while out.len() % 4 != 0 {
+        out.push(0);
+    }
+}
+
+/// Parse the v10 sparse carriageway table: the tile convention byte and three
+/// reserved bytes, then the sparse framing [`parse_sparse_lanes`] uses — a
+/// `u32` entry count, then per entry a `u8` layer id, a `u32` record count, a
+/// bitset, and 6-byte records for the set features only. Expands to the dense
+/// model. Returns the table, the convention, and the bytes consumed.
+pub(crate) fn parse_sparse_carriageways(
+    buf: &[u8],
+    layers: &[Layer],
+) -> Result<(Vec<(u8, Vec<Carriageway>)>, MarkingConvention, usize)> {
+    if buf.len() < 8 {
+        return err("a .mamaps sparse carriageway table ends before its header");
+    }
+    let convention = MarkingConvention::from_byte(buf[0])?;
+    if buf[1] != 0 || u16::from_le_bytes([buf[2], buf[3]]) != 0 {
+        return err("a .mamaps sparse carriageway table has non-zero reserved bytes");
+    }
+    let count = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]) as usize;
+    if count > layers.len() {
+        return err(format!(
+            "a .mamaps sparse carriageway table has {count} entries for a body with {} layer(s)",
+            layers.len(),
+        ));
+    }
+    let mut at = 8usize;
+    let mut table = Vec::with_capacity(count);
+    let mut previous: Option<u8> = None;
+    for _ in 0..count {
+        if at + 5 > buf.len() {
+            return err("a .mamaps sparse carriageway table ends inside an entry header");
+        }
+        let layer_id = buf[at];
+        let n = u32::from_le_bytes([buf[at + 1], buf[at + 2], buf[at + 3], buf[at + 4]]) as usize;
+        at += 5;
+        if previous.is_some_and(|p| layer_id <= p) {
+            return err("a .mamaps sparse carriageway table's entries are not ordered by layer id");
+        }
+        previous = Some(layer_id);
+        let Some(layer) = layers.iter().find(|l| l.layer_id == layer_id) else {
+            return err(format!(
+                "a .mamaps sparse carriageway table names layer {layer_id}, which the body does not carry"
+            ));
+        };
+        if n != layer.features.len() {
+            return err(format!(
+                "a .mamaps sparse carriageway table gives layer {layer_id} {n} bit(s) for {} feature(s)",
+                layer.features.len(),
+            ));
+        }
+        let bitlen = n.div_ceil(8);
+        if at + bitlen > buf.len() {
+            return err("a .mamaps sparse carriageway table ends inside its bitset");
+        }
+        let bits = &buf[at..at + bitlen];
+        at += bitlen;
+        let mut rows = Vec::with_capacity(n);
+        for i in 0..n {
+            if bits[i / 8] & (1u8 << (i % 8)) == 0 {
+                rows.push(Carriageway::default());
+                continue;
+            }
+            if at + 6 > buf.len() {
+                return err("a .mamaps sparse carriageway record runs past the table");
+            }
+            rows.push(Carriageway {
+                forward: buf[at],
+                backward: buf[at + 1],
+                solid_dividers: u32::from_le_bytes([buf[at + 2], buf[at + 3], buf[at + 4], buf[at + 5]]),
+            });
+            at += 6;
+        }
+        table.push((layer_id, rows));
+    }
+    let aligned = align4(at);
+    if aligned > buf.len() {
+        return err("a .mamaps sparse carriageway table's padding runs past the body");
+    }
+    Ok((table, convention, aligned))
+}
+
+/// Serialise a sparse carriageway table, 4-byte aligned. Layers whose splits
+/// are all default are omitted; the inverse of [`parse_sparse_carriageways`].
+pub fn serialize_sparse_carriageways(
+    carriageways: &[(u8, Vec<Carriageway>)],
+    convention: MarkingConvention,
+    out: &mut Vec<u8>,
+) {
+    out.push(convention.to_byte());
+    out.extend_from_slice(&[0u8; 3]);
+    let present: Vec<(&u8, &Vec<Carriageway>)> = carriageways
+        .iter()
+        .map(|(id, v)| (id, v))
+        .filter(|(_, v)| v.iter().any(|c| !c.is_empty()))
+        .collect();
+    out.extend_from_slice(&(present.len() as u32).to_le_bytes());
+    for (layer_id, entries) in present {
+        out.push(*layer_id);
+        out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+        let mut bits = vec![0u8; entries.len().div_ceil(8)];
+        for (i, c) in entries.iter().enumerate() {
+            if !c.is_empty() {
+                bits[i / 8] |= 1u8 << (i % 8);
+            }
+        }
+        out.extend_from_slice(&bits);
+        for c in entries {
+            if c.is_empty() {
+                continue;
+            }
+            out.push(c.forward);
+            out.push(c.backward);
+            out.extend_from_slice(&c.solid_dividers.to_le_bytes());
         }
     }
     while out.len() % 4 != 0 {

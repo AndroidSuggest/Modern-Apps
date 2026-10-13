@@ -474,6 +474,78 @@ mod tests {
         assert_eq!(got, attrs, "S3DB attrs survive sparse + narrowed");
     }
 
+    /// **v10 sparse lanes/carriageways, end to end.** One masked road among
+    /// defaults (and one split carriageway among defaults) must survive the
+    /// v10 serialize/parse trip exactly. Bridge coverage until tilecodec's own
+    /// test target builds again.
+    #[test]
+    fn a_v10_body_round_trips_sparse_lanes_and_carriageways() {
+        use tilecodec::mamaps::body::{
+            serialize_into_v10, Carriageway, Feature as BodyFeature, LaneTurns,
+            Layer as BodyLayer, MarkingConvention, Part, Scratch, GEOM_LINE,
+            WINDING_OUTER,
+        };
+        let mut roads = BodyLayer::new(dict::LAYER_ROADS);
+        for i in 0..3u32 {
+            roads.features.push(BodyFeature {
+                kind: 1,
+                kind_detail: 0,
+                geom_type: GEOM_LINE,
+                flags: 0,
+                name_idx: tilecodec::mamaps::body::NAME_NONE,
+                parts_offset: i,
+                part_count: 1,
+                transit_color: 0,
+                transit_ordinal: 0,
+                transit_lanes: 0,
+                transit_taper: 0,
+                lane_count: 4,
+            });
+            roads.parts.push(Part {
+                coord_start: i * 2,
+                point_count: 2,
+                winding: WINDING_OUTER,
+            });
+            let a = i as i16 * 10;
+            roads.coords.extend_from_slice(&[(a, 0), (a, 100)]);
+        }
+        let turns = vec![
+            LaneTurns::default(),
+            LaneTurns { forward: vec![1, 2, 6], backward: vec![4] },
+            LaneTurns::default(),
+        ];
+        let rows = vec![
+            Carriageway { forward: 2, backward: 2, solid_dividers: 0b010 },
+            Carriageway::default(),
+            Carriageway::default(),
+        ];
+        let convention = MarkingConvention { left_hand: false, yellow_centre: true };
+        let body = Body {
+            extent: 4096,
+            layers: vec![roads],
+            names: Vec::new(),
+            ids: Vec::new(),
+            turn_lanes: vec![(dict::LAYER_ROADS, turns.clone())],
+            buildings: Vec::new(),
+            heightmap: None,
+            carriageways: vec![(dict::LAYER_ROADS, rows.clone())],
+            convention: Some(convention),
+            region_links: Vec::new(),
+        };
+        let mut scratch = Scratch::default();
+        let bytes = serialize_into_v10(&body, &mut scratch).expect("v10 serialize");
+        assert_eq!(bytes[3], tilecodec::mamaps::header::FORMAT_VERSION_V10);
+        let back = Body::parse(bytes).expect("v10 parse");
+        assert_eq!(back.feature_turns(dict::LAYER_ROADS, 1), Some(&turns[1]));
+        assert_eq!(back.feature_turns(dict::LAYER_ROADS, 0), Some(&LaneTurns::default()));
+        assert_eq!(back.feature_carriageway(dict::LAYER_ROADS, 0), Some(&rows[0]));
+        assert_eq!(
+            back.feature_carriageway(dict::LAYER_ROADS, 2),
+            Some(&Carriageway::default()),
+        );
+        assert_eq!(back.convention, Some(convention));
+    }
+
     /// **The DEM heightmap path, end to end.** A synthetic per-tile grid handed to the tiler reaches
     /// the archive on the tile it covers and reads back through [`tilecodec::mamaps::body::Heightmap::sample`]
     /// — and a build with no DEM leaves every tile's heightmap unset, a valid v6 with no terrain

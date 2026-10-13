@@ -6,7 +6,7 @@ use super::emit_extra::write_full_layer_payload;
 use super::emit_extra::write_v10_layer_payload;
 use super::tables::{serialize_carriageways, serialize_heightmap, serialize_ids, serialize_lanes, serialize_names, serialize_region_links, align4};
 use super::tables_extra::serialize_buildings;
-use super::tables_extra::serialize_sparse_buildings;
+use super::tables_extra::{serialize_sparse_buildings, serialize_sparse_carriageways, serialize_sparse_lanes};
 use crate::proto::{Result, err};
 
 /// Serialise a body.
@@ -372,7 +372,11 @@ fn serialize_into_version<'s>(
         serialize_ids(&body.ids, assembled);
     }
     if !body.turn_lanes.is_empty() {
-        serialize_lanes(&body.turn_lanes, assembled);
+        if v10 {
+            serialize_sparse_lanes(&body.turn_lanes, assembled);
+        } else {
+            serialize_lanes(&body.turn_lanes, assembled);
+        }
     }
     if !body.buildings.is_empty() {
         if v10 {
@@ -387,11 +391,19 @@ fn serialize_into_version<'s>(
     if !body.carriageways.is_empty() {
         // The convention only reaches the wire alongside a table, so a body that sets one without
         // any carriageway rows would silently drop it. Validation above rejects that.
-        serialize_carriageways(
-            &body.carriageways,
-            body.convention.unwrap_or_default(),
-            assembled,
-        );
+        if v10 {
+            serialize_sparse_carriageways(
+                &body.carriageways,
+                body.convention.unwrap_or_default(),
+                assembled,
+            );
+        } else {
+            serialize_carriageways(
+                &body.carriageways,
+                body.convention.unwrap_or_default(),
+                assembled,
+            );
+        }
     }
     if !body.region_links.is_empty() {
         serialize_region_links(&body.region_links, assembled);

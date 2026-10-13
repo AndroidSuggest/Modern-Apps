@@ -344,3 +344,73 @@ fn the_building_table_and_heightmap_round_trip_together() {
     let parsed = Body::parse(&serialize(&body).expect("serialize")).expect("parse");
     assert_eq!(parsed, body);
 }
+
+/// v10 stores the turn-lane table sparse: a bitset plus the non-empty masks.
+/// One masked road among defaults must survive the trip exactly.
+#[test]
+fn v10_sparse_lanes_round_trip_defaults_and_masks() {
+    let roads = roads_layer(3);
+    let turns = vec![
+        LaneTurns::default(),
+        LaneTurns { forward: vec![1, 2, 6], backward: vec![4] },
+        LaneTurns::default(),
+    ];
+    let body = Body {
+        extent: DEFAULT_EXTENT,
+        layers: vec![roads],
+        names: Vec::new(),
+        ids: Vec::new(),
+        turn_lanes: vec![(dict::LAYER_ROADS, turns.clone())],
+        buildings: Vec::new(),
+        heightmap: None,
+        carriageways: Vec::new(),
+        convention: None,
+        region_links: Vec::new(),
+    };
+    let mut scratch = Scratch::default();
+    let bytes = serialize_into_v10(&body, &mut scratch).expect("serialize");
+    assert_eq!(bytes[3], crate::mamaps::header::FORMAT_VERSION_V10);
+    assert_ne!(bytes[11] & BODY_FLAG_LANE_TABLE, 0, "the lane flag is set");
+    let parsed = Body::parse(bytes).expect("parse");
+    assert_eq!(parsed, body);
+    assert_eq!(parsed.feature_turns(dict::LAYER_ROADS, 0), Some(&LaneTurns::default()));
+    assert_eq!(parsed.feature_turns(dict::LAYER_ROADS, 1), Some(&turns[1]));
+}
+
+/// v10 stores the carriageway table sparse too, with the tile convention
+/// riding in the header exactly as in v8.
+#[test]
+fn v10_sparse_carriageways_round_trip_defaults_and_splits() {
+    let roads = roads_layer(3);
+    let rows = vec![
+        Carriageway { forward: 2, backward: 2, solid_dividers: 0b010 },
+        Carriageway::default(),
+        Carriageway::default(),
+    ];
+    let convention = MarkingConvention { left_hand: false, yellow_centre: true };
+    let body = Body {
+        extent: DEFAULT_EXTENT,
+        layers: vec![roads],
+        names: Vec::new(),
+        ids: Vec::new(),
+        turn_lanes: Vec::new(),
+        buildings: Vec::new(),
+        heightmap: None,
+        carriageways: vec![(dict::LAYER_ROADS, rows.clone())],
+        convention: Some(convention),
+        region_links: Vec::new(),
+    };
+    let mut scratch = Scratch::default();
+    let bytes = serialize_into_v10(&body, &mut scratch).expect("serialize");
+    assert_eq!(bytes[3], crate::mamaps::header::FORMAT_VERSION_V10);
+    assert_ne!(bytes[11] & BODY_FLAG_ROAD_LANES, 0, "the carriageway flag is set");
+    let parsed = Body::parse(bytes).expect("parse");
+    assert_eq!(parsed, body);
+    assert_eq!(parsed.convention, Some(convention));
+    assert_eq!(parsed.feature_carriageway(dict::LAYER_ROADS, 0), Some(&rows[0]));
+    assert_eq!(
+        parsed.feature_carriageway(dict::LAYER_ROADS, 2),
+        Some(&Carriageway::default()),
+        "a default split restores as a default record, not an absent one",
+    );
+}
