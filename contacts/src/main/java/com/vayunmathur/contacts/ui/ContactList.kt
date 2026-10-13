@@ -1,11 +1,26 @@
 package com.vayunmathur.contacts.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.Route
@@ -14,7 +29,10 @@ import com.vayunmathur.contacts.util.ContactListUiState
 import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.contacts.util.ContactsActions
 import com.vayunmathur.contacts.util.loadAccounts
+import com.vayunmathur.library.ui.FadeVisibility
+import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.util.NavBackStack
+import kotlinx.coroutines.launch
 
 /** Binds [ContactViewModel] to the stateless [ContactListScreen]. */
 @Composable
@@ -38,6 +56,7 @@ fun ContactList(
     val showAccountLabels by viewModel.showAccountLabels.collectAsStateWithLifecycle()
     val simSlotLabels by viewModel.simSlotLabels.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val sortMode by viewModel.sortMode.collectAsStateWithLifecycle()
     val hasLoadedContacts by viewModel.hasLoadedContacts.collectAsStateWithLifecycle()
 
     val last = backStack.last()
@@ -57,6 +76,8 @@ fun ContactList(
             showAddButton = last !is Route.EditContact,
             isLoading = !hasLoadedContacts,
         ),
+        sortMode = sortMode,
+        onSortModeChange = viewModel::setSortMode,
         actions = object : ContactsActions by viewModel {
             override fun openContact(contact: Contact) = onContactClick(contact)
 
@@ -71,4 +92,61 @@ fun ContactList(
             }
         },
     )
+}
+
+/**
+ * Draggable scrollbar thumb for the contact list.
+ *
+ * The list owns its items through `LazyListScaffold`'s internal `LazyColumn`, so the screen
+ * hoists the [LazyListState] and overlays this thumb: its length and offset mirror the visible
+ * window, and dragging it scrolls the list, giving hundreds-long address books a fast path
+ * without leaving the existing list. Hidden for short lists with nothing to jump to.
+ */
+@Composable
+internal fun ContactListFastScroller(
+    state: LazyListState,
+    itemCount: Int,
+    modifier: Modifier = Modifier,
+) {
+    val scope = rememberCoroutineScope()
+    val firstIndex = state.firstVisibleItemIndex
+    val visibleCount = state.layoutInfo.visibleItemsInfo.size
+    FadeVisibility(
+        visible = visibleCount > 0 && itemCount > visibleCount,
+        modifier = modifier,
+    ) {
+        val topWeight = firstIndex.toFloat()
+        val thumbWeight = visibleCount.toFloat().coerceAtLeast(1f)
+        val bottomWeight = (itemCount - firstIndex - visibleCount).toFloat().coerceAtLeast(0f)
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(16.dp)
+                .draggable(
+                    state = rememberDraggableState { delta ->
+                        scope.launch { state.scrollBy(delta) }
+                    },
+                    orientation = Orientation.Vertical,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(4.dp),
+            ) {
+                if (topWeight > 0f) Spacer(Modifier.weight(topWeight))
+                Box(
+                    Modifier
+                        .weight(thumbWeight)
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                            MaterialTheme.shapes.small,
+                        ),
+                )
+                if (bottomWeight > 0f) Spacer(Modifier.weight(bottomWeight))
+            }
+        }
+    }
 }

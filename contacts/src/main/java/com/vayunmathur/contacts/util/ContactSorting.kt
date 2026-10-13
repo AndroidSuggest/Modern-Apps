@@ -22,6 +22,9 @@ import java.util.Locale
  */
 object ContactSorting {
 
+    /** Which name field leads the list ordering. Persisted; defaults to [FirstName]. */
+    enum class ContactSortMode { FirstName, LastName }
+
     /** Collator for the current locale, accent-insensitive but case-insensitive at PRIMARY level. */
     fun collator(): Collator = Collator.getInstance(Locale.getDefault()).apply {
         strength = Collator.PRIMARY
@@ -53,6 +56,35 @@ object ContactSorting {
         // contact makes it O(n), and the sort itself then compares cheap byte arrays. This runs
         // on the UI thread from the contact list's grouping, on every change to the list.
         return map { it to col.getCollationKey(it.name.value) }
+            .sortedWith(compareBy { it.second })
+            .map { it.first }
+    }
+
+    /**
+     * The name [contact] sorts and groups under in [mode].
+     *
+     * Single-name contacts (blank last name) fall back to the full display value so they
+     * group under their actual name instead of '#'/empty — e.g. "Madonna" stays under 'M'.
+     */
+    fun Contact.sortDisplayName(mode: ContactSortMode): String {
+        if (mode == ContactSortMode.FirstName) return name.value
+        val last = name.lastName.trim()
+        val first = name.firstName.trim()
+        return when {
+            last.isNotEmpty() && first.isNotEmpty() -> "$last $first"
+            last.isNotEmpty() -> last
+            name.value.isNotBlank() -> name.value
+            else -> first
+        }
+    }
+
+    /** Section header for [contact] in [mode]: normalized first letter of its sort name. */
+    fun Contact.sectionKey(mode: ContactSortMode): Char = groupKey(sortDisplayName(mode))
+
+    /** Locale-aware sort by [mode]'s sort name, same collation-key approach as [sortedLocale]. */
+    fun List<Contact>.sortedByMode(mode: ContactSortMode): List<Contact> {
+        val col = collator()
+        return map { it to col.getCollationKey(it.sortDisplayName(mode)) }
             .sortedWith(compareBy { it.second })
             .map { it.first }
     }

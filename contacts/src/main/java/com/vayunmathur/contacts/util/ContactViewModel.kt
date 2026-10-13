@@ -230,6 +230,21 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
     val showAccountLabels: StateFlow<Boolean> = dataStore.booleanFlow("show_account_labels")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
+    /**
+     * Which name field leads the list ordering. Unknown stored values (e.g. from a newer
+     * version) fall back to first-name rather than crashing on `valueOf`.
+     */
+    val sortMode: StateFlow<ContactSorting.ContactSortMode> = dataStore.stringFlow("sort_mode")
+        .map { stored ->
+            runCatching { ContactSorting.ContactSortMode.valueOf(stored) }
+                .getOrDefault(ContactSorting.ContactSortMode.FirstName)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ContactSorting.ContactSortMode.FirstName)
+
+    fun setSortMode(mode: ContactSorting.ContactSortMode) {
+        viewModelScope.launch { dataStore.setString("sort_mode", mode.name) }
+    }
+
     // Coalesces system-contact change notifications; collected with debounce so a
     // burst of provider writes triggers a single re-sync instead of one per change.
     private val syncTrigger = MutableSharedFlow<Unit>(

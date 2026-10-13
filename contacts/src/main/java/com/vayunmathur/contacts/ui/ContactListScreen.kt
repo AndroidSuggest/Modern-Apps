@@ -1,10 +1,13 @@
 package com.vayunmathur.contacts.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -24,8 +27,9 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.util.ContactListUiState
-import com.vayunmathur.contacts.util.ContactSorting.groupKey
-import com.vayunmathur.contacts.util.ContactSorting.sortedLocale
+import com.vayunmathur.contacts.util.ContactSorting.ContactSortMode
+import com.vayunmathur.contacts.util.ContactSorting.sectionKey
+import com.vayunmathur.contacts.util.ContactSorting.sortedByMode
 import com.vayunmathur.contacts.util.ContactsActions
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.CommonSearchBar
@@ -34,6 +38,7 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconGroup
@@ -42,6 +47,7 @@ import com.vayunmathur.library.ui.IconShare
 import com.vayunmathur.library.ui.LazyListScaffold
 import com.vayunmathur.library.ui.LoadingState
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.OverflowMenu
 import com.vayunmathur.library.ui.PopVisibility
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.SwappedTopBar
@@ -58,15 +64,20 @@ import com.vayunmathur.library.ui.itemMotion
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactListScreen(state: ContactListUiState, actions: ContactsActions) {
+fun ContactListScreen(
+    state: ContactListUiState,
+    actions: ContactsActions,
+    sortMode: ContactSortMode = ContactSortMode.FirstName,
+    onSortModeChange: (ContactSortMode) -> Unit = {},
+) {
     val contacts = state.contacts
     val selectedIds = remember { mutableStateListOf<Long>() }
     val isSelectionMode = selectedIds.isNotEmpty()
 
     val (favorites, otherContacts) = remember(contacts) { contacts.partition { it.isFavorite } }
-    val groupedContacts = remember(otherContacts) {
-        otherContacts.groupBy { groupKey(it.name.value) }
-            .mapValues { (_, c) -> c.sortedLocale() }
+    val groupedContacts = remember(otherContacts, sortMode) {
+        otherContacts.groupBy { it.sectionKey(sortMode) }
+            .mapValues { (_, c) -> c.sortedByMode(sortMode) }
             .toSortedMap()
     }
 
@@ -77,6 +88,9 @@ fun ContactListScreen(state: ContactListUiState, actions: ContactsActions) {
     var showDeleteConfirmation by remember { mutableStateOf(false) }
 
     var isFocusableBySystem by remember { mutableStateOf(false) }
+
+    // Hoisted so the fast-scroller thumb below tracks and drives the same list.
+    val listState = rememberLazyListState()
 
     if (showDeleteConfirmation) {
         AlertDialog(
@@ -109,7 +123,9 @@ fun ContactListScreen(state: ContactListUiState, actions: ContactsActions) {
         selectedIds.clear()
     }
 
+    Box(Modifier.fillMaxSize()) {
     LazyListScaffold(
+        state = listState,
         topBar = {
             SwappedTopBar(showingOverlay = isSelectionMode) { selecting ->
                 if (selecting) {
@@ -164,6 +180,22 @@ fun ContactListScreen(state: ContactListUiState, actions: ContactsActions) {
                     actions = {
                         IconButton(onClick = { actions.shareContacts(contacts, "all_contacts.vcf") }) {
                             IconShare()
+                        }
+                        OverflowMenu {
+                            Item(
+                                text = stringResource(R.string.first_name),
+                                trailingIcon = if (sortMode == ContactSortMode.FirstName) {
+                                    { IconCheck() }
+                                } else null,
+                                onClick = { onSortModeChange(ContactSortMode.FirstName) },
+                            )
+                            Item(
+                                text = stringResource(R.string.last_name),
+                                trailingIcon = if (sortMode == ContactSortMode.LastName) {
+                                    { IconCheck() }
+                                } else null,
+                                onClick = { onSortModeChange(ContactSortMode.LastName) },
+                            )
                         }
                     }
                 )
@@ -270,6 +302,12 @@ fun ContactListScreen(state: ContactListUiState, actions: ContactsActions) {
                 }
             }
         }
+    }
+    ContactListFastScroller(
+        state = listState,
+        itemCount = listState.layoutInfo.totalItemsCount,
+        modifier = Modifier.align(Alignment.CenterEnd),
+    )
     }
 }
 
