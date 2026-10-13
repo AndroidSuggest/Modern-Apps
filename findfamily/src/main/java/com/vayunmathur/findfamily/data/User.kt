@@ -50,6 +50,22 @@ data class User(
     val sharingAutoToggleWaypointId: Long? = null,
     /** Peer post-quantum public bundle (base64: [4B kemLen][kemPubDer][dsaPubDer]), nullable for backward compat. */
     val pqcEncryptionKey: String? = null,
+    /**
+     * Hidden per-peer sender-auth secrets (GHSA-x94x-v6f7-wwpp).
+     *
+     * Encryption to the peer's bundle proves who a packet is *for*, not who it is *from*,
+     * and the userid inside the plaintext is self-declared. Each direction holds its own
+     * 128-bit secret (base64url, unpadded, ~22 chars) that never leaves the ciphertext:
+     *  - [outboundPairId]: what this device puts in every packet it sends to this peer.
+     *    Created once at explicit connect time; generated lazily on first send for
+     *    pre-existing rows.
+     *  - [inboundPairId]: what this device expects from this peer; pinned
+     *    trust-on-first-use on the first packet carrying an ID. Null = unpinned/legacy.
+     *
+     * Never user-visible, never logged in full, never sent outside the encrypted payload.
+     */
+    val inboundPairId: String? = null,
+    val outboundPairId: String? = null,
     /** Whether this row is a person contact or a custom UWB tracker. Defaults to
      * [UserKind.PERSON]; only the DEV_BUILD tracker feature ever writes [UserKind.TRACKER]. */
     val kind: UserKind = UserKind.PERSON

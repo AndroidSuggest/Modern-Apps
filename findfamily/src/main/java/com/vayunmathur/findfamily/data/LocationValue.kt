@@ -104,7 +104,7 @@ data class LocationValue(
     val source: LocationSource = LocationSource.LIVE,
     @PrimaryKey(autoGenerate = true) override val id: Long = 0
 ): DatabaseItem {
-    fun toCompatible(senderPlatform: String? = null): LocationValueCompatible {
+    fun toCompatible(senderPlatform: String? = null, pairId: String? = null): LocationValueCompatible {
         return LocationValueCompatible(
             userid = userid.toULong(),
             coord = coord,
@@ -115,6 +115,7 @@ data class LocationValue(
             sleep = false,
             id = id.toULong(),
             senderPlatform = senderPlatform,
+            pairId = pairId,
             reportedAt = reportedAt.toEpochMilliseconds(),
             source = source.name,
         )
@@ -133,6 +134,12 @@ data class LocationValueCompatible(
     val sleep: Boolean? = null,
     /** Sender's platform tag (`"android"` or `"ios"`). Optional for backward compatibility. */
     val senderPlatform: String? = null,
+    /**
+     * Hidden sender-auth secret (GHSA-x94x-v6f7-wwpp): this sender's outbound pair ID
+     * for the recipient. Base64url unpadded, ~22 chars. Optional for backward
+     * compatibility — absent means a peer that predates sender authentication.
+     */
+    val pairId: String? = null,
     /** [LocationValue.reportedAt] in epoch milliseconds. Absent from peers that predate it, in
      * which case it falls back to [timestamp] — an older peer only ever sent live reports. */
     val reportedAt: Long? = null,
