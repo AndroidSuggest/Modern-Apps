@@ -126,4 +126,78 @@ class HttpUrlEngineBodyTest {
         }
         assertEquals(300L, e.bytesRead)
     }
+
+    @Test
+    fun uncapped_byte_path_stays_unbounded() {
+        // The default (byte) path keeps its historical behavior: full body, no cap.
+        val data = bytes(segment * 2 + 5)
+        assertContentEquals(data, HttpUrlEngine.drainFully(trickle(data, 4096), null, true))
+    }
+
+    @Test
+    fun capped_read_fails_fast_once_past_the_cap() {
+        val data = bytes(10_000)
+        val e = assertFailsWith<HttpUrlEngine.BodyTooLargeException> {
+            HttpUrlEngine.drainFully(trickle(data, 512), data.size.toLong(), true, maxBytes = 1024)
+        }
+        assertTrue(e.bytesRead > 1024, "cap must be counted during the read, got ${e.bytesRead}")
+        assertEquals(1024L, e.maxBytes)
+    }
+
+    @Test
+    fun cap_is_counted_not_trusted_from_content_length() {
+        // A lying small Content-Length must not defeat the cap: the excess still trips it.
+        val data = bytes(10_000)
+        assertFailsWith<HttpUrlEngine.BodyTooLargeException> {
+            HttpUrlEngine.drainFully(trickle(data, 512), 100L, true, maxBytes = 1024)
+        }
+    }
+
+    @Test
+    fun body_under_the_cap_reads_exact() {
+        val data = bytes(5000)
+        assertContentEquals(
+            data,
+            HttpUrlEngine.drainFully(trickle(data, 137), data.size.toLong(), true, maxBytes = 8192),
+        )
+    }
+
+    @Test
+    fun read_body_text_names_endpoint_on_breach() {
+        val data = bytes(10_000)
+        val response = HttpUrlEngine.OpenResponse(
+            status = 200,
+            statusMessage = "OK",
+            headers = emptyMap(),
+            finalUrl = "https://example.test/api/v1/deals",
+            stream = trickle(data, 512),
+            hasStream = true,
+            contentLength = null,
+            isIdentityEncoding = true,
+        )
+        val e = assertFailsWith<IOException> {
+            response.use { HttpUrlEngine.readBodyText(it, maxBytes = 1024) }
+        }
+        assertTrue(
+            e.message!!.contains("https://example.test/api/v1/deals"),
+            "breach must name the URL, got: ${e.message}",
+        )
+    }
+
+    @Test
+    fun read_body_text_decodes_small_bodies() {
+        val text = "hello, deals"
+        val payload = text.toByteArray(Charsets.UTF_8)
+        val response = HttpUrlEngine.OpenResponse(
+            status = 200,
+            statusMessage = "OK",
+            headers = emptyMap(),
+            finalUrl = "https://example.test/api/v1/deals",
+            stream = ByteArrayInputStream(payload),
+            hasStream = true,
+            contentLength = payload.size.toLong(),
+            isIdentityEncoding = true,
+        )
+        assertEquals(text, response.use { HttpUrlEngine.readBodyText(it) })
+    }
 }

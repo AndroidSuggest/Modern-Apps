@@ -51,6 +51,13 @@ internal object HttpUrlEngine {
      */
     private const val MAX_PRESIZE = 1L * 1024 * 1024
 
+    /**
+     * Hard cap on bodies decoded to [String] (see [readBodyText]). 16 MB of UTF-8 decodes to at
+     * most ~32 MB of chars — comfortably inside the heap — while a runaway 200 MB+ response like
+     * the one behind #657 fails fast instead of OOMing mid-read. Normal API bodies are kilobytes.
+     */
+    const val MAX_TEXT_BODY_BYTES = 16L * 1024 * 1024
+
     private val EMPTY_BYTES = ByteArray(0)
 
     data class InternalResult(
@@ -86,6 +93,10 @@ internal object HttpUrlEngine {
 
     /** Read failure carrying how far the body got, so the caller can name the endpoint. */
     class BodyReadException(val bytesRead: Long, cause: Throwable) : IOException(cause)
+
+    /** Limit breach carrying how far the body got and the cap it hit. */
+    class BodyTooLargeException(val bytesRead: Long, val maxBytes: Long) :
+        IOException("Response body of at least $bytesRead bytes exceeds limit of $maxBytes bytes")
 
     fun openConnection(
         urlString: String,
@@ -363,14 +374,18 @@ internal object HttpUrlEngine {
      * size; otherwise fixed-size segments accumulate and a single exact-size array is assembled at
      * the end. A header that over- or under-states the real length is tolerated, not trusted.
      *
+     * [maxBytes] caps the read, counted as bytes arrive so a lying or absent Content-Length
+     * cannot defeat it; null (the default) preserves the historical unbounded byte path.
+     *
      * Pure in its arguments so it can be unit-tested without a network or a Context.
      */
     fun drainFully(
         input: InputStream,
         contentLengthHint: Long?,
         isIdentityEncoding: Boolean,
+        maxBytes: Long? = null,
     ): ByteArray {
-        val reader = BodyReader(input)
+        val reader = BodyReader(input, maxBytes)
         // Content-Length describes the encoded body, so it is only a size for identity encoding.
         val hint = if (isIdentityEncoding) contentLengthHint else null
         var presized: ByteArray? = null
@@ -424,9 +439,16 @@ internal object HttpUrlEngine {
     }
 
     /** Fills caller's buffer from [input], tracking bytes read and naming read failures. */
-    private class BodyReader(private val input: InputStream) {
+    private class BodyReader(private val input: InputStream, private val maxBytes: Long? = null) {
         var bytesRead = 0L
             private set
+
+        /** Accounts [n] fresh bytes, failing fast once a set cap is exceeded. */
+        private fun account(n: Int) {
+            bytesRead += n
+            val cap = maxBytes
+            if (cap != null && bytesRead > cap) throw BodyTooLargeException(bytesRead, cap)
+        }
 
         // Fills target from [from] until full or EOF; returns how much of it is populated.
         fun fill(target: ByteArray, from: Int): Int {
@@ -439,7 +461,7 @@ internal object HttpUrlEngine {
                 }
                 if (n < 0) break
                 used += n
-                bytesRead += n
+                account(n)
             }
             return used
         }
@@ -464,7 +486,7 @@ internal object HttpUrlEngine {
                 throw BodyReadException(bytesRead, e)
             }
             if (lead < 0) return false
-            bytesRead += 1
+            account(1)
             val segment = ByteArray(SEGMENT_SIZE)
             segment[0] = lead.toByte()
             val used = fill(segment, 1)
@@ -481,6 +503,29 @@ internal object HttpUrlEngine {
      */
     fun readBody(response: OpenResponse): ByteArray = try {
         drainFully(response.stream, response.contentLength, response.isIdentityEncoding)
+    } catch (e: BodyReadException) {
+        throw IOException(
+            "Failed to read response body from ${response.finalUrl} after ${e.bytesRead} bytes",
+            e,
+        )
+    }
+
+    /**
+     * [drainFully] decoded as UTF-8, capped at [maxBytes] wire bytes.
+     *
+     * The bounded replacement for `reader.readText()` on the paths that still have to return a
+     * whole body as [String]: the cap is counted during the read, never trusted from
+     * Content-Length, and a breach names the endpoint with bytes read instead of OOMing — the
+     * unbounded `readText()` behind #657 grew a StringWriter until the 256 MB heap gave out.
+     */
+    fun readBodyText(response: OpenResponse, maxBytes: Long = MAX_TEXT_BODY_BYTES): String = try {
+        drainFully(response.stream, response.contentLength, response.isIdentityEncoding, maxBytes)
+            .toString(Charsets.UTF_8)
+    } catch (e: BodyTooLargeException) {
+        throw IOException(
+            "Response body from ${response.finalUrl} exceeds $maxBytes bytes after ${e.bytesRead} bytes",
+            e,
+        )
     } catch (e: BodyReadException) {
         throw IOException(
             "Failed to read response body from ${response.finalUrl} after ${e.bytesRead} bytes",

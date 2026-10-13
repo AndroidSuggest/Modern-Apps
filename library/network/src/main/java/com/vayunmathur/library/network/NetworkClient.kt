@@ -255,8 +255,10 @@ object NetworkClient {
                 sslSocketFactory = resolveFactory(sslSocketFactory, useSystemTrust),
             )
             response.use {
+                // Bounded like the byte path (#582): readText() grew a StringWriter with no cap
+                // until the heap gave out (#657), so count bytes during the read and fail fast.
                 val text = try {
-                    it.stream.reader(Charsets.UTF_8).buffered().readText()
+                    HttpUrlEngine.readBodyText(it)
                 } catch (e: java.io.IOException) {
                     throw java.io.IOException("Failed to read response body from ${it.finalUrl}", e)
                 }
