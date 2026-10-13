@@ -106,12 +106,16 @@ class AppStoreViewModel(
     internal val categoriesFlow = MutableStateFlow<List<String>>(emptyList())
     internal val selectedCategoryFlow = MutableStateFlow<String?>(null)
     internal val categoryAppsFlow = MutableStateFlow<List<UnifiedApp>>(emptyList())
+    /** Section id expanded via its Browse button (issue #669), or null for carousels. */
+    internal val expandedSectionFlow = MutableStateFlow<String?>(null)
 
     internal val queryFlow = MutableStateFlow("")
     internal val searchResultsFlow = MutableStateFlow<List<UnifiedApp>>(emptyList())
     internal val searchFilterFlow = MutableStateFlow(SourceFilter.ALL)
     internal val isSearchingFlow = MutableStateFlow(false)
     internal val hasSearchedFlow = MutableStateFlow(false)
+    /** Play's half of the last search failed (e.g. 429, issue #797); shown above the list. */
+    internal val searchPlayErrorFlow = MutableStateFlow("")
 
     internal val selectedAppFlow = MutableStateFlow<UnifiedApp?>(null)
     internal val isLoadingDetailsFlow = MutableStateFlow(false)
@@ -209,7 +213,9 @@ class AppStoreViewModel(
     val home: StateFlow<HomeUiState> = combine(
         sections,
         categoriesFlow,
-        selectedCategoryFlow,
+        combine(selectedCategoryFlow, expandedSectionFlow) { category, expanded ->
+            category to expanded
+        },
         chrome,
         combine(
             updates,
@@ -220,11 +226,12 @@ class AppStoreViewModel(
         ) { u, syncing, loading, msg, playError ->
             HomeChrome(u.size, syncing, loading, msg.ifBlank { playError })
         },
-    ) { built, categories, category, rows, homeChrome ->
+    ) { built, categories, (category, expandedSectionId), rows, homeChrome ->
         HomeUiState(
             sections = built,
             categories = categories,
             selectedCategory = category,
+            expandedSectionId = expandedSectionId,
             updateCount = homeChrome.updateCount,
             installedPackages = rows.installedPackages,
             installedIcons = rows.icons,
@@ -242,14 +249,17 @@ class AppStoreViewModel(
         },
         isSearchingFlow,
         hasSearchedFlow,
-        chrome,
-    ) { query, (results, filter), searching, searched, rows ->
+        combine(searchPlayErrorFlow, chrome) { playError, rows ->
+            playError to rows
+        },
+    ) { query, (results, filter), searching, searched, (playError, rows) ->
         SearchUiState(
             query = query,
             results = results.filter { filter.source == null || it.source == filter.source },
             filter = filter,
             isSearching = searching,
             hasSearched = searched,
+            playError = playError,
             installedPackages = rows.installedPackages,
             installedIcons = rows.icons,
             stages = rows.stages,
@@ -418,6 +428,15 @@ class AppStoreViewModel(
         viewModelScope.launch {
             categoryAppsFlow.value = if (category == null) emptyList() else catalog.byCategory(category)
         }
+    }
+
+    /**
+     * Expand a carousel section into its full vertical list, or collapse it.
+     * One section at a time (issue #669); expanding another moves, not stacks.
+     */
+    override fun toggleSection(sectionId: String) {
+        expandedSectionFlow.value =
+            if (expandedSectionFlow.value == sectionId) null else sectionId
     }
 
     override fun refresh() = syncSources()

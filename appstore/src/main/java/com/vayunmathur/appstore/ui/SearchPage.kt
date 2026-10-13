@@ -31,6 +31,7 @@ import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.LinearProgressIndicator
+import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 
@@ -100,6 +101,18 @@ fun SearchScreen(
 
             if (state.isSearching) {
                 LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
+            }
+
+            // Play's half refused (429, issue #797): say so above the results rather than
+            // silently showing a list that is missing half its sources.
+            val playError = state.playError.takeIf { it.isNotBlank() }
+            if (playError != null) {
+                Text(
+                    playError,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
             }
 
             when {

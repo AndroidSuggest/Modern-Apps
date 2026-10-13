@@ -4,6 +4,7 @@ import com.aurora.gplayapi.data.models.App
 import com.aurora.gplayapi.data.models.AuthData
 import com.aurora.gplayapi.data.models.PlayFile
 import com.aurora.gplayapi.data.models.StreamCluster
+import com.aurora.gplayapi.exceptions.GooglePlayException
 import com.aurora.gplayapi.helpers.AppDetailsHelper
 import com.aurora.gplayapi.helpers.PurchaseHelper
 import com.aurora.gplayapi.helpers.SearchHelper
@@ -39,6 +40,10 @@ class PlayStoreApi(
             null
         } catch (_: IllegalStateException) {
             null
+        } catch (_: GooglePlayException) {
+            // gplayapi reports HTTP failures (e.g. 429 Too Many Requests, issue #797)
+            // as GooglePlayException, not IOException.
+            null
         }
     }
 
@@ -60,6 +65,10 @@ class PlayStoreApi(
                 emptyList()
             } catch (_: IllegalStateException) {
                 emptyList()
+            } catch (_: GooglePlayException) {
+                // gplayapi reports HTTP failures (e.g. 429 Too Many Requests, issue #797)
+                // as GooglePlayException, not IOException.
+                emptyList()
             }
         }
     }
@@ -72,6 +81,11 @@ class PlayStoreApi(
      * the page behind it. [answered] decides when to stop, so a query that is answered
      * straight away still costs exactly one request and the extra round trips are spent
      * only where the alternative was showing the user nothing they asked for.
+     *
+     * @throws GooglePlayException e.g. Unknown(429) when Play rate-limits (bytesOrThrow,
+     * issue #797). Deliberately not caught here: PlayRepository.withApi cycles the shared
+     * anonymous account and retries once, then records it so the search screen can explain
+     * the missing Play half instead of crashing.
      */
     suspend fun search(
         query: String,
@@ -133,6 +147,10 @@ class PlayStoreApi(
             emptyList()
         } catch (_: IllegalStateException) {
             emptyList()
+        } catch (_: GooglePlayException) {
+            // gplayapi reports HTTP failures (e.g. 429 Too Many Requests, issue #797)
+            // as GooglePlayException, not IOException.
+            emptyList()
         }
     }
 
@@ -157,6 +175,10 @@ class PlayStoreApi(
         } catch (_: java.io.IOException) {
             emptyList()
         } catch (_: IllegalStateException) {
+            emptyList()
+        } catch (_: GooglePlayException) {
+            // gplayapi reports HTTP failures (e.g. 429 Too Many Requests, issue #797)
+            // as GooglePlayException, not IOException.
             emptyList()
         }
     }

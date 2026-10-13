@@ -39,6 +39,7 @@ import com.vayunmathur.library.ui.IconStar
 import com.vayunmathur.library.ui.LinearProgressIndicator
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.util.sharedCrop
 import java.util.Locale
 
@@ -200,7 +201,10 @@ fun AppRow(
                         versionLabel,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
+                        // Old and new versions share one "a (1) → b (2)" line, and long
+                        // version names ellipsized the tail — the new code — away (#813).
+                        // Two lines keeps both codes visible.
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 2.dp),
                     )
@@ -215,17 +219,34 @@ fun AppRow(
     }
 }
 
-/** Heading above a section of the home screen. */
+/** Heading above a section of the home screen, with an optional trailing action. */
 @Composable
-fun SectionHeader(title: String, subtitle: String?, modifier: Modifier = Modifier) {
-    Column(modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        if (!subtitle.isNullOrBlank()) {
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+fun SectionHeader(
+    title: String,
+    subtitle: String?,
+    modifier: Modifier = Modifier,
+    /** Label for the header's action button; null draws no button (e.g. in a preview). */
+    actionLabel: String? = null,
+    onAction: () -> Unit = {},
+) {
+    Row(
+        modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (actionLabel != null) {
+            TextButton(onClick = onAction) {
+                Text(actionLabel)
+            }
         }
     }
 }

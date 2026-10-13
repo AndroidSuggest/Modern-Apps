@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.aurora.gplayapi.data.models.AuthData
 import com.aurora.gplayapi.data.models.PlayFile
+import com.aurora.gplayapi.exceptions.GooglePlayException
 import com.aurora.gplayapi.helpers.AuthHelper
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.data.searchCandidate
@@ -118,19 +119,23 @@ class PlayRepository(private val context: Context) {
     suspend fun <T> withApi(block: suspend (PlayStoreApi) -> T): T? {
         val cached = cachedAuthData ?: return null
         try {
-            return block(PlayStoreApi(cached, httpClient))
+            return block(PlayStoreApi(cached, httpClient)).also { clearPlayError() }
         } catch (e: CancellationException) {
             throw e
         } catch (expected: java.io.IOException) {
             Log.status(TAG, "Play call failed; cycling anonymous account", expected)
         } catch (expected: IllegalStateException) {
             Log.status(TAG, "Play call failed; cycling anonymous account", expected)
+        } catch (expected: GooglePlayException) {
+            // gplayapi surfaces HTTP failures (e.g. 429 Too Many Requests, issue #797)
+            // as GooglePlayException, not IOException. Same cycle-and-retry as the rest.
+            Log.status(TAG, "Play call failed (${expected.message}); cycling anonymous account", expected)
         }
 
         invalidate()
         val fresh = ensureAuth().getOrNull() ?: return null
         return try {
-            block(PlayStoreApi(fresh, httpClient))
+            block(PlayStoreApi(fresh, httpClient)).also { clearPlayError() }
         } catch (e: CancellationException) {
             throw e
         } catch (expected: java.io.IOException) {
@@ -138,6 +143,12 @@ class PlayRepository(private val context: Context) {
             null
         } catch (expected: IllegalStateException) {
             Log.status(TAG, "Play call failed again after cycling", expected)
+            null
+        } catch (expected: GooglePlayException) {
+            // Refused twice, so a retry loop would only hammer it further (issue #797).
+            // Record it for the search screen instead of letting it kill the caller.
+            Log.status(TAG, "Play call failed again after cycling", expected)
+            _authState.value = PlayAuthState.Error(playFailureMessage(expected))
             null
         }
     }
@@ -229,6 +240,9 @@ class PlayRepository(private val context: Context) {
             false
         } catch (_: IllegalStateException) {
             false
+        } catch (_: GooglePlayException) {
+            // A validity probe is best-effort: a refusal means "not usable", not a crash.
+            false
         }
     }
 
@@ -263,8 +277,37 @@ class PlayRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Clear a stale Play failure once a call succeeds, so the status line and the next
+     * search stop blaming Play for a refusal that has since cleared.
+     */
+    private fun clearPlayError() {
+        if (_authState.value is PlayAuthState.Error) {
+            val cached = cachedAuthData
+            _authState.value = if (cached != null) PlayAuthState.Authenticated(cached)
+            else PlayAuthState.Idle
+        }
+    }
+
+    /**
+     * Short user-facing reason for a refused Play call (issue #797). The ViewModel wraps
+     * this in R.string.play_unavailable, so this is the %1$s half, not a sentence.
+     */
+    private fun playFailureMessage(e: GooglePlayException): String {
+        val code = (e as? GooglePlayException.Unknown)?.code
+        return when (code) {
+            TOO_MANY_REQUESTS -> "too many requests — try again shortly"
+            SERVICE_UNAVAILABLE -> "temporarily unavailable — try again shortly"
+            else -> e.message ?: "request failed"
+        }
+    }
+
     private companion object {
         const val TAG = "PlayRepository"
+
+        /** gplayapi Unknown codes worth naming in user-facing failure text (issue #797). */
+        const val TOO_MANY_REQUESTS = 429
+        const val SERVICE_UNAVAILABLE = 503
 
         /**
          * How far into Play's search stream to read before giving up on a query. Only

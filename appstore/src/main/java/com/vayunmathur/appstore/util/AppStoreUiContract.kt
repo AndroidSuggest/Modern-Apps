@@ -54,6 +54,8 @@ data class HomeUiState(
     val sections: List<AppSection> = emptyList(),
     val categories: List<String> = emptyList(),
     val selectedCategory: String? = null,
+    /** Section id expanded into a full list via its Browse button, or null for carousels. */
+    val expandedSectionId: String? = null,
     val updateCount: Int = 0,
     val installedPackages: Set<String> = emptySet(),
     val installedIcons: Map<String, Drawable> = emptyMap(),
@@ -72,6 +74,11 @@ data class SearchUiState(
     val isSearching: Boolean = false,
     /** True once a search has run for [query], so "no results" can be told from "not yet". */
     val hasSearched: Boolean = false,
+    /**
+     * Play's half failed (e.g. rate-limited, issue #797) while the offline half answered.
+     * Blank when Play answered or was never asked, so the list alone is the whole story.
+     */
+    val playError: String = "",
     val installedPackages: Set<String> = emptySet(),
     val installedIcons: Map<String, Drawable> = emptyMap(),
     val stages: Map<String, InstallStage> = emptyMap(),
@@ -135,6 +142,12 @@ interface AppActions {
 interface HomeActions : AppActions {
     fun selectCategory(category: String?) {}
     fun refresh() {}
+
+    /**
+     * Expand a carousel section into its full vertical list, or collapse it back.
+     * One section at a time — an expanded section owns the screen below its header.
+     */
+    fun toggleSection(sectionId: String) {}
 
     companion object {
         val Noop: HomeActions = object : HomeActions {}

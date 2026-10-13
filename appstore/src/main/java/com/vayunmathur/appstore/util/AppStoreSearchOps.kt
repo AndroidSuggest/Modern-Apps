@@ -2,8 +2,10 @@ package com.vayunmathur.appstore.util
 
 import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.SEARCH_DEBOUNCE_MS
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.UnifiedApp
+import com.vayunmathur.appstore.data.play.PlayAuthState
 import com.vayunmathur.appstore.data.priority
 import com.vayunmathur.appstore.data.searchCandidate
 import com.vayunmathur.appstore.domain.SearchRanking
@@ -26,6 +28,7 @@ internal fun AppStoreViewModel.setSearchImpl(query: String) {
     searchJob = viewModelScope.launch {
         delay(SEARCH_DEBOUNCE_MS)
         isSearchingFlow.value = true
+        searchPlayErrorFlow.value = ""
         val enabled = enabledSources.value
 
         // Local first and published immediately: the F-Droid catalogue is on disk, so
@@ -37,7 +40,13 @@ internal fun AppStoreViewModel.setSearchImpl(query: String) {
         // carousel (its API has no search RPC), so it adds no network round-trip here.
         val accrescentResults =
             if (AppSource.ACCRESCENT in enabled) accrescent.search(query) else emptyList()
+        // Play may refuse (429 Too Many Requests, issue #797): withApi records the refusal
+        // on authState after cycling the account once, and the local half stays on screen.
         val remote = if (AppSource.PLAYSTORE in enabled) play.search(query) else emptyList()
+        val playError = (play.authState.value as? PlayAuthState.Error)
+            ?.let { context.getString(R.string.play_unavailable, it.message) }
+            .orEmpty()
+        searchPlayErrorFlow.value = playError
         searchResultsFlow.value = rank(merge(local, remote, accrescentResults), query)
         isSearchingFlow.value = false
         hasSearchedFlow.value = true

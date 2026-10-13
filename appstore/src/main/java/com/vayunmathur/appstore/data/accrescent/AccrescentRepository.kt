@@ -104,7 +104,7 @@ class AccrescentRepository(
     suspend fun search(query: String): List<UnifiedApp> {
         val q = query.trim().lowercase()
         if (q.isEmpty()) return emptyList()
-        ensureAllListingsLoaded()
+        runCatching { ensureAllListingsLoaded() }.getOrNull() ?: return emptyList()
         return listingsCache.values.filter {
             it.packageName.lowercase().contains(q) ||
                 it.name.lowercase().contains(q) ||

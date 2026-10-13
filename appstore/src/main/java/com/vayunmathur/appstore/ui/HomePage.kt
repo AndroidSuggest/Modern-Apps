@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -52,6 +53,12 @@ fun HomePage(
     onOpenUpdates: () -> Unit,
 ) {
     val state by viewModel.home.collectAsState()
+    // The updates banner counts every source, but the Play half of the update check only
+    // ran when the Updates tab was opened — so a fresh launch showed the F-Droid count
+    // until the user visited that tab (issue #701). Kick off one check from home.
+    LaunchedEffect(Unit) {
+        viewModel.checkForUpdates()
+    }
     HomeScreen(
         state = state,
         actions = viewModel,
@@ -142,10 +149,31 @@ fun HomeScreen(
 
                 state.sections.forEach { section ->
                     item("${section.id}-header") {
-                        SectionHeader(section.title, section.subtitle)
+                        SectionHeader(
+                            title = section.title,
+                            subtitle = section.subtitle,
+                            actionLabel = browseLabel(section.id == state.expandedSectionId),
+                            onAction = { actions.toggleSection(section.id) },
+                        )
                     }
-                    when (section.layout) {
-                        SectionLayout.CAROUSEL -> item("${section.id}-body") {
+                    val expanded = section.id == state.expandedSectionId
+                    when {
+                        // Browse (issue #669): the carousel's apps as a full vertical list of
+                        // the same search-style rows, replacing the carousel while expanded.
+                        expanded -> items(
+                            section.apps,
+                            key = { "${section.id}-${it.packageName}" },
+                        ) { app ->
+                            AppRow(
+                                app = app,
+                                isInstalled = app.packageName in state.installedPackages,
+                                stage = state.stages[app.packageName],
+                                installedIcon = state.installedIcons[app.packageName],
+                                onClick = { onAppClick(app) },
+                                sharedKey = sharedKeyFor(section, app),
+                            )
+                        }
+                        section.layout == SectionLayout.CAROUSEL -> item("${section.id}-body") {
                             AppCarousel(
                                 apps = section.apps,
                                 installedPackages = state.installedPackages,
@@ -155,7 +183,7 @@ fun HomeScreen(
                                 sharedKey = { sharedKeyFor(section, it) },
                             )
                         }
-                        SectionLayout.LIST -> items(
+                        else -> items(
                             section.apps,
                             key = { "${section.id}-${it.packageName}" },
                         ) { app ->
@@ -224,6 +252,12 @@ private fun UpdatesBanner(count: Int, onClick: () -> Unit) {
         }
     }
 }
+
+/** Browse/Show-less label for a section header, resolved here so previews stay literal. */
+@Composable
+private fun browseLabel(expanded: Boolean): String = stringResource(
+    if (expanded) R.string.action_show_less else R.string.action_browse
+)
 
 @Composable
 private fun CategoryRow(
