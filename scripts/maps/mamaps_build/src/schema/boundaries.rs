@@ -126,8 +126,9 @@ fn kind_for(level: u16) -> &'static str {
 /// How shallow a level is worth drawing.
 ///
 /// A country border carries a world tile. A city limit at z4 is noise — and there are a hundred
-/// thousand of them. Levels 5+ start at z12: the zoom table showed boundaries at 15.3GB with
-/// county/city lines retiled from z6/z9 up.
+/// thousand of them. Levels 5+ start at z12, and the layer itself caps at z12
+/// (`MAX_ZOOM_PER_LAYER`): county/city lines tile exactly one zoom, so the
+/// z13 copies the old cap carried are gone and z13+ overzooms from z12.
 fn min_zoom_for(level: u16) -> u8 {
     match level {
         0..=2 => 0,

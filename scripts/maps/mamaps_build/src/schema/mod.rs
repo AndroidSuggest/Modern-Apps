@@ -155,20 +155,22 @@ pub fn detail(name: &str) -> u16 {
 /// The deepest zoom a layer is worth carrying at, by layer id.
 ///
 /// The `landtype` wash is no longer a low-zoom backdrop: it tiles to z14 at 1.0x sharpness, so
-/// parks, shorelines and desert stay crisp under z14 roads and buildings. Boundaries keep
-/// z13: lines carry sub-10m wiggles a 2x grid stretch could straighten, and 3GB buys keeping
-/// them crisp. Every other layer tiles to the archive max (14). Enforced in the spill lane
-/// filter beside `min_zoom`, so no spill format change: a per-layer table, not a per-feature
-/// field.
+/// parks, shorelines and desert stay crisp under z14 roads and buildings. Boundaries stop at
+/// z12 (z13 overzooms from z12 exactly as z14 overzoomed z13 — admin lines soften one level,
+/// nothing else moves). Traffic stops at z13: congestion ribbons overzoom legibly (the ids still
+/// match 1:1, only the geometry stretches 2x — sub-pixel for a congestion overlay), and
+/// z14 traffic was the layer's dominant cost. Every other layer tiles to the archive
+/// max (14). Enforced in the spill lane filter beside `min_zoom`, so no spill format
+/// change: a per-layer table, not a per-feature field.
 pub const MAX_ZOOM_PER_LAYER: [u8; 9] = [
     14, // landtype
     14, // roads
-    13, // boundaries
+    12, // boundaries (overzoomed at z13+)
     14, // buildings
     14, // places
     14, // poi
     14, // transit
-    14, // traffic
+    13, // traffic (overzoomed at z14; ids unaffected)
     14, // junction
 ];
 
@@ -398,14 +400,16 @@ mod tests {
         // streets); boundaries keep z13 (lines carry sub-10m wiggles a 2x stretch could
         // straighten).
         assert_eq!(max_zoom_for_layer(dict::LAYER_LANDTYPE), 14, "the wash is street detail");
-        assert_eq!(max_zoom_for_layer(dict::LAYER_BOUNDARIES), 13, "lines keep z13");
+        assert_eq!(max_zoom_for_layer(dict::LAYER_BOUNDARIES), 12, "lines overzoom past z12");
+        // Traffic stops at z13 and overzooms at z14: congestion ribbons stretch 2x
+        // (sub-pixel for an overlay) while the ids still match 1:1.
+        assert_eq!(max_zoom_for_layer(dict::LAYER_TRAFFIC), 13, "traffic overzooms at z14");
         for layer in [
             dict::LAYER_ROADS,
             dict::LAYER_BUILDINGS,
             dict::LAYER_PLACES,
             dict::LAYER_POI,
             dict::LAYER_TRANSIT,
-            dict::LAYER_TRAFFIC,
             dict::LAYER_JUNCTION,
         ] {
             assert_eq!(max_zoom_for_layer(layer), 14, "layer {layer} is street detail");

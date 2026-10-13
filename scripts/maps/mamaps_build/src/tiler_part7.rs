@@ -188,8 +188,11 @@ mod tests {
         // And below the buildings floor the policy stands: z13 keeps 1.0, not 0.5.
         assert_eq!(tolerance_for_layer(dict::LAYER_BUILDINGS, 13, 1.0), 1.0);
         assert_eq!(tolerance_for_layer(dict::LAYER_LANDTYPE, 13, 1.0), 1.5, "the landtype wash scales the policy");
-        assert_eq!(tolerance_for_layer(dict::LAYER_ROADS, 13, 1.0), 1.0, "roads keep policy");
-        assert_eq!(tolerance_for_layer(dict::LAYER_ROADS, 13, 1.0), 1.0, "roads keep policy");
+        // Roads take the wash below the archive max (z13 1.5x); at z14 policy
+        // is 0.0 and the wash is a no-op — crisp where lanes align.
+        assert_eq!(tolerance_for_layer(dict::LAYER_ROADS, 13, 1.0), 1.5, "roads wash below max zoom");
+        assert_eq!(tolerance_for_layer(dict::LAYER_ROADS, 14, 0.0), 0.0, "roads crisp at max zoom");
+        assert_eq!(tolerance_for_layer(dict::LAYER_TRANSIT, 13, 1.0), 1.5, "transit curves wash below max zoom");
         assert_eq!(tolerance_for_layer(dict::LAYER_BOUNDARIES, 10, 2.0), 3.0, "the boundary wash scales the policy");
     }
 
@@ -300,10 +303,11 @@ mod tests {
             carriageway: tilecodec::mamaps::body::Carriageway::default(),
         };
         let (bytes, _) = build(&spilled(&[road]), &settings(14, 14)).expect("build");
-        // The reader's own version byte, so an older reader rejects the archive cleanly.
+        // The writer's own version byte, so an older reader rejects the archive cleanly.
+        // v9: leaves compress by default, which the v8 byte cannot name.
         assert_eq!(
             bytes[7],
-            tilecodec::mamaps::header::FORMAT_VERSION,
+            tilecodec::mamaps::header::FORMAT_VERSION_V9,
             "the archive header carries the writer's own format version",
         );
         let entries = tilecodec::mamaps::read::read_all(&bytes).expect("read");
@@ -351,9 +355,10 @@ mod tests {
             carriageway: tilecodec::mamaps::body::Carriageway::default(),
         };
         let (bytes, _) = build(&spilled(&[building]), &settings(14, 14)).expect("build");
+        // v9: leaves compress by default, which the v8 byte cannot name.
         assert_eq!(
             bytes[7],
-            tilecodec::mamaps::header::FORMAT_VERSION,
+            tilecodec::mamaps::header::FORMAT_VERSION_V9,
             "the archive header carries the writer's own format version",
         );
         let entries = tilecodec::mamaps::read::read_all(&bytes).expect("read");
@@ -512,9 +517,10 @@ mod tests {
             crate::dem::Dem::from_grids(z, dim, vec![(tile_id(z, tx, ty), grid.clone())]);
         let with_dem = Settings { dem, ..settings(14, 14) };
         let (bytes, _) = build(&spilled(&[building()]), &with_dem).expect("build with dem");
+        // v9: leaves compress by default, which the v8 byte cannot name.
         assert_eq!(
             bytes[7],
-            tilecodec::mamaps::header::FORMAT_VERSION,
+            tilecodec::mamaps::header::FORMAT_VERSION_V9,
             "the archive header carries the writer's own format version",
         );
         let entries = tilecodec::mamaps::read::read_all(&bytes).expect("read");

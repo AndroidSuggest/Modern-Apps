@@ -381,7 +381,10 @@ fn tile_chunk(
 /// `landtype` simplifies at 1.5x: natural boundaries (forest edges, shorelines,
 /// farmland) are washes, not navigation geometry — same reasoning as
 /// boundaries, smaller factor because parks and lakes are looked at closer.
-/// Roads, buildings and the point layers keep 1.0 — navigation geometry and
+/// Roads and transit curves take the wash below z14: at z13 a 1.5x tolerance
+/// drops sub-10m wiggles (a 2x grid stretch could straighten them) while z14
+/// stays at policy 0.0 — full detail where carriageway/lane alignment lives.
+/// Buildings and the point layers keep 1.0 — navigation geometry and
 /// labels, not a wash.
 ///
 /// The prototype at `analysis/mamaps_building_savings.py` estimates this plus the snap below at
@@ -396,6 +399,12 @@ fn tolerance_for_layer(layer: u8, z: u8, tolerance: f64) -> f64 {
         tolerance * WASH_SIMPLIFICATION
     } else if layer == dict::LAYER_LANDTYPE {
         tolerance * LANDTYPE_SIMPLIFICATION
+    } else if z < crate::DEFAULT_MAX_ZOOM
+        && (layer == dict::LAYER_ROADS || layer == dict::LAYER_TRANSIT)
+    {
+        // Below the archive max the policy tolerance is non-zero, so the wash
+        // bites; at z14 policy is 0.0 and 1.5x of zero is zero — crisp.
+        tolerance * WASH_SIMPLIFICATION
     } else {
         tolerance
     }
