@@ -71,10 +71,11 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
         /** Safety cap on frames captured during a single press-and-hold burst. */
         const val BURST_MAX = 30
 
-        // Motion-Photo ring buffer: keep ~1.5s of analysis frames, capped by count to bound memory
-        // (analysis frames can be high-res, so this count is deliberately conservative).
-        const val MOTION_WINDOW_NANOS = 1_500_000_000L
-        const val MOTION_MAX_FRAMES = 12
+        // Motion-Photo ring buffer: the window comes from the user's duration setting
+        // (issue #712); analysis frames are ~1.2 MP ARGB (~5 MB each), so the count cap
+        // scales with the chosen duration but is hard-capped to bound memory.
+        const val MOTION_FRAMES_PER_SECOND = 8
+        const val MOTION_MAX_FRAMES_HARD_CAP = 24
 
         val EXPOSURE_TIME_STOPS = listOf(
             ExposureTimeStop("Auto", null),
@@ -170,14 +171,12 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
     internal val aspectRatioMutable = MutableStateFlow(AspectRatioOption.RATIO_4_3)
     val aspectRatio = aspectRatioMutable.asStateFlow()
 
-    internal val videoCodecMutable = MutableStateFlow(
-        when {
-            CodecSupport.isHardwareAv1EncoderAvailable -> VideoCodec.AV1
-            CodecSupport.isHevcEncoderAvailable -> VideoCodec.HEVC
-            else -> VideoCodec.AVC
-        }
-    )
+    internal val videoCodecMutable = MutableStateFlow(CodecSupport.defaultVideoCodec)
     val videoCodec = videoCodecMutable.asStateFlow()
+
+    // Motion-Photo clip length (issue #712). Default 3s ≈ the old ~1.5s-12-frame buffer.
+    internal val motionPhotoDurationMutable = MutableStateFlow(MotionPhotoDuration.THREE)
+    val motionPhotoDuration = motionPhotoDurationMutable.asStateFlow()
 
     internal val audioInputSourceMutable = MutableStateFlow(AudioInputSource.CAMCORDER)
     val audioInputSource = audioInputSourceMutable.asStateFlow()
@@ -209,6 +208,14 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
     // Default true preserves the long-standing mirror-like selfie behavior.
     internal val mirrorFrontMutable = MutableStateFlow(true)
     val mirrorFront = mirrorFrontMutable.asStateFlow()
+
+    // Post-processing toggles (issue #662). Default true preserves the stock pipeline
+    // behavior; false pushes NOISE_REDUCTION_MODE_OFF / EDGE_MODE_OFF live.
+    internal val noiseReductionEnabledMutable = MutableStateFlow(true)
+    val noiseReductionEnabled = noiseReductionEnabledMutable.asStateFlow()
+
+    internal val edgeSharpeningEnabledMutable = MutableStateFlow(true)
+    val edgeSharpeningEnabled = edgeSharpeningEnabledMutable.asStateFlow()
 
     internal val isCapturingMutable = MutableStateFlow(false)
     val isCapturing = isCapturingMutable.asStateFlow()

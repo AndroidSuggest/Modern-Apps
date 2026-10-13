@@ -33,6 +33,12 @@ enum class VideoCodec(@StringRes val labelRes: Int, @StringRes val descriptionRe
     HEVC(R.string.codec_hevc_label, R.string.codec_hevc_description),
     AV1(R.string.codec_av1_label, R.string.codec_av1_description),
 }
+/** Motion-Photo clip length (issue #712): how far back the ring buffer reaches. */
+enum class MotionPhotoDuration(val seconds: Int) {
+    ONE(1),
+    THREE(3),
+    FIVE(5),
+}
 enum class AudioInputSource(
     @StringRes val labelRes: Int,
     @StringRes val descriptionRes: Int,

@@ -43,6 +43,16 @@
     <!-- SettingsPage: summary explaining front-camera mirroring toggle -->
     <string name="settings_mirror_front_description">Mirror the front camera preview and saved selfies</string>
 
+    <!-- Post-processing toggles (SettingsPage, issue #662) -->
+    <!-- SettingsPage: section title for noise-reduction toggle -->
+    <string name="settings_noise_reduction">Noise reduction</string>
+    <!-- SettingsPage: summary explaining noise-reduction toggle -->
+    <string name="settings_noise_reduction_description">Soften noise in photos and video (turn off for raw detail)</string>
+    <!-- SettingsPage: section title for edge-sharpening toggle -->
+    <string name="settings_edge_sharpening">Edge sharpening</string>
+    <!-- SettingsPage: summary explaining edge-sharpening toggle -->
+    <string name="settings_edge_sharpening_description">Sharpen edges in photos and video (turn off for a natural look)</string>
+
     <!-- Video codec settings (SettingsPage) -->
     <!-- SettingsPage: section header for video codec selection -->
     <string name="settings_video_codec">Video codec</string>
@@ -58,6 +68,14 @@
     <string name="codec_av1_label">AV1</string>
     <!-- Video codec description: most efficient but may not be supported everywhere -->
     <string name="codec_av1_description">Most efficient</string>
+
+    <!-- Motion-Photo duration settings (SettingsPage, issue #712) -->
+    <!-- SettingsPage: section header for motion-photo clip-length selection -->
+    <string name="settings_motion_duration">Motion photo length</string>
+    <!-- Motion-Photo duration: 1-second clip. %1$d = seconds -->
+    <string name="motion_duration_1s">%1$d second</string>
+    <!-- Motion-Photo duration: multi-second clip. %1$d = seconds -->
+    <string name="motion_duration_ns">%1$d seconds</string>
 
     <!-- Audio input source settings (SettingsPage): mic source used for video recordings -->
     <!-- SettingsPage: section header for audio input source selection -->

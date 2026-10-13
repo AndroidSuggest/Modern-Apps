@@ -61,6 +61,22 @@ fun CameraViewModel.applyManualControls() {
         )
     }
 
+    // Post-processing toggles (issue #662): OFF explicitly disables the HAL's noise
+    // reduction / edge sharpening. When enabled the keys are left unset so the HAL
+    // keeps its default behavior.
+    if (!noiseReductionEnabledMutable.value) {
+        builder.setCaptureRequestOption(
+            android.hardware.camera2.CaptureRequest.NOISE_REDUCTION_MODE,
+            android.hardware.camera2.CameraMetadata.NOISE_REDUCTION_MODE_OFF
+        )
+    }
+    if (!edgeSharpeningEnabledMutable.value) {
+        builder.setCaptureRequestOption(
+            android.hardware.camera2.CaptureRequest.EDGE_MODE,
+            android.hardware.camera2.CameraMetadata.EDGE_MODE_OFF
+        )
+    }
+
     try {
         // An empty options set clears any previously-applied manual 3A → full auto.
         cam2.setCaptureRequestOptions(builder.build())

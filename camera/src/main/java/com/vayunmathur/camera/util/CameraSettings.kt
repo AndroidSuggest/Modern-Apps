@@ -27,12 +27,11 @@ private fun CameraViewModel.loadCaptureSettings() {
     }
     ds.getString("camera_video_codec")?.let {
         videoCodecMutable.value = try { VideoCodec.valueOf(it) } catch (_: Exception) {
-            when {
-                CodecSupport.isHardwareAv1EncoderAvailable -> VideoCodec.AV1
-                CodecSupport.isHevcEncoderAvailable -> VideoCodec.HEVC
-                else -> VideoCodec.AVC
-            }
+            CodecSupport.defaultVideoCodec
         }
+    }
+    ds.getString("camera_motion_duration")?.let {
+        runCatching { motionPhotoDurationMutable.value = MotionPhotoDuration.valueOf(it) }
     }
     ds.getString("camera_audio_source")?.let {
         audioInputSourceMutable.value = try {
@@ -46,7 +45,7 @@ private fun CameraViewModel.loadCaptureSettings() {
     ds.getString("camera_last_capture")?.takeIf { it.isNotBlank() }?.let { lastCaptureUriMutable.value = it.toUri() }
 }
 
-/** Boolean/float preference restores (location, grid, level, mic, zoom, mirror). */
+/** Boolean/float preference restores (location, grid, level, mic, zoom, mirror, NR/edge). */
 private fun CameraViewModel.loadPreferenceToggles() {
     ds.getString("camera_location")?.let { locationEnabledMutable.value = it.toBoolean() }
     ds.getString("camera_grid")?.let { gridEnabledMutable.value = it.toBoolean() }
@@ -54,6 +53,8 @@ private fun CameraViewModel.loadPreferenceToggles() {
     ds.getString("camera_mic_muted")?.let { micMutedMutable.value = it.toBoolean() }
     ds.getString("camera_zoom_ratio")?.toFloatOrNull()?.let { zoomRatioMutable.value = it }
     ds.getString("camera_mirror_front")?.let { mirrorFrontMutable.value = it.toBoolean() }
+    ds.getString("camera_noise_reduction")?.let { noiseReductionEnabledMutable.value = it.toBoolean() }
+    ds.getString("camera_edge_sharpening")?.let { edgeSharpeningEnabledMutable.value = it.toBoolean() }
 }
 
 fun CameraViewModel.setFlashMode(mode: FlashMode) {
@@ -68,6 +69,26 @@ fun CameraViewModel.setFlashMode(mode: FlashMode) {
 fun CameraViewModel.setMirrorFront(enabled: Boolean) {
     mirrorFrontMutable.value = enabled
     viewModelScope.launch { ds.setString("camera_mirror_front", enabled.toString()) }
+}
+
+/**
+ * Noise-reduction toggle (issue #662). Takes effect live via the capture path and
+ * persists for the next session.
+ */
+fun CameraViewModel.setNoiseReductionEnabled(enabled: Boolean) {
+    noiseReductionEnabledMutable.value = enabled
+    applyManualControls()
+    viewModelScope.launch { ds.setString("camera_noise_reduction", enabled.toString()) }
+}
+
+/**
+ * Edge-sharpening toggle (issue #662). Takes effect live via the capture path and
+ * persists for the next session.
+ */
+fun CameraViewModel.setEdgeSharpeningEnabled(enabled: Boolean) {
+    edgeSharpeningEnabledMutable.value = enabled
+    applyManualControls()
+    viewModelScope.launch { ds.setString("camera_edge_sharpening", enabled.toString()) }
 }
 
 fun CameraViewModel.toggleTorch() {
@@ -107,6 +128,12 @@ fun CameraViewModel.setLocationEnabled(enabled: Boolean) {
 fun CameraViewModel.setVideoCodec(codec: VideoCodec) {
     videoCodecMutable.value = codec
     viewModelScope.launch { ds.setString("camera_video_codec", codec.name) }
+}
+
+/** Motion-Photo clip length (issue #712); applies to the next capture's ring buffer. */
+fun CameraViewModel.setMotionPhotoDuration(duration: MotionPhotoDuration) {
+    motionPhotoDurationMutable.value = duration
+    viewModelScope.launch { ds.setString("camera_motion_duration", duration.name) }
 }
 
 fun CameraViewModel.setAudioInputSource(source: AudioInputSource) {

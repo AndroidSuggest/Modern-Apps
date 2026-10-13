@@ -30,4 +30,11 @@ object CodecSupport {
 
     /** The Recorder can encode HEVC/H.265 (`video/hevc`) on this device. */
     val isHevcEncoderAvailable: Boolean by lazy { supports(MediaFormat.MIMETYPE_VIDEO_HEVC) }
+
+    /**
+     * Default recording codec (issue #757): HEVC when the Recorder supports it, else AVC.
+     * AV1 hardware encoders stall on several devices, so AV1 stays opt-in via Settings.
+     */
+    val defaultVideoCodec: VideoCodec
+        get() = if (isHevcEncoderAvailable) VideoCodec.HEVC else VideoCodec.AVC
 }

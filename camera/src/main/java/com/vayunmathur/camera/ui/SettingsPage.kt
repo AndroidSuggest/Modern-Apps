@@ -36,13 +36,17 @@ import com.vayunmathur.camera.R
 import com.vayunmathur.camera.util.AudioInputSource
 import com.vayunmathur.camera.util.CameraViewModel
 import com.vayunmathur.camera.util.CodecSupport
+import com.vayunmathur.camera.util.MotionPhotoDuration
 import com.vayunmathur.camera.util.SafDocuments
 import com.vayunmathur.camera.util.SaveTarget
 import com.vayunmathur.camera.util.VideoCodec
 import com.vayunmathur.camera.util.clearSaveTreeUri
 import com.vayunmathur.camera.util.setAudioInputSource
+import com.vayunmathur.camera.util.setEdgeSharpeningEnabled
 import com.vayunmathur.camera.util.setLocationEnabled
 import com.vayunmathur.camera.util.setMirrorFront
+import com.vayunmathur.camera.util.setMotionPhotoDuration
+import com.vayunmathur.camera.util.setNoiseReductionEnabled
 import com.vayunmathur.camera.util.setSaveTreeUri
 import com.vayunmathur.camera.util.setVideoCodec
 import com.vayunmathur.camera.util.updateLocation
@@ -64,6 +68,9 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
     val videoCodec by viewModel.videoCodec.collectAsState()
     val audioInputSource by viewModel.audioInputSource.collectAsState()
     val mirrorFront by viewModel.mirrorFront.collectAsState()
+    val noiseReductionEnabled by viewModel.noiseReductionEnabled.collectAsState()
+    val edgeSharpeningEnabled by viewModel.edgeSharpeningEnabled.collectAsState()
+    val motionPhotoDuration by viewModel.motionPhotoDuration.collectAsState()
     val saveTarget by viewModel.saveTarget.collectAsState()
     val context = LocalContext.current
     val messenger = rememberMessenger()
@@ -246,6 +253,15 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
                     onCheckedChange = { viewModel.setMirrorFront(it) },
                 )
             }
+
+            CameraPostProcessingSettings(
+                noiseReductionEnabled = noiseReductionEnabled,
+                edgeSharpeningEnabled = edgeSharpeningEnabled,
+                motionPhotoDuration = motionPhotoDuration,
+                onNoiseReductionChange = { viewModel.setNoiseReductionEnabled(it) },
+                onEdgeSharpeningChange = { viewModel.setEdgeSharpeningEnabled(it) },
+                onMotionDurationChange = { viewModel.setMotionPhotoDuration(it) },
+            )
 
             SettingsSection(title = stringResource(R.string.settings_location)) {
                 SettingsSwitchRow(

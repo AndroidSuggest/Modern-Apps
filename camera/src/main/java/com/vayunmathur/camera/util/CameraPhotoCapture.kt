@@ -130,11 +130,15 @@ fun CameraViewModel.stopBurst() {
 fun CameraViewModel.addMotionFrame(bitmap: Bitmap, timestampNanos: Long, rotationDegrees: Int) {
     synchronized(motionLock) {
         motionFrames.addLast(CameraViewModel.MotionFrame(bitmap, timestampNanos, rotationDegrees))
-        val cutoff = timestampNanos - CameraViewModel.MOTION_WINDOW_NANOS
+        val windowNanos = motionPhotoDurationMutable.value.seconds * 1_000_000_000L
+        val cutoff = timestampNanos - windowNanos
         while (motionFrames.size > 1 && motionFrames.first().timestampNanos < cutoff) {
             motionFrames.removeFirst().bitmap.recycle()
         }
-        while (motionFrames.size > CameraViewModel.MOTION_MAX_FRAMES) {
+        val maxFrames = (motionPhotoDurationMutable.value.seconds *
+            CameraViewModel.MOTION_FRAMES_PER_SECOND)
+            .coerceAtMost(CameraViewModel.MOTION_MAX_FRAMES_HARD_CAP)
+        while (motionFrames.size > maxFrames) {
             motionFrames.removeFirst().bitmap.recycle()
         }
     }
