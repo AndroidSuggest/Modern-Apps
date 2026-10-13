@@ -28,6 +28,14 @@ data class SimContact(
 
 const val SIM_ACCOUNT_TYPE = "com.vayunmathur.contacts.sim"
 
+/**
+ * SIM ADN rows store a single name, a single number, and a single email address.
+ * The add/edit form therefore offers exactly one phone field and one email field
+ * for SIM accounts: no type selectors and no add-more buttons.
+ */
+const val SIM_MAX_PHONE_NUMBERS = 1
+const val SIM_MAX_EMAILS = 1
+
 /** Account type for the app's on-device local accounts (renamable/deletable by the user). */
 const val LOCAL_ACCOUNT_TYPE = "com.vayunmathur.contacts.local"
 

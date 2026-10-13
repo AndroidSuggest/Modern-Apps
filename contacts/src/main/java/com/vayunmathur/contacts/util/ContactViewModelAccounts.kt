@@ -164,6 +164,12 @@ fun ContactViewModel.loadAccounts() {
     }
 }
 
+/**
+ * Reloads the persisted last-selected account (see [setLastSelectedAccount]) into
+ * memory. The in-memory state does not survive a process kill, so this must run
+ * before a new-contact draft is seeded — otherwise a cold start falls back to the
+ * on-device default even though the choice is still in DataStore. Safe to re-call.
+ */
 fun ContactViewModel.loadLastSelectedAccount() {
     val name = dataStore.getString("last_account_name")
     val type = dataStore.getString("last_account_type")

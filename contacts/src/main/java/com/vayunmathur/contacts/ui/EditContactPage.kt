@@ -5,11 +5,13 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.R as UiR
@@ -42,6 +44,7 @@ import com.vayunmathur.contacts.data.PhoneNumber
 import com.vayunmathur.contacts.data.SIM_ACCOUNT_TYPE
 import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.contacts.util.initEditDraft
+import com.vayunmathur.contacts.util.loadLastSelectedAccount
 import com.vayunmathur.contacts.util.saveEditDraft
 import com.vayunmathur.contacts.util.setLastSelectedAccount
 import com.vayunmathur.contacts.util.updateEditDraft
@@ -55,9 +58,16 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
     val context = LocalContext.current
     var saveError by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
+    val isNewContact = contactId == null
 
     // Initialize the VM draft for this contact. No-op on rotation (same key).
     LaunchedEffect(contactId) {
+        // Reload the persisted save location first: after a process kill the
+        // in-memory last-selected account is null, and seeding the draft before
+        // this runs falls back to on-device despite the stored choice.
+        if (isNewContact) {
+            viewModel.loadLastSelectedAccount()
+        }
         viewModel.initEditDraft(
             contactId = contactId,
             prefill = editRoute.prefill,
@@ -66,7 +76,6 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
     val draft by viewModel.editDraft.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val simLabels by viewModel.simAccountLabels.collectAsStateWithLifecycle()
-    val isNewContact = contactId == null
 
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
@@ -100,7 +109,11 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
         },
         bottomBar = {
             if (noteController.focused) {
-                com.vayunmathur.library.ui.OdfMarkdownEditorToolbar(noteController)
+                // Anchored above the IME: without imePadding the bar either floats with
+                // a gap (keyboard not yet measured) or sits under the keyboard.
+                Box(Modifier.imePadding()) {
+                    com.vayunmathur.library.ui.OdfMarkdownEditorToolbar(noteController)
+                }
             }
         },
         scrollBehavior = appBarScrollBehavior(),
