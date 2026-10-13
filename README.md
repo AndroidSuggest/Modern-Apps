@@ -9,6 +9,8 @@ This ecosystem also contains apps that aren't as well covered by the open-source
 
 This ecosystem also includes games, which I personally believe are an important part of a good phone experience (at least the kind from the "golden age" of mobile games are), so I have remade some mobile games I enjoyed and might add more as time goes on.
 
+Important note: Do not confuse ecosystem with walled garden. There are benefits to adopting the whole ecosystem, but they are quality of life improvements, which while nice, are easy to live without if you so choose.
+
 ### My Motivations
 **I personally use every app here.** My motivation for creating these apps is because I want to use them. I share them because it's the right thing to do, and because collaboration will only help bring this large project to fruition.
 
