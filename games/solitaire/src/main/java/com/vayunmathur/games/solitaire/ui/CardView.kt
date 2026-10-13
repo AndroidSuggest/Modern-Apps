@@ -41,8 +41,8 @@ val LocalCardColorScheme: ProvidableCompositionLocal<CardColorScheme> =
 fun CardFace(card: Card, modifier: Modifier = Modifier, cardWidth: Dp = CARD_WIDTH, cardHeight: Dp = CARD_HEIGHT) {
     val color = LocalCardColorScheme.current.colorFor(card.suit)
     val scale = cardWidth.value / CARD_WIDTH.value
-    val rankSize = (20 * scale).sp
-    val suitSize = (24 * scale).sp
+    val rankSize = (24 * scale).sp
+    val suitSize = (18 * scale).sp
     val padSize = (4 * scale).dp
     val cornerSize = (8 * scale).dp
 

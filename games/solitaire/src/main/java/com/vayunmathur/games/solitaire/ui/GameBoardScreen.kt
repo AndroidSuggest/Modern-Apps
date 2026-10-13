@@ -28,6 +28,7 @@ import com.vayunmathur.games.solitaire.R
 import com.vayunmathur.games.solitaire.data.GameMode
 import com.vayunmathur.games.solitaire.data.SolitaireUiState
 import com.vayunmathur.games.solitaire.platform.SolitaireActions
+import com.vayunmathur.games.solitaire.platform.canKlondikeAutoComplete
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.appBarScrollBehavior
@@ -75,7 +76,7 @@ fun GameBoardScreen(state: SolitaireUiState, mode: GameMode, actions: SolitaireA
                 when (mode) {
                     GameMode.KLONDIKE -> state.klondike?.let {
                         KlondikeBoard(it, actions, Modifier.align(Alignment.CenterHorizontally).widthIn(max = boardMaxWidth).fillMaxWidth())
-                        if (!it.isWon && it.tableauPiles.none { p -> p.faceDown.isNotEmpty() }) {
+                        if (canKlondikeAutoComplete(it)) {
                             Button(onClick = { actions.klondikeAutoComplete() }, Modifier.align(Alignment.CenterHorizontally)) { Text(stringResource(R.string.auto_complete)) }
                         }
                     }

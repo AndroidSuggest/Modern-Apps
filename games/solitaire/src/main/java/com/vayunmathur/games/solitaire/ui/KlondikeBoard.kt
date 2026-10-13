@@ -23,13 +23,13 @@ import com.vayunmathur.games.solitaire.platform.SolitaireActions
 fun KlondikeBoard(state: KlondikeState, actions: SolitaireActions, modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier) {
         val cardWidth = (maxWidth - 48.dp) / 7
-        val cardHeight = cardWidth * 1.4f
+        val cardHeight = cardWidth * 1.5f
 
         Box {
         Column {
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 // Stock
                 if (state.stock.isNotEmpty()) {
@@ -89,7 +89,7 @@ fun KlondikeBoard(state: KlondikeState, actions: SolitaireActions, modifier: Mod
 
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 for (i in 0 until 7) {
                     TableauColumn(

@@ -185,8 +185,7 @@ internal fun SolitaireViewModel.klondikeMoveTableauToTableauImpl(fromColumn: Int
 
 internal fun SolitaireViewModel.klondikeAutoCompleteImpl() {
     val state = uiStateInternal.value.klondike ?: return
-    if (state.isWon) return
-    if (state.tableauPiles.any { it.faceDown.isNotEmpty() }) return
+    if (!canKlondikeAutoComplete(state)) return
     saveHistory()
     var current = state
     var madeProgress = true
@@ -279,6 +278,36 @@ internal fun SolitaireViewModel.canPlaceOnKlondikeTableau(card: Card, pile: Tabl
 }
 
 internal fun SolitaireViewModel.canPlaceOnFoundation(
+    card: Card,
+    foundation: List<Card>,
+    foundationIndex: Int,
+): Boolean = canPlaceCardOnFoundation(card, foundation, foundationIndex)
+
+/**
+ * Whether the Auto-complete button should show for [state] (issue #730).
+ *
+ * The button used to appear whenever every tableau card was face-up, even when
+ * [klondikeAutoCompleteImpl] could not move a single card: stock exhausted with
+ * neither the waste top nor any tableau top fitting its foundation. Drawing
+ * from the stock always makes progress, so only a stock-empty, move-less board
+ * hides the button.
+ */
+fun canKlondikeAutoComplete(state: KlondikeState): Boolean {
+    if (state.isWon) return false
+    if (state.tableauPiles.any { it.faceDown.isNotEmpty() }) return false
+    if (state.stock.isNotEmpty()) return true
+    val wasteTop = state.waste.lastOrNull()
+    if (wasteTop != null && state.foundations.indices.any { fi ->
+        canPlaceCardOnFoundation(wasteTop, state.foundations[fi], fi)
+    }) return true
+    return state.tableauPiles.any { pile ->
+        val top = pile.faceUp.lastOrNull() ?: return@any false
+        state.foundations.indices.any { fi -> canPlaceCardOnFoundation(top, state.foundations[fi], fi) }
+    }
+}
+
+/** Foundation rule without a ViewModel receiver, so the board can preview it. */
+private fun canPlaceCardOnFoundation(
     card: Card,
     foundation: List<Card>,
     foundationIndex: Int,
