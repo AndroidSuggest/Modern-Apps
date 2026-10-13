@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -52,6 +54,11 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
     val lineChoices = rememberLineChoices()
     val scope = rememberCoroutineScope()
     var showPicker by remember { mutableStateOf(false) }
+    // #735: PermissionGate reads checkSelfPermission during composition with no
+    // resume trigger, so granting SMS from Settings never recomposes the gate
+    // (stuck on empty state until restart). resumeRevision forces the gate to
+    // re-check + reloads threads. Scoped to this screen only.
+    val resumeRevision = rememberResumeRevision()
 
     if (showPicker) {
         NewMessagePicker(
@@ -233,8 +240,11 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
                 // Foreground polling: Google Voice has no cheap realtime channel wired up yet,
                 // so while this screen is shown we re-fetch the merged inbox on an interval.
                 // (The Punctual/WebChannel realtime upgrade is noted as future work.)
-                var tick by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
-                androidx.compose.runtime.LaunchedEffect(roleRevision, permissionRevision) {
+                // resumeRevision (bumped on activity resume above) is also a reload key:
+                // granting SMS from Settings returns via resume with no permission-callback
+                // re-fire, so without this the gate keeps its stale denial until restart.
+                var tick by remember { mutableIntStateOf(0) }
+                LaunchedEffect(roleRevision, permissionRevision, resumeRevision) {
                     while (true) {
                         kotlinx.coroutines.delay(15_000)
                         tick++
@@ -244,7 +254,13 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
                     initialValue = null,
                     roleRevision,
                     permissionRevision,
+                    resumeRevision,
                     tick) {
+                    // No value=null reset: keep the previous list visible while the
+                    // resume-triggered reload runs in the background (avoids a
+                    // loading flash on every return from a thread). The
+                    // denied->granted transition still shows LoadingState first
+                    // because this content is newly composed (initialValue=null).
                     value = withContext(Dispatchers.IO) { CommunicateRepository.loadSmsThreadsMerged(context) }
                 }
 
