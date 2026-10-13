@@ -193,10 +193,6 @@
             min_lat_e7: 0,
             max_lon_e7: 0,
             max_lat_e7: 0,
-            shared_offset: 0,
-            shared_len: 0,
-            shared_flags: 0,
-            shared_pools: 0,
         }
     }
 

@@ -2,6 +2,7 @@ package com.vayunmathur.maps.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -32,7 +33,13 @@ internal fun MapPageScope.MapSheets(
     val placeSheet = sheetState ?: return
     FreeHeightBottomSheetScaffold({
         if (searchActions != null) {
-            SearchSheet(searchState, searchActions, Modifier.padding(top = Spacing.sm))
+            SearchSheet(
+                searchState,
+                searchActions,
+                // Ride above the keyboard: the field keeps focus while typing, so
+                // without IME padding the keys cover the results being typed for.
+                Modifier.padding(top = Spacing.sm).imePadding(),
+            )
         }
     },
         Modifier,

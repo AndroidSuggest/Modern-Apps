@@ -398,3 +398,4 @@ include!("placement_grid.rs");
 include!("placement_part1.rs");
 include!("placement_part2.rs");
 include!("placement_part3.rs");
+include!("placement_globe.rs");

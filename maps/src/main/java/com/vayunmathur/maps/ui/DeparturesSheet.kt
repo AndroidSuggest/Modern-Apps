@@ -47,6 +47,16 @@ import com.vayunmathur.maps.util.DeparturesState
 import kotlinx.coroutines.delay
 
 /**
+ * Fixed height for the board's status states (loading / no departures).
+ *
+ * Both [LoadingState] and [EmptyState] default to `fillMaxSize`, which inside a
+ * `ModalBottomSheet` measures the sheet at full height: the board opens
+ * fullscreen while fetching and then snaps down once departures arrive. A
+ * bounded status block keeps the sheet at content height through the fetch.
+ */
+private val BoardStatusHeight = 160.dp
+
+/**
  * Public-transit departure board (P10): a live board for one stop, opened by
  * tapping a transit-stop pin. Departures are grouped by line (each with its GTFS
  * route colour), show a client-side live countdown, and are coloured by delay
@@ -121,12 +131,16 @@ fun DeparturesSheet(
                 // only reachable transiently as the sheet opens, and showing nothing for that
                 // frame is more honest than showing a spinner for a request nobody made.
                 is DeparturesState.Loading -> LoadingState(
+                    modifier = Modifier.height(BoardStatusHeight),
                     message = stringResource(R.string.transit_departures_loading),
                 )
                 DeparturesState.Idle -> Unit
                 is DeparturesState.Loaded -> {
                     if (state.departures.isEmpty()) {
-                        EmptyState(title = stringResource(R.string.transit_departures_none))
+                        EmptyState(
+                            title = stringResource(R.string.transit_departures_none),
+                            modifier = Modifier.height(BoardStatusHeight),
+                        )
                     } else {
                         DepartureList(state.departures, now, onTrainTap)
                     }

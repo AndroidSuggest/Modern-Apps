@@ -121,12 +121,10 @@ impl Renderer {
                         centre_t,
                         f32::from(road.oneway),
                     ],
-                    misc: if globe {
-                        // Globe: centre lon/lat (degrees) for the sphere basis.
-                        [camera.center_lon as f32, camera.center_lat as f32, yellow, camera.time_seconds]
-                    } else {
-                        [tile_span_px, edge_aa, yellow, camera.time_seconds]
-                    },
+                    // Globe and flat share this block (see the layer loop): the
+                    // globe matrix carries the centre and radius; `misc` keeps its
+                    // flat meaning (tile px, edge AA, yellow flag, clock).
+                    misc: [tile_span_px, edge_aa, yellow, camera.time_seconds],
                     // The markings are static, so unlike the traffic draw there is no phase to
                     // animate and nothing to fade: `MORPH_NONE` is what the ribbon contract asks
                     // for. `morph.z` is the tile's world-px span (Dp) — the draped-`z` scale,
@@ -328,6 +326,13 @@ impl Renderer {
         fog: u32,
         submitted: &mut usize,
     ) {
+        // Skipped on the globe: the flat terrain mesh drapes through the flat
+        // matrix, which the globe branch never takes — drawing it would paste
+        // flat relief over the sphere. Relief at globe zoom is sub-pixel
+        // anyway, and the globe shaders ignore draped height by construction.
+        if crate::camera::globe_active(camera) {
+            return;
+        }
         let Some(earth) = layers
             .iter()
             .find(|l| l.id == "earth")

@@ -278,11 +278,16 @@ class MainActivity : ComponentActivity() {
     private fun biasPosition(): GeoPoint {
         val p = selectedVm.userPosition.value
         if (p.latitude != 0.0 || p.longitude != 0.0) return p
+        return persistedLastFix() ?: GeoPoint(FALLBACK_LON, FALLBACK_LAT)
+    }
+
+    /** The last GPS fix persisted across restarts, or null when none was ever stored. */
+    private fun persistedLastFix(): GeoPoint? {
         val ds = DataStoreUtils.getInstance(this)
-        val lon = ds.getDouble(MapPreferences.KEY_LAST_LON)
-        val lat = ds.getDouble(MapPreferences.KEY_LAST_LAT)
-        if (lon != null && lat != null && (lat != 0.0 || lon != 0.0)) return GeoPoint(lon, lat)
-        return GeoPoint(FALLBACK_LON, FALLBACK_LAT)
+        val lon = ds.getDouble(MapPreferences.KEY_LAST_LON) ?: return null
+        val lat = ds.getDouble(MapPreferences.KEY_LAST_LAT) ?: return null
+        if (lat == 0.0 && lon == 0.0) return null
+        return GeoPoint(lon, lat)
     }
 
     private fun genericPlace(name: String, lat: Double, lng: Double) =

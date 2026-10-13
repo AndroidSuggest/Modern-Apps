@@ -9,9 +9,15 @@
 // height (`inZ`) is ignored on the globe: relief at globe zoom is sub-pixel.
 //
 // Push layout: identical block to the flat path. `tileToClip` is the globe
-// matrix (2x2 = globe scale, third row = tile ox/oy/span), `misc.xy` is the
-// camera centre (degrees), `morph.z` the globe radius (Dp), `morph.xy` the
-// half-viewport (Dp). `line`/`misc.zw` keep their flat meaning.
+// matrix (2x2 = globe scale, third row = tile ox/oy/span, translation column =
+// centre lon/lat degrees), `misc.xyzw` keep their flat meaning (tile px,
+// edge AA, lateral shift, clock), and `morph` keeps its flat meaning too
+// (fade in x, dash phase speed in y, draped-z scale in z). The half-viewport
+// (Dp) rides in `morph.xy` on the globe branch exactly as `record.rs` pushes
+// it — note the shaders read the radius from `morph.z`, not from `.xy`.
+// edge AA, lateral shift, clock), and `morph` keeps its flat meaning too
+// (fade in x, draped-z scale in z). The half-viewport (Dp) rides in
+// `morph.xy` on the globe branch exactly as `record.rs` pushes it.
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec2 inNormal;
 layout(location = 2) in vec2 inExtrude;
@@ -51,8 +57,9 @@ void main() {
     float lon = wx * 360.0 - 180.0;
     float n = PI - 2.0 * PI * wy;
     float lat = atan((exp(n) - exp(-n)) * 0.5) * 180.0 / PI;
-    float cLon = push.misc.x;
-    float cLat = push.misc.y;
+    // Sphere basis from the matrix translation column (CPU-side centre).
+    float cLon = push.tileToClip[3][0];
+    float cLat = push.tileToClip[3][1];
     float latR = radians(lat);
     float dLon = radians(lon - cLon);
     float cLatR = radians(cLat);
@@ -62,15 +69,16 @@ void main() {
     float sy = sin(cLatR);
     float cy = cos(cLatR);
     float x = x1;
-    float y = y1 * sy - z1 * cy;
-    float z = y1 * cy + z1 * sy;
+    float y = y1 * cy - z1 * sy;
+    float z = y1 * sy + z1 * cy;
     float r = push.morph.z;
     float kx = push.tileToClip[0][0] / max(r, 1e-6);
     float ky = push.tileToClip[1][1] / max(r, 1e-6);
     float hw = push.morph.x;
     float hh = push.morph.y;
+    // Screen point y-up like the CPU anchor math (`halfH - y`): north renders up.
     float cx = kx * (x * r) + (kx * hw - 1.0);
-    float cyy = ky * (y * r) + (ky * hh - 1.0);
+    float cyy = -(ky * (y * r)) + (ky * hh - 1.0);
     float depth = clamp(1.0 - z, 0.0, 1.0);
     outZ = z;
     outDistancePx = inDistance * tilePx;

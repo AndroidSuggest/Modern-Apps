@@ -157,17 +157,28 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
         )
         var best: Location? = null
         for (provider in providers) {
-            if (!locationManager.isProviderEnabled(provider)) continue
-            val fix = runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
-                ?: continue
-            // A (0,0) last-known is the OS having nothing real, not the Gulf of Guinea.
-            if (fix.latitude == 0.0 && fix.longitude == 0.0) continue
+            val fix = usableLastKnown(provider)
             val current = best
-            if (current == null || fix.elapsedRealtimeNanos > current.elapsedRealtimeNanos) {
+            if (fix != null && (current == null || fix.elapsedRealtimeNanos > current.elapsedRealtimeNanos)) {
                 best = fix
             }
         }
         return best
+    }
+
+    /**
+     * The OS-cached fix for [provider], or null when the provider is off, has
+     * no fix, or only has the (0,0) nothing-real sentinel. A SecurityException
+     * (provider state changed mid-call) reads as no fix.
+     */
+    @SuppressLint("MissingPermission")
+    private fun usableLastKnown(provider: String): Location? {
+        if (!locationManager.isProviderEnabled(provider)) return null
+        val fix = runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
+            ?: return null
+        // A (0,0) last-known is the OS having nothing real, not the Gulf of Guinea.
+        if (fix.latitude == 0.0 && fix.longitude == 0.0) return null
+        return fix
     }
 
     override fun onSensorChanged(event: SensorEvent) {

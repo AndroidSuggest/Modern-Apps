@@ -14,6 +14,7 @@ mod frame;
 mod mod_extra;
 mod placement;
 mod placement_markers;
+mod placement_refresh;
 mod placement_reuse;
 mod rebuild;
 mod record;
@@ -29,6 +30,7 @@ mod upload_extra;
 pub(super) mod upload_moon;
 
 pub use mod_extra::Renderer;
+pub(crate) use placement::globe_screen_quad;
 
 /// How many frames may be in flight. Two is enough to keep the GPU fed behind vsync
 /// without adding latency the user can feel when panning.
@@ -60,7 +62,10 @@ struct LayerBuffers {
 /// callback and ~6400 live across 64 resident tiles, near the ~4096 driver hard limit; pooled
 /// it costs at most 3 pairs (flat fills, stroked lines, ribbon carriageways) plus the
 /// already-single buildings and terrain meshes.
-struct ResidentTile {
+///
+/// `pub(crate)`: the pick-snapshot split (`placement_refresh`) resolves one
+/// label against a tile, so it names this type.
+pub(crate) struct ResidentTile {
     /// Position-only 2-float fills: every `LayerKind::Fill` mesh plus the region-mask shapes.
     flat: Option<(Buffer, Buffer)>,
     /// 7-float stroked lines: every `LayerKind::Line` mesh plus the live-traffic segments.

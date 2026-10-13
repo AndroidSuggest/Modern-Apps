@@ -148,4 +148,36 @@ mod tests {
         assert_eq!(m[1], 0.0, "no shear into y");
         assert_eq!(m[4], 0.0, "no shear into x");
     }
+
+    #[test]
+    fn the_globe_matrix_carries_centre_and_tile_shape() {
+        // The push-constant contract the globe vertex shaders read: the
+        // translation column (m[12]/m[13], column-major) carries the camera
+        // centre (degrees) for the sphere basis, the third row (m[2]/m[6]/
+        // m[10]) carries the tile's normalised origin + span, and the 2x2
+        // carries the globe scale centred on the viewport.
+        let c = globe_camera(-122.4194, 37.7749, 2.0);
+        let m = c.globe_tile_to_clip(2, 0, 1);
+        assert!((m[12] as f64 - -122.4194).abs() < 1e-4, "m[12] centre lon, got {}", m[12]);
+        assert!((m[13] as f64 - 37.7749).abs() < 1e-4, "m[13] centre lat, got {}", m[13]);
+        let n = 2f64.powi(2);
+        assert_eq!(m[2], 0.0f32, "ox of tile x=0");
+        assert!((m[6] - (1.0 / n) as f32).abs() < 1e-9, "oy of tile y=1");
+        assert!((m[10] - (1.0 / n) as f32).abs() < 1e-9, "span at z2");
+        let r = globe_radius(2.0);
+        let kx = 2.0 / 512.0;
+        assert!((m[0] as f64 - kx * r).abs() < 1e-3, "2x2 carries the globe scale");
+    }
+
+    #[test]
+    fn the_globe_centre_projects_to_viewport_centre() {
+        // The camera centre faces the viewer exactly: its screen anchor is the
+        // viewport centre (Dp), which the matrix then maps to clip (0, 0).
+        let c = globe_camera(-122.4194, 37.7749, 2.0);
+        let (sx_dp, sy_dp) = c
+            .globe_anchor_to_screen(-122.4194, 37.7749)
+            .expect("centre must project");
+        assert!((sx_dp - 256.0).abs() < 1e-9, "sx {sx_dp}");
+        assert!((sy_dp - 256.0).abs() < 1e-9, "sy {sy_dp}");
+    }
 }

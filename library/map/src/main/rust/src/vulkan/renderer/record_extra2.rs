@@ -78,20 +78,18 @@ impl Renderer {
                     );
                     bound = true;
                 }
-                // Globe push: centre lon/lat + radius/half-viewport, mirroring the
-                // flat layer loop's globe branch. Flat path below is unchanged.
-                let (misc, morph) = if globe {
-                    let r = crate::camera::globe_radius(camera.zoom) as f32;
-                    (
-                        [camera.center_lon as f32, camera.center_lat as f32, 0.0, camera.time_seconds],
-                        [1.0, camera.width_dp / 2.0, r, camera.height_dp / 2.0],
-                    )
-                } else {
-                    (
-                        [tile_span_px, edge_aa, 0.0, camera.time_seconds],
-                        [1.0, 0.0, camera.tile_span_dp(tile.z) as f32, 0.0],
-                    )
-                };
+                // Globe and flat share this block (see the layer loop): the
+                // globe matrix carries the centre and radius; `misc`/`morph`
+                // keep their flat meaning (tile px, edge AA, clock; fade, span).
+                let (misc, morph) = (
+                    [tile_span_px, edge_aa, 0.0, camera.time_seconds],
+                    if globe {
+                        let r = crate::camera::globe_radius(camera.zoom) as f32;
+                        [1.0, camera.width_dp / 2.0, r, camera.height_dp / 2.0]
+                    } else {
+                        [1.0, 0.0, camera.tile_span_dp(tile.z) as f32, 0.0]
+                    },
+                );
                 let push = Push {
                     tile_to_clip,
                     color: argb_to_rgba(argb),

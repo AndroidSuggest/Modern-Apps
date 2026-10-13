@@ -39,6 +39,7 @@ import com.vayunmathur.library.ui.isExpandedWidth
 import com.vayunmathur.library.ui.rememberFreeHeightSheetState
 import com.vayunmathur.library.ui.rememberMessenger
 import com.vayunmathur.library.util.NavBackStack
+import com.vayunmathur.library.map.GLOBE_DETAIL_ZOOM
 import com.vayunmathur.library.map.MapBody
 import com.vayunmathur.library.map.MoonTextures
 import com.vayunmathur.maps.ui.map.rememberInitialCamera
@@ -155,6 +156,14 @@ fun MapPage(
     val safetyEnabled by settingsViewModel.safetyLayer.collectAsState()
     val transitEnabled by settingsViewModel.transitLayer.collectAsState()
     val globeEnabled by settingsViewModel.globeEnabled.collectAsState()
+    // Enabling the globe at street zoom shows nothing new: the sphere only
+    // reads past the detail threshold. Zoom out to reveal it, so the toggle
+    // answers visibly instead of arming a mode the user cannot see.
+    LaunchedEffect(globeEnabled) {
+        if (globeEnabled && camera.position.zoom >= GLOBE_DETAIL_ZOOM) {
+            camera.animateTo(camera.position.copy(zoom = GLOBE_REVEAL_ZOOM))
+        }
+    }
 
     // The Moon raster pair, loaded lazily on first Moon select (never for Earth
     // sessions): 37MB of assets read once, cached for the session. `body` lives
@@ -316,3 +325,10 @@ internal fun stopNavigation(context: android.content.Context) {
         android.content.Intent(context, com.vayunmathur.maps.util.NavigationService::class.java)
     )
 }
+
+/**
+ * Zoom the globe toggle reveals at: comfortably past the detail threshold so
+ * the sphere reads as a sphere, close enough that the home continent is still
+ * recognisable rather than a marble.
+ */
+private const val GLOBE_REVEAL_ZOOM = 3.0

@@ -5,7 +5,11 @@
 // carriageway width/offsets are screen measurements resolved in tile-local
 // space exactly as the flat ribbon does, and only the final transform bends
 // onto the sphere. Markings readouts (`outT`, `outDistancePx`) pass through
-// untouched — `road_surface.frag` is shared verbatim.
+// untouched — `road_surface.frag` logic is shared with the limb discard added
+// (see `road_surface_globe.frag`). `misc`/`morph` keep their flat meaning:
+// tile px in `misc.x`, edge AA in `misc.y`, yellow-centre flag in `misc.z`,
+// fade in `morph.x`, draped-z scale in `morph.z`; half-viewport (Dp) rides in
+// `morph.xy` on the globe branch (radius in `morph.z`, not `.xy`).
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec2 inNormal;
 layout(location = 2) in float inT;
@@ -40,8 +44,9 @@ void main() {
     float lon = wx * 360.0 - 180.0;
     float n = PI - 2.0 * PI * wy;
     float lat = atan((exp(n) - exp(-n)) * 0.5) * 180.0 / PI;
-    float cLon = push.misc.x;
-    float cLat = push.misc.y;
+    // Sphere basis from the matrix translation column (CPU-side centre).
+    float cLon = push.tileToClip[3][0];
+    float cLat = push.tileToClip[3][1];
     float latR = radians(lat);
     float dLon = radians(lon - cLon);
     float cLatR = radians(cLat);
@@ -51,15 +56,16 @@ void main() {
     float sy = sin(cLatR);
     float cy = cos(cLatR);
     float x = x1;
-    float y = y1 * sy - z1 * cy;
-    float z = y1 * cy + z1 * sy;
+    float y = y1 * cy - z1 * sy;
+    float z = y1 * sy + z1 * cy;
     float r = push.morph.z;
     float kx = push.tileToClip[0][0] / max(r, 1e-6);
     float ky = push.tileToClip[1][1] / max(r, 1e-6);
     float hw = push.morph.x;
     float hh = push.morph.y;
+    // Screen point y-up like the CPU anchor math (`halfH - y`): north renders up.
     float cx = kx * (x * r) + (kx * hw - 1.0);
-    float cyy = ky * (y * r) + (ky * hh - 1.0);
+    float cyy = -(ky * (y * r)) + (ky * hh - 1.0);
     float depth = clamp(1.0 - z, 0.0, 1.0);
     outT = inT;
     outZ = z;

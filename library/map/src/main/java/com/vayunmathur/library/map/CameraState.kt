@@ -12,10 +12,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.log2
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Where the camera is, and which way is up.
@@ -173,6 +179,10 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
     /**
      * Animated zoom by [deltaZoom] levels, keeping the geographic point under
      * [anchorDp] fixed for the whole flight (double-tap to zoom).
+     *
+     * On an active globe the anchor is the sphere point under the finger
+     * (limb-clamped by the projection), so the flight keeps that ground fixed
+     * rather than the flat point the Mercator branch would name.
      */
     internal suspend fun animateZoomBy(
         deltaZoom: Double,
@@ -195,7 +205,8 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
      * the vertical distance dragged since the gesture began — down is positive
      * and zooms in, up zooms out — and [from] is the camera as of that start,
      * so the zoom is absolute rather than accumulated frame by frame. The
-     * geographic point under [anchorDp] stays fixed.
+     * geographic point under [anchorDp] stays fixed (sphere-anchored on an
+     * active globe, like [animateZoomBy]).
      */
     internal fun onQuickZoom(
         from: CameraPosition,
@@ -226,6 +237,11 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
      * The camera bearing is clockwise-from-north, so it is subtracted. Ignored unless
      * [rotateEnabled]; pan and zoom never reset the bearing either way (the position is
      * `copy`ied, not rebuilt).
+     *
+     * On an active globe (flag on and zoomed out past the detail threshold) pan
+     * rotates the sphere through the same basis the renderer draws
+     * ([globePanBy]), and the twist/tilt gestures are ignored: the globe path
+     * is north-up level, and tilting a planet is a separate workstream.
      */
     internal fun onGesture(
         centroidDp: Offset,
@@ -242,6 +258,25 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
         // Never zoom out past a full-screen world — unless a globe, which has space around it.
         val effectiveMinZoom = if (globeEnabled) minZoom else maxOf(minZoom, fillZoom(vp))
         var zoom = position.zoom
+
+        // Globe: rotate the sphere under the finger; zoom stays Mercator-anchored
+        // so the threshold crossing is continuous.
+        if (globeEnabled && position.zoom < GLOBE_DETAIL_ZOOM) {
+            var center = position.target
+            if (scrollEnabled && (panDp.x != 0f || panDp.y != 0f)) {
+                center = globePanBy(center, panDp, vp, position.zoom)
+            }
+            if (zoomEnabled && zoomChange != 1f && zoomChange > 0f) {
+                val newZoom = (zoom + log2(zoomChange.toDouble())).coerceIn(effectiveMinZoom, maxZoom)
+                if (newZoom != zoom) {
+                    val zoomed = anchoredZoom(position.copy(target = center), newZoom, centroidDp, vp)
+                    center = zoomed.target
+                    zoom = zoomed.zoom
+                }
+            }
+            position = position.copy(target = center, zoom = zoom, bearing = 0.0, pitch = 0.0)
+            return
+        }
 
         // Pan: dragging content one way shifts the world the same way, so the
         // center moves opposite to the pan. The gesture arrives in screen space but the
@@ -282,9 +317,12 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
      * Applies a two-finger twist rotation. [deltaDeg] is clockwise-from-north positive
      * (already converted from the gesture detector's convention by [onGesture]); it wraps
      * 0–360 rather than clamping, so spinning past north continues through it.
+     *
+     * Ignored on an active globe, which is north-up level by construction.
      */
     internal fun onRotate(deltaDeg: Double) {
         if (deltaDeg == 0.0) return
+        if (globeEnabled && position.zoom < GLOBE_DETAIL_ZOOM) return
         position = position.copy(bearing = wrapBearing(position.bearing + deltaDeg))
     }
 
@@ -292,12 +330,47 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
      * Applies a two-finger vertical-drag tilt. [deltaDp] is the vertical movement since the last
      * event (Compose's y, down positive); dragging **up** tilts into the map (raises the pitch),
      * matching Google Maps. Clamped to `0.0..`[MAX_PITCH]; nothing else about the camera moves.
+     *
+     * Ignored on an active globe, whose shaders draw level: tilting a planet is
+     * a separate workstream.
      */
     internal fun onTilt(deltaDp: Float) {
+        if (globeEnabled && position.zoom < GLOBE_DETAIL_ZOOM) return
         val next = (position.pitch - deltaDp * PITCH_DEG_PER_DP).coerceIn(0.0, MAX_PITCH)
         if (next != position.pitch) position = position.copy(pitch = next)
     }
+
+    /**
+     * Whether the globe path is currently drawing the sphere: the toggle on and
+     * zoomed out past the detail threshold, mirroring the native
+     * `globe_active` and [Projection]'s globe branch.
+     */
+    internal val isGlobeActive: Boolean
+        get() = globeEnabled && position.zoom < GLOBE_DETAIL_ZOOM
 }
+
+/**
+ * Rotate the globe centre by a screen-space drag [panDp] (Dp, down-positive),
+ * as seen through a viewport [vp]: dragging content right moves the planet
+ * right, so the centre moves the opposite way along its own parallel/meridian.
+ *
+ * The globe radius in Dp is half the world width at [zoom] (mirroring
+ * `globe_radius` on the native side), so one Dp is `180 / r` degrees of
+ * great-circle at the centre. Longitude wraps; latitude clamps to the Mercator
+ * bound the flat path honours. Unused [vp]: kept so the signature matches the
+ * flat pan it replaces at the call site.
+ */
+internal fun globePanBy(center: GeoPoint, panDp: Offset, vp: Size, zoom: Double): GeoPoint {
+    val r = Mercator.worldSize(zoom) / 2.0
+    if (r <= 0.0) return center
+    val degPerDp = 180.0 / r
+    val lon = wrapLongitude(center.longitude - panDp.x * degPerDp)
+    val lat = (center.latitude + panDp.y * degPerDp).coerceIn(-MAX_GLOBE_LAT, MAX_GLOBE_LAT)
+    return GeoPoint(lon, lat)
+}
+
+/** Latitude clamp for globe panning: the Mercator bound the flat path honours. */
+private const val MAX_GLOBE_LAT = 85.05112878
 
 /** Largest tilt the renderer supports, in degrees. Mirrors the native `PITCH_MAX_DEG` cap. */
 const val MAX_PITCH: Double = 65.0
@@ -329,12 +402,51 @@ private const val ANGLE_WRAP_OFFSET_DEG = 540.0
 private const val QUICK_ZOOM_LEVELS_PER_VIEWPORT = 4.0
 
 /** [from] re-centered so the geo point under [anchorDp] is still there at [newZoom]. */
-private fun anchoredZoom(
+private fun CameraState.anchoredZoom(
     from: CameraPosition,
     newZoom: Double,
     anchorDp: Offset,
     vp: Size,
 ): CameraPosition {
+    // On an active globe the zoom pivot is the sphere point under the finger,
+    // which the projection limb-clamps: zooming keeps that ground fixed, and
+    // the centre tracks it so the flight reads as diving toward the finger.
+    // Bearing/pitch are level on the globe path, so no inverse-rotation.
+    if (globeEnabled && from.zoom < GLOBE_DETAIL_ZOOM) {
+        val globeNow = Projection(
+            center = from.target,
+            zoom = from.zoom,
+            widthDp = vp.width,
+            heightDp = vp.height,
+            globe = true,
+        )
+        val geo = globeNow.positionFromScreenLocation(
+            DpOffset(anchorDp.x.dp, anchorDp.y.dp),
+        )
+        val globeNext = Projection(
+            center = geo,
+            zoom = newZoom,
+            widthDp = vp.width,
+            heightDp = vp.height,
+            globe = newZoom < GLOBE_DETAIL_ZOOM,
+        )
+        // Keep the picked ground under the finger: re-derive the centre whose
+        // projection of `geo` at the new zoom lands back on the anchor.
+        val moved = globeNext.screenLocationFromPosition(geo)
+        val want = DpOffset(anchorDp.x.dp, anchorDp.y.dp)
+        // Screen delta (Dp) back to a centre shift: invert through the globe
+        // radius scale rather than re-projecting.
+        val r = Mercator.worldSize(newZoom) / 2.0
+        val dLon = (want.x.value - moved.x.value) / r * 180.0
+        val dLat = -(want.y.value - moved.y.value) / r * 180.0
+        return from.copy(
+            target = GeoPoint(
+                wrapLongitude(geo.longitude + dLon),
+                (geo.latitude + dLat).coerceIn(-MAX_GLOBE_LAT, MAX_GLOBE_LAT),
+            ),
+            zoom = newZoom,
+        )
+    }
     // The anchor is a screen point; its offset from the viewport centre is what the
     // Mercator math consumes, so inverse-rotate that offset by the bearing first (same
     // step as the pan in `onGesture`). At zero bearing this is the identity.

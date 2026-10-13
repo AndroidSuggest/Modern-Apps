@@ -116,6 +116,7 @@ impl Renderer {
         }
         let mut candidates: Vec<placement::SegmentedCandidate> = Vec::new();
         let camera_z = camera.zoom.floor().clamp(0.0, 22.0) as u8;
+        let globe = crate::camera::globe_active(camera);
         for (index, layer) in layers.iter().enumerate() {
             if layer.kind != LayerKind::Symbol {
                 continue;
@@ -175,43 +176,53 @@ impl Renderer {
                     // A curved label collides as the row of oriented per-glyph boxes it draws; a
                     // point label as one axis-aligned box (plus its variable-anchor alternate). Both
                     // go into one `place_segmented` pass so they collide with each other.
+                    // Globe and flat share this switch: the box builders differ
+                    // (sphere vs matrix projection), the candidate shape does not.
                     let (boxes, alternate_boxes) = if let Some(centreline) = &label.centreline {
                         let Some(line) = label.lines.first() else {
                             continue;
                         };
                         let ppfu = inputs.text_px / crate::tile::glyph::UP_EM as f32 / tile_span_px;
                         let placed = crate::tess::text::layout_along_line(line, centreline, ppfu);
-                        let boxes = placement::curved_boxes(
-                            &placed,
-                            tile_clip,
-                            wh,
-                            inputs.text_px,
-                            inputs.pad_px,
-                        );
+                        let boxes = if globe {
+                            placement::globe_curved_boxes(
+                                camera, tile.z, tile.x, tile.y,
+                                &placed, tile_clip, wh, inputs.text_px, inputs.pad_px,
+                            )
+                        } else {
+                            placement::curved_boxes(
+                                &placed, tile_clip, wh, inputs.text_px, inputs.pad_px,
+                            )
+                        };
                         if boxes.is_empty() {
-                            continue; // does not fit its line this frame: nothing to place.
+                            continue;
                         }
                         (boxes, None)
                     } else {
-                        // The anchor projects with the perspective divide (see
-                        // `placement::anchored_rect`): under tilt the box sits where the
-                        // billboarded label draws, and distant labels compress onto
-                        // overlapping boxes the placer thins by rank. A label whose anchor
-                        // is on or behind the eye has no screen position and is skipped —
-                        // it cannot be a candidate, so drawing it is unrepresentable here.
-                        let Some(primary_rect) =
-                            placement::anchored_rect(label.anchor, tile_clip, wh, &inputs, primary)
-                        else {
-                            continue;
+                        let (primary_rect, alt) = if globe {
+                            let Some(primary_rect) = placement::globe_anchored_rect(
+                                camera, tile.z, tile.x, tile.y, label.anchor, wh, &inputs, primary,
+                            ) else { continue };
+                            let alt = alternate.and_then(|second| {
+                                placement::globe_anchored_rect(
+                                    camera, tile.z, tile.x, tile.y, label.anchor, wh, &inputs, second,
+                                )
+                                .map(|r| vec![placement::Obb::from_rect(r)])
+                            });
+                            (primary_rect, alt)
+                        } else {
+                            let Some(primary_rect) =
+                                placement::anchored_rect(label.anchor, tile_clip, wh, &inputs, primary)
+                            else {
+                                continue;
+                            };
+                            let alt = alternate.and_then(|second| {
+                                placement::anchored_rect(label.anchor, tile_clip, wh, &inputs, second)
+                                    .map(|r| vec![placement::Obb::from_rect(r)])
+                            });
+                            (primary_rect, alt)
                         };
                         let primary_box = placement::Obb::from_rect(primary_rect);
-                        // Both anchors share the label's one anchor point, so they project
-                        // together: a primary that projected means the alternate does too,
-                        // and `and_then` only guards the impossible split.
-                        let alt = alternate.and_then(|second| {
-                            placement::anchored_rect(label.anchor, tile_clip, wh, &inputs, second)
-                                .map(|r| vec![placement::Obb::from_rect(r)])
-                        });
                         (vec![primary_box], alt)
                     };
                     candidates.push(placement::SegmentedCandidate {
@@ -365,6 +376,9 @@ impl Renderer {
     /// pre-pass used (same text size, same padding) so pick boxes match drawn
     /// boxes; anchor lon/lat comes from unprojecting the tile-local anchor
     /// through the tile's world position at the camera zoom.
+    ///
+    /// File-length split: the per-label resolve lives in
+    /// `refresh_placed_label` (`placement_refresh`), this loop only walks.
     pub(super) fn refresh_placed(
         &self,
         camera: &Camera,
@@ -373,6 +387,7 @@ impl Renderer {
         extent: vk::Extent2D,
     ) {
         use crate::tile::placement;
+        let globe = crate::camera::globe_active(camera);
         let mut placed: Vec<(u32, PlacedHit)> = Vec::new();
         for tile in self.tiles.values() {
             // Tile origin in world px at the camera zoom: tile (x,y) at ITS
@@ -381,7 +396,6 @@ impl Renderer {
             // tile_span at tile.z is the tile's own screen size and the
             // anchor offsets within it directly.
             let span_dp = camera.tile_span_dp(tile.z);
-            let origin = camera.viewport_origin();
             let tile_wx = tile.x as f64 * span_dp;
             let tile_wy = tile.y as f64 * span_dp;
             for (label_idx, label) in tile.labels.iter().enumerate() {
@@ -406,23 +420,12 @@ impl Renderer {
                 } else {
                     primary
                 };
-                let tile_clip = camera.tile_to_clip(tile.z, tile.x, tile.y);
-                // Same pitch-aware projection as the pre-pass, so pick boxes match drawn
-                // boxes under tilt; an unprojectable anchor has no box and no hit.
-                let Some(rect) = placement::anchored_rect(
-                    label.anchor,
-                    tile_clip,
-                    (extent.width, extent.height),
-                    &box_inputs(layer, label, camera),
-                    anchor,
+                let Some((rect, lon, lat)) = self.refresh_placed_label(
+                    camera, layer, label, tile, text_px,
+                    primary, alternate, anchor, extent, globe, tile_wx, tile_wy, span_dp,
                 ) else {
                     continue;
                 };
-                // Anchor tile-local → world px (Dp) → lon/lat.
-                let wx = tile_wx + label.anchor.0 as f64 * span_dp;
-                let wy = tile_wy + label.anchor.1 as f64 * span_dp;
-                let (lon, lat) = crate::camera::unproject(wx, wy, camera.zoom);
-                let _ = origin;
                 placed.push((
                     order,
                     PlacedHit {
@@ -454,7 +457,11 @@ impl Renderer {
 /// point (Dp, via [`Camera::globe_anchor_to_screen`]) centred in a `radius_dp`
 /// quad, in the same shape as [`Camera::screen_quad_to_clip`] so the puck and
 /// vehicle-ring draws share one contract.
-pub(super) fn globe_screen_quad(camera: &Camera, sx_dp: f64, sy_dp: f64, radius_dp: f64) -> [f32; 16] {
+///
+/// `pub(crate)`: the offscreen pick pass (`vulkan::pick`) resolves the same
+/// quad for its tap box, so the pick lands where the pin draws. Re-exported
+/// through the renderer root for that caller.
+pub fn globe_screen_quad(camera: &Camera, sx_dp: f64, sy_dp: f64, radius_dp: f64) -> [f32; 16] {
     let kx = 2.0 / camera.width_dp as f64;
     let ky = 2.0 / camera.height_dp as f64;
     let cx = sx_dp * kx - 1.0;

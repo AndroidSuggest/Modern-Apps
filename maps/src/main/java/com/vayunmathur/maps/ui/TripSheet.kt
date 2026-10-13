@@ -43,6 +43,16 @@ import com.vayunmathur.maps.data.transit.TripStop
 import com.vayunmathur.maps.util.TripItineraryState
 
 /**
+ * Fixed height for the sheet's status states (loading / missing trip).
+ *
+ * Both [LoadingState] and [EmptyState] default to `fillMaxSize`, which inside a
+ * `ModalBottomSheet` measures the sheet at full height: the sheet opens
+ * fullscreen while fetching and then snaps down once the itinerary arrives. A
+ * bounded status block keeps the sheet at content height through the fetch.
+ */
+private val BoardStatusHeight = 160.dp
+
+/**
  * A vehicle's full run: every station it was at or will be at, and when.
  *
  * Opened by tapping a vehicle sprite on the map, or a train on a departure
@@ -75,10 +85,12 @@ fun TripSheet(
             when (state) {
                 TripItineraryState.Idle -> Unit
                 TripItineraryState.Loading -> LoadingState(
+                    modifier = Modifier.height(BoardStatusHeight),
                     message = stringResource(R.string.transit_departures_loading),
                 )
                 TripItineraryState.Missing -> EmptyState(
-                    title = stringResource(R.string.transit_departures_none)
+                    title = stringResource(R.string.transit_departures_none),
+                    modifier = Modifier.height(BoardStatusHeight),
                 )
                 is TripItineraryState.Loaded -> {
                     val itin = state.itinerary

@@ -13,6 +13,21 @@ impl Camera {
     /// centred on the viewport, and the tile's normalised-world origin + span in
     /// the third row (m[2], m[6], m[10]), which the globe shaders read to
     /// reconstruct the lon/lat per vertex.
+    ///
+    /// The translation column carries the camera centre lon/lat in m[12]/m[13]
+    /// (degrees) — the sphere basis every globe vertex shader needs. It rides
+    /// here rather than in the push block because the block is exactly at the
+    /// guaranteed 128-byte limit: this keeps `misc`/`morph` meaning what the
+    /// flat path means (tile px, edge AA, fade, span scale, dash speed), so the
+    /// globe fragment shaders stay shared logic with the limb discard added.
+    /// The flat path never takes this branch, so its matrices are unchanged.
+    ///
+    /// Y-sign: the projection convention is that y-displacement scales by +ky,
+    /// matching the flat matrix and the CPU-side `globe_anchor_to_screen` / the
+    /// Kotlin `Projection` (north is +y in Dp, clip y is y-down so +sy maps to
+    /// negative clip through `halfH - y`). The shaders reconstruct flat clip
+    /// through this same matrix, so a label or POI placed CPU-side lands where
+    /// the basemap under it drew.
     pub fn globe_tile_to_clip(&self, z: u8, x: u32, y: u32) -> [f32; 16] {
         let r = crate::camera::globe_radius(self.zoom);
         let kx = 2.0 / self.width_dp as f64;
@@ -36,8 +51,8 @@ impl Camera {
             0.0,
             span as f32,
             0.0, //
-            0.0,
-            0.0,
+            self.center_lon as f32,
+            self.center_lat as f32,
             0.0,
             1.0,
         ]

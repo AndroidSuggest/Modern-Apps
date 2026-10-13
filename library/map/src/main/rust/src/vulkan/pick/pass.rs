@@ -229,8 +229,23 @@ impl Pick {
         for (index, marker) in markers.iter().enumerate() {
             let slot = (index as u32).wrapping_add(1);
             // The same billboard matrix the sprite is drawn with, sized to the marker's tap box.
-            let matrix =
-                camera.screen_quad_to_clip(marker.lon, marker.lat, (MARKER_SIZE_DP * 0.5) as f64);
+            // Globe: the same globe anchor the draw path resolves (far side culls
+            // to a miss, matching the draw that culled the pin itself).
+            let matrix = if crate::camera::globe_active(camera) {
+                match camera.globe_anchor_to_screen(marker.lon, marker.lat) {
+                    Some((sx, sy)) => {
+                        crate::vulkan::renderer::globe_screen_quad(
+                            camera,
+                            sx,
+                            sy,
+                            (MARKER_SIZE_DP * 0.5) as f64,
+                        )
+                    }
+                    None => continue,
+                }
+            } else {
+                camera.screen_quad_to_clip(marker.lon, marker.lat, (MARKER_SIZE_DP * 0.5) as f64)
+            };
             let mut push = Push {
                 tile_to_clip: matrix,
                 color: [0.0; 4],

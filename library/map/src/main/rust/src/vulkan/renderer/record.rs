@@ -416,22 +416,17 @@ impl Renderer {
                         tile_to_clip: camera.tile_to_clip(tz, tx, ty),
                         color: argb_to_rgba(scale_alpha(base, opacity)),
                         line: [half_width_px, half_gap_px, layer.dash.0, layer.dash.1],
-                        misc: if globe {
-                            // Globe: centre lon/lat (degrees) for the sphere basis.
-                            [
-                                camera.center_lon as f32,
-                                camera.center_lat as f32,
-                                lateral_px,
-                                camera.time_seconds,
-                            ]
-                        } else {
-                            [
-                                camera.tile_span_px(tz),
-                                edge_aa,
-                                lateral_px,
-                                camera.time_seconds,
-                            ]
-                        },
+                        // Globe and flat share this block: the globe matrix carries
+                        // the centre (translation column) and the radius (2x2), so
+                        // `misc`/`morph` keep their flat meaning — tile px, edge AA,
+                        // lateral shift, clock, fade, span. The shaders bend through
+                        // the matrix and discard past the limb.
+                        misc: [
+                            camera.tile_span_px(tz),
+                            edge_aa,
+                            lateral_px,
+                            camera.time_seconds,
+                        ],
                         // `morph.z` is the tile's world-px span (Dp): the draped-`z` scale.
                         // On the globe it is the globe radius (Dp) instead, and morph.xy
                         // the half-viewport (Dp) — see the `*_globe.vert` headers.

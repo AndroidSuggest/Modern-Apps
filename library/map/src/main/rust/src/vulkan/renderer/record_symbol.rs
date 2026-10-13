@@ -44,12 +44,13 @@ impl Renderer {
 
         // Icons first, so the label's halo paints over the icon's edge rather than under
         // it — the order MapLibre draws them in. On the globe both go through the
-        // globe pipelines with the sphere push (centre + radius); flat path below
-        // is unchanged.
+        // globe pipelines with the sphere matrix (centre + radius in the matrix);
+        // `misc.x` keeps its flat meaning (tile span, Dp) and `morph` carries the
+        // globe half-viewport + radius (see `symbol_globe.vert`).
+        let r = crate::camera::globe_radius(camera.zoom) as f32;
         let (globe_misc, globe_morph) = if globe {
-            let r = crate::camera::globe_radius(camera.zoom) as f32;
             (
-                [camera.center_lon as f32, camera.center_lat as f32, 0.0, 0.0],
+                [camera.tile_span_dp(tz) as f32, 0.0, 0.0, 0.0],
                 [camera.width_dp / 2.0, camera.height_dp / 2.0, r, 0.0],
             )
         } else {
@@ -109,17 +110,14 @@ impl Renderer {
                     if globe { 0.0 } else { billboard_flag },
                 ],
                 // `misc.x` is the tile's world-px span (Dp): the anchor-height scale.
-                // `yzw` stay the halo rgb the fragment shader reads. On the globe the
-                // centre rides here instead (see above); halo rgb is then unread, and
-                // labels draw without halo rather than with a wrong-colour one.
-                misc: if globe {
-                    globe_misc
-                } else {
-                    [camera.tile_span_dp(tz) as f32, halo[0], halo[1], halo[2]]
-                },
+                // `yzw` stay the halo rgb the fragment shader reads. The sphere
+                // basis comes from the globe matrix, so the halo stays valid on
+                // the globe (see `symbol_globe.vert`).
+                misc: [camera.tile_span_dp(tz) as f32, halo[0], halo[1], halo[2]],
                 // Repurposed for the symbol billboard pipeline: the pitch-0 tile matrix's linear
                 // 2x2, so the shader can add a screen-constant glyph offset under tilt. The symbol
                 // fragment shader does not read `morph`, so this collides with nothing.
+                // On the globe: half-viewport + radius (see `symbol_globe.vert`).
                 morph: globe_morph,
             };
             self.draw_symbol_batch(

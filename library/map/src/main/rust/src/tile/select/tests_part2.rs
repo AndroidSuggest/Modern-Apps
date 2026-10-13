@@ -340,3 +340,66 @@ fn the_keep_list_stays_free_of_descendants() {
         );
     }
 }
+
+/// **Phase B: a missing tile falls back to its parent, which falls back to the
+/// background.** A pruned (or never-stored) water tile resolves to no fetch of its own;
+/// the renderer keeps the visible tile's ancestors resident (`resident_set`), draws the
+/// coarsest resident one under it, and the style background — the water colour — shows
+/// through wherever no ancestor carries land. This pins the chain tile by tile:
+///
+/// 1. the missing tile's ancestors are exactly the keep list ahead of it;
+/// 2. each ancestor step halves the coordinates (the overzoom the reader takes);
+/// 3. the background the chain bottoms out at is the water colour, not land.
+#[test]
+fn a_missing_tile_falls_back_through_its_parent_to_the_water_background() {
+    // A mid-Pacific viewport at z12: the visible tiles are deep-ocean tiles the archive
+    // does not store (Phase B prunes them), so every one of them must have its parent
+    // chain in the keep list.
+    let c = camera(-150.0, 0.0, 12.0, 411.0, 891.0);
+    let exact = visible(&c, 0, 14);
+    assert!(!exact.is_empty(), "the viewport must cover tiles");
+    assert!(exact.iter().all(|t| t.z == 12));
+    let keep = resident_set(&c, 0, 14);
+    for tile in &exact {
+        // 1. The parent is kept (and therefore drawable as the overzoom stand-in).
+        let parent = tile.ancestor(1).expect("z12 has a parent");
+        assert!(
+            keep.contains(&parent),
+            "{tile:?} is missing with no parent {parent:?} kept to overzoom",
+        );
+        // 2. Each ancestor step halves the coordinates — the overzoom mapping.
+        let grandparent = tile.ancestor(2).expect("z12 has a grandparent");
+        assert_eq!(parent.x, tile.x >> 1, "overzoom halves x");
+        assert_eq!(parent.y, tile.y >> 1, "overzoom halves y");
+        assert_eq!(grandparent.x, tile.x >> 2, "two levels halve twice");
+        assert_eq!(grandparent.y, tile.y >> 2);
+        assert!(
+            keep.contains(&grandparent),
+            "{tile:?} is missing with no grandparent {grandparent:?} kept",
+        );
+    }
+    // 3. The chain bottoms out at the water background: the style backdrop behind every
+    // tile is the sea colour, so an ocean viewport with no resident ancestor still reads
+    // as ocean rather than land or void.
+    use crate::style::{background, Variant};
+    let water_light = 0xFF80_DEEA;
+    let water_dark = 0xFF0D_1B2A;
+    assert_eq!(
+        background(Variant::Light),
+        water_light,
+        "the light backdrop must stay the water colour Phase B relies on",
+    );
+    assert_eq!(
+        background(Variant::Dark),
+        water_dark,
+        "the dark backdrop must stay the water colour Phase B relies on",
+    );
+    // And the `water` fill arm agrees with it: a stored water polygon and the bare
+    // background paint the same sea, which is what makes dropping the tile invisible.
+    let water = crate::style::layers()
+        .iter()
+        .find(|l| l.id == "water")
+        .expect("the water fill arm");
+    assert_eq!(water.light, water_light, "water fill matches the light backdrop");
+    assert_eq!(water.dark, water_dark, "water fill matches the dark backdrop");
+}

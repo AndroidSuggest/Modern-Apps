@@ -185,6 +185,9 @@ class Projection internal constructor(
     private fun globeScreenLocationFromPosition(position: GeoPoint): DpOffset {
         val (x, y, z) = globeProject(position.longitude, position.latitude)
         if (z < 0.0) return DpOffset(OFF_SCREEN_DP.dp, OFF_SCREEN_DP.dp)
+        // Screen y is down-positive from the top-left; north (+y in the sphere
+        // basis) renders up, matching `globe_anchor_to_screen` on the native
+        // side and every globe vertex shader (`halfH - y`).
         return DpOffset((halfW + x).toFloat().dp, (halfH - y).toFloat().dp)
     }
 

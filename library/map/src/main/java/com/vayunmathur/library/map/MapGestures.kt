@@ -93,11 +93,14 @@ internal fun Modifier.mapGestures(
             detectTransformGestures { centroid, pan, zoom, rotation ->
                 if (gestures.isTransformDisabled) return@detectTransformGestures
                 zoomAnim.value?.cancel()
+                // The globe is north-up level: the twist gesture has no bearing
+                // to drive there (see `CameraState.onGesture`), so drop the
+                // rotation rather than spinning a camera the globe never draws.
                 cameraState.onGesture(
                     centroidDp = toDp(centroid),
                     panDp = toDp(pan),
                     zoomChange = zoom,
-                    rotationDeg = rotation,
+                    rotationDeg = if (cameraState.isGlobeActive) 0f else rotation,
                     minZoom = zoomRange.start.toDouble(),
                     maxZoom = zoomRange.endInclusive.toDouble(),
                     scrollEnabled = gestures.isScrollEnabled,
@@ -114,7 +117,12 @@ internal fun Modifier.mapGestures(
             if (gestures.isTiltDisabled) {
                 return@pointerInput
             }
-            detectVerticalTiltGestures { dyPx -> cameraState.onTilt(dyPx / density) }
+            // Tilt is a flat-map gesture: the globe path is level by construction
+            // (its shaders ignore pitch), so a two-finger drag there must not
+            // tilt a camera the globe never draws tilted.
+            detectVerticalTiltGestures { dyPx ->
+                if (!cameraState.isGlobeActive) cameraState.onTilt(dyPx / density)
+            }
         }
         // Declared after the transform detector so it sees pointer events first and
         // can consume a quick-zoom drag out from under it.
