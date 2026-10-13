@@ -29,6 +29,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TimePicker
 import com.vayunmathur.library.ui.rememberTimePickerState
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -44,7 +45,7 @@ fun NewAlarmDialog(
     initialMessage: String?,
     initialDays: ArrayList<Int>?,
 ) {
-    var name by remember { mutableStateOf(initialMessage ?: "") }
+    var nameState by remember { mutableStateOf(TextFieldValue(initialMessage ?: "")) }
     val context = LocalContext.current
     val nowTime = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).time
     val timePickerState = rememberTimePickerState(
@@ -66,8 +67,8 @@ fun NewAlarmDialog(
                         fontWeight = FontWeight.Bold,
                     )
                     OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
+                        value = nameState,
+                        onValueChange = { nameState = it },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text(stringResource(R.string.alarm_label_hint)) },
                         singleLine = true,
@@ -84,7 +85,7 @@ fun NewAlarmDialog(
                     initialDays?.forEach { day ->
                         daysMask = daysMask or (1 shl (day - 1))
                     }
-                    val newAlarm = clockViewModel.buildDefaultAlarm(time, name, daysMask)
+                    val newAlarm = clockViewModel.buildDefaultAlarm(time, nameState.text, daysMask)
                     clockViewModel.upsert(newAlarm) { id ->
                         AlarmScheduler.schedule(context, newAlarm.copy(id = id))
                     }

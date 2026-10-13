@@ -7,7 +7,6 @@
     <string name="label_stopwatch">Stoper</string>
     <string name="button_stop">STOP</string>
     <string name="button_snooze">DRZEMKA (5 MIN)</string>
-    <string name="alarm_notification_wake_up">Obudź się!</string>
     <string name="alarm_ringing_notification_title">Dzwoni alarm</string>
     <string name="channel_ongoing_timers_name">Aktywne minutniki</string>
     <string name="channel_ongoing_timers_description">Aktywne odliczania</string>

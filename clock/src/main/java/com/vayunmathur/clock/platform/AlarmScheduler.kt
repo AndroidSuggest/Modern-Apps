@@ -20,6 +20,7 @@ object AlarmScheduler {
      * know nothing about gets the insistent ring rather than silently losing it.
      */
     const val EXTRA_GRADUAL_SECONDS = "GRADUAL_SECONDS"
+    const val EXTRA_LABEL = "ALARM_LABEL"
 
     fun schedule(context: Context, alarm: Alarm) {
         val alarmManager = context.getSystemService(AlarmManager::class.java)
@@ -27,6 +28,7 @@ object AlarmScheduler {
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             putExtra("ALARM_ID", alarm.id)
             putExtra(EXTRA_GRADUAL_SECONDS, alarm.gradualVolumeSeconds)
+            putExtra(EXTRA_LABEL, alarm.name)
         }
         
         val pendingIntent = PendingIntent.getBroadcast(

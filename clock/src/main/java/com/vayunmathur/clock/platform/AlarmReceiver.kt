@@ -59,13 +59,15 @@ class AlarmReceiver : BroadcastReceiver() {
         // Read from the intent, not the database: putting a read in front of the ring is the
         // latency this whole design exists to avoid.
         val gradual = intent.getIntExtra(AlarmScheduler.EXTRA_GRADUAL_SECONDS, 0) > 0
+        // The label rides in the broadcast (like gradual seconds) so the ring shows it
+        // without a database read on the latency-sensitive fire path.
+        val label = intent.getStringExtra(AlarmScheduler.EXTRA_LABEL).orEmpty()
         val builder = NotificationCompat.Builder(
             context,
             if (gradual) ALARM_CHANNEL_ID else ALARM_RING_CHANNEL_ID,
         )
             .setSmallIcon(R.drawable.baseline_access_alarm_24)
             .setContentTitle(context.getString(R.string.label_alarm))
-            .setContentText(context.getString(R.string.alarm_notification_wake_up))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             // This is the key: it launches the activity automatically if the phone is locked
@@ -77,6 +79,11 @@ class AlarmReceiver : BroadcastReceiver() {
             // Backstop: an insistent notification rings forever, so bound it in case every
             // dismiss path is missed (process killed before the UI ever appeared, say).
             .setTimeoutAfter(RING_TIMEOUT_MS)
+
+        // Show the alarm's own label; omit the line entirely when it is empty.
+        if (label.isNotBlank()) {
+            builder.setContentText(label)
+        }
 
         warnIfFullscreenDenied(context, alarmId)
         val notificationManager =

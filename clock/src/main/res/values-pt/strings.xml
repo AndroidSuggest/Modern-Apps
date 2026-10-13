@@ -12,7 +12,6 @@
     <string name="app_name">Relógio</string>
     <string name="set_an_alarm">Definir um alarme</string>
     <string name="button_stop">PARAR</string>
-    <string name="alarm_notification_wake_up">Acordar!</string>
     <string name="alarm_ringing_notification_title">O alarme está a tocar</string>
     <string name="channel_alarms_name">Alarmes</string>
     <string name="header_split">Dividir</string>

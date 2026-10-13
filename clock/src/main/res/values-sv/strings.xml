@@ -8,7 +8,6 @@
     <string name="set_an_alarm">Ställ in ett alarm</string>
     <string name="button_stop">STOPPA</string>
     <string name="button_snooze">SLUMRA (5 MIN)</string>
-    <string name="alarm_notification_wake_up">Vakna!</string>
     <string name="alarm_ringing_notification_title">Alarmet ringer</string>
     <string name="channel_ongoing_timers_name">Pågående timers</string>
     <string name="channel_ongoing_timers_description">Pågående nedräkningar</string>

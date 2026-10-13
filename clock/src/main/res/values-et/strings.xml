@@ -7,7 +7,6 @@
     <string name="label_stopwatch">Stopper</string>
     <string name="button_stop">LÕPETA</string>
     <string name="button_snooze">LÜKKA EDASI (5 MIN)</string>
-    <string name="alarm_notification_wake_up">Äratus!</string>
     <string name="alarm_ringing_notification_title">On äratuse aeg</string>
     <string name="channel_ongoing_timers_name">Töös taimerid</string>
     <string name="channel_ongoing_timers_description">Töös pöördloendused</string>

@@ -9,7 +9,6 @@
     <string name="set_an_alarm">Imposta una sveglia</string>
     <string name="button_stop">INTERROMPI</string>
     <string name="button_snooze">POSTICIPA (5 MIN)</string>
-    <string name="alarm_notification_wake_up">Svegliati!</string>
     <string name="alarm_ringing_notification_title">La sveglia sta suonando</string>
     <string name="channel_ongoing_timers_name">Timer attivi</string>
     <string name="channel_ongoing_timers_description">Countdown attivi</string>

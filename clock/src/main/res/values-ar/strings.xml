@@ -8,7 +8,6 @@
     <string name="set_an_alarm">اضبط منبه</string>
     <string name="button_stop">إيقاف</string>
     <string name="button_snooze">تأجيل (5 دقائق)</string>
-    <string name="alarm_notification_wake_up">استيقظ!</string>
     <string name="alarm_ringing_notification_title">يرن المنبه</string>
     <string name="channel_ongoing_timers_name">المؤقِّتات الجارية</string>
     <string name="channel_ongoing_timers_description">عمليات العد التنازلي الجارية</string>

@@ -8,7 +8,6 @@
     <string name="set_an_alarm">设置闹钟</string>
     <string name="button_stop">停止</string>
     <string name="button_snooze">暂停（5 分钟）</string>
-    <string name="alarm_notification_wake_up">醒醒！</string>
     <string name="alarm_ringing_notification_title">闹钟正在响铃</string>
     <string name="channel_ongoing_timers_name">正在进行的定时器</string>
     <string name="channel_ongoing_timers_description">正在进行的倒计时器</string>

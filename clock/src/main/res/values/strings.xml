@@ -19,8 +19,6 @@
     <string name="button_snooze">SNOOZE (5 MIN)</string>
 
     <!-- AlarmReceiver / AlarmSoundService: notifications shown when alarm triggers -->
-    <!-- Alarm notification content text: wake up prompt -->
-    <string name="alarm_notification_wake_up">Wake up!</string>
     <!-- Foreground service notification title while alarm is ringing -->
     <string name="alarm_ringing_notification_title">Alarm is Ringing</string>
 

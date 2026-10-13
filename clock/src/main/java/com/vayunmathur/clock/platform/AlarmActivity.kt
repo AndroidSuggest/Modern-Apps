@@ -23,6 +23,7 @@ class AlarmActivity : ComponentActivity() {
     private var alarmId: Long = -1L
     private var snoozeMinutes: Int = 5
     private var gradualSeconds: Int = 0
+    private var alarmLabel: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         setShowWhenLocked(true); setTurnScreenOn(true); super.onCreate(savedInstanceState)
@@ -38,6 +39,7 @@ class AlarmActivity : ComponentActivity() {
                 alarm?.let {
                     snoozeMinutes = it.snoozeMinutes
                     gradualSeconds = it.gradualVolumeSeconds
+                    alarmLabel = it.name
                 }
             }
             DynamicTheme {
@@ -70,6 +72,7 @@ class AlarmActivity : ComponentActivity() {
             // Snooze builds its own intent rather than going through AlarmScheduler, so it has
             // to carry this itself or the snoozed alarm would ring on the wrong channel.
             putExtra(AlarmScheduler.EXTRA_GRADUAL_SECONDS, gradualSeconds)
+            putExtra(AlarmScheduler.EXTRA_LABEL, alarmLabel)
         }
         val pendingIntent = PendingIntent.getBroadcast(
             this,

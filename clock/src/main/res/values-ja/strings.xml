@@ -8,7 +8,6 @@
     <string name="set_an_alarm">アラームをセット</string>
     <string name="button_stop">停止</string>
     <string name="button_snooze">スヌーズ (5分)</string>
-    <string name="alarm_notification_wake_up">起きて！</string>
     <string name="alarm_ringing_notification_title">アラームが鳴っています</string>
     <string name="channel_ongoing_timers_name">進行中のタイマー</string>
     <string name="channel_ongoing_timers_description">進行中のカウントダウン</string>

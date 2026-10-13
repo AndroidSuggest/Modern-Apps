@@ -23,7 +23,6 @@
     <string name="search_city_hint">Hledat město nebo oblast…</string>
     <string name="time_am">dop.</string>
     <string name="time_pm">odp.</string>
-    <string name="alarm_notification_wake_up">Probuď se!</string>
     <string name="alarm_ringing_notification_title">Budík zvoní</string>
     <string name="channel_completed_timers_name">Dokončené časovače</string>
     <string name="channel_alarms_description">Notifikace pro nastavené budíky</string>
