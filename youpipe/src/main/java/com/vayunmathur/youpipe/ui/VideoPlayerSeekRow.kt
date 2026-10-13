@@ -33,15 +33,22 @@ import com.vayunmathur.youpipe.util.SponsorSegment
  * The seek row pinned to the bottom of the controls overlay: elapsed/total times,
  * the buffered and position sliders with sponsor-segment markers, and the
  * lock/fullscreen buttons.
+ *
+ * When [useNotificationStyle] is set (Settings > Player), the sliders are swapped for
+ * [VideoPlayerNotificationProgressBar]: a slim notification-style two-state
+ * (playing/paused) bar with tap-to-seek.
  */
 @Composable
 internal fun VideoPlayerSeekRow(
     currentPosition: Long,
     bufferedPosition: Long,
     duration: Long,
+    isPlaying: Boolean,
+    useNotificationStyle: Boolean,
     sponsorSegments: List<SponsorSegment>,
     onSeekChange: (Long) -> Unit,
     onSeekFinished: () -> Unit,
+    onSeekTo: (Long) -> Unit,
     isFullscreen: Boolean,
     onLock: () -> Unit,
     onFullscreenChange: (Boolean) -> Unit,
@@ -65,40 +72,51 @@ internal fun VideoPlayerSeekRow(
                 )
             }
             Box(contentAlignment = Alignment.CenterStart) {
-                Slider(
-                    value = if (duration > 0) bufferedPosition.toFloat() else 0f,
-                    onValueChange = { },
-                    valueRange = 0f..(duration.toFloat().coerceAtLeast(1f)),
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.Transparent,
-                        activeTrackColor = Color.White.copy(alpha = 0.3f),
-                        inactiveTrackColor = Color.Transparent
+                if (useNotificationStyle) {
+                    VideoPlayerNotificationProgressBar(
+                        currentPosition = currentPosition,
+                        bufferedPosition = bufferedPosition,
+                        duration = duration,
+                        isPlaying = isPlaying,
+                        sponsorSegments = sponsorSegments,
+                        onSeekTo = onSeekTo,
                     )
-                )
-                if (duration > 0) {
-                    Canvas(modifier = Modifier.fillMaxWidth().height(4.dp).padding(horizontal = 20.dp)) {
-                        sponsorSegments.forEach { segment ->
-                            val startX = (segment.start.toFloat() / duration) * size.width
-                            val endX = (segment.end.toFloat() / duration) * size.width
-                            drawRect(
-                                color = Color.Yellow.copy(alpha = 0.7f),
-                                topLeft = Offset(startX, 0f),
-                                size = Size(endX - startX, size.height)
-                            )
+                } else {
+                    Slider(
+                        value = if (duration > 0) bufferedPosition.toFloat() else 0f,
+                        onValueChange = { },
+                        valueRange = 0f..(duration.toFloat().coerceAtLeast(1f)),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.Transparent,
+                            activeTrackColor = Color.White.copy(alpha = 0.3f),
+                            inactiveTrackColor = Color.Transparent
+                        )
+                    )
+                    if (duration > 0) {
+                        Canvas(modifier = Modifier.fillMaxWidth().height(4.dp).padding(horizontal = 20.dp)) {
+                            sponsorSegments.forEach { segment ->
+                                val startX = (segment.start.toFloat() / duration) * size.width
+                                val endX = (segment.end.toFloat() / duration) * size.width
+                                drawRect(
+                                    color = Color.Yellow.copy(alpha = 0.7f),
+                                    topLeft = Offset(startX, 0f),
+                                    size = Size(endX - startX, size.height)
+                                )
+                            }
                         }
                     }
-                }
-                Slider(
-                    value = if (duration > 0) currentPosition.toFloat() else 0f,
-                    onValueChange = { onSeekChange(it.toLong()) },
-                    onValueChangeFinished = onSeekFinished,
-                    valueRange = 0f..(duration.toFloat().coerceAtLeast(1f)),
-                    colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                    Slider(
+                        value = if (duration > 0) currentPosition.toFloat() else 0f,
+                        onValueChange = { onSeekChange(it.toLong()) },
+                        onValueChangeFinished = onSeekFinished,
+                        valueRange = 0f..(duration.toFloat().coerceAtLeast(1f)),
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                        )
                     )
-                )
+                }
             }
         }
         Spacer(Modifier.padding(4.dp))

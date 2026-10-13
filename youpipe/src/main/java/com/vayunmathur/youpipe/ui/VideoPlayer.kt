@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -72,6 +74,7 @@ fun VideoPlayer(
     val context = LocalContext.current
     val viewConfiguration = LocalViewConfiguration.current
     val hasAudio = audioStreams.isNotEmpty()
+    val useNotificationStyleBar by ypvm.notificationStyleProgressBar.collectAsState()
 
     val modifier = if (isFullscreen) Modifier.fillMaxHeight() else Modifier.aspectRatio(aspectRatio)
 
@@ -104,12 +107,19 @@ fun VideoPlayer(
                         // Any gesture re-shows controls and resets auto-hide timer.
                         isControlsVisible = true
                         controlsInteractionTick++
-                        val isRightSide = offset.x > size.width / 2
-                        if (isRightSide) {
-                            controller?.seekTo(currentPosition + 10000L)
-                        } else {
-                            controller?.seekTo(currentPosition - 10000L)
-                        }
+                        // Read position and duration from the player at tap time, not from the
+                        // snapshots captured when this gesture block was keyed: those go stale and
+                        // a seek from ~0 makes the video appear to restart instead of skipping (#809).
+                        // Keys stay stable on purpose: re-keying per position tick would restart
+                        // gesture detection every 300 ms and break double-tap/long-press outright.
+                        val player = controller ?: return@detectTapGestures
+                        val target = doubleTapSeekTarget(
+                            player.currentPosition,
+                            player.duration,
+                            offset.x > size.width / 2,
+                        )
+                        player.seekTo(target)
+                        CastPlayback.update { it.copy(positionMs = target) }
                     },
                     onPress = {
                         if (isLocked) return@detectTapGestures
@@ -248,6 +258,8 @@ fun VideoPlayer(
                     currentPosition = currentPosition,
                     bufferedPosition = bufferedPosition,
                     duration = duration,
+                    isPlaying = isPlaying,
+                    useNotificationStyle = useNotificationStyleBar,
                     sponsorSegments = sponsorSegments,
                     onSeekChange = { position ->
                         CastPlayback.update { state ->
@@ -257,6 +269,10 @@ fun VideoPlayer(
                     onSeekFinished = {
                         controller?.seekTo(currentPosition)
                         CastPlayback.update { it.copy(dragging = false) }
+                    },
+                    onSeekTo = { position ->
+                        controller?.seekTo(position)
+                        CastPlayback.update { it.copy(positionMs = position) }
                     },
                     isFullscreen = isFullscreen,
                     onLock = {
@@ -301,3 +317,22 @@ fun VideoPlayer(
 }
 
 /** Cast-request sizing, the casting panel and tempo formatting live in VideoPlayerCasting.kt. */
+
+/** How far one double-tap on either side of the player moves playback. */
+internal const val DOUBLE_TAP_SKIP_MS = 10_000L
+
+/**
+ * Where a double-tap skip lands, given the position at tap time.
+ *
+ * Pure so it is unit-testable; the gesture handler reads the live player position and clamps here.
+ * An unknown duration ([durationMs] <= 0, e.g. `C.TIME_UNSET`) means forward seeks are unbounded
+ * and backward seeks still floor at zero.
+ */
+internal fun doubleTapSeekTarget(currentPosition: Long, durationMs: Long, forward: Boolean): Long {
+    val end = durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
+    return if (forward) {
+        (currentPosition + DOUBLE_TAP_SKIP_MS).coerceAtMost(end)
+    } else {
+        (currentPosition - DOUBLE_TAP_SKIP_MS).coerceAtLeast(0L)
+    }
+}

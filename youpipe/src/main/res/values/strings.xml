@@ -274,6 +274,10 @@
     <string name="label_keep_controls_visible">Keep player controls visible</string>
     <!-- Description for keep-controls toggle: controls stay on screen rather than hiding after inactivity. Accessibility feature -->
     <string name="label_keep_controls_visible_description">Controls stay on screen instead of hiding after 2 seconds. Useful for accessibility.</string>
+    <!-- Toggle: replace the player seek slider with a slim notification-style two-state (playing/paused) progress bar. Verb phrase -->
+    <string name="label_notification_style_progress">Notification-style progress bar</string>
+    <!-- Description for notification-style progress toggle -->
+    <string name="label_notification_style_progress_description">Replace the seek slider with a slim bar like the notification controls. It looks different when playing vs paused.</string>
 
     <!-- Casting the video to a TV through the MA Cast app. -->
     <!-- Content description for the cast button in the player controls -->

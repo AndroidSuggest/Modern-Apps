@@ -483,6 +483,12 @@ class YouPipeViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
     val keepPlayerControlsVisible: StateFlow<Boolean> = _keepPlayerControlsVisible
 
+    private val _notificationStyleProgressBar: StateFlow<Boolean> = DataStoreUtils
+        .getInstance(application)
+        .booleanFlow("notification_style_progress_bar")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val notificationStyleProgressBar: StateFlow<Boolean> = _notificationStyleProgressBar
+
     /**
      * The tempo multiplier, kept across videos.
      *
@@ -507,6 +513,12 @@ class YouPipeViewModel(
     fun setKeepPlayerControlsVisible(keepVisible: Boolean) {
         viewModelScope.launch {
             DataStoreUtils.getInstance(getApplication()).setBoolean("keep_player_controls_visible", keepVisible)
+        }
+    }
+
+    fun setNotificationStyleProgressBar(enabled: Boolean) {
+        viewModelScope.launch {
+            DataStoreUtils.getInstance(getApplication()).setBoolean("notification_style_progress_bar", enabled)
         }
     }
 
