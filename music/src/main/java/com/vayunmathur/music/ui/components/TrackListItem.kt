@@ -59,7 +59,7 @@ fun TrackListItem(
         leadingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 leading?.invoke(this)
-                AlbumArt(artUri, Modifier.size(artSize))
+                AlbumArt(artUri, Modifier.size(artSize).clip(RoundedCornerShape(8.dp)))
             }
         },
     )

@@ -78,7 +78,7 @@ fun SongsScreen(
             }
             AlbumArt(
                 song.uri.toUri(),
-                Modifier.size(40.dp).then(
+                Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).then(
                     if (!state.rowOwnsSongKeys) Modifier
                     else Modifier.sharedContainer("music-song-art-${song.id}")
                 ),

@@ -1,6 +1,7 @@
 package com.vayunmathur.music.ui
 
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -8,6 +9,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -27,7 +29,10 @@ import com.vayunmathur.music.data.Artist
 fun ArtistsTabContent(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
     val artists by musicViewModel.artists.collectAsState()
     ListPage<Artist, Route, Route.Song>(backStack, artists, stringResource(R.string.app_name), {
-        Text(it.name, modifier = Modifier.sharedText("music-artist-name-${it.id}"))
+        Text(
+            it.name.ifBlank { stringResource(R.string.unknown_artist) },
+            modifier = Modifier.sharedText("music-artist-name-${it.id}")
+        )
     }, {
     }, {
         Route.ArtistDetail(it)
@@ -35,7 +40,7 @@ fun ArtistsTabContent(backStack: NavBackStack<Route>, musicViewModel: MusicViewM
         val albumIds by musicViewModel.matchedAlbumsForArtist(artist.id)
         val allAlbums by musicViewModel.albums.collectAsState()
         val albumsUris by remember { derivedStateOf { allAlbums.filter { it.id in albumIds }.map { it.uri.toUri() } } }
-        AlbumArt(albumsUris, Modifier.size(40.dp).sharedContainer("music-artist-art-${artist.id}"))
+        AlbumArt(albumsUris, Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).sharedContainer("music-artist-art-${artist.id}"))
     }, searchEnabled = true, fab = {
         ShufflePlayFab(musicViewModel)
     }, searchString = { it.name },

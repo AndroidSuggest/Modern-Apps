@@ -94,7 +94,7 @@ fun ArtistDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicView
 
                     ListItem({
                         Text(
-                            artist.name,
+                            artist.name.ifBlank { stringResource(R.string.unknown_artist) },
                             style = MaterialTheme.typography.titleLarge,
                             modifier = Modifier.sharedText("music-artist-name-$artistId"),
                         )
@@ -149,7 +149,7 @@ fun ArtistDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicView
                     leadingContent = {
                         AlbumArt(
                             album.uri.toUri(),
-                            Modifier.size(48.dp).sharedContainer("music-album-art-${album.id}"),
+                            Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).sharedContainer("music-album-art-${album.id}"),
                         )
                     }
                 )

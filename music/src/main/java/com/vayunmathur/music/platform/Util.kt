@@ -58,6 +58,8 @@ private const val MIN_IMAGE_HEADER_BYTES = 12
 private const val RIFF_NAME_OFFSET = 0
 private const val RIFF_NAME_LENGTH = 4
 private const val RIFF_TYPE_OFFSET = 8
+/** MediaStore's literal for a missing artist tag; normalised to "" in [getArtists]. */
+private const val UNKNOWN_ARTIST_SENTINEL = "<unknown>"
 
 fun getThumbnail(context: Context, uri: Uri): Bitmap? {
     return try {
@@ -254,7 +256,12 @@ suspend fun getArtists(context: Context): List<Artist> = withContext(Dispatchers
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
-                val title = cursor.getString(titleColumn)
+                // MediaStore hands back null, "" or the literal "<unknown>" when the files carry
+                // no artist tag (the "Tyler, The Creator" report was a mistagged file, reporter's
+                // own words). Normalise all three to "" here so `Artist.name` is never null at
+                // runtime despite its non-null type; the screens render `unknown_artist` for it.
+                val rawTitle = cursor.getString(titleColumn)
+                val title = if (rawTitle.isNullOrBlank() || rawTitle == UNKNOWN_ARTIST_SENTINEL) "" else rawTitle
                 val contentUri = ContentUris.withAppendedId(
                     MediaStore.Audio.Artists.EXTERNAL_CONTENT_URI,
                     id

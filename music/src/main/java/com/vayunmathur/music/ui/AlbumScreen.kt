@@ -1,11 +1,13 @@
 package com.vayunmathur.music.ui
 
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -31,7 +33,7 @@ fun AlbumsTabContent(backStack: NavBackStack<Route>, musicViewModel: MusicViewMo
     }, {
         Route.AlbumDetail(it)
     }, leadingContent = { album ->
-        AlbumArt(album.uri.toUri(), Modifier.size(40.dp).sharedContainer("music-album-art-${album.id}"))
+        AlbumArt(album.uri.toUri(), Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).sharedContainer("music-album-art-${album.id}"))
     }, searchEnabled = true, fab = {
         ShufflePlayFab(musicViewModel)
     }, searchString = { it.name },
