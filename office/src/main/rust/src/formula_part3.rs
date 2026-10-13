@@ -41,6 +41,42 @@ impl Parser {
 
     fn parse_arg_top(&mut self, ev: &mut Evaluator) -> R<Arg> {
         self.skip_ws();
+        // A bare name may be a named range ("MyRange") — resolve before the
+        // bracket fast-path below.
+        if self.peek() != '[' && self.peek() != '"' {
+            let save = self.pos;
+            let start = self.pos;
+            while self.pos < self.s.len() {
+                let c = self.s[self.pos];
+                if c.is_alphanumeric() || c == '_' || c == '.' {
+                    self.pos += 1;
+                } else {
+                    break;
+                }
+            }
+            if self.pos > start {
+                let name = self.substr(start, self.pos).to_uppercase();
+                self.skip_ws();
+                // Only a bare token (end of arg) can be a name; `FOO(` is a call.
+                if self.pos >= self.s.len() && ev.wb.named.contains_key(&name) {
+                    let r = ev.wb.named[&name].clone();
+                    return if r.is_range {
+                        Ok(Arg::RangeRef {
+                            r1: r.r1,
+                            c1: r.c1,
+                            r2: r.r2,
+                            c2: r.c2,
+                            sheet: r.sheet,
+                        })
+                    } else {
+                        Ok(Arg::Scalar(ev.eval_on(&r.sheet, r.r1, r.c1)?))
+                    };
+                }
+                // Not a name (or not bare): rewind so the expression parser
+                // re-reads the token as a function/constant.
+                self.pos = save;
+            }
+        }
         if self.peek() == '[' {
             let save = self.pos;
             let r = self.parse_ref_raw();
@@ -334,7 +370,12 @@ impl Parser {
                 "TRUE" => Ok(Value::Bool(true)),
                 "FALSE" => Ok(Value::Bool(false)),
                 "PI" => Ok(Value::Num(std::f64::consts::PI)),
-                _ => Err(ferr("#NAME?")),
+                // A bare name that isn't a constant may be a named range
+                // ("=MyCell+1", "=SUM(MyRange)").
+                _ => match ev.wb.named.get(&name) {
+                    Some(r) => ev.eval_on(&r.sheet.clone(), r.r1, r.c1),
+                    None => Err(ferr("#NAME?")),
+                },
             };
         }
         self.pos += 1; // '('

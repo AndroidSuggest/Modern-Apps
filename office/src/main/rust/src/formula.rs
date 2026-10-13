@@ -22,6 +22,16 @@ const EPOCH_OFFSET_DAYS: i64 = 25569;
 #[derive(Deserialize)]
 struct WorkbookJson {
     sheets: Vec<SheetJson>,
+    #[serde(default, rename = "namedRanges")]
+    named_ranges: Vec<NamedRangeJson>,
+}
+
+#[derive(Deserialize)]
+struct NamedRangeJson {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    addr: String,
 }
 
 #[derive(Deserialize)]
@@ -102,6 +112,8 @@ struct Sheet {
 pub struct Workbook {
     sheets: Vec<Sheet>,
     name_to_idx: HashMap<String, usize>,
+    /// Named ranges, keyed case-insensitively (uppercase name -> parsed Ref).
+    named: HashMap<String, Ref>,
     now_millis: i64,
     rng: RefCell<u64>,
 }
@@ -115,6 +127,17 @@ enum Value {
     Bool(bool),
     Err(String),
     Blank,
+    /// A spilled-array result (FILTER/SORT/UNIQUE/SEQUENCE/OFFSET with height-width,
+    /// or a formula cell whose own result is an array). Scalar contexts use implicit
+    /// intersection (the first element); aggregations expand all elements.
+    Arr(Vec<Value>),
+}
+
+impl Value {
+    /// Implicit intersection: the scalar a bare array contributes in scalar context.
+    fn first_of(arr: &[Value]) -> Value {
+        arr.first().cloned().unwrap_or(Value::Blank)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -164,11 +187,22 @@ impl Workbook {
             let rows: Vec<Vec<Cell>> = s.rows.into_iter().map(|r| r.cells).collect();
             sheets.push(Sheet { name: s.name, rows });
         }
+        let mut named = HashMap::new();
+        for nr in parsed.named_ranges {
+            let key = nr.name.trim().to_uppercase();
+            if key.is_empty() || named.contains_key(&key) {
+                continue;
+            }
+            if let Some(r) = parse_odf_address(&nr.addr, &sheets, &name_to_idx) {
+                named.insert(key, r);
+            }
+        }
         // Seed the PRNG deterministically from now_millis (splitmix64-style).
         let seed = (now_millis as u64) ^ 0x9E3779B97F4A7C15;
         Some(Workbook {
             sheets,
             name_to_idx,
+            named,
             now_millis,
             rng: RefCell::new(seed.max(1)),
         })
@@ -213,6 +247,8 @@ impl Workbook {
             Value::Str(s) => s,
             Value::Err(code) => code,
             Value::Blank => String::new(),
+            // Spilled arrays display their top-left (implicit intersection) value.
+            Value::Arr(vs) => display_scalar(&Value::first_of(&vs), cell.number_format.as_ref()),
         }
     }
 
@@ -451,3 +487,6 @@ include!("formula_part7.rs");
 include!("formula_part8.rs");
 include!("formula_part9.rs");
 include!("formula_part10.rs");
+include!("formula_part11.rs");
+include!("formula_part12.rs");
+include!("formula_part13.rs");

@@ -350,10 +350,13 @@ impl<'a> Evaluator<'a> {
             // ---- lookup dimensions ----
             "ROWS" => match self.t_arg(&a[0])? {
                 Arg::RangeRef { r1, r2, .. } => Ok(Value::Num(((r2 - r1).abs() + 1) as f64)),
+                Arg::Scalar(Value::Arr(vs)) => Ok(Value::Num(vs.len() as f64)),
                 _ => Ok(Value::Num(1.0)),
             },
             "COLUMNS" => match self.t_arg(&a[0])? {
                 Arg::RangeRef { c1, c2, .. } => Ok(Value::Num(((c2 - c1).abs() + 1) as f64)),
+                // Flattened arrays carry no shape; a spilled vector is one column.
+                Arg::Scalar(Value::Arr(_)) => Ok(Value::Num(1.0)),
                 _ => Ok(Value::Num(1.0)),
             },
 

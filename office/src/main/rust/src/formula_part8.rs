@@ -331,7 +331,28 @@ impl<'a> Evaluator<'a> {
                 let r = self.t_ref(&a[0]).ok_or_else(|| ferr("#REF!"))?;
                 let dr = self.t_num(&a[1])? as i32;
                 let dc = self.t_num(&a[2])? as i32;
-                self.eval_on(&r.sheet, r.r1.min(r.r2) + dr, r.c1.min(r.c2) + dc)
+                let base_r = r.r1.min(r.r2) + dr;
+                let base_c = r.c1.min(r.c2) + dc;
+                if base_r < 0 || base_c < 0 {
+                    return Err(ferr("#REF!"));
+                }
+                let h = if a.len() > 3 { self.t_num(&a[3])? as i32 } else { 1 };
+                let w = if a.len() > 4 { self.t_num(&a[4])? as i32 } else { 1 };
+                if h <= 0 || w <= 0 {
+                    return Err(ferr("#REF!"));
+                }
+                if h == 1 && w == 1 {
+                    self.eval_on(&r.sheet, base_r, base_c)
+                } else {
+                    // A multi-cell result spills as an array (composes with SUM etc.).
+                    let mut out = Vec::new();
+                    for rr in base_r..base_r + h {
+                        for cc in base_c..base_c + w {
+                            out.push(self.eval_on(&r.sheet, rr, cc)?);
+                        }
+                    }
+                    Ok(Value::Arr(out))
+                }
             }
             "ADDRESS" => {
                 let row = self.t_num(&a[0])? as i32;
@@ -363,6 +384,24 @@ impl<'a> Evaluator<'a> {
                 self.t_str(&a[0])?
             })),
 
+            // ---- dynamic arrays (scalar-friendly subset) ----
+            //
+            // This engine has no spill grid: a cell shows one value. Array results
+            // are kept as Value::Arr — aggregations (SUM/AVERAGE/…) expand them, and
+            // a bare array in a cell displays its first element (implicit
+            // intersection, like pre-dynamic-array Excel).
+            "XLOOKUP" => self.xlookup(a),
+            "FILTER" => self.filter_fn(a),
+            "SORT" => self.sort_fn(a),
+            "SORTBY" => self.sortby_fn(a),
+            "UNIQUE" => self.unique_fn(a),
+            "SEQUENCE" => self.sequence_fn(a),
+            "LET" => self.let_bind(a),
+            // LAMBDA needs first-class functions (MAP/REDUCE/… helpers), which this
+            // engine has no plumbing for. Recognized so it reports #VALUE!
+            // ("right name, can't compute here") instead of #NAME? ("unknown").
+            "LAMBDA" => Err(ferr("#VALUE!")),
+
             _ => Err(ferr("#NAME?")),
         }
     }
@@ -387,7 +426,7 @@ impl<'a> Evaluator<'a> {
     fn for_each_range_cell(&mut self, arg: &Arg) -> R<Vec<Value>> {
         let mut out = Vec::new();
         match arg {
-            Arg::Scalar(v) => out.push(v.clone()),
+            Arg::Scalar(v) => out.extend(expand_value(v.clone())),
             Arg::RangeRef { r1, c1, r2, c2, .. } => {
                 for r in (*r1).min(*r2)..=(*r1).max(*r2) {
                     for c in (*c1).min(*c2)..=(*c1).max(*c2) {
@@ -396,7 +435,7 @@ impl<'a> Evaluator<'a> {
                                 continue;
                             }
                         }
-                        out.push(self.evaluate_cell_v(r, c)?);
+                        out.extend(expand_value(self.evaluate_cell_v(r, c)?));
                     }
                 }
             }

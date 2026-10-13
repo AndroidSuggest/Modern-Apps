@@ -69,6 +69,8 @@ impl<'a> Evaluator<'a> {
             Value::Str(s) => parse_f64(&s).ok_or_else(|| ferr("#VALUE!")),
             Value::Blank => Ok(0.0),
             Value::Err(c) => Err(EvalError(c)),
+            // Implicit intersection for spilled arrays.
+            Value::Arr(vs) => self.num(Value::first_of(&vs)),
         }
     }
 
@@ -76,6 +78,7 @@ impl<'a> Evaluator<'a> {
         match v {
             Value::Num(x) => Some(*x),
             Value::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
+            Value::Arr(vs) => self.num_or_null(&Value::first_of(vs)),
             _ => None,
         }
     }
@@ -87,6 +90,7 @@ impl<'a> Evaluator<'a> {
             Value::Str(s) => Ok(s),
             Value::Blank => Ok(String::new()),
             Value::Err(c) => Err(EvalError(c)),
+            Value::Arr(vs) => self.str_of(Value::first_of(&vs)),
         }
     }
 
@@ -108,6 +112,7 @@ impl<'a> Evaluator<'a> {
             }
             Value::Blank => Ok(false),
             Value::Err(c) => Err(EvalError(c)),
+            Value::Arr(vs) => self.truthy(Value::first_of(&vs)),
         }
     }
 
@@ -134,7 +139,8 @@ impl<'a> Evaluator<'a> {
                         continue;
                     }
                 }
-                out.push(self.eval_on(sheet_ref, r, c)?);
+                // A cell whose own formula spills an array contributes its elements.
+                out.extend(expand_value(self.eval_on(sheet_ref, r, c)?));
             }
         }
         Ok(out)
@@ -142,7 +148,7 @@ impl<'a> Evaluator<'a> {
 
     fn arg_values(&mut self, arg: &Arg) -> R<Vec<Value>> {
         match arg {
-            Arg::Scalar(v) => Ok(vec![v.clone()]),
+            Arg::Scalar(v) => Ok(expand_value(v.clone())),
             Arg::RangeRef {
                 r1,
                 c1,
@@ -173,6 +179,7 @@ impl<'a> Evaluator<'a> {
         let a = self.t_arg(t)?;
         match a {
             Arg::Scalar(v) => Ok(v),
+            // Scalar context: top-left for ranges, first element for arrays.
             Arg::RangeRef { r1, c1, sheet, .. } => self.eval_on(&sheet, r1, c1),
         }
     }
@@ -183,8 +190,20 @@ impl<'a> Evaluator<'a> {
     }
 
     fn t_ref(&mut self, t: &ArgThunk) -> Option<Ref> {
+        let txt = t.text.trim();
+        // A bare name that isn't bracketed may be a named range ("MyRange").
+        if !txt.starts_with('[') && !txt.contains('(') {
+            if let Some(r) = self.named_ref(txt) {
+                return Some(r);
+            }
+        }
         let mut p = Parser::new(&t.text);
         p.parse_ref_top()
+    }
+
+    /// Resolves a named range to its [Ref], or None when unknown.
+    fn named_ref(&self, name: &str) -> Option<Ref> {
+        self.wb.named.get(&name.trim().to_uppercase()).cloned()
     }
 
     fn t_num(&mut self, t: &ArgThunk) -> R<f64> {
@@ -224,6 +243,7 @@ impl<'a> Evaluator<'a> {
             Value::Blank => Ok(Some(0.0)),
             Value::Err(c) => Err(EvalError(c.clone())),
             Value::Str(_) => Ok(None),
+            Value::Arr(vs) => self.cmp_num(&Value::first_of(vs)),
         }
     }
 
@@ -290,6 +310,15 @@ impl<'a> Evaluator<'a> {
             "=" => wildcard_equals(&v_str, &rest),
             _ => false,
         })
+    }
+}
+
+/// Expands a value into the flat list an aggregation consumes: arrays spill
+/// their elements, scalars contribute themselves.
+fn expand_value(v: Value) -> Vec<Value> {
+    match v {
+        Value::Arr(vs) => vs.into_iter().flat_map(expand_value).collect(),
+        other => vec![other],
     }
 }
 

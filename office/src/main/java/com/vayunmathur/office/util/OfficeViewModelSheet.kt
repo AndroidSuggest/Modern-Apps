@@ -15,6 +15,7 @@ import com.vayunmathur.library.ui.odf.OdfRow
 import com.vayunmathur.library.ui.odf.OdfSheet
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.office.odf.ExcelFormula
 import com.vayunmathur.office.R
 import kotlin.io.encoding.Base64
 import kotlinx.coroutines.Dispatchers
@@ -41,18 +42,43 @@ fun OfficeViewModel.updateCellText(sheetIndex: Int, rowIndex: Int, cellIndex: In
     val row = rows.getOrNull(rowIndex) ?: return
     val cells = row.cells.toMutableList()
     if (cellIndex !in cells.indices) return
-    cells[cellIndex] = if (newText.startsWith("=")) {
+    // A leading apostrophe forces literal text (Excel escape): "'=A1" stores "=A1"
+    // as text, and a lone "'" stores an empty string.
+    val literal = newText.startsWith("'") && newText.length > 1
+    val text = if (newText == "'") "" else if (literal) newText.substring(1) else newText
+    cells[cellIndex] = if (!literal && text.startsWith("=")) {
         // Typed formula (H49): store as OpenFormula, drop cached numeric value.
-        cells[cellIndex].copy(text = newText, formula = newText, valueType = "float", numberValue = null)
+        // The Rust engine only understands bracketed refs ("of:=[.A1]"), so translate
+        // Excel A1 ("=A1") via ExcelFormula — otherwise a bare "A1" parses as a
+        // function/constant name and evaluates to #NAME?.
+        val body = text.trim().removePrefix("=").trim()
+        val formula = if (body.startsWith("of:", ignoreCase = true)) body
+            else ExcelFormula.toOdf(text)
+        // String-producing formulas (starting with a quote, or text functions) get
+        // valueType "string" so alignment/formatting treats them as text.
+        val stringFormula = body.startsWith("\"") || STRING_RESULT_FUNCS.any {
+            body.startsWith(it, ignoreCase = true)
+        }
+        cells[cellIndex].copy(
+            text = text, formula = formula,
+            valueType = if (stringFormula) "string" else "float", numberValue = null)
     } else {
-        cells[cellIndex].copy(text = newText, formula = null,
-            valueType = if (newText.toDoubleOrNull() != null) "float" else "string",
-            numberValue = newText.toDoubleOrNull())
+        cells[cellIndex].copy(text = text, formula = null,
+            valueType = if (text.toDoubleOrNull() != null) "float" else "string",
+            numberValue = text.toDoubleOrNull())
     }
     rows[rowIndex] = OdfRow(cells)
     sheets[sheetIndex] = sheet.copy(rows = rows)
     updateDocument(doc.copy(sheets = sheets))
 }
+
+/** Functions whose results are (almost) always text, used to type new formulas. */
+private val STRING_RESULT_FUNCS = listOf(
+    "CONCATENATE(", "CONCAT(", "TEXTJOIN(", "UPPER(", "LOWER(", "PROPER(",
+    "LEFT(", "RIGHT(", "MID(", "TRIM(", "CLEAN(", "TEXT(", "REPT(",
+    "CHAR(", "UNICHAR(", "SUBSTITUTE(", "REPLACE(",
+    "TEXTBEFORE(", "TEXTAFTER(", "ADDRESS(", "HYPERLINK(",
+)
 
 fun OfficeViewModel.addRow(sheetIndex: Int, afterRowIndex: Int) {
     val doc = (state.value as? OfficeViewModel.ViewState.Loaded)?.document as? OdfDocument.Spreadsheet ?: return
@@ -199,12 +225,28 @@ fun OfficeViewModel.fillDown(sheetIndex: Int, srcRow: Int, col: Int, toRow: Int)
         val row = rows.getOrNull(r)
         if (row != null && col in row.cells.indices) {
             val cells = row.cells.toMutableList()
-            cells[col] = cells[col].copy(
-                text = src.text, formula = src.formula, valueType = src.valueType,
-                numberValue = src.numberValue, numberFormat = src.numberFormat,
-                bold = src.bold, italic = src.italic, textColor = src.textColor,
-                backgroundColor = src.backgroundColor, alignment = src.alignment
-            )
+            val srcFormula = src.formula
+            if (srcFormula != null) {
+                // Shift relative refs like Excel: =A1 filled one row down becomes =A2.
+                // The stored formula is OpenFormula; convert to Excel, shift, convert back,
+                // and refresh the display text to the Excel form.
+                val excelSrc = try { ExcelFormula.fromOdf(srcFormula) } catch (_: Exception) { srcFormula }
+                val shifted = ExcelFormula.shift(excelSrc, r - srcRow, 0)
+                val odf = try { ExcelFormula.toOdf(shifted) } catch (_: Exception) { srcFormula }
+                cells[col] = cells[col].copy(
+                    text = shifted, formula = odf, valueType = src.valueType,
+                    numberValue = null, numberFormat = src.numberFormat,
+                    bold = src.bold, italic = src.italic, textColor = src.textColor,
+                    backgroundColor = src.backgroundColor, alignment = src.alignment
+                )
+            } else {
+                cells[col] = cells[col].copy(
+                    text = src.text, formula = null, valueType = src.valueType,
+                    numberValue = src.numberValue, numberFormat = src.numberFormat,
+                    bold = src.bold, italic = src.italic, textColor = src.textColor,
+                    backgroundColor = src.backgroundColor, alignment = src.alignment
+                )
+            }
             rows[r] = OdfRow(cells)
         }
     }

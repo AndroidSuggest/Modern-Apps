@@ -23,6 +23,11 @@ import org.xmlpull.v1.XmlPullParser
  */
 internal object OoxmlXlsx {
 
+    private const val EXCEL_EPOCH_OFFSET_DAYS = 25569 // days between 1899-12-30 and 1970-01-01
+    private const val MILLIS_PER_DAY = 86400_000L
+    private const val MAX_EXCEL_SERIAL = 2958465.0 // 9999-12-31
+    private const val DEFAULT_SCIENTIFIC_DECIMALS = 2
+
     fun import(pkg: OoxmlPackage, fileName: String): OdfDocument.Spreadsheet {
         val theme = OoxmlTheme.parse(pkg.entries["xl/theme/theme1.xml"])
         val shared = pkg.entries["xl/sharedStrings.xml"]?.let { parseSharedStrings(it) } ?: emptyList()
@@ -447,7 +452,7 @@ internal object OoxmlXlsx {
         // formatted per the number format so dates/percent/currency don't show as bare numbers.
         val fmtForDisplay = resolvedFmt ?: if (base.valueType == "date") OdfNumberFormat(isDate = true) else null
         val displayText = if (base.numberValue != null && base.valueType != "boolean" && fmtForDisplay != null)
-            OfficeNative.formatValue(base.numberValue!!, fmtForDisplay) else base.text
+            formatDisplayValue(base.numberValue!!, fmtForDisplay, base.text) else base.text
         return base.copy(
             text = displayText,
             formula = formula ?: base.formula,
@@ -463,6 +468,52 @@ internal object OoxmlXlsx {
             textRotation = cellStyle.rotation,
             verticalAlign = cellStyle.valign
         )
+    }
+
+    /**
+     * Display string for a numeric cell. Prefers the native formatter (exact Excel rendering),
+     * but a cosmetic string must never fail the whole import: when the engine can't load
+     * (JVM unit tests, or a device-side load failure) a pure-Kotlin best-effort applies.
+     */
+    private fun formatDisplayValue(value: Double, fmt: OdfNumberFormat, raw: String): String {
+        runCatching { return OfficeNative.formatValue(value, fmt) }
+        return kotlinFormat(value, fmt, raw)
+    }
+
+    /** Best-effort number/date rendering without the native engine. */
+    private fun kotlinFormat(value: Double, fmt: OdfNumberFormat, raw: String): String {
+        if (fmt.isDate || fmt.isTime) return excelSerialToIso(value) ?: raw
+        if (fmt.isScientific) return "%.${fmt.decimals ?: DEFAULT_SCIENTIFIC_DECIMALS}E".format(java.util.Locale.ROOT, value)
+        if (fmt.isFraction) return raw
+        val scaled = if (fmt.percent) value * 100 else value
+        val decimals = fmt.decimals ?: 0
+        var s = if (decimals > 0) "%.${decimals}f".format(java.util.Locale.ROOT, scaled)
+        else kotlin.math.round(scaled).toLong().toString()
+        if (fmt.grouping) s = groupThousands(s)
+        if (fmt.percent) s += "%"
+        fmt.currencySymbol?.let { s = "$it$s" }
+        return s
+    }
+
+    private fun groupThousands(s: String): String {
+        val neg = s.startsWith("-")
+        val body = if (neg) s.substring(1) else s
+        val dot = body.indexOf('.')
+        val int = if (dot >= 0) body.substring(0, dot) else body
+        val frac = if (dot >= 0) body.substring(dot) else ""
+        val grouped = int.reversed().chunked(3).joinToString(",").reversed()
+        return (if (neg) "-" else "") + grouped + frac
+    }
+
+    /** Excel serial (days since 1899-12-30) to "yyyy-mm-dd" (with time when fractional). */
+    private fun excelSerialToIso(serial: Double): String? {
+        if (serial < 0 || serial > MAX_EXCEL_SERIAL) return null
+        val millis = ((serial - EXCEL_EPOCH_OFFSET_DAYS) * MILLIS_PER_DAY).toLong()
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+        cal.timeInMillis = millis
+        fun p(field: Int, digits: Int = 2) = cal.get(field).toString().padStart(digits, '0')
+        val date = "${p(java.util.Calendar.YEAR, 4)}-${(cal.get(java.util.Calendar.MONTH) + 1).toString().padStart(2, '0')}-${p(java.util.Calendar.DAY_OF_MONTH)}"
+        return if (serial % 1 != 0.0) "$date ${p(java.util.Calendar.HOUR_OF_DAY)}:${p(java.util.Calendar.MINUTE)}" else date
     }
 
     /** Raw cell content (value/inline/formula). */

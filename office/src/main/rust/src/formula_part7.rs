@@ -164,6 +164,7 @@ impl<'a> Evaluator<'a> {
                 Value::Num(x) => Ok(Value::Num(x)),
                 Value::Bool(b) => Ok(Value::Num(if b { 1.0 } else { 0.0 })),
                 Value::Err(c) => Ok(Value::Err(c)),
+                Value::Arr(vs) => Ok(Value::Num(self.num(Value::first_of(&vs))?)),
                 _ => Ok(Value::Num(0.0)),
             },
             "TYPE" => Ok(Value::Num(match self.safe_value(&a[0]) {
@@ -172,6 +173,8 @@ impl<'a> Evaluator<'a> {
                 Value::Bool(_) => 4.0,
                 Value::Err(_) => 16.0,
                 Value::Blank => 1.0,
+                // Excel TYPE of an array constant.
+                Value::Arr(_) => 64.0,
             })),
             "ERROR.TYPE" => {
                 let code = self.is_error(&a[0]);
@@ -183,6 +186,7 @@ impl<'a> Evaluator<'a> {
                     Some("#NAME?") => Some(5),
                     Some("#NUM!") => Some(6),
                     Some("#N/A") => Some(7),
+                    Some("#CALC!") => Some(14),
                     _ => None,
                 };
                 match t {

@@ -52,6 +52,41 @@ class OoxmlImporterTest {
         assertEquals("of:=IF([.A1]>0;\"y\";\"n\")", ExcelFormula.toOdf("IF(A1>0,\"y\",\"n\")"))
     }
 
+    @Test fun excelFormulaWholeColumnRow() {
+        assertEquals("of:=SUM([.A1:.A1048576])", ExcelFormula.toOdf("SUM(A:A)"))
+        assertEquals("of:=SUM([.A1:.C1048576])", ExcelFormula.toOdf("SUM(A:C)"))
+        assertEquals("of:=SUM([.A2:.XFD2])", ExcelFormula.toOdf("SUM(2:2)"))
+        assertEquals("of:=SUM([.A2:.XFD5])", ExcelFormula.toOdf("SUM(2:5)"))
+        assertEquals("of:=SUM([\$Data.A1:.C1048576])", ExcelFormula.toOdf("SUM(Data!A:C)"))
+        // Absolute markers survive the expansion.
+        assertEquals("of:=SUM([.\$A1:.\$A1048576])", ExcelFormula.toOdf("SUM(\$A:\$A)"))
+    }
+
+    @Test fun excelFormulaFromOdfRoundTrip() {
+        assertEquals("=SUM(A1:A3)+B1", ExcelFormula.fromOdf("of:=SUM([.A1:.A3])+[.B1]"))
+        assertEquals("=IF(A1>0,\"y\",\"n\")", ExcelFormula.fromOdf("of:=IF([.A1]>0;\"y\";\"n\")"))
+        // Absolute markers round-trip.
+        assertEquals("=\$A\$1+B2", ExcelFormula.fromOdf("of:=[\$A\$1]+[.B2]"))
+        // Whole spans collapse back.
+        assertEquals("=SUM(A:A)", ExcelFormula.fromOdf("of:=SUM([.A1:.A1048576])"))
+        assertEquals("=SUM(2:5)", ExcelFormula.fromOdf("of:=SUM([.A2:.XFD5])"))
+        // Sheet-qualified refs.
+        assertEquals("=Data!A1", ExcelFormula.fromOdf("of:=[\$Data.A1]"))
+        assertEquals("='My Sheet'!A1", ExcelFormula.fromOdf("of:=[$'My Sheet'.A1]"))
+    }
+
+    @Test fun excelFormulaShift() {
+        assertEquals("A2", ExcelFormula.shift("A1", 1, 0))
+        // Column absolute: letter kept, row still shifts.
+        assertEquals("\$A6", ExcelFormula.shift("\$A1", 5, 5))
+        // Row absolute: row kept.
+        assertEquals("A\$1", ExcelFormula.shift("A\$1", 5, 0))
+        assertEquals("B3", ExcelFormula.shift("A1", 2, 1))
+        assertEquals("SUM(A2:A4)+\"A1\"", ExcelFormula.shift("SUM(A1:A3)+\"A1\"", 1, 0))
+        // Sheet qualifiers are untouched; the cell part shifts.
+        assertEquals("S2!B2", ExcelFormula.shift("S2!A1", 1, 1))
+    }
+
     @Test fun excelNumberFormats() {
         val pct = ExcelNumFmt.parse("0.00%")!!
         assertTrue(pct.percent)
@@ -157,6 +192,22 @@ class OoxmlImporterTest {
         assertEquals(3.14, sheet.rows[1].cells[0].numberValue!!, 0.0001)
     }
 
+    /**
+     * Formatted cells must import even when the native formatter can't load (JVM unit
+     * tests): the Kotlin fallback renders the display string and the numeric value survives.
+     */
+    @Test fun xlsxFormattedCellsSurviveWithoutNativeEngine() {
+        val doc = OoxmlImporter.import(zipless(XLSX_FORMATTED_ENTRIES), "fmt.xlsx") as OdfDocument.Spreadsheet
+        val sheet = doc.sheets[0]
+        // 0.5 with builtin 0.00% -> "50.00%".
+        assertEquals("50.00%", sheet.rows[0].cells[0].text)
+        assertEquals(0.5, sheet.rows[0].cells[0].numberValue!!, 0.0001)
+        // 1234.5 with builtin #,##0.00 -> "1,234.50".
+        assertEquals("1,234.50", sheet.rows[0].cells[1].text)
+        // 45292 with builtin mm-dd-yy -> date value type (ISO display in fallback).
+        assertEquals("date", sheet.rows[0].cells[2].valueType)
+    }
+
     // ---- PPTX ----
 
     @Test fun pptxImportsShapeText() {
@@ -195,11 +246,11 @@ class OoxmlImporterTest {
             "<c:chartSpace xmlns:c=\"c\"><c:chart><c:plotArea><c:barChart>" +
                 "<c:barDir val=\"col\"/><c:grouping val=\"clustered\"/>" +
                 "<c:ser><c:tx><c:v>S1</c:v></c:tx>" +
-                "<c:cat><c:strRef><c:strCache><c:pt idx=\"0\"><c:v>A</c:v></c:pt><c:pt" +
+"<c:cat><c:strRef><c:strCache><c:pt idx=\"0\"><c:v>A</c:v></c:pt><c:pt " +
                     "idx=\"1\"><c:v>B</c:v></c:pt></c:strCache></c:strRef></c:cat>" +
-                "<c:val><c:numRef><c:numCache><c:pt idx=\"0\"><c:v>10</c:v></c:pt><c:pt" +
+"<c:val><c:numRef><c:numCache><c:pt idx=\"0\"><c:v>10</c:v></c:pt><c:pt " +
                     "idx=\"1\"><c:v>20</c:v></c:pt></c:numCache></c:numRef></c:val>" +
-                "</c:ser></c:barChart></c:plotArea><c:legend><c:legendPos" +
+                "</c:ser></c:barChart></c:plotArea><c:legend><c:legendPos " +
                     "val=\"r\"/></c:legend></c:chart></c:chartSpace>"
 
         private const val OMML_FRAC =
@@ -213,7 +264,7 @@ class OoxmlImporterTest {
                     "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Bold</w:t></w:r></w:p>" +
                     "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc>" +
                     "<w:tc><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc></w:tr></w:tbl>" +
-                    "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId" +
+"<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId " +
                         "w:val=\"1\"/></w:numPr></w:pPr><w:r><w:t>Item</w:t></w:r></w:p>" +
                     "</w:body></w:document>"),
             "word/numbering.xml" to (
@@ -231,10 +282,30 @@ class OoxmlImporterTest {
                     "</sheetData><mergeCells count=\"1\"><mergeCell ref=\"A1:B1\"/></mergeCells></worksheet>")
         )
 
+        private val XLSX_FORMATTED_ENTRIES = mapOf(
+            "xl/workbook.xml" to ("<workbook xmlns=\"s\" xmlns:r=\"r\">" +
+                "<sheets><sheet name=\"F\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>"),
+            "xl/_rels/workbook.xml.rels" to ("<Relationships xmlns=\"p\">" +
+                "<Relationship Id=\"rId1\" Type=\"t/worksheet\" Target=\"worksheets/sheet1.xml\"/>" +
+                "</Relationships>"),
+            "xl/styles.xml" to ("<styleSheet xmlns=\"s\">" +
+                "<cellXfs count=\"4\">" +
+                "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/>" +
+                "<xf numFmtId=\"10\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/>" +
+                "<xf numFmtId=\"4\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/>" +
+                "<xf numFmtId=\"14\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/>" +
+                "</cellXfs></styleSheet>"),
+            "xl/worksheets/sheet1.xml" to ("<worksheet xmlns=\"s\"><sheetData><row r=\"1\">" +
+                "<c r=\"A1\" s=\"1\"><v>0.5</v></c>" +
+                "<c r=\"B1\" s=\"2\"><v>1234.5</v></c>" +
+                "<c r=\"C1\" s=\"3\"><v>45292</v></c>" +
+                "</row></sheetData></worksheet>")
+        )
+
         private val PPTX_ENTRIES = mapOf(
             "ppt/slides/slide1.xml" to (
                 "<p:sld xmlns:p=\"p\" xmlns:a=\"a\"><p:cSld><p:spTree>" +
-                    "<p:sp><p:spPr><a:xfrm><a:off x=\"914400\"" +
+"<p:sp><p:spPr><a:xfrm><a:off x=\"914400\" " +
                         "y=\"914400\"/><a:ext cx=\"1828800\" cy=\"457200\"/></a:xfrm>" +
                     "<a:prstGeom prst=\"rect\"/></p:spPr>" +
                     "<p:txBody><a:p><a:r><a:rPr b=\"1\" sz=\"2400\"/><a:t>Hi</a:t></a:r></a:p></p:txBody></p:sp>" +

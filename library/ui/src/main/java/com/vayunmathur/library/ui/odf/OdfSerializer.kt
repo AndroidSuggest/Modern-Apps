@@ -328,10 +328,17 @@ object OdfSerializer {
                         if (cell.rowSpan > 1) body.append(""" table:number-rows-spanned="${cell.rowSpan}"""")
                         if (cell.formula != null) body.append(""" table:formula="${esc(cell.formula)}"""")
                         if (cell.validationName != null) body.append(""" table:content-validation-name="${esc(cell.validationName)}"""")
-                        val numeric = cell.numberValue ?: cell.text.toDoubleOrNull()
+                        // A freshly-typed formula caches its "=…" source as text, which is
+                        // not a display value: omit the value cache so readers evaluate
+                        // table:formula instead of showing the raw "=A1" string.
+                        // (Imported cells carry a real display string and are unaffected.)
+                        val isUncomputedFormula = cell.formula != null && cell.text.startsWith("=") &&
+                            cell.numberValue == null
+                        val numeric = if (isUncomputedFormula) null
+                            else cell.numberValue ?: cell.text.toDoubleOrNull()
                         if (numeric != null && cell.valueType != "string") {
                             body.append(""" office:value-type="float" office:value="$numeric"""")
-                        } else if (cell.text.isNotEmpty()) {
+                        } else if (!isUncomputedFormula && cell.text.isNotEmpty()) {
                             body.append(""" office:value-type="string"""")
                         }
                         body.append(">")
@@ -342,7 +349,7 @@ object OdfSerializer {
                             for (p in ann.paragraphs) serializeParagraph(body, p, spanStyles, paraStyles, "text:p")
                             body.append("</office:annotation>")
                         }
-                        if (cell.text.isNotEmpty()) body.append("<text:p>${encodeText(cell.text)}</text:p>")
+                        if (!isUncomputedFormula && cell.text.isNotEmpty()) body.append("<text:p>${encodeText(cell.text)}</text:p>")
                         body.append("</table:table-cell>")
                     }
                 }

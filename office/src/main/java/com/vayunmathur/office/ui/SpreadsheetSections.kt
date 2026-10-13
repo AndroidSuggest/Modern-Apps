@@ -29,6 +29,7 @@ import com.vayunmathur.library.ui.TextField
 import com.vayunmathur.library.ui.TextFieldDefaults
 import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.office.R
+import com.vayunmathur.office.odf.ExcelFormula
 
 /** Cell edit bar above the grid: address label, formula field, done. State lives in [SpreadsheetView]. */
 @Composable
@@ -52,7 +53,9 @@ internal fun SpreadsheetEditBar(
         if (r + 1 < rowCount) {
             onCellSelected(si, r + 1, c)
             val nextText =
-                doc.sheets[si].rows.getOrNull(r + 1)?.cells?.getOrNull(c)?.let { it.formula ?: it.text } ?: ""
+                doc.sheets[si].rows.getOrNull(r + 1)?.cells?.getOrNull(c)?.let {
+                    it.formula?.let { f -> try { ExcelFormula.fromOdf(f) } catch (_: Exception) { f } } ?: it.text
+                } ?: ""
             onAdvanceCell(Triple(si, r + 1, c), TextFieldValue(nextText, TextRange(0, nextText.length)))
         } else { onAdvanceCell(null, null); onCellSelected(si, -1, -1) }
     }

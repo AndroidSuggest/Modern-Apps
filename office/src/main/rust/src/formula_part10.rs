@@ -129,6 +129,106 @@ mod tests {
     }
 
     #[test]
+    fn named_ranges() {
+        // Named range MyRange -> Sheet1.A1:A3, single cell MyCell -> Sheet1.B2.
+        // The probe formula lives in D1 (outside the ranges) to avoid self-reference.
+        let at = |f: &str| {
+            let wjson = format!(
+                "{{\"sheets\":[{{\"name\":\"Sheet1\",\"rows\":[\
+                {{\"cells\":[{{\"text\":\"1\",\"numberValue\":1}},{{\"text\":\"10\",\"numberValue\":10}},{{\"text\":\"\"}},{{\"text\":\"\",\"formula\":\"{}\"}}]}},\
+                {{\"cells\":[{{\"text\":\"2\",\"numberValue\":2}},{{\"text\":\"20\",\"numberValue\":20}}]}},\
+                {{\"cells\":[{{\"text\":\"3\",\"numberValue\":3}},{{\"text\":\"30\",\"numberValue\":30}}]}}\
+                ]}}],\"namedRanges\":[\
+                {{\"name\":\"MyRange\",\"addr\":\"Sheet1.A1:Sheet1.A3\"}},\
+                {{\"name\":\"MyCell\",\"addr\":\"Sheet1.B2\"}}\
+                ]}}",
+                f.replace('"', "\\\"")
+            );
+            Workbook::from_json(&wjson, 1_700_000_000_000)
+                .unwrap()
+                .display_value(0, 0, 3)
+        };
+        // Bare names resolve (scalar + range forms).
+        assert_eq!(at("MyRange"), "1");
+        assert_eq!(at("of:=SUM(MyRange)"), "6");
+        assert_eq!(at("of:=MyCell+1"), "21");
+        assert_eq!(at("of:=AVERAGE(MyRange)"), "2");
+        // Case-insensitive.
+        assert_eq!(at("of:=SUM(myrange)"), "6");
+        // Unknown names still #NAME?.
+        assert_eq!(at("of:=SUM(Nope)"), "#NAME?");
+        // A name must be bare: `MyRange(` is a (missing) function call.
+        assert_eq!(at("of:=MyRange(1)"), "#NAME?");
+    }
+
+    #[test]
+    fn whole_span_ranges() {
+        // Full-span expansions (from Excel whole-column/row refs) evaluate over data.
+        // Column span excludes the probe cell's column, so no self-reference cycle.
+        assert_eq!(eval("of:=SUM([.A1:.A1048576])"), "6");
+        // Row span: probe formula in A4 sums rows 1..3 across A..XFD (49k cells,
+        // mostly blank). 1+10+2+20+3+30 = 66.
+        let wjson = "{\"sheets\":[{\"name\":\"Sheet1\",\"rows\":[\
+            {\"cells\":[{\"text\":\"1\",\"numberValue\":1},{\"text\":\"10\",\"numberValue\":10}]},\
+            {\"cells\":[{\"text\":\"2\",\"numberValue\":2},{\"text\":\"20\",\"numberValue\":20}]},\
+            {\"cells\":[{\"text\":\"3\",\"numberValue\":3},{\"text\":\"30\",\"numberValue\":30}]},\
+            {\"cells\":[{\"text\":\"\",\"formula\":\"of:=SUM([.A1:.XFD3])\"}]}\
+            ]}]}";
+        let wb = Workbook::from_json(wjson, 1_700_000_000_000).unwrap();
+        assert_eq!(wb.display_value(0, 3, 0), "66");
+    }
+
+    #[test]
+    fn xlookup() {
+        // Keys A1..A3 = 1,2,3 ; values B1..B3 = 10,20,30.
+        assert_eq!(eval("of:=XLOOKUP(2;[.A1:.A3];[.B1:.B3])"), "20");
+        assert_eq!(eval("of:=XLOOKUP(9;[.A1:.A3];[.B1:.B3])"), "#N/A");
+        assert_eq!(eval("of:=XLOOKUP(9;[.A1:.A3];[.B1:.B3];\"nf\")"), "nf");
+        // Exact-or-next-smaller: 2.5 -> key 2 -> 20.
+        assert_eq!(eval("of:=XLOOKUP(2.5;[.A1:.A3];[.B1:.B3];;-1)"), "20");
+        // Exact-or-next-larger: 2.5 -> key 3 -> 30.
+        assert_eq!(eval("of:=XLOOKUP(2.5;[.A1:.A3];[.B1:.B3];;1)"), "30");
+        // Last-to-first: duplicate keys would pick the later one; here sanity.
+        assert_eq!(eval("of:=XLOOKUP(2;[.A1:.A3];[.B1:.B3];;;-1)"), "20");
+        // Binary search on the sorted keys.
+        assert_eq!(eval("of:=XLOOKUP(3;[.A1:.A3];[.B1:.B3];;;2)"), "30");
+        assert_eq!(eval("of:=XLOOKUP(9;[.A1:.A3];[.B1:.B3];;0;2)"), "#N/A");
+    }
+
+    #[test]
+    fn dynamic_arrays() {
+        // FILTER: B > 15 keeps rows 2,3 -> values 2,3 (first displays).
+        assert_eq!(eval("of:=FILTER([.A1:.A3];[.B1:.B3]>15)"), "2");
+        assert_eq!(eval("of:=SUM(FILTER([.A1:.A3];[.B1:.B3]>15))"), "5");
+        assert_eq!(eval("of:=COUNT(FILTER([.A1:.A3];[.B1:.B3]>15))"), "2");
+        assert_eq!(eval("of:=FILTER([.A1:.A3];[.B1:.B3]>99)"), "#CALC!");
+        assert_eq!(eval("of:=FILTER([.A1:.A3];[.B1:.B3]>99;\"none\")"), "none");
+        // SORT / SORTBY / UNIQUE.
+        assert_eq!(eval("of:=SUM(SORT([.B1:.B3];1;-1))"), "60");
+        assert_eq!(eval("of:=SORT([.B1:.B3];1;-1)"), "30");
+        assert_eq!(eval("of:=SUM(SORTBY([.A1:.A3];[.B1:.B3];-1))"), "6");
+        assert_eq!(eval("of:=SORTBY([.A1:.A3];[.B1:.B3];-1)"), "3");
+        assert_eq!(eval("of:=SUM(UNIQUE([.A1:.A3]))"), "6");
+        // SEQUENCE composes with aggregations; bare displays first element.
+        assert_eq!(eval("of:=SUM(SEQUENCE(4))"), "10");
+        assert_eq!(eval("of:=SEQUENCE(4)"), "1");
+        assert_eq!(eval("of:=SEQUENCE(2;2)"), "1");
+        assert_eq!(eval("of:=SUM(SEQUENCE(2;2;10;10))"), "100");
+        // LET binds names then evaluates.
+        assert_eq!(eval("of:=LET(x;2;x*10)"), "20");
+        assert_eq!(eval("of:=LET(x;2;y;3;x+y)"), "5");
+        assert_eq!(eval("of:=LET(x;[.A1]+[.A2];x*2)"), "6");
+        assert_eq!(eval("of:=LET(s;\"hi\";s&\"!\")"), "hi!");
+        // ROWS sees through spilled arrays.
+        assert_eq!(eval("of:=ROWS(FILTER([.A1:.A3];[.B1:.B3]>0))"), "3");
+        // OFFSET with height/width spills; SUM composes.
+        assert_eq!(eval("of:=SUM(OFFSET([.A1];0;0;3;1))"), "6");
+        assert_eq!(eval("of:=OFFSET([.A1];1;1)"), "20");
+        // LAMBDA is recognized but unsupported here.
+        assert_eq!(eval("of:=LAMBDA(x;x+1)"), "#VALUE!");
+    }
+
+    #[test]
     fn format_value_json_standalone() {
         // No format ("null"/empty) -> plain number formatting.
         assert_eq!(format_value_json(6.0, "null"), "6");

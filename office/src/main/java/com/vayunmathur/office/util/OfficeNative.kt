@@ -1,5 +1,6 @@
 package com.vayunmathur.office.util
 
+import com.vayunmathur.library.ui.odf.OdfNamedRange
 import com.vayunmathur.library.ui.odf.OdfNumberFormat
 import com.vayunmathur.library.ui.odf.OdfSheet
 import kotlinx.serialization.Serializable
@@ -89,15 +90,18 @@ object OfficeNative {
      * Convenience: serialize [sheets] and create a native workbook handle, or
      * return 0 if the native lib is unavailable or creation fails.
      */
-    fun createWorkbook(sheets: List<OdfSheet>, nowMillis: Long = System.currentTimeMillis()): Long =
-        nativeCreateWorkbook(buildWorkbookJson(sheets), nowMillis)
+    fun createWorkbook(
+        sheets: List<OdfSheet>,
+        nowMillis: Long = System.currentTimeMillis(),
+        namedRanges: List<OdfNamedRange> = emptyList(),
+    ): Long = nativeCreateWorkbook(buildWorkbookJson(sheets, namedRanges), nowMillis)
 
     // ---- Workbook serialization (must agree with the serde schema in formula.rs) ----
 
     private val json = Json { encodeDefaults = true; explicitNulls = false }
 
     /** Serializes all [sheets] (name + 2D cell grid) to the compact JSON the Rust engine parses. */
-    fun buildWorkbookJson(sheets: List<OdfSheet>): String {
+    fun buildWorkbookJson(sheets: List<OdfSheet>, namedRanges: List<OdfNamedRange> = emptyList()): String {
         val dto = WbDto(sheets.map { s ->
             SheetDto(s.name, s.rows.map { r ->
                 RowDto(r.cells.map { c ->
@@ -111,7 +115,7 @@ object OfficeNative {
                     )
                 })
             })
-        })
+        }, namedRanges.map { NrDto(it.name, it.cellRangeAddress) })
         return json.encodeToString(dto)
     }
 
@@ -129,9 +133,13 @@ object OfficeNative {
         dateTimeTokens = nf.dateTimeTokens.map { t -> TokDto(t.kind, t.style, t.text, t.textual) }
     )
 
-    @Serializable private data class WbDto(val sheets: List<SheetDto>)
+    @Serializable private data class WbDto(
+        val sheets: List<SheetDto>,
+        val namedRanges: List<NrDto> = emptyList(),
+    )
     @Serializable private data class SheetDto(val name: String, val rows: List<RowDto>)
     @Serializable private data class RowDto(val cells: List<CellDto>)
+    @Serializable private data class NrDto(val name: String, val addr: String)
 
     @Serializable private data class CellDto(
         val text: String,

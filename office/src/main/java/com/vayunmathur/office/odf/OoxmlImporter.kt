@@ -1,5 +1,6 @@
 package com.vayunmathur.office.odf
 
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ui.odf.OdfDocument
 
 /**
@@ -36,6 +37,9 @@ object OoxmlImporter {
             resolveDocKind(ext, pkg, fileName)
         }.getOrElse {
             // Best-effort: never crash the app on a malformed but recognized package.
+            // Dev-gated so JVM unit tests (Android stubs) stay silent-safe; on a dev
+            // device this surfaces the swallowed cause for the next malformed file.
+            Log.dev(TAG, "best-effort fallback for $fileName", it)
             fallbackDoc(ext, pkg, fileName)
         }
     }
@@ -89,4 +93,6 @@ object OoxmlImporter {
     private val DOCX_EXTS = setOf("docx", "docm", "dotx", "dotm")
     private val XLSX_EXTS = setOf("xlsx", "xlsm", "xltx", "xltm")
     private val PPTX_EXTS = setOf("pptx", "pptm", "potx", "potm", "ppsx", "ppsm")
+
+    private const val TAG = "OoxmlImporter"
 }

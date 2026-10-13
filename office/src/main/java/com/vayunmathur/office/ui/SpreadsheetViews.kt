@@ -48,6 +48,7 @@ import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.odf.OdfBorders
 import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.office.R
+import com.vayunmathur.office.odf.ExcelFormula
 import com.vayunmathur.office.util.OfficeNative
 
 @Composable
@@ -229,7 +230,7 @@ fun SpreadsheetView(
                                                         sw) }
                                                 } else Modifier)
                                                 .then(if (isMatch) Modifier.background(Color(0xFFFFEB3B).copy(alpha = 0.3f)) else effBg?.let { Modifier.background(Color(it.toInt())) } ?: Modifier)
-                                                .then(if (isEditMode) Modifier.clickable { editingCell = Triple(selectedSheet, rowIdx, cellIdx); selectedFloating = -1; onCellSelected(selectedSheet, rowIdx, cellIdx); val t = cell.formula ?: cell.text; editText = TextFieldValue(t, TextRange(0, t.length)) } else Modifier)
+                                                .then(if (isEditMode) Modifier.clickable { editingCell = Triple(selectedSheet, rowIdx, cellIdx); selectedFloating = -1; onCellSelected(selectedSheet, rowIdx, cellIdx); val t = cell.formula?.let { try { ExcelFormula.fromOdf(it) } catch (_: Exception) { it } } ?: cell.text; editText = TextFieldValue(t, TextRange(0, t.length)) } else Modifier)
                                                 .then(if (cell.annotation != null) Modifier.drawBehind {
                                                     // Red corner triangle marks a cell comment. (Round 3)
                                                     val s = 7.dp.toPx()

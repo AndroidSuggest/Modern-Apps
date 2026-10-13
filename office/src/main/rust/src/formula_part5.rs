@@ -14,6 +14,19 @@ impl<'a> Evaluator<'a> {
                 Value::Str(_) => out.push(0.0),
                 Value::Blank => {}
                 Value::Err(c) => return Err(EvalError(c)),
+                // all_vals already expands arrays; a nested Arr can only arrive
+                // via a cell holding a spilled result — count its first element.
+                Value::Arr(vs) => {
+                    let first = Value::first_of(&vs);
+                    match first {
+                        Value::Num(x) => out.push(x),
+                        Value::Bool(b) => out.push(if b { 1.0 } else { 0.0 }),
+                        Value::Str(_) => out.push(0.0),
+                        Value::Blank => {}
+                        Value::Err(c) => return Err(EvalError(c)),
+                        Value::Arr(_) => {}
+                    }
+                }
             }
         }
         Ok(out)

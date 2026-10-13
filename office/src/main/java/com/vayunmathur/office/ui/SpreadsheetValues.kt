@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.library.ui.odf.OdfNamedRange
 import com.vayunmathur.office.util.OfficeNative
 
 /**
@@ -18,7 +19,9 @@ interface SpreadsheetValues {
 
 @Composable
 fun rememberNativeSpreadsheetValues(doc: OdfDocument.Spreadsheet): SpreadsheetValues {
-    val handle = remember(doc) { OfficeNative.createWorkbook(doc.sheets, System.currentTimeMillis()) }
+    val handle = remember(doc) {
+        OfficeNative.createWorkbook(doc.sheets, System.currentTimeMillis(), doc.namedRanges)
+    }
     DisposableEffect(doc) { onDispose { OfficeNative.nativeFree(handle) } }
     return remember(handle) {
         object : SpreadsheetValues {
