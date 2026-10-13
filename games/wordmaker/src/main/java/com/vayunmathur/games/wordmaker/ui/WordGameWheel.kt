@@ -26,18 +26,15 @@ import com.vayunmathur.games.wordmaker.R
 import com.vayunmathur.games.wordmaker.data.CrosswordData
 import com.vayunmathur.games.wordmaker.data.WheelSpacing
 import com.vayunmathur.games.wordmaker.platform.WordGameActions
-import com.vayunmathur.games.wordmaker.ui.components.AnimatedLetter
 import com.vayunmathur.games.wordmaker.ui.components.CompetitiveStatusBar
 import com.vayunmathur.games.wordmaker.ui.components.DailyStatusBar
 import com.vayunmathur.games.wordmaker.ui.components.LetterChooser
-import com.vayunmathur.games.wordmaker.ui.components.WordToAnimate
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.FilledIconButton
 import com.vayunmathur.library.ui.Icon
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
-import kotlinx.coroutines.CoroutineScope
 
 /**
  * Status bars plus the letter wheel below the board, extracted from
@@ -63,15 +60,10 @@ fun WordGameWheel(
     crosswordData: CrosswordData,
     foundWords: Set<String>,
     bonusWords: Set<String>,
-    wordToAnimate: WordToAnimate?,
-    animatedWord: String?,
-    scope: CoroutineScope,
-    animationProgress: Animatable<Float, AnimationVector1D>,
+    animations: WordPlaceAnimations,
     density: Density,
     wordShakeAnim: Animatable<Float, AnimationVector1D>,
     bonusShakeAnim: Animatable<Float, AnimationVector1D>,
-    onAnimateSolution: (WordToAnimate) -> Unit,
-    onAnimateBonus: (String?) -> Unit,
     onWordBoxPositioned: (Offset) -> Unit,
     letterChooserPositions: Map<Int, Offset>,
     onLetterPositioned: (Int, Offset) -> Unit,
@@ -114,16 +106,14 @@ fun WordGameWheel(
                         crosswordData = crosswordData,
                         foundWords = foundWords,
                         bonusWords = bonusWords,
-                        wordToAnimate = wordToAnimate,
-                        animatedWord = animatedWord,
+                        pendingSolutionWords = animations.pendingSolutionWords,
+                        queuedBonusWords = animations.queuedBonusWords,
                         actions = actions,
-                        scope = scope,
-                        animationProgress = animationProgress,
                         density = density,
                         wordShakeAnim = wordShakeAnim,
                         bonusShakeAnim = bonusShakeAnim,
-                        onAnimateSolution = onAnimateSolution,
-                        onAnimateBonus = onAnimateBonus,
+                        onAnimateSolution = animations.enqueueSolution,
+                        onAnimateBonus = animations.enqueueBonus,
                     ),
                     onWordBoxPositioned = onWordBoxPositioned,
                     onLetterPositioned = { id, offset ->

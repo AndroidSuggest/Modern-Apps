@@ -23,16 +23,14 @@ fun wordSubmitHandler(
     crosswordData: CrosswordData,
     foundWords: Set<String>,
     bonusWords: Set<String>,
-    wordToAnimate: WordToAnimate?,
-    animatedWord: String?,
+    pendingSolutionWords: Set<String>,
+    queuedBonusWords: Set<String>,
     actions: WordGameActions,
-    scope: CoroutineScope,
-    animationProgress: Animatable<Float, AnimationVector1D>,
     density: Density,
     wordShakeAnim: Animatable<Float, AnimationVector1D>,
     bonusShakeAnim: Animatable<Float, AnimationVector1D>,
     onAnimateSolution: (WordToAnimate) -> Unit,
-    onAnimateBonus: (String?) -> Unit,
+    onAnimateBonus: (String) -> Unit,
 ): suspend CoroutineScope.(String, List<Int>) -> Unit = { word, ids ->
     suspend fun shakeAnim(anim: Animatable<Float, AnimationVector1D>, duration: Int = 40) {
         for (o in listOf(-16f, 12f, -8f, 6f, -3f, 0f)) {
@@ -45,10 +43,10 @@ fun wordSubmitHandler(
 
     // #543 — re-entering an already-found/bonus word must not
     // replay the board/bonus animation. Check for duplicates
-    // first, including words that are mid-animation (not yet
-    // flushed to DataStore + foundWords/bonusWords flow).
-    val alreadyFound = word in foundWords || word == wordToAnimate?.word
-    val alreadyBonus = word in bonusWords || word == animatedWord
+    // first, including words still queued or mid-flight (#807,
+    // not yet flushed to DataStore + foundWords/bonusWords flow).
+    val alreadyFound = word in foundWords || word in pendingSolutionWords
+    val alreadyBonus = word in bonusWords || word in queuedBonusWords
     when {
         isSolution && alreadyFound -> shakeAnim(wordShakeAnim)
         isBonus && alreadyBonus -> {
@@ -60,15 +58,10 @@ fun wordSubmitHandler(
             onAnimateSolution(WordToAnimate(word, ids))
             actions.onSolutionWordFound(word)
         }
-        isBonus && word !in bonusWords -> {
-            scope.launch {
-                onAnimateBonus(word)
-                animationProgress.snapTo(0f)
-                animationProgress.animateTo(1f, tween(800))
-                actions.addBonusWord(word)
-                onAnimateBonus(null)
-            }
-        }
+        // #807: only enqueue — the screen drains the bonus queue one flight at a
+        // time, so a fast second word no longer steals the shared progress
+        // Animatable and cancels the first word's flight (and its addBonusWord).
+        isBonus && word !in bonusWords -> onAnimateBonus(word)
         else -> shakeAnim(wordShakeAnim)
     }
 }

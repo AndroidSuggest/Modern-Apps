@@ -6,7 +6,6 @@ package com.vayunmathur.games.wordmaker.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -29,7 +28,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,8 +49,6 @@ import com.vayunmathur.games.wordmaker.data.CrosswordData
 import com.vayunmathur.games.wordmaker.data.GameMode
 import com.vayunmathur.games.wordmaker.platform.WordGameActions
 import com.vayunmathur.games.wordmaker.platform.WordGameUiState
-import com.vayunmathur.games.wordmaker.ui.components.AnimatedLetter
-import com.vayunmathur.games.wordmaker.ui.components.WordToAnimate
 import com.vayunmathur.library.ui.AppBarAlignment
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.DesktopMaxWidthContainer
@@ -66,8 +62,6 @@ import com.vayunmathur.library.util.AchievementsManager
 import com.vayunmathur.games.wordmaker.ui.components.CrosswordBoard
 import com.vayunmathur.games.wordmaker.ui.components.WordMakerModeChooser
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
 
 /** Room above the wheel for the formed-word box and its padding. */
 private val WHEEL_HEADROOM = 70.dp
@@ -107,10 +101,8 @@ fun WordGameScreen(
     var rootOffset by remember { mutableStateOf(Offset.Zero) }
     var wordWithDefinition by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
 
-    // Animation state
-    val coroutineScope = rememberCoroutineScope()
-    var animatedWord by remember(levelKey) { mutableStateOf<String?>(null) }
-    val animationProgress = remember(levelKey) { Animatable(0f) }
+    // Animation state: solution and bonus word-place flights queue up (#807) so a fast
+    // second word waits for the first flight to finish instead of cancelling it.
     var wordBoxOffset by remember(levelKey) { mutableStateOf(Offset.Zero) }
     var bonusButtonOffset by remember(levelKey) { mutableStateOf(Offset.Zero) }
     var crosswordCellPositions by remember(levelKey) {
@@ -123,8 +115,16 @@ fun WordGameScreen(
             emptyMap()
         )
     }
-    var wordToAnimate by remember(levelKey) { mutableStateOf<WordToAnimate?>(null) }
-    var animatedLetters by remember(levelKey) { mutableStateOf<List<AnimatedLetter>>(emptyList()) }
+    val wordPlaceAnimations = rememberWordPlaceAnimations(
+        levelKey = levelKey,
+        crosswordData = crosswordData,
+        foundWords = foundWords,
+        actions = actions,
+        density = density,
+        rootOffset = rootOffset,
+        letterChooserPositions = letterChooserPositions,
+        crosswordCellPositions = crosswordCellPositions,
+    )
 
     // Animatables for shaking (we'll animate them directly when submission fails)
     val wordShakeAnim = remember { Animatable(0f) }
@@ -137,40 +137,6 @@ fun WordGameScreen(
         })
     }
 
-
-    LaunchedEffect(wordToAnimate) {
-        wordToAnimate?.let { animationInfo ->
-            val word = animationInfo.word
-            val letterPositions = crosswordData.letterPositions[word]?.firstOrNull()
-            if (letterPositions != null) {
-                val letters = word.mapIndexed { index, char ->
-                    val id = animationInfo.letterIds[index]
-                    val start = (letterChooserPositions[id] ?: Offset.Zero) - rootOffset
-                    val end =
-                        (crosswordCellPositions[letterPositions[index]] ?: Offset.Zero) - rootOffset
-
-                    val offsetCorrection = with(density) { 15.dp.toPx() }
-                    val correctedStart = start.plus(Offset(offsetCorrection, offsetCorrection))
-
-                    AnimatedLetter(char, correctedStart, end, Animatable(0f))
-                }
-                animatedLetters = letters
-
-                // Animate
-                val jobs = letters.map {
-                    launch {
-                        it.progress.animateTo(1f, animationSpec = tween(durationMillis = 800))
-                    }
-                }
-                jobs.joinAll()
-
-                // After animation
-                actions.addFoundWord(word)
-                wordToAnimate = null
-                animatedLetters = emptyList()
-            }
-        }
-    }
 
     val isWon = crosswordData.winsWith(foundWords)
 
@@ -241,7 +207,7 @@ fun WordGameScreen(
                     foundWords = foundWords,
                     revealedHints = revealedHints,
                     crosswordData = crosswordData,
-                    wordToAnimate = wordToAnimate?.word,
+                    wordToAnimate = wordPlaceAnimations.activeSolutionWord,
                     onCellPositioned = { position, offset ->
                         if (crosswordCellPositions[position] != offset) {
                             crosswordCellPositions =
@@ -286,15 +252,10 @@ fun WordGameScreen(
                     crosswordData = crosswordData,
                     foundWords = foundWords,
                     bonusWords = bonusWords,
-                    wordToAnimate = wordToAnimate,
-                    animatedWord = animatedWord,
-                    scope = coroutineScope,
-                    animationProgress = animationProgress,
+                    animations = wordPlaceAnimations,
                     density = density,
                     wordShakeAnim = wordShakeAnim,
                     bonusShakeAnim = bonusShakeAnim,
-                    onAnimateSolution = { wordToAnimate = it },
-                    onAnimateBonus = { animatedWord = it },
                     onWordBoxPositioned = { wordBoxOffset = it },
                     letterChooserPositions = letterChooserPositions,
                     onLetterPositioned = { id, offset ->
@@ -326,11 +287,11 @@ fun WordGameScreen(
                 bonusWords = bonusWords,
                 wordWithDefinition = wordWithDefinition,
                 onDismissDefinition = { wordWithDefinition = null },
-                animatedWord = animatedWord,
-                animationProgress = animationProgress,
+                animatedWord = wordPlaceAnimations.activeBonusWord,
+                animationProgress = wordPlaceAnimations.bonusProgress,
                 wordBoxOffset = wordBoxOffset,
                 bonusButtonOffset = bonusButtonOffset,
-                animatedLetters = animatedLetters,
+                animatedLetters = wordPlaceAnimations.animatedLetters,
                 scale = scale,
             )
         }
