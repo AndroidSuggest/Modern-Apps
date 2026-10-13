@@ -42,6 +42,9 @@ private fun defaultRingtoneTitle(context: Context, type: Int): String {
             ?.let { RingtoneManager.getRingtone(context, it)?.getTitle(context) }
     }.getOrNull()
     if (name.isNullOrBlank()) return default
+    // Some ROMs already report the default sound's title wrapped, e.g. "Default (Marimba)":
+    // wrapping it again shows "Default (Default (Marimba))" (issue #794).
+    if (name.startsWith("$default (")) return name
     return context.getString(R.string.ringtone_default_named, default, name)
 }
 

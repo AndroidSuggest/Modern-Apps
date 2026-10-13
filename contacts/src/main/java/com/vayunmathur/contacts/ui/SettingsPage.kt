@@ -259,7 +259,13 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
                 val displayName = simLabel ?: account.name.ifEmpty { onDevice }
                 ListItem(
                     content = { Text(displayName) },
-                    supportingContent = { Text(account.type) },
+                    // The on-device account has no type string: emitting a blank supporting
+                    // line leaves a gap and pushes the checkbox out of alignment (#800).
+                    supportingContent = if (account.type.isNotBlank()) {
+                        { Text(account.type) }
+                    } else {
+                        null
+                    },
                     trailingContent = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (isLocalAccountType(account.type) &&
