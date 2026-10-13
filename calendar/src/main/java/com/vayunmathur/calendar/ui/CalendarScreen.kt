@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
@@ -195,15 +196,27 @@ fun CalendarScreen(state: CalendarUiState, actions: CalendarActions) {
                     onEventClick = { actions.openEvent(it) },
                     onDateViewingChanged = { actions.setSelectedDate(it) }
                 )
-                CalendarViewModel.CalendarLayout.Month -> MonthCalendarView(
-                    context, state.events, state.calendars, state.calendarVisibility, state.today, state.dateViewing,
-                    actions::visibleInstances,
-                    onEventClick = { actions.openEvent(it) },
-                    onDayClick = { actions.setSelectedDate(it) },
-                    onDayLongClick = { actions.createEventOn(it) },
-                    onDateViewingChanged = { actions.setSelectedDate(it) },
-                    previewInstances = state.previewInstances,
-                )
+                CalendarViewModel.CalendarLayout.Month -> Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        MonthCalendarView(
+                            context, state.events, state.calendars, state.calendarVisibility, state.today, state.dateViewing,
+                            actions::visibleInstances,
+                            onEventClick = { actions.openEvent(it) },
+                            onDayClick = { actions.setSelectedDate(it) },
+                            onDayLongClick = { actions.createEventOn(it) },
+                            onDateViewingChanged = { actions.setSelectedDate(it) },
+                            previewInstances = state.previewInstances,
+                        )
+                    }
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        AgendaView(
+                            context, state.events, state.calendars, state.calendarVisibility, state.today, state.dateViewing,
+                            actions::visibleInstances,
+                            onEventClick = { actions.openEvent(it) },
+                            onDateViewingChanged = { actions.setSelectedDate(it) }
+                        )
+                    }
+                }
                 else -> {
                     CalendarPagerView(
                         context,
