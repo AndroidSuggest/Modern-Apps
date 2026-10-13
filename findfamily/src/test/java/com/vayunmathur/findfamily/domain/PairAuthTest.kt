@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -100,7 +101,7 @@ class PairAuthTest {
     @Test
     fun farPastIsNotFuture() {
         // Stale is a different problem (handled by getLatest ranking); the clamp only kills pins.
-        assertFalse(PairAuth.isFromTheFuture(now - 30 * 24 * 3600.seconds, now, now))
+        assertFalse(PairAuth.isFromTheFuture(now - 30.days, now, now))
     }
 
     // --- logPreview ---
