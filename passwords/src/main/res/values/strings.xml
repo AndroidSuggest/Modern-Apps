@@ -122,6 +122,10 @@
     <string name="cable_status_failed">Request failed</string>
     <!-- Notification text when the other device cancelled the request -->
     <string name="cable_status_cancelled">Cancelled by the other device</string>
+    <!-- Message when Bluetooth is off and the user dismisses the enable-Bluetooth prompt instead of turning it on -->
+    <string name="cable_bluetooth_disabled_message">Bluetooth is off. Turn it on to continue with this passkey request.</string>
+    <!-- Message when the device has no Bluetooth adapter, so cross-device passkeys cannot run -->
+    <string name="cable_bluetooth_unsupported_message">This device does not support Bluetooth, so cross-device sign-in is unavailable.</string>
     <string name="name_required">Name cannot be empty</string>
 
     <!-- Section header for the two-way KeePass file sync settings. KDBX = KeePass database file extension, keep as-is -->

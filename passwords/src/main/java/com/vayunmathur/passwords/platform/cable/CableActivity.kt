@@ -2,6 +2,7 @@ package com.vayunmathur.passwords.platform.cable
 
 import com.vayunmathur.library.ui.R as UiR
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -11,6 +12,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.passwords.R
 
 /**
@@ -28,7 +30,18 @@ class CableActivity : FragmentActivity() {
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { startSessionAndFinish() }
+    ) { ensureBluetoothThenStart() }
+
+    private val enableBluetoothLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (CableBluetooth.isEnabled(this)) {
+            startSessionAndFinish()
+        } else {
+            AppMessages.show(getString(R.string.cable_bluetooth_disabled_message))
+            finish()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,8 +102,27 @@ class CableActivity : FragmentActivity() {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
 
-        if (needed.isEmpty()) startSessionAndFinish()
+        if (needed.isEmpty()) ensureBluetoothThenStart()
         else permissionLauncher.launch(needed.toTypedArray())
+    }
+
+    /**
+     * Pre-flight check before the caBLE flow: prompt to enable Bluetooth (using the existing
+     * permission state — BLUETOOTH_CONNECT is granted by now) so a disabled radio shows a
+     * dialog/message instead of failing silently in the service notification.
+     */
+    private fun ensureBluetoothThenStart() {
+        if (!CableBluetooth.isSupported(this)) {
+            Log.error(TAG, "Bluetooth not supported; cannot run caBLE session")
+            AppMessages.show(getString(R.string.cable_bluetooth_unsupported_message))
+            finish()
+            return
+        }
+        if (!CableBluetooth.isEnabled(this)) {
+            enableBluetoothLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+            return
+        }
+        startSessionAndFinish()
     }
 
     private fun startSessionAndFinish() {
