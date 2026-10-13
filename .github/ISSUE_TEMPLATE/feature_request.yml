@@ -9,7 +9,6 @@ body:
       label: App Name
       description: Which app is this feature for?
       options:
-        - alchemist
         - appstore
         - arrows
         - astronomy

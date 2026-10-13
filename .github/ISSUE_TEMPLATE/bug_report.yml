@@ -9,7 +9,6 @@ body:
       label: App Name
       description: Which app is experiencing the issue?
       options:
-        - alchemist
         - appstore
         - arrows
         - astronomy

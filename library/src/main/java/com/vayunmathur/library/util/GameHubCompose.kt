@@ -26,7 +26,6 @@ fun rememberGameHubClient(gameId: String): GameHubClient {
 private fun gameDisplayName(gameId: String): String = when (gameId) {
     "chess" -> "Chess"
     "solitaire" -> "Solitaire"
-    "alchemist" -> "Alchemist"
     "pipes" -> "Pipes"
     "unblockjam" -> "Unblock Jam"
     "wordmaker" -> "Wordmaker"

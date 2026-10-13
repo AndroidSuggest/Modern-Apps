@@ -48,7 +48,6 @@ class MetadataPreviews {
 
     private val games = listOf(
         HubGameEntity("chess", "com.vayunmathur.games.chess", "Chess", "Classic chess with puzzles and a human-like AI", "1.0", registeredAt = now - 28 * DAY, lastSeenAt = now - HOUR, lastPlayedAt = now - HOUR, totalPlaytimeMs = 5 * HOUR + 23 * 60_000L, totalSessions = 42),
-        HubGameEntity("alchemist", "com.vayunmathur.games.alchemist", "Alchemist", "Combine elements", registeredAt = now - 25 * DAY, lastSeenAt = now - 3 * HOUR, lastPlayedAt = now - 3 * HOUR, totalPlaytimeMs = 3 * HOUR, totalSessions = 28),
         HubGameEntity("pipes", "com.vayunmathur.games.pipes", "Pipes", "Connect the pipes", registeredAt = now - 20 * DAY, lastSeenAt = now - 5 * HOUR, lastPlayedAt = now - 5 * HOUR, totalPlaytimeMs = 2 * HOUR + 45 * 60_000L, totalSessions = 35),
         HubGameEntity("solitaire", "com.vayunmathur.games.solitaire", "Solitaire", "Classic Klondike", registeredAt = now - 18 * DAY, lastSeenAt = now - 8 * HOUR, lastPlayedAt = now - 8 * HOUR, totalPlaytimeMs = 4 * HOUR, totalSessions = 51),
         HubGameEntity("wordmaker", "com.vayunmathur.games.wordmaker", "Word Maker", "Create words from letters", registeredAt = now - 15 * DAY, lastSeenAt = now - 12 * HOUR, lastPlayedAt = now - 12 * HOUR, totalPlaytimeMs = HOUR + 30 * 60_000L, totalSessions = 19),
@@ -57,7 +56,6 @@ class MetadataPreviews {
 
     private val achievementProgress = mapOf(
         "chess" to (2 to 3),
-        "alchemist" to (1 to 1),
         "pipes" to (1 to 1),
         "solitaire" to (1 to 1),
         "wordmaker" to (1 to 1),
@@ -66,11 +64,11 @@ class MetadataPreviews {
 
     /** 1225 XP is level 4 ("Casual Gamer") under [com.vayunmathur.games.hub.util.XpLevelCalculator]. */
     private val stats = CrossGameStats(
-        totalPlaytimeMs = 17 * HOUR + 38 * 60_000L,
-        totalSessions = 187,
-        totalGames = 6,
-        totalAchievementsUnlocked = 7,
-        totalAchievements = 8,
+        totalPlaytimeMs = 14 * HOUR + 38 * 60_000L,
+        totalSessions = 159,
+        totalGames = 5,
+        totalAchievementsUnlocked = 6,
+        totalAchievements = 7,
         totalXp = 1225,
         level = 4,
         currentStreak = 5,

@@ -10,7 +10,6 @@
 
     <queries>
         <package android:name="com.vayunmathur.games.chess" />
-        <package android:name="com.vayunmathur.games.alchemist" />
         <package android:name="com.vayunmathur.games.pipes" />
         <package android:name="com.vayunmathur.games.solitaire" />
         <package android:name="com.vayunmathur.games.unblockjam" />
