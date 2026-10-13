@@ -99,7 +99,7 @@ internal suspend fun LocationTrackingService.publishDirectBoot(targets: List<Dir
     )
     targets.forEach {
         try {
-            Networking.publishLocation(lv, it.id, it.bundle)
+            Networking.publishLocation(lv, it.id, it.bundle, it.pairId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

@@ -48,9 +48,19 @@ object DirectBootStore {
         "ff_pqcKemPub", "ff_pqcKemPriv", "ff_pqcDsaPub", "ff_pqcDsaPriv",
     )
 
-    /** A peer we may publish to, reduced to the two fields the publish path actually reads. */
+    /** A peer we may publish to, reduced to the fields the publish path actually reads. */
     @Serializable
-    data class Target(val id: Long, val bundle: String)
+    data class Target(
+        val id: Long,
+        val bundle: String,
+        /**
+         * Our outbound pair-ID secret for this peer (GHSA-x94x-v6f7-wwpp), mirrored so
+         * pre-unlock publishes carry the same hidden value as unlocked ones. Defaults to
+         * null for mirrors seeded before sender auth existed — those publishes go out
+         * unauthenticated until the next unlocked seed.
+         */
+        val pairId: String? = null,
+    )
 
     private val json = Json { ignoreUnknownKeys = true }
 

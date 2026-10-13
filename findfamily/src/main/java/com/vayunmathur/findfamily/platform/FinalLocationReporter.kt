@@ -243,7 +243,9 @@ object FinalLocationReporter {
         )
         Log.status(TAG, "$source: reporting a fix ${now - value.timestamp} old to ${targets.size} peer(s)")
         targets.forEach {
-            runCatching { Networking.publishLocation(value, it.id, it.bundle) }
+            // Parting reports ride the same seal path, pair ID included — a shutdown report
+            // without one would be dropped as unauthenticated once the peer has pinned us.
+            runCatching { Networking.publishLocation(value, it.id, it.bundle, it.pairId) }
                 .onFailure { e -> Log.status(TAG, "$source publish to ${it.id.toULong()} failed", e) }
         }
     }

@@ -247,8 +247,8 @@ internal suspend fun LocationTrackingService.seedDirectBootMirror() {
     val trackingEnabled = LocationServiceController.isTrackingEnabled(this)
     val targets = repository.getAllUsers()
         .filter { it.id != Networking.userid && it.sendingEnabled }
-        .mapNotNull { u -> u.pqcEncryptionKey?.let { DirectBootStore.Target(u.id, it) } }
-    val signature = "$sharingOut|$trackingEnabled|" + targets.joinToString(",") { "${it.id}:${it.bundle.length}" }
+        .mapNotNull { u -> u.pqcEncryptionKey?.let { DirectBootStore.Target(u.id, it, u.outboundPairId) } }
+    val signature = "$sharingOut|$trackingEnabled|" + targets.joinToString(",") { "${it.id}:${it.bundle.length}:${it.pairId?.take(4)}" }
     publishRoster = if (sharingOut) targets else emptyList()
     if (signature == lastSeededMirror) return
     DirectBootStore.seed(

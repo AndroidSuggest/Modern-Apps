@@ -175,9 +175,16 @@ class FindFamilyViewModel(
                 else -> {
                     // Store the fingerprint-checked key with the row itself, so the key that was
                     // verified is the one used from here on rather than a fresh relay lookup.
-                    repository.upsertUser(
-                        check.verifiedBundleB64?.let { user.copy(pqcEncryptionKey = it) } ?: user
-                    )
+                    val withKey = check.verifiedBundleB64?.let { user.copy(pqcEncryptionKey = it) } ?: user
+                    // Hidden sender-auth secret (GHSA-x94x-v6f7-wwpp): the outbound pair ID this
+                    // device puts in every packet to this peer. Minted once at explicit connect
+                    // time — never rotated (the peer pins the first value it sees), never
+                    // overwritten here (a re-add must not invalidate the peer's pin).
+                    val withPair = withKey.outboundPairId?.let { withKey }
+                        ?: withKey.copy(
+                            outboundPairId = com.vayunmathur.findfamily.domain.PairAuth.generatePairId()
+                        )
+                    repository.upsertUser(withPair)
                     LocationServiceController.syncServiceState(ctx)
                     withContext(Dispatchers.Main) { onDone() }
                 }
