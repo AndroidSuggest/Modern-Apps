@@ -14,6 +14,7 @@ import com.vayunmathur.passwords.data.SyncSnapshot
 import com.vayunmathur.passwords.data.SyncSnapshotDao
 import com.vayunmathur.passwords.data.newSyncId
 import com.vayunmathur.passwords.util.KdbxNative
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import org.json.JSONArray
 import org.json.JSONObject
@@ -33,6 +34,14 @@ sealed interface KdbxSyncResult {
     data object FileMissing : KdbxSyncResult
     data object WrongPassword : KdbxSyncResult
     data object VerifyFailed : KdbxSyncResult
+    /**
+     * Ambiguous foreign absence: baseline entries are missing from the file
+     * without own-client tombstones, so no side can prove deletion. Nothing
+     * was changed on either side; the user must resolve it explicitly (see
+     * `KdbxSyncSettings.recordQuarantine`). [count] is the number of affected
+     * baseline ids, for display only — never logged with content.
+     */
+    data class Quarantined(val count: Int) : KdbxSyncResult
     data class Error(val message: String) : KdbxSyncResult
 }
 
@@ -41,6 +50,7 @@ fun KdbxSyncResult.errorCode(): String = when (this) {
     KdbxSyncResult.FileMissing -> "file_missing"
     KdbxSyncResult.WrongPassword -> "wrong_password"
     KdbxSyncResult.VerifyFailed -> "verify_failed"
+    is KdbxSyncResult.Quarantined -> "quarantined"
     is KdbxSyncResult.Error -> message
     else -> ""
 }
@@ -61,9 +71,15 @@ interface KdbxCodec {
 /**
  * Bidirectional sync between the encrypted Room database and one kdbx file.
  *
- * The whole merge is computed in memory. Nothing is mutated until the remote has been
- * read, decrypted, merged, re-encoded and verified — so a missing, unreadable or
- * wrongly-keyed file can never wipe the local vault.
+ * LOSS-PREVENTION RULE: only an explicit tombstone deletes. Own-client
+ * deletes are written as tombstone entries (`EntryMapper.FIELD_TOMBSTONE`)
+ * and retained until acked. A baseline-present id that is merely ABSENT from
+ * the file is ambiguous — a foreign client (KeePassXC) cannot write
+ * tombstones, and the file may be truncated or partially written — so it
+ * quarantines the whole sync (nothing changes on either side) instead of
+ * deleting. The whole merge is computed in memory; nothing is mutated until
+ * the remote has been read, decrypted, merged, re-encoded and verified — so a
+ * missing, unreadable or wrongly-keyed file can never wipe the local vault.
  */
 class KdbxSyncEngine(
     private val passwordDao: PasswordDao,
@@ -168,7 +184,23 @@ class KdbxSyncEngine(
 
         val now = System.currentTimeMillis()
         val baseline = snapshotDao.getAll().associateBy { it.syncId }
-        val (remotePasskeys, remotePasswords) = remoteEntries.partition { EntryMapper.isPasskeyEntry(it) }
+        // Tombstone entries are markers, not credentials: split them out
+        // before partitioning by type (a tombstone carries no passkey fields).
+        val (tombstones, liveEntries) = remoteEntries.partition { EntryMapper.isTombstoneEntry(it) }
+        val tombstonedIds = tombstones.mapNotNull { it[EntryMapper.FIELD_SYNC_ID] }.toSet()
+        val (remotePasskeys, remotePasswords) = liveEntries.partition { EntryMapper.isPasskeyEntry(it) }
+
+        // Ambiguous foreign absence: baseline ids missing from the file with
+        // NO own-client tombstone. No side can prove deletion (a foreign
+        // client cannot write tombstones; the file may be truncated), so halt
+        // the whole sync with zero mutations on either side.
+        val ambiguousIds = baseline.keys -
+            (remotePasswords.mapNotNull { it[EntryMapper.FIELD_SYNC_ID] } +
+                remotePasskeys.mapNotNull { it[EntryMapper.FIELD_SYNC_ID] } +
+                tombstonedIds).toSet()
+        if (ambiguousIds.isNotEmpty()) {
+            return KdbxSyncResult.Quarantined(ambiguousIds.size)
+        }
 
         val passwordPlan = merge(
             passwordKind,
@@ -176,6 +208,7 @@ class KdbxSyncEngine(
             remotePasswords,
             baseline.filterValues { it.kind == SyncSnapshot.KIND_PASSWORD },
             now,
+            tombstonedIds,
         )
         val passkeyPlan = merge(
             passkeyKind,
@@ -183,10 +216,29 @@ class KdbxSyncEngine(
             remotePasskeys,
             baseline.filterValues { it.kind == SyncSnapshot.KIND_PASSKEY },
             now,
+            tombstonedIds,
         )
 
+        // Fail-closed guard: the pre-merge quarantine check above must have
+        // caught every ambiguous absence; if the merge still produced one
+        // (logic drift), halt rather than delete.
+        val quarantineIds = passwordPlan.quarantineIds + passkeyPlan.quarantineIds
+        if (quarantineIds.isNotEmpty()) {
+            return KdbxSyncResult.Quarantined(quarantineIds.size)
+        }
+
         if (passwordPlan.remoteChanged || passkeyPlan.remoteChanged) {
-            val merged = passwordPlan.remoteFields + passkeyPlan.remoteFields
+            val tombstoneEntries = (passwordPlan.tombstoneIds + passkeyPlan.tombstoneIds).map { id ->
+                mapOf(
+                    EntryMapper.FIELD_SYNC_ID to id,
+                    EntryMapper.FIELD_TYPE to "tombstone",
+                    EntryMapper.FIELD_TOMBSTONE to EntryMapper.TOMBSTONE_VALUE,
+                    EntryMapper.FIELD_MODIFIED to now.toString(),
+                )
+            } + (passwordPlan.retainedTombstoneIds + passkeyPlan.retainedTombstoneIds).mapNotNull { id ->
+                tombstones.firstOrNull { it[EntryMapper.FIELD_SYNC_ID] == id }
+            }
+            val merged = passwordPlan.remoteFields + passkeyPlan.remoteFields + tombstoneEntries
             val bytes = codec.write(vaultPassword, merged)
                 ?: return KdbxSyncResult.Error("Failed to encode KDBX")
             // A SAF single-document write truncates, so prove the payload parses first.
@@ -226,11 +278,12 @@ class KdbxSyncEngine(
         remoteEntries: List<Map<String, String>>,
         baseline: Map<String, SyncSnapshot>,
         now: Long,
+        tombstonedIds: Set<String>,
     ): Plan<T> {
         val accumulator = MergeAccumulator<T>()
         val local = indexLocal(kind, localEntities, accumulator)
         val remote = indexRemote(kind, local, remoteEntries, accumulator)
-        reconcileAll(kind, local, remote, baseline, now, accumulator)
+        reconcileAll(kind, local, remote, baseline, now, accumulator, tombstonedIds)
         return accumulator.toPlan()
     }
 
@@ -240,6 +293,12 @@ class KdbxSyncEngine(
         val remoteOut = mutableListOf<Map<String, String>>()
         val snapshots = mutableListOf<SyncSnapshot>()
         val removed = mutableListOf<String>()
+        /** Own-client tombstone ids to write into the file (local deleted, propagating). */
+        val tombstones = mutableListOf<String>()
+        /** Own tombstone ids already in the file to retain (delete still propagating). */
+        val retainedTombstones = mutableListOf<String>()
+        /** Fail-closed guard: baselined ids with neither live nor tombstoned entry. */
+        val quarantineIds = mutableListOf<String>()
         val freshlyIdentified = mutableSetOf<String>()
         var remoteChanged = false
         var pushed = 0
@@ -258,6 +317,9 @@ class KdbxSyncEngine(
             pulled = pulled,
             deletedLocal = deletedLocal,
             deletedRemote = deletedRemote,
+            tombstoneIds = tombstones,
+            retainedTombstoneIds = retainedTombstones,
+            quarantineIds = quarantineIds,
         )
     }
 
@@ -335,9 +397,10 @@ class KdbxSyncEngine(
         baseline: Map<String, SyncSnapshot>,
         now: Long,
         accumulator: MergeAccumulator<T>,
+        tombstonedIds: Set<String>,
     ) {
         for (id in local.keys + remote.keys) {
-            reconcileOne(kind, id, local[id], remote[id], baseline[id], now, accumulator)
+            reconcileOne(kind, id, local[id], remote[id], baseline[id], now, accumulator, tombstonedIds)
         }
     }
 
@@ -349,16 +412,17 @@ class KdbxSyncEngine(
         base: SyncSnapshot?,
         now: Long,
         accumulator: MergeAccumulator<T>,
+        tombstonedIds: Set<String>,
     ) {
         if (localEntity != null && remoteEntry != null) {
-            reconcilePresent(kind, id, localEntity, remoteEntry, base, now, accumulator)
+            reconcilePresent(kind, id, localEntity, remoteEntry, base, now, accumulator, tombstonedIds)
             return
         }
         if (localEntity != null) {
-            reconcileLocalOnly(kind, id, localEntity, base, now, accumulator)
+            reconcileLocalOnly(kind, id, localEntity, base, now, accumulator, tombstonedIds)
             return
         }
-        reconcileRemoteOnly(kind, id, remoteEntry!!, base, now, accumulator)
+        reconcileRemoteOnly(kind, id, remoteEntry!!, base, now, accumulator, tombstonedIds)
     }
 
     private fun <T> reconcilePresent(
@@ -369,7 +433,19 @@ class KdbxSyncEngine(
         base: SyncSnapshot?,
         now: Long,
         accumulator: MergeAccumulator<T>,
+        tombstonedIds: Set<String>,
     ) {
+        if (id in tombstonedIds) {
+            // Our own tombstone met the local row (e.g. recreated after delete
+            // while the tombstone still propagates): the delete wins — drop
+            // the local row, retain the tombstone until the delete settles.
+            accumulator.localDeletes += localEntity
+            accumulator.removed += id
+            accumulator.retainedTombstones += id
+            accumulator.remoteChanged = true
+            accumulator.deletedLocal++
+            return
+        }
         val localFields = kind.fields(localEntity)
         val remoteEntity = kind.entity(remoteEntry)
         val remoteFields = kind.fields(remoteEntity)
@@ -428,6 +504,8 @@ class KdbxSyncEngine(
         accumulator: MergeAccumulator<T>,
     ) {
         // Keep fields no client of ours understands (Notes, Tags, ...).
+        // The tombstone marker is ours to manage: strip any foreign value so a
+        // same-named foreign key can never arm the deletion path.
         accumulator.remoteOut += remoteEntry.filterKeys { it !in EntryMapper.OWNED_KEYS } + localFields
         accumulator.remoteChanged = true
         accumulator.pushed++
@@ -462,11 +540,16 @@ class KdbxSyncEngine(
         base: SyncSnapshot?,
         now: Long,
         accumulator: MergeAccumulator<T>,
+        tombstonedIds: Set<String>,
     ) {
         if (base != null) {
+            // Own-client deleted locally: write a tombstone entry (retained
+            // until acked) instead of dropping the row from the file.
+            accumulator.tombstones += id
+            accumulator.remoteChanged = true
+            accumulator.deletedRemote++
             accumulator.localDeletes += localEntity
             accumulator.removed += id
-            accumulator.deletedLocal++
             return
         }
         val localFields = kind.fields(localEntity)
@@ -491,11 +574,21 @@ class KdbxSyncEngine(
         base: SyncSnapshot?,
         now: Long,
         accumulator: MergeAccumulator<T>,
+        tombstonedIds: Set<String>,
     ) {
-        if (base != null) {
+        if (id in tombstonedIds) {
+            // Our own tombstone for an already-locally-deleted id: retain it
+            // (the delete is still propagating) and drop the baseline.
+            accumulator.retainedTombstones += id
             accumulator.removed += id
-            accumulator.deletedRemote++
             accumulator.remoteChanged = true
+            return
+        }
+        if (base != null) {
+            // Unreachable: ambiguous foreign absences quarantine in sync()
+            // before merge() runs, so a baselined id always has a live or
+            // tombstoned remote entry. Retained as a hard fail-closed guard.
+            accumulator.quarantineIds += id
             return
         }
         val remoteEntity = kind.entity(remoteEntry)
@@ -540,6 +633,9 @@ private class Plan<T>(
     val pulled: Int,
     val deletedLocal: Int,
     val deletedRemote: Int,
+    val tombstoneIds: List<String>,
+    val retainedTombstoneIds: List<String>,
+    val quarantineIds: List<String>,
 )
 
 object NativeKdbxCodec : KdbxCodec {
@@ -586,8 +682,15 @@ suspend fun runKdbxSync(context: Context, db: PasswordDatabase): KdbxSyncResult 
     }
 
     when (result) {
-        is KdbxSyncResult.Success -> KdbxSyncSettings.recordSuccess(context)
+        is KdbxSyncResult.Success -> {
+            // A successful sync clears any prior quarantine: the file now
+            // provably holds every baselined id (live or tombstoned).
+            KdbxSyncSettings.clearQuarantine(context)
+            KdbxSyncSettings.recordSuccess(context)
+        }
         KdbxSyncResult.NotConfigured -> Unit
+        is KdbxSyncResult.Quarantined ->
+            KdbxSyncSettings.recordQuarantine(context, KdbxSyncSettings.QUARANTINE_FOREIGN_DELETE)
         else -> KdbxSyncSettings.recordFailure(context, result.errorCode())
     }
     return result
@@ -596,7 +699,13 @@ suspend fun runKdbxSync(context: Context, db: PasswordDatabase): KdbxSyncResult 
 private suspend fun runSyncCatching(block: suspend () -> KdbxSyncResult): KdbxSyncResult {
     return try {
         block()
-    } catch (expected: IllegalStateException) {
+    } catch (expected: CancellationException) {
+        throw expected
+    } catch (expected: Exception) {
+        // Any transport/codec failure (SAF IOException on a cloud-backed
+        // document, Room failure, codec crash) aborts the sync: the engine
+        // mutates nothing until re-encode + verify, so abort is always safe.
+        // Never let an exception escape as a partial merge.
         KdbxSyncResult.Error(expected.message ?: expected.javaClass.simpleName)
     }
 }
@@ -617,8 +726,15 @@ suspend fun runKdbxSync(context: Context, repository: PasswordRepository): KdbxS
     }
 
     when (result) {
-        is KdbxSyncResult.Success -> KdbxSyncSettings.recordSuccess(context)
+        is KdbxSyncResult.Success -> {
+            // A successful sync clears any prior quarantine: the file now
+            // provably holds every baselined id (live or tombstoned).
+            KdbxSyncSettings.clearQuarantine(context)
+            KdbxSyncSettings.recordSuccess(context)
+        }
         KdbxSyncResult.NotConfigured -> Unit
+        is KdbxSyncResult.Quarantined ->
+            KdbxSyncSettings.recordQuarantine(context, KdbxSyncSettings.QUARANTINE_FOREIGN_DELETE)
         else -> KdbxSyncSettings.recordFailure(context, result.errorCode())
     }
     return result

@@ -25,6 +25,7 @@ import com.vayunmathur.everysync.provider.ProviderRegistry
 import com.vayunmathur.everysync.platform.AccountDetailActions
 import com.vayunmathur.everysync.platform.AccountDetailUiState
 import com.vayunmathur.everysync.platform.EverySyncViewModel
+import com.vayunmathur.everysync.sync.SnapshotStore.SnapshotMeta
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.sharedText
 
@@ -38,13 +39,22 @@ fun AccountDetailScreen(backStack: NavBackStack<Route>, viewModel: EverySyncView
     val vaultUi by viewModel.vaults.vaultUi.collectAsStateWithLifecycle()
     val safetyCode by viewModel.safetyCode.collectAsStateWithLifecycle()
     val computingCode by viewModel.computingCode.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { viewModel.vaults.load() }
+    val snapshots by viewModel.snapshots.collectAsStateWithLifecycle()
+    val restoring by viewModel.restoring.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) {
+        viewModel.vaults.load()
+        viewModel.loadSnapshots()
+    }
     val actions = remember(viewModel, backStack) {
         object : AccountDetailActions {
             override fun toggleType(accountName: String, type: DataType, enabled: Boolean) =
                 viewModel.toggleType(accountName, type, enabled)
 
             override fun syncNow(accountName: String) = viewModel.syncNow(accountName)
+
+            override fun restoreSnapshot(snapshot: SnapshotMeta) = viewModel.restoreSnapshot(snapshot)
+
+            override fun snapshotNow() = viewModel.snapshotNow()
 
             override fun removeAccount(accountName: String) {
                 viewModel.removeAccount(accountName)
@@ -87,6 +97,11 @@ fun AccountDetailScreen(backStack: NavBackStack<Route>, viewModel: EverySyncView
             deviceId = deviceId,
             safetyCode = safetyCode,
             computingCode = computingCode,
+            syncErrorText = config?.let { viewModel.syncErrorText(accountName) },
+            snapshots = snapshots.filter { snap ->
+                vaults.any { it.vaultId == snap.vaultId }
+            },
+            restoring = restoring,
         ),
         actions = actions,
     )
@@ -115,6 +130,10 @@ fun AccountDetailScreen(state: AccountDetailUiState, actions: AccountDetailActio
         if (provider == null) {
             Text(stringResource(R.string.no_accounts))
             return@DetailScaffold
+        }
+        state.syncErrorText?.let { errorText ->
+            SyncErrorBanner(errorText = errorText)
+            Spacer(Modifier.height(16.dp))
         }
         if (DataType.CONTACTS in provider.capabilities) {
             TypeToggle(R.string.sync_contacts, DataType.CONTACTS in state.enabledTypes) {
@@ -162,6 +181,16 @@ fun AccountDetailScreen(state: AccountDetailUiState, actions: AccountDetailActio
             onClick = { actions.removeAccount(state.accountName) },
             modifier = Modifier.fillMaxWidth(),
         ) { Text(stringResource(R.string.remove_account)) }
+
+        if (state.snapshots.isNotEmpty() || state.vaults.isNotEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            SnapshotSection(
+                snapshots = state.snapshots,
+                restoring = state.restoring,
+                onRestore = { actions.restoreSnapshot(it) },
+                onSnapshotNow = { actions.snapshotNow() },
+            )
+        }
     }
 }
 

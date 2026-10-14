@@ -11,6 +11,7 @@ import com.vayunmathur.everysync.data.RemotePassword
 import com.vayunmathur.everysync.data.RemoteTodo
 import com.vayunmathur.everysync.data.VaultMeta
 import com.vayunmathur.everysync.data.VaultStore
+import com.vayunmathur.everysync.data.readKey
 import com.vayunmathur.everysync.data.sink.CalendarSink
 import com.vayunmathur.everysync.data.sink.ContactsSink
 import com.vayunmathur.everysync.network.remote.RelayCursorStore
@@ -24,6 +25,8 @@ import com.vayunmathur.everysync.provider.SyncState
 import com.vayunmathur.everysync.sync.CalendarRelayStore
 import com.vayunmathur.everysync.sync.ContactRelayStore
 import com.vayunmathur.everysync.sync.EntityKind
+import com.vayunmathur.everysync.sync.LocalReadException
+import com.vayunmathur.everysync.sync.SnapshotStore
 import com.vayunmathur.everysync.sync.NoteRelayStore
 import com.vayunmathur.everysync.sync.OwnerTransfer
 import com.vayunmathur.everysync.sync.PasswordRelayStore
@@ -75,6 +78,11 @@ import kotlinx.serialization.json.Json
  * PUSH/PULL direction support: PULL skips the append step (remote changes are
  * still merged locally); PUSH skips applying pulled remote state locally but
  * still folds + appends so local edits propagate.
+ *
+ * Loss-prevention: a vault cycle that cannot prove what the relay holds aborts
+ * via [VaultSyncAbort] with zero local writes, zero relay appends, and zero
+ * baseline/cursor mutations (see `driveMerge`). Absence is never deletion:
+ * only an explicit `deleted=true` envelope deletes (see `RelayMerge`).
  */
 class E2eeProvider : SyncProvider {
     override val id = "e2ee"
@@ -92,8 +100,9 @@ class E2eeProvider : SyncProvider {
     override suspend fun sync(context: Context, config: AccountConfig, direction: SyncDirection) {
         if (!RelaySync.init(context)) {
             Log.error(TAG, "sync: relay unavailable for '${config.accountName}'")
-            return
+            throw VaultSyncAbort(CH_RELAY_UNAVAILABLE, "")
         }
+        var firstAbort: VaultSyncAbort? = null
         for (type in capabilities) {
             if (type !in config.enabledTypes) continue
             try {
@@ -106,10 +115,18 @@ class E2eeProvider : SyncProvider {
                 }
             } catch (e: CancellationException) {
                 throw e
+            } catch (abort: VaultSyncAbort) {
+                // One vault's abort must not block the others, but it must
+                // surface: SyncEngine records lastSyncError from the throw.
+                Log.error(TAG, "sync $type aborted for '${config.accountName}': ${abort.code}", abort)
+                if (firstAbort == null) firstAbort = abort
             } catch (expected: Exception) {
                 Log.error(TAG, "sync $type failed for '${config.accountName}'", expected)
             }
         }
+        // Surface the first abort so lastSyncError reflects it; SyncEngine
+        // records it via its existing catch path.
+        firstAbort?.let { throw it }
     }
 
     // --- Contacts vault <-> ContactsContract via ContactsSink ---
@@ -227,9 +244,30 @@ class E2eeProvider : SyncProvider {
         // Full log pull (from 0): the merge needs full remote state, not a
         // delta. The pull cursor still advances so live-push paths can skip
         // re-reads; the merge itself never depends on it.
+        //
+        // A failed pull is NOT an empty log: abort with zero writes, zero
+        // appends, zero baseline/cursor mutations. Merging a failure as empty
+        // would delete every baseline-present row (see RelayMerge).
         val pulled = RelaySync.pullRecords(channel, vault.key, 0)
+            ?: throw VaultSyncAbort(CH_PULL_TRANSPORT, channelType)
+        if (pulled.fullyUndecryptable) {
+            // Records exist but none decrypt under this epoch key: re-key or
+            // epoch fetch is needed, not a merge of an "empty" vault.
+            throw VaultSyncAbort(CH_UNDECRYPTABLE_LOG, channelType)
+        }
         val remote = pulled.items.mapNotNull { store.parseRemote(it) }
-        val local = store.listLocal()
+        val local = try {
+            store.listLocal()
+        } catch (read: LocalReadException) {
+            // A failed local read is not an empty vault: abort with zero
+            // writes, zero appends, zero baseline/cursor mutations.
+            throw VaultSyncAbort(CH_LOCAL_READ_FAILED, channelType)
+        }
+        if (!store.listLocalOk) {
+            // The sink tracked a failed/partial read without throwing (null
+            // cursor, swallowed IPC error): same abort, never merge.
+            throw VaultSyncAbort(CH_LOCAL_READ_FAILED, channelType)
+        }
         val baseline = store.loadBaseline()
         val plan = RelayMerge.merge(kind, local, remote, baseline, now)
         if (direction != SyncDirection.PULL && vault.canEdit && plan.remoteOut.isNotEmpty()) {
@@ -301,7 +339,8 @@ class E2eeProvider : SyncProvider {
             }
             SyncState.set(context, config.accountName, vaultScope(rt), meta.vaultId)
         }
-        val baseKey = runCatching { Base64.decode(meta.keyB64) }.getOrNull()
+        // Unseal the Keystore-wrapped key; fail closed when it cannot be read.
+        val baseKey = meta.readKey(context)
         if (baseKey == null || baseKey.isEmpty()) return null
         val baseOwnerKey = meta.ownerKeyB64
         val ownerKey = OwnerTransfer.fetchOwnerKey(meta.vaultId, baseOwnerKey)
@@ -320,6 +359,7 @@ class E2eeProvider : SyncProvider {
     }
 
     private suspend fun createVault(context: Context, accountName: String, relayType: String): VaultMeta? {
+        // upsert seals keyB64 at rest; the TokenStore copy stays Keystore-encrypted too.
         return runCatching {
             val vaultId = RelaySync.newVaultId()
             val key = RelaySync.newVaultKey()
@@ -333,7 +373,7 @@ class E2eeProvider : SyncProvider {
                 isOwner = true,
             )
             VaultStore.upsert(context, meta)
-            TokenStore.getInstance(context).putSyncKey(accountName, relayType, meta.keyB64)
+            TokenStore.getInstance(context).putSyncKey(accountName, relayType, Base64.encode(key))
             VaultRoster.recordMembers(vaultId, listOf(RelaySync.Member(RelaySync.deviceId, "", RelayRoles.OWNER)))
             publishTitle(meta)
             meta
@@ -377,9 +417,23 @@ class E2eeProvider : SyncProvider {
          * it doesn't linger; it is pulled again if re-enabled. Called from
          * `EverySyncViewModel.toggleType`. Contacts/calendar purges are
          * account-wide by sink design (one call covers every vault).
+         *
+         * Takes a pre-purge snapshot of each affected vault first: a purge is
+         * exactly the "everything vanished locally" shape the merge refuses to
+         * infer, so the snapshot is the way back if the user re-enables and
+         * the relay has moved on.
          */
         fun purgeType(context: Context, accountName: String, type: DataType) {
             val rt = type.relayType() ?: return
+            // Snapshot first (fire-and-forget on failure: purge is explicit
+            // user intent, the snapshot is only the way back).
+            for (meta in VaultStore.getAll(context).filter { it.dataType == rt }) {
+                runCatching {
+                    kotlinx.coroutines.runBlocking {
+                        SnapshotStore.snapshotVault(context, meta.vaultId, rt)
+                    }
+                }
+            }
             when (type) {
                 DataType.CONTACTS -> ContactsSink.purge(context, accountName)
                 DataType.CALENDAR -> CalendarSink.purge(context, accountName)
@@ -399,3 +453,19 @@ class E2eeProvider : SyncProvider {
         }
     }
 }
+
+/**
+ * A vault sync cycle that cannot prove what the relay holds. Carries a stable
+ * machine-readable [code] (surfaced via `AccountConfig.lastSyncError`) plus the
+ * vault [channelType] for scoping. Throwing aborts the cycle with zero local
+ * writes, zero relay appends, and zero baseline/cursor mutations — never
+ * degrade an abort into a merge.
+ */
+class VaultSyncAbort(val code: String, val channelType: String) :
+    Exception("vault sync aborted: $code ($channelType)")
+
+/** Stable `VaultSyncAbort` codes, safe to persist and to show in UI. */
+const val CH_PULL_TRANSPORT = "pull_transport_failed"
+const val CH_UNDECRYPTABLE_LOG = "log_undecryptable"
+const val CH_LOCAL_READ_FAILED = "local_read_failed"
+const val CH_RELAY_UNAVAILABLE = "relay_unavailable"

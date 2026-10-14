@@ -39,6 +39,10 @@ object VaultKeys {
      * Resolves the current content key: the highest owner-signed epoch this
      * device can unseal, falling back to ([inviteEpoch], [inviteKey]).
      * Returns (epoch, key).
+     *
+     * A failed pull keeps the invite key (the epoch loop simply finds nothing
+     * newer); epoch-bearing history stays unreadable until the pull succeeds,
+     * which is fail-closed — the record cycle aborts before merging.
      */
     suspend fun fetchCurrentKey(
         vaultId: String,
@@ -50,7 +54,9 @@ object VaultKeys {
         if (ownerKey == null || ownerKey.isEmpty()) return inviteEpoch to inviteKey
         var bestEpoch = inviteEpoch
         var bestKey = inviteKey
-        for (blob in runCatching { RelaySync.pullRaw(keysChannel(vaultId), 0) }.getOrDefault(emptyList())) {
+        val blobs = runCatching { RelaySync.pullRaw(keysChannel(vaultId), 0) }.getOrNull()
+            ?: return inviteEpoch to inviteKey
+        for (blob in blobs) {
             val epoch = decodeEpoch(blob) ?: continue
             val sig = runCatching { Base64.decode(epoch.sig) }.getOrNull() ?: continue
             if (!RelaySync.verify(ownerKey, epochSigningBytes(vaultId, epoch.epoch, epoch.wraps), sig)) continue

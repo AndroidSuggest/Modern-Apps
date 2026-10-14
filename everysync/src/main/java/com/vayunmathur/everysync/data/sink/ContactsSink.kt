@@ -35,6 +35,13 @@ data class LocalContactChange(
  */
 object ContactsSink {
     private const val TAG = "ContactsSink"
+
+    /**
+     * Health of the last [listLocal] read: false when the query failed or
+     * returned a null cursor. Consulted by `ContactRelayStore.listLocalOk`.
+     */
+    @Volatile var lastListLocalOk: Boolean = true
+        private set
     private val ACCOUNT_TYPE = AccountStore.ACCOUNT_TYPE
     private const val CURSOR_UID = 0
     private const val CURSOR_ETAG = 1
@@ -87,8 +94,9 @@ object ContactsSink {
      */
     fun listLocal(context: Context, accountName: String): List<RemoteContact> {
         val out = mutableListOf<RemoteContact>()
+        var failed = false
         try {
-            context.contentResolver.query(
+            val cursor = context.contentResolver.query(
                 ContactsContract.RawContacts.CONTENT_URI,
                 arrayOf(
                     ContactsContract.RawContacts._ID,
@@ -100,18 +108,26 @@ object ContactsSink {
                     "${ContactsContract.RawContacts.DELETED} = 0",
                 arrayOf(accountName, ACCOUNT_TYPE),
                 null,
-            )?.use { c ->
-                while (c.moveToNext()) {
-                    val rawId = c.getLong(CURSOR_RAW_ID)
-                    val uid = c.getStringOrNull(CURSOR_SOURCE_ID).orEmpty()
-                    val stamp = c.getStringOrNull(CURSOR_SYNC1)?.toLongOrNull() ?: 0L
-                    val contact = readContact(context, rawId, uid.ifBlank { null })
-                    out += contact.copy(uid = uid, updatedAt = stamp)
+            )
+            if (cursor == null) {
+                // Null cursor = provider cannot serve: failure, not empty.
+                failed = true
+            } else {
+                cursor.use { c ->
+                    while (c.moveToNext()) {
+                        val rawId = c.getLong(CURSOR_RAW_ID)
+                        val uid = c.getStringOrNull(CURSOR_SOURCE_ID).orEmpty()
+                        val stamp = c.getStringOrNull(CURSOR_SYNC1)?.toLongOrNull() ?: 0L
+                        val contact = readContact(context, rawId, uid.ifBlank { null })
+                        out += contact.copy(uid = uid, updatedAt = stamp)
+                    }
                 }
             }
         } catch (expected: Exception) {
             Log.error(TAG, "listLocal failed", expected)
+            failed = true
         }
+        lastListLocalOk = !failed
         return out
     }
 

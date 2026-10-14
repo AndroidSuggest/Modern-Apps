@@ -3,6 +3,7 @@ package com.vayunmathur.passwords.sync
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.util.DatabaseHelper
 import com.vayunmathur.passwords.data.PasswordRepository
 
@@ -19,13 +20,24 @@ class KdbxSyncWorker(
 
         return try {
             val repository = PasswordRepository.get(applicationContext)
-            when (runKdbxSync(applicationContext, repository)) {
+            when (val result = runKdbxSync(applicationContext, repository)) {
                 is KdbxSyncResult.Success, KdbxSyncResult.NotConfigured -> Result.success()
+                is KdbxSyncResult.Quarantined -> {
+                    // Ambiguous foreign absence: hold for explicit user review.
+                    // Failure (not retry) so WorkManager does not hammer the
+                    // file; the user resolves it from the settings screen.
+                    Log.status(TAG, "KDBX quarantined: ${result.count} ids ambiguous")
+                    Result.failure()
+                }
                 KdbxSyncResult.WrongPassword, KdbxSyncResult.VerifyFailed -> Result.failure()
                 KdbxSyncResult.FileMissing, is KdbxSyncResult.Error -> Result.retry()
             }
         } catch (_: Exception) {
             Result.retry()
         }
+    }
+
+    companion object {
+        private const val TAG = "KdbxSyncWorker"
     }
 }

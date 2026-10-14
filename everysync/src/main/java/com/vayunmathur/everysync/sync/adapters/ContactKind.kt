@@ -16,6 +16,9 @@ import kotlinx.serialization.json.Json
 object ContactKind : EntityKind<RemoteContact>() {
     override val kind = "contact"
 
+    /** Contacts soft-delete at the platform layer (DELETED flags); the default holds. */
+    override val localDeletesAreAuthoritative = true
+
     private val json = Json { ignoreUnknownKeys = true }
 
     override fun syncId(e: RemoteContact) = e.uid

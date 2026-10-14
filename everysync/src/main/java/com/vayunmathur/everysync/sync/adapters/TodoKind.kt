@@ -20,6 +20,9 @@ import kotlinx.serialization.json.Json
 object TodoKind : EntityKind<RemoteTodo>() {
     override val kind = "todo"
 
+    /** Todos soft-delete like notes; the default holds. */
+    override val localDeletesAreAuthoritative = true
+
     private val json = Json { ignoreUnknownKeys = true }
 
     /** Relay channel for a vault's task log. */

@@ -78,4 +78,26 @@
 
     <!-- AccountsScreen PermissionsChecker: Rationale text explaining why contacts/calendar permission needed -->
     <string name="need_permissions">EverySync needs contacts and calendar access to sync your vaults.</string>
+
+    <!-- SyncErrorBanner: user-facing text for stable abort codes (see VaultSyncAbort). No key material, no contents -->
+    <string name="sync_error_pull_failed">Could not reach the sync server. Nothing was changed — will retry automatically.</string>
+    <string name="sync_error_undecryptable">The server data could not be unlocked with this vault key. Nothing was changed — check the vault key epoch.</string>
+    <string name="sync_error_local_read">Could not read local data (the app may be locked). Nothing was changed — will retry automatically.</string>
+    <string name="sync_error_relay_unavailable">The sync server is unavailable. Nothing was changed — will retry automatically.</string>
+    <string name="sync_error_hint">Sync paused safely: no data was deleted. It resumes on the next sync.</string>
+
+    <!-- SnapshotSection: header + description for daily encrypted recovery snapshots -->
+    <string name="snapshots_title">Recovery snapshots</string>
+    <string name="snapshots_description">One encrypted snapshot per day, kept for 30 days. Restoring replays a day through sync — newer edits still win where they conflict.</string>
+    <!-- SnapshotSection row: %1$s = vault type, %2$d = record count -->
+    <string name="snapshot_row">%1$s · <xliff:g id="count" example="42">%2$d</xliff:g> records</string>
+    <string name="snapshot_restore">Restore</string>
+    <string name="snapshot_take_now">Back up now</string>
+    <string name="snapshots_empty">No snapshots yet. Snapshots are taken daily and before sync is turned off.</string>
+    <string name="snapshot_restore_title">Restore snapshot?</string>
+    <!-- SnapshotSection restore confirm: %1$s = date, %2$s = vault type -->
+    <string name="snapshot_restore_confirm">Replay <xliff:g id="date" example="Oct 13, 2026">%1$s</xliff:g> (<xliff:g id="type" example="passwords">%2$s</xliff:g>) through sync? Newer edits still win where they conflict.</string>
+    <!-- ViewModel announce: %1$d = restored record count -->
+    <string name="snapshot_restored">Restored <xliff:g id="count" example="42">%1$d</xliff:g> records. Reconciling with the server…</string>
+    <string name="snapshot_restore_failed">Could not restore that snapshot.</string>
 </resources>

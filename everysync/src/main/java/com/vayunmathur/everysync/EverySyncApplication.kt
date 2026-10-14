@@ -1,10 +1,15 @@
 package com.vayunmathur.everysync
 
 import android.app.Application
+import com.vayunmathur.everysync.data.VaultStore
+import com.vayunmathur.everysync.sync.SnapshotWorker
 import com.vayunmathur.everysync.sync.SyncScheduler
 import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 /**
  * Ensures the periodic background sync is scheduled whenever the process starts —
@@ -18,5 +23,11 @@ class EverySyncApplication : Application() {
         // FIRST_PARTY covers the relay host (same bundle the office twin uses).
         NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         SyncScheduler.schedulePeriodic(this)
+        SnapshotWorker.scheduleDaily(this)
+        // One-time: seal any plaintext vault keys stored before the Keystore
+        // migration. Idempotent; runs on every process start, cheap when done.
+        GlobalScope.launch(Dispatchers.IO) {
+            runCatching { VaultStore.migrateKeysToKeystore(this@EverySyncApplication) }
+        }
     }
 }

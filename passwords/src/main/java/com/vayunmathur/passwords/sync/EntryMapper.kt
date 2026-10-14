@@ -18,6 +18,20 @@ object EntryMapper {
     const val FIELD_SYNC_ID = "_SyncId"
     const val FIELD_MODIFIED = "_Modified"
 
+    /**
+     * Own-client deletion marker. When this client deletes an entry it writes
+     * a tombstone entry carrying `FIELD_TOMBSTONE = TOMBSTONE_VALUE` (plus the
+     * `_SyncId`) and retains it until the delete is acked, instead of dropping
+     * the row from the file. Foreign clients cannot write tombstones, so a
+     * baseline-present id that is merely ABSENT from the file is ambiguous
+     * (format-level: no proof of deletion) and quarantines the sync rather
+     * than deleting either side. Only this exact marker value deletes; any
+     * other value (including a foreign client's same-named key) is treated as
+     * live data and carried through.
+     */
+    const val FIELD_TOMBSTONE = "_Tombstone"
+    const val TOMBSTONE_VALUE = "deleted"
+
     private const val FIELD_SIGN_COUNT = "_SignCount"
     private const val FIELD_CREATED = "_Created"
     private const val FIELD_LAST_USED = "_LastUsed"
@@ -26,14 +40,25 @@ object EntryMapper {
     /**
      * Every key this mapper can emit. Keys outside this set belong to whatever client
      * wrote the vault (Notes, Tags, ...) and are carried through untouched on push.
+     *
+     * `FIELD_TOMBSTONE` is reserved for own-client deletion markers (see
+     * `KdbxSyncEngine`): only the exact `TOMBSTONE_VALUE` in an entry this
+     * client manages arms the deletion path. Any other value under that key —
+     * including one written by a foreign client — is stripped on push (see
+     * `applyLocalWins`) and never interpreted.
      */
     val OWNED_KEYS = setOf(
         "Title", "UserName", "Email", "Password", "Notes", "URL", "Websites", "otp", "TOTP Seed",
-        FIELD_TYPE, FIELD_SYNC_ID, FIELD_MODIFIED,
+        FIELD_TYPE, FIELD_SYNC_ID, FIELD_MODIFIED, FIELD_TOMBSTONE,
         FIELD_SIGN_COUNT, FIELD_CREATED, FIELD_LAST_USED, FIELD_LINKED_PASSWORD,
         "KPEX_PASSKEY_USERNAME", "KPEX_PASSKEY_PRIVATE_KEY_PEM", "KPEX_PASSKEY_CREDENTIAL_ID",
         "KPEX_PASSKEY_USER_HANDLE", "KPEX_PASSKEY_RELYING_PARTY",
     )
+
+    /** True when this entry is an own-client deletion marker (see FIELD_TOMBSTONE). */
+    fun isTombstoneEntry(entry: Map<String, String>): Boolean =
+        entry[FIELD_TOMBSTONE] == TOMBSTONE_VALUE &&
+            entry[FIELD_SYNC_ID]?.isNotBlank() == true
 
     fun isPasskeyEntry(entry: Map<String, String>): Boolean =
         entry.keys.any { it.startsWith("KPEX_PASSKEY_") }
@@ -127,11 +152,11 @@ object EntryMapper {
         )
     }
 
-    /** Content fingerprint ignoring identity and timestamps, so it is comparable across sides. */
+    /** Content fingerprint ignoring identity, timestamps and tombstone markers, so it is comparable across sides. */
     fun contentHash(fields: Map<String, String>): String {
         val digest = MessageDigest.getInstance("SHA-256")
         fields.entries
-            .filter { it.key != FIELD_SYNC_ID && it.key != FIELD_MODIFIED }
+            .filter { it.key != FIELD_SYNC_ID && it.key != FIELD_MODIFIED && it.key != FIELD_TOMBSTONE }
             .sortedBy { it.key }
             .forEach { digest.update("${it.key}=${it.value}\n".toByteArray(Charsets.UTF_8)) }
         return digest.digest().joinToString("") { "%02x".format(it) }

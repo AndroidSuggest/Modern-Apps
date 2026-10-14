@@ -14,6 +14,9 @@ import kotlinx.serialization.json.Json
 object NoteKind : EntityKind<RemoteNote>() {
     override val kind = "note"
 
+    /** Notes soft-delete (tombstone rows survive locally); the default holds. */
+    override val localDeletesAreAuthoritative = true
+
     private val json = Json { ignoreUnknownKeys = true }
 
     override fun syncId(e: RemoteNote) = e.uid

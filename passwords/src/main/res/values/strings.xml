@@ -160,4 +160,14 @@
     <string name="sync_error_verify_failed">The merged vault failed verification, so the file was not written.</string>
     <!-- Error with details. %1$s = raw failure message from the sync -->
     <string name="sync_error_generic">Sync failed: <xliff:g id="reason" example="No space left on device">%1$s</xliff:g></string>
+    <!-- Status: entries vanished from the file without deletion markers, so sync halted with nothing changed -->
+    <string name="sync_error_quarantined">Sync paused: entries vanished from the file without deletion markers. Nothing was changed. Review below to resolve.</string>
+    <!-- Quarantine row title. Noun phrase -->
+    <string name="sync_quarantine_title">Review paused sync</string>
+    <!-- Quarantine row supporting text. %1$s = date/time the sync was paused -->
+    <string name="sync_quarantine_description">Paused <xliff:g id="when" example="Oct 14, 2026 9:41 PM">%1$s</xliff:g>. Your passwords are untouched.</string>
+    <!-- Quarantine dialog body. %1$s = internal reason code for support -->
+    <string name="sync_quarantine_dialog">Another app appears to have deleted entries from the sync file (reason: <xliff:g id="reason" example="foreign_delete">%1$s</xliff:g>). If that deletion was intentional, open the file in that app and delete the same entries there, or re-add them here — then resume. Resuming re-checks the file; if the entries are still missing, the sync pauses again instead of deleting anything.</string>
+    <!-- Quarantine dialog confirm button. Verb phrase -->
+    <string name="sync_quarantine_resolve">Re-check and resume</string>
 </resources>

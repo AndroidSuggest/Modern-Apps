@@ -36,6 +36,12 @@ fun relayContentHash(canonical: String): String {
  * itself ([com.vayunmathur.everysync.network.remote.RelaySync]) stays outside,
  * this interface only adapts typed entities to the string envelopes the relay
  * carries.
+ *
+ * Loss-prevention contract on [listLocal]: a failed local read must surface as
+ * failure (throw `LocalReadException`, or a store whose `listLocalOk` returns
+ * false), NEVER as an empty list. An empty list means "this vault provably
+ * holds nothing locally" — merging a read failure as empty would delete every
+ * baseline-present relay record.
  */
 interface RelayStore<T> {
     suspend fun listLocal(): List<T>
@@ -45,12 +51,23 @@ interface RelayStore<T> {
     suspend fun saveSnapshots(snapshots: List<RelaySnapshot>)
     suspend fun removeSnapshots(syncIds: List<String>)
 
+    /**
+     * True when the last [listLocal] observed a healthy read. Stores whose
+     * read path can fail (ContentProvider IPC, system providers) track this;
+     * [RelayMerge] consults it and the driver aborts on false.
+     */
+    val listLocalOk: Boolean
+        get() = true
+
     /** Parse one decrypted relay envelope; null skips a foreign/corrupt entry. */
     fun parseRemote(json: String): T?
 
     /** Serialize one entity to a relay envelope (decrypted form). */
     fun serializeForRemote(entity: T): String
 }
+
+/** Thrown by [RelayStore.listLocal] when the local read cannot be trusted. */
+class LocalReadException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 /** Per-type behaviour for the generic three-way merge. */
 abstract class EntityKind<T> {
@@ -63,6 +80,18 @@ abstract class EntityKind<T> {
     abstract fun rebind(e: T, syncId: String): T
     abstract fun withDeleted(e: T, deleted: Boolean): T
     abstract fun withUpdatedAt(e: T, updatedAt: Long): T
+
+    /**
+     * Whether this store's local side carries authoritative local delete marks
+     * that survive in [listLocal] output. When true (soft deletes: tombstone
+     * rows from system-provider DELETED flags or app tombstone rows), an id
+     * that is absent from [listLocal] WITHOUT a tombstone is never a local
+     * delete — it is a missed read — so the merge resurrects the relay copy
+     * instead of tombstoning it. When false (hard deletes: the row is gone and
+     * only the baseline remembers it), a healthy-read absence is a genuine
+     * local delete and the merge propagates a tombstone to the relay.
+     */
+    open val localDeletesAreAuthoritative: Boolean = true
 
     fun snapshot(
         syncId: String,
@@ -126,6 +155,15 @@ class MergeAccumulator<T> {
  * Generic three-way merge extracted from the passwords KDBX engine, without any
  * KDBX dependency.
  *
+ * LOSS-PREVENTION RULE: only an explicit tombstone deletes. An id that is
+ * present on one side but absent from the folded relay log — with a baseline
+ * or without — is NEVER treated as a deletion: the append-only relay log may
+ * be truncated, partially read, or mid-propagation, and none of those is proof
+ * that anyone deleted anything. Deletion propagates exclusively through an
+ * explicit `deleted=true` envelope for that syncId in the folded log
+ * (`reconcilePresent` tombstone path). See the KDoc on `RelaySync` for the
+ * key-hygiene invariant bounding who can author tombstones.
+ *
  * Conflict rule is last-writer-wins by [EntityKind.updatedAt], tie-broken by
  * [EntityKind.contentHash] so equal timestamps stay deterministic across
  * devices. Tombstones ([EntityKind.isDeleted]) win or lose by the same LWW
@@ -133,6 +171,9 @@ class MergeAccumulator<T> {
  *
  * Driver contract (the relay is an append-only log — records are never
  * rewritten, only appended):
+ *  0. NEVER call `merge` with a remote fold the transport could not prove:
+ *     a failed pull must abort the cycle, not produce an empty [remoteEntities]
+ *     list. (An empty list here means "the log provably holds nothing".)
  *  1. Fold the full decrypted record log into [remoteEntities] (tombstones
  *     included; this must be the FULL state, not a delta, so absence vs
  *     deletion stays decidable against the baseline).
@@ -153,7 +194,13 @@ object RelayMerge {
         val accumulator = MergeAccumulator<T>()
         val local = indexLocal(kind, localEntities, accumulator)
         val remote = indexRemote(kind, local, remoteEntities, accumulator)
-        reconcileAll(kind, local, remote, baseline, now, accumulator)
+        // The authoritative-marks flag lives on the kind: one source of truth
+        // per vault type (soft-delete stores resurrect unmarked absences;
+        // hard-delete stores propagate them as genuine deletes).
+        reconcileAll(
+            kind, local, remote, baseline, now, accumulator,
+            kind.localDeletesAreAuthoritative,
+        )
         return accumulator.toPlan()
     }
 
@@ -236,9 +283,10 @@ object RelayMerge {
         baseline: Map<String, RelaySnapshot>,
         now: Long,
         accumulator: MergeAccumulator<T>,
+        localDeletesAreAuthoritative: Boolean,
     ) {
         for (id in local.keys + remote.keys) {
-            reconcileOne(kind, id, local[id], remote[id], baseline[id], now, accumulator)
+            reconcileOne(kind, id, local[id], remote[id], baseline[id], now, accumulator, localDeletesAreAuthoritative)
         }
     }
 
@@ -250,6 +298,7 @@ object RelayMerge {
         base: RelaySnapshot?,
         now: Long,
         accumulator: MergeAccumulator<T>,
+        localDeletesAreAuthoritative: Boolean,
     ) {
         if (localEntity != null && remoteEntity != null) {
             reconcilePresent(kind, id, localEntity, remoteEntity, base, now, accumulator)
@@ -259,7 +308,7 @@ object RelayMerge {
             reconcileLocalOnly(kind, id, localEntity, base, now, accumulator)
             return
         }
-        reconcileRemoteOnly(kind, id, remoteEntity!!, base, now, accumulator)
+        reconcileRemoteOnly(kind, id, remoteEntity!!, base, now, accumulator, localDeletesAreAuthoritative)
     }
 
     private fun <T> reconcilePresent(
@@ -473,10 +522,12 @@ object RelayMerge {
             accumulator.removed += id
             return
         }
-        // Present at baseline, gone from the folded relay state: the remote deleted it.
-        accumulator.localDeletes += localEntity
-        accumulator.removed += id
-        accumulator.deletedLocal++
+        // Present at baseline but absent from the folded relay log WITHOUT an
+        // explicit tombstone: NOT a remote delete. The log may be truncated or
+        // partially read (which step 0 of the driver contract rules out only
+        // for transport failure, not for a wiped/shortened log). Keep the
+        // local row and the baseline untouched; the id will reconcile on a
+        // later cycle once its record (or a real tombstone) reappears.
     }
 
     private fun <T> reconcileRemoteOnly(
@@ -486,14 +537,18 @@ object RelayMerge {
         base: RelaySnapshot?,
         now: Long,
         accumulator: MergeAccumulator<T>,
+        localDeletesAreAuthoritative: Boolean,
     ) {
         if (base?.deleted == true) {
             // Tombstone already acknowledged: steady state, nothing to do.
             return
         }
-        if (base != null && !kind.isDeleted(remoteEntity)) {
-            // Present at baseline, gone locally: the local side deleted it.
-            // Append a tombstone so the delete propagates instead of resurrecting.
+        if (base != null && !kind.isDeleted(remoteEntity) && !localDeletesAreAuthoritative) {
+            // Hard-delete store (passwords): rows vanish with only the baseline
+            // remembering them, so a healthy-read absence IS a genuine local
+            // delete. Propagate a tombstone so the delete does not resurrect.
+            // (driveMerge aborts on failed local reads, so absence here is
+            // evidence, not a missed read.)
             val tombstone = kind.withUpdatedAt(
                 kind.withDeleted(kind.rebind(remoteEntity, id), true),
                 maxOf(kind.updatedAt(remoteEntity), now),
@@ -509,6 +564,44 @@ object RelayMerge {
                 true,
             )
             accumulator.deletedRemote++
+            return
+        }
+        if (base != null && !kind.isDeleted(remoteEntity)) {
+            // Soft-delete store (notes, todos, contacts, calendar): local
+            // deletes carry explicit marks (app tombstone rows or
+            // system-provider DELETED flags surfaced via getLocalChanges), so
+            // an absence WITHOUT a mark is never a local delete — it is a
+            // missed read. Do NOT tombstone the relay on zero evidence.
+            // Pull the relay copy back instead; a genuinely deleted row will
+            // arrive with its mark and propagate through the normal path.
+            val rebound = kind.rebind(remoteEntity, id)
+            if (kind.isDeleted(rebound)) {
+                accumulator.snapshots += kind.snapshot(
+                    id,
+                    kind.contentHash(rebound),
+                    kind.updatedAt(rebound),
+                    kind.updatedAt(rebound),
+                    now,
+                    true,
+                )
+                accumulator.deletedRemote++
+                return
+            }
+            accumulator.localUpserts += rebound
+            if (id in accumulator.adoptedRemote) {
+                // The relay copy lacks our sync id; re-append it identified.
+                accumulator.remoteOut += rebound
+                accumulator.remoteChanged = true
+            }
+            accumulator.pulled++
+            val stamp = kind.updatedAt(remoteEntity)
+            accumulator.snapshots += kind.snapshot(
+                id,
+                kind.contentHash(rebound),
+                stamp,
+                stamp,
+                now,
+            )
             return
         }
         val rebound = kind.rebind(remoteEntity, id)

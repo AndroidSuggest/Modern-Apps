@@ -38,8 +38,11 @@ object OwnerTransfer {
     suspend fun fetchOwnerKey(vaultId: String, baseOwnerKeyB64: String): ByteArray? {
         var ownerKey = baseOwnerKeyB64.takeIf { it.isNotBlank() }
             ?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
+        // A failed pull keeps the base key: a transfer chain we cannot read is
+        // not a chain that doesn't exist. resolveVault re-fetches every cycle,
+        // so a recovered relay is picked up on retry.
         val transfers = runCatching { RelaySync.pullRaw(ownerChannel(vaultId), 0) }
-            .getOrDefault(emptyList()).mapNotNull { decodeTransfer(it) }
+            .getOrNull()?.mapNotNull { decodeTransfer(it) } ?: return ownerKey
         val used = HashSet<Int>()
         var advanced = true
         while (advanced) {

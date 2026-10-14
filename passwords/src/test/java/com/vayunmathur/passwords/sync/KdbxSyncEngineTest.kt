@@ -77,7 +77,17 @@ class KdbxSyncEngineTest {
         val harness = Harness(passwords = listOf(password(1, "A", "u", "p", updatedAt = 1000)))
         harness.sync()
 
-        harness.setRemote(emptyList())
+        // Own-client tombstone in the file deletes locally.
+        harness.setRemote(
+            listOf(
+                mapOf(
+                    EntryMapper.FIELD_SYNC_ID to "sync-1",
+                    EntryMapper.FIELD_TYPE to "tombstone",
+                    EntryMapper.FIELD_TOMBSTONE to EntryMapper.TOMBSTONE_VALUE,
+                    EntryMapper.FIELD_MODIFIED to "2000",
+                ),
+            ),
+        )
         val result = harness.sync()
 
         assertEquals(1, (result as KdbxSyncResult.Success).deletedLocal)
@@ -92,26 +102,16 @@ class KdbxSyncEngineTest {
         harness.pwDao.store.clear()
         val result = harness.sync()
 
+        // Own-client delete writes a tombstone marker, not an emptied file.
         assertEquals(1, (result as KdbxSyncResult.Success).deletedRemote)
-        assertTrue(harness.remoteEntries().isEmpty())
+        val remote = harness.remoteEntries()
+        assertEquals(1, remote.size)
+        assertTrue(EntryMapper.isTombstoneEntry(remote.single()))
         assertTrue(harness.snapshotDao.store.isEmpty())
     }
 
     @Test fun firstSyncAdoptsMatchingVaultEntriesInsteadOfDuplicating() = runBlocking {
         val local = password(1, "GitHub", "octocat", "p", syncId = "local-1", updatedAt = 1000)
-        // An entry written by KeePassXC: same credential, but no sync identity.
-        val foreign = fields(local) - EntryMapper.FIELD_SYNC_ID - EntryMapper.FIELD_MODIFIED
-        val harness = Harness(passwords = listOf(local), remote = listOf(foreign))
-
-        harness.sync()
-
-        assertEquals(1, harness.pwDao.store.size)
-        assertEquals("local-1", harness.pwDao.store.single().syncId)
-        val remote = harness.remoteEntries()
-        assertEquals(1, remote.size)
-        assertEquals("local-1", remote.single()[EntryMapper.FIELD_SYNC_ID])
-    }
-
     @Test fun unmatchedForeignEntryIsPulledAsNew() = runBlocking {
         val harness = Harness(remote = listOf(mapOf("Title" to "Foreign", "UserName" to "x", "Password" to "y")))
 
@@ -120,6 +120,137 @@ class KdbxSyncEngineTest {
         val stored = harness.pwDao.store.single()
         assertEquals("Foreign", stored.name)
         assertTrue(stored.syncId.isNotBlank())
+    }
+
+    @Test fun ownDeleteWritesTombstoneInsteadOfDroppingFromFile() = runBlocking {
+        val harness = Harness(passwords = listOf(password(1, "A", "u", "p", updatedAt = 1000)))
+        harness.sync()
+
+        harness.pwDao.store.clear()
+        val result = harness.sync()
+
+        assertEquals(1, (result as KdbxSyncResult.Success).deletedRemote)
+        val remote = harness.remoteEntries()
+        assertEquals(1, remote.size)
+        assertTrue(EntryMapper.isTombstoneEntry(remote.single()))
+        assertEquals("sync-1", remote.single()[EntryMapper.FIELD_SYNC_ID])
+        // Local row is gone; its snapshot is dropped (delete acknowledged locally).
+        assertTrue(harness.pwDao.store.isEmpty())
+        assertTrue(harness.snapshotDao.store.isEmpty())
+    }
+
+    @Test fun tombstoneIsRetainedUntilAckedThenGarbageCollected() = runBlocking {
+        val harness = Harness(passwords = listOf(password(1, "A", "u", "p", updatedAt = 1000)))
+        harness.sync()
+        harness.pwDao.store.clear()
+        harness.sync()
+        assertEquals(1, harness.remoteEntries().size)
+
+        // Next cycle with the tombstone still present: steady state, kept.
+        val steady = harness.sync()
+        assertTrue(steady is KdbxSyncResult.Success)
+        assertEquals(1, harness.remoteEntries().size)
+        assertTrue(EntryMapper.isTombstoneEntry(harness.remoteEntries().single()))
+    }
+
+    @Test fun foreignAbsenceQuarantinesInsteadOfDeleting() = runBlocking {
+        val harness = Harness(passwords = listOf(password(1, "A", "u", "p", updatedAt = 1000)))
+        harness.sync()
+
+        // Foreign client (no tombstone support) wipes the file.
+        harness.setRemote(emptyList())
+        val result = harness.sync()
+
+        assertTrue(result is KdbxSyncResult.Quarantined, "expected Quarantined, got $result")
+        assertEquals(1, (result as KdbxSyncResult.Quarantined).count)
+        // Nothing changed on either side.
+        assertEquals(1, harness.pwDao.store.size)
+        assertEquals(1, harness.snapshotDao.store.size)
+        assertEquals(0, harness.document.writes - 1)
+    }
+
+    @Test fun foreignDeleteOfOneEntryQuarantinesWholeSync() = runBlocking {
+        val harness = Harness(
+            passwords = listOf(
+                password(1, "A", "u", "p", updatedAt = 1000),
+                password(2, "B", "v", "q", updatedAt = 1000),
+            ),
+        )
+        harness.sync()
+
+        // Foreign client deletes just one entry: still ambiguous, whole sync halts.
+        harness.setRemote(harness.remoteEntries().filterNot {
+            it[EntryMapper.FIELD_SYNC_ID] == "sync-1"
+        })
+        val result = harness.sync()
+
+        assertTrue(result is KdbxSyncResult.Quarantined, "expected Quarantined, got $result")
+        assertEquals(2, harness.pwDao.store.size)
+        assertEquals(2, harness.snapshotDao.store.size)
+    }
+
+    @Test fun transportExceptionAbortsWithoutMutating() = runBlocking {
+        val harness = Harness(passwords = listOf(password(1, "A", "u", "p", updatedAt = 1000)))
+        harness.sync()
+        val writesBefore = harness.document.writes
+        harness.document.readFailsWith = java.io.IOException("cloud drive unavailable")
+
+        val result = harness.sync()
+
+        assertTrue(result is KdbxSyncResult.Error, "expected Error, got $result")
+        assertEquals(1, harness.pwDao.store.size)
+        assertEquals(1, harness.snapshotDao.store.size)
+        assertEquals(writesBefore, harness.document.writes)
+    }
+
+    @Test fun tombstoneForUnknownIdIsIgnored() = runBlocking {
+        val ghost = mapOf(
+            EntryMapper.FIELD_SYNC_ID to "ghost-id",
+            EntryMapper.FIELD_TYPE to "tombstone",
+            EntryMapper.FIELD_TOMBSTONE to EntryMapper.TOMBSTONE_VALUE,
+            EntryMapper.FIELD_MODIFIED to "999",
+        )
+        val harness = Harness(remote = listOf(ghost))
+
+        val result = harness.sync()
+
+        assertTrue(result is KdbxSyncResult.Success, "expected Success, got $result")
+        assertTrue(harness.pwDao.store.isEmpty())
+        assertTrue(harness.snapshotDao.store.isEmpty())
+    }
+
+    @Test fun foreignTombstoneValuedKeyDoesNotDelete() = runBlocking {
+        val harness = Harness(passwords = listOf(password(1, "A", "u", "p", updatedAt = 1000)))
+        harness.sync()
+
+        // A foreign client writes the same-named key with a junk value: it is
+        // stripped on push and never arms the deletion path. The entry is
+        // still present, so no quarantine either — the sync just cleans it.
+        harness.editRemote { it + mapOf(EntryMapper.FIELD_TOMBSTONE to "yes-please") }
+        val result = harness.sync()
+
+        assertTrue(result is KdbxSyncResult.Success, "expected Success, got $result")
+        assertEquals(1, harness.pwDao.store.size)
+        assertEquals("p", harness.pwDao.store.single().password)
+        assertTrue(harness.remoteEntries().single()[EntryMapper.FIELD_TOMBSTONE].isNullOrEmpty())
+    }
+
+    @Test fun tombstoneMeetsRecreatedRowDeleteWins() = runBlocking {
+        val harness = Harness(passwords = listOf(password(1, "A", "u", "p", updatedAt = 1000)))
+        harness.sync()
+        harness.pwDao.store.clear()
+        harness.sync()
+        assertTrue(EntryMapper.isTombstoneEntry(harness.remoteEntries().single()))
+
+        // User re-creates the same credential locally while the tombstone
+        // still propagates: the in-flight delete wins (explicit beats new).
+        harness.pwDao.store.add(password(2, "A", "u", "p2", syncId = "sync-1", updatedAt = 3000))
+        val result = harness.sync()
+
+        assertTrue(result is KdbxSyncResult.Success, "expected Success, got $result")
+        assertTrue(harness.pwDao.store.isEmpty())
+        assertEquals(1, harness.remoteEntries().size)
+        assertTrue(EntryMapper.isTombstoneEntry(harness.remoteEntries().single()))
     }
 
     @Test fun pulledEntryIsNotDirtyOnTheFollowingSync() = runBlocking {
@@ -252,8 +383,12 @@ private class FakeCodec : KdbxCodec {
 
 private class FakeDocument(var bytes: ByteArray?) : KdbxDocument {
     var writes = 0
+    var readFailsWith: java.io.IOException? = null
 
-    override fun read(): ByteArray = bytes ?: throw FileNotFoundException("no document")
+    override fun read(): ByteArray {
+        readFailsWith?.let { throw it }
+        return bytes ?: throw FileNotFoundException("no document")
+    }
 
     override fun write(bytes: ByteArray) {
         this.bytes = bytes

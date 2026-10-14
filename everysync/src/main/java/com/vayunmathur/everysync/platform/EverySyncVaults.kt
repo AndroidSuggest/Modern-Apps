@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.everysync.data.VaultMeta
 import com.vayunmathur.everysync.data.VaultStore
+import com.vayunmathur.everysync.data.readKey
 import com.vayunmathur.everysync.network.remote.RelayLinks
 import com.vayunmathur.everysync.network.remote.RelayRoles
 import com.vayunmathur.everysync.network.remote.RelaySync
@@ -74,6 +75,7 @@ class EverySyncVaults(private val viewModel: EverySyncViewModel) {
     /** Creates a new owned vault for [dataType] with [title] and publishes its signed title. */
     fun createVault(dataType: String, title: String, onResult: (Boolean) -> Unit = {}) {
         viewModel.viewModelScope.launch(Dispatchers.IO) {
+            // upsert seals keyB64 at rest.
             val ok = runCatching {
                 if (!RelaySync.init(app)) return@runCatching false
                 val vaultId = RelaySync.newVaultId()
@@ -104,11 +106,12 @@ class EverySyncVaults(private val viewModel: EverySyncViewModel) {
             val ok = runCatching {
                 val meta = VaultStore.get(app, vaultId) ?: return@runCatching false
                 if (!meta.isOwner) return@runCatching false
+                val key = meta.readKey(app) ?: return@runCatching false
                 RelaySync.sendInvite(
                     recipientId = recipientId,
                     vaultId = vaultId,
                     dataType = meta.dataType,
-                    key = Base64.decode(meta.keyB64),
+                    key = key,
                     title = meta.title,
                     role = role,
                     ownerKeyB64 = meta.ownerKeyB64,
@@ -126,7 +129,7 @@ class EverySyncVaults(private val viewModel: EverySyncViewModel) {
             val ok = runCatching {
                 val meta = VaultStore.get(app, vaultId) ?: return@runCatching false
                 if (!meta.isOwner) return@runCatching false
-                val key = Base64.decode(meta.keyB64)
+                val key = meta.readKey(app) ?: return@runCatching false
                 writeMembers(vaultId, listOf(RelaySync.Member(requesterId, name, role)))
                 RelaySync.sendInvite(
                     recipientId = requesterId,
@@ -172,6 +175,7 @@ class EverySyncVaults(private val viewModel: EverySyncViewModel) {
                 ds.setLong(KEY_INBOX_CURSOR, inbox.seq.toLong())
                 for (invite in inbox.invites) {
                     if (VaultStore.get(app, invite.vaultId) == null) {
+                        // upsert seals the plaintext invite key at rest.
                         VaultStore.upsert(
                             app,
                             VaultMeta(
@@ -218,7 +222,8 @@ class EverySyncVaults(private val viewModel: EverySyncViewModel) {
 
     private suspend fun refreshVault(vaultId: String) {
         val meta = VaultStore.get(app, vaultId) ?: return
-        if ((runCatching { Base64.decode(meta.keyB64) }.getOrNull()?.size ?: 0) == 0) return
+        // Fail closed when the key cannot be unsealed: skip, never merge.
+        if ((meta.readKey(app)?.size ?: 0) == 0) return
         val members = readMembers(vaultId).map { VaultMemberUi(it.id, it.name, it.role) }
         val requests = loadRequests(vaultId).map { VaultRequestUi(it.requesterId, it.name) }
         // Joined vaults follow the owner-signed title; owned vaults keep the local one.
@@ -246,8 +251,11 @@ class EverySyncVaults(private val viewModel: EverySyncViewModel) {
     private suspend fun readMembers(vaultId: String): List<RelaySync.Member> {
         val ownerKey = runCatching { Base64.decode(VaultStore.get(app, vaultId)?.ownerKeyB64.orEmpty()) }
             .getOrNull() ?: return emptyList()
-        return RelaySync.pullRaw("members:$vaultId", 0).mapNotNull { raw ->
-            val envelope = runCatching { inboxJson.decodeFromString<RelaySync.SignedEnvelope>(raw) }.getOrNull()
+        // A failed pull keeps the last-known roster: no verified data means no
+        // roster change, never an emptied roster.
+        val raw = RelaySync.pullRaw("members:$vaultId", 0) ?: return emptyList()
+        return raw.mapNotNull { r ->
+            val envelope = runCatching { inboxJson.decodeFromString<RelaySync.SignedEnvelope>(r) }.getOrNull()
                 ?: return@mapNotNull null
             val valid = RelaySync.verify(ownerKey, envelope.payload.encodeToByteArray(), Base64.decode(envelope.sig))
             if (!valid) return@mapNotNull null
@@ -265,8 +273,11 @@ class EverySyncVaults(private val viewModel: EverySyncViewModel) {
     private suspend fun readTitle(vaultId: String): String? {
         val ownerKey = runCatching { Base64.decode(VaultStore.get(app, vaultId)?.ownerKeyB64.orEmpty()) }
             .getOrNull() ?: return null
-        return RelaySync.pullRaw("title:$vaultId", 0).mapNotNull { raw ->
-            val envelope = runCatching { inboxJson.decodeFromString<RelaySync.SignedEnvelope>(raw) }.getOrNull()
+        // A failed pull keeps the last-known title: no verified data means no
+        // title change.
+        val raw = RelaySync.pullRaw("title:$vaultId", 0) ?: return null
+        return raw.mapNotNull { r ->
+            val envelope = runCatching { inboxJson.decodeFromString<RelaySync.SignedEnvelope>(r) }.getOrNull()
                 ?: return@mapNotNull null
             val valid = RelaySync.verify(ownerKey, envelope.payload.encodeToByteArray(), Base64.decode(envelope.sig))
             if (!valid) return@mapNotNull null

@@ -26,6 +26,13 @@ data class LocalEventChange(
  */
 object CalendarSink {
     private const val TAG = "CalendarSink"
+
+    /**
+     * Health of the last [listLocal] read: false when the query failed or
+     * returned a null cursor. Consulted by `CalendarRelayStore.listLocalOk`.
+     */
+    @Volatile var lastListLocalOk: Boolean = true
+        private set
     private val ACCOUNT_TYPE = AccountStore.ACCOUNT_TYPE
     private const val DEFAULT_CALENDAR_COLOR = 0xFF3F51B5.toInt()
     private const val MILLIS_PER_SECOND = 1000L
@@ -157,8 +164,9 @@ object CalendarSink {
         val colAllDay = 7
         val colTz = 8
         val colRrule = 9
+        var failed = false
         try {
-            context.contentResolver.query(
+            val cursor = context.contentResolver.query(
                 CalendarContract.Events.CONTENT_URI,
                 arrayOf(
                     CalendarContract.Events._SYNC_ID,
@@ -175,28 +183,36 @@ object CalendarSink {
                 "${CalendarContract.Events.CALENDAR_ID} = ? AND ${CalendarContract.Events.DELETED} = 0",
                 arrayOf(localCalendarId.toString()),
                 null,
-            )?.use { c ->
-                while (c.moveToNext()) {
-                    val uid = c.getStringOrNull(colUid).orEmpty()
-                    out += RemoteEvent(
-                        uid = uid,
-                        etag = c.getStringOrNull(colStamp),
-                        calendarId = localCalendarId.toString(),
-                        summary = c.getStringOrNull(colTitle) ?: "",
-                        description = c.getStringOrNull(colDesc) ?: "",
-                        location = c.getStringOrNull(colLoc) ?: "",
-                        startMillis = c.getLong(colStart),
-                        endMillis = c.getLong(colEnd),
-                        allDay = c.getInt(colAllDay) == 1,
-                        timezone = c.getStringOrNull(colTz) ?: "UTC",
-                        rrule = c.getStringOrNull(colRrule),
-                        updatedAt = c.getStringOrNull(colStamp)?.toLongOrNull() ?: 0L,
-                    )
+            )
+            if (cursor == null) {
+                // Null cursor = provider cannot serve: failure, not empty.
+                failed = true
+            } else {
+                cursor.use { c ->
+                    while (c.moveToNext()) {
+                        val uid = c.getStringOrNull(colUid).orEmpty()
+                        out += RemoteEvent(
+                            uid = uid,
+                            etag = c.getStringOrNull(colStamp),
+                            calendarId = localCalendarId.toString(),
+                            summary = c.getStringOrNull(colTitle) ?: "",
+                            description = c.getStringOrNull(colDesc) ?: "",
+                            location = c.getStringOrNull(colLoc) ?: "",
+                            startMillis = c.getLong(colStart),
+                            endMillis = c.getLong(colEnd),
+                            allDay = c.getInt(colAllDay) == 1,
+                            timezone = c.getStringOrNull(colTz) ?: "UTC",
+                            rrule = c.getStringOrNull(colRrule),
+                            updatedAt = c.getStringOrNull(colStamp)?.toLongOrNull() ?: 0L,
+                        )
+                    }
                 }
             }
         } catch (expected: Exception) {
             Log.error(TAG, "listLocal failed", expected)
+            failed = true
         }
+        lastListLocalOk = !failed
         return out
     }
 

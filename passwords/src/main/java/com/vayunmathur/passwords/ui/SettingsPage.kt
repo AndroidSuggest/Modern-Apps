@@ -135,6 +135,8 @@ private fun KdbxSyncSection() {
     val lastSync by KdbxSyncSettings.lastSyncFlow(context).collectAsState(0L)
     val status by KdbxSyncSettings.statusFlow(context).collectAsState("")
     val error by KdbxSyncSettings.errorFlow(context).collectAsState("")
+    val quarantine by KdbxSyncSettings.quarantineFlow(context).collectAsState("")
+    val quarantineAt by KdbxSyncSettings.quarantineAtFlow(context).collectAsState(0L)
 
     // Re-read on every recomposition rather than remembering: the dialog below writes it.
     var passwordSaved by remember { mutableStateOf(KdbxPasswordHelper(context).isKeyGenerated()) }
@@ -222,6 +224,20 @@ private fun KdbxSyncSection() {
         )
         SettingsDivider()
 
+        if (status == KdbxSyncSettings.STATUS_QUARANTINED) {
+            QuarantineSection(
+                reason = quarantine,
+                quarantinedAt = quarantineAt,
+                onResolveKeepFile = {
+                    scope.launch {
+                        KdbxSyncSettings.clearQuarantine(context)
+                        KdbxSyncScheduler.syncNow(context)
+                    }
+                },
+            )
+            SettingsDivider()
+        }
+
         SettingsRow(
             title = stringResource(R.string.sync_now),
             enabled = enabled,
@@ -250,7 +266,10 @@ private fun syncStatusText(lastSync: Long, status: String, error: String): Strin
         DateFormat.getMediumDateFormat(context).format(Date(lastSync)) + " " +
             DateFormat.getTimeFormat(context).format(Date(lastSync))
     }
-    if (status != KdbxSyncSettings.STATUS_ERROR) return whenText
+    if (status != KdbxSyncSettings.STATUS_ERROR && status != KdbxSyncSettings.STATUS_QUARANTINED) return whenText
+    if (status == KdbxSyncSettings.STATUS_QUARANTINED) {
+        return "$whenText\n${stringResource(R.string.sync_error_quarantined)}"
+    }
     val reason = when (error) {
         "file_missing" -> stringResource(R.string.sync_error_file_missing)
         "wrong_password" -> stringResource(R.string.sync_error_wrong_password)
@@ -258,6 +277,51 @@ private fun syncStatusText(lastSync: Long, status: String, error: String): Strin
         else -> stringResource(R.string.sync_error_generic, error)
     }
     return "$whenText\n$reason"
+}
+
+@Composable
+private fun QuarantineSection(
+    reason: String,
+    quarantinedAt: Long,
+    onResolveKeepFile: () -> Unit,
+) {
+    val context = LocalContext.current
+    var showResolveDialog by remember { mutableStateOf(false) }
+    val whenText = if (quarantinedAt == 0L) {
+        ""
+    } else {
+        DateFormat.getMediumDateFormat(context).format(Date(quarantinedAt)) + " " +
+            DateFormat.getTimeFormat(context).format(Date(quarantinedAt))
+    }
+
+    SettingsRow(
+        title = stringResource(R.string.sync_quarantine_title),
+        supportingText = stringResource(R.string.sync_quarantine_description, whenText),
+        onClick = { showResolveDialog = true },
+    )
+
+    if (showResolveDialog) {
+        AlertDialog(
+            onDismissRequest = { showResolveDialog = false },
+            title = { Text(stringResource(R.string.sync_quarantine_title)) },
+            text = { Text(stringResource(R.string.sync_quarantine_dialog, reason)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showResolveDialog = false
+                        onResolveKeepFile()
+                    },
+                ) {
+                    Text(stringResource(R.string.sync_quarantine_resolve))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResolveDialog = false }) {
+                    Text(stringResource(UiR.string.cancel))
+                }
+            },
+        )
+    }
 }
 
 @Composable

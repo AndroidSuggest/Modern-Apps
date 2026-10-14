@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.core.database.getLongOrNull
 import androidx.core.database.getStringOrNull
 import com.vayunmathur.everysync.data.RemotePassword
+import com.vayunmathur.everysync.sync.LocalReadException
 import com.vayunmathur.everysync.sync.adapters.PasswordKind
 import com.vayunmathur.library.log.Log
 import kotlinx.serialization.Serializable
@@ -70,7 +71,10 @@ internal data class PasskeyPayload(
  *   (snapshot retained app-side so the merge reads it as a deletion).
  * - delete: a `syncId = ?` selection hard-deletes one row (snapshot kept);
  *   `deleteByVault` (or selection-less base delete) purges the whole table
- *   *and* its snapshots.
+ *   *and* its snapshots. NOTE: this path is merge-EXTERNAL (user toggling sync
+ *   off, explicit purge). Merge-driven deletes ALWAYS arrive as `deleted`
+ *   tombstone envelopes via upsert, never as raw deletes — raw deletes carry
+ *   no proof of intent and the merge must never infer deletion from absence.
  * - columns: `syncId`, `updatedAt`, `deleted`, `payloadJson`, `contentHash`
  *   (payload SHA-256 hex; the merge driver recomputes canonical hashes
  *   itself via [PasswordKind] and ignores this column on read).
@@ -83,6 +87,14 @@ internal data class PasskeyPayload(
  */
 object PasswordSink {
     private const val TAG = "PasswordSink"
+
+    /**
+     * Health of the last [listLocalOrThrow]/[listLocal] read: false when any
+     * table query failed or returned a null cursor. Consulted by
+     * `PasswordRelayStore.listLocalOk` so the driver can abort before merging.
+     */
+    @Volatile var lastListLocalOk: Boolean = true
+        private set
 
     const val AUTHORITY = "com.vayunmathur.passwords.relay"
     const val PATH_PASSWORDS = "passwords"
@@ -242,17 +254,33 @@ object PasswordSink {
     }
 
     /** All local rows in relay form (tombstones never occur locally — hard deletes). */
-    fun listLocal(context: Context, vaultId: String): List<RemotePassword> {
+    fun listLocal(context: Context, vaultId: String): List<RemotePassword> =
+        runCatching { listLocalOrThrow(context, vaultId) }.getOrDefault(emptyList())
+
+    /**
+     * All local rows in relay form, throwing [LocalReadException] when the
+     * provider cannot be read. The merge driver MUST use this variant: a
+     * failed read merged as empty would delete every baseline-present relay
+     * record.
+     */
+    fun listLocalOrThrow(context: Context, vaultId: String): List<RemotePassword> {
         val out = mutableListOf<RemotePassword>()
+        var failed = false
         for ((uri, isPasskey) in listOf(passwordsUri(vaultId) to false, passkeysUri(vaultId) to true)) {
             try {
-                context.contentResolver.query(
+                val cursor = context.contentResolver.query(
                     uri,
                     arrayOf(COL_PAYLOAD_JSON),
                     null,
                     null,
                     null,
-                )?.use { c ->
+                ) ?: run {
+                    // Null cursor = provider cannot serve (locked DB, crash):
+                    // failure, not an empty table.
+                    failed = true
+                    continue
+                }
+                cursor.use { c ->
                     val payloadIdx = c.getColumnIndex(COL_PAYLOAD_JSON)
                     while (c.moveToNext()) {
                         val payload = if (payloadIdx >= 0) c.getStringOrNull(payloadIdx) else null
@@ -263,8 +291,14 @@ object PasswordSink {
                 }
             } catch (expected: Exception) {
                 Log.error(TAG, "listLocal failed for $uri", expected)
+                failed = true
             }
         }
+        if (failed) {
+            lastListLocalOk = false
+            throw LocalReadException("password provider read failed for vault $vaultId")
+        }
+        lastListLocalOk = true
         return out
     }
 

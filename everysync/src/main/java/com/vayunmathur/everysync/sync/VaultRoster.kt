@@ -40,13 +40,19 @@ object VaultRoster {
     /**
      * Reads + verifies the roster: only envelopes with a valid [ownerKey]
      * signature are honored. Returns member id → member, last record wins.
+     *
+     * A failed pull returns an empty map (fail closed): the merge driver
+     * already aborts the record cycle before consulting the roster, and
+     * `resolveVault` treats "not on roster" as "skip this vault".
      */
     suspend fun fetchRoster(vaultId: String, ownerKey: ByteArray): Map<String, RelaySync.Member> {
         if (ownerKey.isEmpty()) return emptyMap()
+        val raw = runCatching { RelaySync.pullRaw(membersChannel(vaultId), 0) }.getOrNull()
+            ?: return emptyMap()
         val byId = LinkedHashMap<String, RelaySync.Member>()
-        for (raw in runCatching { RelaySync.pullRaw(membersChannel(vaultId), 0) }.getOrDefault(emptyList())) {
+        for (r in raw) {
             val envelope = runCatching {
-                json.decodeFromString<RelaySync.SignedEnvelope>(raw)
+                json.decodeFromString<RelaySync.SignedEnvelope>(r)
             }.getOrNull() ?: continue
             val sig = runCatching { Base64.decode(envelope.sig) }.getOrNull() ?: continue
             if (!RelaySync.verify(ownerKey, envelope.payload.encodeToByteArray(), sig)) continue

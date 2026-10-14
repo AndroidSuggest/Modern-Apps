@@ -47,6 +47,19 @@ import kotlin.io.encoding.Base64
  *
  * Presence is not used here (unlike office/voxels): vault sync is WorkManager-driven
  * with push-on-edit, so there is no ephemeral live channel to keep open.
+ *
+ * Key hygiene invariant: vault keys are never user-visible. Share links carry
+ * only vault/owner ids; keys move exclusively via PQC-sealed inbox invites, and
+ * rest encrypted at rest (see `TokenStore` / `VaultStore`). Roster, key epochs,
+ * ownership and titles are owner-signed; record envelopes are encryption-only.
+ * TRIGGER: if any future feature surfaces a vault key to the user (export, QR,
+ * manual entry), record envelopes must gain a findfamily `PairAuth`-style
+ * per-sender secret id (pinned trust-on-first-use, directional, never logged)
+ * before that feature ships.
+ *
+ * Loss-prevention invariant: a failed pull is NEVER an empty log. `pullRecords`
+ * and `pullRaw` return null on transport failure so the merge driver can abort
+ * the cycle instead of reading absence as deletion (see `RelayMerge`).
  */
 // Transport surface: one function per endpoint/operation by design.
 @Suppress("TooManyFunctions")
@@ -112,13 +125,22 @@ object RelaySync {
         return append(channel, blobs)
     }
 
-    /** Pulls + decrypts a vault's record log from [since]; undecryptable entries are skipped. */
-    suspend fun pullRecords(channel: String, key: ByteArray, since: Int): RecordsResult {
-        val p = pull(channel, since) ?: return RecordsResult(emptyList(), since)
+    /** Pulls + decrypts a vault's record log from [since]; null on transport failure.
+     *
+     * A null return is NOT an empty log: the caller must abort the cycle. Folding
+     * a failure as empty would read every baseline-present id as deleted (see
+     * `RelayMerge`). [rawCount] is how many envelopes the relay holds;
+     * [items.size] is how many decrypted under [key] — a large gap means a
+     * key/epoch problem, not an empty vault.
+     */
+    suspend fun pullRecords(channel: String, key: ByteArray, since: Int): RecordsResult? {
+        val p = pull(channel, since) ?: return null
+        var undecryptable = 0
         val items = p.actions.mapNotNull { b ->
             runCatching { E2ee.aesDecrypt(key, Base64.decode(b)).decodeToString() }.getOrNull()
+                ?: run { undecryptable++; null }
         }
-        return RecordsResult(items, p.seq)
+        return RecordsResult(items, p.seq, rawCount = p.actions.size, undecryptable = undecryptable)
     }
 
     // --- Invites (PQC-sealed to the recipient's inbox) ---
@@ -207,7 +229,8 @@ object RelaySync {
     suspend fun seal(bundle: ByteArray, data: ByteArray): ByteArray = Pqc.encryptTo(bundle, data)
     suspend fun unseal(data: ByteArray): ByteArray = identity.decrypt(data)
     suspend fun appendRaw(channel: String, items: List<String>): Int? = append(channel, items)
-    suspend fun pullRaw(channel: String, since: Int): List<String> = pull(channel, since)?.actions ?: emptyList()
+    /** Raw pull; null on transport failure (NOT an empty channel — abort, don't merge). */
+    suspend fun pullRaw(channel: String, since: Int): List<String>? = pull(channel, since)?.actions
     fun decrypt(key: ByteArray, b64: String): String? =
         runCatching { E2ee.aesDecrypt(key, Base64.decode(b64)).decodeToString() }.getOrNull()
 
@@ -366,7 +389,22 @@ object RelaySync {
 
     class InvitesResult(val invites: List<Invite>, val seq: Int)
     class InboxResult(val invites: List<Invite>, val requests: List<JoinRequest>, val seq: Int)
-    class RecordsResult(val items: List<String>, val seq: Int)
+
+    /**
+     * One decrypted record-log pull. [rawCount] is the envelope count on the
+     * relay; [undecryptable] is how many failed to decrypt under the vault key.
+     * When most records fail to decrypt the key/epoch is suspect — the caller
+     * must treat that as a failure (abort), not as an empty vault.
+     */
+    class RecordsResult(
+        val items: List<String>,
+        val seq: Int,
+        val rawCount: Int = items.size,
+        val undecryptable: Int = 0,
+    ) {
+        /** True when decryption failed for every record that exists: key suspect, abort. */
+        val fullyUndecryptable: Boolean get() = rawCount > 0 && items.isEmpty()
+    }
 
     @Serializable private data class SubMsg(val t: String, val channel: String)
     @Serializable private data class AppendMsg(val t: String, val channel: String, val actions: List<String>)

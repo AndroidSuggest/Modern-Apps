@@ -14,6 +14,13 @@ import kotlinx.serialization.json.Json
 object PasswordKind : EntityKind<RemotePassword>() {
     override val kind = "password"
 
+    /**
+     * Passwords hard-delete locally (rows vanish; only the app-side snapshot
+     * remembers them), so a healthy-read absence IS a genuine local delete.
+     * See `EntityKind.localDeletesAreAuthoritative`.
+     */
+    override val localDeletesAreAuthoritative = false
+
     private val json = Json { ignoreUnknownKeys = true }
 
     override fun syncId(e: RemotePassword) = e.uid
@@ -41,6 +48,13 @@ object PasswordKind : EntityKind<RemotePassword>() {
     fun canonical(e: RemotePassword): String = json.encodeToString(
         e.copy(uid = "", updatedAt = 0L, deleted = false),
     )
+
+    /**
+     * True when this envelope is an explicit deletion marker. The merge treats
+     * ONLY such envelopes as deletes; every other envelope is live data even
+     * when the referenced row is otherwise unknown.
+     */
+    fun isTombstoneEnvelope(e: RemotePassword): Boolean = e.deleted
 
     fun toJson(e: RemotePassword): String = json.encodeToString(e)
 

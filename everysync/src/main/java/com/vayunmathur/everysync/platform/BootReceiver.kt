@@ -3,6 +3,7 @@ package com.vayunmathur.everysync.platform
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.vayunmathur.everysync.sync.SnapshotWorker
 import com.vayunmathur.everysync.sync.SyncScheduler
 
 /**
@@ -15,7 +16,10 @@ class BootReceiver : BroadcastReceiver() {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
-            -> SyncScheduler.schedulePeriodic(context.applicationContext)
+            -> {
+                SyncScheduler.schedulePeriodic(context.applicationContext)
+                SnapshotWorker.scheduleDaily(context.applicationContext)
+            }
         }
     }
 }

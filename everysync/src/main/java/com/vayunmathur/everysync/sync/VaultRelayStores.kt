@@ -45,6 +45,15 @@ class ContactRelayStore(
     private val context: Context,
     private val accountName: String,
 ) : RelayStore<RemoteContact> {
+    /**
+     * Contacts soft-delete at the platform layer (DELETED flags surfaced via
+     * `getLocalChanges`), so a missing id without a mark is never a local
+     * delete (see `EntityKind.localDeletesAreAuthoritative`). Read health is
+     * still enforced via `listLocalOk`.
+     */
+    override val listLocalOk: Boolean
+        get() = ContactsSink.lastListLocalOk
+
     override suspend fun listLocal(): List<RemoteContact> =
         ContactsSink.listLocal(context, accountName)
 
@@ -79,6 +88,14 @@ class CalendarRelayStore(
     private val accountName: String,
     private val calendarId: Long,
 ) : RelayStore<RemoteEvent> {
+    /**
+     * Calendar soft-deletes at the platform layer like contacts (see
+     * `ContactRelayStore`): a missing id without a mark is never a local
+     * delete.
+     */
+    override val listLocalOk: Boolean
+        get() = CalendarSink.lastListLocalOk
+
     override suspend fun listLocal(): List<RemoteEvent> =
         CalendarSink.listLocal(context, calendarId)
 
@@ -112,8 +129,18 @@ class PasswordRelayStore(
     private val context: Context,
     private val vaultId: String,
 ) : RelayStore<RemotePassword> {
+    /**
+     * Passwords hard-delete locally: rows vanish with only the app-side
+     * `SyncSnapshot` remembering them. A healthy-read absence is therefore a
+     * genuine local delete, and the merge propagates a relay tombstone for it.
+     * Read health is enforced by `listLocalOk` (plus `listLocal` throwing):
+     * a provider failure aborts the cycle instead of merging a partial view.
+     */
+    override val listLocalOk: Boolean
+        get() = PasswordSink.lastListLocalOk
+
     override suspend fun listLocal(): List<RemotePassword> =
-        PasswordSink.listLocal(context, vaultId)
+        PasswordSink.listLocalOrThrow(context, vaultId)
 
     override suspend fun upsertLocal(items: List<RemotePassword>) {
         PasswordSink.upsertAll(context, vaultId, items)
@@ -147,6 +174,15 @@ class NoteRelayStore(
     private val context: Context,
     private val vaultId: String,
 ) : RelayStore<RemoteNote> {
+    /**
+     * Notes soft-delete (tombstone rows survive in `listLocal`), so a missing
+     * id without a mark is never a local delete (see
+     * `EntityKind.localDeletesAreAuthoritative`). Read health is still
+     * enforced via `listLocalOk`.
+     */
+    override val listLocalOk: Boolean
+        get() = NoteSink.lastListLocalOk
+
     override suspend fun listLocal(): List<RemoteNote> =
         NoteSink.listLocal(context, vaultId)
 
@@ -182,6 +218,13 @@ class TodoRelayStore(
     private val context: Context,
     private val vaultId: String,
 ) : RelayStore<RemoteTodo> {
+    /**
+     * Todos soft-delete like notes (see `NoteRelayStore`): a missing id
+     * without a mark is never a local delete.
+     */
+    override val listLocalOk: Boolean
+        get() = TodoIpcSink.lastListLocalOk
+
     override suspend fun listLocal(): List<RemoteTodo> =
         TodoIpcSink.listLocal(context, vaultId)
 

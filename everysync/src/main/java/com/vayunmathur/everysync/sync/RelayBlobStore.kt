@@ -83,6 +83,10 @@ object RelayBlobStore {
      * Pulls blob envelopes since the persisted cursor, folds to latest per
      * name, and mirrors them into local files. Advances the cursor past the
      * pulled sequence. Returns the envelopes that changed something locally.
+     *
+     * A failed pull returns an empty list WITHOUT advancing the cursor: blob
+     * deletes apply only from explicit delete envelopes in a verified pull,
+     * so a failure deletes nothing and retries next cycle.
      */
     suspend fun pull(
         context: Context,
@@ -91,8 +95,14 @@ object RelayBlobStore {
     ): List<BlobEnvelope> {
         val channel = blobChannel(vaultId)
         val since = RelayCursorStore.get(context, "notes", vaultId, channel)
-        val result = RelaySync.pullRecords(channel, vaultKey, since)
+        val result = RelaySync.pullRecords(channel, vaultKey, since) ?: return emptyList()
         if (result.items.isEmpty()) {
+            if (result.fullyUndecryptable) {
+                // Records exist but none decrypt: a key/epoch problem, not an
+                // empty blob log. Do NOT advance the cursor; retry next cycle.
+                Log.status(TAG, "pull $channel: ${result.rawCount} records, none decryptable; skipping")
+                return emptyList()
+            }
             RelayCursorStore.advance(context, "notes", vaultId, channel, result.seq)
             return emptyList()
         }

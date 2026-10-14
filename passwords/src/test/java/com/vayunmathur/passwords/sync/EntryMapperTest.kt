@@ -131,4 +131,32 @@ class EntryMapperTest {
         )
         assertNull(EntryMapper.toPassword(mapOf("Title" to "x")).totpSecret)
     }
+
+    @Test fun tombstoneMarkerIsRecognizedOnlyWithExactValueAndSyncId() {
+        val syncId = EntryMapper.FIELD_SYNC_ID
+        val marker = EntryMapper.FIELD_TOMBSTONE
+        assertTrue(EntryMapper.isTombstoneEntry(
+            mapOf(syncId to "abc", marker to EntryMapper.TOMBSTONE_VALUE),
+        ))
+        // Wrong value, missing/blank sync id: never a tombstone.
+        assertTrue(!EntryMapper.isTombstoneEntry(mapOf(syncId to "abc", marker to "yes")))
+        assertTrue(!EntryMapper.isTombstoneEntry(mapOf(syncId to "abc", marker to "")))
+        assertTrue(!EntryMapper.isTombstoneEntry(mapOf(marker to EntryMapper.TOMBSTONE_VALUE)))
+        assertTrue(!EntryMapper.isTombstoneEntry(mapOf(syncId to "", marker to EntryMapper.TOMBSTONE_VALUE)))
+        assertTrue(!EntryMapper.isTombstoneEntry(mapOf("Title" to "x")))
+    }
+
+    @Test fun tombstoneMarkerIsOwnedButNeverEmittedByLiveMappers() {
+        assertTrue(EntryMapper.FIELD_TOMBSTONE in EntryMapper.OWNED_KEYS)
+        assertTrue(EntryMapper.FIELD_TOMBSTONE !in EntryMapper.toFields(Password()))
+        assertTrue(EntryMapper.FIELD_TOMBSTONE !in EntryMapper.toFields(Passkey()))
+    }
+
+    @Test fun contentHashIgnoresTombstoneMarker() {
+        val base = EntryMapper.toFields(Password(name = "A", username = "u", password = "p"))
+        assertEquals(
+            EntryMapper.contentHash(base),
+            EntryMapper.contentHash(base + mapOf(EntryMapper.FIELD_TOMBSTONE to EntryMapper.TOMBSTONE_VALUE)),
+        )
+    }
 }

@@ -1,6 +1,7 @@
 package com.vayunmathur.everysync.platform
 
 import com.vayunmathur.everysync.provider.DataType
+import com.vayunmathur.everysync.sync.SnapshotStore.SnapshotMeta
 
 /**
  * The UI contract between the screens and whatever drives them.
@@ -45,6 +46,12 @@ data class AccountDetailUiState(
     val deviceId: String = "",
     val safetyCode: String? = null,
     val computingCode: Boolean = false,
+    /** Human-readable sync failure explanation, or null when healthy. */
+    val syncErrorText: String? = null,
+    /** Daily encrypted snapshots for this account's vaults, newest first. */
+    val snapshots: List<SnapshotMeta> = emptyList(),
+    /** True while a snapshot restore is running. */
+    val restoring: Boolean = false,
 )
 
 /** Everything the settings screen draws. */
@@ -85,6 +92,10 @@ interface AccountDetailActions {
     fun syncNow(accountName: String) {}
     fun removeAccount(accountName: String) {}
     fun back() {}
+    /** Restores a daily snapshot (replays its records through the sinks). */
+    fun restoreSnapshot(snapshot: SnapshotMeta) {}
+    /** Takes today's snapshots now (idempotent — same-day vaults are skipped). */
+    fun snapshotNow() {}
 
     /** Creates a new owned personal vault for [dataType] (`contacts`/`calendar`) with [title]. */
     fun createVault(dataType: String, title: String) {}

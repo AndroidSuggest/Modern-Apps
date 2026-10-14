@@ -49,6 +49,13 @@ data class LocalTodoChange(
 object TodoIpcSink {
     private const val TAG = "TodoIpcSink"
 
+    /**
+     * Health of the last [listLocal] read: false when the query failed or
+     * returned a null cursor. Consulted by `TodoRelayStore.listLocalOk`.
+     */
+    @Volatile var lastListLocalOk: Boolean = true
+        private set
+
     const val AUTHORITY = "com.vayunmathur.todo.relay"
     const val PATH_TODOS = "todos"
     const val PATH_SNAPSHOTS = "snapshots"
@@ -114,25 +121,34 @@ object TodoIpcSink {
     /** All local rows in relay form, tombstones included (todos soft-delete). */
     fun listLocal(context: Context, vaultId: String): List<RemoteTodo> {
         val out = mutableListOf<RemoteTodo>()
+        var failed = false
         try {
-            context.contentResolver.query(
+            val cursor = context.contentResolver.query(
                 todosUri(vaultId),
                 arrayOf(COL_PAYLOAD_JSON),
                 null,
                 null,
                 null,
-            )?.use { c ->
-                val payloadIdx = c.getColumnIndex(COL_PAYLOAD_JSON)
-                while (c.moveToNext()) {
-                    val payload = if (payloadIdx >= 0) c.getStringOrNull(payloadIdx) else null
-                    if (!payload.isNullOrBlank()) {
-                        fromRelayJson(payload)?.let { out += it }
+            )
+            if (cursor == null) {
+                // Null cursor = provider cannot serve: failure, not empty.
+                failed = true
+            } else {
+                cursor.use { c ->
+                    val payloadIdx = c.getColumnIndex(COL_PAYLOAD_JSON)
+                    while (c.moveToNext()) {
+                        val payload = if (payloadIdx >= 0) c.getStringOrNull(payloadIdx) else null
+                        if (!payload.isNullOrBlank()) {
+                            fromRelayJson(payload)?.let { out += it }
+                        }
                     }
                 }
             }
         } catch (expected: Exception) {
             Log.error(TAG, "listLocal failed", expected)
+            failed = true
         }
+        lastListLocalOk = !failed
         return out
     }
 

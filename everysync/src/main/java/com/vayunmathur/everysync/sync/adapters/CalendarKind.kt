@@ -16,6 +16,9 @@ import kotlinx.serialization.json.Json
 object CalendarKind : EntityKind<RemoteEvent>() {
     override val kind = "event"
 
+    /** Calendar soft-deletes at the platform layer (DELETED flags); the default holds. */
+    override val localDeletesAreAuthoritative = true
+
     private val json = Json { ignoreUnknownKeys = true }
 
     /** UID + RECURRENCE-ID so one instance never collides with its master. */
