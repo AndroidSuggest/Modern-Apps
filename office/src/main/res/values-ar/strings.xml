@@ -36,7 +36,7 @@
     <string name="unsaved_changes_message">لديك تغييرات غير محفوظة. هل تريد الحفظ قبل المغادرة؟</string>
     <string name="replace_hint">استبدال بـ…</string>
     <string name="print_doc">طباعة</string>
-    <string name="header">رأس الصفحة</string>
+    <string name="header">رأس</string>
     <string name="series_name_v1_v2">السلسلة (الاسم: v1، v2، ...)</string>
     <string name="freeze">تجميد</string>
     <string name="insert_comment">إدراج تعليق</string>
@@ -132,7 +132,7 @@
     <string name="comments">التعليقات…</string>
     <string name="page_setup_1">إعداد الصفحة</string>
     <string name="stop">توقف</string>
-    <string name="open_document_format_viewer_editor">فتح عارض ومحرر تنسيق المستندات</string>
+    <string name="open_document_format_viewer_editor">عارض ومحرّر تنسيق المستندات المفتوح</string>
     <string name="make_owner">تعيين كمالك</string>
     <string name="rich_text_rtf">Rich Text (.rtf)…</string>
     <string name="margins">الهوامش</string>
@@ -141,7 +141,7 @@
     <string name="export_1">تصدير</string>
     <string name="viewer">مشاهد</string>
     <string name="synced_to_cloud">تمت المزامنة إلى السحابة</string>
-    <string name="flat_odf">Flat ODF…</string>
+    <string name="flat_odf">ODF مسطّح…</string>
     <string name="column_width_px">عرض العمود (بكسل)</string>
     <string name="role">الدور:</string>
     <string name="tsv">TSV…</string>
@@ -232,4 +232,58 @@
     <string name="document_theme_unchanged">دون تغيير</string>
     <string name="document_theme_follow_system">اتبع سمة النظام</string>
     <string name="computing">جارٍ الحوسبة…</string>
+    <string name="rename_sheet">إعادة تسمية الورقة</string>
+    <string name="new_sheet">ورقة جديدة</string>
+    <string name="sheet_1">- ورقة</string>
+    <string name="online_1">متصل: <xliff:g id="presence" example="Alice · Sheet1">%1$s</xliff:g></string>
+    <string name="app_name">Office</string>
+    <string name="outline">المخطط التفصيلي</string>
+    <string name="column_index_0">فهرس العمود (0-<xliff:g id="max_index" example="4">%1$s</xliff:g>)</string>
+    <string name="narrow_1">ضيّقة</string>
+    <string name="narrow">● ضيّقة</string>
+    <string name="word_1">☐ كلمة</string>
+    <string name="word">☑ كلمة</string>
+    <string name="table_of_contents">جدول المحتويات</string>
+    <string name="table">جدول</string>
+    <string name="table_1">جدول…</string>
+    <string name="insert_table_1">إدراج جدول</string>
+    <string name="wide">● واسعة</string>
+    <string name="wide_1">واسعة</string>
+    <string name="case_on">☑ حساسية حالة الأحرف</string>
+    <string name="case_1">☐ حساسية حالة الأحرف</string>
+    <string name="chart">مخطط</string>
+    <string name="chart_1">مخطط…</string>
+    <string name="insert_chart">إدراج مخطط</string>
+    <string name="edit_chart">تحرير المخطط</string>
+    <string name="slide_1">+ شريحة</string>
+    <string name="new_slides">شرائح جديدة</string>
+    <string name="slide_transition_1">انتقال الشريحة</string>
+    <string name="slide_transition">انتقال الشريحة…</string>
+    <string name="slide_background">خلفية الشريحة…</string>
+    <string name="go_to_slide">الانتقال إلى الشريحة</string>
+    <string name="notes_for_this_slide">ملاحظات لهذه الشريحة</string>
+    <string name="slide_number_1">رقم الشريحة (1-<xliff:g id="total" example="10">%1$s</xliff:g>)</string>
+    <string name="slide_of">الشريحة <xliff:g id="current" example="2">%1$s</xliff:g> من <xliff:g id="total" example="10">%2$s</xliff:g></string>
+    <string name="markdown_md">Markdown (.md)…</string>
+    <string name="insert_footnote">إدراج حاشية سفلية</string>
+    <string name="footnote_text">نص الحاشية السفلية</string>
+    <string name="header_footer_1">رأس و تذييل</string>
+    <string name="header_footer">رأس و تذييل…</string>
+    <string name="footer">تذييل</string>
+    <string name="comments_1">التعليقات (<xliff:g id="count" example="2">%1$s</xliff:g>)</string>
+    <string name="speaker_notes_1">ملاحظات المتحدث…</string>
+    <string name="speaker_notes_2">ملاحظات المتحدث</string>
+    <string name="speaker_notes">ملاحظات المتحدث</string>
+    <string name="justify">المحاذاة</string>
+    <string name="annotation_author_date"><xliff:g id="author" example="Anonymous">%1$s</xliff:g><xliff:g id="date_suffix" example=" · 2024-01-01">%2$s</xliff:g></string>
+    <string name="words_characters_min_read"><xliff:g id="words" example="120">%1$s</xliff:g> كلمات · <xliff:g id="characters" example="650">%2$s</xliff:g> أحرف · ~<xliff:g id="minutes" example="1">%3$s</xliff:g> دقيقة قراءة</string>
+    <string name="unmerge_cell">إلغاء دمج الخلية</string>
+    <string name="cell_comment">تعليق الخلية</string>
+    <string name="bold_cell">تغميق الخلية</string>
+    <string name="italic_cell">إمالة الخلية</string>
+    <string name="insert_hyperlink">إدراج ارتباط تشعبي</string>
+    <string name="tracked_change_author_date"><xliff:g id="change_type" example="Insertion">%1$s</xliff:g> · <xliff:g id="author" example="Unknown">%2$s</xliff:g><xliff:g id="date_suffix" example=" · 2024-01-01">%3$s</xliff:g></string>
+    <string name="percent">نسبة مئوية</string>
+    <string name="words_chars_min"><xliff:g id="words" example="120">%1$s</xliff:g> كلمة · <xliff:g id="chars" example="650">%2$s</xliff:g> حرفًا · ~<xliff:g id="minutes" example="1">%3$s</xliff:g> دقيقة</string>
+    <string name="you_have_access_only_the_owner_can_chang">لديك صلاحية وصول <xliff:g id="role" example="editor">%1$s</xliff:g>. فقط المالك يستطيع تغيير المشاركة.</string>
 </resources>
