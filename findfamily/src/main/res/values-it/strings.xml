@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="notification_channel_location_tracking_desc">Utilizzate per gli aggiornamenti della posizione in background di FindFamily</string>
-    <string name="notification_channel_battery_name">Avvisi della batteria</string>
+    <string name="notification_channel_battery_name">“Avvisi sulla batteria</string>
     <string name="notification_channel_battery_desc">Avvisa quando un familiare ha la batteria scarica</string>
     <string name="notification_channel_entry_exit_name">Arrivi e Partenze</string>
     <string name="notification_tracking_title">FindFamily è attivo</string>
@@ -69,8 +69,8 @@
     <string name="clipboard_label">testo</string>
     <string name="me_label">Io</string>
     <string name="missing_features_title">Funzionalità richieste disabilitate</string>
-    <string name="notification_channel_location_tracking_name">Tracciamento della posizione</string>
-    <string name="notification_channel_entry_exit_desc">Notifiche di ingresso o uscita dei familiari dai punti di interesse</string>
+    <string name="notification_channel_location_tracking_name">Monitoraggio della posizione</string>
+    <string name="notification_channel_entry_exit_desc">Notifiche sugli ingressi, o uscite, dei familiari dai punti di interesse</string>
     <string name="section_saved_places">Luoghi salvati</string>
     <string name="contact_findfamily_id">ID FindFamily del contatto</string>
     <string name="missing_features_explanation">FindFamily richiede la geolocalizzazione di rete e un geocoder per funzionare correttamente. Devi attivarli per continuare.</string>
