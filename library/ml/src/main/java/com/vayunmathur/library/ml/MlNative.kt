@@ -47,6 +47,14 @@ internal object MlNative {
     /** Bring up U²-Net portable. Returns 0 on failure, as [createSelfie]. */
     external fun createU2netp(weights: ByteArray): Long
 
+    /**
+     * Bring up MODNet photographic-portrait matting. Returns 0 on failure, as [createSelfie].
+     *
+     * Failure is expected and normal on a device without `VK_KHR_shader_float16_int8`,
+     * like the other segmenters. The caller keeps the sharp frame.
+     */
+    external fun createModnet(weights: ByteArray): Long
+
     /** Bring up SCRFD 500M face detection. Returns 0 on failure, as [createSelfie]. */
     external fun createScrfd(weights: ByteArray): Long
 

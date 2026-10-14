@@ -43,6 +43,7 @@ pub mod madlad;
 pub mod madlad_extra;
 pub mod madlad_extra2;
 pub mod madlad_part1;
+pub mod modnet;
 pub mod nllb;
 pub mod nllb_extra;
 pub mod nllb_extra2;
@@ -122,6 +123,14 @@ pub enum Act {
     /// runtime needs one parameterless clamp rather than an activation carrying two
     /// floats through the push block.
     Clip01,
+    /// `clamp(x, 0, 6)`: ONNX `Clip` at MobileNetV2's ReLU6 bounds.
+    ///
+    /// Every backbone convolution of MODNet's MobileNetV2 encoder is followed by
+    /// one (35 uses, all `(0.0, 6.0)` — verified by `scripts/ml/modnet_fold.py`,
+    /// which rejects any other bounds). A rewrite to plain ReLU would change the
+    /// trained math, so this is fused into the producing convolution like every
+    /// other activation here rather than rewritten away.
+    Relu6,
     /// `x / (1 + exp(-x))`, i.e. ONNX `Sigmoid` multiplied by its own input.
     ///
     /// Seven uses in PP-OCRv5 recognition, where the export spells it out as
@@ -151,6 +160,7 @@ impl Act {
             Act::PRelu(_) => 4,
             Act::Clip01 => 5,
             Act::Swish => 6,
+            Act::Relu6 => 7,
             Act::Gelu => 8,
         }
     }
@@ -240,6 +250,21 @@ pub enum Kind {
     /// `d_model` 120 that is 120 loads a stride apart per position, which is nothing
     /// against what a contiguous layout would cost in permutes.
     LayerNorm,
+    /// Instance normalisation over the **spatial** axes, with no affine.
+    ///
+    /// [`Kind::LayerNorm`] transposed: where that one reduces `C` strided values per
+    /// position, this reduces one channel's contiguous `H x W` plane — so one
+    /// invocation per channel, and the whole pass is contiguous reads. Sixteen uses,
+    /// all MODNet's `IBNorm` second halves (`InstanceNorm2d(affine=False)`), each
+    /// over one [`Builder::slice_channels`] half rejoined by [`Builder::concat`].
+    ///
+    /// No gamma/beta: the export's scale and bias are constant 1 and 0 (verified
+    /// by `scripts/ml/modnet_fold.py`, which rejects anything else), so there are
+    /// no weight reads at all — epsilon rides [`Push::param1_bits`] like the other
+    /// norms'. The batch-norm halves of those same `IBNorm`s are folded into their
+    /// convolutions by the fold script instead, which is why this is the only new
+    /// pipeline MODNet needs.
+    InstanceNorm,
     /// Root-mean-square normalisation over the channel axis, with a per-channel gain.
     ///
     /// [`Kind::LayerNorm`] without the mean subtraction and without beta:

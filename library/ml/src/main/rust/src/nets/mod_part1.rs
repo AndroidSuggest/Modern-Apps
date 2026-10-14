@@ -302,12 +302,14 @@ impl Kind {
             }
             // Purely elementwise or arena-only. `attn_scores`, `softmax`, `attn_apply` and
             // `rotary` all take their second operand from the arena, and the cached attention
-            // pair take theirs from a cache in the arena too.
+            // pair take theirs from a cache in the arena too. Instance norm joins them:
+            // its scale and bias are constant 1 and 0, so it reads no weights at all.
             Kind::MaxPool
             | Kind::AvgPool
             | Kind::Resize
             | Kind::ResizeNearest
             | Kind::GlobalAvgPool
+            | Kind::InstanceNorm
             | Kind::Add
             | Kind::MulBroadcast
             | Kind::AddBroadcast
@@ -440,6 +442,7 @@ impl Kind {
             | Kind::ResizeNearest
             | Kind::GlobalAvgPool
             | Kind::LayerNorm
+            | Kind::InstanceNorm
             | Kind::Softmax
             | Kind::SoftmaxCausal
             | Kind::SoftmaxPrefix

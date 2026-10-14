@@ -244,6 +244,19 @@ impl<'a> Builder<'a> {
         self.push_layer_norm(input, gamma, beta, epsilon)
     }
 
+    /// Instance normalisation over the spatial axes, with no affine.
+    ///
+    /// `(x - mean(ch)) / sqrt(var(ch) + epsilon)` per channel. What MODNet's
+    /// `IBNorm` second halves are (`InstanceNorm2d(affine=False)`); the fold
+    /// script guarantees scale 1 / bias 0, so this takes no weights. See
+    /// [`Kind::InstanceNorm`].
+    pub fn instance_norm(&mut self, input: Id, epsilon: f32) -> Id {
+        let shape = self.shape_of(input);
+        let out = self.tensor(shape);
+        self.nodes.push(Node::InstanceNorm { input, out, epsilon });
+        out
+    }
+
     /// Root-mean-square normalisation over the channel axis, with a per-channel gain.
     ///
     /// [`layer_norm`](Self::layer_norm) without the mean subtraction and without beta, so

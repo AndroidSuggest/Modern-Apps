@@ -237,6 +237,11 @@ GRAPHS = {
     # differ (Q2_K verbatim vs int8 requantised), so the Rust forward pass reads either
     # file. A separate id would fork the runtime for no reason; the digest tells them apart.
     "madlad400-q2k": 25,
+    # MODNet photographic-portrait matting (MobileNetV2 backbone), for `:camera`'s
+    # still-capture portrait matte. Converted via `modnet_fold.py`, not this script
+    # directly: the export's Slice-fed batch norms and SE MatMuls are folded first.
+    # Next free id after MADLAD's 25, with 7..10 and 15 staying retired.
+    "modnet": 27,
 }
 
 # Graphs read from a GGUF file rather than safetensors/ONNX/TFLite. The Q2_K port reads
@@ -306,6 +311,9 @@ EXPECTED_DIGEST = {
     # agree); only the payloads differ (Q2_K verbatim vs int8 requantised), hence a
     # separate digest on the same graph id. See `collect_madlad_q2k`.
     "madlad400-q2k": "f17cbb4fb9f44eb8a4d94d93f5a00e7ec868d11628a12ea1b2078fbc700124b7",
+    # MODNet photographic portrait matting, folded by `modnet_fold.py`. Pinned
+    # after `nets::modnet` was checked against this table layer for layer.
+    "modnet": "f6ad3e1cdcf38679f89ed15891576a46a2b8c9d3cc110fbd26b746df4194da2a",
 }
 
 # Graphs that are one **module** of a larger export, keyed by the node-name prefix that
@@ -352,6 +360,14 @@ GEOMETRY = {
         "outputs": ["516"],
         "shape": [3, 112, 112],
     },
+    # MODNet photographic portrait matting. Dynamic HW like scrfd: the export is
+    # dynamic-batch/dynamic-shape and the branch Resizes are scale-factor based,
+    # so the fixed 512x512 run resolves structurally. Transcribed at SIZE=512.
+    "modnet": {
+        "input": "input",
+        "outputs": ["output"],
+        "shape": [3, None, None],
+    },
 }
 
 # Op-type counts, as a coarse first check that the graph is the one we lowered by
@@ -375,6 +391,19 @@ EXPECTED_OPS = {
     "mobilefacenet": {
         "Conv": 49, "PRelu": 34, "Add": 12, "BatchNormalization": 1, "Flatten": 1,
         "Gemm": 1,
+    },
+    # MODNet photographic portrait matting, AFTER `modnet_fold.py`: the 16
+    # IBNorm batch norms are folded into their Convs and the 2 SE MatMuls are
+    # rewritten as 1x1 Convs, so this counts the folded graph (Conv 69+2, no
+    # BatchNormalization, no MatMul). The 16 InstanceNormalizations and 35
+    # Clip(0,6)/17 Relu/2 Sigmoid are structural, transcribed in
+    # `nets::modnet` rather than emitted.
+    "modnet": {
+        "Conv": 71, "Add": 10, "Mul": 1, "Concat": 24,
+        "InstanceNormalization": 16, "GlobalAveragePool": 1,
+        "Relu": 17, "Clip": 35, "Sigmoid": 2,
+        "Resize": 9, "Slice": 32, "Shape": 3, "Gather": 2, "Unsqueeze": 4,
+        "Reshape": 2, "Expand": 1, "Constant": 241,
     },
     # Two towers in one graph. `MatMul` 107 is the 80 weighted projections plus the 26 attention
     # products and the one `logit_scale` product; `Erf` 13 is the 13 layers' GELU; `Softmax` 13 is

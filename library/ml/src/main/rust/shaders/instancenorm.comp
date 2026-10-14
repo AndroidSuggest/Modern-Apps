@@ -1,0 +1,58 @@
+#version 450
+//! Instance normalisation over the **spatial** axes, with no affine.
+//!
+//! Sixteen uses, all MODNet's `IBNorm` second halves
+//! (`InstanceNorm2d(affine=False)` over one channel-split half).
+//!
+//! # One invocation per channel, reducing over its plane
+//!
+//! This runtime stores a tensor `[C, H, W]` with the width innermost, so one
+//! channel's `H x W` plane is contiguous: `plane` loads back to back. That is
+//! the transpose of `layernorm.comp`, whose reduction strides across channels
+//! — and the reason this is a separate pipeline rather than a flag on it.
+//!
+//! # Two passes, not Welford
+//!
+//! Mean then variance, reading the plane twice. The largest plane here is
+//! 128x128 (the 16-channel halves at full resolution); both passes sit in
+//! cache, and a single-pass algorithm would save bandwidth that is not being
+//! spent.
+//!
+//! Accumulation is `float` like everywhere else here. There is no gamma/beta:
+//! the export's scale and bias are constant 1 and 0 (verified by
+//! `scripts/ml/modnet_fold.py`), so `epsilon` is the only parameter and it
+//! arrives in the push block.
+
+#include "common.glsl"
+
+void main() {
+    uint channel = global_index();
+    if (channel >= p.count) {
+        return;
+    }
+    // `count` is `in_c`, so `channel` walks the channels and the plane extent
+    // is that channel's contiguous run.
+    uint plane = p.in_h * p.in_w;
+    uint base = channel * plane;
+    float epsilon = uintBitsToFloat(p.param1_bits);
+
+    float total = 0.0;
+    for (uint i = 0u; i < plane; i++) {
+        total += float(arena[p.in0 + base + i]);
+    }
+    float mean = total / float(plane);
+
+    float variance = 0.0;
+    for (uint i = 0u; i < plane; i++) {
+        float centred = float(arena[p.in0 + base + i]) - mean;
+        variance += centred * centred;
+    }
+    // Biased variance, dividing by N rather than N-1, which is what every framework's
+    // instance norm does at inference.
+    float inverse = 1.0 / sqrt(variance / float(plane) + epsilon);
+
+    for (uint i = 0u; i < plane; i++) {
+        float centred = float(arena[p.in0 + base + i]) - mean;
+        arena[p.out_at + base + i] = float16_t(centred * inverse);
+    }
+}

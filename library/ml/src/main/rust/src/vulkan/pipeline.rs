@@ -41,6 +41,8 @@ const ADD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/add.comp.spv"));
 const MUL_BCAST: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mul_bcast.comp.spv"));
 const AFFINE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/affine.comp.spv"));
 const LAYERNORM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/layernorm.comp.spv"));
+const INSTANCENORM: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/instancenorm.comp.spv"));
 const RMSNORM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rmsnorm.comp.spv"));
 const ATTN_SCORES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/attn_scores.comp.spv"));
 const SOFTMAX: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/softmax.comp.spv"));
@@ -88,7 +90,7 @@ const ARGMAX: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/argmax.comp.spv"
 /// Every shader, in the order `Shaders::create` destructures them (the Q2_K pair,
 /// `QUANTIZE`, and the `compute_pipeline` / `shader_module` helpers live in
 /// `pipeline_extra.rs` for length).
-pub(crate) const SPIRV: [&[u8]; 45] = [
+pub(crate) const SPIRV: [&[u8]; 46] = [
     CONV,
     CONV_TRANSPOSE,
     MAXPOOL,
@@ -100,6 +102,7 @@ pub(crate) const SPIRV: [&[u8]; 45] = [
     MUL_BCAST,
     AFFINE,
     LAYERNORM,
+    INSTANCENORM,
     ATTN_SCORES,
     SOFTMAX,
     ATTN_APPLY,
@@ -179,6 +182,7 @@ pub struct Shaders {
     pub(crate) mul_bcast: vk::Pipeline,
     pub(crate) affine: vk::Pipeline,
     pub(crate) layernorm: vk::Pipeline,
+    pub(crate) instancenorm: vk::Pipeline,
     pub(crate) attn_scores: vk::Pipeline,
     pub(crate) softmax: vk::Pipeline,
     pub(crate) attn_apply: vk::Pipeline,

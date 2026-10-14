@@ -88,6 +88,7 @@ pub const PPOCR_REC: Normalise =
 const _: () = assert!(PPOCR_DET.bgr && PPOCR_REC.bgr);
 const _: () = assert!(!IMAGENET.bgr && !RESCALE_ONLY.bgr);
 const _: () = assert!(!SCRFD.bgr && !FACE_EMBED.bgr);
+const _: () = assert!(!MODNET.bgr);
 
 /// `(value - 127.5) / 128` on the `0..255` scale, which is what SCRFD wants.
 ///
@@ -107,6 +108,16 @@ pub const SCRFD: Normalise = Normalise {
 /// `(value - 127.5) / 127.5` on the `0..255` scale, which is what MobileFaceNet wants.
 /// See [`SCRFD`] for why these are two constants and not one.
 pub const FACE_EMBED: Normalise =
+    Normalise { mean: [0.5, 0.5, 0.5], std: [0.5, 0.5, 0.5], bgr: false };
+
+/// `(value / 255 - 0.5) / 0.5` on RGB channels, which is what MODNet wants.
+///
+/// Numerically the same affine as [`FACE_EMBED`], and a separate constant
+/// because it is not the same net: the demo preprocess is
+/// `ToTensor()` then `Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))` over RGB,
+/// and a shared constant would silently couple the two nets' preprocessing.
+/// See [`SCRFD`] for why near-identical constants stay separate.
+pub const MODNET: Normalise =
     Normalise { mean: [0.5, 0.5, 0.5], std: [0.5, 0.5, 0.5], bgr: false };
 
 /// How an image was fitted into the detector's input, and what it takes to undo it.

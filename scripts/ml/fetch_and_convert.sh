@@ -4,6 +4,7 @@
 # they are converted from.
 #
 #   camera/src/main/assets/selfie_segmentation.maml   MediaPipe Selfie Segmentation
+#   camera/src/main/assets/modnet.maml                 MODNet photographic portrait matting
 #   photos/src/main/assets/u2netp.maml                U^2-Net portable (saliency)
 #   photos/src/main/assets/scrfd_500m.maml            SCRFD 500M (face detection)
 #   photos/src/main/assets/w600k_mbf.maml             MobileFaceNet (face embedding)
@@ -48,8 +49,14 @@ set -euo pipefail
 # Pinned to a commit rather than to `main`: the file SHA-256 below would catch a
 # silent upstream change anyway, but a pinned revision means --update tells you the
 # upstream *revision* that moved, not just that some bytes differ.
+#
+# MODNet is the exception: no pinned upstream commit exists for the mirror file,
+# so its row records the mirror URL and the SHA-256 of the copy the `.maml` was
+# built from (see camera/src/main/assets/README.md). A moved mirror fails the
+# hash check the same way.
 MODELS=(
   "camera/src/main/assets/selfie_segmentation.maml selfie 3241ac4ad8aa35bdaf33946776db29f7c283a413aa0b0dacb9483594b4531aad https://huggingface.co/onnx-community/mediapipe_selfie_segmentation/resolve/be49485c8e027524be38591817fc5cd31bd9d00e/onnx/model.onnx"
+  "camera/src/main/assets/modnet.maml                 modnet 07c308cf0fc7e6e8b2065a12ed7fc07e1de8feb37dc7839d7b7f15dd66584df9 https://huggingface.co/DavG25/modnet-pretrained-models/resolve/main/models/modnet_photographic_portrait_matting.onnx modnet_fold.py"
   "photos/src/main/assets/u2netp.maml             u2netp 309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8 https://huggingface.co/BritishWerewolf/U-2-Netp/resolve/7112208dbac3a3642496c8d54e2f0f9bb3dc1dc8/onnx/model.onnx"
   "photos/src/main/assets/scrfd_500m.maml         scrfd  5e4447f50245bbd7966bd6c0fa52938c61474a04ec7def48753668a9d8b4ea3a https://huggingface.co/immich-app/buffalo_s/resolve/0ff1751885575e62e084dff70549ce24a11fa5dc/detection/model.onnx"
   "photos/src/main/assets/w600k_mbf.maml          mobilefacenet 9cc6e4a75f0e2bf0b1aed94578f144d15175f357bdc05e815e5c4a02b319eb4f https://huggingface.co/immich-app/buffalo_s/resolve/0ff1751885575e62e084dff70549ce24a11fa5dc/recognition/model.onnx"

@@ -59,6 +59,8 @@ mod act {
     pub const CLIP01: u32 = 5;
     /// `x * sigmoid(x)`.
     pub const SWISH: u32 = 6;
+    /// `clamp(x, 0, 6)`, MobileNetV2's ReLU6.
+    pub const RELU6: u32 = 7;
     /// The exact GELU. See `super::super::Act::Gelu`.
     pub const GELU: u32 = 8;
 }
@@ -81,6 +83,7 @@ fn activate(x: f32, kind: u32, slope: f32) -> f32 {
         }
         act::CLIP01 => x.clamp(0.0, 1.0),
         act::SWISH => x / (1.0 + (-x).exp()),
+        act::RELU6 => x.clamp(0.0, 6.0),
         // The exact GELU, not the tanh approximation: [`super::erf`] is the same A&S 7.1.26
         // series the shader uses, so the two agree well inside fp16.
         act::GELU => 0.5 * x * (1.0 + super::erf(x * std::f32::consts::FRAC_1_SQRT_2)),
@@ -165,12 +168,13 @@ pub struct Reference {
 
 include!("reference_part1.rs");
 include!("reference_part2.rs");
+include!("reference_part11.rs");
 include!("reference_part3.rs");
 include!("reference_part4.rs");
 #[cfg(test)]
 mod tests {
     use super::super::{
-        embed_lanes, maia, mobilefacenet, ppocr_det, ppocr_rec, scrfd, selfie, supertonic_duration, supertonic_sampler,
+        embed_lanes, maia, mobilefacenet, modnet, ppocr_det, ppocr_rec, scrfd, selfie, supertonic_duration, supertonic_sampler,
         supertonic_text, supertonic_vocoder, tinyclip, u2netp, whisper, Act, Builder, EMBED_LANE,
     };
     use super::*;

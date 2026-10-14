@@ -15,8 +15,8 @@ android {
         applicationId = "com.vayunmathur.camera"
     }
     androidResources {
-        // selfie_segmentation.maml is read straight out of the APK by SelfieSegmenter, so
-        // leave it uncompressed: fp16 weights barely deflate, and a compressed asset would
+        // *.maml are read straight out of the APK by the segmenters, so
+        // leave them uncompressed: fp16 weights barely deflate, and a compressed asset would
         // have to be inflated into a heap buffer before it could be uploaded.
         noCompress += "maml"
     }
@@ -43,8 +43,10 @@ dependencies {
     implementation(libs.androidx.camera.extensions)
     implementation(libs.androidx.exifinterface)
     implementation(libs.zxing.core)
-    // On-device portrait segmentation. MediaPipe Selfie Segmentation (Apache-2.0) on our
-    // own Vulkan compute runtime; see camera/src/main/assets/README.md.
+    // On-device portrait segmentation and matting. MediaPipe Selfie Segmentation
+    // (Apache-2.0) for the preview plus MODNet photographic-portrait matting
+    // (Apache-2.0) for still capture, both on our own Vulkan compute runtime;
+    // see camera/src/main/assets/README.md.
     //
     // ncnn is gone from the whole tree, not just this app: `:translate` was the last consumer and
     // it now runs SMaLL-100 on `:library:ml` too, so `libncnn_android.so` is in no APK here.

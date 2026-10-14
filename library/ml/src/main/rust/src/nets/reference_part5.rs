@@ -379,6 +379,7 @@
         assert_eq!(Act::PRelu(0).code(), act::PRELU);
         assert_eq!(Act::Clip01.code(), act::CLIP01);
         assert_eq!(Act::Swish.code(), act::SWISH);
+        assert_eq!(Act::Relu6.code(), act::RELU6);
         assert_eq!(Act::Gelu.code(), act::GELU);
     }
 

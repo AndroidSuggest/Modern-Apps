@@ -203,6 +203,7 @@ uint kv_stride(uint head_dim) {
 #define ACT_PRELU 4u
 #define ACT_CLIP01 5u
 #define ACT_SWISH 6u
+#define ACT_RELU6 7u
 #define ACT_GELU 8u
 
 // This invocation's output element, across a 2D grid of workgroups.
@@ -323,6 +324,11 @@ float activate(float x, uint kind, uint channel) {
         // `x * sigmoid(x)`. Not HardSwish's piecewise approximation — the recogniser uses
         // both, and substituting one for the other is a plausible-looking accuracy loss.
         return x / (1.0 + exp(-x));
+    }
+    if (kind == ACT_RELU6) {
+        // ONNX `Clip` at `(0, 6)`: MobileNetV2's ReLU6, which every backbone
+        // convolution of MODNet carries. See `nets::Act::Relu6`.
+        return clamp(x, 0.0, 6.0);
     }
     if (kind == ACT_GELU) {
         // The exact GELU, `0.5 x (1 + erf(x / sqrt(2)))`, which is what Supertonic's four nets

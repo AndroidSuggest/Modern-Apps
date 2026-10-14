@@ -22,7 +22,7 @@ import android.os.Build
 import com.vayunmathur.library.log.Log
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
-import com.vayunmathur.library.ml.SelfieSegmenter
+import com.vayunmathur.library.ml.ModnetSegmenter
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -222,7 +222,7 @@ private const val CHANNEL_MAX = 255f
 private const val CHANNEL_MAX_INT = 255
 private const val FULL_CIRCLE_DEGREES = 360f
 
-// Segmentation input: the model runs at 256x256 internally, so there is nothing to gain from
+// Segmentation input: MODNet runs at 512x512 internally, so there is nothing to gain from
 // feeding it the full-resolution still. Matches the preview analyzer's cap. The downscale and
 // the normalise both happen natively now (library/ml/src/main/rust/src/preprocess.rs), so this
 // only bounds how much gets copied across JNI.
@@ -237,14 +237,19 @@ private const val BLUR_LONG_SIDE = 1440
 /**
  * Bakes the portrait bokeh the viewfinder previews into a captured still.
  *
- * Owns its own [SelfieSegmenter] (created on first use) because the preview's instance lives in
+ * Owns its own [ModnetSegmenter] (created on first use) because the preview's
+ * [SelfieSegmenter][com.vayunmathur.library.ml.SelfieSegmenter] lives in
  * [BokehAnalyzer], which is disposed with the composable and runs on a different thread. The two
  * share one `VkDevice` regardless — `:library:ml` reference-counts it — so this costs buffers and
  * pipelines, not a second driver context.
+ *
+ * MODNet rather than Selfie: the still path runs once per shutter, so it can afford the
+ * 512×512 alpha matte with strand-level hair detail; the preview keeps the cheaper
+ * 256×256 Selfie pass at ~15 fps.
  */
 class StillBokehRenderer(private val context: Context) : AutoCloseable {
 
-    private var segmenter: SelfieSegmenter? = null
+    private var segmenter: ModnetSegmenter? = null
     @Volatile private var closed = false
 
     /**
@@ -370,7 +375,7 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
      * the caller keeps the sharp frame.
      */
     private fun buildMask(src: Bitmap, rotationDegrees: Int): Bitmap? {
-        val seg = segmenter ?: SelfieSegmenter(context).also { segmenter = it }
+        val seg = segmenter ?: ModnetSegmenter(context).also { segmenter = it }
 
         // Both helpers hand back their input when there is nothing to do, so only recycle the
         // intermediates we actually allocated – never the caller's bitmap.

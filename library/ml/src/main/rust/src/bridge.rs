@@ -36,8 +36,8 @@ use jni::sys::{jfloatArray, jint, jintArray, jlong, jstring};
 use jni::JNIEnv;
 
 use crate::nets::{
-    gemma4, gemma4_audio, gemma4_vision, madlad, madlad_part1, maia, mobilefacenet, nllb, nnfp,
-    ppocr_det, ppocr_rec, scrfd, selfie, supertonic_duration, supertonic_sampler,
+    gemma4, gemma4_audio, gemma4_vision, madlad, madlad_part1, maia, mobilefacenet, modnet, nllb,
+    nnfp, ppocr_det, ppocr_rec, scrfd, selfie, supertonic_duration, supertonic_sampler,
     supertonic_text, supertonic_vocoder, tinyclip, u2netp, whisper, Plan,
 };
 use crate::post::ctc::Dictionary;
@@ -50,7 +50,7 @@ use crate::post::supertonic;
 use crate::post::translate;
 use crate::post::whisper as whisper_post;
 use crate::preprocess::{
-    Letterbox, FACE_EMBED, IMAGENET, PPOCR_DET, PPOCR_REC, RESCALE_ONLY, SCRFD,
+    Letterbox, FACE_EMBED, IMAGENET, MODNET, PPOCR_DET, PPOCR_REC, RESCALE_ONLY, SCRFD,
 };
 use crate::vulkan::context;
 use crate::vulkan::reshape::Reshaped;
@@ -124,6 +124,21 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createMobileface
     open(&mut env, weights, graph::MOBILEFACENET, "mobilefacenet")
 }
 
+/// `ModnetSegmenter`'s constructor: MODNet photographic-portrait matting at a
+/// fixed 512x512. Returns 0 on failure.
+///
+/// # Safety
+///
+/// Called only by the JVM, with a valid `env` and a `weights` array it owns.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createModnet<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    weights: JByteArray<'l>,
+) -> jlong {
+    open(&mut env, weights, graph::MODNET, "modnet")
+}
+
 fn open<'l>(env: &mut JNIEnv<'l>, weights: JByteArray<'l>, graph_id: u32, name: &str) -> jlong {
     match build(env, weights, graph_id) {
         Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
@@ -159,6 +174,7 @@ fn build<'l>(
             SCRFD,
         ),
         graph::MOBILEFACENET => (mobilefacenet::build(&parsed)?, FACE_EMBED),
+        graph::MODNET => (modnet::build(&parsed)?, MODNET),
         other => return Err(format!("no forward pass for graph {other}")),
     };
     Ok(Handle {

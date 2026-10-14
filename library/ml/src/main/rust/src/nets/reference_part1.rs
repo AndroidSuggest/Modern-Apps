@@ -58,6 +58,7 @@ impl Reference {
                     Kind::Mul => self.mul(push),
                     Kind::Affine => self.affine(push),
                     Kind::LayerNorm => self.layer_norm(push),
+                    Kind::InstanceNorm => self.instance_norm(push),
                     Kind::RmsNorm => self.rms_norm(push),
                     Kind::AttnScores => self.attn_scores(push),
                     Kind::Softmax => self.softmax(push, SoftmaxMode::Full),
@@ -462,36 +463,6 @@ impl Reference {
                     let folded =
                         activate(acc, p.act, slope) + self.fused_res(p, index)? + shift;
                     self.store(p.out, index, self.fused_quant(p, folded)?)?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Max pooling, floored and unpadded — which is what all 33 uses are.
-    fn max_pool(&mut self, p: &Push) -> Result<(), String> {
-        for oc in 0..p.out_c {
-            let plane = oc * p.in_h * p.in_w;
-            for oy in 0..p.out_h {
-                for ox in 0..p.out_w {
-                    // The most negative fp16 rather than -inf, as `maxpool.comp` uses:
-                    // every window here is fully inside the input, so it is never the
-                    // answer.
-                    let mut best = -65504.0f32;
-                    for ky in 0..p.kh {
-                        let iy = oy * p.stride_h + ky;
-                        if iy >= p.in_h {
-                            continue;
-                        }
-                        for kx in 0..p.kw {
-                            let ix = ox * p.stride_w + kx;
-                            if ix >= p.in_w {
-                                continue;
-                            }
-                            best = best.max(self.load(p.in0, plane + iy * p.in_w + ix)?);
-                        }
-                    }
-                    self.store(p.out, nchw(p, oc, oy, ox), best)?;
                 }
             }
         }

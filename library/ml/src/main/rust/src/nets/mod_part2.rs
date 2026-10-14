@@ -240,6 +240,11 @@ pub(crate) enum Node {
         beta: u32,
         epsilon: f32,
     },
+    InstanceNorm {
+        input: Id,
+        out: Id,
+        epsilon: f32,
+    },
     RmsNorm {
         input: Id,
         out: Id,

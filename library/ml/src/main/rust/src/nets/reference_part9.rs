@@ -139,6 +139,17 @@
             println!("whisper encoder: wrote {} values", hidden.len());
             return;
         }
+        if graph == "modnet" {
+            let path = std::env::var("PARITY_MAML").expect("PARITY_MAML");
+            let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+            let weights = crate::weights::Weights::parse(&bytes, crate::weights::graph::MODNET)
+                .expect("the modnet asset parses");
+            let plan = modnet::build(&weights).expect("modnet builds");
+            let matte = run(&plan, weights.data(), &input).expect("modnet runs");
+            write(&dir.join("reference.f32"), &matte);
+            println!("modnet at 512: wrote {} values", matte.len());
+            return;
+        }
         if graph == "maia" {
             let path = std::env::var("PARITY_MAML").expect("PARITY_MAML");
             let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
@@ -413,4 +424,20 @@
             Shape::new(1, u2netp::SIZE, u2netp::SIZE)
         );
         assert_usable_mask("u2netp", &plan, weights.data());
+    }
+
+    #[test]
+    #[ignore = "runs the full shipped nets; minutes in a debug build"]
+    fn the_shipped_modnet_net_produces_a_usable_mask() {
+        let Some(bytes) = asset("camera/src/main/assets/modnet.maml") else {
+            return;
+        };
+        let weights = crate::weights::Weights::parse(&bytes, crate::weights::graph::MODNET)
+            .expect("the shipped modnet asset parses");
+        let plan = modnet::build(&weights).expect("modnet builds");
+        assert_eq!(
+            plan.output().expect("one output").shape,
+            Shape::new(1, modnet::SIZE, modnet::SIZE)
+        );
+        assert_usable_mask("modnet", &plan, weights.data());
     }

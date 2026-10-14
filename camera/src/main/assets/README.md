@@ -30,3 +30,31 @@ and the hardcoded forward pass in
 This file is inside `assets/`, so it is packaged into the APK. That is deliberate
 rather than overlooked: it is ~1 KB, and Apache-2.0 §4 asks that attribution
 notices travel with the distributed work, which here is the weights next to it.
+
+## `modnet.maml`
+
+Apache-2.0, from the official MODNet repository https://github.com/ZHKKKe/MODNet
+(MobileNetV2 backbone, `modnet_photographic_portrait_matting` weights), via the
+mirror https://huggingface.co/DavG25/modnet-pretrained-models
+(`models/modnet_photographic_portrait_matting.onnx`, 25,888,640 B fp32,
+SHA-256 `07c308cf…84df9`) — MODNet portrait matting, the model purpose-built
+for trimap-free portrait alpha with hair detail.
+
+Not the ONNX itself: `scripts/ml/modnet_fold.py` folds the export's Slice-fed
+batch norms into their convolutions and rewrites the SE block's MatMuls as 1x1
+convolutions, then converts to the fp16 `.maml` weights container that
+`:library:ml` reads. The source ONNX SHA-256 is in the `.maml` header, so
+a shipped asset traces back to this line without needing the ONNX on disk.
+
+Run at 512×512 RGB, `(value / 255 - 0.5) / 0.5` (the demo's
+`ToTensor` + `Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))`), output a single
+512×512 alpha channel through a sigmoid. Consumed by `ModnetSegmenter` from
+`PortraitBokeh.StillBokehRenderer` — still capture only; the 15 fps preview
+keeps `selfie_segmentation.maml` above.
+
+Update: re-download the mirror file, verify the SHA-256, then
+`./scripts/ml/modnet_fold.py model.onnx --graph modnet -o
+camera/src/main/assets/modnet.maml`, which reports a moved digest to re-pin.
+If the ordered layer table changed too, the converter says so
+and the hardcoded forward pass in
+`library/ml/src/main/rust/src/nets/modnet.rs` has to be updated with it.

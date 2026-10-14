@@ -79,6 +79,12 @@ PROBE = {
     # nothing useful for this graph: there is no fp32 ONNX for whisper. What a low correlation would
     # mean is a structural error, which is what this is for.
     "whisper": None,
+    # MODNet photographic portrait matting: the graph's own output, the 512x512
+    # alpha matte. Run with `--width 512` — the export is dynamic-shape and the
+    # Rust is lowered at SIZE=512, so any other width compares different grids.
+    # Pass the folded `.maml` via `--maml` (a runtime download, not a bundled
+    # asset at parity time).
+    "modnet": None,
 }
 
 # Graphs whose input is a latent rather than an image, and how wide it is. One that is a

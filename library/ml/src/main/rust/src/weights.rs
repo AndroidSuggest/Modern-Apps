@@ -251,6 +251,14 @@ pub mod graph {
     /// with the chunks inside EMBED that upload was 3.6 GB (TEXT 1.1 GB +
     /// EMBED 3.6 GB = OOM-reboot on a Pixel 8). The head file is ~402 MB.
     pub const GEMMA4_HEAD: u32 = 26;
+
+    /// MODNet photographic-portrait matting, 512x512 in, 512x512 alpha out. See
+    /// [`crate::nets::modnet`].
+    ///
+    /// The next free id after Gemma 4's head at 26, with 7..10 and 15 staying retired.
+    /// `maml_convert.py` has `GRAPHS["modnet"]` at the same number; the file is
+    /// produced by `scripts/ml/modnet_fold.py` rather than `maml_convert.py` directly.
+    pub const MODNET: u32 = 27;
 }
 
 /// One tensor's entry in the table: where it is and what shape it is.

@@ -9,6 +9,7 @@ impl Node {
             | Node::Binary { out, .. }
             | Node::Affine { out, .. }
             | Node::LayerNorm { out, .. }
+            | Node::InstanceNorm { out, .. }
             | Node::RmsNorm { out, .. }
             | Node::AttnScores { out, .. }
             | Node::AttnScoresCached { out, .. }
@@ -58,6 +59,7 @@ impl Node {
             | Node::Resize { input, .. }
             | Node::Affine { input, .. }
             | Node::LayerNorm { input, .. }
+            | Node::InstanceNorm { input, .. }
             | Node::Softmax { input, .. }
             | Node::Softcap { input, .. }
             | Node::Argmax { input, .. }

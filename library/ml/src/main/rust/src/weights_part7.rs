@@ -83,6 +83,7 @@ impl Graph {
                 Act::PRelu(_) => Err("emitter: a PReLU, which phase 1 does not serialise".into()),
                 Act::Clip01 => Ok(5),
                 Act::Swish => Ok(6),
+                Act::Relu6 => Ok(7),
                 Act::Gelu => Ok(8),
             }
         };

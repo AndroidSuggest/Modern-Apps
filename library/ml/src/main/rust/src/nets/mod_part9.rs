@@ -383,6 +383,28 @@ impl<'a> Builder<'a> {
                     invocations: positions,
                 });
             }
+            Node::InstanceNorm { input, out, epsilon } => {
+                let so = shape(*out);
+                // One invocation per channel, each reducing over its own plane, so
+                // the dispatch is the channel count rather than the element count.
+                ops.push(Op::Dispatch {
+                    kind: Kind::InstanceNorm,
+                    push: Push {
+                        in0: at(*input)?,
+                        out: at(*out)?,
+                        in_c: so.c,
+                        in_h: so.h,
+                        in_w: so.w,
+                        out_c: so.c,
+                        out_h: so.h,
+                        out_w: so.w,
+                        param1_bits: epsilon.to_bits(),
+                        count: so.c,
+                        ..Push::default()
+                    },
+                    invocations: so.c,
+                });
+            }
             Node::RmsNorm { input, out, gamma, epsilon, groups, res, quant_scale } => {
                 let so = shape(*out);
                 // One invocation per group per position, reducing over that group's channels.
