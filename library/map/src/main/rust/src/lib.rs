@@ -2,7 +2,7 @@
 //!
 //! Replaces the CARTO raster basemap in findfamily, photos, weather, taxi and
 //! fooddelivery (#615) with our own renderer over the planet-scale v7
-//! single-file `planet2.mamaps` archive at `data.vayunmathur.com/planet2.mamaps`
+//! single-file `planet.mamaps` archive at `data.vayunmathur.com/planet.mamaps`
 //! (12 layers, 128-byte header).
 //!
 //! # Layout
