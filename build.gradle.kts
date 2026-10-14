@@ -6,6 +6,9 @@ plugins {
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.protobuf) apply false
+    // Dependency-update report: ./gradlew dependencyUpdates lists what is outdated
+    // across the version catalog. Report-only; it never changes a version by itself.
+    alias(libs.plugins.versions)
 }
 
 // Repairs corrupted translations contributed via Weblate where the <xliff:g> markup

@@ -140,6 +140,8 @@ stripe = "23.18.0"
 
 # AppStore – Play install via Aurora
 gplayapi = "3.6.4"
+# Dependency-update reporting (./gradlew dependencyUpdates).
+versionsPlugin = "0.66.0"
 
 [libraries]
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
@@ -354,3 +356,5 @@ protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
 # Static code analysis for Kotlin (applied in common-conventions-app/library;
 # 2.x plugin id is dev.detekt).
 detekt = { id = "dev.detekt", version.ref = "detekt" }
+# Dependency-update report (applied in the root build file; ./gradlew dependencyUpdates).
+versions = { id = "com.github.ben-manes.versions", version.ref = "versionsPlugin" }
