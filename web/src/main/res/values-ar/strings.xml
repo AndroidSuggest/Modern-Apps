@@ -22,7 +22,7 @@
     <string name="javascript">JavaScript</string>
     <string name="required_by_most_sites">مطلوب من قِبل معظم المواقع</string>
     <string name="block_third_party_cookies">حظر ملفات تعريف الارتباط الجهات الخارجية</string>
-    <string name="may_break_logins">قد يؤدي إلى تعطيل عمليات تسجيل الدخول</string>
+    <string name="may_break_logins">قد يؤدي إلى تعطيل تسجيلات الدخول</string>
     <string name="desktop_mode">وضع سطح المكتب</string>
     <string name="request_desktop_site">طلب موقع سطح المكتب</string>
     <string name="ad_tracker_blocking">حظر متتبع الإعلانات</string>
@@ -53,7 +53,7 @@
     <string name="delete_bookmark">حذف الإشارة المرجعية؟</string>
     <string name="delete_folder_2">حذف المجلد؟</string>
     <string name="no_history_yet">لا سجل بعد</string>
-    <string name="clear_history">مسح السجل؟</string>
+    <string name="clear_history">هل تريد مسح السجل؟</string>
     <string name="this_will_permanently_delete_your_browsi">سيؤدي هذا إلى حذف سجل التصفح الخاص بك نهائيًا.</string>
     <string name="icon">الأيقونة: %1$s</string>
     <string name="theme">السمة: %1$s</string>
@@ -65,7 +65,7 @@
         <item quantity="many">%1$s علامة تبويب</item>
         <item quantity="other">%1$s علامة تبويب</item>
     </plurals>
-    <string name="sites_permission_grants">%1$s مواقع • %2$s منح إذن</string>
+    <string name="sites_permission_grants">%1$s مواقع • %2$s إذن ممنوح</string>
     <plurals name="files">
         <item quantity="zero">(%1$s) لا ملفات</item>
         <item quantity="one">%1$s ملف واحد</item>
@@ -84,7 +84,7 @@
     <string name="new_window">نافذة جديدة</string>
     <string name="new_incognito_window">نافذة التصفح الخفي جديدة</string>
     <string name="new_incognito_tab">علامة تبويب التصفح الخفي جديدة</string>
-    <string name="shields">دروع</string>
+    <string name="shields">الدروع</string>
     <string name="shields_down">الدروع متوقفة لهذا الموقع</string>
     <string name="shields_up">الدروع مفعلة</string>
     <string name="shields_for_host">دروع لـ %1$s</string>
@@ -95,7 +95,7 @@
     <string name="shields_level_aggressive">شديد</string>
     <string name="shields_level_aggressive_desc">أيضا يغير المنطقة الزمنية ويعطل WebRTC</string>
     <string name="shields_block_trackers">حظر الإعلانات والمتتبعات</string>
-    <string name="shields_block_trackers_desc">EasyList، EasyPrivacy و قوائم تصفية Brave</string>
+    <string name="shields_block_trackers_desc">قوائم تصفية EasyList, EasyPrivacy و Brave</string>
     <string name="shields_cosmetic">إخفاء العناصر النائبة للإعلان</string>
     <string name="shields_cosmetic_desc">يزيل بقايا الفجوات بقواعد إخفاء العناصر</string>
     <string name="shields_fingerprint">حظر بصمات الأصابع</string>
@@ -111,4 +111,32 @@
     <string name="copy_link">نسخ الرابط</string>
     <string name="open_in_new_tab">فتح في علامة تبويب جديدة</string>
     <string name="link_copied">تم نسخ الرابط</string>
+    <string name="toolbar_at_bottom">شريط الأدوات في الأسفل</string>
+    <string name="keeps_the_address_bar_within_thumb_reach">يُبقي شريط العنوان في متناول الإبهام</string>
+    <string name="blank_new_tab_tap_the_address_pill_to_se">علامة تبويب جديدة فارغة — اضغط على شريط العنوان للبحث. عنوان URL الكامل مرئي في الشريط. إعادة التحميل/المسح المباشر داخل بطاقة شريط البحث الموسعة.</string>
+    <plurals name="entries">
+        <item quantity="zero">لا إدخالات (%1$s)</item>
+        <item quantity="one">%1$s إدخال</item>
+        <item quantity="two">%1$s إدخالان</item>
+        <item quantity="few">%1$s إدخالات</item>
+        <item quantity="many">%1$s إدخالًا</item>
+        <item quantity="other">%1$s إدخال</item>
+    </plurals>
+    <string name="no_site_data_yet_cookies_localstorage_in">لا بيانات موقع بعد. تستمر ملفات تعريف الارتباط، التخزين المحلي، قاعدة البيانات المفهرسة والأذونات عبر عمليات التحميل في دليل ملف تعريف الـ WebView. يتم استبعاد علامات التبويب الخاصة.</string>
+    <string name="open_link">فتح الرابط</string>
+    <string name="go_forward">إلى الأمام</string>
+    <string name="cleartext_blocked_title">تم حظر الاتصال غير الآمن</string>
+    <string name="cleartext_blocked_message">تم طلب %1$s عبر HTTP عادي. الاتصالات غير المشفرة مسموحة فقط للأجهزة على شبكتك المحلية.</string>
+    <string name="local_network_title">السماح بالوصول للشبكة المحلية؟</string>
+    <string name="local_network_message">%1$s يبدو كأنه جهاز على شبكتك. يحتاج أندرويد لإذن الشبكة المحلية قبل أن هذه الصفحة تتمكن من التحميل.</string>
+    <string name="shortcuts_launch_pwaactivity_standalone">تقوم الاختصارات بتشغيل WebView مستقل لـ PwaActivity (معالجة الأذونات، التنزيلات و تمكين ملفات تعريف الارتباط الطرف الثالث). تؤدي الإزالة هنا لحذف إدخال قاعدة البيانات؛ يجب إزالة أيقونة المشغّل المثبتة عبر الضغط المطول إذا كانت مثبتة بالفعل.</string>
+    <string name="shields_fingerprint_desc">يقم بعشوائية قراءات canvas, WebGL, الصوت و الخط</string>
+    <plurals name="pwas">
+        <item quantity="zero">لا تطبيقات ويب تقدميّة (%1$s)</item>
+        <item quantity="one">%1$s تطبيق ويب تقدمي</item>
+        <item quantity="two">%1$s تطبيقا ويب تقدميّان</item>
+        <item quantity="few">%1$s تطبيقات ويب تقدمية</item>
+        <item quantity="many">%1$s تطبيق ويب تقدمي</item>
+        <item quantity="other">%1$s تطبيق ويب تقدمي</item>
+    </plurals>
 </resources>
