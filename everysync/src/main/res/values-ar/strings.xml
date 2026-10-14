@@ -1,3 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    </resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="settings_title">الإعدادات</string>
+    <string name="no_accounts">لا حسابات بعد. اضغط + لإضافة واحد.</string>
+    <string name="sync_now">زامن الآن</string>
+    <string name="syncing">جارٍ المزامنة…</string>
+    <string name="last_synced">آخر مزامنة: <xliff:g id="date" example="Today 10:30 AM">%1$s</xliff:g></string>
+    <string name="never_synced">لم تتم المزامنة مطلقًا</string>
+    <string name="add_account_title">إضافة حساب</string>
+    <string name="provider_via_health_connect">عبر Health Connect</string>
+    <string name="dav_base_url">عنوان URL خادم</string>
+    <string name="dav_username">اسم المستخدم / البريد الإلكتروني</string>
+    <string name="dav_password">كلمة المرور (خاصة بالتطبيق)</string>
+    <string name="login">تسجيل الدخول</string>
+    <string name="icloud_app_password_steps">يحتاج iCloud إلى كلمة مرور خاصة بتطبيق (ليس كلمة مرور مُعرِّف Apple خاصّتك):\n\n١. سجّل الدخول على account.apple.com\n٢. افتح تسجيل الدخول والأمان ← كلمات السر الخاصة بالتطبيقات\n٣. أنشئ واحدة وسمّها \"EverySync\"\n٤. أدخل البريد الإلكتروني لمعرّف Apple خاصّتك وكلمة المرور هذه أدناه</string>
+    <string name="icloud_create_password">إنشاء كلمة مرور خاصة بتطبيق</string>
+    <string name="apple_id_email">البريد الإلكتروني لمعرّف Apple</string>
+    <string name="app_specific_password">كلمة مرور خاصة بتطبيق</string>
+    <string name="sync_contacts">مزامنة جهات الاتصال</string>
+    <string name="sync_calendar">مزامنة التقويمات</string>
+    <string name="sync_health">مزامنة الصحة</string>
+    <string name="remove_account">إزالة الحساب</string>
+    <string name="global_interval">الفاصل الزمني للمزامنة (دقائق)</string>
+    <string name="wifi_only">المزامنة عبر Wi-Fi فقط</string>
+    <string name="need_permissions">يحتاج EverySync إلى الوصول لجهات الاتصال والتقويم لمزامنة حساباتك.</string>
+    <string name="everysync_privacy_policy">يقوم EverySync بمزامنة جهات الاتصال، التقويمات وبيانات الصحة بين حساباتك السحابية وهذا الجهاز. يتم تخزين البيانات فقط على هذا الجهاز والخوادم التي تقوم بتكوينها.</string>
+    <string name="accounts_title">EverySync</string>
+    <string name="dav_login_title">تسجيل الدخول لـ <xliff:g id="provider" example="iCloud">%1$s</xliff:g></string>
+</resources>
