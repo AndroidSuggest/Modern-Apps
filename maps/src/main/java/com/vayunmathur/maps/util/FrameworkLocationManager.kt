@@ -36,6 +36,13 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
     private var lastLocation: Location? = null
     /** What [acceptsFix] compares against. Kept beside [lastLocation] so the two never disagree. */
     private var lastFix: Fix? = null
+    /**
+     * In-progress stationary hold for the jitter gate. Null when no hold is
+     * active (moving, or no fix yet). Decoupled from [lastFix]: a held fix
+     * still proves GPS is alive (so provider freshness advances), but the
+     * puck does not move for it.
+     */
+    private var positionHold: PositionHold? = null
     private var currentHeading: Float? = null
     /**
      * Last compass heading actually emitted to the UI. The emit gate compares
@@ -66,13 +73,36 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
                 if (!acceptsFix(lastFix, incoming)) return
                 lastFix = incoming
                 lastLocation = location
+                val point = GeoPoint(location.longitude, location.latitude)
+                // Stationary-GPS jitter gate: fixes arriving inside their own
+                // accuracy circle move the puck by noise, not by travel. Hold
+                // the last emitted position until a fix clears the gate, so a
+                // phone on a desk stops redrawing at 1 Hz. `lastFix` still
+                // advances on held fixes, so provider freshness (the GPS-stale
+                // escape hatch) keeps working while the puck stays put.
+                val speedMps = if (location.hasSpeed()) location.speed else 0f
+                val activeHold = positionHold
+                if (activeHold != null) {
+                    val sample = PositionSample(point, incoming.accuracyM, incoming.elapsedRealtimeNanos)
+                    val kept = activeHold.coalesce(sample, speedMps)
+                    if (kept != null) {
+                        positionHold = kept
+                        return
+                    }
+                }
+                positionHold = PositionHold(
+                    drawn = point,
+                    average = point,
+                    accuracyM = incoming.accuracyM,
+                    sinceNanos = incoming.elapsedRealtimeNanos,
+                )
                 // If location has a GPS bearing, we prioritize it while moving
                 val heading = if (location.hasBearing()) location.bearing else currentHeading
                 // A GPS fix is authoritative: re-anchor the compass emit gate so
                 // the next sensor sample compares against what the UI just drew
                 // rather than a pre-fix heading.
                 if (location.hasBearing()) lastEmittedHeading = location.bearing
-                onUpdate?.invoke(GeoPoint(location.longitude, location.latitude), heading)
+                onUpdate?.invoke(point, heading)
             }
             @Deprecated("Overrides deprecated LocationListener.onStatusChanged")
             override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
@@ -108,7 +138,16 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
             )
             lastLocation = location
             val heading = if (location.hasBearing()) location.bearing else currentHeading
-            onUpdate?.invoke(GeoPoint(location.longitude, location.latitude), heading)
+            val point = GeoPoint(location.longitude, location.latitude)
+            // The cold-start seed always emits: there is no prior puck to hold.
+            // It still opens a hold so the second fix gates against the first.
+            positionHold = PositionHold(
+                drawn = point,
+                average = point,
+                accuracyM = lastFix!!.accuracyM,
+                sinceNanos = lastFix!!.elapsedRealtimeNanos,
+            )
+            onUpdate?.invoke(point, heading)
         }
 
         // 2. Setup Sensor Updates (Compass)
@@ -139,6 +178,7 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
         // for the same reason: the first compass sample must always emit.
         lastFix = null
         lastLocation = null
+        positionHold = null
         currentHeading = null
         lastEmittedHeading = null
     }
@@ -209,12 +249,15 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
             // the sensor fires at ~60 ms whether or not the phone turned, and
             // an ungated emit pushes userPosition/userBearing through the page
             // (and wakes the renderer) at sensor rate even on a desk. Location
-            // fixes bypass this — they always emit.
+            // fixes bypass this — they always emit, subject to the jitter gate.
+            // Emits the held position, not the raw last fix: a fix swallowed by
+            // the jitter gate must not leak out through the compass path.
             lastLocation?.let {
                 val moved = headingDelta(lastEmittedHeading, currentHeading ?: newHeading)
                 if (!it.hasBearing() && moved >= HEADING_EMIT_DEGREES) {
                     lastEmittedHeading = currentHeading
-                    onUpdate?.invoke(GeoPoint(it.longitude, it.latitude), currentHeading)
+                    val point = positionHold?.drawn ?: GeoPoint(it.longitude, it.latitude)
+                    onUpdate?.invoke(point, currentHeading)
                 }
             }
         }
@@ -341,3 +384,120 @@ private const val GPS_STALE_NANOS = 10_000_000_000L
  * similar quality would make the puck jitter for no gain.
  */
 private const val ACCURACY_MARGIN = 2f
+
+/**
+ * One position the UI actually drew, carrying the ingredients of the jitter
+ * gate ([PositionHold.coalesce]). Kept off the `android.location` type so the
+ * policy tests without a device, mirroring [Fix].
+ */
+internal data class PositionSample(
+    val point: GeoPoint,
+    /** Horizontal accuracy in metres, or `0` when the provider did not supply one. */
+    val accuracyM: Float,
+    /** Monotonic, so a clock correction mid-stand does not reset the gate. */
+    val elapsedRealtimeNanos: Long,
+)
+
+/**
+ * An in-progress stationary hold: the puck stays on [drawn] while fixes
+ * accumulate into [average]. Owned by `FrameworkLocationManager` (one per
+ * session); [coalesce] itself is pure over its arguments so it tests without
+ * a device.
+ */
+internal data class PositionHold(
+    /** What the UI is currently drawing — never moves while held. */
+    val drawn: GeoPoint,
+    /** Running average of the fixes held since the last emit. */
+    val average: GeoPoint,
+    /** Tightest accuracy seen this stretch — only ever shrinks (see below). */
+    val accuracyM: Float,
+    /** When the hold started (monotonic nanos). */
+    val sinceNanos: Long,
+) {
+    /**
+     * Whether [incoming] should move the puck off [drawn].
+     *
+     * Returns the hold to keep (emitting nothing) or `null` to emit [incoming]
+     * whole — no half-steps, which would read as drift. The rules, in order:
+     *
+     *  - **Moving.** At or above [MOVING_SPEED_MPS] the fix is travel, not
+     *    noise — always emit. ([speedMps] is `0` when the provider did not
+     *    supply one, which reads as stationary: with no speed there is no
+     *    evidence either way, and the conservative answer is to hold.)
+     *  - **Stationary timeout.** Past [STATIONARY_EMIT_NANOS] without moving,
+     *    emit so the puck tracks slow filter convergence instead of freezing
+     *    stale, and so a pathological hold (a provider that never reports
+     *    speed while the user actually walks) degrades to minute-cadence
+     *    stair-steps rather than a stuck puck. The caller starts a fresh hold
+     *    on emit, so one re-emit does not reopen the gate for the next
+     *    second's sample.
+     *  - **Accuracy gate.** Below [MIN_ACCURACY_M] there is no usable circle
+     *    to compare against — emit. `0`/negative accuracies land here, so a
+     *    provider that declines to state accuracy can never pin the puck.
+     *  - **Displacement.** Inside the gate radius of the running [average],
+     *    accumulate and hold; outside it, emit. Compared against the average
+     *    (not [drawn]) so zero-mean desk jitter converges instead of walking
+     *    the puck around; the radius is `max(accuracy, [MIN_DISPLACEMENT_M])`
+     *    so a 3 m-accuracy fix still needs real movement, capped at
+     *    [MAX_GATE_RADIUS_M] so a 500 m network circle cannot freeze the puck
+     *    for a whole indoor walk; shrink-only accuracy so a widening circle
+     *    (fix degrading in a tunnel or urban canyon, not the user moving)
+     *    never buys a bigger jitter budget.
+     */
+    fun coalesce(
+        incoming: PositionSample,
+        speedMps: Float = 0f,
+    ): PositionHold? {
+        if (speedMps >= MOVING_SPEED_MPS) return null
+        if (incoming.elapsedRealtimeNanos - sinceNanos >= STATIONARY_EMIT_NANOS) return null
+        if (accuracyM < MIN_ACCURACY_M || incoming.accuracyM < MIN_ACCURACY_M) return null
+        val radius = minOf(maxOf(accuracyM, MIN_DISPLACEMENT_M), MAX_GATE_RADIUS_M)
+        if (positionDistanceM(average, incoming.point) > radius) return null
+        return copy(
+            average = GeoPoint(
+                longitude = (average.longitude + incoming.point.longitude) / 2.0,
+                latitude = (average.latitude + incoming.point.latitude) / 2.0,
+            ),
+            accuracyM = minOf(accuracyM, incoming.accuracyM),
+        )
+    }
+}
+
+/** Equirectangular distance in metres — fine at the single-digit-metre gate scale. */
+private fun positionDistanceM(a: GeoPoint, b: GeoPoint): Double {
+    val dx = (a.longitude - b.longitude) * 111_320.0 *
+        kotlin.math.cos(Math.toRadians((a.latitude + b.latitude) / 2.0))
+    val dy = (a.latitude - b.latitude) * 110_540.0
+    return kotlin.math.sqrt(dx * dx + dy * dy)
+}
+
+/** Below this accuracy there is no usable circle — the fix always moves the puck. */
+private const val MIN_ACCURACY_M = 1f
+
+/**
+ * Minimum displacement (metres) that moves the puck even when the accuracy
+ * circle is tighter. A 3 m-accuracy phone on a desk still wanders a metre or
+ * two per fix; without a floor the puck follows it.
+ */
+private const val MIN_DISPLACEMENT_M = 5f
+
+/**
+ * Widest the jitter gate may open. A coarse network circle (hundreds of
+ * metres) would otherwise pin the puck for a whole indoor walk; past this the
+ * user is genuinely moving relative to the fix quality, so emit.
+ */
+private const val MAX_GATE_RADIUS_M = 50f
+
+/**
+ * Speed (m/s) at or above which a fix is travel, not noise. Walking pace is
+ * ~1.4 m/s; half of that so a slow stroll still breaks the hold promptly.
+ */
+private const val MOVING_SPEED_MPS = 0.7f
+
+/**
+ * Longest a stationary hold may last before re-emitting. The puck must track
+ * slow filter convergence rather than freeze; one minute is far beyond real
+ * desk-jitter timescales while bounding the staleness when speed is
+ * unavailable and the gate is the only thing moving the puck.
+ */
+private const val STATIONARY_EMIT_NANOS = 60_000_000_000L
