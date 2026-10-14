@@ -53,8 +53,8 @@ class AlarmSoundService : Service() {
             ongoingNotification(),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
         )
-        // AlarmReceiver creates the channels before starting us, so this only matters for a
-        // START_STICKY restart that no receiver preceded.
+        // AlarmReceiver creates the channels before starting us, so this is only belt and
+        // braces for a start no receiver preceded (none is expected: the service is NOT_STICKY).
         createAlarmChannel(this)
     }
 
@@ -70,12 +70,21 @@ class AlarmSoundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val alarmId = intent?.getLongExtra("ALARM_ID", -1L) ?: -1L
 
+        if (alarmId == -1L) {
+            // No alarm to ring for. The only intent-less start is the system restarting a
+            // service it killed mid-ring; resurrecting here re-rings after dismiss (#729)
+            // with no activity left to stop it, and plays the default sound even for
+            // vibrate-only/silent alarms. Stay dead instead.
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         if (started) {
             // A second alarm has fired and posted its own ring notification over the first.
             // We are already the ringer, so take it back off the system at once; if we are not
             // sounding yet, the launch below is still on its way to doing so.
             if (sounding) cancelRingNotification()
-            return START_STICKY
+            return START_NOT_STICKY
         }
         started = true
 
@@ -117,7 +126,10 @@ class AlarmSoundService : Service() {
             }
         }
 
-        return START_STICKY
+        // NOT_STICKY: a service killed mid-ring must stay dead. The insistent ring
+        // notification is system-side and keeps sounding without us; a sticky restart
+        // would ring again after dismiss with nothing able to stop it (#729).
+        return START_NOT_STICKY
     }
 
     private fun tryPlay(uri: Uri?, gradualSeconds: Int, alarmId: Long): Boolean {
@@ -196,9 +208,12 @@ class AlarmSoundService : Service() {
     override fun onDestroy() {
         destroyed = true
         scope.cancel()
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
-        vibrator?.cancel()
+        // stop() throws IllegalStateException unless prepared/started; an unguarded call
+        // would skip the vibrator cancel and super.onDestroy() below, wedging vibration on.
+        runCatching { mediaPlayer?.stop() }
+        releasePlayer()
+        runCatching { vibrator?.cancel() }
+        vibrator = null
         super.onDestroy()
     }
 
