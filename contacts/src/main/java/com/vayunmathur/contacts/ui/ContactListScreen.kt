@@ -42,6 +42,7 @@ import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconGroup
+import com.vayunmathur.library.ui.IconMove
 import com.vayunmathur.library.ui.IconPerson
 import com.vayunmathur.library.ui.IconShare
 import com.vayunmathur.library.ui.LazyListScaffold
@@ -141,6 +142,11 @@ fun ContactListScreen(
                             actions.addToGroup(selectedIds.toList())
                         }) {
                             IconGroup()
+                        }
+                        IconButton(onClick = {
+                            actions.moveContacts(selectedIds.toList())
+                        }) {
+                            IconMove()
                         }
                         IconButton(onClick = {
                             actions.shareContacts(contacts.filter { it.id in selectedIds }, "selected_contacts.vcf")

@@ -69,6 +69,9 @@ interface ContactsActions {
     fun pickRingtone(contact: Contact) {}
     fun addToGroup(contactIds: List<Long>) {}
 
+    /** Opens the move-to-account flow for [contactIds] (details + multi-select entry points). */
+    fun moveContacts(contactIds: List<Long>) {}
+
     /** Exports [contacts] to a VCF named [filename] and opens a share chooser. */
     fun shareContacts(contacts: List<Contact>, filename: String) {}
     fun selectTab(tab: ContactsTab) {}

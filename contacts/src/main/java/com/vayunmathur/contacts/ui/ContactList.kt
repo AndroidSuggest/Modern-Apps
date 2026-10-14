@@ -15,7 +15,10 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -25,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.Route
 import com.vayunmathur.contacts.data.Contact
+import com.vayunmathur.contacts.ui.dialogs.MoveDialogHost
 import com.vayunmathur.contacts.util.ContactListUiState
 import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.contacts.util.ContactsActions
@@ -61,6 +65,15 @@ fun ContactList(
 
     val last = backStack.last()
 
+    var moveContactIds by remember { mutableStateOf<List<Long>?>(null) }
+    moveContactIds?.let { ids ->
+        MoveDialogHost(
+            viewModel = viewModel,
+            contactIds = ids,
+            onDismiss = { moveContactIds = null },
+        )
+    }
+
     ContactListScreen(
         state = ContactListUiState(
             contacts = contacts,
@@ -85,6 +98,10 @@ fun ContactList(
 
             override fun addToGroup(contactIds: List<Long>) {
                 backStack.add(Route.AddToGroupDialog(contactIds))
+            }
+
+            override fun moveContacts(contactIds: List<Long>) {
+                moveContactIds = contactIds
             }
 
             override fun shareContacts(contacts: List<Contact>, filename: String) {

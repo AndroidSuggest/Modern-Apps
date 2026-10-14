@@ -20,6 +20,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.data.isSimAccountType
+import com.vayunmathur.contacts.ui.dialogs.MoveDialogHost
 import com.vayunmathur.contacts.util.ContactDetailsUiState
 import com.vayunmathur.contacts.util.ContactPlatforms
 import com.vayunmathur.contacts.util.ContactViewModel
@@ -32,6 +33,7 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconEdit
+import com.vayunmathur.library.ui.IconMove
 import com.vayunmathur.library.ui.IconShare
 import com.vayunmathur.library.ui.IconStar
 import com.vayunmathur.library.ui.IconStarBorder
@@ -98,6 +100,19 @@ fun ContactDetailsPage(
         }
     }
 
+    var moveContactIds by remember(contactId) { mutableStateOf<List<Long>?>(null) }
+
+    moveContactIds?.let { ids ->
+        MoveDialogHost(
+            viewModel = viewModel,
+            contactIds = ids,
+            onDismiss = { moveContactIds = null },
+            // The moved contact no longer exists: pop before the re-sync
+            // flips this page to "contact not found".
+            onTransferred = onBack,
+        )
+    }
+
     ContactDetailsScreen(
         state = ContactDetailsUiState(
             contact = contact,
@@ -111,6 +126,10 @@ fun ContactDetailsPage(
             override fun editContact(contactId: Long) = onEdit(contactId)
 
             override fun confirmDeleteContact(contact: Contact) = onDelete()
+
+            override fun moveContacts(contactIds: List<Long>) {
+                moveContactIds = contactIds
+            }
 
             override fun shareContacts(contacts: List<Contact>, filename: String) {
                 shareContactsAsVcf(scope, context, contacts, filename, shareContactLabel)
@@ -172,6 +191,9 @@ fun ContactDetailsScreen(
                 actions.shareContacts(listOf(contact), "${contact.name.value.replace(' ', '_')}.vcf")
             }) {
                 IconShare()
+            }
+            IconButton(onClick = { actions.moveContacts(listOf(contact.id)) }) {
+                IconMove()
             }
             IconButton(onClick = { actions.confirmDeleteContact(contact) }) {
                 IconDelete()

@@ -246,4 +246,42 @@
     <string name="no_groups_yet">No groups yet</string>
     <!-- Supporting text under no_groups_yet, pointing at the add button -->
     <string name="no_groups_yet_message">Tap the add button to group contacts together.</string>
+
+    <!-- Move contacts between accounts (#814) -->
+    <!-- Dialog title and toolbar action for moving contacts to another account -->
+    <string name="move_to_account">Move to account</string>
+    <!-- Verb on the dialog confirm button: move the selected contacts to the chosen account -->
+    <string name="move">Move</string>
+    <!-- Dialog subtitle: pick the destination account. %1$d = number of selected contacts -->
+    <plurals name="move_to_account_subtitle">
+        <item quantity="one">Choose where to move <xliff:g id="count" example="1">%1$d</xliff:g> contact</item>
+        <item quantity="other">Choose where to move <xliff:g id="count" example="3">%1$d</xliff:g> contacts</item>
+    </plurals>
+    <!-- Warning title when the destination is a SIM account that drops fields -->
+    <string name="move_to_sim_warning_title">Some info won\'t fit on the SIM</string>
+    <!-- Warning body when the destination is a SIM account. %1$s = SIM label, %2$s = dropped fields list -->
+    <string name="move_to_sim_warning_body">Only name, phone, and email are kept on <xliff:g id="sim_label" example="SIM 1">%1$s</xliff:g>. These will be lost: <xliff:g id="dropped" example="photo, addresses">%2$s</xliff:g>.</string>
+    <!-- Dropped-field labels for the SIM warning list -->
+    <string name="move_dropped_photo">photo</string>
+    <string name="move_dropped_extra_phones">extra phone numbers</string>
+    <string name="move_dropped_extra_emails">extra email addresses</string>
+    <string name="move_dropped_addresses">addresses</string>
+    <string name="move_dropped_dates">dates</string>
+    <string name="move_dropped_organization">organization</string>
+    <string name="move_dropped_note">note</string>
+    <string name="move_dropped_nickname">nickname</string>
+    <string name="move_dropped_groups">groups</string>
+    <string name="move_dropped_ringtone">ringtone</string>
+    <string name="move_dropped_favorite">favorite</string>
+    <!-- Confirm button label for the SIM warning: keep moving despite dropped fields -->
+    <string name="move_anyway">Move anyway</string>
+    <!-- Snackbar after a fully successful move. %1$d = number of moved contacts -->
+    <plurals name="move_success">
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> contact moved</item>
+        <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> contacts moved</item>
+    </plurals>
+    <!-- Snackbar when some contacts failed to move. %1$d = moved, %2$d = failed -->
+    <string name="move_partial_failure"><xliff:g id="moved" example="2">%1$d</xliff:g> moved, <xliff:g id="failed" example="1">%2$d</xliff:g> failed</string>
+    <!-- Snackbar when nothing moved -->
+    <string name="move_failed">Move failed</string>
 </resources>

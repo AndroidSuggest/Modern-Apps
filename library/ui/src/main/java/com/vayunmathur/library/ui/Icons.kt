@@ -1457,6 +1457,10 @@ fun IconSwapLanguages(modifier: Modifier = Modifier, tint: Color = LocalContentC
 fun IconSpeak(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.AutoMirrored.Filled.VolumeUp, "Speak", modifier, tint)
 
+@Composable
+fun IconMove(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.SwapHoriz, "Move", modifier, tint)
+
 // --- Calculator ---
 @Composable
 fun IconCalculate(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
