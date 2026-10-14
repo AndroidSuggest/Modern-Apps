@@ -333,7 +333,8 @@ fn tile_chunk(
         simplify::annotate(&mut projected);
         // Buildings live only at z14, where the policy tolerance is 0.0; the floor below
         // keeps only collinear midpoints and sub-pixel jaggies — see `tolerance_for_layer`.
-        let layer_tolerance = tolerance_for_layer(feature.class.layer, z, tolerance);
+        // Roads take the per-feature floor at z14 (washable classes only).
+        let layer_tolerance = tolerance_for_feature(feature, z, tolerance);
         let thinned = simplify::filter(&projected, layer_tolerance);
         // Near-rectangles digitised by hand gain a cheap varint delta when their edges snap
         // exactly axis-aligned — see `snap_building_rings`. Survivors only, so the measured
@@ -398,7 +399,13 @@ fn tolerance_for_layer(layer: u8, z: u8, tolerance: f64) -> f64 {
     } else if layer == dict::LAYER_BOUNDARIES {
         tolerance * WASH_SIMPLIFICATION
     } else if layer == dict::LAYER_LANDTYPE {
-        tolerance * LANDTYPE_SIMPLIFICATION
+        // z13 tiles span ~5 km: triple the wash there, keep 1.5x at z14
+        // where parks sit under streets.
+        if z == 13 {
+            tolerance * LANDTYPE_Z13_SIMPLIFICATION
+        } else {
+            tolerance * LANDTYPE_SIMPLIFICATION
+        }
     } else if z < crate::DEFAULT_MAX_ZOOM
         && (layer == dict::LAYER_ROADS || layer == dict::LAYER_TRANSIT)
     {
@@ -407,6 +414,23 @@ fn tolerance_for_layer(layer: u8, z: u8, tolerance: f64) -> f64 {
         tolerance * WASH_SIMPLIFICATION
     } else {
         tolerance
+    }
+}
+
+/// The tolerance for one feature: the layer policy, plus the z14 roads
+/// floor. Washable roads (not arterial, no lanes/split — see `needs_crisp`)
+/// take [`ROAD_DETAIL_FLOOR`] at the archive max, where the layer policy is
+/// 0.0; everything else keeps the layer value untouched.
+fn tolerance_for_feature(feature: &crate::extract::Feature, z: u8, tolerance: f64) -> f64 {
+    use tilecodec::mamaps::dict;
+    let base = tolerance_for_layer(feature.class.layer, z, tolerance);
+    if z == crate::DEFAULT_MAX_ZOOM
+        && feature.class.layer == dict::LAYER_ROADS
+        && !needs_crisp(feature)
+    {
+        base.max(ROAD_DETAIL_FLOOR)
+    } else {
+        base
     }
 }
 
@@ -474,7 +498,14 @@ fn snap_building_ring(ring: &[SigPt]) -> Vec<SigPt> {
     let mut out: Vec<SigPt> = open
         .iter()
         .zip(snapped)
-        .map(|(v, (x, y))| v.moved((x, y)))
+        .map(|(v, (x, y))| {
+            // Round onto the building grid: hand jitter (±1 unit) collapses
+            // into repeated constants. Runs here — after the filter, on
+            // survivors only — so measured significance is never stale.
+            let gx = (x / crate::tiler::BUILDING_GRID).round() * crate::tiler::BUILDING_GRID;
+            let gy = (y / crate::tiler::BUILDING_GRID).round() * crate::tiler::BUILDING_GRID;
+            v.moved((gx, gy))
+        })
         .collect();
     if closed {
         out.push(out[0]);

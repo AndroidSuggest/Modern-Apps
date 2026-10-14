@@ -59,6 +59,17 @@ pub(crate) fn record_class(layer_id: u8) -> RecordClass {
     }
 }
 
+/// Whether a layer mixes Min and Road records per feature under v10.
+///
+/// Landtype is the only mixed layer: polygons (the overwhelming majority)
+/// carry no names or details and use Min, while named lines (rivers, canals
+/// — curved-label carriers) use Road. Each record is prefixed with a 1-byte
+/// tag (0 = Min, 1 = Road). Every other layer is uniform per `record_class`
+/// and carries no tag.
+pub(crate) fn is_mixed_layer(layer_id: u8) -> bool {
+    layer_id == dict::LAYER_LANDTYPE
+}
+
 /// One layer's full v7 payload bytes: features, part table, align4, arena.
 ///
 /// Factored out of [`super::emit::serialize_into`] so the emit path has one
@@ -143,8 +154,23 @@ pub(crate) fn write_v10_layer_payload(
         // than silently discarding them. The tiler never sets transit bytes
         // on non-transit layers (or names/details/lanes where the class has
         // none), so this fires only on a caller bug, never on real tiles.
+        //
+        // Mixed layers (landtype) prefix each record with a 1-byte tag so
+        // the parser can stride: 0 = Min, 1 = Road. Uniform layers carry no
+        // tag; their class comes from `record_class`.
+        let feature_class = if is_mixed_layer(layer.layer_id) {
+            let wide = feature.name_idx != super::model::NAME_NONE;
+            out.push(u8::from(wide));
+            if wide {
+                RecordClass::Road
+            } else {
+                RecordClass::Min
+            }
+        } else {
+            class
+        };
         out.extend_from_slice(&feature.kind.to_le_bytes());
-        match class {
+        match feature_class {
             RecordClass::Min => {
                 if feature.kind_detail != 0
                     || feature.name_idx != super::model::NAME_NONE

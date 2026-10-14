@@ -131,9 +131,15 @@ pub const WASH_SIMPLIFICATION: f64 = 1.5;
 
 /// Extra simplification for the landtype wash: natural boundaries are looked
 /// at closer than admin ones, so the factor stays at the wash level rather
-/// than above it. Same mechanism as [`WASH_SIMPLIFICATION`], own constant so
-/// the two tune independently.
+/// than above it — except at z13, where a tile spans ~5 km and even tripled
+/// tolerance is deep sub-pixel. Same mechanism as [`WASH_SIMPLIFICATION`],
+/// own constants so the two zooms tune independently.
 pub const LANDTYPE_SIMPLIFICATION: f64 = 1.5;
+
+/// The z13 landtype factor: forest edges, shorelines and farmland at 3x the
+/// per-zoom policy tolerance. z14 stays at 1.5x (crisp parks under streets);
+/// z13 is viewed from high, where a ~4 m tolerance is a fraction of a pixel.
+pub const LANDTYPE_Z13_SIMPLIFICATION: f64 = 3.0;
 
 /// The simplification floor for the `buildings` layer, in extent units.
 ///
@@ -144,6 +150,54 @@ pub const LANDTYPE_SIMPLIFICATION: f64 = 1.5;
 /// prototype at `analysis/mamaps_building_savings.py` estimates ~2% of building-tile bytes.
 pub const BUILDING_TOLERANCE: f64 = 0.5;
 
+/// The simplification floor for washable `roads` at the archive max, in extent units.
+///
+/// z14 policy tolerance is 0.0 (full detail for carriageway/lane alignment), but only
+/// a minority of roads needs it: arterials, and roads carrying lane masks or a
+/// carriageway split, whose centre line the renderer places from geometry (see
+/// `needs_crisp`). A residential street's centre line has no such reader — a
+/// half-unit floor drops only collinear midpoints and sub-pixel jaggies,
+/// invisible at z14 where 16 units are a display pixel. Same magnitude as
+/// [`BUILDING_TOLERANCE`] for the same reason.
+pub const ROAD_DETAIL_FLOOR: f64 = 0.5;
+
+/// True when a road's geometry must stay exactly as digitised: an arterial
+/// (motorway through tertiary, mainlines and `_link`s), or any road carrying
+/// lane masks, a lane count, or a non-default carriageway split — the only
+/// roads whose centre-line placement reads geometry. Everything else
+/// (residential, service, track, path…) takes [`ROAD_DETAIL_FLOOR`] at z14:
+/// a principled rule about readers, not a cap.
+fn needs_crisp(feature: &crate::extract::Feature) -> bool {
+    use tilecodec::mamaps::body::FLAG_IS_ONEWAY;
+    // Arterials by interned kind_detail id: the HIGHWAYS table's
+    // motorway→tertiary rows (schema/roads.rs). Links share the rule: a
+    // motorway_link's curve places the same carriageway its mainline does.
+    // Built once (read-only after init, so deterministic across threads).
+    static ARTERIALS: std::sync::OnceLock<std::collections::HashSet<u16>> =
+        std::sync::OnceLock::new();
+    let arterials = ARTERIALS.get_or_init(|| {
+        [
+            "motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link",
+            "secondary", "secondary_link", "tertiary", "tertiary_link",
+        ]
+        .into_iter()
+        .map(crate::schema::detail)
+        .collect()
+    });
+    if arterials.contains(&feature.class.kind_detail) {
+        return true;
+    }
+    if feature.lane_count > 0 || !feature.turn_fwd.is_empty() || !feature.turn_bwd.is_empty() {
+        return true;
+    }
+    if !feature.carriageway.is_empty() {
+        return true;
+    }
+    // A one-way's digitising direction is its semantics; simplification
+    // preserves endpoints but can bow the line, so keep it crisp.
+    feature.class.flags & FLAG_IS_ONEWAY != 0
+}
+
 /// The orthogonal-snap tolerance for building rings, in extent units.
 ///
 /// Edges within half a unit of axis-aligned are snapped exactly so (see
@@ -153,6 +207,14 @@ pub const BUILDING_TOLERANCE: f64 = 0.5;
 /// measured is never stale; a pure function of the ring, so the archive stays independent of
 /// thread count and chunk boundaries like everything else in [`tile_chunk`].
 pub const BUILDING_SNAP: f64 = 0.5;
+
+/// The building vertex grid: coordinates round to multiples of this (extent
+/// units) after snapping. 2 units ≈ 1.2 m / ~1/8 display pixel at z14 —
+/// invisible natively, and hand-digitised jitter collapses into repeated
+/// constants the varint arena and DEFLATE dictionary encode cheaply. Runs
+/// inside the snap (same survivors-only pass, significance untouched), so it
+/// inherits the determinism property.
+pub const BUILDING_GRID: f64 = 2.0;
 
 /// Input vertices per chunk handed to one worker.
 ///

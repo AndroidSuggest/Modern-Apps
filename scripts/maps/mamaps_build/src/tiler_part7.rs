@@ -187,7 +187,7 @@ mod tests {
         assert_eq!(tolerance_for_layer(dict::LAYER_BUILDINGS, 14, 2.0), 2.0);
         // And below the buildings floor the policy stands: z13 keeps 1.0, not 0.5.
         assert_eq!(tolerance_for_layer(dict::LAYER_BUILDINGS, 13, 1.0), 1.0);
-        assert_eq!(tolerance_for_layer(dict::LAYER_LANDTYPE, 13, 1.0), 1.5, "the landtype wash scales the policy");
+        assert_eq!(tolerance_for_layer(dict::LAYER_LANDTYPE, 13, 1.0), 3.0, "z13 landtype triples the wash");
         // Roads take the wash below the archive max (z13 1.5x); at z14 policy
         // is 0.0 and the wash is a no-op — crisp where lanes align.
         assert_eq!(tolerance_for_layer(dict::LAYER_ROADS, 13, 1.0), 1.5, "roads wash below max zoom");

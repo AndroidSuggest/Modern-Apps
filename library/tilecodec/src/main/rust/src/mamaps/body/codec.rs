@@ -426,21 +426,45 @@ fn parse_layer_v8(layer_id: u8, feature_count: usize, buf: &[u8]) -> Result<Laye
 /// the arena walk — v10 parts are validated contiguous exactly as v8 requires.
 pub(crate) fn parse_layer_v10(layer_id: u8, feature_count: usize, buf: &[u8]) -> Result<Layer> {
     use super::consts::{FEATURE_RECORD_MIN_LEN, FEATURE_RECORD_ROAD_LEN, PART_ENTRY_V10_LEN};
-    use super::emit_extra::{RecordClass, record_class};
+    use super::emit_extra::{RecordClass, is_mixed_layer, record_class};
     let class = record_class(layer_id);
-    let reclen = match class {
-        RecordClass::Min => FEATURE_RECORD_MIN_LEN,
-        RecordClass::Road => FEATURE_RECORD_ROAD_LEN,
-        RecordClass::Full => FEATURE_RECORD_LEN,
-    };
-    let features_len = feature_count * reclen;
-    if features_len > buf.len() {
-        return err("a .mamaps layer's features run past its payload");
-    }
+    let mixed = is_mixed_layer(layer_id);
+    // Uniform layers stride fixed-width records; mixed layers walk a tag
+    // byte per record (0 = Min, 1 = Road) so named lines keep their names.
     let mut features = Vec::with_capacity(feature_count);
     let mut parts_needed = 0usize;
-    for i in 0..feature_count {
-        let at = i * reclen;
+    let mut at = 0usize;
+    for _ in 0..feature_count {
+        let feature_class = if mixed {
+            if at + 1 > buf.len() {
+                return err("a .mamaps mixed-layer record ends inside its class tag");
+            }
+            let wide = match buf[at] {
+                0 => false,
+                1 => true,
+                t => {
+                    return err(format!(
+                        "a .mamaps mixed-layer record has class tag {t}, which this format does not carry"
+                    ));
+                }
+            };
+            at += 1;
+            if wide {
+                RecordClass::Road
+            } else {
+                RecordClass::Min
+            }
+        } else {
+            class
+        };
+        let reclen = match feature_class {
+            RecordClass::Min => FEATURE_RECORD_MIN_LEN,
+            RecordClass::Road => FEATURE_RECORD_ROAD_LEN,
+            RecordClass::Full => FEATURE_RECORD_LEN,
+        };
+        if at + reclen > buf.len() {
+            return err("a .mamaps layer's features run past its payload");
+        }
         let u16_at = |o: usize| u16::from_le_bytes([buf[at + o], buf[at + o + 1]]);
         let u32_at = |o: usize| {
             u32::from_le_bytes([buf[at + o], buf[at + o + 1], buf[at + o + 2], buf[at + o + 3]])
@@ -450,7 +474,7 @@ pub(crate) fn parse_layer_v10(layer_id: u8, feature_count: usize, buf: &[u8]) ->
         // emit order: kind, [detail,] geom, flags, [name,] off, cnt, [lane].
         let (kind_detail, name_idx, lane_count, transit);
         let (geom_type, flags, parts_offset, part_count);
-        match class {
+        match feature_class {
             RecordClass::Min => {
                 kind_detail = 0;
                 name_idx = NAME_NONE;
@@ -510,9 +534,10 @@ pub(crate) fn parse_layer_v10(layer_id: u8, feature_count: usize, buf: &[u8]) ->
             .ok_or_else(|| crate::proto::Error("a .mamaps feature's parts overflow".to_string()))?;
         parts_needed = parts_needed.max(end);
         features.push(feature);
+        at += reclen;
     }
 
-    let parts_at = features_len;
+    let parts_at = at;
     let parts_len = parts_needed * PART_ENTRY_V10_LEN;
     if parts_at + parts_len > buf.len() {
         return err("a .mamaps layer's parts run past its payload");

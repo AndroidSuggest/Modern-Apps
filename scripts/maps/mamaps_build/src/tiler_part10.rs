@@ -188,8 +188,9 @@ mod tests_part10 {
     /// This is the failure the whole module is arranged around, and it is invisible from outside: a
     /// merge that folded chunks in completion order would still put every feature in the right tile,
     /// still draw the right picture, and still write different bytes every run. So each feature
-    /// carries a `kind_detail` counting up in store order, and the decoded archive has to count up
-    /// too.
+    /// carries a `kind` counting up in store order, and the decoded archive has to count up
+    /// too. (`kind`, not `kind_detail`: v10 minimal records drop detail, so the
+    /// counter must ride in a surviving field.)
     #[test]
     fn feature_order_within_a_tile_layer_is_the_store_order() {
         let _budget = budget();
@@ -198,7 +199,7 @@ mod tests_part10 {
         let features: Vec<Feature> = (0..40u16)
             .map(|i| Feature {
                 class: Class {
-                    kind_detail: i,
+                    kind: 1000 + i,
                     ..Class::area(dict::LAYER_LANDTYPE, crate::schema::kind("lake"), 0)
                 },
                 geometry: square(-120.0 + i as f64 * 0.00005, 35.0, 0.004),
@@ -221,7 +222,7 @@ mod tests_part10 {
         for (id, _, body) in &entries {
             let body = Body::parse(body).expect("parse");
             let Some(layer) = body.layer(dict::LAYER_LANDTYPE) else { continue };
-            let order: Vec<u16> = layer.features.iter().map(|f| f.kind_detail).collect();
+            let order: Vec<u16> = layer.features.iter().map(|f| f.kind).collect();
             let mut ascending = order.clone();
             ascending.sort_unstable();
             assert_eq!(order, ascending, "tile {id} holds its features out of store order");
