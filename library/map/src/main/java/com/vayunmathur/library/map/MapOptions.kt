@@ -64,7 +64,7 @@ data class MapOptions(
     val layerOptions: LayerOptions = LayerOptions(),
     /**
      * Where tiles come from. [TileSource.Server] (default) streams range requests for
-     * `planet.mamaps` over HTTP with a disk range cache; [TileSource.LocalFile] reads a
+     * `planet2.mamaps` over HTTP with a disk range cache; [TileSource.LocalFile] reads a
      * pushed `.mamaps` archive from the app's external files dir and does no networking.
      * Today only `maps` pushes an archive, so every other app stays on the default.
      */
@@ -89,7 +89,7 @@ enum class MapBody {
  * Where the renderer reads its tiles from.
  */
 enum class TileSource {
-    /** Stream `planet.mamaps` range requests over HTTP, cached on disk. */
+    /** Stream `planet2.mamaps` range requests over HTTP, cached on disk. */
     Server,
     /** Read a pushed `.mamaps` archive from external files; no networking. Falls back to
      * [Server] when no archive file is present, so a missing push degrades to streaming

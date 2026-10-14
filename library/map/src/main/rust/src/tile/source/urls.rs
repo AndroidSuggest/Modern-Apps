@@ -1,6 +1,6 @@
 /// Where this renderer reads its tiles from: the planet-scale v8 single-file
 /// full `.mamaps` archive (9 layers, 128-byte header).
-pub const BASEMAP_ARCHIVE_URL: &str = "https://data.vayunmathur.com/planet.mamaps";
+pub const BASEMAP_ARCHIVE_URL: &str = "https://data.vayunmathur.com/planet2.mamaps";
 
 /// Bumped when the on-disk cache layout changes, so old entries are dropped rather than
 /// misread. The URL is in the marker too, because the archive is republished under the

@@ -19,7 +19,7 @@ object MapTileCache {
 
     /** Where [BASEMAP_ARCHIVE_FILE] is fetched from on a first launch that has no copy yet. */
     const val BASEMAP_ARCHIVE_URL =
-        "https://data.vayunmathur.com/planet.mamaps"
+        "https://data.vayunmathur.com/planet2.mamaps"
 
     /**
      * The single source of truth for the streamed basemap PMTiles URL.
