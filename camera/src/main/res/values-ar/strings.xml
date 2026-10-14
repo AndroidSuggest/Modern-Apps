@@ -48,4 +48,17 @@
     <string name="settings_save_location_choose">اختيار مجلد</string>
     <string name="settings_save_location_reset">إعادة التعيين للافتراضي</string>
     <string name="settings_save_location_error">تعذّر استخدام هذا المجلد</string>
+    <string name="mode_photo">صورة</string>
+    <string name="mode_panorama">بانوراما</string>
+    <string name="mode_video">فيديو</string>
+    <string name="mode_slo_mo">حركة بطيئة</string>
+    <string name="mode_cinematic">سينمائي</string>
+    <string name="mode_portrait">صورة شخصية</string>
+    <string name="mode_photosphere">صورة كروية</string>
+    <string name="mode_timelapse">تصوير متسارع</string>
+    <string name="add_esim">إضافة eSIM</string>
+    <string name="esim_qr_result">رمز QR eSIM</string>
+    <string name="no_app_to_add_esim">لا تطبيق يمكنه إضافة هذه eSIM</string>
+    <string name="lens_wide">1x</string>
+    <string name="settings_save_location_default">DCIM/Camera</string>
 </resources>
