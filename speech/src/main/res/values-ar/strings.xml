@@ -1,3 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="grant_microphone">منح الميكروفون</string>
+    <string name="open_voice_input_settings">فتح إعدادات الإدخال الصوتي</string>
+    <string name="open_text_to_speech_settings">فتح إعدادات تحويل النص إلى كلام</string>
+    <string name="try_it">جرّبه</string>
+    <string name="test_microphone">اختبر الميكروفون</string>
+    <string name="try_the_voice">جرّب الصوت</string>
+    <string name="app_name">التحدث</string>
+    <string name="heard">تم الاستماع: %1$s</string>
+    <string name="broken_install_body">تعذّر قراءة نموذج مجمّع. من المفترض أن إعادة تثبيت التطبيق يؤدي لإصلاحه.</string>
+    <string name="broken_install_title">التثبيت يبدو تالفًا</string>
+    <string name="speak_sample">قُل عيّنة</string>
+    <string name="tts_engine_label">MA تحدث (MA Speech)</string>
+    <string name="recognition_service_label">MA تحدث (MA Speech)</string>
+</resources>
