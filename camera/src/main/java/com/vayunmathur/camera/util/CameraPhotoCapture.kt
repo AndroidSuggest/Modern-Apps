@@ -49,8 +49,12 @@ internal fun CameraViewModel.capturePhoto() {
         // extension, so a plain single capture through that ImageCapture lets the vendor pipeline
         // produce the multi-frame night image.
         nightPreviewActiveMutable.value -> captureSinglePhoto()
-        // Multi-frame night capture only when night mode is active and exposure is fully auto.
-        nightModeActive.value && isExposureAuto() -> captureNightPhoto()
+        // Multi-frame night capture only when night mode is active, exposure is fully auto,
+        // and flash is off: the night paths lock AE off (CONTROL_AE_MODE_OFF) with a forced
+        // long exposure, which breaks flash metering/timing and double-exposes (issue #721).
+        // With flash on, fall through to the plain single capture so the shot is an instant
+        // flash photo with no long-exposure countdown overlay.
+        nightModeActive.value && isExposureAuto() && flashModeMutable.value == FlashMode.OFF -> captureNightPhoto()
         // Motion Photo for plain PHOTO captures (no warmth/shadows bake, not capturing for a
         // caller). Only at the native 4:3 ratio: the motion still is saved as raw JPEG bytes
         // (to preserve the Ultra HDR gain map + motion trailer), which can't carry CameraX's
