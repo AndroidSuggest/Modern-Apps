@@ -21,7 +21,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -85,6 +84,10 @@ fun MapView(
 
     var sizeInDp by remember { mutableStateOf(DpOffset(0.dp, 0.dp)) }
     val density = LocalDensity.current
+    // Waypoint geofence fill/border follow Material You (issue #816) instead of
+    // the old hardcoded light-blue, so they match the rest of the UI.
+    val waypointFill = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+    val waypointBorder = MaterialTheme.colorScheme.primary
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Box(Modifier.fillMaxSize().onGloballyPositioned { coordinates ->
@@ -144,8 +147,8 @@ fun MapView(
                             val radiusPx = abs((center.x - edgePoint.x).toPx())
                             drawCircleWithBorder(
                                 center.toOffset(this),
-                                Color(0x80Add8e6),
-                                Color(0xffAdd8e6),
+                                waypointFill,
+                                waypointBorder,
                                 radiusPx
                             )
                         }
