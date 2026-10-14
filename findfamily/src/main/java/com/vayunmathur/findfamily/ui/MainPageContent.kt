@@ -96,16 +96,18 @@ fun MainPageContent(
             }
         }
 
-        // Leaving history sets the peek back to non-zero, but the collapsed sheet needs
-        // a nudge to animate back to its peek. Retry until the anchor is ready.
+        // Changing the peek does not relocate a sheet that is already settled, in either
+        // direction. Entering history drops the peek to its 1dp sliver, but a tall person
+        // sheet stays put, shows the empty history content, and covers the scrubber card
+        // floating underneath it (GitHub #818). Leaving history restores the peek without
+        // pulling the sliver back up. Nudge toward the peek on both transitions, retrying
+        // until the anchor is ready.
         LaunchedEffect(state.historyMode) {
-            if (!state.historyMode) {
-                repeat(10) {
-                    if (runCatching { scaffoldState.bottomSheetState.partialExpand() }.isSuccess) {
-                        return@LaunchedEffect
-                    }
-                    kotlinx.coroutines.delay(50)
+            repeat(10) {
+                if (runCatching { scaffoldState.bottomSheetState.partialExpand() }.isSuccess) {
+                    return@LaunchedEffect
                 }
+                kotlinx.coroutines.delay(50)
             }
         }
     }
