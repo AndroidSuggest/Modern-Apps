@@ -20,7 +20,9 @@ mod frame;
 mod handle;
 mod layers;
 mod lifecycle;
-mod log;
+// `pub(crate)` so the tile fetch path (`tile::source::fetch`, issue-815 timing)
+// can log through the same `MapRenderer` tag without a second log shim.
+pub(crate) mod log;
 mod markers;
 mod moon;
 mod pick;

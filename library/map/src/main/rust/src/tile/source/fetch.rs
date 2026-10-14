@@ -21,6 +21,25 @@ pub struct JniRangeFetcher;
 #[cfg(target_os = "android")]
 impl RangeFetcher for JniRangeFetcher {
     fn fetch(&self, url: &str, range: &str) -> Result<RangeResponse> {
+        // Issue-815 timing: how long one range request spends across the JNI
+        // bridge. A slow first request with fast followers means connection
+        // reuse works; uniformly slow requests implicate per-request TLS
+        // handshakes (a `:library:network` follow-up, diagnose-only here).
+        let start = std::time::Instant::now();
+        let outcome = self.fetch_inner(url, range);
+        let ms = start.elapsed().as_millis();
+        let status = match &outcome {
+            Ok(r) => r.status.to_string(),
+            Err(_) => "err".to_string(),
+        };
+        crate::bridge::log::log_info(&format!("range {range} -> {status} in {ms}ms"));
+        outcome
+    }
+}
+
+#[cfg(target_os = "android")]
+impl JniRangeFetcher {
+    fn fetch_inner(&self, url: &str, range: &str) -> Result<RangeResponse> {
         // `Header` is an owned `(String, String)` pair, and `body` is `Option`, not a
         // slice: a GET has none.
         let headers = [("Range".to_string(), range.to_string())];

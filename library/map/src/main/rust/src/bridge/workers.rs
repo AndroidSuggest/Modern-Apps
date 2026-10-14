@@ -2,7 +2,7 @@
 //!
 //! Pure move out of `bridge.rs`; no logic changes.
 use super::handle::{OnlineFlag, TileResult, ZoomRange};
-use super::log::log;
+use super::log::{log, log_info};
 use crate::style::{self, SharedToggles};
 use crate::tile::cache::{RangeCache, DEFAULT_MAX_BYTES};
 use crate::tile::geometry;
@@ -207,23 +207,46 @@ fn serve<R: RangeReader>(
         };
         let Ok(tile) = next else { return };
         let key = tile.key();
+        let dequeue_at = std::time::Instant::now();
 
         // Read per tile, not once per worker: a toggle change has to reach the
         // very next tile built, and all three parts come from one snapshot so the
         // stamp can never describe different flags than the mesh was built with.
         let (enabled, kinds, generation) = toggles.get();
-        let result = match archive.tile(tile.z, tile.x, tile.y) {
-            Ok(Some(body)) => TileResult::Ready(geometry::build_toggled(
-                &body,
-                layers,
-                tile.z,
-                tile.x,
-                tile.y,
-                rings_validated,
-                enabled,
-                &kinds,
-                generation,
-            )),
+        let fetch_start = std::time::Instant::now();
+        let fetched = archive.tile(tile.z, tile.x, tile.y);
+        let fetch_ms = fetch_start.elapsed().as_millis();
+        let result = match fetched {
+            Ok(Some(body)) => {
+                let tess_start = std::time::Instant::now();
+                let mesh = geometry::build_toggled(
+                    &body,
+                    layers,
+                    tile.z,
+                    tile.x,
+                    tile.y,
+                    rings_validated,
+                    enabled,
+                    &kinds,
+                    generation,
+                );
+                let tess_ms = tess_start.elapsed().as_millis();
+                // Per-tile pipeline timing for issue 815: queue wait vs fetch/decode
+                // vs tessellation, at info level beside the per-frame report.
+                // `queue_ms` includes time spent serving earlier queued tiles; a
+                // large value on the first tiles of a cold load means the queue
+                // is the bottleneck, not the network.
+                log_info(&format!(
+                    "tile {}/{}/{} queue={}ms fetch={}ms tess={}ms",
+                    tile.z,
+                    tile.x,
+                    tile.y,
+                    dequeue_at.elapsed().as_millis().saturating_sub(fetch_ms + tess_ms),
+                    fetch_ms,
+                    tess_ms,
+                ));
+                TileResult::Ready(mesh)
+            }
             Ok(None) => TileResult::Absent,
             Err(e) => {
                 log(&format!(
