@@ -38,8 +38,13 @@
         android:name="com.vayunmathur.findfamily.permissions.ACCESS_FAMILY"
         android:protectionLevel="signature" />
 
+    <!-- #789: SIGABRT in vendor Vulkan (vulkan.mtk.so/libufwriter.so) during
+         MapNative_create with tagged pointers enabled (tombstone shows
+         tagged_addr_ctrl=PR_TAGGED_ADDR_ENABLE). Those vendor drivers abort
+         on tagged native-heap pointers, so opt this process out. -->
     <application
         android:name=".FindfamilyApplication"
+        android:allowNativeHeapPointerTagging="false"
         android:allowBackup="true"
         android:backupAgent=".util.AppBackupAgent"
         android:dataExtractionRules="@xml/data_extraction_rules"
