@@ -944,9 +944,9 @@ revision-pinned and digest-verified (§8). The LFS CDN behind it is dynamic.
 - `unicode.org` — emoji data.
 - The Brave filter-list catalog — **a second unbounded host set**, since the list of lists is read
   from upstream rather than hardcoded.
-- `calendar.google.com` — `tools/holidaygen/HolidayGen.kt` issues roughly **13,700 sequential,
-  unthrottled GETs** with a spoofed `Mozilla/5.0 (holidaygen)` UA. The build file's "Thunderbird"
-  comment describes a different source and is wrong.
+- `calendar.google.com` — `scripts/calendar/generate_holidays.py` issues roughly **13,700 sequential,
+  unthrottled GETs** with a spoofed `Mozilla/5.0 (holidaygen)` UA. Run with
+  `python scripts/calendar/generate_holidays.py` (stdlib only, no Gradle).
 
 **Cleared.** `wikidesc` reads a local dump and deliberately avoids the API.
 `scripts/networklocation` is an OSM geocoder, not a Wi-Fi harvester. Also clear: the other three
