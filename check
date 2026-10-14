@@ -3,7 +3,7 @@
 #   ./gradlew :<mod>:detekt [...] + cargo check --locked -p <crate> [...] (rust modules only)
 #
 # Usage:
-#   ./check <module> [module...]     # detekt (config/detekt/detekt.yml) + cargo check
+#   ./check <module> [module...]     # detekt (detekt.yml) + cargo check
 #   ./check games/voxels maps        # multi-module, one gradlew invocation
 #   ./check voxels                    # shorthand -> games:voxels (same as ./install)
 #   ./check all                       # every app + library module

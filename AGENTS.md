@@ -59,7 +59,7 @@ Slash == colon for Gradle (`games/voxels` == `games:voxels`).
 - Network only via `library.network.NetworkClient` + `TrustBundle` narrowest (`FIRST_PARTY/STANDARD/EXTENDED/MUSICBRAINZ/SYSTEM`).
 - Package roots closed set: `ui data domain platform network intents service provider widget notifications auth sync telephony`. No `util/`. One public `@Composable` per file, named as file. `domain/` pure (no Android/Compose).
 - Escape hatches verbatim: `// PACKAGE STRUCTURE EXCEPTION (JNI)`, `// RAW SCAFFOLD EXCEPTION: <reason>`, `// TOAST EXCEPTION: <reason>`, `// RAW ANIMATION EXCEPTION: <reason>`.
-- detekt rules live in `config/detekt/detekt.yml` (ui/domain/odf/service scoping rationale inline). Fix code, not config, to green a module.
+- detekt rules live in `detekt.yml` (ui/domain/odf/service scoping rationale inline). Fix code, not config, to green a module.
 
 ## 3. Verify (slice touched, never whole repo)
 ```
@@ -102,7 +102,7 @@ Rules: `dev` default, `release` only when asked, `debug` blocked. Never uninstal
 ```
 Never grep repo-wide when a filter will do. Always excluded: `target/ build/ .gradle/ .kotlin/ .git/ .llms/ analysis/ *.log *.onnx metadata_data/photos/`.
 
-`./check` — static verification without building: `:<module>:detekt` (rules in `config/detekt/detekt.yml`) + `cargo check --locked` for Rust modules (workspace members via `-p`, standalone crates in-dir):
+`./check` — static verification without building: `:<module>:detekt` (rules in `detekt.yml`) + `cargo check --locked` for Rust modules (workspace members via `-p`, standalone crates in-dir):
 ```
 ./check <module> [...]   # e.g. ./check notes backup; ./check voxels
 ./check all              # every app + library module (pure-JVM modules excluded)
