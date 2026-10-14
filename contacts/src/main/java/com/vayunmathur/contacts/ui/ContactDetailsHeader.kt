@@ -1,10 +1,7 @@
 package com.vayunmathur.contacts.ui
 
 import android.content.Intent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -12,15 +9,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -29,9 +23,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.data.Contact
+import com.vayunmathur.contacts.data.PhoneNumber
 import com.vayunmathur.contacts.util.ContactPlatforms
 import com.vayunmathur.contacts.util.PackageUtils
-import com.vayunmathur.library.ui.BadgedBox
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExternalIntents
@@ -120,7 +114,7 @@ fun ProfileHeader(contact: Contact, decodePhoto: ((String) -> android.graphics.B
 
 @Composable
 fun ActionButtonsRow(
-    number: String?,
+    phoneNumbers: List<PhoneNumber>,
     email: String?,
     platforms: ContactPlatforms,
     isGoogleMeetInstalled: Boolean
@@ -132,7 +126,13 @@ fun ActionButtonsRow(
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        if (number != null) {
+        if (phoneNumbers.isNotEmpty()) {
+            var callNumber by remember(phoneNumbers) { mutableStateOf(phoneNumbers.first().number) }
+            var smsNumber by remember(phoneNumbers) { mutableStateOf(phoneNumbers.first().number) }
+            var videoNumber by remember(phoneNumbers) { mutableStateOf(phoneNumbers.first().number) }
+            var showCallNumberPicker by remember { mutableStateOf(false) }
+            var showSmsNumberPicker by remember { mutableStateOf(false) }
+            var showVideoNumberPicker by remember { mutableStateOf(false) }
             var showCallDropdown by remember { mutableStateOf(false) }
             var showSmsDropdown by remember { mutableStateOf(false) }
             var showVideoDropdown by remember { mutableStateOf(false) }
@@ -141,37 +141,54 @@ fun ActionButtonsRow(
                 icon = { IconCall() },
                 label = stringResource(UiR.string.call),
                 action = {
-                    if (platforms.hasAnyPlatform) {
+                    if (phoneNumbers.size == 1 && !platforms.hasAnyPlatform) {
+                        placeCall(context, phoneNumbers.first().number)
+                    } else if (phoneNumbers.size == 1) {
+                        callNumber = phoneNumbers.first().number
                         showCallDropdown = true
                     } else {
-                        placeCall(context, number)
+                        showCallNumberPicker = true
                     }
                 },
                 dropdownContent = {
+                    NumberPickerDropdown(
+                        expanded = showCallNumberPicker,
+                        onDismiss = { showCallNumberPicker = false },
+                        phoneNumbers = phoneNumbers,
+                        onPick = { picked ->
+                            showCallNumberPicker = false
+                            if (platforms.hasAnyPlatform) {
+                                callNumber = picked
+                                showCallDropdown = true
+                            } else {
+                                placeCall(context, picked)
+                            }
+                        }
+                    )
                     DropdownMenu(expanded = showCallDropdown, onDismissRequest = { showCallDropdown = false }) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.system_default)) },
                             onClick = {
-                                placeCall(context, number)
+                                placeCall(context, callNumber)
                                 showCallDropdown = false
                             }
                         )
                         platforms.signalCallId?.let { id ->
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.signal)) },
-                                onClick = { placePlatformCall(context, number, PackageUtils.SIGNAL_PACKAGE, fallbackDataRowId = id); showCallDropdown = false }
+                                onClick = { placePlatformCall(context, callNumber, PackageUtils.SIGNAL_PACKAGE, fallbackDataRowId = id); showCallDropdown = false }
                             )
                         }
                         platforms.whatsAppCallId?.let { id ->
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.whatsapp)) },
-                                onClick = { placePlatformCall(context, number, PackageUtils.WHATSAPP_PACKAGE, fallbackDataRowId = id); showCallDropdown = false }
+                                onClick = { placePlatformCall(context, callNumber, PackageUtils.WHATSAPP_PACKAGE, fallbackDataRowId = id); showCallDropdown = false }
                             )
                         }
                         platforms.telegramCallId?.let { id ->
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.telegram)) },
-                                onClick = { placePlatformCall(context, number, PackageUtils.TELEGRAM_PACKAGE, fallbackDataRowId = id); showCallDropdown = false }
+                                onClick = { placePlatformCall(context, callNumber, PackageUtils.TELEGRAM_PACKAGE, fallbackDataRowId = id); showCallDropdown = false }
                             )
                         }
                     }
@@ -181,18 +198,35 @@ fun ActionButtonsRow(
                 icon = { IconSms() },
                 label = stringResource(R.string.action_message),
                 action = {
-                    if (platforms.hasAnyPlatform) {
+                    if (phoneNumbers.size == 1 && !platforms.hasAnyPlatform) {
+                        ExternalIntents.sendSms(context, phoneNumbers.first().number)
+                    } else if (phoneNumbers.size == 1) {
+                        smsNumber = phoneNumbers.first().number
                         showSmsDropdown = true
                     } else {
-                        ExternalIntents.sendSms(context, number)
+                        showSmsNumberPicker = true
                     }
                 },
                 dropdownContent = {
+                    NumberPickerDropdown(
+                        expanded = showSmsNumberPicker,
+                        onDismiss = { showSmsNumberPicker = false },
+                        phoneNumbers = phoneNumbers,
+                        onPick = { picked ->
+                            showSmsNumberPicker = false
+                            if (platforms.hasAnyPlatform) {
+                                smsNumber = picked
+                                showSmsDropdown = true
+                            } else {
+                                ExternalIntents.sendSms(context, picked)
+                            }
+                        }
+                    )
                     DropdownMenu(expanded = showSmsDropdown, onDismissRequest = { showSmsDropdown = false }) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.system_default)) },
                             onClick = {
-                                ExternalIntents.sendSms(context, number)
+                                ExternalIntents.sendSms(context, smsNumber)
                                 showSmsDropdown = false
                             }
                         )
@@ -234,41 +268,55 @@ fun ActionButtonsRow(
                     icon = { IconVideoCamera() },
                     label = stringResource(R.string.action_video),
                     action = {
-                        if (videoOptionCount == 1) {
-                            when {
-                                isGoogleMeetInstalled -> launchGoogleMeet(context, number)
-                                platforms.whatsAppVideoId != null -> placePlatformCall(context, number, PackageUtils.WHATSAPP_PACKAGE, isVideo = true, fallbackDataRowId = platforms.whatsAppVideoId)
-                                platforms.signalVideoId != null -> placePlatformCall(context, number, PackageUtils.SIGNAL_PACKAGE, isVideo = true, fallbackDataRowId = platforms.signalVideoId)
-                                platforms.telegramVideoId != null -> placePlatformCall(context, number, PackageUtils.TELEGRAM_PACKAGE, isVideo = true, fallbackDataRowId = platforms.telegramVideoId)
-                            }
+                        if (phoneNumbers.size > 1) {
+                            showVideoNumberPicker = true
                         } else {
-                            showVideoDropdown = true
+                            videoNumber = phoneNumbers.first().number
+                            if (videoOptionCount == 1) {
+                                launchSingleVideoOption(context, videoNumber, platforms, isGoogleMeetInstalled)
+                            } else {
+                                showVideoDropdown = true
+                            }
                         }
                     },
                     dropdownContent = {
+                        NumberPickerDropdown(
+                            expanded = showVideoNumberPicker,
+                            onDismiss = { showVideoNumberPicker = false },
+                            phoneNumbers = phoneNumbers,
+                            onPick = { picked ->
+                                showVideoNumberPicker = false
+                                videoNumber = picked
+                                if (videoOptionCount == 1) {
+                                    launchSingleVideoOption(context, picked, platforms, isGoogleMeetInstalled)
+                                } else {
+                                    showVideoDropdown = true
+                                }
+                            }
+                        )
                         DropdownMenu(expanded = showVideoDropdown, onDismissRequest = { showVideoDropdown = false }) {
                             if (isGoogleMeetInstalled) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.google_meet)) },
-                                    onClick = { launchGoogleMeet(context, number); showVideoDropdown = false }
+                                    onClick = { launchGoogleMeet(context, videoNumber); showVideoDropdown = false }
                                 )
                             }
                             platforms.whatsAppVideoId?.let { id ->
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.whatsapp)) },
-                                    onClick = { placePlatformCall(context, number, PackageUtils.WHATSAPP_PACKAGE, isVideo = true, fallbackDataRowId = id); showVideoDropdown = false }
+                                    onClick = { placePlatformCall(context, videoNumber, PackageUtils.WHATSAPP_PACKAGE, isVideo = true, fallbackDataRowId = id); showVideoDropdown = false }
                                 )
                             }
                             platforms.signalVideoId?.let { id ->
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.signal)) },
-                                    onClick = { placePlatformCall(context, number, PackageUtils.SIGNAL_PACKAGE, isVideo = true, fallbackDataRowId = id); showVideoDropdown = false }
+                                    onClick = { placePlatformCall(context, videoNumber, PackageUtils.SIGNAL_PACKAGE, isVideo = true, fallbackDataRowId = id); showVideoDropdown = false }
                                 )
                             }
                             platforms.telegramVideoId?.let { id ->
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.telegram)) },
-                                    onClick = { placePlatformCall(context, number, PackageUtils.TELEGRAM_PACKAGE, isVideo = true, fallbackDataRowId = id); showVideoDropdown = false }
+                                    onClick = { placePlatformCall(context, videoNumber, PackageUtils.TELEGRAM_PACKAGE, isVideo = true, fallbackDataRowId = id); showVideoDropdown = false }
                                 )
                             }
                         }
@@ -283,40 +331,5 @@ fun ActionButtonsRow(
                 ExternalIntents.launch(context, intent)
             }
         }
-    }
-}
-
-@Composable
-fun ActionButton(
-    icon: @Composable () -> Unit,
-    label: String,
-    dropdownContent: (@Composable () -> Unit)? = null,
-    action: () -> Unit
-) {
-    Column(
-        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        BadgedBox(
-            badge = {}
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable { action() },
-                contentAlignment = androidx.compose.ui.Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier.size(24.dp),
-                    contentAlignment = androidx.compose.ui.Alignment.Center
-                ) {
-                    icon()
-                }
-                dropdownContent?.invoke()
-            }
-        }
-        Text(text = label, style = MaterialTheme.typography.labelMedium)
     }
 }

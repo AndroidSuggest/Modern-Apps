@@ -59,9 +59,6 @@ internal fun PhonesSection(
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         details.phoneNumbers.forEachIndexed { index, phone ->
-            var showCallDropdown by androidx.compose.runtime.remember(phone.id) {
-                androidx.compose.runtime.mutableStateOf(false)
-            }
             var showSmsDropdown by androidx.compose.runtime.remember(phone.id) {
                 androidx.compose.runtime.mutableStateOf(false)
             }
@@ -79,20 +76,10 @@ internal fun PhonesSection(
                     }
                 },
                 onClick = {
-                    if (platforms.hasAnyPlatform) {
-                        showCallDropdown = true
-                    } else {
-                        placeCall(context, phone.number)
-                    }
-                },
-                dropdownContent = {
-                    CommunicationDropdown(
-                        expanded = showCallDropdown,
-                        onDismiss = { showCallDropdown = false },
-                        number = phone.number,
-                        type = CommunicationType.CALL,
-                        platforms = platforms
-                    )
+                    // Tapping the number itself places a plain system call, so the row
+                    // stays distinct from the Call/Message buttons above (which route
+                    // through Signal/WhatsApp/Telegram when those rows exist).
+                    placeCall(context, phone.number)
                 },
                 trailingDropdownContent = {
                     CommunicationDropdown(

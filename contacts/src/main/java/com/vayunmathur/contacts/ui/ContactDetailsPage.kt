@@ -189,7 +189,7 @@ fun ContactDetailsScreen(
             item {
                 Box(Modifier.staggeredEntrance(index = 0, arriving = arriving)) {
                     ActionButtonsRow(
-                        details.phoneNumbers.firstOrNull()?.number,
+                        details.phoneNumbers,
                         details.emails.firstOrNull()?.address,
                         platforms,
                         state.isGoogleMeetInstalled

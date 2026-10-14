@@ -80,12 +80,27 @@ internal suspend fun ContactViewModel.updateExistingSimContact(
 internal suspend fun ContactViewModel.persistProviderContact(
     contact: com.vayunmathur.contacts.data.Contact
 ): Boolean {
+    val app = getApplication<Application>()
     val contactId = contact.id
     val details = contact.details
-    val oldDetails = contacts.value.find { it.id == contactId }?.details
+    // Read the old rows straight from the provider rather than trusting the cached
+    // list: the cache lags the provider across account syncs and external edits, and
+    // updates built against stale data-row ids match zero rows without error, so the
+    // batch reports success while nothing changes.
+    val oldDetails = contactId.takeIf { it != 0L }?.let {
+        runCatching { com.vayunmathur.contacts.data.getDetails(app, it) }.getOrNull()
+            ?: com.vayunmathur.contacts.data.ContactDetails.empty()
+    } ?: contacts.value.find { it.id == contactId }?.details
         ?: allContactsState.value.find { it.id == contactId }?.details
         ?: com.vayunmathur.contacts.data.ContactDetails.empty()
-    return contact.save(getApplication(), details, oldDetails)
+    val ok = contact.save(app, details, oldDetails)
+    if (ok) {
+        // The provider observer re-syncs on its own debounce, but an edit must be
+        // visible immediately - refresh now so the details page and list update
+        // without waiting for the observer round-trip.
+        syncFromSystem()
+    }
+    return ok
 }
 
 fun ContactViewModel.simDisplayLabel(account: ContactAccount): String? =
