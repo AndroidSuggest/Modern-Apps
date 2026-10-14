@@ -129,6 +129,15 @@ object NetworkClient {
     var defaultSslSocketFactory: SSLSocketFactory? = null
         private set
 
+    /**
+     * The trust manager behind [defaultSslSocketFactory], retained because pooled clients
+     * (OkHttp, issue 815) need the manager alongside the factory at construction time.
+     * Null exactly when the factory is null (SYSTEM trust).
+     */
+    @Volatile
+    var defaultTrustManager: javax.net.ssl.X509TrustManager? = null
+        private set
+
     @Volatile
     var currentBundle: TrustBundle = TrustBundle.SYSTEM
         private set
@@ -159,11 +168,13 @@ object NetworkClient {
         currentBundle = bundle
         if (bundle == TrustBundle.SYSTEM) {
             defaultSslSocketFactory = null
+            defaultTrustManager = null
             Log.status(TAG, "Initialized with SYSTEM bundle (platform default trust)")
             return
         }
         val result = BundledTrust.createFactory(appCtx, bundle)
         defaultSslSocketFactory = result?.first
+        defaultTrustManager = result?.second
         if (defaultSslSocketFactory == null) {
             Log.status(TAG, "Bundle $bundle produced no factory (missing DERs?), falling back to system trust")
         } else {
@@ -174,6 +185,9 @@ object NetworkClient {
     @Synchronized
     fun initWithFactory(factory: SSLSocketFactory?, bundle: TrustBundle = TrustBundle.SYSTEM) {
         defaultSslSocketFactory = factory
+        // A bare factory without its manager cannot back a pooled client; the pool falls back
+        // to system trust until init() supplies the pair.
+        defaultTrustManager = null
         currentBundle = bundle
         initialized = true
     }
@@ -272,6 +286,10 @@ object NetworkClient {
      * optional redirect suppression. Does not throw on 4xx/5xx — inspect
      * [RawResponse.status].
      *
+     * Served by the pooled OkHttp engine ([PooledHttpEngine], issue 815) unless its kill-switch
+     * is off or the call pins a bare factory the pool cannot share — both fall back to the
+     * historical `HttpURLConnection` path with identical semantics.
+     *
      * [sslSocketFactory] pins the TLS trust anchors for this call (Signal uses
      * a factory built over its bundled root); null keeps the platform default or
      * the bundle default set via [init]. Use [useSystemTrust]=true to force system
@@ -288,6 +306,12 @@ object NetworkClient {
         sslSocketFactory: SSLSocketFactory? = null,
         useSystemTrust: Boolean = false,
     ): RawResponse {
+        if (PooledHttpEngine.USE_POOLED_ENGINE && PooledHttpEngine.canServe(sslSocketFactory)) {
+            return PooledHttpEngine.execute(
+                url, method, headers, body, followRedirects,
+                connectTimeoutMs, readTimeoutMs, useSystemTrust,
+            )
+        }
         val r = HttpUrlEngine.internalExecute(
             url, method, headers, HttpUrlEngine.toBodyBytes(body),
             followRedirects, connectTimeoutMs, readTimeoutMs,

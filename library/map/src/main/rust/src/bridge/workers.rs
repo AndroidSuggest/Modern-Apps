@@ -14,22 +14,28 @@ use crate::tile::source::{
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use tilecodec::mamaps::header::Header;
+use tilecodec::mamaps::read::LeafCache;
 use tilecodec::mamaps::MamapsArchive;
 use tilecodec::stream::RangeReader;
 use tilecodec::stream::OPEN_PREFIX_BYTES;
 /// A worker: opens its own view of the archive, then serves tile requests until the queue
 /// closes.
 ///
-/// Each worker holds its **own** [`MamapsArchive`] (and its own leaf-index cache and prefix
-/// parse — small CPU work on an in-memory prefix), so its range reads need no lock. What is
-/// shared across the surface's workers is everything that costs a *network round trip*: the
-/// header `build_id` fetch (one JNI request per cold start, not one per worker, via `header`)
-/// and the forced first-read revalidation (one prefix read, not one per worker, via
-/// `prefix_gate`). The on-disk range cache is shared too, and is safe to share because every
-/// entry is written temp-then-renamed.
+/// Each worker holds its **own** [`MamapsArchive`] view (and its own prefix parse — small CPU
+/// work on an in-memory prefix), so its range reads need no lock, but every view of one
+/// surface reads parsed leaves through the **shared** [`LeafCache`]: a cold leaf is fetched
+/// once no matter how many workers' tiles need it. What is shared across the surface's
+/// workers is everything that costs a *network round trip*: the header `build_id` fetch (one
+/// JNI request per cold start, not one per worker, via `header`) and the forced first-read
+/// revalidation (one prefix read, not one per worker, via `prefix_gate`). The on-disk range
+/// cache is shared too, and is safe to share because every entry is written temp-then-renamed.
 ///
-/// `header`/`prefix_gate` are built once per surface in `lifecycle::create` and handed to every
-/// worker: whichever worker arrives first does the fetch while the rest block on it.
+/// header`/`prefix_gate` are built once per surface in `lifecycle::create` and handed to every
+/// worker: whichever worker arrives first does the fetch while the rest block on it. `leaves`
+/// is the surface's shared parsed-leaf cache (issue 815): every worker's archive reads through
+/// it, so a cold leaf is fetched once no matter how many workers' tiles need it — previously
+/// each worker carried a private cache and one viewport's leaves were fetched up to once per
+/// worker.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_worker(
     index: usize,
@@ -43,6 +49,7 @@ pub(crate) fn spawn_worker(
     toggles: Arc<SharedToggles>,
     header: Arc<std::sync::OnceLock<Option<u64>>>,
     prefix_gate: Arc<std::sync::atomic::AtomicBool>,
+    leaves: Arc<LeafCache>,
 ) {
     let started = std::thread::Builder::new()
         .name(format!("map-tiles-{index}"))
@@ -62,7 +69,7 @@ pub(crate) fn spawn_worker(
                             return;
                         }
                     };
-                    match MamapsArchive::open(reader) {
+                    match MamapsArchive::open_with_cache(reader, Arc::clone(&leaves)) {
                         Ok(archive) => {
                             serve(index, archive, &queue, &finished, &zoom_range, &toggles)
                         }
@@ -99,7 +106,7 @@ pub(crate) fn spawn_worker(
             );
             reader.set_online(online.get());
 
-            let archive = match MamapsArchive::open(reader) {
+            let archive = match MamapsArchive::open_with_cache(reader, Arc::clone(&leaves)) {
                 Ok(a) => a,
                 Err(e) => {
                     log(&format!(
@@ -183,7 +190,7 @@ fn fetch_header_with_retry(archive_url: &str) -> Option<u64> {
 /// is opened differs, never how tiles are served from it.
 fn serve<R: RangeReader>(
     index: usize,
-    mut archive: MamapsArchive<R>,
+    archive: MamapsArchive<R>,
     queue: &Arc<Mutex<Receiver<TileId>>>,
     finished: &Sender<(u64, TileResult)>,
     zoom_range: &Arc<ZoomRange>,

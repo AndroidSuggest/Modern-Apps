@@ -108,6 +108,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
     // worker). See `spawn_worker`.
     let header = Arc::new(std::sync::OnceLock::new());
     let prefix_gate = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // One parsed-leaf cache shared by every worker's archive view (issue 815): a cold leaf is
+    // fetched once per surface, not once per worker.
+    let leaves = Arc::new(tilecodec::mamaps::read::LeafCache::new());
     for index in 0..WORKER_COUNT {
         spawn_worker(
             index,
@@ -121,6 +124,7 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
             toggles.clone(),
             header.clone(),
             prefix_gate.clone(),
+            leaves.clone(),
         );
     }
 
@@ -129,6 +133,8 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
         layers: style::layers(),
         finished: finished_rx,
         wanted: wanted_tx,
+        wanted_queue: queue.clone(),
+        last_visible: HashSet::new(),
         in_flight: HashSet::new(),
         absent: AbsentSet::new(),
         retry: RetryMap::new(),

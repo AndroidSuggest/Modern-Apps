@@ -8,7 +8,7 @@ use crate::vulkan::renderer::Renderer;
 use jni::sys::jlong;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 /// The archive's zoom range, shared with the worker that reads it out of the header.
 ///
 /// Atomics rather than a `Mutex` because `render` reads this every frame, and it must be
@@ -66,8 +66,13 @@ impl ZoomRange {
 /// body — so its cost is dominated by round-trip latency, not CPU. One worker serialises
 /// every tile behind every other: the archive probe measured a 24-tile screenful taking ~15
 /// seconds that way, which is exactly the "really slow to change which elements load"
-/// symptom. Four overlaps the waiting without opening enough sockets to matter.
-pub(crate) const WORKER_COUNT: usize = 4;
+/// symptom.
+///
+/// Eight is the first step toward MapLibre's 20 concurrent requests per host (issue 815):
+/// it halves the serial waves of a cold screenful while staying inside what a phone's cores
+/// and radio handle without thermal or socket pressure. Raise toward 20 only with the
+/// per-tile `queue/fetch/tess` logs showing fetch still dominating and thermals clean.
+pub(crate) const WORKER_COUNT: usize = 8;
 
 /// The most tiles allowed resident on the GPU at once.
 ///
@@ -94,14 +99,17 @@ pub(crate) const RESIDENT_TILE_CAP: usize = 64;
 /// the tile is not re-requested, because its key is only removed from `in_flight` once it is
 /// actually drained.
 ///
-/// Four is a deliberate middle: a screenful is a couple of dozen tiles, so a cold pan fills in
-/// over roughly ten frames, which is a fraction of the fetch and decode latency that preceded it
-/// and so is not visible. Lower would start to look like a trickle; higher gives the tail back.
+/// Eight is the middle that moved with the worker count (issue 815): a screenful is a
+/// couple of dozen tiles, so a cold pan fills in over roughly half the frames it did at
+/// four workers and four uploads, which stays a fraction of the fetch and decode latency
+/// that preceded it and so is not visible. Lower would start to look like a trickle now that
+/// twice as many workers finish per frame; higher gives the frame-time tail back — an upload
+/// is still around a hundred `vkAllocateMemory` calls on the Choreographer callback.
 ///
 /// Raised after a zoom-out (see [`upload_budget`]): a zoom-out invalidates a screenful at once,
-/// and draining it at four per frame leaves the map coarse for seconds while the ancestors it
+/// and draining it at the steady rate leaves the map coarse for seconds while the ancestors it
 /// needs are already finished and waiting in the channel.
-pub(crate) const UPLOADS_PER_FRAME: usize = 4;
+pub(crate) const UPLOADS_PER_FRAME: usize = 8;
 
 /// Uploads per frame while the camera is zooming out: the burst rate that drains a screenful
 /// of newly-visible ancestors in a frame or two rather than ten.
@@ -145,6 +153,25 @@ pub(crate) struct MapHandle {
     pub(crate) finished: Receiver<(u64, TileResult)>,
     /// Tiles the workers should fetch.
     pub(crate) wanted: Sender<TileId>,
+    /// The receiving end of [`wanted`](Self::wanted), shared with the workers.
+    ///
+    /// Lets a frame drain tiles that stopped being wanted *before* a worker spends a fetch on
+    /// them (issue 815): panning queues the new viewport behind the old one, and without a
+    /// drain the new area waits behind fetches nobody looks at anymore. Drained keys leave
+    /// `in_flight` (see `frame.rs`), so still-visible ones are re-sent through the normal gates
+    /// and genuinely-fetching workers are never disturbed — only never-started queue entries go
+    /// away. Locked with `try_lock`, never blocking: a worker parked in `recv` holds it, and
+    /// blocking behind that worker would deadlock the render thread against its own send.
+    pub(crate) wanted_queue: Arc<Mutex<Receiver<TileId>>>,
+    /// The wanted tile keys of the last Earth frame, for the drain-and-replace generation.
+    ///
+    /// When the wanted set changes, the queued (never-started) remainder of the previous set is
+    /// stale and is drained (see [`wanted_queue`](Self::wanted_queue)); when it matches, the
+    /// queue flows untouched. Finished tiles outside this set skip uploading: they scrolled out
+    /// while in flight, and spending an upload slot on them only delays visible tiles. Empty
+    /// before the first Earth frame, which disables the stale-drop until there is a set to be
+    /// stale against. Untouched on Moon frames, so the Earth set resumes mid-stream.
+    pub(crate) last_visible: HashSet<u64>,
     /// Requested but not yet arrived, so a tile is not asked for sixty times a second
     /// while it is in flight.
     pub(crate) in_flight: HashSet<u64>,

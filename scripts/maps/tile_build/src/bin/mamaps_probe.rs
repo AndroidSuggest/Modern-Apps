@@ -81,7 +81,7 @@ fn main() -> ExitCode {
     if args[2] == "--sidecars" {
         return sidecars(&args[1]);
     }
-    let mut archive = match MamapsArchive::open(FileRanges { file: std::sync::Mutex::new(file) }) {
+    let archive = match MamapsArchive::open(FileRanges { file: std::sync::Mutex::new(file) }) {
         Ok(a) => a,
         Err(e) => {
             eprintln!("mamaps_probe: open: {e}");
@@ -297,7 +297,7 @@ fn breakdown(path: &str, samples_per_zoom: usize) -> ExitCode {
     }
     println!("total stored bodies: {:.3} GB", total_stored as f64 / 1e9);
     // Sampled bodies per zoom: heightmap share + raw sizes.
-    let mut archive = match MamapsArchive::open(FileRanges {
+    let archive = match MamapsArchive::open(FileRanges {
         file: std::sync::Mutex::new(File::open(path).expect("open")),
     }) {
         Ok(a) => a,
@@ -571,7 +571,7 @@ fn layer_breakdown(path: &str, samples_per_zoom: usize) -> ExitCode {
     let layer_name = |id: u8| -> String {
         dictionary.layer_name(id).unwrap_or("?").to_string()
     };
-    let mut archive = match MamapsArchive::open(FileRanges {
+    let archive = match MamapsArchive::open(FileRanges {
         file: std::sync::Mutex::new(File::open(path).expect("open")),
     }) {
         Ok(a) => a,

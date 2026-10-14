@@ -169,7 +169,7 @@ fn a_tile_read_out_of_a_mamaps_archive_tessellates() {
     writer.append(id, &real()).expect("append");
     let bytes = writer.finish().expect("finish");
 
-    let mut archive = MamapsArchive::open(Memory {
+    let archive = MamapsArchive::open(Memory {
         bytes,
         requests: RefCell::new(0),
     })

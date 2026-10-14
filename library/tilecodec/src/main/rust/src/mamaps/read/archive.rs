@@ -1,4 +1,5 @@
 use super::helpers::decompress;
+use super::leaf_cache::LeafCache;
 use crate::mamaps::body::Body;
 use crate::mamaps::dict::Dictionary;
 use crate::mamaps::header::Header;
@@ -6,12 +7,20 @@ use crate::mamaps::index::{LeafEntry, RootEntry, self};
 use crate::pmtiles::tile_id;
 use crate::proto::{Error, Result, err};
 use crate::stream::{OPEN_PREFIX_BYTES, RangeReader};
-
-/// How many parsed leaves to keep. Sixteen: a viewport walks a contiguous stretch
-/// of the tile curve, so a small MRU covers panning without re-fetching.
-const MAX_CACHED_LEAVES: usize = 16;
+use std::sync::Arc;
 
 /// An open archive.
+///
+/// The parsed-leaf cache is shared across every reader of one archive: open
+/// each worker's view with
+/// [`open_with_cache`](MamapsArchive::open_with_cache) over the same
+/// [`LeafCache`], and a cold leaf is fetched once no matter how many tiles
+/// need it. That is the MapLibre-parity half of issue 815 — with a private
+/// cache per worker, four workers covering one viewport fetched the same cold
+/// leaves up to four times.
+///
+/// [`open`](MamapsArchive::open) keeps the old shape — a private cache — for
+/// single-reader tools and tests, where sharing buys nothing.
 pub struct MamapsArchive<R: RangeReader> {
     /// Reachable from the crate so the request-counting tests in [`super`] can assert on the
     /// number of round trips, which is the contract this whole layout exists to hold.
@@ -19,8 +28,7 @@ pub struct MamapsArchive<R: RangeReader> {
     pub header: Header,
     pub dictionary: Dictionary,
     root: Vec<RootEntry>,
-    /// `(leaf offset, entries)`, most-recently-used last.
-    leaves: Vec<(u64, Vec<LeafEntry>)>,
+    leaves: Arc<LeafCache>,
 }
 
 impl<R: RangeReader> MamapsArchive<R> {
@@ -37,7 +45,21 @@ impl<R: RangeReader> MamapsArchive<R> {
     /// writer asserts the budget, so a file that misses it was not written by this codec, and
     /// silently paying an extra round trip per open is exactly the cost the layout exists to
     /// avoid.
+    ///
+    /// The archive gets a private leaf cache. Readers that should share one —
+    /// a surface's tile workers — want
+    /// [`open_with_cache`](MamapsArchive::open_with_cache) instead.
     pub fn open(reader: R) -> Result<MamapsArchive<R>> {
+        Self::open_with_cache(reader, Arc::new(LeafCache::new()))
+    }
+
+    /// [`open`](MamapsArchive::open) over a caller-supplied leaf cache.
+    ///
+    /// Every archive opened over the same [`LeafCache`] shares parsed leaves:
+    /// the first worker to need a cold leaf fetches, inflates and parses it,
+    /// and the rest take the cached copy. Thread-safe — `tile` and
+    /// `tile_bytes` take `&self` — so one cache serves a whole surface.
+    pub fn open_with_cache(reader: R, leaves: Arc<LeafCache>) -> Result<MamapsArchive<R>> {
         let prefix = reader.read(0, OPEN_PREFIX_BYTES)?;
         let header = Header::parse(&prefix)?;
         let section = |offset: u64, len: u64, what: &str| -> Result<&[u8]> {
@@ -65,20 +87,20 @@ impl<R: RangeReader> MamapsArchive<R> {
                 root.len(),
             ));
         }
-        Ok(MamapsArchive { reader, header, dictionary, root, leaves: Vec::new() })
+        Ok(MamapsArchive { reader, header, dictionary, root, leaves })
     }
 
     /// The decoded body for a tile, or `None` when the archive does not hold it.
     ///
     /// `None` rather than an error: most of a coastal viewport is off the edge of coverage, and
     /// that is the ordinary answer rather than a fault.
-    pub fn tile(&mut self, z: u8, x: u32, y: u32) -> Result<Option<Body>> {
+    pub fn tile(&self, z: u8, x: u32, y: u32) -> Result<Option<Body>> {
         let Some(bytes) = self.tile_bytes(z, x, y)? else { return Ok(None) };
         Ok(Some(Body::parse(&bytes)?))
     }
 
     /// The decompressed body bytes for a tile, undecoded.
-    pub fn tile_bytes(&mut self, z: u8, x: u32, y: u32) -> Result<Option<Vec<u8>>> {
+    pub fn tile_bytes(&self, z: u8, x: u32, y: u32) -> Result<Option<Vec<u8>>> {
         if z < self.header.min_zoom || z > self.header.max_zoom || z >= 32 {
             return Ok(None);
         }
@@ -104,19 +126,16 @@ impl<R: RangeReader> MamapsArchive<R> {
         Ok(Some(decompress(self.header.compression, &stored)?))
     }
 
-    /// The parsed leaf a root entry addresses, from the cache or over the wire.
+    /// The parsed leaf a root entry addresses, from the shared cache or over the wire.
     ///
     /// A stored leaf is one raw-DEFLATE frame; it inflates whole to exactly
     /// `leaf_entry_count * 16` bytes and then binary-searches in memory like a raw leaf always
-    /// did. The request count is unchanged: one range read per cold leaf, whatever it stores.
-    fn leaf(&mut self, root: &RootEntry) -> Result<Vec<LeafEntry>> {
-        if let Some(position) = self.leaves.iter().position(|(offset, _)| *offset == root.leaf_offset)
-        {
-            // Move to the back: most-recently-used last.
-            let hit = self.leaves.remove(position);
-            let entries = hit.1.clone();
-            self.leaves.push(hit);
-            return Ok(entries);
+    /// did. The request count is unchanged: one range read per cold leaf, whatever it stores —
+    /// but now one per cold leaf *per cache*, not per reader, because the
+    /// fetch happens outside the cache lock and the first copy published wins.
+    fn leaf(&self, root: &RootEntry) -> Result<Arc<Vec<LeafEntry>>> {
+        if let Some(hit) = self.leaves.get(root.leaf_offset) {
+            return Ok(hit);
         }
         let raw_len = root.leaf_entry_count as u64 * index::LEAF_ENTRY_LEN as u64;
         let stored_len = if root.stored_len == 0 { raw_len } else { root.stored_len as u64 };
@@ -144,11 +163,7 @@ impl<R: RangeReader> MamapsArchive<R> {
             index::decompress_leaf(&stored, raw_len)?
         };
         let entries = index::parse_leaf(&raw)?;
-        if self.leaves.len() >= MAX_CACHED_LEAVES {
-            self.leaves.remove(0);
-        }
-        self.leaves.push((root.leaf_offset, entries.clone()));
-        Ok(entries)
+        Ok(self.leaves.insert(root.leaf_offset, entries))
     }
 
     /// A read that must come back at its full length.

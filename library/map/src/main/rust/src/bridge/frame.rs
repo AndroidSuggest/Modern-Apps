@@ -84,6 +84,10 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     // The drain sample below still records (zero elapsed on Moon frames) so the
     // frame-time rollup keeps its shape.
     let drain_start = std::time::Instant::now();
+    // Finished tiles that scrolled out while in flight, skipped before upload (issue 815).
+    // Declared outside the Moon guard so the per-frame report below can cite it; Moon frames
+    // skip the drain and leave it zero.
+    let mut stale_dropped = 0usize;
     if crate::camera::moon_active(&camera) {
         // No selection runs for the Moon, so no zoom is recorded — and the Earth set
         // resumes mid-stream when the body switches back, which deserves the burst path.
@@ -96,6 +100,29 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
             break;
         };
         map.in_flight.remove(&key);
+        // Scrolled out while in flight (issue 815): the bytes are real but nobody looks at this
+        // tile anymore, so it skips the upload slot — visible tiles drain first. Absent/failed
+        // bookkeeping below still runs (an absence is a fact whatever the viewport), only the
+        // Vulkan upload is spared. Disabled until the first Earth frame selects a set.
+        if !map.last_visible.is_empty() && !map.last_visible.contains(&key) {
+            stale_dropped += 1;
+            match result {
+                TileResult::Ready(_) => {
+                    map.retry.remove(&key);
+                }
+                TileResult::Absent => {
+                    map.absent.insert(key);
+                    map.retry.remove(&key);
+                }
+                TileResult::Failed => {
+                    let attempts = map.retry.get(&key).map_or(0, |(n, _)| *n).saturating_add(1);
+                    let wait = std::time::Duration::from_millis(retry_delay_ms(attempts));
+                    map.retry
+                        .insert(key, (attempts, std::time::Instant::now() + wait));
+                }
+            }
+            continue;
+        }
         match result {
             TileResult::Ready(mesh) => {
                 uploads += 1;
@@ -207,7 +234,38 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     } else {
         Vec::new()
     };
-    for tile in visible.iter().chain(wash_extra.iter()) {
+    // The wanted set for the drain-and-replace generation (issue 815): when it changes, the
+    // queued remainder of the previous set is stale and is drained below, so a pan does not
+    // wait behind fetches for tiles that scrolled out. `wash_extra` counts as wanted — it is
+    // enqueued through the same gates.
+    let wanted_keys: std::collections::HashSet<u64> = visible
+        .iter()
+        .chain(wash_extra.iter())
+        .map(|t| t.key())
+        .collect();
+    // Drain-and-replace, Earth frames only: the Moon guard below leaves the Earth queue
+    // untouched so switching back resumes mid-stream. `try_lock` never blocks — a worker
+    // parked in `recv` holds the lock, and blocking behind it would deadlock the render
+    // thread against its own send — so a contended frame skips the drain and the normal gates
+    // below still dedup. Drained keys leave `in_flight` and are re-sent when still wanted;
+    // keys a worker already took stay marked and are never duplicated. Skipped while the
+    // wanted set is steady (the common case) and before the first Earth frame.
+    let moon = crate::camera::moon_active(&camera);
+    if !moon && !map.last_visible.is_empty() && wanted_keys != map.last_visible {
+        if let Ok(queue) = map.wanted_queue.try_lock() {
+            let mut drained = 0usize;
+            while let Ok(tile) = queue.try_recv() {
+                map.in_flight.remove(&tile.key());
+                drained += 1;
+            }
+            if drained > 0 {
+                log_info(&format!("queue generation changed: drained {drained} stale tiles"));
+            }
+        }
+    }
+    // Centre-first enqueue (issue 815): the middle of the screen fills before the edges, so a
+    // cold pan shows something useful as early as possible instead of scan order.
+    for tile in center_first(&visible).iter().chain(wash_extra.iter()) {
         let key = tile.key();
         if map.renderer.has_tile(key, generation)
             || map.absent.contains(&key)
@@ -232,11 +290,12 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     // Skipped on Moon frames along with the fetch above: `visible` is empty, and
     // retaining against it would drop every Earth backoff (harmless but wasteful)
     // — worse, `retain` below with an empty keep would EVICT the Earth set. The
-    // Moon guard keeps both calls out.
-    let moon = crate::camera::moon_active(&camera);
+    // Moon guard keeps all three out, and `last_visible` keeps the Earth set it
+    // resumes against.
     if !moon {
         map.retry.retain_visible(&visible);
         map.renderer.retain(&keep, &visible, RESIDENT_TILE_CAP);
+        map.last_visible = wanted_keys;
     }
     map.renderer
         .step_times
@@ -279,7 +338,7 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
         let steps = map.renderer.step_times.borrow_mut().report(1);
         log_info(&format!(
             "z{:.2} @{:.4},{:.4} b{:.0} vp {}x{}dp {}x{}px msaa {}x | resident {} tiles, {} meshes, \
-             {} draws, {} tris | {} in flight, {} absent | archive z{}..{} | {}",
+             {} draws, {} tris | {} in flight, {} absent, {} stale-dropped | archive z{}..{} | {}",
             camera.zoom,
             camera.center_lon,
             camera.center_lat,
@@ -295,6 +354,7 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
             triangles,
             map.in_flight.len(),
             map.absent.len(),
+            stale_dropped,
             min_zoom,
             max_zoom,
             steps,
@@ -307,6 +367,30 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
             0
         }
     }
+}
+
+/// The wanted tiles nearest the viewport centre first.
+///
+/// A cold pan shows its middle before its edges: the centre tile is what the user is looking
+/// at, and scan order would spend the first fetches on a corner. Sorts by squared distance to
+/// the set's own mean, which is the viewport centre for a coverage box. A handful of tiles, so
+/// the sort is noise next to one fetch.
+fn center_first(visible: &[select::TileId]) -> Vec<select::TileId> {
+    if visible.len() < 2 {
+        return visible.to_vec();
+    }
+    let (sx, sy) = visible
+        .iter()
+        .fold((0i64, 0i64), |(sx, sy), t| (sx + t.x as i64, sy + t.y as i64));
+    let n = visible.len() as i64;
+    let (cx, cy) = (sx / n, sy / n);
+    let mut out = visible.to_vec();
+    out.sort_by_key(|t| {
+        let dx = t.x as i64 - cx;
+        let dy = t.y as i64 - cy;
+        dx * dx + dy * dy
+    });
+    out
 }
 
 /// The last frame's per-step times in nanos, in [`Step::ALL`](crate::timing::Step) order.

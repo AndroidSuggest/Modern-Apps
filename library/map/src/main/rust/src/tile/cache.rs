@@ -53,7 +53,19 @@ pub struct RangeCache {
     max_bytes: u64,
     /// Injectable so the freshness and eviction policies are testable without sleeping.
     clock: Box<dyn Fn() -> u64 + Send + Sync>,
+    /// Writes since the last eviction scan (issue 815).
+    ///
+    /// [`evict_if_over_cap`](Self::evict_if_over_cap) stats every entry in the directory, so
+    /// running it per write during a cold fill — dozens of ranges per screenful across 8 workers —
+    /// spends more syscalls on the scan than on the writes. Eviction is best-effort anyway (a full
+    /// disk must not stop the map), so the scan runs every [`EVICT_EVERY_WRITES`] writes; the
+    /// cache overshoots its cap by at most that many entries in between.
+    writes_since_evict: std::sync::atomic::AtomicU64,
 }
+
+/// How many writes accumulate between eviction scans. A screenful is dozens of ranges, so the
+/// scan runs about once per screenful rather than once per range.
+const EVICT_EVERY_WRITES: u64 = 32;
 
 impl RangeCache {
     /// Open the cache once with the full origin marker, dropping every entry
@@ -78,6 +90,7 @@ impl RangeCache {
             dir,
             max_bytes,
             clock,
+            writes_since_evict: std::sync::atomic::AtomicU64::new(0),
         };
         cache.invalidate_on_origin_change(origin);
         cache
@@ -136,7 +149,16 @@ impl RangeCache {
         if self.write_inner(key, body).is_err() {
             return;
         }
-        self.evict_if_over_cap();
+        if self
+            .writes_since_evict
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1
+            >= EVICT_EVERY_WRITES
+        {
+            self.writes_since_evict
+                .store(0, std::sync::atomic::Ordering::Relaxed);
+            self.evict_if_over_cap();
+        }
     }
 
     fn write_inner(&self, key: &str, body: &[u8]) -> std::io::Result<()> {
@@ -467,7 +489,9 @@ mod tests {
         let f = Fixture::new("evict");
         let clock = Arc::new(AtomicU64::new(1_000_000));
         let cache = cache_with(&f.dir, clock.clone(), 1000);
-        for i in 0..10 {
+        // A multiple of the eviction batch threshold (issue 815: the scan runs every 32 writes,
+        // not per write), so the scan runs on the last write and the cap holds at the end.
+        for i in 0..64 {
             cache.write(&RangeCache::key(URL, &format!("bytes={i}")), &[0u8; 200]);
             // Distinct mtimes, so eviction order is well defined.
             std::thread::sleep(std::time::Duration::from_millis(12));
@@ -480,7 +504,24 @@ mod tests {
         // Evicts to a margin below the cap, not exactly to it.
         assert!(total <= 800, "evicts with headroom: {total}");
         // The most recent write survives; the oldest does not.
-        assert!(cache.read(&RangeCache::key(URL, "bytes=9")).is_some());
+        assert!(cache.read(&RangeCache::key(URL, "bytes=63")).is_some());
         assert!(cache.read(&RangeCache::key(URL, "bytes=0")).is_none());
+    }
+
+    #[test]
+    fn eviction_waits_for_a_batch_of_writes() {
+        // The scan stats the whole directory, so it runs every 32 writes rather than per write
+        // (issue 815). Below the threshold nothing is evicted even over the cap.
+        let f = Fixture::new("evict_batch");
+        let clock = Arc::new(AtomicU64::new(1_000_000));
+        let cache = cache_with(&f.dir, clock.clone(), 100);
+        for i in 0..10 {
+            cache.write(&RangeCache::key(URL, &format!("bytes={i}")), &[0u8; 200]);
+        }
+        let total: u64 = data_files(&f.dir)
+            .iter()
+            .map(|p| fs::metadata(p).unwrap().len())
+            .sum();
+        assert_eq!(total, 2000, "under the batch threshold no scan runs yet");
     }
 }
