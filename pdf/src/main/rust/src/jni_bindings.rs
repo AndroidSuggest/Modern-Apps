@@ -1,7 +1,7 @@
 use crate::*;
 use jni::objects::{JByteArray, JClass, JFloatArray, JString};
 use jni::sys::{jbyteArray, jboolean, jfloat, jint, jlong, jstring};
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned, jni_str};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 // ---------------------------------------------------------------------------
@@ -29,23 +29,23 @@ impl Drop for InvalidateSearchIndex {
 }
 
 /// Throw a Java IllegalArgumentException (if possible). Requires &mut JNIEnv.
-fn throw_iae<'local>(env: &mut JNIEnv<'local>, msg: &str) {
-    let _ = env.throw_new("java/lang/IllegalArgumentException", msg);
+fn throw_iae<'local>(env: &mut Env<'local>, msg: &str) {
+    let _ = env.throw_new(jni_str!("java/lang/IllegalArgumentException"), &jni::strings::JNIString::new(msg));
 }
 
-fn throw_oom<'local>(env: &mut JNIEnv<'local>, msg: &str) {
-    let _ = env.throw_new("java/lang/OutOfMemoryError", msg);
+fn throw_oom<'local>(env: &mut Env<'local>, msg: &str) {
+    let _ = env.throw_new(jni_str!("java/lang/OutOfMemoryError"), &jni::strings::JNIString::new(msg));
 }
 
 /// Convert JString to Rust String with proper error propagation (no unwrap_or_default hiding errors).
 /// Returns Ok(String) or Err with message. Handles null JString.
 /// Audit #5 + #3: jstr unwrap_or_default hides malformed Modified UTF-8 and null.
-fn jstr_safe<'local>(env: &mut JNIEnv<'local>, s: &JString<'local>) -> Result<String, String> {
+fn jstr_safe<'local>(env: &Env, s: &JString<'local>) -> Result<String, String> {
     if s.is_null() {
         return Ok(String::new());
     }
-    match env.get_string(s) {
-        Ok(js) => Ok(js.into()),
+    match s.try_to_string(env) {
+        Ok(js) => Ok(js),
         Err(e) => {
             let _ = env.exception_clear();
             Err(format!("Invalid JString (Modified UTF-8): {:?}", e))
@@ -56,7 +56,7 @@ fn jstr_safe<'local>(env: &mut JNIEnv<'local>, s: &JString<'local>) -> Result<St
 /// Helper that creates a Java byte[] from Option<Vec<u8>> ensuring local capacity first.
 /// Uses &mut JNIEnv since ensure_local_capacity requires &mut and we want to handle errors properly.
 /// Returns raw jbyteArray (null on failure).
-fn bytes_or_null_mut<'local>(env: &mut JNIEnv<'local>, data: Option<Vec<u8>>) -> jbyteArray {
+fn bytes_or_null_mut<'local>(env: &mut Env<'local>, data: Option<Vec<u8>>) -> jbyteArray {
     let null = std::ptr::null_mut();
     if env.ensure_local_capacity(4).is_err() {
         let _ = env.exception_clear();
@@ -79,7 +79,7 @@ fn bytes_or_null_mut<'local>(env: &mut JNIEnv<'local>, data: Option<Vec<u8>>) ->
 // Inner logic functions (panic-safe, wrapped by catch_unwind in extern fns)
 // ---------------------------------------------------------------------------
 
-fn open_document_inner<'local>(env: &mut JNIEnv<'local>, data: JByteArray<'local>) -> jlong {
+fn open_document_inner<'local>(env: &mut Env<'local>, data: JByteArray<'local>) -> jlong {
     if data.is_null() {
         throw_iae(env, "data is null");
         return 0;
@@ -100,7 +100,7 @@ fn open_document_inner<'local>(env: &mut JNIEnv<'local>, data: JByteArray<'local
 }
 
 fn open_document_pw_inner<'local>(
-    env: &mut JNIEnv<'local>,
+    env: &mut Env<'local>,
     data: JByteArray<'local>,
     password: JString<'local>,
 ) -> jlong {
@@ -134,7 +134,7 @@ fn open_document_pw_inner<'local>(
     open_document_pw(&bytes, pw.as_bytes()) as jlong
 }
 
-fn pdf_password_state_inner<'local>(env: &mut JNIEnv<'local>, data: JByteArray<'local>) -> jint {
+fn pdf_password_state_inner<'local>(env: &mut Env<'local>, data: JByteArray<'local>) -> jint {
     if data.is_null() {
         throw_iae(env, "data is null");
         return 0;
@@ -155,7 +155,7 @@ fn pdf_password_state_inner<'local>(env: &mut JNIEnv<'local>, data: JByteArray<'
 }
 
 fn save_encrypted_inner<'local>(
-    env: &mut JNIEnv<'local>,
+    env: &mut Env<'local>,
     handle: jlong,
     user_pw: JString<'local>,
     owner_pw: JString<'local>,
@@ -182,7 +182,7 @@ fn save_encrypted_inner<'local>(
     bytes_or_null_mut(env, save_encrypted(handle, u.as_bytes(), o.as_bytes()))
 }
 
-fn render_page_inner<'local>(env: &mut JNIEnv<'local>, handle: jlong, index: jint) -> jbyteArray {
+fn render_page_inner<'local>(env: &mut Env<'local>, handle: jlong, index: jint) -> jbyteArray {
     if env.ensure_local_capacity(4).is_err() {
         let _ = env.exception_clear();
         return std::ptr::null_mut();
@@ -191,7 +191,7 @@ fn render_page_inner<'local>(env: &mut JNIEnv<'local>, handle: jlong, index: jin
 }
 
 fn append_pdf_inner<'local>(
-    env: &mut JNIEnv<'local>,
+    env: &mut Env<'local>,
     handle: jlong,
     data: JByteArray<'local>,
 ) -> jint {
@@ -215,7 +215,7 @@ fn append_pdf_inner<'local>(
 }
 
 fn append_image_page_inner<'local>(
-    env: &mut JNIEnv<'local>,
+    env: &mut Env<'local>,
     handle: jlong,
     jpeg: JByteArray<'local>,
     w: jint,
@@ -240,7 +240,7 @@ fn append_image_page_inner<'local>(
     append_image_page(handle, &bytes, w as u32, h as u32)
 }
 
-fn extract_page_inner<'local>(env: &mut JNIEnv<'local>, handle: jlong, index: jint) -> jbyteArray {
+fn extract_page_inner<'local>(env: &mut Env<'local>, handle: jlong, index: jint) -> jbyteArray {
     if env.ensure_local_capacity(4).is_err() {
         let _ = env.exception_clear();
         return std::ptr::null_mut();
@@ -248,7 +248,7 @@ fn extract_page_inner<'local>(env: &mut JNIEnv<'local>, handle: jlong, index: ji
     bytes_or_null_mut(env, extract_page(handle, index))
 }
 
-fn list_data_inner<'local, F>(env: &mut JNIEnv<'local>, f: F) -> jbyteArray
+fn list_data_inner<'local, F>(env: &mut Env<'local>, f: F) -> jbyteArray
 where
     F: FnOnce() -> Option<Vec<u8>>,
 {
@@ -260,7 +260,7 @@ where
 }
 
 fn add_free_text_inner<'local>(
-    env: &mut JNIEnv<'local>,
+    env: &mut Env<'local>,
     handle: jlong,
     page: jint,
     x0: jfloat,
@@ -290,7 +290,7 @@ fn add_free_text_inner<'local>(
 }
 
 fn add_note_inner<'local>(
-    env: &mut JNIEnv<'local>,
+    env: &mut Env<'local>,
     handle: jlong,
     page: jint,
     x: jfloat,
@@ -309,7 +309,7 @@ fn add_note_inner<'local>(
 }
 
 fn add_callout_inner<'local>(
-    env: &mut JNIEnv<'local>,
+    env: &mut Env<'local>,
     handle: jlong,
     page: jint,
     ax: jfloat,
@@ -342,7 +342,7 @@ fn add_callout_inner<'local>(
 }
 
 fn add_poly_inner<'local>(
-    env: &mut JNIEnv<'local>,
+    env: &mut Env<'local>,
     handle: jlong,
     page: jint,
     argb: jint,
@@ -377,14 +377,14 @@ fn add_poly_inner<'local>(
         &buf,
         argb as u32,
         line_width as f64,
-        fill != 0,
-        closed != 0,
+        fill,
+        closed,
     )
     .unwrap_or(0)
 }
 
 fn add_ink_inner<'local>(
-    env: &mut JNIEnv<'local>,
+    env: &mut Env<'local>,
     handle: jlong,
     page: jint,
     argb: jint,

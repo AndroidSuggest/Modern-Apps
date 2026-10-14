@@ -5,15 +5,15 @@
 # =============================================================================
 
 # Build & tooling
-agp = "9.5.0-alpha04"
+agp = "9.5.0-alpha09"
 # lint version = 23 + AGP major (AGP 9.x -> lint 32.x)
-lint = "32.4.0-alpha04"
-kotlin = "2.4.20"
-kotlinGradlePlugin = "2.4.20"
+lint = "32.5.0-alpha09"
+kotlin = "2.5.0-Beta1"
+kotlinGradlePlugin = "2.5.0-Beta1"
 # KSP 2.x is versioned independently of Kotlin: the `<kotlin>-<ksp>` scheme ended at
-# 2.2.21-2.0.5, and releases from 2.3.0 onwards carry KSP's own version. 2.3.10 is therefore
+# 2.2.21-2.0.5, and releases from 2.3.0 onwards carry KSP's own version. 2.3.12 is therefore
 # not skew against kotlin above, and no 2.4.x KSP release exists.
-ksp = "2.3.11"
+ksp = "2.3.12"
 protobufPlugin = "0.10.0"
 desugarJdkLibs = "2.1.5"
 
@@ -27,56 +27,56 @@ kotlinxSerializationJson = "1.11.0"
 kotlinxDatetime = "0.8.0"
 
 # AndroidX – core & lifecycle
-coreKtx = "1.19.0"
-fragmentKtx = "1.9.0-alpha02"
+coreKtx = "1.19.1"
+fragmentKtx = "1.9.1"
 lifecycle = "2.11.0"
-savedstate = "1.4.0"
-sqlite = "2.7.0"
-workRuntimeKtx = "2.11.2"
-datastorePreferences = "1.3.0-alpha09"
+savedstate = "1.5.0"
+sqlite = "2.7.1"
+workRuntimeKtx = "2.12.0"
+datastorePreferences = "1.3.0-rc01"
 
 # AndroidX – Compose & UI
-composeBom = "2026.06.01"
+composeBom = "2026.09.00"
 # Compose Preview Screenshot Testing (renders @Preview to PNG on the JVM, no device).
 composeScreenshot = "0.0.1-alpha16"
 activityCompose = "1.13.0"
-material3 = "1.5.0-alpha27"
-material3AdaptiveNavigationSuite = "1.5.0-alpha23"
-foundation = "1.12.0-beta02"
+material3 = "1.5.0-beta01"
+material3AdaptiveNavigationSuite = "1.5.0-beta01"
+foundation = "1.13.0-beta01"
 wearComposeMaterial = "1.7.0-alpha05"
 # TV Material: Material Design for a ten-foot UI, where Material 3's focus handling does not reach.
 tv = "1.1.0"
 
 # AndroidX – navigation
-navigation3 = "1.2.0-alpha05"
+navigation3 = "1.3.0-alpha02"
 adaptiveNavigation3 = "1.3.0"
 
 # AndroidX – media, camera & images
-media3Exoplayer = "1.11.0-beta01"
+media3Exoplayer = "1.11.1"
 camerax = "1.7.0-alpha03"
 exifinterface = "1.4.2"
 
 # AndroidX – storage
 # Room 3 lives in the androidx.room3 group and the androidx.room3.* package, so it coexists
 # with the androidx.room 2.7.0 that WorkManager pulls in transitively for its WorkDatabase.
-room3 = "3.0.2"
+room3 = "3.0.3"
 
 # AndroidX – widgets, web & browser
 glance = "1.3.0-alpha02"
-webkit = "1.17.0-alpha03"
+webkit = "1.18.0-rc01"
 browser = "1.10.0"
 
 # AndroidX – security, identity & health
 biometric = "1.4.0-alpha07"
-credentials = "1.7.0-alpha02"
+credentials = "1.7.0-alpha03"
 autofill = "1.3.0"
-connectClient = "1.2.0-alpha04"
+connectClient = "1.2.0-alpha06"
 
 # AndroidX – ink
-ink = "1.1.0-alpha04"
+ink = "1.1.0-alpha09"
 
 # AndroidX – Android Auto (car app library), consumed by :maps, :music, :communicate, :weather, :auto
-carApp = "1.9.0-alpha02"
+carApp = "1.9.0-alpha03"
 
 # AndroidX – instrumentation test (androidTest). Only :library:map's on-device renderer
 # harness uses these; they are three independently versioned artifacts, not one train.
@@ -88,19 +88,19 @@ androidxTestExtJunit = "1.3.0"
 # One key for the entire protobuf toolchain — protobuf-java, protobuf-javalite and the protoc
 # compiler. Generated sources and the runtime that parses them must come from the same release,
 # so these are deliberately not separable: a bump here moves compiler and runtime together.
-protobufVersion = "4.36.1"
+protobufVersion = "4.36.2"
 # gRPC for the Accrescent app source (:appstore). grpc-java + grpc-kotlin coroutine stubs
 # over grpc-okhttp; the messages are generated as protobuf-lite to match the repo's other
 # protobuf module (:youpipe:extractor). These versions must stay mutually compatible with
 # protobufVersion above and are the most likely first build-friction point.
-grpc = "1.84.0"
+grpc = "1.84.3"
 grpcKotlin = "1.5.0"
 # @javax.annotation.Generated referenced by grpc-java generated stubs.
 javaxAnnotation = "1.3.2"
 jsr305 = "3.0.2"
 zxing = "3.5.4"
-libphonenumber = "9.0.38"
-litertlmAndroid = "0.14.0"
+libphonenumber = "9.0.41"
+litertlmAndroid = "0.18.0"
 brotli = "0.1.2"
 # Pooled HTTP for :library:network's range-fetch path (issue 815): connection
 # reuse + HTTP/2 multiplexing at MapLibre's 20/host concurrency, which per-request
@@ -109,7 +109,7 @@ brotli = "0.1.2"
 okhttp = "4.12.0"
 # Standalone library from the AGP toolchain (com.android.tools.build), not the plugin —
 # :appstore uses it at runtime to verify APK source stamps.
-apksig = "8.7.3"
+apksig = "9.4.1"
 
 # =============================================================================
 # THIRD PARTY
@@ -122,26 +122,27 @@ quickjs = "1.0.15"
 jgit = "7.8.0.202609011348-r"
 
 # On-device AI (openassistant: LiteRT-LM chat + SigLIP2 ONNX embeddings)
-onnxruntimeAndroid = "1.27.0"
+onnxruntimeAndroid = "1.31.0"
 
 # Crypto, security & credential storage
-sqlcipherAndroid = "4.19.0"
-# Pinned at 0.101.0, not Maven Central's newest (0.86.5): the CDSI enclave identity is compiled into the
+sqlcipherAndroid = "4.19.1"
+# Pinned at 0.101.x: the CDSI enclave identity is compiled into the
 # native library, and 0.86.5/0.92.0 carry a retired MRENCLAVE, so contact discovery requests
-# /v1/{stale}/discovery and the server answers 404. 0.101.0 also matches the checked-out libsignal source,
+# /v1/{stale}/discovery and the server answers 404. 0.101.x also matches the checked-out libsignal source,
 # which keeps its API verifiable. Published by Signal, not Maven Central.
-libsignalAndroid = "0.101.0"
+# 0.105.0 held back: needs MRENCLAVE verification before taking.
+libsignalAndroid = "0.101.2"
 # Signal's WebRTC fork plus its calling engine. Bundles its own org.webrtc, so it cannot coexist with
 # another WebRTC distribution in the same APK.
-ringrtcAndroid = "2.72.0"
+ringrtcAndroid = "2.72.1"
 # signalProtocolJava removed — WhatsApp X3DH now via Rust libwhatsapp_signal
 
 # XML
 kxml2 = "2.3.0"
-robolectric = "4.16.1"
+robolectric = "4.17"
 
 # Payments, telephony & auth
-stripe = "23.18.0"
+stripe = "23.23.0"
 
 # AppStore – Play install via Aurora
 gplayapi = "3.6.4"

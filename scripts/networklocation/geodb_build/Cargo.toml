@@ -35,10 +35,7 @@ osm_ingest = { path = "../../maps/osm_ingest" }
 # Block compression for the column store. The device reader decompresses with the pure-Rust
 # `ruzstd`, which has no encoder, so the writer needs a real zstd. This is a host tool that
 # never cross-compiles, so the C dependency stops here and does not reach the app.
-zstd = "0.13"
+zstd.workspace = true
 
 [profile.release]
 opt-level = 3
-
-# Detach from the repo-root Android workspace and from the other host tools'.
-[workspace]

@@ -13,14 +13,14 @@ level = "warn"
 check-cfg = ["cfg(fuzzing)", "cfg(rust_analyzer)"]
 
 [dependencies]
-arbitrary = { version = "1.3.2", features = ["derive"] }
-derive_fuzztest = "0.1.4"
+arbitrary.workspace = true
+derive_fuzztest.workspace = true
 np_adv = { path = "..", features = ["testing"] }
 crypto_provider = { path = "../../crypto_provider", default-features = false }
 crypto_provider_default = { path = "../../crypto_provider_default", default-features = false, features = ["std", "rustcrypto"] }
 
 [target.'cfg(fuzzing)'.dependencies]
-libfuzzer-sys = "0.4.7"
+libfuzzer-sys.workspace = true
 
 [[bin]]
 name = "actions_de_deser"
@@ -38,9 +38,4 @@ doc = false
 name = "actions_bitmap_encoder"
 doc = false
 
-# Detached from the repo-root workspace, like `library/tilecodec/src/main/rust`.
-# Upstream beto-core builds this under `nearby/Cargo.toml`, which supplies
-# `arbitrary`, `derive_fuzztest` and `libfuzzer-sys` via `[workspace.dependencies]`;
-# that manifest was not vendored, so the inherited keys are spelled out here and the
-# crate resolves against its own lockfile instead of the root's.
-[workspace]
+# Member of the repo-root workspace (single root Cargo.lock).

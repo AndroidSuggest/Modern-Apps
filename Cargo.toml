@@ -23,6 +23,22 @@ members = [
   "youpipe/src/main/rust",
   "web/src/main/rust",
   "share/src/main/rust",
+  "games/voxels/src/main/rust",
+  "code/src/main/rust",
+  "library/tilecodec/src/main/rust",
+  "scripts/maps/dem_ingest",
+  "scripts/maps/gtfs_ingest",
+  "scripts/maps/mamaps_build",
+  "scripts/maps/osm_ingest",
+  "scripts/maps/tile_build",
+  "scripts/maps/wikidesc",
+  "scripts/networklocation/geodb_build",
+  "scripts/networklocation/wps_harvest",
+  "third_party/betocore/ldt/fuzz",
+  "third_party/betocore/ldt_np_adv/fuzz",
+  "third_party/betocore/np_adv/fuzz",
+  "third_party/betocore/ukey2_connections/fuzz",
+  "third_party/betocore/xts_aes/fuzz",
   "third_party/om-file-format-sys",
   "third_party/betocore/array_view",
   "third_party/betocore/array_ref",
@@ -79,94 +95,80 @@ unwrap_used = "deny"
 [workspace.dependencies]
 # Upstream jni from crates.io, not a vendored fork.
 #
-# This was a local fork (third_party/jni-android) of 0.21.1 that trimmed the
-# dependency tree: it hand-wrote the JNI signature parser to drop `combine`
-# (and transitively `bytes`), dropped the `walkdir` build-dep and `windows-sys`,
-# and moved to thiserror 2. That saved a handful of crates at the cost of
-# carrying ~20 vendored files that had to be kept in sync with upstream by hand
-# - and 0.21.1 is from March 2023, so it had drifted three years behind.
-#
-# 0.22 is the current release but is a substantial API change (native methods
-# now receive `EnvUnowned` and must adapt it via `with_env` plus an
-# `ErrorPolicy`, and `GlobalRef`/`AutoLocal` were renamed). That migration
-# touches all 31 native entry points across maps and games/voxels and needs an
-# Android build to verify, so it is deliberately left as a follow-up.
-jni = "0.21.1"
+# 0.22 API: native methods now receive `EnvUnowned` and must adapt it via
+# `with_env` plus an `ErrorPolicy`; `GlobalRef`/`AutoLocal` renamed. All 31
+# native entry points migrated in this bump.
+jni = "0.22.4"
 jni-sys = "0.3.1"
 cesu8 = "1.1.0"
 thiserror = { version = "2" }
-log = "0.4.33"
-cfg-if = "1.0.4"
+log = "0.4.34"
+cfg-if = "1.0.5"
 
-serde = { version = "1.0.228", features = ["derive"] }
-serde_core = "1.0.228"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_core = "1.0.229"
 proc-macro2 = "1.0.92"
 quote = "1.0.40"
 syn = "2.0.101"
 itoa = "1.0.15"
 memchr = "2.8.3"
 # XML pull parsing for the OOXML/ODF importers. Only transitive dep is memchr, pinned above.
-quick-xml = { version = "0.37", default-features = false }
-serde_json = "1.0.149"
+quick-xml = { version = "0.42", default-features = false }
+serde_json = "1.0.154"
 
 # Brave Shields engine (:web). default-features off drops `single-thread` so `Engine` is
 # Send + Sync, which the WebView render thread requires.
-adblock = { version = "0.13.2", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
+adblock = { version = "0.13.3", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
 
 # Imaging – image crate 0.25->moxcms/pxfm removed, use tiny jpeg-encoder/decoder (1 function per your rule)
 jpeg-decoder = { version = "0.3.2", default-features = false }
-jpeg-encoder = { version = "0.6.1", default-features = false }
-flate2 = "1.1.4"
+jpeg-encoder = { version = "0.7.1", default-features = false }
+flate2 = "1.1.10"
 
 # Crypto / PQC (features preserved – no feature loss)
-sha2 = { version = "0.11.0", features = ["oid"] }
+sha2 = { version = "0.11.1", features = ["oid"] }
 # SHAKE256 for FindFamily link-seed expansion. Already in the lock file transitively
 # via fips203/fips204, so this only promotes it to a direct dependency.
-sha3 = "0.10"
-aes = "0.8.4"
-# keepass 0.13.25 (passwords) requires aes 0.9.x (cipher 0.5 stack) to match its
-# cbc 0.2 / cipher 0.5 deps. The default `aes` pin stays 0.8.4 (cipher 0.4 stack)
-# for communicate/pdf/share/betocore. `aes09` forces aes 0.9.2 into the lock so
-# keepass's `aes <0.9.3` edge resolves to 0.9.2 instead of unifying onto 0.8.4
-# (which fails with `Aes256: BlockCipherEncrypt` unsatisfied, E0277).
-aes09 = { package = "aes", version = "=0.9.2" }
+sha3 = "0.12"
+shake = "0.1"
+aes = "0.9.3"
+# `aes09` kept for the keepass dual-stack rationale: keepass 0.15.x needs aes
+# 0.9.x (cipher 0.5 stack). Now redundant with the default `aes` 0.9.3 pin but
+# retained so `aes09.workspace` edges in passwords keep resolving.
+aes09 = { package = "aes", version = "=0.9.3" }
 md-5 = "0.11.0"
-# keepass pinned to =0.13.22: last release whose `aes` edge is `^0.9` (cipher 0.5
-# stack, matching its cbc 0.2 / cipher 0.5 deps). 0.13.23+ widened the edge to
-# `aes <0.9.3`, which also accepts 0.8.x, so cargo unifies keepass onto the
-# workspace aes 0.8.4 pin (cipher 0.4 stack) and keepass fails with
-# `Aes256: BlockCipherEncrypt` unsatisfied (E0277). cbc/cipher/rust-version are
-# identical between 0.13.22 and 0.13.25 per the registry index (cbc ^0.2,
-# cipher ^0.5, rust 1.85.1). Only passwords uses keepass.
-keepass = { version = "=0.13.22", default-features = false, features = ["save_kdbx4"] }
+# keepass 0.15.x (cipher 0.5 / cbc 0.2 / aes 0.9 stack, matching the workspace
+# default aes 0.9.3 pin). Only passwords uses keepass.
+keepass = { version = "=0.15.2", default-features = false, features = ["save_kdbx4"] }
 # Classic Signal protocol (WhatsApp bridge) – X25519/XEdDSA + AES-CBC + HMAC.
-curve25519-dalek = { version = "4.1.3", default-features = false, features = ["alloc", "precomputed-tables", "zeroize"] }
+curve25519-dalek = { version = "5.0.0", default-features = false, features = ["alloc", "precomputed-tables", "zeroize"] }
 # MLS (RFC 9420) for the RCS line — OpenMLS + RustCrypto provider + memory storage.
-openmls = { version = "0.9.0", default-features = false }
+openmls = { version = "0.9.1", default-features = false }
 openmls_rust_crypto = "0.6.0"
 openmls_memory_storage = "0.6.0"
 openmls_basic_credential = "0.6.0"
 openmls_traits = "0.6.0"
 tls_codec = "0.5.0"
-x25519-dalek = { version = "2.0.1", default-features = false, features = ["static_secrets"] }
+x25519-dalek = { version = "3.0.0", default-features = false, features = ["static_secrets"] }
 hmac = "0.13.0"
 subtle = "2.6.1"
 fips203 = "0.4.3"
 fips204 = "0.4.6"
-rand_core = { version = "0.6.4", features = ["getrandom"] }
-rand = { version = "0.8.5", default-features = true }
-getrandom = "0.2.15"
+rand_core = { version = "0.10.1" }
+rand = { version = "0.10.3", default-features = true }
+getrandom = "0.4.3"
 # x509-cert / cms / spki / rsa removed with the PDF signature-creation feature.
-der = { version = "0.7.10", features = ["alloc", "oid"] }
+der = { version = "0.8.2", features = ["alloc", "oid"] }
 const-oid = { version = "0.9.6", features = ["db"] }
 ttf-parser = { version = "0.25.1", default-features = false, features = ["std", "glyph-names"] }
 # weezl, cbc removed – std LZW + own CBC in pdf_cbc.rs (single function, prefer stdlib)
 fax = "0.3.0"
+hayro = "0.8.0"
 hayro-jbig2 = { version = "0.3.0", default-features = false, features = ["std"] }
 openjp2 = "0.6.1"
-lopdf = { version = "0.36", default-features = false, features = ["serde"] }
-libc = "0.2.171"
-indexmap = { version = "2.10.0" }
+lopdf = { version = "0.45", default-features = false, features = ["serde"] }
+libc = "0.2.190"
+indexmap = { version = "2.14.2" }
 hashbrown = "0.14.5"
 byteorder = "1.5.0"
 smallvec = "1.14.0"
@@ -176,8 +178,10 @@ smallvec = "1.14.0"
 # omfiles / memmap2 / ndarray removed – weather uses its own sync src/om.rs on top of
 # the vendored om-file-format-sys C lib (see weather/src/main/rust/Cargo.toml).
 
-# Build
-cc = { version = "1.2.8" }
+# Build. `cc = "1"` (not 1.8): tree-sitter-javascript's build-dep requires
+# `cc ~1.0.90` (<1.1.0), so the single workspace lockfile resolves cc to the
+# newest 1.0.x for everyone including om-file-format-sys.
+cc = { version = "1" }
 
 # Minimal platform
 chrono = { version = "0.4.39", default-features = false, features = ["clock", "std"] }
@@ -185,7 +189,7 @@ iana-time-zone = "0.1.64"
 crossbeam-utils = "0.8.21"
 crossbeam-epoch = "0.9.18"
 crossbeam-deque = "0.8.6"
-either = "1.13.0"
+either = "1.19.0"
 rayon = "1.11.0"
 rayon-core = "1.13.0"
 # nalgebra removed – camera now uses its own src/linalg.rs (see camera Cargo.toml)
@@ -193,6 +197,7 @@ rayon-core = "1.13.0"
 
 # --- BetoCore vendored crates (third_party/betocore) — Apache-2.0 ---
 # Local path crates (so `xxx.workspace = true` in vendored Cargo.tomls resolves)
+tilecodec = { path = "library/tilecodec/src/main/rust" }
 array_view = { path = "third_party/betocore/array_view" }
 array_ref = { path = "third_party/betocore/array_ref" }
 sink = { path = "third_party/betocore/sink" }
@@ -212,39 +217,77 @@ ukey2_rs = { path = "third_party/betocore/ukey2_rs" }
 ukey2_proto = { path = "third_party/betocore/ukey2_proto" }
 ukey2_connections = { path = "third_party/betocore/ukey2_connections" }
 # crates.io deps required by vendored betocore crates (pins from nearby/Cargo.toml)
-tinyvec = { version = "1.6.0", features = ["rustc_1_55"] }
-nom = { version = "7.1.3", default-features = false }
+tinyvec = { version = "1.13.3", features = ["rustc_1_55"] }
+nom = { version = "8.0.0", default-features = false }
 strum = { version = "0.28.0", default-features = false }
-strum_macros = { version = "0.27.1", default-features = false }
-lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
-itertools = { version = "0.13.0", default-features = false }
+strum_macros = { version = "0.28.0", default-features = false }
+lazy_static = { version = "1.5.1", features = ["spin_no_std"] }
+itertools = { version = "0.15.0", default-features = false, features = ["use_alloc"] }
 hex = "0.4.3"
-rand_pcg = "0.3.1"
-base64 = "0.22.1"
-ctr = "0.9.2"
-cbc = { version = "0.1.2", features = ["block-padding"] }
+rand_pcg = "0.10.2"
+base64 = "0.23.1"
+ctr = "0.10.1"
+cbc = { version = "0.2.1", features = ["block-padding"] }
 hkdf = "0.13.0"
-aes-gcm = "0.10.3"
-aes-gcm-siv = { version = "0.11.1", features = ["aes"], default-features = false }
-aead = "0.5.1"
+aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc"] }
+aes-gcm-siv = { version = "0.12.1", features = ["aes"], default-features = false }
+aead = "0.6.1"
+cipher = "0.5"
+chacha20poly1305 = "0.11.0"
 protobuf = "=3.7.2"
 protobuf-codegen = "=3.7.2"
-sec1 = "0.7.3"
-ed25519-dalek = { version = "2.1.0", default-features = false }
+sec1 = "0.8.1"
+ed25519-dalek = { version = "3.0.0", default-features = false, features = ["rand_core"] }
 ed25519 = "2.2.3"
-p256 = { version = "0.13.2", default-features = false }
-rand_chacha = { version = "0.3.1", default-features = false }
-xts-mode = "0.5.1"
-wycheproof = "0.5.1"
+p256 = { version = "0.14.0", default-features = false }
+rand_chacha = { version = "0.10.0", default-features = false }
+xts-mode = "0.6.0"
+wycheproof = "0.7.0"
 blake2 = "0.11.0"
-hdrhistogram = "7.5.4"
-regex = "1.10.2"
-criterion = { version = "0.5.1", features = ["html_reports"] }
-clap = { version = "4.5.13", features = ["derive"] }
-anyhow = "1.0.75"
-num-bigint = "0.4.4"
-bytes = "1.7.1"
-hex-literal = "0.4.1"
+hdrhistogram = "7.6.0"
+regex = "1.13.1"
+criterion = { version = "0.8.2", features = ["html_reports"] }
+clap = { version = "4.6.7", features = ["derive"] }
+anyhow = "1.0.104"
+num-bigint = "0.5.1"
+bytes = "1.12.1"
+hex-literal = "1.1.0"
+prost = "0.14"
+parking_lot = "0.12.5"
+zerocopy = { version = "0.8.63", features = ["derive", "std"] }
+constant_time_eq = "0.6.1"
+typed-builder = "0.23.2"
+bitfield-struct = "0.13.0"
+duplicate = "2.0.1"
+eyre = "0.6.14"
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+ruzstd = "0.9"
+diff = "0.1.13"
+ab_glyph = "0.2.32"
+png = "0.18"
+memmap2 = "0.9"
+ash = { version = "0.38", default-features = false, features = ["loaded"] }
+glam = { version = "0.27", features = ["serde"] }
+miniz_oxide = "0.8"
+tiff = "0.9"
+mimalloc = { version = "0.1", default-features = false }
+zstd = "0.13"
+zstd-rs = "0.1"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+tree-sitter = "0.22"
+tree-sitter-kotlin = "0.3"
+tree-sitter-java = "0.21"
+tree-sitter-javascript = "0.21"
+tree-sitter-typescript = "0.21"
+tree-sitter-python = "0.21"
+tree-sitter-rust = "0.21"
+tree-sitter-go = "0.21"
+tree-sitter-json = "0.21"
+tree-sitter-c = "0.21"
+tree-sitter-cpp = "0.22"
+arbitrary = { version = "1.3.2", features = ["derive"] }
+derive_fuzztest = "0.1.4"
+libfuzzer-sys = "0.4.7"
 # keep existing pins for sha2/aes/hmac/subtle/x25519-dalek/rand etc — betocore uses compatible versions
 
 [profile.release]

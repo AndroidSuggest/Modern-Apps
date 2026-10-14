@@ -20,7 +20,7 @@ use crate::extended::{
     V1_IDENTITY_TOKEN_LEN,
 };
 use crate::helpers::parse_byte_array;
-use nom::{combinator, number, sequence};
+use nom::{combinator, number, Parser as _};
 use np_hkdf::v1_salt::{ExtendedV1Salt, EXTENDED_SALT_LEN};
 
 #[cfg(test)]
@@ -59,36 +59,39 @@ impl SectionHeader {
         let (input, encoding) = combinator::verify(number::complete::u8, |b| {
             // Verify all reserved bits are zero.
             (*b & 0xF0) == 0
-        })(input)?;
+        })
+        .parse(input)?;
 
         let encoding = EncodingType(encoding);
         match encoding {
             V1_ENCODING_UNENCRYPTED => Ok((input, Ok(SectionHeader::Unencrypted))),
             V1_ENCODING_ENCRYPTED_MIC_WITH_SHORT_SALT_AND_TOKEN => combinator::map(
-                sequence::tuple((ShortV1Salt::parse, CiphertextExtendedIdentityToken::parse)),
+                (ShortV1Salt::parse, CiphertextExtendedIdentityToken::parse),
                 |(salt, token)| {
                     Ok(SectionHeader::Encrypted(EncryptedSectionHeader::MicShortSalt {
                         salt,
                         token,
                     }))
                 },
-            )(input),
+            )
+            .parse(input),
             V1_ENCODING_ENCRYPTED_MIC_WITH_EXTENDED_SALT_AND_TOKEN => combinator::map(
-                sequence::tuple((parse_v1_extended_salt, CiphertextExtendedIdentityToken::parse)),
+                (parse_v1_extended_salt, CiphertextExtendedIdentityToken::parse),
                 |(salt, token)| {
                     Ok(SectionHeader::Encrypted(EncryptedSectionHeader::MicExtendedSalt {
                         salt,
                         token,
                     }))
                 },
-            )(input),
+            )
+            .parse(input),
             _ => Ok((input, Err(encoding))),
         }
     }
 }
 
 fn parse_v1_extended_salt(input: &[u8]) -> nom::IResult<&[u8], ExtendedV1Salt> {
-    combinator::map(parse_byte_array::<{ EXTENDED_SALT_LEN }>, ExtendedV1Salt::from)(input)
+    combinator::map(parse_byte_array::<{ EXTENDED_SALT_LEN }>, ExtendedV1Salt::from).parse(input)
 }
 
 #[allow(clippy::enum_variant_names)]
@@ -120,7 +123,7 @@ pub(crate) struct CiphertextExtendedIdentityToken(pub(crate) [u8; V1_IDENTITY_TO
 
 impl CiphertextExtendedIdentityToken {
     pub(crate) fn parse(input: &[u8]) -> nom::IResult<&[u8], Self> {
-        combinator::map(parse_byte_array::<V1_IDENTITY_TOKEN_LEN>, Self)(input)
+        combinator::map(parse_byte_array::<V1_IDENTITY_TOKEN_LEN>, Self).parse(input)
     }
 }
 

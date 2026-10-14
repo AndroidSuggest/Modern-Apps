@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use nom::{bytes, combinator};
+use nom::{bytes, combinator, Parser as _};
 
 /// Nom parser for a `[u8; N]`.
 pub(crate) fn parse_byte_array<const N: usize>(input: &[u8]) -> nom::IResult<&[u8], [u8; N]> {
-    combinator::map_res(bytes::complete::take(N), |slice: &[u8]| slice.try_into())(input)
+    combinator::map_res(bytes::complete::take(N), |slice: &[u8]| slice.try_into()).parse(input)
 }
 
 #[allow(clippy::unwrap_used)]

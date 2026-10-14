@@ -51,8 +51,8 @@ path = "src/bin/osm_extract.rs"
 [dependencies]
 # Pure-Rust inflate. We only ever DECOMPRESS the zlib blobs inside a .osm.pbf,
 # so a decode-only crate is enough and keeps the C toolchain out of the build.
-miniz_oxide = "0.8"
-rayon = "1"
+miniz_oxide.workspace = true
+rayon.workspace = true
 # Pure Rust, one thin wrapper over the platform call, and no C toolchain — which is the bar every
 # other dependency here clears too.
 #
@@ -60,19 +60,16 @@ rayon = "1"
 # needed node, so 1.23 GB on a California extract, and it was half of `mamaps_build`'s whole peak.
 # Mapped, the resident cost is whatever the OS decides to keep, and the access pattern is friendly to
 # that: materialisation walks ways in id order and a way's nodes are close together in a PBF.
-memmap2 = "0.9"
+memmap2.workspace = true
 
 # Blocked-section writer for the v7 graph (`tilecodec::blocked`, write side).
 # Host tool only — same pure-Rust bar as every other dependency here.
-tilecodec = { path = "../../../library/tilecodec/src/main/rust", features = ["write"] }
+tilecodec = { workspace = true, features = ["write"] }
 
 # `libc::statvfs` for the budget gate (`mem::disk_free_bytes`): already in the
 # lockfile via memmap2, so this adds a name to link, not a crate to fetch.
 [target.'cfg(target_os = "linux")'.dependencies]
-libc = "0.2"
+libc.workspace = true
 
 [profile.release]
 opt-level = 3
-
-# Detach from the repo-root workspace so this host tool builds standalone/offline.
-[workspace]

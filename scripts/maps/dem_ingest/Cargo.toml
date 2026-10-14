@@ -26,12 +26,9 @@ name = "dem_ingest"
 path = "src/main.rs"
 
 [dependencies]
-tilecodec = { path = "../../../library/tilecodec/src/main/rust" }
-tiff = "0.9"
-rayon = "1"
+tilecodec.workspace = true
+tiff.workspace = true
+rayon.workspace = true
 
 [profile.release]
 opt-level = 3
-
-# Detach from both the repo-root Android workspace and the other host tools'.
-[workspace]

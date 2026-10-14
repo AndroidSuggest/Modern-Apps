@@ -43,10 +43,7 @@ name = "transit_shapes"
 path = "src/bin/transit_shapes.rs"
 
 [dependencies]
-rayon = "1"
+rayon.workspace = true
 
 [profile.release]
 opt-level = 3
-
-# Detach from the repo-root workspace so this host tool builds standalone/offline.
-[workspace]

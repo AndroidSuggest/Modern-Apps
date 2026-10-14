@@ -18,9 +18,9 @@ rand.workspace = true
 ukey2_proto.workspace = true
 log.workspace = true
 
-num-bigint = "0.4.4"
+num-bigint.workspace = true
 
 [dev-dependencies]
-rand = { workspace = true, features = ["std_rng", "getrandom"] }
+rand = { workspace = true, features = ["std_rng"] }
 crypto_provider_default.workspace = true
 sha2.workspace = true

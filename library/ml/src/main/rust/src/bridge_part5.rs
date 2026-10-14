@@ -5,7 +5,7 @@
 /// `handle` must be a live value from `createMusicGate`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_resetMusicGate<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {
@@ -23,7 +23,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_resetMusi
 /// `handle` must be a non-zero value from `createMusicGate`, and must not be used again.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyMusicGate<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {
@@ -149,7 +149,7 @@ impl whisper_post::Nets for WhisperNets<'_> {
 /// Called only by the JVM, with a valid `env`, arrays it owns, and a descriptor nothing else holds.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createWhisper<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     fd: jint,
     offset: jlong,
@@ -159,33 +159,36 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createWhisper<'l
     suppress: JIntArray<'l>,
     suppress_at_begin: JIntArray<'l>,
 ) -> jlong {
-    // The descriptor first, and adopted into an owning `File` before anything else may fail: the
-    // caller detached it, so a path that returns without wrapping it leaks it for the life of the
-    // process.
-    if fd < 0 {
-        log(&format!("whisper is unavailable: descriptor {fd} is not open"));
-        return 0;
-    }
-    // SAFETY: the caller detached the descriptor, so nothing else owns it, and `File` closes it on
-    // drop — including on every failure path below.
-    let file = unsafe { File::from_raw_fd(fd) };
-    let built = build_whisper(
-        &mut env,
-        file,
-        offset,
-        length,
-        &special,
-        &languages,
-        &suppress,
-        &suppress_at_begin,
-    );
-    match built {
-        Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
-        Err(e) => {
-            log(&format!("whisper is unavailable: {e}"));
-            0
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        // The descriptor first, and adopted into an owning `File` before anything else may fail: the
+        // caller detached it, so a path that returns without wrapping it leaks it for the life of the
+        // process.
+        if fd < 0 {
+            log(&format!("whisper is unavailable: descriptor {fd} is not open"));
+            return Ok(0);
         }
-    }
+        // SAFETY: the caller detached the descriptor, so nothing else owns it, and `File` closes it on
+        // drop — including on every failure path below.
+        let file = unsafe { File::from_raw_fd(fd) };
+        let built = build_whisper(
+            env,
+            file,
+            offset,
+            length,
+            &special,
+            &languages,
+            &suppress,
+            &suppress_at_begin,
+        );
+        Ok(match built {
+            Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
+            Err(e) => {
+                log(&format!("whisper is unavailable: {e}"));
+                0
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// The five scalars `createWhisper` takes in its `special` array, in order.
@@ -196,7 +199,7 @@ const WHISPER_SPECIAL: usize = 5;
 
 #[allow(clippy::too_many_arguments)]
 fn build_whisper<'l>(
-    env: &mut JNIEnv<'l>,
+    env: &Env,
     file: File,
     offset: jlong,
     length: jlong,
@@ -262,31 +265,34 @@ fn build_whisper<'l>(
 /// `handle` must be a non-zero value from `createWhisper` that has not been destroyed.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_transcribeWhisper<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     mel: JFloatArray<'l>,
     language: jint,
 ) -> jintArray {
-    let null = std::ptr::null_mut();
-    if handle == 0 {
-        return null;
-    }
-    // SAFETY: the caller guarantees the handle came from `createWhisper` and is still live. It is
-    // `&mut` because every step re-records the net, and Kotlin serialises calls on one handle.
-    let handle = unsafe { &mut *(handle as *mut WhisperHandle) };
-    let wanted = if language < 0 { None } else { u32::try_from(language).ok() };
-    let ids = match read_float_array(&mut env, &mel) {
-        Ok(values) => run_whisper(handle, &values, wanted),
-        Err(e) => Err(e),
-    };
-    match ids.and_then(|ids| new_int_array(&mut env, &ids)) {
-        Ok(array) => array,
-        Err(e) => {
-            log(&format!("whisper failed: {e}"));
-            null
+    env.with_env(|env| -> jni::errors::Result<jintArray> {
+        let null = std::ptr::null_mut();
+        if handle == 0 {
+            return Ok(null);
         }
-    }
+        // SAFETY: the caller guarantees the handle came from `createWhisper` and is still live. It is
+        // `&mut` because every step re-records the net, and Kotlin serialises calls on one handle.
+        let handle = unsafe { &mut *(handle as *mut WhisperHandle) };
+        let wanted = if language < 0 { None } else { u32::try_from(language).ok() };
+        let ids = match read_float_array(env, &mel) {
+            Ok(values) => run_whisper(handle, &values, wanted),
+            Err(e) => Err(e),
+        };
+        Ok(match ids.and_then(|ids| new_int_array(env, &ids)) {
+            Ok(array) => array,
+            Err(e) => {
+                log(&format!("whisper failed: {e}"));
+                null
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 fn run_whisper(
@@ -314,7 +320,7 @@ fn run_whisper(
 /// `handle` must be a non-zero value from `createWhisper`, and must not be used again.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyWhisper<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {
@@ -326,7 +332,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyWh
     drop(unsafe { Box::from_raw(handle as *mut WhisperHandle) });
 }
 
-fn new_int_array(env: &mut JNIEnv, values: &[i32]) -> Result<jintArray, String> {
+fn new_int_array(env: &Env, values: &[i32]) -> Result<jintArray, String> {
     let array: JIntArray = env
         .new_int_array(values.len() as jint)
         .map_err(|e| format!("new_int_array: {e}"))?;
@@ -335,7 +341,7 @@ fn new_int_array(env: &mut JNIEnv, values: &[i32]) -> Result<jintArray, String> 
     Ok(array.into_raw())
 }
 
-fn read_float_array(env: &mut JNIEnv, array: &JFloatArray) -> Result<Vec<f32>, String> {
+fn read_float_array(env: &Env, array: &JFloatArray) -> Result<Vec<f32>, String> {
     let len = env.get_array_length(array).map_err(|e| format!("array length: {e}"))?;
     let mut out = vec![0.0f32; len.max(0) as usize];
     env.get_float_array_region(array, 0, &mut out)
@@ -343,7 +349,7 @@ fn read_float_array(env: &mut JNIEnv, array: &JFloatArray) -> Result<Vec<f32>, S
     Ok(out)
 }
 
-fn read_int_array(env: &mut JNIEnv, array: &JIntArray) -> Result<Vec<i32>, String> {
+fn read_int_array(env: &Env, array: &JIntArray) -> Result<Vec<i32>, String> {
     let len = env.get_array_length(array).map_err(|e| format!("array length: {e}"))?;
     let mut out = vec![0i32; len.max(0) as usize];
     env.get_int_array_region(array, 0, &mut out)
@@ -351,7 +357,7 @@ fn read_int_array(env: &mut JNIEnv, array: &JIntArray) -> Result<Vec<i32>, Strin
     Ok(out)
 }
 
-fn read_short_array(env: &mut JNIEnv, array: &JShortArray) -> Result<Vec<i16>, String> {
+fn read_short_array(env: &Env, array: &JShortArray) -> Result<Vec<i16>, String> {
     let len = env.get_array_length(array).map_err(|e| format!("array length: {e}"))?;
     let mut out = vec![0i16; len.max(0) as usize];
     env.get_short_array_region(array, 0, &mut out)
@@ -359,7 +365,7 @@ fn read_short_array(env: &mut JNIEnv, array: &JShortArray) -> Result<Vec<i16>, S
     Ok(out)
 }
 
-fn new_float_array(env: &mut JNIEnv, values: &[f32]) -> Result<jfloatArray, String> {
+fn new_float_array(env: &Env, values: &[f32]) -> Result<jfloatArray, String> {
     let array: JFloatArray = env
         .new_float_array(values.len() as jint)
         .map_err(|e| format!("new_float_array: {e}"))?;

@@ -11,7 +11,7 @@
 //! [`parse_activation_code`], [`hash_confirmation_code`], and
 //! [`es10b::extract_transaction_id`].
 
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned, jni_sig, jni_str};
 
 use crate::jni::store_data;
 use crate::{asn1, es10, es10b, es9p};
@@ -131,7 +131,7 @@ fn ci_key_known(verification_list: &[String], field: &[u8]) -> bool {
 /// Thin wrapper over the split-phase session below for callers that do not
 /// need progress, metadata preview, or confirmation-code resume.
 pub fn download_profile(
-    env: &mut JNIEnv,
+    env: &mut Env,
     activation_code: &str,
 ) -> Result<es10b::InstallResult, String> {
     download_profile_with_options(env, activation_code, &DownloadOptions::default())
@@ -153,16 +153,16 @@ pub struct DownloadOptions {
 /// download (the caller is expected to cancel the server session).
 ///
 /// `env` is passed per call (rather than stored in the callback) so JNI
-/// progress sinks do not alias the eUICC channel's `&mut JNIEnv` borrow.
+/// progress sinks do not alias the eUICC channel's `&mut Env` borrow.
 pub trait ProgressCallback {
     /// Called with `done`/`total` segments transmitted. Returns whether to continue.
-    fn on_progress(&mut self, env: &mut JNIEnv, done: usize, total: usize) -> bool;
+    fn on_progress(&mut self, env: &mut Env, done: usize, total: usize) -> bool;
 }
 
 /// A no-op progress sink for the atomic entry point.
 struct NoProgress;
 impl ProgressCallback for NoProgress {
-    fn on_progress(&mut self, _env: &mut JNIEnv, _done: usize, _total: usize) -> bool {
+    fn on_progress(&mut self, _env: &mut Env, _done: usize, _total: usize) -> bool {
         true
     }
 }
@@ -198,7 +198,7 @@ pub struct DownloadSession {
 /// cancelling here costs nothing (the server session should still be freed via
 /// [`cancel_session`]).
 pub fn authenticate(
-    env: &mut JNIEnv,
+    env: &mut Env,
     activation_code: &str,
     options: &DownloadOptions,
 ) -> Result<DownloadSession, String> {
@@ -276,7 +276,7 @@ pub fn authenticate(
 /// reports the typed `bppCommandId/errorReason` instead of cascading one
 /// failure into every later segment.
 pub fn finish_download(
-    env: &mut JNIEnv,
+    env: &mut Env,
     session: &DownloadSession,
     confirmation_code: Option<&str>,
     progress: &mut dyn ProgressCallback,
@@ -347,7 +347,7 @@ pub fn finish_download(
 /// Retrieve → handle → remove for one install notification. Best-effort: the
 /// eUICC keeps the notification until acknowledged, so delivery failure must
 /// not fail the install itself.
-fn deliver_notification(env: &mut JNIEnv, smdp: &str, seq_number: i64, fallback: &[u8]) {
+fn deliver_notification(env: &mut Env, smdp: &str, seq_number: i64, fallback: &[u8]) {
     let Ok(seq) = u32::try_from(seq_number.max(0)) else {
         return;
     };
@@ -370,7 +370,7 @@ fn deliver_notification(env: &mut JNIEnv, smdp: &str, seq_number: i64, fallback:
 /// metadata mismatch, confirmation timeout). ES10 CancelSession first, then
 /// ES9+ cancelSession — mirroring lpac-download's error path
 /// (`es10b_cancel_session` + `es9p_cancel_session`). Best-effort.
-pub fn cancel_session(env: &mut JNIEnv, session: &DownloadSession, reason: es10b::CancelReason) {
+pub fn cancel_session(env: &mut Env, session: &DownloadSession, reason: es10b::CancelReason) {
     let es10_req = es10b::build_cancel_session(&session.transaction_id_bin, reason);
     let cancel_resp = store_data(env, &es10_req).unwrap_or_default();
     let _ = es9p::cancel_session(&session.activation.smdp, &session.transaction_id, &cancel_resp);
@@ -379,7 +379,7 @@ pub fn cancel_session(env: &mut JNIEnv, session: &DownloadSession, reason: es10b
 /// Full download with options: authenticate → prepare (with `hashCc`) →
 /// fetch → install with progress → notify.
 pub fn download_profile_with_options(
-    env: &mut JNIEnv,
+    env: &mut Env,
     activation_code: &str,
     options: &DownloadOptions,
 ) -> Result<es10b::InstallResult, String> {

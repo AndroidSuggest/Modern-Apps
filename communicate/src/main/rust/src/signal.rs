@@ -22,13 +22,13 @@ fn sealed_key(recipient_aci: &str) -> [u8; 32] {
 }
 
 fn aes_gcm_encrypt(key: &[u8; 32], plaintext: &[u8], aad: &[u8]) -> Vec<u8> {
-    use aes::cipher::generic_array::GenericArray;
-    use aes::cipher::{BlockEncrypt, KeyInit};
+    use aes::cipher::Array;
+    use aes::cipher::{BlockCipherEncrypt, KeyInit};
     use aes::Aes256;
-    use rand_core::RngCore;
+    use rand_core::TryRng;
     let mut iv = [0u8; 12];
-    crate::OsRng.fill_bytes(&mut iv);
-    let cipher = Aes256::new(GenericArray::from_slice(key));
+    let _ = crate::OsRng.try_fill_bytes(&mut iv);
+    let cipher = Aes256::new(Array::from_slice(key));
     let mut out = Vec::with_capacity(plaintext.len());
     let mut counter: u32 = 0;
     let mut block = [0u8; 16];
@@ -37,7 +37,7 @@ fn aes_gcm_encrypt(key: &[u8; 32], plaintext: &[u8], aad: &[u8]) -> Vec<u8> {
     while pos < plaintext.len() {
         block[..12].copy_from_slice(&iv);
         block[12..].copy_from_slice(&counter.to_be_bytes());
-        let mut enc = GenericArray::clone_from_slice(&block);
+        let mut enc = Array::clone_from_slice(&block[..]);
         cipher.encrypt_block(&mut enc);
         keystream.copy_from_slice(&enc);
         let take = std::cmp::min(16, plaintext.len() - pos);
@@ -60,8 +60,8 @@ fn aes_gcm_encrypt(key: &[u8; 32], plaintext: &[u8], aad: &[u8]) -> Vec<u8> {
 }
 
 fn aes_gcm_decrypt(key: &[u8; 32], sealed: &[u8], aad: &[u8]) -> Result<Vec<u8>> {
-    use aes::cipher::generic_array::GenericArray;
-    use aes::cipher::{BlockEncrypt, KeyInit};
+    use aes::cipher::Array;
+    use aes::cipher::{BlockCipherEncrypt, KeyInit};
     use aes::Aes256;
     if sealed.is_empty() || sealed[0] != SEALED_VERSION { return Err(CryptoError("bad sealed version")); }
     if sealed.len() < 1 + 12 + 16 { return Err(CryptoError("sealed too short")); }
@@ -74,7 +74,7 @@ fn aes_gcm_decrypt(key: &[u8; 32], sealed: &[u8], aad: &[u8]) -> Result<Vec<u8>>
     mac_input.extend_from_slice(ct);
     let expected = &crypto::hmac_sha256(key, &mac_input)[..16];
     if !crypto::ct_eq(tag, expected) { return Err(CryptoError("sealed tag mismatch")); }
-    let cipher = Aes256::new(GenericArray::from_slice(key));
+    let cipher = Aes256::new(Array::from_slice(key));
     let mut out = Vec::with_capacity(ct.len());
     let mut counter: u32 = 0;
     let mut block = [0u8; 16];
@@ -82,7 +82,7 @@ fn aes_gcm_decrypt(key: &[u8; 32], sealed: &[u8], aad: &[u8]) -> Result<Vec<u8>>
     while pos < ct.len() {
         block[..12].copy_from_slice(iv);
         block[12..].copy_from_slice(&counter.to_be_bytes());
-        let mut enc = GenericArray::clone_from_slice(&block);
+        let mut enc = Array::clone_from_slice(&block[..]);
         cipher.encrypt_block(&mut enc);
         let take = std::cmp::min(16, ct.len() - pos);
         for i in 0..take { out.push(ct[pos + i] ^ enc[i]); }

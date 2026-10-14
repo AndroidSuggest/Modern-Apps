@@ -243,25 +243,25 @@ mod jni_bindings {
     use super::*;
     use jni::objects::{JByteArray, JClass};
     use jni::sys::{jboolean, jbyteArray, jfloat, jint, jlong};
-    use jni::JNIEnv;
+    use jni::{Env, EnvUnowned};
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_newSession<'l>(
-        _env: JNIEnv<'l>,
+        _env: EnvUnowned<'l>,
         _class: JClass<'l>,
         sphere: jboolean,
     ) -> jlong {
         let h = next_handle();
         registry().lock().unwrap().insert(
             h,
-            Session { sphere: sphere != 0, frames: Vec::new(), yaw: Vec::new(), pitch: Vec::new() },
+            Session { sphere, frames: Vec::new(), yaw: Vec::new(), pitch: Vec::new() },
         );
         h
     }
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_addFrame<'l>(
-        env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         handle: jlong,
         jpeg: JByteArray<'l>,
@@ -269,75 +269,88 @@ mod jni_bindings {
         pitch: jfloat,
         _roll: jfloat,
     ) {
-        let bytes = match env.convert_byte_array(&jpeg) {
-            Ok(b) => b,
-            Err(_) => return,
-        };
-        if bytes.is_empty() {
-            return;
-        }
-        if let Some(s) = registry().lock().unwrap().get_mut(&handle) {
-            s.frames.push(bytes);
-            s.yaw.push(yaw);
-            s.pitch.push(pitch);
-        }
+        env.with_env(|env| -> jni::errors::Result<()> {
+            let bytes = match env.convert_byte_array(&jpeg) {
+                Ok(b) => b,
+                Err(_) => return Ok(()),
+            };
+            if bytes.is_empty() {
+                return Ok(());
+            }
+            if let Some(s) = registry().lock().unwrap().get_mut(&handle) {
+                s.frames.push(bytes);
+                s.yaw.push(yaw);
+                s.pitch.push(pitch);
+            }
+            Ok(())
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_stitch<'l>(
-        env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         handle: jlong,
     ) -> jbyteArray {
-        run_and_return(env, handle, true)
+        env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+            Ok(run_and_return(env, handle, true))
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_merge<'l>(
-        env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         handle: jlong,
     ) -> jbyteArray {
-        run_and_return(env, handle, false)
+        env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+            Ok(run_and_return(env, handle, false))
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_estimate<'l>(
-        env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         handle: jlong,
     ) -> jbyteArray {
-        let null = std::ptr::null_mut();
-        let session = match registry().lock().unwrap().get_mut(&handle) {
-            Some(s) => Session {
-                sphere: s.sphere,
-                frames: std::mem::take(&mut s.frames),
-                yaw: std::mem::take(&mut s.yaw),
-                pitch: std::mem::take(&mut s.pitch),
-            },
-            None => return null,
-        };
-        let bytes = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| do_estimate(&session)))
-            .unwrap_or(None);
-        if let Some(s) = registry().lock().unwrap().get_mut(&handle) {
-            s.frames = session.frames;
-            s.yaw = session.yaw;
-            s.pitch = session.pitch;
-        }
-        match bytes {
-            Some(b) => match env.byte_array_from_slice(&b) {
-                Ok(arr) => arr.into_raw(),
-                Err(_) => null,
-            },
-            None => null,
-        }
+        env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+            let null = std::ptr::null_mut();
+            let session = match registry().lock().unwrap().get_mut(&handle) {
+                Some(s) => Session {
+                    sphere: s.sphere,
+                    frames: std::mem::take(&mut s.frames),
+                    yaw: std::mem::take(&mut s.yaw),
+                    pitch: std::mem::take(&mut s.pitch),
+                },
+                None => return Ok(null),
+            };
+            let bytes = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| do_estimate(&session)))
+                .unwrap_or(None);
+            if let Some(s) = registry().lock().unwrap().get_mut(&handle) {
+                s.frames = session.frames;
+                s.yaw = session.yaw;
+                s.pitch = session.pitch;
+            }
+            match bytes {
+                Some(b) => match env.byte_array_from_slice(&b) {
+                    Ok(arr) => Ok(arr.into_raw()),
+                    Err(_) => Ok(null),
+                },
+                None => Ok(null),
+            }
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 
     // --- Lossless night path: RGBA frames without double JPEG ---
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_newNightSession<'l>(
-        _env: JNIEnv<'l>,
+        _env: EnvUnowned<'l>,
         _class: JClass<'l>,
     ) -> jlong {
         let h = next_handle();
@@ -347,54 +360,61 @@ mod jni_bindings {
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_addNightRgbaFrame<'l>(
-        env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         handle: jlong,
         rgba: JByteArray<'l>,
         width: jint,
         height: jint,
     ) {
-        let w = width as usize;
-        let h = height as usize;
-        if w == 0 || h == 0 || w > 20000 || h > 20000 {
-            return;
-        }
-        let bytes = match env.convert_byte_array(&rgba) {
-            Ok(b) => b,
-            Err(_) => return,
-        };
-        if bytes.len() != w * h * 4 {
-            return;
-        }
-        let frame = Rgba::from_bytes(w, h, bytes);
-        if let Some(v) = night_registry().lock().unwrap().get_mut(&handle) {
-            v.push(frame);
-        }
+        env.with_env(|env| -> jni::errors::Result<()> {
+            let w = width as usize;
+            let h = height as usize;
+            if w == 0 || h == 0 || w > 20000 || h > 20000 {
+                return Ok(());
+            }
+            let bytes = match env.convert_byte_array(&rgba) {
+                Ok(b) => b,
+                Err(_) => return Ok(()),
+            };
+            if bytes.len() != w * h * 4 {
+                return Ok(());
+            }
+            let frame = Rgba::from_bytes(w, h, bytes);
+            if let Some(v) = night_registry().lock().unwrap().get_mut(&handle) {
+                v.push(frame);
+            }
+            Ok(())
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_mergeNight<'l>(
-        env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         handle: jlong,
     ) -> jbyteArray {
-        let null = std::ptr::null_mut();
-        let bytes = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            do_merge_night_rgba(handle)
-        }))
-        .unwrap_or(None);
-        match bytes {
-            Some(b) => match env.byte_array_from_slice(&b) {
-                Ok(arr) => arr.into_raw(),
-                Err(_) => null,
-            },
-            None => null,
-        }
+        env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+            let null = std::ptr::null_mut();
+            let bytes = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                do_merge_night_rgba(handle)
+            }))
+            .unwrap_or(None);
+            match bytes {
+                Some(b) => match env.byte_array_from_slice(&b) {
+                    Ok(arr) => Ok(arr.into_raw()),
+                    Err(_) => Ok(null),
+                },
+                None => Ok(null),
+            }
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_freeNight<'l>(
-        _env: JNIEnv<'l>,
+        _env: EnvUnowned<'l>,
         _class: JClass<'l>,
         handle: jlong,
     ) {
@@ -404,7 +424,7 @@ mod jni_bindings {
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_free<'l>(
-        _env: JNIEnv<'l>,
+        _env: EnvUnowned<'l>,
         _class: JClass<'l>,
         handle: jlong,
     ) {
@@ -412,7 +432,7 @@ mod jni_bindings {
         night_registry().lock().unwrap().remove(&handle);
     }
 
-    fn run_and_return(env: JNIEnv, handle: jlong, panorama: bool) -> jbyteArray {
+    fn run_and_return(env: &mut Env, handle: jlong, panorama: bool) -> jbyteArray {
         let null = std::ptr::null_mut();
         let mut session = match registry().lock().unwrap().get_mut(&handle) {
             Some(s) => Session {

@@ -44,3 +44,13 @@ pub use d2d_handshake_context::{
     ServerD2DHandshakeContext,
 };
 pub use ukey2_rs::{HandshakeImplementation, NextProtocol};
+
+/// OS-seeded `StdRng` for connection contexts. Seeding from `SysRng` is
+/// infallible in practice; on the (unrecoverable) OS RNG failure path this
+/// falls back to a fixed seed rather than panicking across JNI.
+pub(crate) fn os_rng() -> rand::rngs::StdRng {
+    use rand::SeedableRng;
+    use rand::TryRng;
+    let mut sys = rand::rngs::SysRng;
+    rand::rngs::StdRng::try_from_rng(&mut sys).unwrap_or_else(|_| rand::rngs::StdRng::from_seed([0u8; 32]))
+}

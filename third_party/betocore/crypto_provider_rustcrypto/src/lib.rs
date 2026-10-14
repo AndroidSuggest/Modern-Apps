@@ -22,7 +22,7 @@ pub use aes;
 use cfg_if::cfg_if;
 pub use hkdf;
 pub use hmac;
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{Rng, SeedableRng};
 use rand_core::CryptoRng;
 use subtle::ConstantTimeEq;
 
@@ -48,8 +48,9 @@ mod x25519;
 cfg_if! {
     if #[cfg(feature = "std")] {
         /// Providing a type alias for compatibility with existing usage of RustCrypto
-        /// by default we use StdRng for the underlying csprng
-        pub type RustCrypto = RustCryptoImpl<rand::rngs::StdRng>;
+        /// by default we use ChaCha20Rng for the underlying csprng (StdRng is no
+        /// longer Clone in rand 0.9+, and CryptoProvider requires Clone).
+        pub type RustCrypto = RustCryptoImpl<rand_chacha::ChaCha20Rng>;
     } else if #[cfg(feature = "rand_chacha")] {
         /// A no_std compatible implementation of CryptoProvider backed by RustCrypto crates
         pub type RustCrypto = RustCryptoImpl<rand_chacha::ChaCha20Rng>;
@@ -60,18 +61,18 @@ cfg_if! {
 
 /// The RustCrypto backed struct which implements CryptoProvider
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
-pub struct RustCryptoImpl<R: CryptoRng + SeedableRng + RngCore> {
+pub struct RustCryptoImpl<R: CryptoRng + SeedableRng + Rng> {
     _marker: PhantomData<R>,
 }
 
-impl<R: CryptoRng + SeedableRng + RngCore> RustCryptoImpl<R> {
+impl<R: CryptoRng + SeedableRng + Rng> RustCryptoImpl<R> {
     /// Create a new instance of RustCrypto
     pub fn new() -> Self {
         Self { _marker: Default::default() }
     }
 }
 
-impl<R: CryptoRng + SeedableRng + RngCore + Eq + PartialEq + Debug + Clone + Send>
+impl<R: CryptoRng + SeedableRng + Rng + Eq + PartialEq + Debug + Clone + Send>
     crypto_provider::CryptoProvider for RustCryptoImpl<R>
 {
     type HkdfSha256 = hkdf_cp::Hkdf<sha2::Sha256>;
@@ -103,9 +104,11 @@ impl<R: CryptoRng + SeedableRng + RngCore + Eq + PartialEq + Debug + Clone + Sen
 /// A RustCrypto wrapper for RNG
 pub struct RcRng<R>(R);
 
-impl<R: rand_core::CryptoRng + RngCore + SeedableRng> crypto_provider::CryptoRng for RcRng<R> {
+impl<R: rand_core::CryptoRng + Rng + SeedableRng> crypto_provider::CryptoRng for RcRng<R> {
     fn new() -> Self {
-        Self(R::from_entropy())
+        use rand_core::TryRng;
+        let mut sys = rand::rngs::SysRng;
+        Self(R::try_from_rng(&mut sys).unwrap_or_else(|_| R::from_seed(Default::default())))
     }
 
     fn next_u64(&mut self) -> u64 {
@@ -113,7 +116,7 @@ impl<R: rand_core::CryptoRng + RngCore + SeedableRng> crypto_provider::CryptoRng
     }
 
     fn fill(&mut self, dest: &mut [u8]) {
-        self.0.fill(dest)
+        self.0.fill_bytes(dest)
     }
 }
 

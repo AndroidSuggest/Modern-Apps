@@ -15,7 +15,7 @@ cargo = ["dep:protobuf-codegen"]
 soong = []
 
 [dev-dependencies]
-diff = "0.1.13"
+diff.workspace = true
 
 [build-dependencies]
 protobuf-codegen = { workspace = true, optional = true }

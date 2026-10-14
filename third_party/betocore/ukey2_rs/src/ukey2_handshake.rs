@@ -269,7 +269,7 @@ impl<C: CryptoProvider> Ukey2ServerStage2<C> {
         handshake_impl: HandshakeImplementation,
         next_protocol: NextProtocol,
     ) -> Self {
-        let random: [u8; 32] = rng.gen();
+        let mut random = [0u8; 32]; rng.fill_bytes(&mut random);
         let mut server_init = ukey::Ukey2ServerInit::default();
         server_init.set_version(1);
         server_init.set_random(random.to_vec());
@@ -402,7 +402,7 @@ impl<C: CryptoProvider> Ukey2ClientStage1<C> {
         handshake_impl: HandshakeImplementation,
     ) -> Self {
         assert!(!next_protocols.is_empty());
-        let random = rng.gen::<[u8; 32]>().to_vec();
+        let mut random = [0u8; 32]; rng.fill_bytes(&mut random); let random = random.to_vec();
         // Curve25519 ClientFinished Message
         let curve25519_secret =
             <C::X25519 as EcdhProvider<X25519>>::EphemeralSecret::generate_random(

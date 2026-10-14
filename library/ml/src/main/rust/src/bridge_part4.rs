@@ -12,28 +12,31 @@
 /// `handle` must be a non-zero value from `createTinyclip` that has not been destroyed.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_tinyclipText<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     ids: JIntArray<'l>,
 ) -> jfloatArray {
-    let null = std::ptr::null_mut();
-    if handle == 0 {
-        return null;
-    }
-    // SAFETY: as `tinyclipImage`.
-    let handle = unsafe { &mut *(handle as *mut TinyclipHandle) };
-    let embedded = match read_int_array(&mut env, &ids) {
-        Ok(values) => run_tinyclip_text(handle, &values),
-        Err(e) => Err(e),
-    };
-    match embedded.and_then(|values| new_float_array(&mut env, &values)) {
-        Ok(array) => array,
-        Err(e) => {
-            log(&format!("tinyclip's text tower failed: {e}"));
-            null
+    env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+        let null = std::ptr::null_mut();
+        if handle == 0 {
+            return Ok(null);
         }
-    }
+        // SAFETY: as `tinyclipImage`.
+        let handle = unsafe { &mut *(handle as *mut TinyclipHandle) };
+        let embedded = match read_int_array(env, &ids) {
+            Ok(values) => run_tinyclip_text(handle, &values),
+            Err(e) => Err(e),
+        };
+        Ok(match embedded.and_then(|values| new_float_array(env, &values)) {
+            Ok(array) => array,
+            Err(e) => {
+                log(&format!("tinyclip's text tower failed: {e}"));
+                null
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 fn run_tinyclip_text(handle: &mut TinyclipHandle, ids: &[i32]) -> Result<Vec<f32>, String> {
@@ -61,7 +64,7 @@ fn run_tinyclip_text(handle: &mut TinyclipHandle, ids: &[i32]) -> Result<Vec<f32
 /// `handle` must be a non-zero value from `createTinyclip`, and must not be used again.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyTinyclip<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {
@@ -102,7 +105,7 @@ struct MaiaHandle {
 /// Called only by the JVM, with a descriptor nothing else holds.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createMaia<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     fd: jint,
     offset: jlong,
@@ -154,31 +157,34 @@ fn build_maia(file: File, offset: jlong, length: jlong) -> Result<MaiaHandle, St
 /// `handle` must be a non-zero value from `createMaia` that has not been destroyed.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_maiaLogits<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     planes: JFloatArray<'l>,
     self_elo: jint,
     oppo_elo: jint,
 ) -> jfloatArray {
-    let null = std::ptr::null_mut();
-    if handle == 0 {
-        return null;
-    }
-    // SAFETY: the caller guarantees the handle came from `createMaia` and is still live.
-    // `&mut` because inference writes the net's staging buffer; Kotlin serialises calls.
-    let handle = unsafe { &mut *(handle as *mut MaiaHandle) };
-    let logits = match read_float_array(&mut env, &planes) {
-        Ok(values) => run_maia(handle, &values, self_elo, oppo_elo),
-        Err(e) => Err(e),
-    };
-    match logits.and_then(|values| new_float_array(&mut env, &values)) {
-        Ok(array) => array,
-        Err(e) => {
-            log(&format!("maia failed: {e}"));
-            null
+    env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+        let null = std::ptr::null_mut();
+        if handle == 0 {
+            return Ok(null);
         }
-    }
+        // SAFETY: the caller guarantees the handle came from `createMaia` and is still live.
+        // `&mut` because inference writes the net's staging buffer; Kotlin serialises calls.
+        let handle = unsafe { &mut *(handle as *mut MaiaHandle) };
+        let logits = match read_float_array(env, &planes) {
+            Ok(values) => run_maia(handle, &values, self_elo, oppo_elo),
+            Err(e) => Err(e),
+        };
+        Ok(match logits.and_then(|values| new_float_array(env, &values)) {
+            Ok(array) => array,
+            Err(e) => {
+                log(&format!("maia failed: {e}"));
+                null
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 fn run_maia(
@@ -207,7 +213,7 @@ fn run_maia(
 /// `handle` must be a non-zero value from `createMaia`, and must not be used again.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyMaia<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {
@@ -258,7 +264,7 @@ struct NnfpHandle {
 /// Called only by the JVM, with a descriptor nothing else holds.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createNnfp<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     fd: jint,
     offset: jlong,
@@ -313,29 +319,32 @@ fn build_nnfp(file: File, offset: jlong, length: jlong) -> Result<NnfpHandle, St
 /// `handle` must be a non-zero value from `createNnfp` that has not been destroyed.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_nnfpEmbed<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     pcm: JShortArray<'l>,
 ) -> jfloatArray {
-    let null = std::ptr::null_mut();
-    if handle == 0 {
-        return null;
-    }
-    // SAFETY: the caller guarantees the handle came from `createNnfp` and is still live.
-    // `&mut` because inference writes the net's staging buffer; Kotlin serialises calls.
-    let handle = unsafe { &mut *(handle as *mut NnfpHandle) };
-    let embedding = match read_short_array(&mut env, &pcm) {
-        Ok(samples) => run_nnfp(handle, &samples),
-        Err(e) => Err(e),
-    };
-    match embedding.and_then(|values| new_float_array(&mut env, &values)) {
-        Ok(array) => array,
-        Err(e) => {
-            log(&format!("nnfp failed: {e}"));
-            null
+    env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+        let null = std::ptr::null_mut();
+        if handle == 0 {
+            return Ok(null);
         }
-    }
+        // SAFETY: the caller guarantees the handle came from `createNnfp` and is still live.
+        // `&mut` because inference writes the net's staging buffer; Kotlin serialises calls.
+        let handle = unsafe { &mut *(handle as *mut NnfpHandle) };
+        let embedding = match read_short_array(env, &pcm) {
+            Ok(samples) => run_nnfp(handle, &samples),
+            Err(e) => Err(e),
+        };
+        Ok(match embedding.and_then(|values| new_float_array(env, &values)) {
+            Ok(array) => array,
+            Err(e) => {
+                log(&format!("nnfp failed: {e}"));
+                null
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 fn run_nnfp(handle: &mut NnfpHandle, pcm: &[i16]) -> Result<Vec<f32>, String> {
@@ -366,7 +375,7 @@ fn run_nnfp(handle: &mut NnfpHandle, pcm: &[i16]) -> Result<Vec<f32>, String> {
 /// `handle` must be a non-zero value from `createNnfp`, and must not be used again.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyNnfp<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {
@@ -386,7 +395,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyNn
 /// front end rejects its configuration, so a zero return here means a genuine bug.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createMusicGate<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jlong {
     match crate::gate::MusicGate::new() {
@@ -409,32 +418,35 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createMusicGate<
 /// `handle` must be a live value from `createMusicGate`, and Kotlin must serialise calls.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_musicGatePush<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     pcm: JShortArray<'l>,
     count: jint,
 ) -> jfloatArray {
-    let null = std::ptr::null_mut();
-    if handle == 0 {
-        return null;
-    }
-    // SAFETY: the caller guarantees the handle came from `createMusicGate` and is live.
-    let handle = unsafe { &mut *(handle as *mut crate::gate::MusicGate) };
-    let scores = read_short_array(&mut env, &pcm).and_then(|samples| {
-        let count = usize::try_from(count).unwrap_or(usize::MAX);
-        if count > samples.len() {
-            return Err(format!("{count} samples of a {}-sample array", samples.len()));
+    env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+        let null = std::ptr::null_mut();
+        if handle == 0 {
+            return Ok(null);
         }
-        let mut out = Vec::new();
-        handle.push(&samples[..count], &mut out);
-        Ok(out)
-    });
-    match scores.and_then(|values| new_float_array(&mut env, &values)) {
-        Ok(array) => array,
-        Err(e) => {
-            log(&format!("the music gate failed: {e}"));
-            null
-        }
-    }
+        // SAFETY: the caller guarantees the handle came from `createMusicGate` and is live.
+        let handle = unsafe { &mut *(handle as *mut crate::gate::MusicGate) };
+        let scores = read_short_array(env, &pcm).and_then(|samples| {
+            let count = usize::try_from(count).unwrap_or(usize::MAX);
+            if count > samples.len() {
+                return Err(format!("{count} samples of a {}-sample array", samples.len()));
+            }
+            let mut out = Vec::new();
+            handle.push(&samples[..count], &mut out);
+            Ok(out)
+        });
+        Ok(match scores.and_then(|values| new_float_array(env, &values)) {
+            Ok(array) => array,
+            Err(e) => {
+                log(&format!("the music gate failed: {e}"));
+                null
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }

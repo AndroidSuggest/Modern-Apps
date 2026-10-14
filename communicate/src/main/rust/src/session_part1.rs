@@ -34,7 +34,7 @@ pub fn encrypt(state: &mut SessionState, plaintext: &[u8]) -> Result<Encrypted> 
     }
 }
 
-pub fn decrypt<R: rand_core::RngCore + rand_core::CryptoRng>(
+pub fn decrypt<R: rand_core::Rng + rand_core::CryptoRng>(
     rng: &mut R,
     state: &mut SessionState,
     msg: &SignalMessage,
@@ -111,7 +111,7 @@ fn finish_decrypt(
 /// Both halves happen together, as the Double Ratchet requires: first derive the
 /// receiving chain from our *current* ratchet private key, then rotate to a fresh
 /// key pair and derive the new sending chain from it.
-fn ratchet<R: rand_core::RngCore + rand_core::CryptoRng>(
+fn ratchet<R: rand_core::Rng + rand_core::CryptoRng>(
     rng: &mut R,
     state: &mut SessionState,
     their_ratchet_key: &[u8; 32],

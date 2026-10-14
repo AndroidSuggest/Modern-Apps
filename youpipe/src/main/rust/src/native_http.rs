@@ -11,8 +11,8 @@ use jni_http::{Header, Method as BridgeMethod};
 use crate::http::{Error, Headers, HttpClient, Method, Request, Response, Result};
 
 /// Resolves the bridge class. Safe to call repeatedly; returns false if `library:network` is
-/// missing from the calling module.
-pub fn init(env: &mut jni::JNIEnv) -> bool {
+/// missing from the calling module. Call from inside a `with_env` closure.
+pub fn init(env: &mut jni::Env) -> bool {
     jni_http::init(env)
 }
 

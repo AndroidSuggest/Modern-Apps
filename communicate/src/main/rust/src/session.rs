@@ -324,7 +324,7 @@ pub struct PreKeyBundle {
 
 /// Alice side of X3DH (`RatchetingSession.initializeSession` for the initiator).
 #[allow(clippy::too_many_arguments)]
-pub fn process_pre_key_bundle<R: rand_core::RngCore + rand_core::CryptoRng>(
+pub fn process_pre_key_bundle<R: rand_core::Rng + rand_core::CryptoRng>(
     rng: &mut R,
     bundle: &PreKeyBundle,
     local_identity_private: &[u8; 32],

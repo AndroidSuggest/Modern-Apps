@@ -17,38 +17,41 @@ pub mod vulkan;
 
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jfloat, jint, jstring};
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned};
 
 #[cfg(target_os = "android")]
 use std::os::raw::c_void as CVoid;
 
-fn get_string(env: &mut JNIEnv, s: &JString) -> Option<String> {
-    env.get_string(s).ok().map(|js| js.into())
+fn get_string(env: &Env, s: &JString) -> Option<String> {
+    s.try_to_string(env).ok()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_nativeInit<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     files_dir: JString<'l>,
     seed: jint,
 ) -> jboolean {
-    let dir = match get_string(&mut env, &files_dir) {
-        Some(d) => d,
-        None => return 0,
-    };
-    if engine::init_engine(dir, seed as u32) { 1 } else { 0 }
+    env.with_env(|env| -> jni::errors::Result<jboolean> {
+        let dir = match get_string(env, &files_dir) {
+            Some(d) => d,
+            None => return Ok(false),
+        };
+        Ok(engine::init_engine(dir, seed as u32))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_surfaceCreated<'l>(
-    env: JNIEnv<'l>,
+    env: EnvUnowned<'l>,
     _class: JClass<'l>,
     surface: JObject<'l>,
 ) {
     #[cfg(target_os = "android")]
     {
-        let env_raw = env.get_raw() as *mut CVoid;
+        let env_raw = env.as_raw() as *mut CVoid;
         let surf_raw = surface.as_raw() as *mut CVoid;
         let window = unsafe { vulkan::context::ANativeWindow_fromSurface(env_raw, surf_raw) };
         if window.is_null() {
@@ -85,7 +88,7 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_surfa
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_surfaceChanged<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     width: jint,
     height: jint,
@@ -95,7 +98,7 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_surfa
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_surfaceDestroyed<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) {
     engine::destroy_renderer();
@@ -103,7 +106,7 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_surfa
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_nativeOnDestroy<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) {
     engine::destroy_engine();
@@ -111,7 +114,7 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_nativ
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_onMoveInput<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     move_x: jfloat,
     move_y: jfloat,
@@ -121,7 +124,7 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_onMov
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_onLookInput<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     look_yaw_rate: jfloat,
     look_pitch_rate: jfloat,
@@ -131,34 +134,34 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_onLoo
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_setJump<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     held: jboolean,
 ) {
-    input::set_jump(held != 0);
+    input::set_jump(held);
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_setFlyDown<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     held: jboolean,
 ) {
-    input::set_down(held != 0);
+    input::set_down(held);
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_setSneak<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     on: jboolean,
 ) {
-    input::set_sneak(on != 0);
+    input::set_sneak(on);
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_toggleFly<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) {
     input::request_toggle_fly();
@@ -166,17 +169,17 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_toggl
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_breakBlockAt<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     x: jfloat,
     y: jfloat,
 ) -> jboolean {
-    if engine::break_block_at(x, y) { 1 } else { 0 }
+    engine::break_block_at(x, y)
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_placeBlockAt<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     x: jfloat,
     y: jfloat,
@@ -186,7 +189,7 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_place
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_selectSlot<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     slot: jint,
 ) {
@@ -197,14 +200,14 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_selec
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_moveItem<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>, from: jint, to: jint,
+    _env: EnvUnowned<'l>, _class: JClass<'l>, from: jint, to: jint,
 ) {
     if from >= 0 && to >= 0 { engine::inventory_move(from as usize, to as usize); }
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_giveBlock<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>, id: jint,
+    _env: EnvUnowned<'l>, _class: JClass<'l>, id: jint,
 ) {
     // The only id that crosses JNI as a number rather than as JSON. `as` would wrap a jint that
     // doesn't fit into a different, real block, so refuse it instead.
@@ -213,240 +216,325 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_giveB
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_craft<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>, recipe: jint,
+    _env: EnvUnowned<'l>, _class: JClass<'l>, recipe: jint,
 ) -> jboolean {
-    if recipe >= 0 && engine::inventory_craft(recipe as usize) { 1 } else { 0 }
+    recipe >= 0 && engine::inventory_craft(recipe as usize)
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getRecipesJson<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    match env.new_string(engine::get_recipes_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        match env.new_string(engine::get_recipes_json()) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_trade<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>, idx: jint,
+    _env: EnvUnowned<'l>, _class: JClass<'l>, idx: jint,
 ) -> jboolean {
-    if idx >= 0 && engine::do_trade(idx as usize) { 1 } else { 0 }
+    idx >= 0 && engine::do_trade(idx as usize)
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getTradesJson<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    match env.new_string(engine::get_trades_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        match env.new_string(engine::get_trades_json()) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getInventoryJson<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    let json = engine::get_inventory_json();
-    match env.new_string(json) {
-        Ok(s) => s.into_raw(),
-        Err(_) => null,
-    }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        let json = engine::get_inventory_json();
+        match env.new_string(json) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getDebugJson<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    let json = engine::get_debug_json();
-    match env.new_string(json) {
-        Ok(s) => s.into_raw(),
-        Err(_) => null,
-    }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        let json = engine::get_debug_json();
+        match env.new_string(json) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getStatsJson<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    let json = engine::get_stats_json();
-    match env.new_string(json) {
-        Ok(s) => s.into_raw(),
-        Err(_) => null,
-    }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        let json = engine::get_stats_json();
+        match env.new_string(json) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getHealthJson<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    match env.new_string(engine::get_health_json()) {
-        Ok(s) => s.into_raw(),
-        Err(_) => null,
-    }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        match env.new_string(engine::get_health_json()) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getSmeltingJson<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    match env.new_string(engine::get_smelting_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        match env.new_string(engine::get_smelting_json()) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getSmeltJson<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    match env.new_string(engine::get_smelt_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        match env.new_string(engine::get_smelt_json()) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getAmbienceJson<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    match env.new_string(engine::get_ambience_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        match env.new_string(engine::get_ambience_json()) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_startSmelt<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>, recipe: jint, blast: jboolean,
+    _env: EnvUnowned<'l>, _class: JClass<'l>, recipe: jint, blast: jboolean,
 ) -> jboolean {
-    engine::start_smelt(recipe.max(0) as usize, blast != 0) as jboolean
+    engine::start_smelt(recipe.max(0) as usize, blast)
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_stopSmelt<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>,
+    _env: EnvUnowned<'l>, _class: JClass<'l>,
 ) {
     engine::stop_smelt();
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getContainerJson<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    match env.new_string(engine::get_container_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        match env.new_string(engine::get_container_json()) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_containerTake<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>, idx: jint,
+    _env: EnvUnowned<'l>, _class: JClass<'l>, idx: jint,
 ) -> jboolean {
     engine::container_take(idx.max(0) as usize) as jboolean
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_containerPut<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>, idx: jint,
+    _env: EnvUnowned<'l>, _class: JClass<'l>, idx: jint,
 ) -> jboolean {
     engine::container_put(idx.max(0) as usize) as jboolean
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_closeContainer<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>,
+    _env: EnvUnowned<'l>, _class: JClass<'l>,
 ) {
     engine::close_container();
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getBlessingsJson<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    match env.new_string(engine::get_blessings_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        match env.new_string(engine::get_blessings_json()) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getBlessingCatalogJson<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    match env.new_string(engine::get_blessing_catalog_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        match env.new_string(engine::get_blessing_catalog_json()) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_attuneBlessing<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>, idx: jint,
+    _env: EnvUnowned<'l>, _class: JClass<'l>, idx: jint,
 ) -> jboolean {
     engine::attune_blessing(idx.max(0) as usize) as jboolean
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_releaseBlessing<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>, slot: jint,
+    _env: EnvUnowned<'l>, _class: JClass<'l>, slot: jint,
 ) -> jboolean {
     engine::release_blessing(slot.max(0) as usize) as jboolean
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getCutsJson<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    match env.new_string(engine::get_cuts_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        match env.new_string(engine::get_cuts_json()) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_cut<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>, idx: jint,
+    _env: EnvUnowned<'l>, _class: JClass<'l>, idx: jint,
 ) -> jboolean {
-    if idx >= 0 && engine::do_cut(idx as usize) { 1 } else { 0 }
+    idx >= 0 && engine::do_cut(idx as usize)
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_nativeSetRole<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>, role: jint,
+    _env: EnvUnowned<'l>, _class: JClass<'l>, role: jint,
 ) {
     crate::net::set_role(role.clamp(0, 2) as u8);
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_nativeSetDevice<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>, device: JString<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>, device: JString<'l>,
 ) {
-    if let Some(d) = get_string(&mut env, &device) { crate::net::set_local_device(d); }
+    env.with_env(|env| -> jni::errors::Result<()> {
+        if let Some(d) = get_string(env, &device) { crate::net::set_local_device(d); }
+        Ok(())
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_netPushInbound<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>, json: JString<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>, json: JString<'l>,
 ) -> jboolean {
-    match get_string(&mut env, &json) {
-        Some(s) => if crate::net::push_inbound_json(&s) { 1 } else { 0 },
-        None => 0,
-    }
+    env.with_env(|env| -> jni::errors::Result<jboolean> {
+        match get_string(env, &json) {
+            Some(s) => Ok(crate::net::push_inbound_json(&s)),
+            None => Ok(false),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_netDrainOutbound<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    match env.new_string(crate::net::drain_outbound_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        match env.new_string(crate::net::drain_outbound_json()) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getPeersJson<'l>(
-    mut env: JNIEnv<'l>, _class: JClass<'l>,
+    mut env: EnvUnowned<'l>, _class: JClass<'l>,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    match env.new_string(crate::net::peers_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        match env.new_string(crate::net::peers_json()) {
+            Ok(s) => Ok(s.into_raw()),
+            Err(_) => Ok(null),
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_netRequestContainer<'l>(
-    _env: JNIEnv<'l>, _class: JClass<'l>,
+    _env: EnvUnowned<'l>, _class: JClass<'l>,
 ) {
     crate::engine::request_container_sync();
 }

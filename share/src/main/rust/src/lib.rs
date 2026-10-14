@@ -16,7 +16,7 @@
 
 use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jboolean, jbyteArray, jint, jlong};
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
@@ -63,17 +63,17 @@ fn with_session<T>(handle: i64, fallback: T, f: impl FnOnce(&mut Session) -> T) 
 // JNI helpers
 // ---------------------------------------------------------------------------
 
-fn bytes_in(env: &mut JNIEnv, arr: &JByteArray) -> Option<Vec<u8>> {
+fn bytes_in(env: &Env, arr: &JByteArray) -> Option<Vec<u8>> {
     env.convert_byte_array(arr).ok()
 }
-fn bytes_out(env: &JNIEnv, data: &[u8]) -> jbyteArray {
+fn bytes_out(env: &mut Env, data: &[u8]) -> jbyteArray {
     match env.byte_array_from_slice(data) {
         Ok(a) => a.into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
 }
-fn str_in(env: &mut JNIEnv, s: &JString) -> Option<String> {
-    env.get_string(s).ok().map(|j| j.to_string_lossy().into_owned())
+fn str_in(env: &Env, s: &JString) -> Option<String> {
+    s.try_to_string(env).ok()
 }
 
 // ---------------------------------------------------------------------------
@@ -93,71 +93,80 @@ fn str_in(env: &mut JNIEnv, s: &JString) -> Option<String> {
 /// string falls back to a fresh random id.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeInit<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     jLocalName: JString<'l>,
     jLocalEndpointInfo: JByteArray<'l>,
     jLocalEndpointId: JString<'l>,
     isInitiator: jboolean,
 ) -> jlong {
-    let local_name = str_in(&mut env, &jLocalName).unwrap_or_else(|| "Share".to_string());
-    let local_info = bytes_in(&mut env, &jLocalEndpointInfo).unwrap_or_default();
-    let local_endpoint_id = str_in(&mut env, &jLocalEndpointId).unwrap_or_default();
-    let role = if isInitiator != 0 {
-        Role::Initiator
-    } else {
-        Role::Responder
-    };
-    let id = {
-        let mut guard = match next_id().lock() {
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        let local_name = str_in(env, &jLocalName).unwrap_or_else(|| "Share".to_string());
+        let local_info = bytes_in(env, &jLocalEndpointInfo).unwrap_or_default();
+        let local_endpoint_id = str_in(env, &jLocalEndpointId).unwrap_or_default();
+        let role = if isInitiator {
+            Role::Initiator
+        } else {
+            Role::Responder
+        };
+        let id = {
+            let mut guard = match next_id().lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            let id = *guard;
+            *guard = guard.saturating_add(1);
+            id
+        };
+        let sess = Session::new(role, local_name, local_info, local_endpoint_id);
+        let mut map = match sessions().lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        let id = *guard;
-        *guard = guard.saturating_add(1);
-        id
-    };
-    let sess = Session::new(role, local_name, local_info, local_endpoint_id);
-    let mut map = match sessions().lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    let _ = map.insert(id, sess);
-    id
+        let _ = map.insert(id, sess);
+        Ok(id)
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// int nativeFeedInbound(long handle, byte[] bytes) -> 0 ok, <0 error
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeFeedInbound<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
     jBytes: JByteArray<'l>,
 ) -> jint {
-    let bytes = match bytes_in(&mut env, &jBytes) {
-        Some(b) => b,
-        None => return -1,
-    };
-    with_session(handle, -2, |s| s.feed_inbound(&bytes))
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        let bytes = match bytes_in(env, &jBytes) {
+            Some(b) => b,
+            None => return Ok(-1),
+        };
+        Ok(with_session(handle, -2, |s| s.feed_inbound(&bytes)))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// byte[] nativeDrainOutbound(long handle) -> bytes to send, or null if none.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeDrainOutbound<'l>(
-    env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
 ) -> jbyteArray {
-    match with_session(handle, None, Session::outbound_drain) {
-        Some(bytes) if !bytes.is_empty() => bytes_out(&env, &bytes),
-        _ => std::ptr::null_mut(),
-    }
+    env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+        Ok(match with_session(handle, None, Session::outbound_drain) {
+            Some(bytes) if !bytes.is_empty() => bytes_out(env, &bytes),
+            _ => std::ptr::null_mut(),
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// int nativeQueryState(long handle) -> State ordinal (see PROTOCOL_CONTRACT.md)
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeQueryState<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
 ) -> jint {
@@ -167,28 +176,34 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeQue
 /// byte[] nativeQueryPendingFiles(long handle) -> JSON array of {name,sizeBytes,mimeType}
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeQueryPendingFiles<'l>(
-    env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
 ) -> jbyteArray {
-    let json = with_session(handle, None, |s| Some(file_list_json(s.pending_files())));
-    match json {
-        Some(j) => bytes_out(&env, j.as_bytes()),
-        None => std::ptr::null_mut(),
-    }
+    env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+        let json = with_session(handle, None, |s| Some(file_list_json(s.pending_files())));
+        Ok(match json {
+            Some(j) => bytes_out(env, j.as_bytes()),
+            None => std::ptr::null_mut(),
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// int nativeAccept(long handle, boolean accept, String destDir) 0 ok
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeAccept<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
     accept: jboolean,
     jDestDir: JString<'l>,
 ) -> jint {
-    let dest = str_in(&mut env, &jDestDir).unwrap_or_default();
-    with_session(handle, -1, |s| s.accept(accept != 0, &dest))
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        let dest = str_in(env, &jDestDir).unwrap_or_default();
+        Ok(with_session(handle, -1, |s| s.accept(accept, &dest)))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// int nativeSetFilesToSend(long handle, byte[] json) -> 0 ok
@@ -197,24 +212,27 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeAcc
 /// `nativeQueryPendingFiles` returns.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeSetFilesToSend<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
     jJson: JByteArray<'l>,
 ) -> jint {
-    let Some(bytes) = bytes_in(&mut env, &jJson) else {
-        return -1;
-    };
-    let Ok(text) = String::from_utf8(bytes) else {
-        return -1;
-    };
-    let Some(files) = parse_file_list_json(&text) else {
-        return -1;
-    };
-    with_session(handle, -1, |s| {
-        s.set_pending_files_for_send(files);
-        0
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        let Some(bytes) = bytes_in(env, &jJson) else {
+            return Ok(-1);
+        };
+        let Ok(text) = String::from_utf8(bytes) else {
+            return Ok(-1);
+        };
+        let Some(files) = parse_file_list_json(&text) else {
+            return Ok(-1);
+        };
+        Ok(with_session(handle, -1, |s| {
+            s.set_pending_files_for_send(files);
+            0
+        }))
     })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// int nativeQueueIntroduction(long handle) -> 0 ok
@@ -224,7 +242,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeSet
 /// ready.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeQueueIntroduction<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
 ) -> jint {
@@ -234,7 +252,7 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeQue
 /// int nativeSendKeepAlive(long handle) -> 0 ok
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeSendKeepAlive<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
 ) -> jint {
@@ -244,38 +262,44 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeSen
 /// int nativeOpenFile(long handle, String fileName, long fileSize) -> 0 ok
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeOpenFile<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
     jFileName: JString<'l>,
     fileSize: jlong,
 ) -> jint {
-    let name = str_in(&mut env, &jFileName).unwrap_or_default();
-    if name.is_empty() {
-        return -1;
-    }
-    with_session(handle, -1, |s| s.open_file(&name, fileSize))
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        let name = str_in(env, &jFileName).unwrap_or_default();
+        if name.is_empty() {
+            return Ok(-1);
+        }
+        Ok(with_session(handle, -1, |s| s.open_file(&name, fileSize)))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// int nativeWriteChunk(long handle, byte[] chunk) -> 0 ok
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeWriteChunk<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
     jChunk: JByteArray<'l>,
 ) -> jint {
-    let bytes = match bytes_in(&mut env, &jChunk) {
-        Some(b) => b,
-        None => return -1,
-    };
-    with_session(handle, -2, |s| s.write_chunk(&bytes))
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        let bytes = match bytes_in(env, &jChunk) {
+            Some(b) => b,
+            None => return Ok(-1),
+        };
+        Ok(with_session(handle, -2, |s| s.write_chunk(&bytes)))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// int nativeCloseFile(long handle) -> 0 ok
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeCloseFile<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
 ) -> jint {
@@ -289,14 +313,17 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeClo
 /// and drops it, so the session never accumulates a whole file.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeDrainReceived<'l>(
-    env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
 ) -> jbyteArray {
-    match with_session(handle, None, Session::drain_received) {
-        Some(bytes) => bytes_out(&env, &bytes),
-        None => std::ptr::null_mut(),
-    }
+    env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+        Ok(match with_session(handle, None, Session::drain_received) {
+            Some(bytes) => bytes_out(env, &bytes),
+            None => std::ptr::null_mut(),
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// String nativeQueryFailureReason(long handle) -> why the session failed, or null.
@@ -305,18 +332,21 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeDra
 /// carried no reason.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeQueryFailureReason<'l>(
-    env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
 ) -> jni::sys::jobject {
-    let reason = with_session(handle, None, |s| s.failure_reason().map(str::to_owned));
-    match reason {
-        Some(r) => match env.new_string(r) {
-            Ok(s) => s.into_raw(),
-            Err(_) => std::ptr::null_mut(),
-        },
-        None => std::ptr::null_mut(),
-    }
+    env.with_env(|env| -> jni::errors::Result<jni::sys::jobject> {
+        let reason = with_session(handle, None, |s| s.failure_reason().map(str::to_owned));
+        Ok(match reason {
+            Some(r) => match env.new_string(r) {
+                Ok(s) => s.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            },
+            None => std::ptr::null_mut(),
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// String nativeQueryPeerName(long handle) -> the peer's advertised device name, or null.
@@ -324,18 +354,21 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeQue
 /// Null until the peer's `CONNECTION_REQUEST` has been read, and for an unknown handle.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeQueryPeerName<'l>(
-    env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
 ) -> jni::sys::jobject {
-    let name = with_session(handle, None, |s| s.peer_name().map(str::to_owned));
-    match name {
-        Some(n) => match env.new_string(n) {
-            Ok(s) => s.into_raw(),
-            Err(_) => std::ptr::null_mut(),
-        },
-        None => std::ptr::null_mut(),
-    }
+    env.with_env(|env| -> jni::errors::Result<jni::sys::jobject> {
+        let name = with_session(handle, None, |s| s.peer_name().map(str::to_owned));
+        Ok(match name {
+            Some(n) => match env.new_string(n) {
+                Ok(s) => s.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            },
+            None => std::ptr::null_mut(),
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 // ---------------------------------------------------------------------------
@@ -417,22 +450,28 @@ fn parse_file_list_json(text: &str) -> Option<Vec<payload::FileMeta>> {
 /// String nativeMdnsServiceType() -> `_FC9F5ED42C8A._tcp`
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeMdnsServiceType<'l>(
-    env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
 ) -> jni::sys::jobject {
-    match env.new_string(ble_adv::mdns_service_type()) {
-        Ok(s) => s.into_raw(),
-        Err(_) => std::ptr::null_mut(),
-    }
+    env.with_env(|env| -> jni::errors::Result<jni::sys::jobject> {
+        Ok(match env.new_string(ble_adv::mdns_service_type()) {
+            Ok(s) => s.into_raw(),
+            Err(_) => std::ptr::null_mut(),
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// byte[] nativeBleServiceIdHash() -> the 3-byte truncated SHA-256 of "NearbySharing"
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_nativeBleServiceIdHash<'l>(
-    env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
 ) -> jbyteArray {
-    bytes_out(&env, &ble_adv::ble_service_id_hash())
+    env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+        Ok(bytes_out(env, &ble_adv::ble_service_id_hash()))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// String nativeQueryTrace(long handle) -> recent protocol events, one per line, or null.
@@ -442,24 +481,27 @@ pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNativeDiscovery_
 /// capture cannot answer it either.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeQueryTrace<'l>(
-    env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
 ) -> jni::sys::jobject {
-    let text = with_session(handle, None, |s| Some(s.trace_text()));
-    match text {
-        Some(t) => match env.new_string(t) {
-            Ok(s) => s.into_raw(),
-            Err(_) => std::ptr::null_mut(),
-        },
-        None => std::ptr::null_mut(),
-    }
+    env.with_env(|env| -> jni::errors::Result<jni::sys::jobject> {
+        let text = with_session(handle, None, |s| Some(s.trace_text()));
+        Ok(match text {
+            Some(t) => match env.new_string(t) {
+                Ok(s) => s.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            },
+            None => std::ptr::null_mut(),
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// void nativeDestroy(long handle)
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_share_protocol_ShareNative_nativeDestroy<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _cls: JClass<'l>,
     handle: jlong,
 ) {

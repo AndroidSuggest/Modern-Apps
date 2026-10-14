@@ -34,7 +34,7 @@ use crate::{
 };
 use array_view::ArrayView;
 use ldt_np_adv::{V0IdentityToken, V0Salt, NP_LDT_MAX_EFFECTIVE_PAYLOAD_LEN};
-use nom::{bytes, combinator, number, Finish};
+use nom::{bytes, combinator, number, Finish, Parser as _};
 
 #[cfg(test)]
 mod tests;
@@ -93,11 +93,13 @@ impl<'d, D: DataElementDeserializer> RawDataElement<'d, D> {
                     }
                 })
             },
-        )(input)?;
+        )
+        .parse(input)?;
 
         combinator::map(bytes::complete::take(actual_len.as_usize()), move |contents| {
             RawDataElement { de_type, contents }
-        })(input)
+        })
+        .parse(input)
     }
 }
 
@@ -197,7 +199,8 @@ impl<F: PacketFlavor, D: DataElementDeserializer> Iterator for GenericDeIterator
         let parse_result = combinator::cut(combinator::map_res(
             RawDataElement::parse,
             D::deserialize_de,
-        ))(self.data);
+        ))
+        .parse(self.data);
 
         match parse_result.finish() {
             Ok((rem, de)) => {

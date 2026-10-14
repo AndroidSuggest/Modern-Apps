@@ -16,7 +16,7 @@ use crate::RcRng;
 use core::marker::PhantomData;
 use crypto_provider::elliptic_curve::{EcdhProvider, EphemeralSecret, PublicKey};
 use crypto_provider::x25519::X25519;
-use rand::RngCore;
+use rand::Rng;
 use rand_core::{CryptoRng, SeedableRng};
 
 /// The RustCrypto implementation of X25519 ECDH.
@@ -24,19 +24,19 @@ pub struct X25519Ecdh<R> {
     _marker: PhantomData<R>,
 }
 
-impl<R: CryptoRng + RngCore + SeedableRng + Send> EcdhProvider<X25519> for X25519Ecdh<R> {
+impl<R: CryptoRng + Rng + SeedableRng + Send> EcdhProvider<X25519> for X25519Ecdh<R> {
     type PublicKey = X25519PublicKey;
     type EphemeralSecret = X25519EphemeralSecret<R>;
     type SharedSecret = [u8; 32];
 }
 
 /// A X25519 ephemeral secret used for Diffie-Hellman.
-pub struct X25519EphemeralSecret<R: CryptoRng + RngCore + SeedableRng> {
+pub struct X25519EphemeralSecret<R: CryptoRng + Rng + SeedableRng> {
     secret: x25519_dalek::EphemeralSecret,
     marker: PhantomData<R>,
 }
 
-impl<R: CryptoRng + RngCore + SeedableRng + Send> EphemeralSecret<X25519>
+impl<R: CryptoRng + Rng + SeedableRng + Send> EphemeralSecret<X25519>
     for X25519EphemeralSecret<R>
 {
     type Impl = X25519Ecdh<R>;
@@ -65,7 +65,7 @@ impl<R: CryptoRng + RngCore + SeedableRng + Send> EphemeralSecret<X25519>
 }
 
 #[cfg(test)]
-impl<R: CryptoRng + RngCore + SeedableRng + Send>
+impl<R: CryptoRng + Rng + SeedableRng + Send>
     crypto_provider_test::elliptic_curve::EphemeralSecretForTesting<X25519>
     for X25519EphemeralSecret<R>
 {

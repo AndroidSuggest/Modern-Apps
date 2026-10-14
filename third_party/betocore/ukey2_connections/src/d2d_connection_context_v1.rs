@@ -16,6 +16,7 @@
 use std::fmt::Formatter;
 
 use bytes::BufMut;
+use nom::Parser as _;
 use rand::SeedableRng as _;
 
 use crypto_provider::aead::Aead;
@@ -144,7 +145,11 @@ pub struct D2DConnectionContextV1<R = rand::rngs::StdRng> {
 
 impl D2DConnectionContextV1<rand::rngs::StdRng> {
     pub fn from_saved_session<C: CryptoProvider>(session: &[u8]) -> Result<Self, DeserializeError> {
-        Self::from_saved_session_with_rng::<C>(session, rand::rngs::StdRng::from_entropy())
+        use rand::SeedableRng;
+        let mut sys = rand::rngs::SysRng;
+        let rng = rand::rngs::StdRng::try_from_rng(&mut sys)
+            .map_err(|_| DeserializeError::BadData)?;
+        Self::from_saved_session_with_rng::<C>(session, rng)
     }
 }
 
@@ -253,26 +258,28 @@ where
         if session.len() != 73 && session.len() != 77 {
             return Err(DeserializeError::BadDataLength);
         }
-        let (rem, _) = nom::bytes::complete::tag(PROTOCOL_VERSION.to_be_bytes())(session)
-            .map_err(|_: nom::Err<nom::error::Error<_>>| DeserializeError::BadProtocolVersion)?;
+        use nom::Parser;
+        type NomErr<'a> = nom::error::Error<&'a [u8]>;
+        let (rem, _) = nom::bytes::complete::tag::<_, _, NomErr<'_>>(&PROTOCOL_VERSION.to_be_bytes()[..])
+            .parse(session)
+            .map_err(|_: nom::Err<NomErr<'_>>| DeserializeError::BadProtocolVersion)?;
         let (
             _,
             (encode_sequence_num, decode_sequence_num, encode_key, decode_key, next_protocol_int),
-        ) = nom::combinator::all_consuming(nom::sequence::tuple::<_, _, nom::error::Error<_>, _>(
-            (
-                nom::number::complete::be_i32,
-                nom::number::complete::be_i32,
-                nom::combinator::map_res(
-                    nom::bytes::complete::take(32_usize),
-                    TryInto::<Aes256Key>::try_into,
-                ),
-                nom::combinator::map_res(
-                    nom::bytes::complete::take(32_usize),
-                    TryInto::<Aes256Key>::try_into,
-                ),
-                nom::combinator::opt(nom::number::complete::be_i32),
+        ) = nom::combinator::all_consuming::<_, NomErr<'_>, _>((
+            nom::number::complete::be_i32::<_, NomErr<'_>>,
+            nom::number::complete::be_i32::<_, NomErr<'_>>,
+            nom::combinator::map_res(
+                nom::bytes::complete::take::<_, _, NomErr<'_>>(32_usize),
+                TryInto::<Aes256Key>::try_into,
             ),
-        ))(rem)
+            nom::combinator::map_res(
+                nom::bytes::complete::take::<_, _, NomErr<'_>>(32_usize),
+                TryInto::<Aes256Key>::try_into,
+            ),
+            nom::combinator::opt(nom::number::complete::be_i32::<_, NomErr<'_>>),
+        ))
+        .parse(rem)
         // This should always succeed since all of the parsers above are valid over the entire
         // [u8] space, and we already checked the length at the start.
         .expect("Saved session parsing should succeed");
@@ -496,7 +503,7 @@ where
         };
         let (ciphertext, header) = match self.protocol {
             NextProtocol::Aes256GcmSiv => {
-                let nonce: [u8; 12] = self.rng.gen();
+                let mut nonce = [0u8; 12]; self.rng.fill_bytes(&mut nonce);
                 let ciphertext = crypto_utils::encrypt_gcm_siv::<C::Aes256GcmSiv>(
                     &self.encryption_key,
                     &message,

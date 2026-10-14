@@ -12,7 +12,7 @@
 
 use jni::objects::{JClass, JString};
 use jni::sys::jintArray;
-use jni::JNIEnv;
+use jni::{EnvUnowned};
 use tree_sitter::{Language, Parser, Query, QueryCursor};
 
 /// Resolves a language id (see `TreeSitterNative.languageIdFor`) to its grammar + highlights query.
@@ -85,39 +85,40 @@ fn kind_for(name: &str) -> i32 {
 /// Called by the JVM with valid `env`/argument references.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_code_util_TreeSitterNative_highlight<'local>(
-    mut env: JNIEnv<'local>,
+    mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     language_id: JString<'local>,
     source: JString<'local>,
 ) -> jintArray {
-    let null = std::ptr::null_mut();
+    env.with_env(|env| -> jni::errors::Result<jintArray> {
+        let null = std::ptr::null_mut();
 
-    let id: String = match env.get_string(&language_id) {
-        Ok(s) => s.into(),
-        Err(_) => return null,
-    };
-    let src: String = match env.get_string(&source) {
-        Ok(s) => s.into(),
-        Err(_) => return null,
-    };
+        let id: String = match language_id.try_to_string(env) {
+            Ok(s) => s,
+            Err(_) => return Ok(null),
+        };
+        let src: String = match source.try_to_string(env) {
+            Ok(s) => s,
+            Err(_) => return Ok(null),
+        };
 
-    let (language, query_src) = match grammar(&id) {
-        Some(g) => g,
-        None => return null,
-    };
+        let (language, query_src) = match grammar(&id) {
+            Some(g) => g,
+            None => return Ok(null),
+        };
 
-    let mut parser = Parser::new();
-    if parser.set_language(&language).is_err() {
-        return null;
-    }
-    let tree = match parser.parse(&src, None) {
-        Some(t) => t,
-        None => return null,
-    };
-    let query = match Query::new(&language, query_src) {
-        Ok(q) => q,
-        Err(_) => return null,
-    };
+        let mut parser = Parser::new();
+        if parser.set_language(&language).is_err() {
+            return Ok(null);
+        }
+        let tree = match parser.parse(&src, None) {
+            Some(t) => t,
+            None => return Ok(null),
+        };
+        let query = match Query::new(&language, query_src) {
+            Ok(q) => q,
+            Err(_) => return Ok(null),
+        };
 
     let names = query.capture_names();
     let bytes = src.as_bytes();
@@ -138,12 +139,14 @@ pub extern "system" fn Java_com_vayunmathur_code_util_TreeSitterNative_highlight
         }
     }
 
-    let arr = match env.new_int_array(out.len() as i32) {
+    let arr = match env.new_int_array(out.len()) {
         Ok(a) => a,
-        Err(_) => return null,
+        Err(_) => return Ok(null),
     };
-    if env.set_int_array_region(&arr, 0, &out).is_err() {
-        return null;
+    if arr.set_region(env, 0, &out).is_err() {
+        return Ok(null);
     }
-    arr.into_raw()
+    Ok(arr.into_raw())
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }

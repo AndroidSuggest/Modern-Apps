@@ -17,6 +17,7 @@ openmls_basic_credential.workspace = true
 openmls_traits.workspace = true
 tls_codec.workspace = true
 ed25519-dalek.workspace = true
+rand.workspace = true
 rand_core.workspace = true
 getrandom.workspace = true
 jni.workspace = true

@@ -21,7 +21,7 @@ use crate::extended::{
     deserialize, DeLength,
 };
 use core::{fmt, marker::PhantomData};
-use nom::{branch, bytes, combinator, error, number, sequence};
+use nom::{branch, bytes, combinator, error, number, sequence, Parser as _};
 use np_hkdf::v1_salt::ExtendedV1Salt;
 
 #[cfg(test)]
@@ -489,7 +489,8 @@ impl ProtoDataElement<'_> {
         combinator::map(bytes::complete::take(len.as_u8()), move |contents| ProtoDataElement {
             de_type,
             contents,
-        })(remaining)
+        })
+        .parse(remaining)
     }
 }
 
@@ -551,7 +552,7 @@ impl DeHeader {
                             }),
                         ),
                         // multiple type byte case: leading type byte must have at least 1 value bit
-                        combinator::recognize(sequence::tuple((
+                        combinator::recognize((
                             // hi bit and at least 1 value bit, otherwise it would be non-canonical
                             combinator::verify(number::complete::u8, |&b| {
                                 deserialize::hi_bit_set(b) && (b & 0x7F != 0)
@@ -564,7 +565,7 @@ impl DeHeader {
                             combinator::verify(number::complete::u8, |&b| {
                                 !deserialize::hi_bit_set(b)
                             }),
-                        ))),
+                        )),
                     )),
                 ),
                 |(contents_len, type_bytes)| {
@@ -585,6 +586,6 @@ impl DeHeader {
             },
         );
 
-        branch::alt((parse_single_byte_de_header, parse_ext_de_header))(input)
+        branch::alt((parse_single_byte_de_header, parse_ext_de_header)).parse(input)
     }
 }

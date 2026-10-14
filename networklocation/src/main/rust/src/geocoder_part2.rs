@@ -1,7 +1,7 @@
 /// `close(handle)` — frees the reader and its dup'd fd.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_networklocation_GeocoderNative_close<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {

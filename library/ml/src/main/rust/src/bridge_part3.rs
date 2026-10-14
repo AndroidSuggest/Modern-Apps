@@ -128,34 +128,37 @@ impl translate::Nets for NllbNets<'_> {
 /// target token — the protocol flip vs small100. Agreed with app-eng (team `nllb-translate`).
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createNllb<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     fd: jint,
     offset: jlong,
     length: jlong,
     tokenizer: JByteArray<'l>,
 ) -> jlong {
-    // The descriptor first, and adopted into an owning `File` before anything else may fail: the
-    // caller detached it, so a path that returns without wrapping it leaks it for the life of the
-    // process. Every check below the adoption is therefore free to fail; nothing above it is.
-    if fd < 0 {
-        log(&format!("nllb is unavailable: descriptor {fd} is not open"));
-        return 0;
-    }
-    // SAFETY: the caller detached the descriptor, so nothing else owns it, and `File` closes it on
-    // drop — including on every failure path below.
-    let file = unsafe { File::from_raw_fd(fd) };
-    match build_nllb(&mut env, file, offset, length, &tokenizer) {
-        Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
-        Err(e) => {
-            log(&format!("nllb is unavailable: {e}"));
-            0
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        // The descriptor first, and adopted into an owning `File` before anything else may fail: the
+        // caller detached it, so a path that returns without wrapping it leaks it for the life of the
+        // process. Every check below the adoption is therefore free to fail; nothing above it is.
+        if fd < 0 {
+            log(&format!("nllb is unavailable: descriptor {fd} is not open"));
+            return Ok(0);
         }
-    }
+        // SAFETY: the caller detached the descriptor, so nothing else owns it, and `File` closes it on
+        // drop — including on every failure path below.
+        let file = unsafe { File::from_raw_fd(fd) };
+        Ok(match build_nllb(env, file, offset, length, &tokenizer) {
+            Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
+            Err(e) => {
+                log(&format!("nllb is unavailable: {e}"));
+                0
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 fn build_nllb<'l>(
-    env: &mut JNIEnv<'l>,
+    env: &Env,
     file: File,
     offset: jlong,
     length: jlong,
@@ -206,36 +209,39 @@ fn build_nllb<'l>(
 /// `handle` must be a non-zero value from `createNllb` that has not been destroyed.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_translateNllb<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     text: JString<'l>,
     source_token: jint,
     target_token: jint,
 ) -> jstring {
-    if handle == 0 {
-        return std::ptr::null_mut();
-    }
-    // SAFETY: the caller guarantees the handle came from `createNllb` and is still live. It is
-    // `&mut` because a decode step re-records the net, and Kotlin serialises calls on one handle.
-    let handle = unsafe { &mut *(handle as *mut NllbHandle) };
-    let translated = match env.get_string(&text) {
-        Ok(text) => run_nllb(handle, &String::from(text), source_token, target_token),
-        Err(e) => Err(format!("cannot read the source text: {e}")),
-    };
-    match translated {
-        Ok(out) => match env.new_string(&out) {
-            Ok(string) => string.into_raw(),
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        if handle == 0 {
+            return Ok(std::ptr::null_mut());
+        }
+        // SAFETY: the caller guarantees the handle came from `createNllb` and is still live. It is
+        // `&mut` because a decode step re-records the net, and Kotlin serialises calls on one handle.
+        let handle = unsafe { &mut *(handle as *mut NllbHandle) };
+        let translated = match text.try_to_string(env) {
+            Ok(text) => run_nllb(handle, &text, source_token, target_token),
+            Err(e) => Err(format!("cannot read the source text: {e}")),
+        };
+        Ok(match translated {
+            Ok(out) => match env.new_string(&out) {
+                Ok(string) => string.into_raw(),
+                Err(e) => {
+                    log(&format!("nllb cannot return its translation: {e}"));
+                    std::ptr::null_mut()
+                }
+            },
             Err(e) => {
-                log(&format!("nllb cannot return its translation: {e}"));
+                log(&format!("nllb failed: {e}"));
                 std::ptr::null_mut()
             }
-        },
-        Err(e) => {
-            log(&format!("nllb failed: {e}"));
-            std::ptr::null_mut()
-        }
-    }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 fn run_nllb(
@@ -265,7 +271,7 @@ fn run_nllb(
 /// `handle` must be a non-zero value from `createNllb`, and must not be used again.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyNllb<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {
@@ -326,7 +332,7 @@ fn tinyclip_column(out: &[f32], at: usize, len: usize) -> Result<Vec<f32>, Strin
 /// Called only by the JVM, with a descriptor nothing else holds.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createTinyclip<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     fd: jint,
     offset: jlong,
@@ -387,29 +393,32 @@ fn build_tinyclip(file: File, offset: jlong, length: jlong) -> Result<TinyclipHa
 /// `handle` must be a non-zero value from `createTinyclip` that has not been destroyed.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_tinyclipImage<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     pixels: JFloatArray<'l>,
 ) -> jfloatArray {
-    let null = std::ptr::null_mut();
-    if handle == 0 {
-        return null;
-    }
-    // SAFETY: the caller guarantees the handle came from `createTinyclip` and is still live. It is
-    // `&mut` because switching towers re-records the net, and Kotlin serialises calls on one handle.
-    let handle = unsafe { &mut *(handle as *mut TinyclipHandle) };
-    let embedded = match read_float_array(&mut env, &pixels) {
-        Ok(values) => run_tinyclip_image(handle, &values),
-        Err(e) => Err(e),
-    };
-    match embedded.and_then(|values| new_float_array(&mut env, &values)) {
-        Ok(array) => array,
-        Err(e) => {
-            log(&format!("tinyclip's image tower failed: {e}"));
-            null
+    env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+        let null = std::ptr::null_mut();
+        if handle == 0 {
+            return Ok(null);
         }
-    }
+        // SAFETY: the caller guarantees the handle came from `createTinyclip` and is still live. It is
+        // `&mut` because switching towers re-records the net, and Kotlin serialises calls on one handle.
+        let handle = unsafe { &mut *(handle as *mut TinyclipHandle) };
+        let embedded = match read_float_array(env, &pixels) {
+            Ok(values) => run_tinyclip_image(handle, &values),
+            Err(e) => Err(e),
+        };
+        Ok(match embedded.and_then(|values| new_float_array(env, &values)) {
+            Ok(array) => array,
+            Err(e) => {
+                log(&format!("tinyclip's image tower failed: {e}"));
+                null
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 fn run_tinyclip_image(handle: &mut TinyclipHandle, pixels: &[f32]) -> Result<Vec<f32>, String> {

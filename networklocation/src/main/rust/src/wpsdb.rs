@@ -44,9 +44,9 @@ use std::fs::File;
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
 
-use jni::objects::JClass;
+use jni::objects::{JByteArray, JClass, JDoubleArray, JObjectArray, JString};
 use jni::sys::{jdoubleArray, jint, jlong};
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned, jni_str};
 
 const MAGIC: &[u8; 8] = b"WPSDB2\x00\x00";
 
@@ -483,7 +483,7 @@ type Handle = Reader;
 /// framing bounds every read) and kept for API symmetry with `GeocoderNative`.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_networklocation_WpsStoreNative_open<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     fd: jint,
     offset: jlong,

@@ -152,34 +152,37 @@ impl madlad_post::Nets for MadladNets<'_> {
 /// app-eng (team `nllb-translate`).
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createMadlad<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     fd: jint,
     offset: jlong,
     length: jlong,
     tokenizer: JByteArray<'l>,
 ) -> jlong {
-    // The descriptor first, and adopted into an owning `File` before anything else may fail: the
-    // caller detached it, so a path that returns without wrapping it leaks it for the life of the
-    // process. Every check below the adoption is therefore free to fail; nothing above it is.
-    if fd < 0 {
-        log(&format!("madlad is unavailable: descriptor {fd} is not open"));
-        return 0;
-    }
-    // SAFETY: the caller detached the descriptor, so nothing else owns it, and `File` closes it on
-    // drop — including on every failure path below.
-    let file = unsafe { File::from_raw_fd(fd) };
-    match build_madlad(&mut env, file, offset, length, &tokenizer) {
-        Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
-        Err(e) => {
-            log(&format!("madlad is unavailable: {e}"));
-            0
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        // The descriptor first, and adopted into an owning `File` before anything else may fail: the
+        // caller detached it, so a path that returns without wrapping it leaks it for the life of the
+        // process. Every check below the adoption is therefore free to fail; nothing above it is.
+        if fd < 0 {
+            log(&format!("madlad is unavailable: descriptor {fd} is not open"));
+            return Ok(0);
         }
-    }
+        // SAFETY: the caller detached the descriptor, so nothing else owns it, and `File` closes it on
+        // drop — including on every failure path below.
+        let file = unsafe { File::from_raw_fd(fd) };
+        Ok(match build_madlad(env, file, offset, length, &tokenizer) {
+            Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
+            Err(e) => {
+                log(&format!("madlad is unavailable: {e}"));
+                0
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 fn build_madlad<'l>(
-    env: &mut JNIEnv<'l>,
+    env: &Env,
     file: File,
     offset: jlong,
     length: jlong,
@@ -231,37 +234,38 @@ fn build_madlad<'l>(
 /// `handle` must be a non-zero value from `createMadlad` that has not been destroyed.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_translateMadlad<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     text: JString<'l>,
     tag: JString<'l>,
 ) -> jstring {
-    if handle == 0 {
-        return std::ptr::null_mut();
-    }
-    // SAFETY: the caller guarantees the handle came from `createMadlad` and is still live. It is
-    // `&mut` because a decode step re-records the net, and Kotlin serialises calls on one handle.
-    let handle = unsafe { &mut *(handle as *mut MadladHandle) };
-    let translated = match (env.get_string(&text), env.get_string(&tag)) {
-        (Ok(text), Ok(tag)) => {
-            run_madlad(handle, &String::from(text), &String::from(tag))
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        if handle == 0 {
+            return Ok(std::ptr::null_mut());
         }
-        _ => Err("cannot read the source text or the target tag".into()),
-    };
-    match translated {
-        Ok(out) => match env.new_string(&out) {
-            Ok(string) => string.into_raw(),
+        // SAFETY: the caller guarantees the handle came from `createMadlad` and is still live. It is
+        // `&mut` because a decode step re-records the net, and Kotlin serialises calls on one handle.
+        let handle = unsafe { &mut *(handle as *mut MadladHandle) };
+        let translated = match (text.try_to_string(env), tag.try_to_string(env)) {
+            (Ok(text), Ok(tag)) => run_madlad(handle, &text, &tag),
+            _ => Err("cannot read the source text or the target tag".into()),
+        };
+        Ok(match translated {
+            Ok(out) => match env.new_string(&out) {
+                Ok(string) => string.into_raw(),
+                Err(e) => {
+                    log(&format!("madlad cannot return its translation: {e}"));
+                    std::ptr::null_mut()
+                }
+            },
             Err(e) => {
-                log(&format!("madlad cannot return its translation: {e}"));
+                log(&format!("madlad failed: {e}"));
                 std::ptr::null_mut()
             }
-        },
-        Err(e) => {
-            log(&format!("madlad failed: {e}"));
-            std::ptr::null_mut()
-        }
-    }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 fn run_madlad(handle: &mut MadladHandle, text: &str, tag: &str) -> Result<String, String> {
@@ -282,7 +286,7 @@ fn run_madlad(handle: &mut MadladHandle, text: &str, tag: &str) -> Result<String
 /// `handle` must be a non-zero value from `createMadlad`, and must not be used again.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyMadlad<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {

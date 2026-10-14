@@ -137,7 +137,7 @@ mod jni_bindings {
     use super::*;
     use jni::objects::{JClass, JDoubleArray};
     use jni::sys::{jdouble, jdoubleArray, jfloatArray};
-    use jni::JNIEnv;
+    use jni::EnvUnowned;
 
     /// `batchRaDecToAltAz(radec, lstRad, latRad)`. `radec` interleaved
     /// `[ra0,dec0,...]` radians; returns interleaved `[az0,alt0,...]` radians,
@@ -146,34 +146,38 @@ mod jni_bindings {
     pub extern "system" fn Java_com_vayunmathur_astronomy_domain_AstronomyNative_batchRaDecToAltAz<
         'l,
     >(
-        env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         radec: JDoubleArray<'l>,
         lst_rad: jdouble,
         lat_rad: jdouble,
     ) -> jdoubleArray {
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let len = env.get_array_length(&radec).unwrap_or(0) as usize;
-            let mut buf = vec![0f64; len];
-            if env.get_double_array_region(&radec, 0, &mut buf).is_err() {
-                return None;
-            }
-            Some(batch_radec_to_altaz(&buf, lst_rad, lat_rad))
-        }))
-        .unwrap_or(None);
+        env.with_env(|env| -> jni::errors::Result<jdoubleArray> {
+            let null = std::ptr::null_mut();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let len = env.get_array_length(&radec).unwrap_or(0) as usize;
+                let mut buf = vec![0f64; len];
+                if env.get_double_array_region(&radec, 0, &mut buf).is_err() {
+                    return None;
+                }
+                Some(batch_radec_to_altaz(&buf, lst_rad, lat_rad))
+            }))
+            .unwrap_or(None);
 
-        let result = match result {
-            Some(r) => r,
-            None => return std::ptr::null_mut(),
-        };
-        let out = match env.new_double_array(result.len() as i32) {
-            Ok(a) => a,
-            Err(_) => return std::ptr::null_mut(),
-        };
-        if env.set_double_array_region(&out, 0, &result).is_err() {
-            return std::ptr::null_mut();
-        }
-        out.into_raw()
+            let result = match result {
+                Some(r) => r,
+                None => return Ok(null),
+            };
+            let out = match env.new_double_array(result.len()) {
+                Ok(a) => a,
+                Err(_) => return Ok(null),
+            };
+            if env.set_double_array_region(&out, 0, &result).is_err() {
+                return Ok(null);
+            }
+            Ok(out.into_raw())
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 
     /// `batchProject(altaz, centerAzRad, centerAltRad, fovDeg, screenW, screenH,
@@ -182,7 +186,7 @@ mod jni_bindings {
     #[no_mangle]
     #[allow(clippy::too_many_arguments)]
     pub extern "system" fn Java_com_vayunmathur_astronomy_domain_AstronomyNative_batchProject<'l>(
-        env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         altaz: JDoubleArray<'l>,
         center_az_rad: jdouble,
@@ -192,35 +196,39 @@ mod jni_bindings {
         screen_h: jdouble,
         rotation_rad: jdouble,
     ) -> jfloatArray {
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let len = env.get_array_length(&altaz).unwrap_or(0) as usize;
-            let mut buf = vec![0f64; len];
-            if env.get_double_array_region(&altaz, 0, &mut buf).is_err() {
-                return None;
-            }
-            Some(batch_project(
-                &buf,
-                center_az_rad,
-                center_alt_rad,
-                fov_deg,
-                screen_w,
-                screen_h,
-                rotation_rad,
-            ))
-        }))
-        .unwrap_or(None);
+        env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+            let null = std::ptr::null_mut();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let len = env.get_array_length(&altaz).unwrap_or(0) as usize;
+                let mut buf = vec![0f64; len];
+                if env.get_double_array_region(&altaz, 0, &mut buf).is_err() {
+                    return None;
+                }
+                Some(batch_project(
+                    &buf,
+                    center_az_rad,
+                    center_alt_rad,
+                    fov_deg,
+                    screen_w,
+                    screen_h,
+                    rotation_rad,
+                ))
+            }))
+            .unwrap_or(None);
 
-        let result = match result {
-            Some(r) => r,
-            None => return std::ptr::null_mut(),
-        };
-        let out = match env.new_float_array(result.len() as i32) {
-            Ok(a) => a,
-            Err(_) => return std::ptr::null_mut(),
-        };
-        if env.set_float_array_region(&out, 0, &result).is_err() {
-            return std::ptr::null_mut();
-        }
-        out.into_raw()
+            let result = match result {
+                Some(r) => r,
+                None => return Ok(null),
+            };
+            let out = match env.new_float_array(result.len()) {
+                Ok(a) => a,
+                Err(_) => return Ok(null),
+            };
+            if env.set_float_array_region(&out, 0, &result).is_err() {
+                return Ok(null);
+            }
+            Ok(out.into_raw())
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 }

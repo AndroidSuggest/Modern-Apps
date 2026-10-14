@@ -25,7 +25,7 @@ use crate::legacy::deserialize::{DataElementDeserializer, GenericDeIterator};
 use crate::legacy::{Plaintext, NP_MIN_ADV_CONTENT_LEN};
 use crypto_provider::CryptoProvider;
 use ldt_np_adv::V0Salt;
-use nom::combinator;
+use nom::{combinator, Parser as _};
 
 #[cfg(test)]
 mod tests;
@@ -153,5 +153,5 @@ impl<'d> LdtAdvContents<'d> {
 }
 
 fn parse_v0_salt(input: &[u8]) -> nom::IResult<&[u8], V0Salt> {
-    combinator::map(parse_byte_array::<2>, V0Salt::from)(input)
+    combinator::map(parse_byte_array::<2>, V0Salt::from).parse(input)
 }

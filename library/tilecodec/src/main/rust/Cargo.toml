@@ -5,10 +5,9 @@
 # that crate writes, and a second implementation of either format would be a
 # second thing to keep in agreement with the published basemap. So there is one.
 #
-# DETACHED from both workspaces (the empty `[workspace]` table below), for the same
-# reason `tile_build` is: it is consumed by a host binary AND by an
-# aarch64-linux-android cdylib, and being a member of either workspace would drag
-# that workspace's toolchain, profiles and lockfile into the other's build.
+# Member of the repo-root workspace (single root Cargo.lock). It is consumed by a
+# host binary AND by an aarch64-linux-android cdylib; workspace membership only
+# unifies version resolution and does not change its targets.
 #
 # `miniz_oxide` is the only dependency and is pure Rust, so this builds for the
 # host and cross-compiles for Android with no C toolchain and nothing to configure.
@@ -41,15 +40,12 @@ name = "tilecodec"
 path = "src/lib.rs"
 
 [dependencies]
-miniz_oxide = "0.8"
+miniz_oxide.workspace = true
 # Pure-Rust zstd decoder for v9 bodies (no C toolchain, so the
 # aarch64-linux-android cdylib keeps its single-pure-Rust-dependency
 # property — see the crate docs above). Decode-only here; the host-side
 # encoder arrives with the writer change.
-ruzstd = "0.8"
+ruzstd.workspace = true
 # Pure-Rust zstd encoder, host-side only (writer): v9 bodies. Optional so the
 # cdylib never links it — Android reads archives, it never writes one.
-zstd-rs = { version = "0.1", optional = true }
-
-# Detach from both the repo-root Android workspace and `tile_build`'s.
-[workspace]
+zstd-rs = { workspace = true, optional = true }

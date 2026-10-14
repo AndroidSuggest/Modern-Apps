@@ -2,9 +2,9 @@
 use crate::verify;
 use jni::objects::{JByteArray, JClass};
 use jni::sys::jboolean;
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned};
 
-fn bytes_in(env: &mut JNIEnv, arr: &JByteArray) -> Option<Vec<u8>> {
+fn bytes_in(env: &Env, arr: &JByteArray) -> Option<Vec<u8>> {
     env.convert_byte_array(arr).ok()
 }
 
@@ -16,23 +16,22 @@ fn bytes_in(env: &mut JNIEnv, arr: &JByteArray) -> Option<Vec<u8>> {
 pub extern "system" fn Java_com_vayunmathur_appstore_data_accrescent_SignifyNative_nativeVerify<
     'l,
 >(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     pubkey: JByteArray<'l>,
     msg: JByteArray<'l>,
     sig: JByteArray<'l>,
 ) -> jboolean {
-    let (pk, m, s) = match (
-        bytes_in(&mut env, &pubkey),
-        bytes_in(&mut env, &msg),
-        bytes_in(&mut env, &sig),
-    ) {
-        (Some(a), Some(b), Some(c)) => (a, b, c),
-        _ => return 0,
-    };
-    if verify(&pk, &m, &s) {
-        1
-    } else {
-        0
-    }
+    env.with_env(|env| -> jni::errors::Result<jboolean> {
+        let (pk, m, s) = match (
+            bytes_in(env, &pubkey),
+            bytes_in(env, &msg),
+            bytes_in(env, &sig),
+        ) {
+            (Some(a), Some(b), Some(c)) => (a, b, c),
+            _ => return Ok(false),
+        };
+        Ok(verify(&pk, &m, &s))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }

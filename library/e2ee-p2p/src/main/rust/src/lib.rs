@@ -13,7 +13,16 @@ use fips203::ml_kem_768;
 use fips203::traits::{Decaps, Encaps, KeyGen as KemKeyGen, SerDes as KemSerDes};
 use fips204::ml_dsa_65;
 use fips204::traits::{KeyGen as DsaKeyGen, SerDes as DsaSerDes, Signer, Verifier};
-use rand_core::{OsRng, RngCore};
+use rand::rngs::SysRng;
+/// Fill with OS entropy. `SysRng` is infallible (`TryRng<Error = Infallible>`),
+/// so this cannot fail; the `match` satisfies the `panic`-deny lint without
+/// an `expect`/`unwrap`.
+fn sys_fill(dst: &mut [u8]) {
+    use rand_core::TryRng;
+    if SysRng.try_fill_bytes(dst).is_err() {
+        debug_assert!(false, "SysRng is infallible");
+    }
+}
 
 // ---- ML-KEM-768 sizes ----
 const KEM_EK: usize = 1184; // encapsulation (public) key
@@ -124,8 +133,8 @@ fn concat_kdf_sha256(z: &[u8], out_len: usize) -> Vec<u8> {
 pub fn mlkem_keygen_der() -> (Vec<u8>, Vec<u8>) {
     let mut d = [0u8; 32];
     let mut z = [0u8; 32];
-    OsRng.fill_bytes(&mut d);
-    OsRng.fill_bytes(&mut z);
+    sys_fill(&mut d);
+    sys_fill(&mut z);
     let (ek, dk) = ml_kem_768::KG::keygen_from_seed(d, z);
     let mut seed = [0u8; KEM_SEED];
     seed[..32].copy_from_slice(&d);
@@ -162,8 +171,8 @@ const LINK_SEED_DOMAIN: &[u8] = b"ff-link-v1";
 
 /// SHAKE256(LINK_SEED_DOMAIN || seed) -> 64 bytes, used as ML-KEM's `d || z`.
 fn link_seed_expand(seed: &[u8]) -> [u8; KEM_SEED] {
-    use sha3::digest::{ExtendableOutput, Update, XofReader};
-    let mut h = sha3::Shake256::default();
+    use shake::digest::{ExtendableOutput, Update, XofReader};
+    let mut h = shake::Shake256::default();
     h.update(LINK_SEED_DOMAIN);
     h.update(seed);
     let mut out = [0u8; KEM_SEED];
@@ -174,7 +183,7 @@ fn link_seed_expand(seed: &[u8]) -> [u8; KEM_SEED] {
 /// Fresh random link seed.
 pub fn mlkem_link_seed_new() -> [u8; LINK_SEED] {
     let mut seed = [0u8; LINK_SEED];
-    OsRng.fill_bytes(&mut seed);
+    sys_fill(&mut seed);
     seed
 }
 
@@ -197,7 +206,7 @@ pub fn mlkem_link_keygen_from_seed(seed: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
 
 pub fn mldsa_keygen_der() -> (Vec<u8>, Vec<u8>) {
     let mut xi = [0u8; DSA_SEED];
-    OsRng.fill_bytes(&mut xi);
+    sys_fill(&mut xi);
     let (pk, sk) = ml_dsa_65::KG::keygen_from_seed(&xi);
     let pub_der = spki_wrap(&DSA_PUB_PREFIX, &pk.into_bytes());
     let priv_der = dsa_priv_der(&xi, &sk.into_bytes());

@@ -243,7 +243,7 @@ fn new_server_handshake() -> ServerD2DHandshakeContext<CryptoProviderImpl> {
 }
 
 pub(crate) fn fill_random(buf: &mut [u8]) {
-    if getrandom::getrandom(buf).is_err() {
+    if getrandom::fill(buf).is_err() {
         // getrandom only fails if the OS entropy source is unavailable, which on
         // Android means the process is already unusable. Leaving the buffer zeroed
         // would silently emit a constant-pattern decoy, defeating its purpose, so

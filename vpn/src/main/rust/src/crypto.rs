@@ -1,7 +1,5 @@
-//! Shim that mimics ring/aws-lc-rs aead + error API using chacha20poly1305 but fixing
-//! the fact that aead::Buffer is not implemented for &[u8] slice — so we re-implement the tiny wrapper
-//! around the crate's raw ChaCha20Poly1305 + poly1305 by using direct XChaCha? No — easier: use older
-//! `aead` 0.5.2 generic `AeadInPlace` that works with Vec<u8> (via Buffer impl), and hand-roll ring-like shim.
+//! Shim that mimics ring/aws-lc-rs aead + error API using chacha20poly1305 0.11
+//! (aead 0.6 `AeadInOut` API with `InOutBuf`).
 
 pub mod error {
     #[derive(Debug, Clone, Copy)]
@@ -14,8 +12,7 @@ pub mod error {
 
 pub mod aead {
     use super::error;
-    use chacha20poly1305::aead::generic_array::GenericArray;
-    use chacha20poly1305::aead::{AeadMutInPlace, KeyInit};
+    use chacha20poly1305::aead::{inout::InOutBuf, AeadInOut, KeyInit};
     use chacha20poly1305::{ChaCha20Poly1305, Key as CKey, Tag};
 
     #[derive(Clone, Copy, Debug)]
@@ -50,41 +47,40 @@ pub mod aead {
         pub fn seal_in_place_separate_tag(
             &self, nonce: Nonce, aad: Aad<&[u8]>, in_out: &mut [u8],
         ) -> Result<Tag, error::Unspecified> {
-            let nonce_ga = GenericArray::from_slice(&nonce.0);
-            // We need to handle ciphertext in separate scratch since chacha20poly1305 API encrypts Vec<u8>
-            // Use the detach API — it mutates in_out and returns tag without needing Buffer for slice.
-            // The slice overload exists via `AeadInPlace` generic — but for detach it's directly slice-safe.
-            // In chacha20poly1305 0.10, `encrypt_in_place_detached` is on `AeadMutInPlace` where Buffer = slice? Actually it is slice-safe.
-            // To stay safe we copy through Vec when needed.
-            self.inner.clone().encrypt_in_place_detached(nonce_ga, aad.0, in_out).map_err(|_| error::Unspecified)
+            let tag = self
+                .inner
+                .encrypt_inout_detached(
+                    chacha20poly1305::Nonce::from_slice(&nonce.0),
+                    aad.0,
+                    InOutBuf::from(in_out),
+                )
+                .map_err(|_| error::Unspecified)?;
+            let mut out = Tag::default();
+            out.copy_from_slice(&tag);
+            Ok(out)
         }
 
         // Ring's less-safe key mutates buffer that is ct || tag, and returns pt slice.
-        // We implement by cloning inner via decrypt.
         pub fn open_in_place<'a>(
             &self, nonce: Nonce, aad: Aad<&[u8]>, in_out: &'a mut [u8],
         ) -> Result<&'a mut [u8], error::Unspecified> {
-            let nonce_ga = GenericArray::from_slice(&nonce.0);
             let len = in_out.len();
             if len < 16 { return Err(error::Unspecified); }
-            // Split off tag? No ring open_in_place expects in_out = ct || tag and returns pt (= ct without tag) in same buf.
-            // chacha20poly1305's `decrypt_in_place_detached` splits them, but `decrypt_in_place` expects ct||tag as one buffer and returns pt via &().
-            // The easiest: use `decrypt_in_place_detached` by splitting last 16 bytes.
             let (ct, tag_bytes) = in_out.split_at_mut(len - 16);
             let tag = Tag::from_slice(tag_bytes);
-            self.inner.clone()
-                .decrypt_in_place_detached(nonce_ga, aad.0, ct, tag)
+            let ct_len = ct.len();
+            self.inner
+                .decrypt_inout_detached(
+                    chacha20poly1305::Nonce::from_slice(&nonce.0),
+                    aad.0,
+                    InOutBuf::from(&mut ct[..]),
+                    tag,
+                )
                 .map_err(|_| error::Unspecified)?;
-            // Now shrink logically — caller truncates after returned slice length? The ring version
-            // returns truncated slice referencing same allocation.
-            // SAFETY: we have decrypted in place; remaining len must be len-16 for plaintext.
-            // Return re-borrowed ct as Result slice — via transmuting length.
-            // Workaround: return mut ptr to first ct.len() of original allocation via unsafe? Simpler:
-            // We cannot easily produce &'a mut [u8] of length len-16 from &'a mut [u8] of length len without unsafe because
-            // `decrypt_in_place_detached` already decrypted. So just use raw slice cast.
             let plain_len = len - 16;
-            let ptr = ct.as_mut_ptr();
-            // SAFETY: ptr derived from ct which is inside in_out, length = plain_len, still within allocation, disjoint check okay.
+            debug_assert_eq!(ct_len, len - 16);
+            let ptr = in_out.as_mut_ptr();
+            // SAFETY: ptr derived from in_out, length shrinks within allocation.
             let plain = unsafe { std::slice::from_raw_parts_mut(ptr, plain_len) };
             Ok(plain)
         }

@@ -45,12 +45,9 @@ path = "src/bin/wps_extract.rs"
 [dependencies]
 # HTTPS for the gs-loc client. rustls rather than the platform stack so a build box needs no
 # system OpenSSL, and webpki-roots so it needs no system trust store either.
-ureq = { version = "3", default-features = false, features = ["rustls"] }
+ureq.workspace = true
 
 [dev-dependencies]
 
 [profile.release]
 opt-level = 3
-
-# Detach from both the repo-root Android workspace and the other host tools'.
-[workspace]

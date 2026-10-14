@@ -155,7 +155,7 @@ impl SenderKeyState {
 
 /// `GroupSessionBuilder.create` — mint our sender key for a group and return both the
 /// state to persist and the distribution message to send.
-pub fn create<R: rand_core::RngCore + rand_core::CryptoRng>(
+pub fn create<R: rand_core::Rng + rand_core::CryptoRng>(
     rng: &mut R,
 ) -> (SenderKeyState, SenderKeyDistributionMessage) {
     let mut id_bytes = [0u8; 4];
@@ -199,7 +199,7 @@ pub fn process(skdm: &SenderKeyDistributionMessage) -> Result<SenderKeyState> {
     })
 }
 
-pub fn encrypt<R: rand_core::RngCore + rand_core::CryptoRng>(
+pub fn encrypt<R: rand_core::Rng + rand_core::CryptoRng>(
     rng: &mut R,
     state: &mut SenderKeyState,
     plaintext: &[u8],

@@ -25,7 +25,7 @@ pub(crate) fn encrypt_cbc<
     message: &[u8],
     rng: &mut R,
 ) -> (Vec<u8>, AesCbcIv) {
-    let iv: AesCbcIv = rng.gen();
+    let mut iv: AesCbcIv = [0u8; 16]; rng.fill_bytes(&mut iv);
     let ciphertext = A::encrypt(&key[..].try_into().unwrap(), &iv, message);
     (ciphertext, iv)
 }

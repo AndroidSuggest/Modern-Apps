@@ -17,8 +17,8 @@ include = [
 ]
 
 [dependencies]
-libc = "0.2"
+libc.workspace = true
 
 [build-dependencies]
-cc = { version = "1.2" }
+cc.workspace = true
 # bindgen removed – bindings pre-generated into src/bindings.rs to cut ~20 crates from weather lock

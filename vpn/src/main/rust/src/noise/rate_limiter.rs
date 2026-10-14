@@ -3,17 +3,17 @@ use crate::noise::handshake::{LABEL_COOKIE, LABEL_MAC1};
 use crate::noise::{TunnResult, WireGuardError};
 use crate::packet::{Packet, WgCookieReply, WgHandshakeBase, WgKind};
 use constant_time_eq::constant_time_eq;
-use rand::RngCore;
+use rand::Rng;
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use crate::sleepyinstant::Instant;
-use aead::generic_array::GenericArray;
-use aead::{AeadInPlace, KeyInit};
+use aead::{AeadInOut, KeyInit};
 use chacha20poly1305::{Key, XChaCha20Poly1305};
+use chacha20poly1305::aead::inout::InOutBuf;
 use parking_lot::Mutex;
-use rand::rngs::OsRng;
+use rand::rngs::SysRng;
 
 const COOKIE_REFRESH: u64 = 128;
 const COOKIE_SIZE: usize = 16;
@@ -36,8 +36,9 @@ pub struct RateLimiter {
 
 impl RateLimiter {
     pub fn new(public_key: &crate::x25519::PublicKey, limit: u64) -> Self {
+        use rand_core::TryRng;
         let mut secret_key = [0u8; 16];
-        OsRng.fill_bytes(&mut secret_key);
+        let _ = SysRng.try_fill_bytes(&mut secret_key);
         RateLimiter {
             nonce_key: Self::rand_bytes(),
             secret_key,
@@ -51,8 +52,9 @@ impl RateLimiter {
     }
 
     fn rand_bytes() -> [u8; 32] {
+        use rand_core::TryRng;
         let mut key = [0u8; 32];
-        OsRng.fill_bytes(&mut key);
+        let _ = SysRng.try_fill_bytes(&mut key);
         key
     }
 
@@ -93,9 +95,9 @@ impl RateLimiter {
         rep.receiver_idx.set(idx);
         rep.nonce = self.nonce();
         let cipher = XChaCha20Poly1305::new(&self.cookie_key);
-        let iv = GenericArray::from_slice(&rep.nonce);
+        let iv = chacha20poly1305::XNonce::from_slice(&rep.nonce);
         rep.encrypted_cookie.encrypted = cookie;
-        let tag = cipher.encrypt_in_place_detached(iv, mac1, &mut rep.encrypted_cookie.encrypted)
+        let tag = cipher.encrypt_inout_detached(iv, mac1, InOutBuf::from(&mut rep.encrypted_cookie.encrypted[..]))
             .expect("wg_cookie_reply size ok");
         rep.encrypted_cookie.tag = tag.into();
         rep

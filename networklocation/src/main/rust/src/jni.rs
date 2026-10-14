@@ -14,7 +14,7 @@ use crate::position::Position;
 
 use jni::objects::{JClass, JDoubleArray};
 use jni::sys::jdoubleArray;
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned};
 
 /// Metres per degree of latitude (WGS-84 mean). Longitude scales this by
 /// `cos(lat)`.
@@ -94,27 +94,30 @@ fn estimate_lat_lon(beacons: &[f64]) -> Option<[f64; 3]> {
 pub extern "system" fn Java_com_vayunmathur_networklocation_NetworkLocationNative_estimatePosition<
     'l,
 >(
-    env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     beacons: JDoubleArray<'l>,
 ) -> jdoubleArray {
-    let len = env.get_array_length(&beacons).unwrap_or(0) as usize;
-    let mut buf = vec![0f64; len];
-    if env.get_double_array_region(&beacons, 0, &mut buf).is_err() {
-        return std::ptr::null_mut();
-    }
+    env.with_env(|env| -> jni::errors::Result<jdoubleArray> {
+        let len = env.get_array_length(&beacons).unwrap_or(0) as usize;
+        let mut buf = vec![0f64; len];
+        if env.get_double_array_region(&beacons, 0, &mut buf).is_err() {
+            return Ok(std::ptr::null_mut());
+        }
 
-    let result = match estimate_lat_lon(&buf) {
-        Some(r) => r,
-        None => return std::ptr::null_mut(),
-    };
+        let result = match estimate_lat_lon(&buf) {
+            Some(r) => r,
+            None => return Ok(std::ptr::null_mut()),
+        };
 
-    let out = match env.new_double_array(result.len() as i32) {
-        Ok(a) => a,
-        Err(_) => return std::ptr::null_mut(),
-    };
-    if env.set_double_array_region(&out, 0, &result).is_err() {
-        return std::ptr::null_mut();
-    }
-    out.into_raw()
+        let out = match env.new_double_array(result.len()) {
+            Ok(a) => a,
+            Err(_) => return Ok(std::ptr::null_mut()),
+        };
+        if out.set_region(env, 0, &result).is_err() {
+            return Ok(std::ptr::null_mut());
+        }
+        Ok(out.into_raw())
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }

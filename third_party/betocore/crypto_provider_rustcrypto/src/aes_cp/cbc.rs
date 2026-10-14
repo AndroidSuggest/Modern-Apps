@@ -15,8 +15,9 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
+use aes::cipher::{block_padding::Pkcs7, KeyIvInit};
 use aes::Aes256;
+use aes::cipher::{BlockModeDecrypt, BlockModeEncrypt};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 use crypto_provider::{
@@ -33,7 +34,7 @@ impl crypto_provider::aes::cbc::AesCbcPkcs7Padded for AesCbcPkcs7Padded {
     #[cfg(feature = "alloc")]
     fn encrypt(key: &Aes256Key, iv: &AesCbcIv, message: &[u8]) -> Vec<u8> {
         let encryptor = cbc::Encryptor::<Aes256>::new(key.as_array().into(), iv.into());
-        encryptor.encrypt_padded_vec_mut::<Pkcs7>(message)
+        encryptor.encrypt_padded_vec::<Pkcs7>(message)
     }
 
     fn encrypt_in_place(
@@ -47,7 +48,7 @@ impl crypto_provider::aes::cbc::AesCbcPkcs7Padded for AesCbcPkcs7Padded {
         // (Unlike `Vec.set_len`, `SliceVec.set_len` is safe and won't panic if len <= capacity)
         message.set_len(message.capacity());
         encryptor
-            .encrypt_padded_mut::<Pkcs7>(message, message_len)
+            .encrypt_padded::<Pkcs7>(message, message_len)
             .map(|result| result.len())
             // `SliceVec.set_len` is safe, and won't panic because `encrypt_padded_mut` never
             // returns a slice longer than the given buffer.
@@ -65,7 +66,7 @@ impl crypto_provider::aes::cbc::AesCbcPkcs7Padded for AesCbcPkcs7Padded {
         ciphertext: &[u8],
     ) -> Result<Vec<u8>, DecryptionError> {
         cbc::Decryptor::<Aes256>::new(key.as_array().into(), iv.into())
-            .decrypt_padded_vec_mut::<Pkcs7>(ciphertext)
+            .decrypt_padded_vec::<Pkcs7>(ciphertext)
             .map_err(|_| DecryptionError::BadPadding)
     }
 
@@ -77,7 +78,7 @@ impl crypto_provider::aes::cbc::AesCbcPkcs7Padded for AesCbcPkcs7Padded {
         // Decrypted size is always smaller than the input size because of padding, so we don't need
         // to set the length to the full capacity.
         cbc::Decryptor::<Aes256>::new(key.as_array().into(), iv.into())
-            .decrypt_padded_mut::<Pkcs7>(ciphertext)
+            .decrypt_padded::<Pkcs7>(ciphertext)
             .map(|result| result.len())
             // `SliceVec.set_len` is safe, and won't panic because decrypted result length is always
             // smaller than the input size.

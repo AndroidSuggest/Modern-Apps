@@ -9,11 +9,11 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-aead = "0.5.1"
-aes-gcm-siv = { version = "0.11.1", features = [
+aead.workspace = true
+aes-gcm-siv = { workspace = true, features = [
     "aes",
 ], default-features = false }
-aes-gcm = { version = "0.10.3", features = ["aes"], default-features = false }
+aes-gcm = { workspace = true, features = ["aes"] }
 crypto_provider = { workspace = true }
 hmac.workspace = true
 hkdf.workspace = true

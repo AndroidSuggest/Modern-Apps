@@ -1,17 +1,22 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use rand::rngs::StdRng;
-use rand::{RngCore, SeedableRng};
+use rand::{Rng, SeedableRng};
 
-#[derive(Clone)]
 pub struct IndexTable<Rng = StdRng>(Arc<Mutex<(Rng, HashSet<u32>)>>);
+
+impl<Rng> Clone for IndexTable<Rng> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
 
 pub struct Index<Rng = StdRng> {
     value: u32,
     table: IndexTable<Rng>,
 }
 
-impl<Rng: RngCore> IndexTable<Rng> {
+impl<Rng: rand::Rng> IndexTable<Rng> {
     pub fn new_index(&self) -> Index<Rng> {
         let mut g = self.0.lock().unwrap();
         loop {
@@ -26,9 +31,9 @@ impl<Rng: RngCore> IndexTable<Rng> {
     pub fn in_use(&self, value: u32) -> bool { self.0.lock().unwrap().1.contains(&value) }
 }
 
-impl<Rng: SeedableRng + RngCore> IndexTable<Rng> {
+impl<Rng: SeedableRng + rand::Rng> IndexTable<Rng> {
     pub fn from_os_rng() -> Self {
-        Self::from_rng(Rng::from_rng(rand_core::OsRng).unwrap())
+        Self::from_rng(Rng::try_from_rng(&mut rand::rngs::SysRng).expect("OS RNG unavailable"))
     }
 }
 

@@ -3,9 +3,7 @@ name = "wikidesc"
 version = "0.1.0"
 edition = "2021"
 
-# DETACHED from both workspaces (the empty `[workspace]` table below), like every other host tool
-# under `scripts/maps`: it is built for the host toolchain, not for Android.
-[workspace]
+# Member of the repo-root workspace: built for the host toolchain, not Android.
 
 [dependencies]
 # For the `.pbf` scan only. The library half of this crate — cleaning, the container, the join —

@@ -15,7 +15,7 @@
 //! Implementation of `crypto_provider::aes` types using RustCrypto's `aes`.
 #![forbid(unsafe_code)]
 
-use aes::cipher::{generic_array, BlockDecrypt as _, BlockEncrypt as _, KeyInit as _};
+use aes::cipher::{Array, BlockCipherDecrypt as _, BlockCipherEncrypt as _, KeyInit as _};
 
 use crypto_provider::aes::{
     Aes, Aes128Key, Aes256Key, AesBlock, AesCipher, AesDecryptCipher, AesEncryptCipher, AesKey,
@@ -55,13 +55,13 @@ impl AesCipher for Aes128Cipher {
 
 impl AesEncryptCipher for Aes128Cipher {
     fn encrypt(&self, block: &mut AesBlock) {
-        self.0.encrypt_block(generic_array::GenericArray::from_mut_slice(block.as_mut_slice()));
+        self.0.encrypt_block(Array::from_mut_slice(block.as_mut_slice()));
     }
 }
 
 impl AesDecryptCipher for Aes128Cipher {
     fn decrypt(&self, block: &mut AesBlock) {
-        self.0.decrypt_block(generic_array::GenericArray::from_mut_slice(block.as_mut_slice()))
+        self.0.decrypt_block(Array::from_mut_slice(block.as_mut_slice()))
     }
 }
 
@@ -78,13 +78,13 @@ impl AesCipher for Aes256Cipher {
 
 impl AesEncryptCipher for Aes256Cipher {
     fn encrypt(&self, block: &mut AesBlock) {
-        self.0.encrypt_block(generic_array::GenericArray::from_mut_slice(block.as_mut_slice()));
+        self.0.encrypt_block(Array::from_mut_slice(block.as_mut_slice()));
     }
 }
 
 impl AesDecryptCipher for Aes256Cipher {
     fn decrypt(&self, block: &mut AesBlock) {
-        self.0.decrypt_block(generic_array::GenericArray::from_mut_slice(block.as_mut_slice()))
+        self.0.decrypt_block(Array::from_mut_slice(block.as_mut_slice()))
     }
 }
 

@@ -17,13 +17,13 @@ hmac.workspace = true
 aes.workspace = true
 rand_core.workspace = true
 getrandom.workspace = true
-# Wire / protocol
-prost = "0.13"
-bytes = "1.6"
-hkdf = "0.12"
-p256 = { version = "0.13", features = ["ecdh", "ecdsa"] }
-cbc = { version = "0.1", features = ["alloc"] }
-cipher = "0.4"
+# Wire / protocol (versions pinned in the workspace root Cargo.toml)
+prost.workspace = true
+bytes.workspace = true
+hkdf.workspace = true
+p256 = { workspace = true, features = ["ecdh", "ecdsa"] }
+cbc = { workspace = true, features = ["alloc"] }
+cipher.workspace = true
 # BetoCore vendored crates (P0 wiring — protocol code not yet migrated)
 np_adv = { workspace = true, features = ["std"] }
 ukey2_connections = { workspace = true }

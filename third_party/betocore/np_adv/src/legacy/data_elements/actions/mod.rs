@@ -33,7 +33,7 @@ use crate::{
 #[cfg(feature = "devtools")]
 use core::ops::Range;
 use core::{marker, ops};
-use nom::{bytes, combinator, error};
+use nom::{bytes, combinator, error, Parser as _};
 use sink::Sink;
 
 #[cfg(test)]
@@ -61,7 +61,7 @@ where
     /// Generic deserialize, not meant to be called directly -- use [DeserializeDataElement] impls instead.
     #[allow(clippy::assertions_on_constants)]
     fn deserialize(de_contents: &[u8]) -> Result<Self, DataElementDeserializeError> {
-        combinator::all_consuming::<&[u8], _, error::Error<&[u8]>, _>(combinator::map(
+        combinator::all_consuming::<&[u8], error::Error<&[u8]>, _>(combinator::map(
             bytes::complete::take_while_m_n(0, ACTIONS_MAX_LEN, |_| true),
             |bytes: &[u8]| {
                 // pack bits into u32 for convenient access
@@ -70,7 +70,8 @@ where
                 action_bytes[..bytes.len()].copy_from_slice(bytes);
                 u32::from_be_bytes(action_bytes)
             },
-        ))(de_contents)
+        ))
+        .parse(de_contents)
         .map_err(|_| DataElementDeserializeError::DeserializeError { de_type: Self::DE_TYPE_CODE })
         .map(|(_remaining, actions)| actions)
         .map(|action_bits_num| {

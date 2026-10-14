@@ -34,7 +34,7 @@ use crate::{
 };
 
 use crypto_provider::CryptoProvider;
-use nom::{combinator, error};
+use nom::{combinator, error, Parser as _};
 
 #[cfg(feature = "devtools")]
 use crate::{
@@ -233,9 +233,10 @@ impl<'adv> SectionContents<'adv> {
                 let (input, contents_len) = combinator::verify(nom::number::complete::u8, |b| {
                     // length must be non-zero.
                     *b != 0
-                })(input)?;
+                })
+                .parse(input)?;
 
-                let (input, contents) = nom::bytes::complete::take(contents_len)(input)?;
+                let (input, contents) = nom::bytes::complete::take(contents_len).parse(input)?;
 
                 Ok((input, Ok(Self { format_byte, header, contents, contents_len })))
             }

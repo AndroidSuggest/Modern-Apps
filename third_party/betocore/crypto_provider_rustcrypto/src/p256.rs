@@ -21,12 +21,11 @@ use crypto_provider::{
 };
 use p256::{
     elliptic_curve,
-    elliptic_curve::{
-        generic_array::GenericArray,
-        sec1::{FromEncodedPoint, ToEncodedPoint},
-    },
+    elliptic_curve::sec1::{FromSec1Point, Sec1Point, ToSec1Point},
+    elliptic_curve::FieldBytes,
+    NistP256,
 };
-use rand::{RngCore, SeedableRng};
+use rand::{Rng, SeedableRng};
 use rand_core::CryptoRng;
 
 /// Implementation of NIST-P256 using RustCrypto crates.
@@ -34,7 +33,7 @@ pub struct P256Ecdh<R> {
     _marker: PhantomData<R>,
 }
 
-impl<R: CryptoRng + SeedableRng + RngCore + Send> EcdhProvider<P256> for P256Ecdh<R> {
+impl<R: CryptoRng + SeedableRng + Rng + Send> EcdhProvider<P256> for P256Ecdh<R> {
     type PublicKey = P256PublicKey;
     type EphemeralSecret = P256EphemeralSecret<R>;
     type SharedSecret = [u8; 32];
@@ -69,9 +68,9 @@ impl crypto_provider::p256::P256PublicKey for P256PublicKey {
     }
     fn from_affine_coordinates(x: &[u8; 32], y: &[u8; 32]) -> Result<Self, Self::Error> {
         let key_option: Option<p256::PublicKey> =
-            p256::PublicKey::from_encoded_point(&p256::EncodedPoint::from_affine_coordinates(
-                &GenericArray::clone_from_slice(x),
-                &GenericArray::clone_from_slice(y),
+            p256::PublicKey::from_encoded_point(&Sec1Point::<NistP256>::from_affine_coordinates(
+                FieldBytes::<NistP256>::from_slice(x),
+                FieldBytes::<NistP256>::from_slice(y),
                 false,
             ))
             .into();
@@ -80,12 +79,12 @@ impl crypto_provider::p256::P256PublicKey for P256PublicKey {
 }
 
 /// Ephemeral secrect for use in a P256 Diffie-Hellman
-pub struct P256EphemeralSecret<R: CryptoRng + SeedableRng + RngCore> {
+pub struct P256EphemeralSecret<R: CryptoRng + SeedableRng + Rng> {
     secret: p256::ecdh::EphemeralSecret,
     _marker: PhantomData<R>,
 }
 
-impl<R: CryptoRng + SeedableRng + RngCore + Send> EphemeralSecret<P256> for P256EphemeralSecret<R> {
+impl<R: CryptoRng + SeedableRng + Rng + Send> EphemeralSecret<P256> for P256EphemeralSecret<R> {
     type Impl = P256Ecdh<R>;
     type Error = sec1::Error;
     type Rng = RcRng<R>;
@@ -116,7 +115,7 @@ impl<R: CryptoRng + SeedableRng + RngCore + Send> EphemeralSecret<P256> for P256
 }
 
 #[cfg(test)]
-impl<R: CryptoRng + SeedableRng + RngCore + Send>
+impl<R: CryptoRng + SeedableRng + Rng + Send>
     crypto_provider_test::elliptic_curve::EphemeralSecretForTesting<P256>
     for P256EphemeralSecret<R>
 {

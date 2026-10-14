@@ -20,7 +20,7 @@
 
 use quick_xml::events::attributes::Attribute;
 use quick_xml::events::Event as QEvent;
-use quick_xml::name::ResolveResult;
+use quick_xml::name::{LocalName, QName, ResolveResult};
 use quick_xml::NsReader;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,30 +139,44 @@ impl<'a> XmlParser<'a> {
         match event {
             QEvent::Start(e) => {
                 self.depth += 1;
-                self.name = local_name_of(e.name().as_ref());
+                self.name = local_name_of(e.name());
                 self.load_attrs(e.attributes());
                 self.event = Event::StartTag;
             }
             QEvent::Empty(e) => {
                 self.depth += 1;
-                self.name = local_name_of(e.name().as_ref());
+                self.name = local_name_of(e.name());
                 self.load_attrs(e.attributes());
                 self.pending_end = Some(self.name.clone());
                 self.event = Event::StartTag;
             }
             QEvent::End(e) => {
-                self.name = local_name_of(e.name().as_ref());
+                self.name = local_name_of(e.name());
                 self.attrs.clear();
                 self.event = Event::EndTag;
                 self.pending_depth_decrement = true;
             }
             QEvent::Text(e) => {
-                self.text = e.unescape().map(|c| c.into_owned()).unwrap_or_default();
+                self.text = quick_xml::escape::unescape(e.as_ref())
+                    .map(|c| c.into_owned())
+                    .unwrap_or_default();
+                self.name.clear();
+                self.event = Event::Text;
+            }
+            // 0.42 splits text at entity boundaries and reports each
+            // `&name;` as GeneralRef. Resolve it and append, so entities
+            // decode exactly as `unescape` did on the whole run in 0.37.
+            QEvent::GeneralRef(e) => {
+                let name: &str = e.as_ref();
+                let resolved = format!("&{name};");
+                self.text = quick_xml::escape::unescape(&resolved)
+                    .map(|c| c.into_owned())
+                    .unwrap_or_default();
                 self.name.clear();
                 self.event = Event::Text;
             }
             QEvent::CData(e) => {
-                self.text = String::from_utf8_lossy(e.as_ref()).into_owned();
+                self.text = String::from_utf8_lossy(e.as_ref().as_bytes()).into_owned();
                 self.name.clear();
                 self.event = Event::Text;
             }
@@ -178,21 +192,21 @@ impl<'a> XmlParser<'a> {
         for attr in attributes.flatten() {
             let Attribute { key, .. } = attr;
             // xmlns declarations are not content attributes.
-            if key.as_ref() == b"xmlns" || key.as_ref().starts_with(b"xmlns:") {
+            if key.as_ref() == "xmlns" || key.as_ref().starts_with("xmlns:") {
                 continue;
             }
-            let namespace = match self.reader.resolve_attribute(key) {
+            let namespace = match self.reader.resolver().resolve_attribute(key) {
                 (ResolveResult::Bound(ns), _) => {
-                    Some(String::from_utf8_lossy(ns.as_ref()).into_owned())
+                    Some(String::from_utf8_lossy(ns.as_ref().as_bytes()).into_owned())
                 }
                 _ => None,
             };
             let value = attr
                 .unescape_value()
                 .map(|c| c.into_owned())
-                .unwrap_or_else(|_| String::from_utf8_lossy(&attr.value).into_owned());
+                .unwrap_or_else(|_| attr.value.into_owned());
             self.attrs.push(Attr {
-                local: local_name_of(key.as_ref()),
+                local: local_name_of(key),
                 namespace,
                 value,
             });
@@ -252,12 +266,18 @@ impl<'a> XmlParser<'a> {
     }
 }
 
-fn local_name_of(qname: &[u8]) -> String {
-    let name = String::from_utf8_lossy(qname);
+fn local_name_of(qname: QName) -> String {
+    let name: &str = qname.as_ref();
     match name.rsplit_once(':') {
         Some((_, local)) => local.to_string(),
-        None => name.into_owned(),
+        None => name.to_owned(),
     }
+}
+
+/// Local name from a resolved [`LocalName`].
+fn local_name_of_resolved(local: LocalName) -> String {
+    let name: &str = local.as_ref();
+    name.to_owned()
 }
 
 /// OOXML toggle attribute: absent means on; otherwise `1`/`true`/`on`.

@@ -331,7 +331,7 @@ impl Handshake {
         let mut hash = INITIAL_CHAIN_HASH;
         hash = b2s_hash(&hash, self.params.peer_static_public.as_bytes());
         // initiator.ephemeral_private = DH_GENERATE()
-        let ephemeral_private = x25519::ReusableSecret::random_from_rng(rand_core::OsRng);
+        let ephemeral_private = x25519::ReusableSecret::random_from_rng(&mut crate::os_rng());
         // msg.message_type = 1
         // msg.reserved_zero = { 0, 0, 0 }
         // msg.sender_index = little_endian(initiator.sender_index)
@@ -418,7 +418,7 @@ impl Handshake {
         };
 
         // responder.ephemeral_private = DH_GENERATE()
-        let ephemeral_private = x25519::ReusableSecret::random_from_rng(rand_core::OsRng);
+        let ephemeral_private = x25519::ReusableSecret::random_from_rng(&mut crate::os_rng());
         let local_index = self.index_table.new_index();
         let local_index_val = local_index.value();
         // msg.message_type = 2

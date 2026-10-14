@@ -12,7 +12,7 @@ use openmls::prelude::Ciphersuite;
 use openmls_basic_credential::SignatureKeyPair;
 use openmls_rust_crypto::OpenMlsRustCrypto;
 use openmls_traits::types::SignatureScheme;
-use rand_core::RngCore;
+use rand::rngs::SysRng;
 
 /// Persisted identity: Ed25519 signing keypair bytes + E.164 identity.
 ///
@@ -56,8 +56,12 @@ pub fn generate_identity(identity: &str) -> Result<IdentityState, KeysError> {
     if identity.trim().is_empty() {
         return Err(KeysError::InvalidInput("empty identity"));
     }
-    let mut rng = OsRandom;
-    let signing = SigningKey::generate(&mut rng);
+    let mut rng = SysRng;
+    let mut secret = [0u8; 32];
+    use rand_core::TryRng;
+    rng.try_fill_bytes(&mut secret)
+        .map_err(|e| KeysError::Provider(e.to_string()))?;
+    let signing = SigningKey::from_bytes(&secret);
     let verifying = signing.verifying_key();
     Ok(IdentityState {
         identity: identity.to_string(),
@@ -140,37 +144,8 @@ pub fn provider() -> OpenMlsRustCrypto {
     OpenMlsRustCrypto::default()
 }
 
-/// OS randomness bridged into `rand_core 0.6` (workspace pin).
-struct OsRandom;
-
-impl RngCore for OsRandom {
-    fn next_u32(&mut self) -> u32 {
-        let mut b = [0u8; 4];
-        self.fill_bytes(&mut b);
-        u32::from_le_bytes(b)
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let mut b = [0u8; 8];
-        self.fill_bytes(&mut b);
-        u64::from_le_bytes(b)
-    }
-
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
-        // `getrandom 0.2`: fills the whole slice or errors. Errors only on OS
-        // RNG failure, which is unrecoverable — surface as zeroed bytes is
-        // worse, so propagate via try_fill_bytes below instead.
-        if ::getrandom::getrandom(dest).is_err() {
-            dest.fill(0);
-        }
-    }
-
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
-        ::getrandom::getrandom(dest).map_err(rand_core::Error::from)
-    }
-}
-
-impl rand_core::CryptoRng for OsRandom {}
+/// OS randomness via `rand::rngs::SysRng` (rand 0.10; infallible `TryRng`).
+/// `SigningKey::generate` needs `CryptoRng`, which `SysRng` satisfies.
 
 fn push_u16(out: &mut Vec<u8>, v: usize) {
     let v = v.min(0xFFFF) as u16;

@@ -19,7 +19,7 @@
 //! For V0 (`0b000`), the first 3 of the reserved bits identify the encoding
 //! scheme used, and the last 2 are still reserved.
 
-use nom::{combinator, number};
+use nom::{combinator, number, Parser as _};
 
 // 3-bit versions (high 3 bits in version header)
 const PROTOCOL_VERSION_LEGACY: u8 = 0;
@@ -61,7 +61,8 @@ impl NpVersionHeader {
             VERSION_HEADER_V0_LDT => Some(NpVersionHeader::V0(V0Encoding::Ldt)),
             VERSION_HEADER_V1 => Some(NpVersionHeader::V1(V1AdvHeader::new(version_header))),
             _ => None,
-        })(adv)
+        })
+        .parse(adv)
     }
 }
 

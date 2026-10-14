@@ -1,5 +1,5 @@
 fn encode_gemma4<'l>(
-    env: &mut JNIEnv<'l>,
+    env: &Env,
     handle: &Gemma4Handle,
     text: &str,
     specials: &JObjectArray<'l>,
@@ -10,8 +10,8 @@ fn encode_gemma4<'l>(
     for index in 0..count {
         let item = env.get_object_array_element(specials, index).map_err(|e| format!("{e}"))?;
         let item: JString = item.into();
-        let text = env.get_string(&item).map_err(|e| format!("{e}"))?;
-        owned.push(String::from(text));
+        let text = item.try_to_string(env).map_err(|e| format!("{e}"))?;
+        owned.push(text);
     }
     let borrowed: Vec<&str> = owned.iter().map(String::as_str).collect();
     // The JVM's arrays are signed, and the vocabulary fits in a positive `i32` twice over, so the
@@ -26,36 +26,39 @@ fn encode_gemma4<'l>(
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_decodeGemma4<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     tokens: JIntArray<'l>,
 ) -> jstring {
-    if handle == 0 {
-        return std::ptr::null_mut();
-    }
-    // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live.
-    let handle = unsafe { &*(handle as *const Gemma4Handle) };
-    let decoded = read_int_array(&mut env, &tokens).and_then(|ids| {
-        let table = Table::parse_with(&handle.tokenizer, GEMMA)?;
-        // Negative ids cannot name a piece; dropping them keeps `decode`'s "one bad token loses a
-        // word, not the reply" behaviour rather than failing the whole call.
-        let ids: Vec<u32> = ids.into_iter().filter_map(|id| u32::try_from(id).ok()).collect();
-        Ok(table.decode(&ids))
-    });
-    match decoded {
-        Ok(text) => match env.new_string(&text) {
-            Ok(string) => string.into_raw(),
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        if handle == 0 {
+            return Ok(std::ptr::null_mut());
+        }
+        // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live.
+        let handle = unsafe { &*(handle as *const Gemma4Handle) };
+        let decoded = read_int_array(env, &tokens).and_then(|ids| {
+            let table = Table::parse_with(&handle.tokenizer, GEMMA)?;
+            // Negative ids cannot name a piece; dropping them keeps `decode`'s "one bad token loses a
+            // word, not the reply" behaviour rather than failing the whole call.
+            let ids: Vec<u32> = ids.into_iter().filter_map(|id| u32::try_from(id).ok()).collect();
+            Ok(table.decode(&ids))
+        });
+        Ok(match decoded {
+            Ok(text) => match env.new_string(&text) {
+                Ok(string) => string.into_raw(),
+                Err(e) => {
+                    log(&format!("gemma4 cannot return its text: {e}"));
+                    std::ptr::null_mut()
+                }
+            },
             Err(e) => {
-                log(&format!("gemma4 cannot return its text: {e}"));
+                log(&format!("gemma4 cannot decode: {e}"));
                 std::ptr::null_mut()
             }
-        },
-        Err(e) => {
-            log(&format!("gemma4 cannot decode: {e}"));
-            std::ptr::null_mut()
-        }
-    }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// Feed tokens into the cache without generating. Returns the new position, or -1.
@@ -69,35 +72,38 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_decodeGem
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_pushGemma4<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     tokens: JIntArray<'l>,
 ) -> jint {
-    if handle == 0 {
-        return -1;
-    }
-    // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live. It is
-    // `&mut` because a step advances the cache, and Kotlin serialises calls on one handle.
-    let handle = unsafe { &mut *(handle as *mut Gemma4Handle) };
-    let pushed = read_int_array(&mut env, &tokens).and_then(|ids| {
-        let mut owned = Vec::with_capacity(ids.len());
-        for token in ids {
-            owned.push(
-                u32::try_from(token)
-                    .map_err(|_| format!("token {token} is not in the vocabulary"))?,
-            );
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        if handle == 0 {
+            return Ok(-1);
         }
-        handle.prefill(&owned)?;
-        Ok(handle.position)
-    });
-    match pushed {
-        Ok(position) => jint::try_from(position).unwrap_or(-1),
-        Err(e) => {
-            log(&format!("gemma4 cannot take the prompt: {e}"));
-            -1
-        }
-    }
+        // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live. It is
+        // `&mut` because a step advances the cache, and Kotlin serialises calls on one handle.
+        let handle = unsafe { &mut *(handle as *mut Gemma4Handle) };
+        let pushed = read_int_array(env, &tokens).and_then(|ids| {
+            let mut owned = Vec::with_capacity(ids.len());
+            for token in ids {
+                owned.push(
+                    u32::try_from(token)
+                        .map_err(|_| format!("token {token} is not in the vocabulary"))?,
+                );
+            }
+            handle.prefill(&owned)?;
+            Ok(handle.position)
+        });
+        Ok(match pushed {
+            Ok(position) => jint::try_from(position).unwrap_or(-1),
+            Err(e) => {
+                log(&format!("gemma4 cannot take the prompt: {e}"));
+                -1
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// Feed one token and return the next, greedily. -1 on failure.
@@ -107,7 +113,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_pushGemma
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_stepGemma4<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     token: jint,
@@ -146,38 +152,41 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_stepGemma
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_logitsGemma4<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     token: jint,
 ) -> jfloatArray {
-    if handle == 0 {
-        return std::ptr::null_mut();
-    }
-    // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live.
-    let handle = unsafe { &mut *(handle as *mut Gemma4Handle) };
-    let token = match u32::try_from(token) {
-        Ok(token) if token < gemma4::VOCAB => token,
-        _ => {
-            log(&format!("gemma4 was given token {token}, which is not in the vocabulary"));
-            return std::ptr::null_mut();
+    env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+        if handle == 0 {
+            return Ok(std::ptr::null_mut());
         }
-    };
-    match handle.step(token, true).and_then(|logits| {
-        logits.ok_or_else(|| "a decode step returned no logits".to_string())
-    }) {
-        Ok(logits) => match new_float_array(&mut env, &logits) {
-            Ok(array) => array,
+        // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live.
+        let handle = unsafe { &mut *(handle as *mut Gemma4Handle) };
+        let token = match u32::try_from(token) {
+            Ok(token) if token < gemma4::VOCAB => token,
+            _ => {
+                log(&format!("gemma4 was given token {token}, which is not in the vocabulary"));
+                return Ok(std::ptr::null_mut());
+            }
+        };
+        Ok(match handle.step(token, true).and_then(|logits| {
+            logits.ok_or_else(|| "a decode step returned no logits".to_string())
+        }) {
+            Ok(logits) => match new_float_array(env, &logits) {
+                Ok(array) => array,
+                Err(e) => {
+                    log(&format!("gemma4 cannot return its logits: {e}"));
+                    std::ptr::null_mut()
+                }
+            },
             Err(e) => {
-                log(&format!("gemma4 cannot return its logits: {e}"));
+                log(&format!("gemma4 logits step failed: {e}"));
                 std::ptr::null_mut()
             }
-        },
-        Err(e) => {
-            log(&format!("gemma4 logits step failed: {e}"));
-            std::ptr::null_mut()
-        }
-    }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// Positions currently in the KV cache.
@@ -187,7 +196,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_logitsGem
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_positionGemma4<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) -> jint {
@@ -252,7 +261,7 @@ impl crate::weights::Blob for ProbeBlob {
 /// Called only by the JVM.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_imageProbeGemma4<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jint {
     let Ok(context) = context::shared() else {
@@ -284,7 +293,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_imageProb
 /// Called only by the JVM.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_scalingGemma4<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jint {
     let Ok(context) = context::shared() else {
@@ -363,7 +372,7 @@ fn probe_gemv(
 /// Called only by the JVM.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_capabilitiesGemma4<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jint {
     let Ok(context) = context::shared() else {
@@ -436,7 +445,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_capabilit
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_benchmarkGemma4<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) -> jint {

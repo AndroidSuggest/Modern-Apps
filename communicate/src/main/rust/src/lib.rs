@@ -28,33 +28,7 @@ mod jni_bridge;
 #[cfg(test)]
 mod tests;
 
-use rand_core::{CryptoRng, RngCore};
-
-/// The OS CSPRNG. Kept behind one accessor so tests can swap in a deterministic RNG.
-pub struct OsRng;
-
-impl RngCore for OsRng {
-    fn next_u32(&mut self) -> u32 {
-        let mut b = [0u8; 4];
-        self.fill_bytes(&mut b);
-        u32::from_le_bytes(b)
-    }
-    fn next_u64(&mut self) -> u64 {
-        let mut b = [0u8; 8];
-        self.fill_bytes(&mut b);
-        u64::from_le_bytes(b)
-    }
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
-        getrandom_fill(dest);
-    }
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
-        self.fill_bytes(dest);
-        Ok(())
-    }
-}
-
-impl CryptoRng for OsRng {}
-
-fn getrandom_fill(dest: &mut [u8]) {
-    rand_core::OsRng.fill_bytes(dest)
-}
+/// The OS CSPRNG. Re-exported from `rand` so call sites keep one accessor;
+/// `SysRng` satisfies the `RngCore + CryptoRng` bounds on the crypto fns
+/// (`RngCore` is a deprecated blanket alias for `Rng` in rand_core 0.10).
+pub use rand::rngs::SysRng as OsRng;

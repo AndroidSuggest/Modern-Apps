@@ -319,19 +319,12 @@ fn to_e7(deg: f64) -> i32 {
 // --------------------------------------------------------------------------- JNI
 type Handle = Mutex<Reader>;
 
-fn build_string_array(env: &mut JNIEnv, reader: &mut Reader, recs: &[i32]) -> jobjectArray {
-    let string_class = match env.find_class("java/lang/String") {
-        Ok(c) => c,
-        Err(_) => return std::ptr::null_mut(),
-    };
-    let empty = match env.new_string("") {
-        Ok(s) => s,
-        Err(_) => return std::ptr::null_mut(),
-    };
-    let arr = match env.new_object_array((recs.len() * FIELDS) as i32, &string_class, &empty) {
-        Ok(a) => a,
-        Err(_) => return std::ptr::null_mut(),
-    };
+fn build_string_array(env: &mut Env, reader: &mut Reader, recs: &[i32]) -> jobjectArray {
+    let arr: JObjectArray<JString> =
+        match env.new_object_type_array::<JString>((recs.len() * FIELDS) as usize, JString::null()) {
+            Ok(a) => a,
+            Err(_) => return std::ptr::null_mut(),
+        };
     for (idx, &rec) in recs.iter().enumerate() {
         let fields = reader.resolve(rec);
         for (j, val) in fields.iter().enumerate() {
@@ -339,10 +332,7 @@ fn build_string_array(env: &mut JNIEnv, reader: &mut Reader, recs: &[i32]) -> jo
                 Ok(s) => s,
                 Err(_) => return std::ptr::null_mut(),
             };
-            if env
-                .set_object_array_element(&arr, (idx * FIELDS + j) as i32, &s)
-                .is_err()
-            {
+            if arr.set_element(env, idx * FIELDS + j, &s).is_err() {
                 return std::ptr::null_mut();
             }
         }
@@ -354,7 +344,7 @@ fn build_string_array(env: &mut JNIEnv, reader: &mut Reader, recs: &[i32]) -> jo
 /// section framing bounds every read) but kept for API symmetry / future validation.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_networklocation_GeocoderNative_open<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     fd: jint,
     offset: jlong,
@@ -369,30 +359,33 @@ pub extern "system" fn Java_com_vayunmathur_networklocation_GeocoderNative_open<
 /// `reverse(handle, lat, lon) -> String[10]` (nearest record) or null.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_networklocation_GeocoderNative_reverse<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     lat: jdouble,
     lon: jdouble,
 ) -> jobjectArray {
-    if handle == 0 {
-        return std::ptr::null_mut();
-    }
-    let m = unsafe { &*(handle as *const Handle) };
-    let mut reader = match m.lock() {
-        Ok(g) => g,
-        Err(_) => return std::ptr::null_mut(),
-    };
-    match reader.reverse(lat, lon) {
-        Some(rec) => build_string_array(&mut env, &mut reader, &[rec]),
-        None => std::ptr::null_mut(),
-    }
+    env.with_env(|env| -> jni::errors::Result<jobjectArray> {
+        if handle == 0 {
+            return Ok(std::ptr::null_mut());
+        }
+        let m = unsafe { &*(handle as *const Handle) };
+        let mut reader = match m.lock() {
+            Ok(g) => g,
+            Err(_) => return Ok(std::ptr::null_mut()),
+        };
+        Ok(match reader.reverse(lat, lon) {
+            Some(rec) => build_string_array(env, &mut reader, &[rec]),
+            None => std::ptr::null_mut(),
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `forward(handle, country, state, city, street, limit) -> String[10*k]` (may be empty).
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_networklocation_GeocoderNative_forward<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     country: JString<'l>,
@@ -401,24 +394,27 @@ pub extern "system" fn Java_com_vayunmathur_networklocation_GeocoderNative_forwa
     street: JString<'l>,
     limit: jint,
 ) -> jobjectArray {
-    if handle == 0 {
-        return std::ptr::null_mut();
-    }
-    let m = unsafe { &*(handle as *const Handle) };
-    let mut reader = match m.lock() {
-        Ok(g) => g,
-        Err(_) => return std::ptr::null_mut(),
+    let get = |env: &Env, s: &JString| -> String {
+        s.try_to_string(env).unwrap_or_default()
     };
-    let get = |env: &mut JNIEnv<'l>, s: &JString<'l>| -> String {
-        env.get_string(s).map(|js| js.into()).unwrap_or_default()
-    };
-    let country = get(&mut env, &country);
-    let state = get(&mut env, &state);
-    let city = get(&mut env, &city);
-    let street = get(&mut env, &street);
-    let limit = limit.clamp(1, 50);
-    let recs = reader.forward(&country, &state, &city, &street, limit);
-    build_string_array(&mut env, &mut reader, &recs)
+    env.with_env(|env| -> jni::errors::Result<jobjectArray> {
+        if handle == 0 {
+            return Ok(std::ptr::null_mut());
+        }
+        let m = unsafe { &*(handle as *const Handle) };
+        let mut reader = match m.lock() {
+            Ok(g) => g,
+            Err(_) => return Ok(std::ptr::null_mut()),
+        };
+        let country = get(env, &country);
+        let state = get(env, &state);
+        let city = get(env, &city);
+        let street = get(env, &street);
+        let limit = limit.clamp(1, 50);
+        let recs = reader.forward(&country, &state, &city, &street, limit);
+        Ok(build_string_array(env, &mut reader, &recs))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `searchName(handle, prefix, limit) -> String[10*k]` (may be empty).
@@ -427,24 +423,27 @@ pub extern "system" fn Java_com_vayunmathur_networklocation_GeocoderNative_forwa
 /// name column at all, so the only way in was a fully structured address.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_networklocation_GeocoderNative_searchName<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     prefix: JString<'l>,
     limit: jint,
 ) -> jobjectArray {
-    if handle == 0 {
-        return std::ptr::null_mut();
-    }
-    let m = unsafe { &*(handle as *const Handle) };
-    let mut reader = match m.lock() {
-        Ok(g) => g,
-        Err(_) => return std::ptr::null_mut(),
-    };
-    let prefix: String = match env.get_string(&prefix) {
-        Ok(s) => s.into(),
-        Err(_) => return std::ptr::null_mut(),
-    };
-    let recs = reader.search_name(prefix.trim(), limit.clamp(1, 50));
-    build_string_array(&mut env, &mut reader, &recs)
+    env.with_env(|env| -> jni::errors::Result<jobjectArray> {
+        if handle == 0 {
+            return Ok(std::ptr::null_mut());
+        }
+        let m = unsafe { &*(handle as *const Handle) };
+        let mut reader = match m.lock() {
+            Ok(g) => g,
+            Err(_) => return Ok(std::ptr::null_mut()),
+        };
+        let prefix: String = match prefix.try_to_string(env) {
+            Ok(s) => s,
+            Err(_) => return Ok(std::ptr::null_mut()),
+        };
+        let recs = reader.search_name(prefix.trim(), limit.clamp(1, 50));
+        Ok(build_string_array(env, &mut reader, &recs))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }

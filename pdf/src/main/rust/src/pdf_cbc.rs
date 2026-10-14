@@ -6,7 +6,7 @@
 //! produce a [`CbcError`], never a panic.
 
 use aes::cipher::{
-    consts::U16, generic_array::GenericArray, BlockDecrypt, BlockEncrypt, BlockSizeUser, KeyInit,
+    consts::U16, Array, BlockCipherDecrypt, BlockCipherEncrypt, BlockSizeUser, KeyInit,
 };
 use aes::{Aes128, Aes192, Aes256};
 
@@ -49,7 +49,7 @@ fn cipher_for<C: KeyInit>(key: &[u8]) -> Result<C, CbcError> {
 
 fn encrypt_blocks<C>(cipher: &C, iv: [u8; BLOCK], data: &[u8]) -> Result<Vec<u8>, CbcError>
 where
-    C: BlockEncrypt + BlockSizeUser<BlockSize = U16>,
+    C: BlockCipherEncrypt + BlockSizeUser<BlockSize = U16>,
 {
     if !data.len().is_multiple_of(BLOCK) {
         return Err(CbcError::NotBlockAligned(data.len()));
@@ -61,7 +61,7 @@ where
         for i in 0..BLOCK {
             b[i] ^= prev[i];
         }
-        let mut ga = GenericArray::from(b);
+        let mut ga = Array::from(b);
         cipher.encrypt_block(&mut ga);
         out.extend_from_slice(&ga);
         prev = block(&ga)?;
@@ -71,7 +71,7 @@ where
 
 fn decrypt_blocks<C>(cipher: &C, iv: [u8; BLOCK], ct: &[u8]) -> Result<Vec<u8>, CbcError>
 where
-    C: BlockDecrypt + BlockSizeUser<BlockSize = U16>,
+    C: BlockCipherDecrypt + BlockSizeUser<BlockSize = U16>,
 {
     if !ct.len().is_multiple_of(BLOCK) {
         return Err(CbcError::NotBlockAligned(ct.len()));
@@ -80,7 +80,7 @@ where
     let mut prev = iv;
     for chunk in ct.chunks(BLOCK) {
         let cur = block(chunk)?;
-        let mut dec = GenericArray::from(cur);
+        let mut dec = Array::from(cur);
         cipher.decrypt_block(&mut dec);
         let mut plain = [0u8; BLOCK];
         for i in 0..BLOCK {

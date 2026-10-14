@@ -17,48 +17,51 @@
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_loadPrefixGemma4<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     positions: jint,
     cache: JByteArray<'l>,
 ) -> jint {
-    if handle == 0 {
-        return -1;
-    }
-    // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live.
-    let handle = unsafe { &mut *(handle as *mut Gemma4Handle) };
-    let Ok(positions) = u32::try_from(positions) else {
-        return -1;
-    };
-    let loaded = env
-        .convert_byte_array(&cache)
-        .map_err(|e| format!("cannot read the cache: {e}"))
-        .and_then(|bytes| {
-            if positions > handle.context {
-                // A device on a small tier cannot hold the whole prefix. Refusing leaves it to
-                // prefill normally, which is slow and right, rather than loading a truncated
-                // cache and attending over keys that stop mid-prompt.
-                return Err(format!(
-                    "a {positions}-position prefix into a {} cache",
-                    handle.context
-                ));
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        if handle == 0 {
+            return Ok(-1);
+        }
+        // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live.
+        let handle = unsafe { &mut *(handle as *mut Gemma4Handle) };
+        let Ok(positions) = u32::try_from(positions) else {
+            return Ok(-1);
+        };
+        let loaded = env
+            .convert_byte_array(&cache)
+            .map_err(|e| format!("cannot read the cache: {e}"))
+            .and_then(|bytes| {
+                if positions > handle.context {
+                    // A device on a small tier cannot hold the whole prefix. Refusing leaves it to
+                    // prefill normally, which is slow and right, rather than loading a truncated
+                    // cache and attending over keys that stop mid-prompt.
+                    return Err(format!(
+                        "a {positions}-position prefix into a {} cache",
+                        handle.context
+                    ));
+                }
+                let at = handle.net.at(gemma4::Mode::DecodeStep.at(handle.context))?;
+                at.import_pinned(gemma4::CACHE_TENSORS, positions, &bytes)?;
+                handle.position = positions;
+                Ok(positions)
+            });
+        Ok(match loaded {
+            Ok(positions) => {
+                log(&format!("gemma4 loaded a {positions}-position prefix cache"));
+                jint::try_from(positions).unwrap_or(-1)
             }
-            let at = handle.net.at(gemma4::Mode::DecodeStep.at(handle.context))?;
-            at.import_pinned(gemma4::CACHE_TENSORS, positions, &bytes)?;
-            handle.position = positions;
-            Ok(positions)
-        });
-    match loaded {
-        Ok(positions) => {
-            log(&format!("gemma4 loaded a {positions}-position prefix cache"));
-            jint::try_from(positions).unwrap_or(-1)
-        }
-        Err(e) => {
-            log(&format!("gemma4 cannot load the prefix cache: {e}"));
-            -1
-        }
-    }
+            Err(e) => {
+                log(&format!("gemma4 cannot load the prefix cache: {e}"));
+                -1
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// Positions the cache currently holds, or -1.
@@ -68,7 +71,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_loadPrefi
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_capacityGemma4<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) -> jint {
@@ -92,7 +95,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_capacityG
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_growGemma4<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     needed: jint,
@@ -138,7 +141,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_growGemma
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_seekGemma4<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     position: jint,
@@ -173,7 +176,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_seekGemma
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_resetGemma4<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {
@@ -192,7 +195,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_resetGemm
 /// Called only by the JVM, once, with a handle from `createGemma4` that nothing else is using.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyGemma4<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {
@@ -218,34 +221,37 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyGe
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_pushSoftGemma4<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     embeddings: JFloatArray<'l>,
 ) -> jint {
-    if handle == 0 {
-        return -1;
-    }
-    // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live, and
-    // that no other call on it overlaps this one.
-    let handle = unsafe { &mut *(handle as *mut Gemma4Handle) };
-    let fed = read_float_array(&mut env, &embeddings).and_then(|values| {
-        let width = gemma4::D_MODEL as usize;
-        if values.is_empty() || !values.len().is_multiple_of(width) {
-            return Err(format!("{} values, which is not a whole number of {width}", values.len()));
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        if handle == 0 {
+            return Ok(-1);
         }
-        for row in values.chunks_exact(width) {
-            handle.step_soft(row, false)?;
-        }
-        Ok((values.len() / width) as jint)
-    });
-    match fed {
-        Ok(count) => count,
-        Err(e) => {
-            log(&format!("gemma4 could not take soft tokens: {e}"));
-            -1
-        }
-    }
+        // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live, and
+        // that no other call on it overlaps this one.
+        let handle = unsafe { &mut *(handle as *mut Gemma4Handle) };
+        let fed = read_float_array(env, &embeddings).and_then(|values| {
+            let width = gemma4::D_MODEL as usize;
+            if values.is_empty() || !values.len().is_multiple_of(width) {
+                return Err(format!("{} values, which is not a whole number of {width}", values.len()));
+            }
+            for row in values.chunks_exact(width) {
+                handle.step_soft(row, false)?;
+            }
+            Ok((values.len() / width) as jint)
+        });
+        Ok(match fed {
+            Ok(count) => count,
+            Err(e) => {
+                log(&format!("gemma4 could not take soft tokens: {e}"));
+                -1
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// Gemma 4's vision tower, which is its own `.maml` and its own graph id.
@@ -269,7 +275,7 @@ fn gemma4_vision_plan(offsets: &Offsets, mode: gemma4_vision::Mode) -> Result<Pl
 /// Called only by the JVM, with a descriptor the caller detached and nothing else holds.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createGemma4Vision<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     fd: jint,
     offset: jlong,
@@ -328,36 +334,39 @@ fn build_gemma4_vision(file: File, offset: jlong, length: jlong) -> Result<Gemma
 /// Called only by the JVM.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_gemma4VisionSize<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     width: jint,
     height: jint,
     soft_tokens: jint,
 ) -> jintArray {
-    let null = std::ptr::null_mut();
-    let sized = u32::try_from(width)
-        .ok()
-        .zip(u32::try_from(height).ok())
-        .zip(u32::try_from(soft_tokens).ok());
-    let Some(((width, height), soft_tokens)) = sized else {
-        return null;
-    };
-    match gemma4_vision::Grid::for_image(width, height, soft_tokens) {
-        Ok(grid) => {
-            let (w, h) = grid.pixels();
-            match new_int_array(&mut env, &[w as i32, h as i32]) {
-                Ok(array) => array,
-                Err(e) => {
-                    log(&format!("cannot return a vision size: {e}"));
-                    null
+    env.with_env(|env| -> jni::errors::Result<jintArray> {
+        let null = std::ptr::null_mut();
+        let sized = u32::try_from(width)
+            .ok()
+            .zip(u32::try_from(height).ok())
+            .zip(u32::try_from(soft_tokens).ok());
+        let Some(((width, height), soft_tokens)) = sized else {
+            return Ok(null);
+        };
+        Ok(match gemma4_vision::Grid::for_image(width, height, soft_tokens) {
+            Ok(grid) => {
+                let (w, h) = grid.pixels();
+                match new_int_array(env, &[w as i32, h as i32]) {
+                    Ok(array) => array,
+                    Err(e) => {
+                        log(&format!("cannot return a vision size: {e}"));
+                        null
+                    }
                 }
             }
-        }
-        Err(e) => {
-            log(&format!("no vision grid for {width}x{height}: {e}"));
-            null
-        }
-    }
+            Err(e) => {
+                log(&format!("no vision grid for {width}x{height}: {e}"));
+                null
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// Encode one image into soft tokens: `[n, 1536]` flattened, or null.
@@ -373,29 +382,32 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_gemma4VisionSize
 /// Called only by the JVM, with a live handle from `createGemma4Vision`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_encodeImageGemma4<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     pixels: JIntArray<'l>,
     width: jint,
     height: jint,
 ) -> jfloatArray {
-    let null = std::ptr::null_mut();
-    if handle == 0 {
-        return null;
-    }
-    // SAFETY: the caller guarantees the handle came from `createGemma4Vision` and is still live.
-    // It is `&mut` because a new aspect ratio re-records the net, and Kotlin serialises calls.
-    let handle = unsafe { &mut *(handle as *mut Gemma4VisionHandle) };
-    let encoded = read_int_array(&mut env, &pixels)
-        .and_then(|values| run_gemma4_vision(handle, &values, width, height));
-    match encoded.and_then(|values| new_float_array(&mut env, &values)) {
-        Ok(array) => array,
-        Err(e) => {
-            log(&format!("the gemma4 vision tower failed: {e}"));
-            null
+    env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+        let null = std::ptr::null_mut();
+        if handle == 0 {
+            return Ok(null);
         }
-    }
+        // SAFETY: the caller guarantees the handle came from `createGemma4Vision` and is still live.
+        // It is `&mut` because a new aspect ratio re-records the net, and Kotlin serialises calls.
+        let handle = unsafe { &mut *(handle as *mut Gemma4VisionHandle) };
+        let encoded = read_int_array(env, &pixels)
+            .and_then(|values| run_gemma4_vision(handle, &values, width, height));
+        Ok(match encoded.and_then(|values| new_float_array(env, &values)) {
+            Ok(array) => array,
+            Err(e) => {
+                log(&format!("the gemma4 vision tower failed: {e}"));
+                null
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 fn run_gemma4_vision(
@@ -435,7 +447,7 @@ fn run_gemma4_vision(
 /// Called only by the JVM, once, with a handle from `createGemma4Vision` that nothing else uses.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyGemma4Vision<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {

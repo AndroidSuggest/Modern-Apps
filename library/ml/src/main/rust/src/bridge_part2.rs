@@ -11,7 +11,7 @@
 /// # Why the plans are descriptors and not arrays
 ///
 /// A `ByteArray` path allocates the model **three times**: the Java `byte[]`, the `Vec<u8>`
-/// [`JNIEnv::convert_byte_array`] hands back, and [`Weights::parse`]'s own copy of the data
+/// [`Env::convert_byte_array`] hands back, and [`Weights::parse`]'s own copy of the data
 /// section. At the size a bundled Supertonic comes to that is ~300 MB of transient heap for a
 /// ~105 MB model, which is an out-of-memory kill on a low-RAM device rather than a slow load.
 ///
@@ -33,7 +33,7 @@
 /// Called only by the JVM, with a valid `env`, arrays it owns, and descriptors nothing else holds.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createSupertonic<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     fds: JIntArray<'l>,
     offsets: JLongArray<'l>,
@@ -41,13 +41,16 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createSupertonic
     indexer: JByteArray<'l>,
     style: JByteArray<'l>,
 ) -> jlong {
-    match build_supertonic(&mut env, &fds, &offsets, &lengths, &indexer, &style) {
-        Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
-        Err(e) => {
-            log(&format!("supertonic is unavailable: {e}"));
-            0
-        }
-    }
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        Ok(match build_supertonic(env, &fds, &offsets, &lengths, &indexer, &style) {
+            Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
+            Err(e) => {
+                log(&format!("supertonic is unavailable: {e}"));
+                0
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// The four `.maml` graphs, in the order `createSupertonic`'s parallel arrays list them.
@@ -55,7 +58,7 @@ const SUPERTONIC_GRAPHS: [u32; 4] =
     [graph::SUPERTONIC_DP, graph::SUPERTONIC_TTL, graph::SUPERTONIC_VE, graph::SUPERTONIC_VOC];
 
 fn build_supertonic<'l>(
-    env: &mut JNIEnv<'l>,
+    env: &Env,
     fds: &JIntArray<'l>,
     offsets: &JLongArray<'l>,
     lengths: &JLongArray<'l>,
@@ -185,31 +188,34 @@ fn build_supertonic<'l>(
 /// [`Java_com_vayunmathur_library_ml_MlNative_createSupertonic`].
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_setSupertonicVoice<'l>(
-    env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     style: JByteArray<'l>,
 ) -> jni::sys::jboolean {
-    if handle == 0 {
-        return 0;
-    }
-    // SAFETY: as `synthesizeSupertonic` — the caller guarantees the handle is live and serialises
-    // this against `destroySupertonic`.
-    let state = unsafe { &mut *(handle as *mut SupertonicHandle) };
-    let read = env
-        .convert_byte_array(&style)
-        .map_err(|e| format!("cannot read the voice: {e}"))
-        .and_then(|bytes| supertonic::Voice::read(&bytes));
-    match read {
-        Ok(voice) => {
-            state.voice = voice;
-            1
+    env.with_env(|env| -> jni::errors::Result<jni::sys::jboolean> {
+        if handle == 0 {
+            return Ok(0);
         }
-        Err(e) => {
-            log(&format!("cannot change voice: {e}"));
-            0
-        }
-    }
+        // SAFETY: as `synthesizeSupertonic` — the caller guarantees the handle is live and serialises
+        // this against `destroySupertonic`.
+        let state = unsafe { &mut *(handle as *mut SupertonicHandle) };
+        let read = env
+            .convert_byte_array(&style)
+            .map_err(|e| format!("cannot read the voice: {e}"))
+            .and_then(|bytes| supertonic::Voice::read(&bytes));
+        Ok(match read {
+            Ok(voice) => {
+                state.voice = voice;
+                1
+            }
+            Err(e) => {
+                log(&format!("cannot change voice: {e}"));
+                0
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// Free the four networks and everything beside them.
@@ -220,7 +226,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_setSupert
 /// [`Java_com_vayunmathur_library_ml_MlNative_createSupertonic`], and must not be used again.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroySupertonic<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {
@@ -251,46 +257,49 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroySu
 /// [`Java_com_vayunmathur_library_ml_MlNative_createSupertonic`].
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_synthesizeSupertonic<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     text: JString<'l>,
     language: JString<'l>,
 ) -> jfloatArray {
-    let null = std::ptr::null_mut();
-    if handle == 0 {
-        return null;
-    }
-    // SAFETY: as `segment` — the caller guarantees the handle is live and serialises this against
-    // `destroySupertonic`.
-    let state = unsafe { &mut *(handle as *mut SupertonicHandle) };
-    let words: String = match env.get_string(&text) {
-        Ok(found) => found.into(),
-        Err(e) => {
-            log(&format!("cannot read the text: {e}"));
-            return null;
+    env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+        let null = std::ptr::null_mut();
+        if handle == 0 {
+            return Ok(null);
         }
-    };
-    let code: String = match env.get_string(&language) {
-        Ok(found) => found.into(),
-        Err(e) => {
-            log(&format!("cannot read the language: {e}"));
-            return null;
-        }
-    };
-    match speak_supertonic(state, &words, &code) {
-        Ok(samples) => match new_float_array(&mut env, &samples) {
-            Ok(array) => array,
+        // SAFETY: as `segment` — the caller guarantees the handle is live and serialises this against
+        // `destroySupertonic`.
+        let state = unsafe { &mut *(handle as *mut SupertonicHandle) };
+        let words: String = match text.try_to_string(env) {
+            Ok(found) => found,
             Err(e) => {
-                log(&e);
+                log(&format!("cannot read the text: {e}"));
+                return Ok(null);
+            }
+        };
+        let code: String = match language.try_to_string(env) {
+            Ok(found) => found,
+            Err(e) => {
+                log(&format!("cannot read the language: {e}"));
+                return Ok(null);
+            }
+        };
+        Ok(match speak_supertonic(state, &words, &code) {
+            Ok(samples) => match new_float_array(env, &samples) {
+                Ok(array) => array,
+                Err(e) => {
+                    log(&e);
+                    null
+                }
+            },
+            Err(e) => {
+                log(&format!("synthesis failed: {e}"));
                 null
             }
-        },
-        Err(e) => {
-            log(&format!("synthesis failed: {e}"));
-            null
-        }
-    }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// The whole pipeline for one utterance.
@@ -340,7 +349,7 @@ fn speak_supertonic(
 
 /// Copy a Java `int[]` of ARGB pixels into `into`, checking it against `width` x `height`.
 fn read_pixels<'l>(
-    env: &mut JNIEnv<'l>,
+    env: &Env,
     pixels: &JIntArray<'l>,
     width: jint,
     height: jint,
@@ -366,7 +375,7 @@ fn read_pixels<'l>(
 /// As [`Java_com_vayunmathur_library_ml_MlNative_segment`].
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_maskWidth<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) -> jint {
@@ -388,7 +397,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_maskWidth
 /// As [`Java_com_vayunmathur_library_ml_MlNative_segment`].
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_maskHeight<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) -> jint {
@@ -414,7 +423,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_maskHeigh
 /// used again afterwards.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroy<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {

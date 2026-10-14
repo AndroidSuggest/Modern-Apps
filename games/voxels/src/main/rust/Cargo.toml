@@ -1,9 +1,3 @@
-[workspace]
-
-[workspace.dependencies]
-# Mirrors root workspace catalog to avoid duplicate JNI/Walkdir/Windows pulling in voxels
-jni = "0.21.1"
-
 [package]
 name = "voxels_engine"
 version = "0.1.0"
@@ -17,18 +11,11 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 jni.workspace = true
-ash = { version = "0.38", default-features = false, features = ["loaded"] }
-hashbrown = "0.14"
+ash = { workspace = true, default-features = false, features = ["loaded"] }
+hashbrown.workspace = true
 # noise removed – replaced by src/world/perlin.rs (exact-math Perlin), which also
 # drops the whole stale rand 0.7 stack noise pulled (8 crates total).
-glam = { version = "0.27", features = ["serde"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+glam = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 # once_cell removed – it was declared but never used in src
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = true

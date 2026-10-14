@@ -17,10 +17,10 @@ mod jni_bindings {
     use crate::{blur, inpaint, liquify, sharpen, stylize};
     use jni::objects::{JClass, JFloatArray, JIntArray};
     use jni::sys::{jint, jintArray};
-    use jni::JNIEnv;
+    use jni::{Env, EnvUnowned};
 
     /// Read a Java `int[]` into a `Vec<i32>`; `None` on error.
-    fn read_ints(env: &mut JNIEnv, arr: &JIntArray) -> Option<Vec<i32>> {
+    fn read_ints(env: &Env, arr: &JIntArray) -> Option<Vec<i32>> {
         let len = env.get_array_length(arr).ok()? as usize;
         let mut buf = vec![0i32; len];
         if env.get_int_array_region(arr, 0, &mut buf).is_err() {
@@ -30,7 +30,7 @@ mod jni_bindings {
     }
 
     /// Read a Java `float[]` into a `Vec<f32>`; `None` on error.
-    fn read_floats(env: &mut JNIEnv, arr: &JFloatArray) -> Option<Vec<f32>> {
+    fn read_floats(env: &Env, arr: &JFloatArray) -> Option<Vec<f32>> {
         let len = env.get_array_length(arr).ok()? as usize;
         let mut buf = vec![0f32; len];
         if env.get_float_array_region(arr, 0, &mut buf).is_err() {
@@ -40,8 +40,8 @@ mod jni_bindings {
     }
 
     /// Produce a Java `int[]` from `result`, or a null array on error.
-    fn write_ints(env: &JNIEnv, result: &[i32]) -> jintArray {
-        let out = match env.new_int_array(result.len() as i32) {
+    fn write_ints(env: &mut Env, result: &[i32]) -> jintArray {
+        let out = match env.new_int_array(result.len()) {
             Ok(a) => a,
             Err(_) => return std::ptr::null_mut(),
         };
@@ -53,33 +53,36 @@ mod jni_bindings {
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_photos_util_PhotosNative_stylize<'l>(
-        mut env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         pixels: JIntArray<'l>,
         w: jint,
         h: jint,
         mode: jint,
     ) -> jintArray {
-        let null = std::ptr::null_mut();
-        if w <= 0 || h <= 0 {
-            return null;
-        }
-        let buf = match read_ints(&mut env, &pixels) {
-            Some(b) if b.len() == (w as usize) * (h as usize) => b,
-            _ => return null,
-        };
-        let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            stylize::stylize(&buf, w as usize, h as usize, mode)
-        })) {
-            Ok(r) => r,
-            Err(_) => return null,
-        };
-        write_ints(&env, &result)
+        env.with_env(|env| -> jni::errors::Result<jintArray> {
+            let null = std::ptr::null_mut();
+            if w <= 0 || h <= 0 {
+                return Ok(null);
+            }
+            let buf = match read_ints(env, &pixels) {
+                Some(b) if b.len() == (w as usize) * (h as usize) => b,
+                _ => return Ok(null),
+            };
+            let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                stylize::stylize(&buf, w as usize, h as usize, mode)
+            })) {
+                Ok(r) => r,
+                Err(_) => return Ok(null),
+            };
+            Ok(write_ints(env, &result))
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_photos_util_PhotosNative_unsharp<'l>(
-        mut env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         pixels: JIntArray<'l>,
         w: jint,
@@ -88,26 +91,29 @@ mod jni_bindings {
         radius: jni::sys::jfloat,
         threshold: jint,
     ) -> jintArray {
-        let null = std::ptr::null_mut();
-        if w <= 0 || h <= 0 {
-            return null;
-        }
-        let buf = match read_ints(&mut env, &pixels) {
-            Some(b) if b.len() == (w as usize) * (h as usize) => b,
-            _ => return null,
-        };
-        let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            sharpen::unsharp(&buf, w as usize, h as usize, amount, radius, threshold)
-        })) {
-            Ok(r) => r,
-            Err(_) => return null,
-        };
-        write_ints(&env, &result)
+        env.with_env(|env| -> jni::errors::Result<jintArray> {
+            let null = std::ptr::null_mut();
+            if w <= 0 || h <= 0 {
+                return Ok(null);
+            }
+            let buf = match read_ints(env, &pixels) {
+                Some(b) if b.len() == (w as usize) * (h as usize) => b,
+                _ => return Ok(null),
+            };
+            let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                sharpen::unsharp(&buf, w as usize, h as usize, amount, radius, threshold)
+            })) {
+                Ok(r) => r,
+                Err(_) => return Ok(null),
+            };
+            Ok(write_ints(env, &result))
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_photos_util_PhotosNative_liquify<'l>(
-        mut env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         pixels: JIntArray<'l>,
         w: jint,
@@ -115,34 +121,37 @@ mod jni_bindings {
         tools: JIntArray<'l>,
         params: JFloatArray<'l>,
     ) -> jintArray {
-        let null = std::ptr::null_mut();
-        if w <= 0 || h <= 0 {
-            return null;
-        }
-        let buf = match read_ints(&mut env, &pixels) {
-            Some(b) if b.len() == (w as usize) * (h as usize) => b,
-            _ => return null,
-        };
-        let tools_v = match read_ints(&mut env, &tools) {
-            Some(t) => t,
-            None => return null,
-        };
-        let params_v = match read_floats(&mut env, &params) {
-            Some(p) => p,
-            None => return null,
-        };
-        let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            liquify::liquify(&buf, w as usize, h as usize, &tools_v, &params_v)
-        })) {
-            Ok(r) => r,
-            Err(_) => return null,
-        };
-        write_ints(&env, &result)
+        env.with_env(|env| -> jni::errors::Result<jintArray> {
+            let null = std::ptr::null_mut();
+            if w <= 0 || h <= 0 {
+                return Ok(null);
+            }
+            let buf = match read_ints(env, &pixels) {
+                Some(b) if b.len() == (w as usize) * (h as usize) => b,
+                _ => return Ok(null),
+            };
+            let tools_v = match read_ints(env, &tools) {
+                Some(t) => t,
+                None => return Ok(null),
+            };
+            let params_v = match read_floats(env, &params) {
+                Some(p) => p,
+                None => return Ok(null),
+            };
+            let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                liquify::liquify(&buf, w as usize, h as usize, &tools_v, &params_v)
+            })) {
+                Ok(r) => r,
+                Err(_) => return Ok(null),
+            };
+            Ok(write_ints(env, &result))
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_photos_util_PhotosNative_blurParams<'l>(
-        mut env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         pixels: JIntArray<'l>,
         w: jint,
@@ -155,29 +164,32 @@ mod jni_bindings {
         feather: jni::sys::jfloat,
         angle: jni::sys::jfloat,
     ) -> jintArray {
-        let null = std::ptr::null_mut();
-        if w <= 0 || h <= 0 {
-            return null;
-        }
-        let buf = match read_ints(&mut env, &pixels) {
-            Some(b) if b.len() == (w as usize) * (h as usize) => b,
-            _ => return null,
-        };
-        let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            blur::blur_params(
-                &buf, w as usize, h as usize, mode, center_x, center_y, radius, intensity, feather,
-                angle,
-            )
-        })) {
-            Ok(r) => r,
-            Err(_) => return null,
-        };
-        write_ints(&env, &result)
+        env.with_env(|env| -> jni::errors::Result<jintArray> {
+            let null = std::ptr::null_mut();
+            if w <= 0 || h <= 0 {
+                return Ok(null);
+            }
+            let buf = match read_ints(env, &pixels) {
+                Some(b) if b.len() == (w as usize) * (h as usize) => b,
+                _ => return Ok(null),
+            };
+            let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                blur::blur_params(
+                    &buf, w as usize, h as usize, mode, center_x, center_y, radius, intensity, feather,
+                    angle,
+                )
+            })) {
+                Ok(r) => r,
+                Err(_) => return Ok(null),
+            };
+            Ok(write_ints(env, &result))
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_photos_util_PhotosNative_filterBlur<'l>(
-        mut env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         pixels: JIntArray<'l>,
         w: jint,
@@ -188,26 +200,29 @@ mod jni_bindings {
         center_x: jni::sys::jfloat,
         center_y: jni::sys::jfloat,
     ) -> jintArray {
-        let null = std::ptr::null_mut();
-        if w <= 0 || h <= 0 {
-            return null;
-        }
-        let buf = match read_ints(&mut env, &pixels) {
-            Some(b) if b.len() == (w as usize) * (h as usize) => b,
-            _ => return null,
-        };
-        let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            blur::filter_blur(&buf, w as usize, h as usize, mode, amount, angle, center_x, center_y)
-        })) {
-            Ok(r) => r,
-            Err(_) => return null,
-        };
-        write_ints(&env, &result)
+        env.with_env(|env| -> jni::errors::Result<jintArray> {
+            let null = std::ptr::null_mut();
+            if w <= 0 || h <= 0 {
+                return Ok(null);
+            }
+            let buf = match read_ints(env, &pixels) {
+                Some(b) if b.len() == (w as usize) * (h as usize) => b,
+                _ => return Ok(null),
+            };
+            let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                blur::filter_blur(&buf, w as usize, h as usize, mode, amount, angle, center_x, center_y)
+            })) {
+                Ok(r) => r,
+                Err(_) => return Ok(null),
+            };
+            Ok(write_ints(env, &result))
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_photos_util_PhotosNative_inpaint<'l>(
-        mut env: JNIEnv<'l>,
+        mut env: EnvUnowned<'l>,
         _class: JClass<'l>,
         pixels: JIntArray<'l>,
         w: jint,
@@ -217,33 +232,36 @@ mod jni_bindings {
         mask_h: jint,
         passes: jint,
     ) -> jintArray {
-        let null = std::ptr::null_mut();
-        if w <= 0 || h <= 0 || mask_w <= 0 || mask_h <= 0 {
-            return null;
-        }
-        let buf = match read_ints(&mut env, &pixels) {
-            Some(b) if b.len() == (w as usize) * (h as usize) => b,
-            _ => return null,
-        };
-        let mask = match read_floats(&mut env, &hole_mask) {
-            Some(m) if m.len() == (mask_w as usize) * (mask_h as usize) => m,
-            _ => return null,
-        };
-        let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            inpaint::inpaint(
-                &buf,
-                w as usize,
-                h as usize,
-                &mask,
-                mask_w as usize,
-                mask_h as usize,
-                passes,
-            )
-        })) {
-            Ok(r) => r,
-            Err(_) => return null,
-        };
-        write_ints(&env, &result)
+        env.with_env(|env| -> jni::errors::Result<jintArray> {
+            let null = std::ptr::null_mut();
+            if w <= 0 || h <= 0 || mask_w <= 0 || mask_h <= 0 {
+                return Ok(null);
+            }
+            let buf = match read_ints(env, &pixels) {
+                Some(b) if b.len() == (w as usize) * (h as usize) => b,
+                _ => return Ok(null),
+            };
+            let mask = match read_floats(env, &hole_mask) {
+                Some(m) if m.len() == (mask_w as usize) * (mask_h as usize) => m,
+                _ => return Ok(null),
+            };
+            let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                inpaint::inpaint(
+                    &buf,
+                    w as usize,
+                    h as usize,
+                    &mask,
+                    mask_w as usize,
+                    mask_h as usize,
+                    passes,
+                )
+            })) {
+                Ok(r) => r,
+                Err(_) => return Ok(null),
+            };
+            Ok(write_ints(env, &result))
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 }
 

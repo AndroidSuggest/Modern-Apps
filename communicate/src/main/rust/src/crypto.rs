@@ -7,8 +7,8 @@
 //!   * `DerivedRootSecrets`    = 64 bytes -> rootKey(32) || chainKey(32)
 //!   * info strings: "WhisperText", "WhisperRatchet", "WhisperMessageKeys", "WhisperGroup"
 
-use aes::cipher::generic_array::GenericArray;
-use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
+use aes::cipher::Array;
+use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 use aes::Aes256;
 use curve25519_dalek::constants::ED25519_BASEPOINT_TABLE;
 use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
@@ -109,7 +109,7 @@ impl MessageKeys {
 // (see the `cbc removed - own CBC in pdf_cbc.rs` note in the workspace manifest).
 
 pub fn aes_cbc_encrypt(key: &[u8; 32], iv: &[u8; 16], plaintext: &[u8]) -> Vec<u8> {
-    let cipher = Aes256::new(GenericArray::from_slice(key));
+    let cipher = Aes256::new(Array::from_slice(key));
     let pad = 16 - (plaintext.len() % 16);
     let mut buf = Vec::with_capacity(plaintext.len() + pad);
     buf.extend_from_slice(plaintext);
@@ -120,7 +120,7 @@ pub fn aes_cbc_encrypt(key: &[u8; 32], iv: &[u8; 16], plaintext: &[u8]) -> Vec<u
         for i in 0..16 {
             chunk[i] ^= prev[i];
         }
-        let mut block = GenericArray::clone_from_slice(chunk);
+        let mut block = Array::clone_from_slice(&chunk[..]);
         cipher.encrypt_block(&mut block);
         chunk.copy_from_slice(&block);
         prev.copy_from_slice(chunk);
@@ -132,12 +132,12 @@ pub fn aes_cbc_decrypt(key: &[u8; 32], iv: &[u8; 16], ciphertext: &[u8]) -> Resu
     if ciphertext.is_empty() || !ciphertext.len().is_multiple_of(16) {
         return Err(CryptoError("ciphertext is not a whole number of AES blocks"));
     }
-    let cipher = Aes256::new(GenericArray::from_slice(key));
+    let cipher = Aes256::new(Array::from_slice(key));
     let mut out = ciphertext.to_vec();
     let mut prev = *iv;
     for chunk in out.chunks_mut(16) {
         let cipher_block: [u8; 16] = chunk.try_into().expect("chunk is 16 bytes");
-        let mut block = GenericArray::clone_from_slice(chunk);
+        let mut block = Array::clone_from_slice(&chunk[..]);
         cipher.decrypt_block(&mut block);
         chunk.copy_from_slice(&block);
         for i in 0..16 {
@@ -174,7 +174,7 @@ fn clamp(mut k: [u8; 32]) -> [u8; 32] {
     k
 }
 
-pub fn generate_key_pair<R: rand_core::RngCore + rand_core::CryptoRng>(
+pub fn generate_key_pair<R: rand_core::Rng + rand_core::CryptoRng>(
     rng: &mut R,
 ) -> ([u8; 32], [u8; 32]) {
     let mut secret = [0u8; 32];

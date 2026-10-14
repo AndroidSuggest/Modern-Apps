@@ -17,4 +17,4 @@ default = []
 jpeg = ["dep:jpeg-decoder"]
 
 [dependencies]
-jpeg-decoder = { version = "0.3.2", default-features = false, optional = true }
+jpeg-decoder = { workspace = true, default-features = false, optional = true }

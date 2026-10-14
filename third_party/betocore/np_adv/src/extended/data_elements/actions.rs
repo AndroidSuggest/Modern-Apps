@@ -17,7 +17,7 @@ use alloc::vec::Vec;
 use itertools::Itertools;
 use nom::error::ErrorKind;
 use nom::Err::Error;
-use nom::{bytes, combinator, multi};
+use nom::{bytes, combinator, multi, Parser as _};
 use sink::Sink;
 use tinyvec::ArrayVec;
 
@@ -212,7 +212,8 @@ impl<'adv> DeserializedActionsDE<'adv> {
                 acc.add_container(item);
                 acc
             },
-        ))(de_contents)
+        ))
+        .parse(de_contents)
         .map(|(rem, actions)| {
             debug_assert!(rem.is_empty());
             actions
@@ -248,18 +249,19 @@ impl<'adv> DeserializedActionsContainer<'adv> {
                 ContainerType::try_from(type_value)
                     .map(|container_type| (container_type, encoded_len))
                     .ok()
-            })(bytes)?;
+            })
+            .parse(bytes)?;
 
-        let (input, payload_bytes) = bytes::complete::take(container_encoded_len + 1)(input)?;
+        let (input, payload_bytes) = bytes::complete::take(container_encoded_len + 1)
+            .parse(input)?;
 
         let (payload, offset) = match container_type {
             ContainerType::DeltaEncoded => (payload_bytes, 0u16),
             // A container which only contains the sub header offset and no
             // subsequent data is disallowed by the spec
             ContainerType::DeltaEncodedWithOffset | ContainerType::BitVectorOffset => {
-                combinator::verify(nom::number::complete::u8, |_| payload_bytes.len() > 1)(
-                    payload_bytes,
-                )
+                combinator::verify(nom::number::complete::u8, |_| payload_bytes.len() > 1)
+                    .parse(payload_bytes)
                 .map(|(remaining, byte)| (remaining, u16::from(byte) * 8))?
             }
         };
@@ -269,7 +271,8 @@ impl<'adv> DeserializedActionsContainer<'adv> {
             let _ =
                 combinator::verify(combinator::peek(nom::number::complete::u8), |delta: &u8| {
                     *delta <= 7u8
-                })(payload)?;
+                })
+                .parse(payload)?;
         }
         Ok((input, DeserializedActionsContainer { container_type, offset, payload }))
     }

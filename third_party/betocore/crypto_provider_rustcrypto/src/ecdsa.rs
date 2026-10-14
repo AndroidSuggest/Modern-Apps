@@ -91,17 +91,17 @@ impl crypto_provider::ecdsa::PublicKey for P256VerifyingKey {
     where
         Self: Sized,
     {
-        let encoded_point = p256::EncodedPoint::from_bytes(bytes)
+        let encoded_point = p256::Sec1Point::from_bytes(bytes)
             .map_err(|_| crypto_provider::ecdsa::InvalidPublicKeyBytes)?;
         // Unwrap is safe here, as we've verified during construction that the public key is
         // of the correct size and that it is a point on the curve, so this cannot fail.
-        let verifying_key = p256::ecdsa::VerifyingKey::from_encoded_point(&encoded_point).unwrap();
+        let verifying_key = p256::ecdsa::VerifyingKey::from_sec1_bytes(bytes.as_ref()).unwrap();
         Ok(Self(verifying_key))
     }
 
     fn to_bytes(&self) -> crypto_provider::ecdsa::RawP256PublicKey {
         let mut public_key = [0u8; PUBLIC_KEY_LENGTH];
-        let point = self.0.to_encoded_point(false);
+        let point = self.0.to_sec1_point(false);
         public_key.copy_from_slice(point.as_bytes());
         public_key
     }

@@ -19,39 +19,42 @@
 /// [`Java_com_vayunmathur_library_ml_MlNative_createPpocr`] and not yet destroyed.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_recognizeText<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     pixels: JIntArray<'l>,
     width: jint,
     height: jint,
 ) -> jstring {
-    let null = std::ptr::null_mut();
-    if handle == 0 || width <= 0 || height <= 0 {
-        return null;
-    }
-    // SAFETY: as `segment` — the caller guarantees the handle is live and serialises this
-    // against `destroyOcr`.
-    let state = unsafe { &mut *(handle as *mut OcrHandle) };
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let null = std::ptr::null_mut();
+        if handle == 0 || width <= 0 || height <= 0 {
+            return Ok(null);
+        }
+        // SAFETY: as `segment` — the caller guarantees the handle is live and serialises this
+        // against `destroyOcr`.
+        let state = unsafe { &mut *(handle as *mut OcrHandle) };
 
-    if let Err(e) = read_pixels(&mut env, &pixels, width, height, &mut state.pixels) {
-        log(&e);
-        return null;
-    }
-    let lines = match read_text(state, width as u32, height as u32) {
-        Ok(lines) => lines,
-        Err(e) => {
-            log(&format!("OCR failed: {e}"));
-            return null;
+        if let Err(e) = read_pixels(env, &pixels, width, height, &mut state.pixels) {
+            log(&e);
+            return Ok(null);
         }
-    };
-    match env.new_string(encode(&lines)) {
-        Ok(text) => text.into_raw(),
-        Err(e) => {
-            log(&format!("cannot return the text: {e}"));
-            null
-        }
-    }
+        let lines = match read_text(state, width as u32, height as u32) {
+            Ok(lines) => lines,
+            Err(e) => {
+                log(&format!("OCR failed: {e}"));
+                return Ok(null);
+            }
+        };
+        Ok(match env.new_string(encode(&lines)) {
+            Ok(text) => text.into_raw(),
+            Err(e) => {
+                log(&format!("cannot return the text: {e}"));
+                null
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// Detect, crop, recognise and order. The Vulkan half of `post::ocr::lines`.
@@ -107,7 +110,7 @@ fn encode(lines: &[Line]) -> String {
 /// [`Java_com_vayunmathur_library_ml_MlNative_createPpocr`], and must not be used again.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyOcr<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {

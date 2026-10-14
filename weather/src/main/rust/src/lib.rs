@@ -337,7 +337,7 @@ mod jni_bindings {
     use super::*;
     use jni::objects::{JClass, JString};
     use jni::sys::{jdouble, jfloatArray, jint};
-    use jni::JNIEnv;
+    use jni::EnvUnowned;
 
     /// Restored efficient path: fetches only needed `.om` blocks via
     /// `OmRangeFetcher` (HttpURLConnection) instead of full 148 MB file.
@@ -346,7 +346,7 @@ mod jni_bindings {
     pub extern "system" fn Java_com_vayunmathur_weather_domain_map_OmTilesNative_decodeRegion<
         'local,
     >(
-        mut env: JNIEnv<'local>,
+        mut env: EnvUnowned<'local>,
         _class: JClass<'local>,
         om_url: JString<'local>,
         variable: JString<'local>,
@@ -363,59 +363,62 @@ mod jni_bindings {
         out_w: jint,
         out_h: jint,
     ) -> jfloatArray {
-        let null = std::ptr::null_mut();
+        env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+            let null = std::ptr::null_mut();
 
-        // Resolves the bridge class while we still hold a JNIEnv; the range fetches below run
-        // through it. Harmless to repeat.
-        jni_http::init(&mut env);
+            // Resolves the bridge class while we still hold a JNIEnv; the range fetches below run
+            // through it. Harmless to repeat.
+            jni_http::init(env);
 
-        let url: String = match env.get_string(&om_url) {
-            Ok(s) => s.into(),
-            Err(_) => return null,
-        };
-        let var: String = match env.get_string(&variable) {
-            Ok(s) => s.into(),
-            Err(_) => return null,
-        };
+            let url: String = match om_url.try_to_string(env) {
+                Ok(s) => s,
+                Err(_) => return Ok(null),
+            };
+            let var: String = match variable.try_to_string(env) {
+                Ok(s) => s,
+                Err(_) => return Ok(null),
+            };
 
-        let grid = Grid {
-            nx: nx.max(0) as usize,
-            ny: ny.max(0) as usize,
-            lon_min,
-            lat_min,
-            dx,
-            dy,
-        };
+            let grid = Grid {
+                nx: nx.max(0) as usize,
+                ny: ny.max(0) as usize,
+                lon_min,
+                lat_min,
+                dx,
+                dy,
+            };
 
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            decode_region_url_inner(
-                &url,
-                &var,
-                &grid,
-                west,
-                south,
-                east,
-                north,
-                out_w.max(0) as usize,
-                out_h.max(0) as usize,
-            )
-        }))
-        .unwrap_or_else(|_| Err("panic in decode_region".to_string()));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                decode_region_url_inner(
+                    &url,
+                    &var,
+                    &grid,
+                    west,
+                    south,
+                    east,
+                    north,
+                    out_w.max(0) as usize,
+                    out_h.max(0) as usize,
+                )
+            }))
+            .unwrap_or_else(|_| Err("panic in decode_region".to_string()));
 
-        let values = match result {
-            Ok(v) => v,
-            Err(_) => return null,
-        };
+            let values = match result {
+                Ok(v) => v,
+                Err(_) => return Ok(null),
+            };
 
-        match env.new_float_array(values.len() as jint) {
-            Ok(arr) => {
-                if env.set_float_array_region(&arr, 0, &values).is_err() {
-                    return null;
+            match env.new_float_array(values.len()) {
+                Ok(arr) => {
+                    if env.set_float_array_region(&arr, 0, &values).is_err() {
+                        return Ok(null);
+                    }
+                    Ok(arr.into_raw())
                 }
-                arr.into_raw()
+                Err(_) => Ok(null),
             }
-            Err(_) => null,
-        }
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
     }
 }
 

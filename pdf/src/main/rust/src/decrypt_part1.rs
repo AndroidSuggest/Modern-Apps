@@ -42,9 +42,9 @@ pub(crate) enum EncryptAlgo {
 /// CSPRNG. Falls back to md5-based mixing (seed + wall clock) only if the OS
 /// RNG is unavailable, preserving the no-panic invariant.
 fn rand_bytes<const N: usize>(seed: &[u8]) -> [u8; N] {
-    use rand::RngCore;
+    use rand_core::TryRng;
     let mut out = [0u8; N];
-    if rand::rngs::OsRng.try_fill_bytes(&mut out).is_ok() {
+    if rand::rngs::SysRng.try_fill_bytes(&mut out).is_ok() {
         return out;
     }
     use md5::{Digest, Md5};

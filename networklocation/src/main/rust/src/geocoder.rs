@@ -28,9 +28,9 @@ use std::io::{Cursor, Read};
 use std::os::unix::io::FromRawFd;
 use std::sync::Mutex;
 
-use jni::objects::{JClass, JString};
+use jni::objects::{JByteArray, JClass, JObjectArray, JString};
 use jni::sys::{jdouble, jint, jlong, jobjectArray};
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned, jni_str};
 
 const MAGIC: u32 = 0x4D41_4745;
 const VERSION: u32 = 3;
@@ -137,7 +137,7 @@ fn read_varint(a: &[u8], p: &mut usize) -> u32 {
     v
 }
 fn zstd_decompress(comp: &[u8], raw_len: usize) -> Option<Vec<u8>> {
-    let mut dec = ruzstd::StreamingDecoder::new(Cursor::new(comp)).ok()?;
+    let mut dec = ruzstd::decoding::StreamingDecoder::new(Cursor::new(comp)).ok()?;
     let mut out = Vec::with_capacity(raw_len);
     dec.read_to_end(&mut out).ok()?;
     if out.len() != raw_len {

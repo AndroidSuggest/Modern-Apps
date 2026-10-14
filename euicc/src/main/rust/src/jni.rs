@@ -9,27 +9,30 @@
 
 use jni::objects::{JByteArray, JClass, JString, JValue};
 use jni::sys::{jint, jstring};
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned, jni_sig, jni_str};
 
 use crate::{es10, VERSION};
 
+#[allow(dead_code)]
 const EUICC_NATIVE_CLASS: &str = "com/vayunmathur/euicc/EuiccNative";
+#[allow(dead_code)]
 const TRANSMIT_METHOD: &str = "transmitApdu";
 /// `([B)[B` — command APDU bytes → response APDU bytes (data followed by SW1 SW2).
+#[allow(dead_code)]
 const TRANSMIT_SIG: &str = "([B)[B";
 
 /// Sends one command APDU to the eUICC by calling back into Kotlin
 /// `EuiccNative.transmitApdu`, which transmits over the open logical channel and
 /// returns the response bytes (response data followed by the two status bytes).
-fn transmit_apdu(env: &mut JNIEnv, apdu: &[u8]) -> Result<Vec<u8>, String> {
+fn transmit_apdu(env: &mut Env, apdu: &[u8]) -> Result<Vec<u8>, String> {
     let arr: JByteArray = env
         .byte_array_from_slice(apdu)
         .map_err(|e| format!("apdu marshal: {e}"))?;
     let result = env
         .call_static_method(
-            EUICC_NATIVE_CLASS,
-            TRANSMIT_METHOD,
-            TRANSMIT_SIG,
+            jni_str!("com/vayunmathur/euicc/EuiccNative"),
+            jni_str!("transmitApdu"),
+            jni_sig!("([B)[B"),
             &[JValue::Object(&arr)],
         )
         .map_err(|e| {
@@ -41,7 +44,7 @@ fn transmit_apdu(env: &mut JNIEnv, apdu: &[u8]) -> Result<Vec<u8>, String> {
     if object.is_null() {
         return Err("transmitApdu returned null".into());
     }
-    env.convert_byte_array(JByteArray::from(object))
+    env.convert_byte_array(env.cast_local::<JByteArray>(object).map_err(|e| format!("bad return: {e}"))?)
         .map_err(|e| format!("reading response: {e}"))
 }
 
@@ -53,7 +56,7 @@ fn transmit_apdu(env: &mut JNIEnv, apdu: &[u8]) -> Result<Vec<u8>, String> {
 /// lpac's `euicc_init` falls back to 120) rather than the APDU maximum: only
 /// multi-KB download payloads stress this path, and conservative chunking is
 /// what the reference LPAs ship.
-pub(crate) fn store_data(env: &mut JNIEnv, command: &[u8]) -> Result<Vec<u8>, String> {
+pub(crate) fn store_data(env: &mut Env, command: &[u8]) -> Result<Vec<u8>, String> {
     store_data_chunked(env, command, STORE_DATA_CHUNK)
 }
 
@@ -61,7 +64,7 @@ pub(crate) fn store_data(env: &mut JNIEnv, command: &[u8]) -> Result<Vec<u8>, St
 pub(crate) const STORE_DATA_CHUNK: usize = 63;
 
 pub(crate) fn store_data_chunked(
-    env: &mut JNIEnv,
+    env: &mut Env,
     command: &[u8],
     chunk: usize,
 ) -> Result<Vec<u8>, String> {
@@ -111,7 +114,7 @@ pub(crate) fn store_data_chunked(
 }
 
 /// Returns `s` as a new Java string, or null (used on the error path).
-pub(crate) fn new_jstring(env: &JNIEnv, s: &str) -> jstring {
+pub(crate) fn new_jstring(env: &mut Env, s: &str) -> jstring {
     match env.new_string(s) {
         Ok(js) => js.into_raw(),
         Err(_) => std::ptr::null_mut(),
@@ -119,13 +122,13 @@ pub(crate) fn new_jstring(env: &JNIEnv, s: &str) -> jstring {
 }
 
 /// Reads a Java string into a Rust `String`, or `None` on error.
-pub(crate) fn read_string(env: &mut JNIEnv, s: &JString) -> Option<String> {
-    env.get_string(s).ok().map(|js| js.into())
+pub(crate) fn read_string(env: &Env, s: &JString) -> Option<String> {
+    s.try_to_string(env).ok()
 }
 
 /// Sends a request and parses its INTEGER result, returning the eUICC result
 /// code (0 = success) or -1 on a transport/parse error.
-fn run_result(env: &mut JNIEnv, request: &[u8], tag: u32) -> jint {
+fn run_result(env: &mut Env, request: &[u8], tag: u32) -> jint {
     match store_data(env, request).and_then(|resp| es10::parse_result(&resp, tag)) {
         Ok(code) => code as jint,
         Err(_) => -1,
@@ -135,13 +138,14 @@ fn run_result(env: &mut JNIEnv, request: &[u8], tag: u32) -> jint {
 /// `nativeGetProfiles()` — installed profiles as a JSON array, or null on error.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeGetProfiles<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jstring {
-    let result = store_data(&mut env, &es10::build_get_profiles())
-        .and_then(|resp| es10::parse_profiles(&resp));
-    match result {
-        Ok(profiles) => {
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let result = store_data(env, &es10::build_get_profiles())
+            .and_then(|resp| es10::parse_profiles(&resp));
+        Ok(match result {
+            Ok(profiles) => {
             let arr: Vec<_> = profiles
                 .iter()
                 .map(|p| {
@@ -157,79 +161,94 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeGetProfiles<
                     })
                 })
                 .collect();
-            new_jstring(&env, &serde_json::Value::Array(arr).to_string())
-        }
-        Err(_) => std::ptr::null_mut(),
-    }
+            new_jstring(env, &serde_json::Value::Array(arr).to_string())
+            }
+            Err(_) => std::ptr::null_mut(),
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `nativeEnableProfile(iccid)` — 0 on success, eUICC error code, or -1.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeEnableProfile<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     iccid: JString<'l>,
 ) -> jint {
-    let Some(hex) = read_string(&mut env, &iccid) else {
-        return -1;
-    };
-    run_result(&mut env, &es10::build_enable(&es10::hex_decode(&hex), true), es10::RESULT_TAG_ENABLE)
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        let Some(hex) = read_string(env, &iccid) else {
+            return Ok(-1);
+        };
+        Ok(run_result(env, &es10::build_enable(&es10::hex_decode(&hex), true), es10::RESULT_TAG_ENABLE))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `nativeDisableProfile(iccid)` — 0 on success, eUICC error code, or -1.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeDisableProfile<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     iccid: JString<'l>,
 ) -> jint {
-    let Some(hex) = read_string(&mut env, &iccid) else {
-        return -1;
-    };
-    run_result(&mut env, &es10::build_disable(&es10::hex_decode(&hex), true), es10::RESULT_TAG_DISABLE)
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        let Some(hex) = read_string(env, &iccid) else {
+            return Ok(-1);
+        };
+        Ok(run_result(env, &es10::build_disable(&es10::hex_decode(&hex), true), es10::RESULT_TAG_DISABLE))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `nativeDeleteProfile(iccid)` — 0 on success, eUICC error code, or -1.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeDeleteProfile<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     iccid: JString<'l>,
 ) -> jint {
-    let Some(hex) = read_string(&mut env, &iccid) else {
-        return -1;
-    };
-    run_result(&mut env, &es10::build_delete(&es10::hex_decode(&hex)), es10::RESULT_TAG_DELETE)
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        let Some(hex) = read_string(env, &iccid) else {
+            return Ok(-1);
+        };
+        Ok(run_result(env, &es10::build_delete(&es10::hex_decode(&hex)), es10::RESULT_TAG_DELETE))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `nativeSetNickname(iccid, nickname)` — 0 on success, eUICC error code, or -1.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeSetNickname<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     iccid: JString<'l>,
     nickname: JString<'l>,
 ) -> jint {
-    let (Some(hex), Some(name)) = (read_string(&mut env, &iccid), read_string(&mut env, &nickname))
-    else {
-        return -1;
-    };
-    run_result(
-        &mut env,
-        &es10::build_set_nickname(&es10::hex_decode(&hex), &name),
-        es10::RESULT_TAG_SET_NICKNAME,
-    )
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        let (Some(hex), Some(name)) = (read_string(env, &iccid), read_string(env, &nickname))
+        else {
+            return Ok(-1);
+        };
+        Ok(run_result(
+            env,
+            &es10::build_set_nickname(&es10::hex_decode(&hex), &name),
+            es10::RESULT_TAG_SET_NICKNAME,
+        ))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `nativeListNotifications()` — pending notifications as a JSON array, or null.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeListNotifications<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jstring {
-    let result = store_data(&mut env, &es10::build_list_notifications())
-        .and_then(|resp| es10::parse_notifications(&resp));
-    match result {
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let result = store_data(env, &es10::build_list_notifications())
+            .and_then(|resp| es10::parse_notifications(&resp));
+        Ok(match result {
         Ok(notes) => {
             let arr: Vec<_> = notes
                 .iter()
@@ -242,72 +261,86 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeListNotifica
                     })
                 })
                 .collect();
-            new_jstring(&env, &serde_json::Value::Array(arr).to_string())
-        }
-        Err(_) => std::ptr::null_mut(),
-    }
+            new_jstring(env, &serde_json::Value::Array(arr).to_string())
+            }
+            Err(_) => std::ptr::null_mut(),
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `nativeRemoveNotification(seq)` — 0 on success, eUICC error code, or -1.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeRemoveNotification<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     seq: jint,
 ) -> jint {
-    if seq < 0 {
-        return -1;
-    }
-    match store_data(&mut env, &es10::build_remove_notification(seq as u32))
-        .and_then(|resp| es10::parse_remove_result(&resp))
-    {
-        Ok(code) => code as jint,
-        Err(_) => -1,
-    }
+    env.with_env(|env| -> jni::errors::Result<jint> {
+        if seq < 0 {
+            return Ok(-1);
+        }
+        Ok(match store_data(env, &es10::build_remove_notification(seq as u32))
+            .and_then(|resp| es10::parse_remove_result(&resp))
+        {
+            Ok(code) => code as jint,
+            Err(_) => -1,
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 
 /// `nativeVersion()` — native core version string.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeVersion<'l>(
-    env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jstring {
-    new_jstring(&env, VERSION)
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        Ok(new_jstring(env, VERSION))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `nativeGetEid()` — 32-hex-digit EID, or null on error (with a Kotlin
 /// exception left pending is avoided; null signals failure).
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeGetEid<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jstring {
-    let result = store_data(&mut env, &es10::build_get_eid())
-        .and_then(|resp| es10::parse_eid(&resp));
-    match result {
-        Ok(eid) => new_jstring(&env, &eid),
-        Err(_) => std::ptr::null_mut(),
-    }
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let result = store_data(env, &es10::build_get_eid())
+            .and_then(|resp| es10::parse_eid(&resp));
+        Ok(match result {
+            Ok(eid) => new_jstring(env, &eid),
+            Err(_) => std::ptr::null_mut(),
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `nativeGetEuiccInfo()` — EUICCInfo1 subset as a JSON string, or null on error.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeGetEuiccInfo<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) -> jstring {
-    let result = store_data(&mut env, &es10::build_get_euicc_info1())
-        .and_then(|resp| es10::parse_euicc_info1(&resp));
-    match result {
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let result = store_data(env, &es10::build_get_euicc_info1())
+            .and_then(|resp| es10::parse_euicc_info1(&resp));
+        Ok(match result {
         Ok(info) => {
             let json = serde_json::json!({
                 "svn": info.svn,
                 "ciPkIdListForVerification": info.ci_pkid_verification,
                 "ciPkIdListForSigning": info.ci_pkid_signing,
             });
-            new_jstring(&env, &json.to_string())
-        }
-        Err(_) => std::ptr::null_mut(),
-    }
+            new_jstring(env, &json.to_string())
+            }
+            Err(_) => std::ptr::null_mut(),
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }

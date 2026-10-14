@@ -9,34 +9,30 @@ use crate::wire::{PreKeySignalMessage, SenderKeyDistributionMessage, SignalMessa
 use crate::OsRng;
 use jni::objects::{JByteArray, JClass, JObject};
 use jni::sys::{jboolean, jbyteArray, jint, jobjectArray};
-use jni::JNIEnv;
-use rand_core::RngCore;
+use jni::{Env, EnvUnowned, jni_str};
+use rand_core::Rng;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn bytes_in<'a>(env: &mut JNIEnv<'a>, arr: &JByteArray<'a>) -> Option<Vec<u8>> {
+fn bytes_in<'a>(env: &mut Env, arr: &JByteArray<'a>) -> Option<Vec<u8>> {
     if arr.is_null() {
         return None;
     }
     env.convert_byte_array(arr).ok()
 }
 
-fn bytes_out<'a>(env: &mut JNIEnv<'a>, data: &[u8]) -> jbyteArray {
+fn bytes_out(env: &mut Env, data: &[u8]) -> jbyteArray {
     match env.byte_array_from_slice(data) {
         Ok(a) => a.into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
 }
 
-fn pair_out<'a>(env: &mut JNIEnv<'a>, a: &[u8], b: &[u8]) -> jobjectArray {
-    let cls = match env.find_class("[B") {
-        Ok(c) => c,
-        Err(_) => return std::ptr::null_mut(),
-    };
-    let arr = match env.new_object_array(2, &cls, JObject::null()) {
+fn pair_out(env: &mut Env, a: &[u8], b: &[u8]) -> jobjectArray {
+    let arr = match env.new_object_type_array::<JByteArray>(2, JByteArray::null()) {
         Ok(o) => o,
         Err(_) => return std::ptr::null_mut(),
     };
@@ -48,20 +44,14 @@ fn pair_out<'a>(env: &mut JNIEnv<'a>, a: &[u8], b: &[u8]) -> jobjectArray {
         Ok(x) => x,
         Err(_) => return std::ptr::null_mut(),
     };
-    if env.set_object_array_element(&arr, 0, ja).is_err()
-        || env.set_object_array_element(&arr, 1, jb).is_err()
-    {
+    if arr.set_element(env, 0, &ja).is_err() || arr.set_element(env, 1, &jb).is_err() {
         return std::ptr::null_mut();
     }
     arr.into_raw()
 }
 
-fn triple_out<'a>(env: &mut JNIEnv<'a>, a: &[u8], b: &[u8], c: &[u8]) -> jobjectArray {
-    let cls = match env.find_class("[B") {
-        Ok(cl) => cl,
-        Err(_) => return std::ptr::null_mut(),
-    };
-    let arr = match env.new_object_array(3, &cls, JObject::null()) {
+fn triple_out(env: &mut Env, a: &[u8], b: &[u8], c: &[u8]) -> jobjectArray {
+    let arr = match env.new_object_type_array::<JByteArray>(3, JByteArray::null()) {
         Ok(o) => o,
         Err(_) => return std::ptr::null_mut(),
     };
@@ -77,17 +67,17 @@ fn triple_out<'a>(env: &mut JNIEnv<'a>, a: &[u8], b: &[u8], c: &[u8]) -> jobject
         Ok(x) => x,
         Err(_) => return std::ptr::null_mut(),
     };
-    if env.set_object_array_element(&arr, 0, ja).is_err()
-        || env.set_object_array_element(&arr, 1, jb).is_err()
-        || env.set_object_array_element(&arr, 2, jc).is_err()
+    if arr.set_element(env, 0, &ja).is_err()
+        || arr.set_element(env, 1, &jb).is_err()
+        || arr.set_element(env, 2, &jc).is_err()
     {
         return std::ptr::null_mut();
     }
     arr.into_raw()
 }
 
-fn throw_runtime<'a>(env: &mut JNIEnv<'a>, msg: &str) {
-    let _ = env.throw_new("java/lang/RuntimeException", msg);
+fn throw_runtime(env: &mut Env, msg: &str) {
+    let _ = env.throw_new(jni_str!("java/lang/RuntimeException"), msg);
 }
 
 fn parse_32(label: &str, data: &[u8]) -> Result<[u8; 32], String> {
@@ -112,7 +102,7 @@ fn parse_64(label: &str, data: &[u8]) -> Result<[u8; 64], String> {
 // Inner implementations (panic-safe)
 // ---------------------------------------------------------------------------
 
-fn generate_keypair_inner<'a>(env: &mut JNIEnv<'a>) -> jbyteArray {
+fn generate_keypair_inner(env: &mut Env) -> jbyteArray {
     let mut rng = OsRng;
     let (priv_b, pub_b) = crypto::generate_key_pair(&mut rng);
     let mut out = Vec::with_capacity(64);
@@ -122,7 +112,7 @@ fn generate_keypair_inner<'a>(env: &mut JNIEnv<'a>) -> jbyteArray {
 }
 
 fn public_from_private_inner<'a>(
-    env: &mut JNIEnv<'a>,
+    env: &Env,
     private: JByteArray<'a>,
 ) -> jbyteArray {
     let priv_bytes = match bytes_in(env, &private) {
@@ -144,7 +134,7 @@ fn public_from_private_inner<'a>(
 }
 
 fn x25519_agreement_inner<'a>(
-    env: &mut JNIEnv<'a>,
+    env: &Env,
     private: JByteArray<'a>,
     public: JByteArray<'a>,
 ) -> jbyteArray {
@@ -174,7 +164,7 @@ fn x25519_agreement_inner<'a>(
 }
 
 fn sign_inner<'a>(
-    env: &mut JNIEnv<'a>,
+    env: &Env,
     private: JByteArray<'a>,
     message: JByteArray<'a>,
 ) -> jbyteArray {
@@ -200,7 +190,7 @@ fn sign_inner<'a>(
 }
 
 fn verify_inner<'a>(
-    env: &mut JNIEnv<'a>,
+    env: &Env,
     public: JByteArray<'a>,
     message: JByteArray<'a>,
     signature: JByteArray<'a>,
@@ -230,7 +220,7 @@ fn verify_inner<'a>(
 
 #[allow(clippy::too_many_arguments)]
 fn process_prekey_bundle_inner<'a>(
-    env: &mut JNIEnv<'a>,
+    env: &Env,
     local_priv: JByteArray<'a>,
     local_pub: JByteArray<'a>,
     local_reg_id: jint,
@@ -355,7 +345,7 @@ fn process_prekey_bundle_inner<'a>(
 }
 
 fn encrypt_inner<'a>(
-    env: &mut JNIEnv<'a>,
+    env: &Env,
     session_bytes: JByteArray<'a>,
     plaintext: JByteArray<'a>,
 ) -> jobjectArray {
@@ -393,7 +383,7 @@ fn encrypt_inner<'a>(
 }
 
 fn decrypt_message_inner<'a>(
-    env: &mut JNIEnv<'a>,
+    env: &Env,
     session_bytes: JByteArray<'a>,
     ciphertext: JByteArray<'a>,
 ) -> jobjectArray {

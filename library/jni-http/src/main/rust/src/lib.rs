@@ -10,9 +10,9 @@
 //!   allocated a `NativeHttpResponse` and Rust read four fields back out with `GetFieldID` +
 //!   `GetObjectField`, which is four extra JNI round trips per request.
 //! * **No per-call lookups.** The class and method id are resolved once into a
-//!   [`jni::objects::GlobalRef`] and reused, instead of `FindClass` on every request.
-//! * **No thread churn for callers already on a JNI thread.** [`Bridge::with_env`] borrows the
-//!   caller's `JNIEnv`; only background threads pay `attach_current_thread`.
+//!   [`jni::objects::Global`] and reused, instead of `FindClass` on every request.
+//! * **No thread churn for callers already on a JNI thread.** [`request_with_env`] borrows the
+//!   caller's `Env`; only background threads pay `attach_current_thread`.
 //! * **Failures are data, not exceptions.** A transport error comes back as status 0 with the
 //!   message in the body, so Rust never has to `ExceptionCheck` between calls.
 //!
@@ -22,15 +22,10 @@ pub mod frame;
 
 use std::sync::OnceLock;
 
-use jni::objects::{GlobalRef, JByteArray, JObject, JString, JValue};
-use jni::{JNIEnv, JavaVM};
+use jni::objects::{Global, JByteArray, JClass, JObject, JString, JValue};
+use jni::{Env, JavaVM, jni_sig, jni_str};
 
 pub use frame::{Header, ResponseFrame};
-
-const BRIDGE_CLASS: &str = "com/vayunmathur/library/network/NativeHttpBridge";
-const REQUEST_METHOD: &str = "request";
-/// `(ILjava/lang/String;[B[B)[B` — method ordinal, url, packed headers, body → packed response.
-const REQUEST_SIG: &str = "(ILjava/lang/String;[B[B)[B";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {
@@ -56,12 +51,18 @@ impl std::fmt::Display for Error {
     }
 }
 
+impl From<jni::errors::Error> for Error {
+    fn from(value: jni::errors::Error) -> Self {
+        Error::Bridge(value.to_string())
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Cached JVM handle and bridge class, resolved once per process.
 struct Cached {
     vm: JavaVM,
-    class: GlobalRef,
+    class: Global<JClass<'static>>,
 }
 
 static CACHED: OnceLock<Cached> = OnceLock::new();
@@ -71,11 +72,14 @@ static CACHED: OnceLock<Cached> = OnceLock::new();
 /// Call once from any JNI entry point before background threads need the bridge; calling it
 /// again is harmless. Returns false if the class could not be found, which means the calling
 /// module is missing a dependency on `library:network`.
-pub fn init(env: &mut JNIEnv) -> bool {
+pub fn init(env: &mut Env) -> bool {
     if CACHED.get().is_some() {
         return true;
     }
-    let (Ok(vm), Ok(class)) = (env.get_java_vm(), env.find_class(BRIDGE_CLASS)) else {
+    let (Ok(vm), Ok(class)) = (
+        env.get_java_vm(),
+        env.find_class(jni_str!("com/vayunmathur/library/network/NativeHttpBridge"))
+    ) else {
         let _ = env.exception_clear();
         return false;
     };
@@ -91,11 +95,11 @@ fn cached() -> Result<&'static Cached> {
         .ok_or_else(|| Error::Bridge("bridge not initialised; call jni_http::init first".into()))
 }
 
-/// Performs a request using an existing `JNIEnv`.
+/// Performs a request using an existing `Env`.
 ///
 /// Prefer this on threads that entered from Java — it avoids an attach/detach per call.
 pub fn request_with_env(
-    env: &mut JNIEnv,
+    env: &mut Env,
     method: Method,
     url: &str,
     headers: &[Header],
@@ -120,8 +124,8 @@ pub fn request_with_env(
     let result = env
         .call_static_method(
             class,
-            REQUEST_METHOD,
-            REQUEST_SIG,
+            jni_str!("request"),
+            jni_sig!("(ILjava/lang/String;[B[B)[B"),
             &[
                 JValue::Int(method as i32),
                 JValue::Object(&jurl),
@@ -140,7 +144,7 @@ pub fn request_with_env(
         return Err(Error::Transport("bridge returned null".into()));
     }
     let bytes = env
-        .convert_byte_array(JByteArray::from(object))
+        .convert_byte_array(env.cast_local::<JByteArray>(object)?)
         .map_err(|e| Error::Bridge(format!("reading response frame: {e}")))?;
 
     let frame = ResponseFrame::decode(&bytes)
@@ -153,7 +157,7 @@ pub fn request_with_env(
 
 /// Performs a request from a thread that may not be attached to the JVM.
 ///
-/// Attaches for the duration of the call. On a thread that already has a `JNIEnv`, use
+/// Attaches for the duration of the call. On a thread that already has an `Env`, use
 /// [`request_with_env`] instead.
 pub fn request(
     method: Method,
@@ -161,11 +165,10 @@ pub fn request(
     headers: &[Header],
     body: Option<&[u8]>,
 ) -> Result<ResponseFrame> {
-    let mut guard = cached()?
+    let cached = cached()?;
+    cached
         .vm
-        .attach_current_thread()
-        .map_err(|e| Error::Bridge(format!("attach failed: {e}")))?;
-    request_with_env(&mut guard, method, url, headers, body)
+        .attach_current_thread(|env| request_with_env(env, method, url, headers, body))
 }
 
 /// Convenience for a GET with no extra headers.

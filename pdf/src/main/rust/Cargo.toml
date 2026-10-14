@@ -14,19 +14,19 @@ crate-type = ["cdylib"]
 # armv8-only: aarch64-linux-android target, no windows/wasm deps in normal edges.
 # lopdf default includes chrono->windows-link + jiff + time + rayon – not needed for core filter/crypto/image extraction path we use in safe viewer.
 # Trim default to only serde (still safe for XObject parsing). Date fields fallback to None if feature disabled.
-lopdf = { version = "0.36", default-features = false, features = ["serde"] }
-ttf-parser = { version = "0.25", default-features = false, features = ["std", "glyph-names"] }
+lopdf = { workspace = true, default-features = false, features = ["serde"] }
+ttf-parser = { workspace = true, default-features = false, features = ["std", "glyph-names"] }
 jni.workspace = true
-jpeg-decoder = { version = "0.3.2", default-features = false }
+jpeg-decoder.workspace = true
 fax.workspace = true
 flate2.workspace = true
-hayro-jbig2 = { version = "0.3", default-features = false, features = ["std"] }
+hayro-jbig2 = { workspace = true, default-features = false, features = ["std"] }
 
 openjp2.workspace = true
 md-5.workspace = true
 aes.workspace = true
-sha2 = { version = "0.11", features = ["oid"] }
-indexmap = { version = "2.10.0" }
+sha2 = { workspace = true, features = ["oid"] }
+indexmap.workspace = true
 getrandom.workspace = true
 
 # Signing (features preserved per no-feature-loss)
@@ -35,6 +35,7 @@ getrandom.workspace = true
 # der + rand stay: der is used pervasively for ASN.1 (fonts/filters/decrypt), rand is used
 # by decrypt.rs (OsRng) for encryption. const-oid still comes in transitively via der.
 rand.workspace = true
+rand_core.workspace = true
 der.workspace = true
 
 [dev-dependencies]
@@ -54,4 +55,4 @@ der.workspace = true
 # `src/reference_diff_tests.rs` for the full argument and the caveat that
 # `hayro-jbig2` is a SHARED component (also a normal dependency above), so JBIG2
 # is deliberately outside the differential corpus.
-hayro = "0.7.1"
+hayro.workspace = true

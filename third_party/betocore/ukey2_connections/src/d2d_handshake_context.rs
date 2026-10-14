@@ -49,7 +49,7 @@ pub enum HandleMessageError {
 /// both the initiator and responder handshake roles.
 pub trait D2DHandshakeContext<R = rand::rngs::StdRng>: Send
 where
-    R: rand::RngCore + rand::CryptoRng + rand::SeedableRng + Send,
+    R: rand::CryptoRng + rand::SeedableRng + Send,
 {
     /// Tells the caller whether the handshake has completed or not. If the handshake is complete,
     /// the caller may call [`to_connection_context`][Self::to_connection_context] to obtain a
@@ -100,7 +100,7 @@ enum InitiatorState<C: CryptoProvider> {
 /// Implementation of [`D2DHandshakeContext`] for the initiator (a.k.a the client).
 pub struct InitiatorD2DHandshakeContext<C: CryptoProvider, R = rand::rngs::StdRng>
 where
-    R: rand::RngCore + rand::CryptoRng + rand::SeedableRng + Send,
+    R: rand::CryptoRng + rand::SeedableRng + Send,
 {
     state: InitiatorState<C>,
     rng: R,
@@ -108,13 +108,13 @@ where
 
 impl<C: CryptoProvider> InitiatorD2DHandshakeContext<C, rand::rngs::StdRng> {
     pub fn new(handshake_impl: HandshakeImplementation, next_protocols: Vec<NextProtocol>) -> Self {
-        Self::new_impl(handshake_impl, rand::rngs::StdRng::from_entropy(), next_protocols)
+        Self::new_impl(handshake_impl, crate::os_rng(), next_protocols)
     }
 }
 
 impl<C: CryptoProvider, R> InitiatorD2DHandshakeContext<C, R>
 where
-    R: rand::RngCore + rand::CryptoRng + rand::SeedableRng + Send,
+    R: rand::CryptoRng + rand::SeedableRng + Send,
 {
     // Used for testing / fuzzing only.
     #[doc(hidden)]
@@ -130,7 +130,7 @@ where
 
 impl<C: CryptoProvider, R> D2DHandshakeContext<R> for InitiatorD2DHandshakeContext<C, R>
 where
-    R: rand::RngCore + rand::CryptoRng + rand::SeedableRng + Send,
+    R: rand::CryptoRng + rand::SeedableRng + Send,
 {
     fn is_handshake_complete(&self) -> bool {
         match self.state {
@@ -168,7 +168,7 @@ where
     fn to_connection_context(&mut self) -> Result<D2DConnectionContextV1<R>, HandshakeError> {
         // Since self.rng is expected to be a seeded PRNG, not an OsRng directly, from_rng
         // should never fail. https://rust-random.github.io/book/guide-err.html
-        let rng = R::from_rng(&mut self.rng).unwrap();
+        let rng = R::from_rng(&mut self.rng);
         self.completed_handshake()
             .map(|h| D2DConnectionContextV1::from_initiator_handshake::<C>(h, rng))
     }
@@ -212,7 +212,7 @@ where
 
 impl<C: CryptoProvider> ServerD2DHandshakeContext<C, rand::rngs::StdRng> {
     pub fn new(handshake_impl: HandshakeImplementation, next_protocols: &[NextProtocol]) -> Self {
-        Self::new_impl(handshake_impl, rand::rngs::StdRng::from_entropy(), next_protocols)
+        Self::new_impl(handshake_impl, crate::os_rng(), next_protocols)
     }
 }
 
@@ -281,7 +281,7 @@ where
     fn to_connection_context(&mut self) -> Result<D2DConnectionContextV1<R>, HandshakeError> {
         // Since self.rng is expected to be a seeded PRNG, not an OsRng directly, from_rng
         // should never fail. https://rust-random.github.io/book/guide-err.html
-        let rng = R::from_rng(&mut self.rng).unwrap();
+        let rng = R::from_rng(&mut self.rng);
         self.completed_handshake()
             .map(|h| D2DConnectionContextV1::from_responder_handshake::<C>(h, rng))
     }

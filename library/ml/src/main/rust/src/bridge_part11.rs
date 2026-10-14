@@ -182,7 +182,7 @@ fn argmax(logits: &[f32]) -> u32 {
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createGemma4<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     text_fd: jint,
     text_offset: jlong,
@@ -197,51 +197,54 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createGemma4<'l>
     // Bytes of KV cache this device will spend. See `gemma4::tier_for`.
     budget: jlong,
 ) -> jlong {
-    // Both descriptors are adopted before anything may fail. The caller detached them, so a path
-    // that returns without wrapping one leaks it for the life of the process - and there are
-    // three here (the head is optional), so the usual single-`fd` shape is not enough.
-    if text_fd < 0 || embed_fd < 0 {
-        log(&format!("gemma4 is unavailable: descriptors {text_fd} and {embed_fd}"));
-        return 0;
-    }
-    // SAFETY: the caller detached both, so nothing else owns them, and `File` closes them on drop
-    // including on every failure path below.
-    let text = unsafe { File::from_raw_fd(text_fd) };
-    let embed = unsafe { File::from_raw_fd(embed_fd) };
-    // The head file is optional: -1 means absent (old downloads), and native
-    // falls back to the host head. A non-negative fd is adopted like the rest.
-    let head: Option<File> = if head_fd >= 0 {
-        // SAFETY: same contract as text/embed above.
-        Some(unsafe { File::from_raw_fd(head_fd) })
-    } else {
-        None
-    };
-    let spans = (
-        u64::try_from(text_offset),
-        u64::try_from(text_length),
-        u64::try_from(embed_offset),
-        u64::try_from(embed_length),
-        u64::try_from(head_offset),
-        u64::try_from(head_length),
-    );
-    let built = match spans {
-        (Ok(ta), Ok(tl), Ok(ea), Ok(el), Ok(ha), Ok(hl)) => {
-            build_gemma4(&mut env, text, ta, tl, embed, ea, el, head, ha, hl, &tokenizer, budget.max(0) as u64)
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        // Both descriptors are adopted before anything may fail. The caller detached them, so a path
+        // that returns without wrapping one leaks it for the life of the process - and there are
+        // three here (the head is optional), so the usual single-`fd` shape is not enough.
+        if text_fd < 0 || embed_fd < 0 {
+            log(&format!("gemma4 is unavailable: descriptors {text_fd} and {embed_fd}"));
+            return Ok(0);
         }
-        _ => Err("a graph span that is not a positive offset and length".to_string()),
-    };
-    match built {
-        Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
-        Err(e) => {
-            log(&format!("gemma4 is unavailable: {e}"));
-            0
-        }
-    }
+        // SAFETY: the caller detached both, so nothing else owns them, and `File` closes them on drop
+        // including on every failure path below.
+        let text = unsafe { File::from_raw_fd(text_fd) };
+        let embed = unsafe { File::from_raw_fd(embed_fd) };
+        // The head file is optional: -1 means absent (old downloads), and native
+        // falls back to the host head. A non-negative fd is adopted like the rest.
+        let head: Option<File> = if head_fd >= 0 {
+            // SAFETY: same contract as text/embed above.
+            Some(unsafe { File::from_raw_fd(head_fd) })
+        } else {
+            None
+        };
+        let spans = (
+            u64::try_from(text_offset),
+            u64::try_from(text_length),
+            u64::try_from(embed_offset),
+            u64::try_from(embed_length),
+            u64::try_from(head_offset),
+            u64::try_from(head_length),
+        );
+        let built = match spans {
+            (Ok(ta), Ok(tl), Ok(ea), Ok(el), Ok(ha), Ok(hl)) => {
+                build_gemma4(env, text, ta, tl, embed, ea, el, head, ha, hl, &tokenizer, budget.max(0) as u64)
+            }
+            _ => Err("a graph span that is not a positive offset and length".to_string()),
+        };
+        Ok(match built {
+            Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
+            Err(e) => {
+                log(&format!("gemma4 is unavailable: {e}"));
+                0
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[allow(clippy::too_many_arguments)]
 fn build_gemma4<'l>(
-    env: &mut JNIEnv<'l>,
+    env: &Env,
     text: File,
     text_at: u64,
     text_len: u64,
@@ -347,32 +350,35 @@ fn build_gemma4<'l>(
 /// Called only by the JVM, with a live handle from `createGemma4`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_encodeGemma4<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     text: JString<'l>,
     specials: JObjectArray<'l>,
 ) -> jintArray {
-    if handle == 0 {
-        return std::ptr::null_mut();
-    }
-    // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live.
-    let handle = unsafe { &*(handle as *const Gemma4Handle) };
-    let encoded = match env.get_string(&text) {
-        Ok(text) => encode_gemma4(&mut env, handle, &String::from(text), &specials),
-        Err(e) => Err(format!("cannot read the prompt: {e}")),
-    };
-    match encoded {
-        Ok(ids) => match new_int_array(&mut env, &ids) {
-            Ok(array) => array,
+    env.with_env(|env| -> jni::errors::Result<jintArray> {
+        if handle == 0 {
+            return Ok(std::ptr::null_mut());
+        }
+        // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live.
+        let handle = unsafe { &*(handle as *const Gemma4Handle) };
+        let encoded = match text.try_to_string(env) {
+            Ok(text) => encode_gemma4(env, handle, &text, &specials),
+            Err(e) => Err(format!("cannot read the prompt: {e}")),
+        };
+        Ok(match encoded {
+            Ok(ids) => match new_int_array(env, &ids) {
+                Ok(array) => array,
+                Err(e) => {
+                    log(&format!("gemma4 cannot return its token ids: {e}"));
+                    std::ptr::null_mut()
+                }
+            },
             Err(e) => {
-                log(&format!("gemma4 cannot return its token ids: {e}"));
+                log(&format!("gemma4 cannot encode: {e}"));
                 std::ptr::null_mut()
             }
-        },
-        Err(e) => {
-            log(&format!("gemma4 cannot encode: {e}"));
-            std::ptr::null_mut()
-        }
-    }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }

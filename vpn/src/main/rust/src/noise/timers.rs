@@ -125,7 +125,7 @@ impl IndexMut<TimerName> for Timers {
     fn index_mut(&mut self, index: TimerName) -> &mut Duration { &mut self.timers[index as usize] }
 }
 
-impl<R: rand::RngCore + Send> Tunn<R> {
+impl<R: rand::Rng + Send> Tunn<R> {
     pub(super) fn timer_tick(&mut self, timer_name: TimerName) {
         let time = self.timers[TimeCurrent];
         match timer_name {

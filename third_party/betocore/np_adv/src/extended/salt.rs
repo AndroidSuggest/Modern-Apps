@@ -14,7 +14,7 @@
 
 //! Various representations of salts for extended advertisements.
 
-use nom::combinator;
+use nom::{combinator, Parser as _};
 
 use crypto_provider::{aes::ctr::AesCtrNonce, CryptoProvider, CryptoRng, FromCryptoRng};
 
@@ -73,7 +73,7 @@ impl ShortV1Salt {
     }
 
     pub(crate) fn parse(input: &[u8]) -> nom::IResult<&[u8], Self> {
-        combinator::map(parse_byte_array::<SHORT_SALT_LEN>, Self)(input)
+        combinator::map(parse_byte_array::<SHORT_SALT_LEN>, Self).parse(input)
     }
 }
 

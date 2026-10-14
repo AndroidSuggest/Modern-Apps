@@ -31,6 +31,7 @@ use crate::{
 };
 use array_view::ArrayView;
 use core::net;
+use nom::Parser as _;
 use sink::Sink;
 use strum_macros::FromRepr;
 
@@ -738,7 +739,8 @@ pub struct BleConnectivityInfo {
 fn parse_fixed_length_byte_array<const N: usize>(input: &[u8]) -> nom::IResult<&[u8], [u8; N]> {
     nom::combinator::map(nom::bytes::complete::take(N), |slice: &[u8]| {
         slice.try_into().expect("We took N bytes, but we also didn't?")
-    })(input)
+    })
+    .parse(input)
 }
 
 impl ConnectivityInfoComponent for BleConnectivityInfo {
@@ -781,7 +783,8 @@ impl ConnectivityInfoComponent for BleConnectivityInfo {
     {
         let (remaining, bitmask) = nom::combinator::verify(nom::number::complete::u8, |bitmask| {
             (bitmask & BLE_BITMASK_DISALLOWED) == 0u8
-        })(payload)?;
+        })
+        .parse(payload)?;
         let has_mac = (bitmask & BLE_MAC_ADDRESS_BITMASK) > 0;
         let has_gatt_service_identifier = (bitmask & GATT_SERVICE_BITMASK) > 0;
         let has_psm = (bitmask & PSM_BITMASK) > 0;
@@ -823,7 +826,8 @@ impl ConnectivityInfoComponent for BleConnectivityInfo {
                 psm,
                 device_token,
             },
-        )(remaining)
+        )
+        .parse(remaining)
     }
 }
 
@@ -896,7 +900,8 @@ impl ConnectivityInfoComponent for WifiLanConnectivityInfo {
         let (after_bitmask, bitmask) =
             nom::combinator::verify(nom::number::complete::u8, |bitmask| {
                 (bitmask & WIFI_BITMASK_DISALLOWED) == 0u8
-            })(payload)?;
+            })
+            .parse(payload)?;
         let has_ipv4 = (bitmask & IPV4_BITMASK) > 0u8;
         let has_ipv6 = (bitmask & IPV6_BITMASK) > 0u8;
         let has_port = (bitmask & PORT_BITMASK) > 0u8;
@@ -905,10 +910,12 @@ impl ConnectivityInfoComponent for WifiLanConnectivityInfo {
             (false, false) => (after_bitmask, None),
             (true, false) => nom::combinator::map(parse_fixed_length_byte_array::<4>, |octets| {
                 Some(net::Ipv4Addr::from_bits(u32::from_be_bytes(octets)).into())
-            })(after_bitmask)?,
+            })
+            .parse(after_bitmask)?,
             (false, true) => nom::combinator::map(parse_fixed_length_byte_array::<16>, |octets| {
                 Some(net::Ipv6Addr::from_bits(u128::from_be_bytes(octets)).into())
-            })(after_bitmask)?,
+            })
+            .parse(after_bitmask)?,
             (true, true) => {
                 return Err(nom::Err::Failure(nom::error::Error::new(
                     after_bitmask,
@@ -925,7 +932,8 @@ impl ConnectivityInfoComponent for WifiLanConnectivityInfo {
                 nom::combinator::cond(has_bssid, parse_fixed_length_byte_array::<WIFI_BSSID_LEN>),
             ),
             move |(port, bssid)| Self { ip, port, bssid },
-        )(after_ip)
+        )
+        .parse(after_ip)
     }
 }
 

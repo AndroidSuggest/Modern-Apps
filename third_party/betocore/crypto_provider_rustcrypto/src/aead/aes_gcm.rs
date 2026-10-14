@@ -21,34 +21,32 @@ use alloc::vec::Vec;
 
 // RustCrypto defined traits and types
 use aes::cipher::typenum::consts::{U12, U16};
-use aes::cipher::BlockCipher;
-use aes::cipher::BlockEncrypt;
+use aes::cipher::BlockCipherEncrypt;
 #[cfg(feature = "alloc")]
 use aes_gcm::aead::Aead as _;
-use aes_gcm::aead::KeyInit;
-use aes_gcm::AeadInPlace as _;
+use aes_gcm::aead::{inout::InOutBuf, AeadInOut, KeyInit};
 
 // CryptoProvider traits and types
 use crypto_provider::aead::{Aead, AeadError, AeadInit};
 
-pub struct AesGcm<A: BlockCipher<BlockSize = U16> + BlockEncrypt + KeyInit>(
+pub struct AesGcm<A: BlockCipherEncrypt<BlockSize = U16> + KeyInit>(
     aes_gcm::AesGcm<A, U12>,
 );
 
-impl<A: BlockCipher<BlockSize = U16> + BlockEncrypt + KeyInit> crypto_provider::aead::AesGcm
+impl<A: BlockCipherEncrypt<BlockSize = U16> + KeyInit> crypto_provider::aead::AesGcm
     for AesGcm<A>
 {
 }
 
-impl<K: crypto_provider::aes::AesKey, A: BlockCipher<BlockSize = U16> + BlockEncrypt + KeyInit>
+impl<K: crypto_provider::aes::AesKey, A: BlockCipherEncrypt<BlockSize = U16> + KeyInit>
     AeadInit<K> for AesGcm<A>
 {
     fn new(key: &K) -> Self {
-        Self(aes_gcm::AesGcm::<A, U12>::new(key.as_slice().into()))
+        Self(aes_gcm::AesGcm::<A, U12>::new(aes_gcm::Key::<A>::from_slice(key.as_slice())))
     }
 }
 
-impl<A: aes::cipher::BlockCipher<BlockSize = U16> + BlockEncrypt + KeyInit> Aead for AesGcm<A> {
+impl<A: aes::cipher::BlockCipherEncrypt<BlockSize = U16> + KeyInit> Aead for AesGcm<A> {
     const TAG_SIZE: usize = 16;
     type Nonce = [u8; 12];
     type Tag = [u8; 16];
@@ -66,10 +64,17 @@ impl<A: aes::cipher::BlockCipher<BlockSize = U16> + BlockEncrypt + KeyInit> Aead
         aad: &[u8],
         nonce: &Self::Nonce,
     ) -> Result<Self::Tag, AeadError> {
-        self.0
-            .encrypt_in_place_detached(aes_gcm::Nonce::from_slice(nonce), aad, msg)
-            .map(|arr| arr.into())
-            .map_err(|_| AeadError)
+        let tag = self
+            .0
+            .encrypt_inout_detached(
+                aes_gcm::Nonce::from_slice(nonce),
+                aad,
+                InOutBuf::from(msg),
+            )
+            .map_err(|_| AeadError)?;
+        let mut out_tag = [0u8; 16];
+        out_tag.copy_from_slice(&tag);
+        Ok(out_tag)
     }
 
     #[cfg(feature = "alloc")]
@@ -87,7 +92,12 @@ impl<A: aes::cipher::BlockCipher<BlockSize = U16> + BlockEncrypt + KeyInit> Aead
         tag: &Self::Tag,
     ) -> Result<(), AeadError> {
         self.0
-            .decrypt_in_place_detached(aes_gcm::Nonce::from_slice(nonce), aad, msg, tag.into())
+            .decrypt_inout_detached(
+                aes_gcm::Nonce::from_slice(nonce),
+                aad,
+                InOutBuf::from(msg),
+                tag.into(),
+            )
             .map_err(|_| AeadError)
     }
 }

@@ -1,5 +1,5 @@
 fn decrypt_prekey_inner<'a>(
-    env: &mut JNIEnv<'a>,
+    env: &Env,
     local_priv: JByteArray<'a>,
     local_pub: JByteArray<'a>,
     signed_pre_priv: JByteArray<'a>,
@@ -123,7 +123,7 @@ fn decrypt_prekey_inner<'a>(
 
 // Group
 
-fn create_sender_key_inner<'a>(env: &mut JNIEnv<'a>) -> jobjectArray {
+fn create_sender_key_inner(env: &mut Env) -> jobjectArray {
     let mut rng = OsRng;
     let (state, skdm) = group::create(&mut rng);
     let state_bytes = state.serialize();
@@ -131,7 +131,7 @@ fn create_sender_key_inner<'a>(env: &mut JNIEnv<'a>) -> jobjectArray {
     pair_out(env, &state_bytes, &skdm_bytes)
 }
 
-fn process_sender_key_inner<'a>(env: &mut JNIEnv<'a>, skdm_bytes: JByteArray<'a>) -> jbyteArray {
+fn process_sender_key_inner<'a>(env: &mut Env, skdm_bytes: JByteArray<'a>) -> jbyteArray {
     let skdm_b = match bytes_in(env, &skdm_bytes) {
         Some(b) => b,
         None => {
@@ -157,7 +157,7 @@ fn process_sender_key_inner<'a>(env: &mut JNIEnv<'a>, skdm_bytes: JByteArray<'a>
 }
 
 fn encrypt_group_inner<'a>(
-    env: &mut JNIEnv<'a>,
+    env: &Env,
     state_bytes: JByteArray<'a>,
     plaintext: JByteArray<'a>,
 ) -> jobjectArray {
@@ -195,7 +195,7 @@ fn encrypt_group_inner<'a>(
 }
 
 fn decrypt_group_inner<'a>(
-    env: &mut JNIEnv<'a>,
+    env: &Env,
     state_bytes: JByteArray<'a>,
     ciphertext: JByteArray<'a>,
 ) -> jobjectArray {
@@ -237,99 +237,114 @@ fn decrypt_group_inner<'a>(
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWhatsAppCrypto_generateKeyPair<'local>(
-    mut env: JNIEnv<'local>,
+    mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
 ) -> jbyteArray {
-    match catch_unwind(AssertUnwindSafe(|| generate_keypair_inner(&mut env))) {
-        Ok(v) => v,
-        Err(_) => {
-            let _ = env.exception_clear();
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                "Native panic in generateKeyPair",
-            );
-            std::ptr::null_mut()
+    env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+        match catch_unwind(AssertUnwindSafe(|| generate_keypair_inner(env))) {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                let _ = env.exception_clear();
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    "Native panic in generateKeyPair",
+                );
+                Ok(std::ptr::null_mut())
+            }
         }
-    }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWhatsAppCrypto_publicFromPrivate<'local>(
-    mut env: JNIEnv<'local>,
+    mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     private: JByteArray<'local>,
 ) -> jbyteArray {
-    match catch_unwind(AssertUnwindSafe(|| public_from_private_inner(&mut env, private))) {
-        Ok(v) => v,
-        Err(_) => {
-            let _ = env.exception_clear();
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                "Native panic in publicFromPrivate",
-            );
-            std::ptr::null_mut()
+    env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+        match catch_unwind(AssertUnwindSafe(|| public_from_private_inner(env, private))) {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                let _ = env.exception_clear();
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    "Native panic in publicFromPrivate",
+                );
+                Ok(std::ptr::null_mut())
+            }
         }
-    }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWhatsAppCrypto_x25519Agreement<'local>(
-    mut env: JNIEnv<'local>,
+    mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     private: JByteArray<'local>,
     public: JByteArray<'local>,
 ) -> jbyteArray {
-    match catch_unwind(AssertUnwindSafe(|| x25519_agreement_inner(&mut env, private, public))) {
-        Ok(v) => v,
-        Err(_) => {
-            let _ = env.exception_clear();
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                "Native panic in x25519Agreement",
-            );
-            std::ptr::null_mut()
+    env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+        match catch_unwind(AssertUnwindSafe(|| x25519_agreement_inner(env, private, public))) {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                let _ = env.exception_clear();
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    "Native panic in x25519Agreement",
+                );
+                Ok(std::ptr::null_mut())
+            }
         }
-    }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWhatsAppCrypto_sign<'local>(
-    mut env: JNIEnv<'local>,
+    mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     private: JByteArray<'local>,
     message: JByteArray<'local>,
 ) -> jbyteArray {
-    match catch_unwind(AssertUnwindSafe(|| sign_inner(&mut env, private, message))) {
-        Ok(v) => v,
-        Err(_) => {
-            let _ = env.exception_clear();
-            let _ = env.throw_new("java/lang/RuntimeException", "Native panic in sign");
-            std::ptr::null_mut()
+    env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+        match catch_unwind(AssertUnwindSafe(|| sign_inner(env, private, message))) {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                let _ = env.exception_clear();
+                let _ = env.throw_new("java/lang/RuntimeException", "Native panic in sign");
+                Ok(std::ptr::null_mut())
+            }
         }
-    }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWhatsAppCrypto_verify<'local>(
-    mut env: JNIEnv<'local>,
+    mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     public: JByteArray<'local>,
     message: JByteArray<'local>,
     signature: JByteArray<'local>,
 ) -> jboolean {
-    match catch_unwind(AssertUnwindSafe(|| verify_inner(&mut env, public, message, signature))) {
-        Ok(v) => v,
-        Err(_) => {
-            let _ = env.exception_clear();
-            0
+    env.with_env(|env| -> jni::errors::Result<jboolean> {
+        match catch_unwind(AssertUnwindSafe(|| verify_inner(env, public, message, signature))) {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                let _ = env.exception_clear();
+                Ok(0)
+            }
         }
-    }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
 pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWhatsAppCrypto_processPreKeyBundle<'local>(
-    mut env: JNIEnv<'local>,
+    mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     local_private: JByteArray<'local>,
     local_public: JByteArray<'local>,
@@ -342,73 +357,82 @@ pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWh
     signed_pre_key_sig: JByteArray<'local>,
     identity_key: JByteArray<'local>,
 ) -> jbyteArray {
-    match catch_unwind(AssertUnwindSafe(|| {
-        process_prekey_bundle_inner(
-            &mut env,
-            local_private,
-            local_public,
-            local_reg_id,
-            reg_id,
-            pre_key_id,
-            pre_key_public,
-            signed_pre_key_id,
-            signed_pre_key_public,
-            signed_pre_key_sig,
-            identity_key,
-        )
-    })) {
-        Ok(v) => v,
-        Err(_) => {
-            let _ = env.exception_clear();
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                "Native panic in processPreKeyBundle",
-            );
-            std::ptr::null_mut()
+    env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+        match catch_unwind(AssertUnwindSafe(|| {
+            process_prekey_bundle_inner(
+                env,
+                local_private,
+                local_public,
+                local_reg_id,
+                reg_id,
+                pre_key_id,
+                pre_key_public,
+                signed_pre_key_id,
+                signed_pre_key_public,
+                signed_pre_key_sig,
+                identity_key,
+            )
+        })) {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                let _ = env.exception_clear();
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    "Native panic in processPreKeyBundle",
+                );
+                Ok(std::ptr::null_mut())
+            }
         }
-    }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWhatsAppCrypto_encrypt<'local>(
-    mut env: JNIEnv<'local>,
+    mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     session: JByteArray<'local>,
     plaintext: JByteArray<'local>,
 ) -> jobjectArray {
-    match catch_unwind(AssertUnwindSafe(|| encrypt_inner(&mut env, session, plaintext))) {
-        Ok(v) => v,
-        Err(_) => {
-            let _ = env.exception_clear();
-            let _ = env.throw_new("java/lang/RuntimeException", "Native panic in encrypt");
-            std::ptr::null_mut()
+    env.with_env(|env| -> jni::errors::Result<jobjectArray> {
+        match catch_unwind(AssertUnwindSafe(|| encrypt_inner(env, session, plaintext))) {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                let _ = env.exception_clear();
+                let _ = env.throw_new("java/lang/RuntimeException", "Native panic in encrypt");
+                Ok(std::ptr::null_mut())
+            }
         }
-    }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWhatsAppCrypto_decryptMessage<'local>(
-    mut env: JNIEnv<'local>,
+    mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     session: JByteArray<'local>,
     ciphertext: JByteArray<'local>,
 ) -> jobjectArray {
-    match catch_unwind(AssertUnwindSafe(|| decrypt_message_inner(&mut env, session, ciphertext))) {
-        Ok(v) => v,
-        Err(_) => {
-            let _ = env.exception_clear();
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                "Native panic in decryptMessage",
-            );
-            std::ptr::null_mut()
+    env.with_env(|env| -> jni::errors::Result<jobjectArray> {
+        match catch_unwind(AssertUnwindSafe(|| decrypt_message_inner(env, session, ciphertext))) {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                let _ = env.exception_clear();
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    "Native panic in decryptMessage",
+                );
+                Ok(std::ptr::null_mut())
+            }
         }
-    }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWhatsAppCrypto_decryptPreKeyMessage<'local>(
-    mut env: JNIEnv<'local>,
+    mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     local_private: JByteArray<'local>,
     local_public: JByteArray<'local>,
@@ -416,24 +440,27 @@ pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWh
     one_time_private: JByteArray<'local>,
     prekey_bytes: JByteArray<'local>,
 ) -> jobjectArray {
-    match catch_unwind(AssertUnwindSafe(|| {
-        decrypt_prekey_inner(
-            &mut env,
-            local_private,
-            local_public,
-            signed_private,
-            one_time_private,
-            prekey_bytes,
-        )
-    })) {
-        Ok(v) => v,
-        Err(_) => {
-            let _ = env.exception_clear();
-            let _ = env.throw_new(
-                "java/lang/RuntimeException",
-                "Native panic in decryptPreKeyMessage",
-            );
-            std::ptr::null_mut()
+    env.with_env(|env| -> jni::errors::Result<jobjectArray> {
+        match catch_unwind(AssertUnwindSafe(|| {
+            decrypt_prekey_inner(
+                env,
+                local_private,
+                local_public,
+                signed_private,
+                one_time_private,
+                prekey_bytes,
+            )
+        })) {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                let _ = env.exception_clear();
+                let _ = env.throw_new(
+                    "java/lang/RuntimeException",
+                    "Native panic in decryptPreKeyMessage",
+                );
+                Ok(std::ptr::null_mut())
+            }
         }
-    }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }

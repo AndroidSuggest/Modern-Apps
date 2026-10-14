@@ -7,7 +7,7 @@
 
 use jni::objects::{JClass, JString, JValue};
 use jni::sys::{jboolean, jint, jstring};
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned, jni_sig, jni_str};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -40,27 +40,30 @@ thread_local! {
 /// carrier metadata, and the user can rename from the LUI.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeDownloadProfile<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     activation_code: JString<'l>,
 ) -> jstring {
-    // Resolve the HTTP bridge (library:network) once; harmless if already done.
-    jni_http::init(&mut env);
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        // Resolve the HTTP bridge (library:network) once; harmless if already done.
+        jni_http::init(env);
 
-    let Some(code) = read_string(&mut env, &activation_code) else {
-        let json = serde_json::json!({ "success": false, "message": "Invalid activation code" });
-        return new_jstring(&env, &json.to_string());
-    };
+        let Some(code) = read_string(env, &activation_code) else {
+            let json = serde_json::json!({ "success": false, "message": "Invalid activation code" });
+            return Ok(new_jstring(env, &json.to_string()));
+        };
 
-    let json = match crate::download::download_profile(&mut env, &code) {
-        Ok(result) => serde_json::json!({
-            "success": result.success,
-            "message": result.message,
-            "iccid": result.installed_iccid,
-        }),
-        Err(message) => serde_json::json!({ "success": false, "message": message }),
-    };
-    new_jstring(&env, &json.to_string())
+        let json = match crate::download::download_profile(env, &code) {
+            Ok(result) => serde_json::json!({
+                "success": result.success,
+                "message": result.message,
+                "iccid": result.installed_iccid,
+            }),
+            Err(message) => serde_json::json!({ "success": false, "message": message }),
+        };
+        Ok(new_jstring(env, &json.to_string()))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `nativeAuthenticate(activationCode, confirmationCode, tacHex, imei)` —
@@ -73,21 +76,22 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeDownloadProf
 /// `imei` is optional digits (dropped when blank/invalid).
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeAuthenticate<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     activation_code: JString<'l>,
     confirmation_code: JString<'l>,
     tac_hex: JString<'l>,
     imei: JString<'l>,
 ) -> jstring {
-    jni_http::init(&mut env);
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        jni_http::init(env);
 
-    let Some(code) = read_string(&mut env, &activation_code) else {
-        return auth_error(&env, "Invalid activation code");
-    };
-    let options = download_options(&mut env, &confirmation_code, &tac_hex, &imei);
+        let Some(code) = read_string(env, &activation_code) else {
+            return Ok(auth_error(env, "Invalid activation code"));
+        };
+        let options = download_options(env, &confirmation_code, &tac_hex, &imei);
     // Stash the authenticated session for finish/cancel.
-    let json = match crate::download::authenticate(&mut env, &code, &options) {
+    let json = match crate::download::authenticate(env, &code, &options) {
         Ok(session) => {
             let handle = session.transaction_id.clone();
             let reply = serde_json::json!({
@@ -121,7 +125,9 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeAuthenticate
             "ccRequired": false,
         }),
     };
-    new_jstring(&env, &json.to_string())
+    Ok(new_jstring(env, &json.to_string()))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `nativeFinishDownload(transactionId, confirmationCode)` — runs
@@ -132,29 +138,30 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeAuthenticate
 /// `nativeFinishDownload(transactionId, confirmationCode, nickname, callback)`
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeFinishDownload<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     transaction_id: JString<'l>,
     confirmation_code: JString<'l>,
     nickname: JString<'l>,
     callback: jni::objects::JObject<'l>,
 ) -> jstring {
-    jni_http::init(&mut env);
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        jni_http::init(env);
 
-    let Some(handle) = read_string(&mut env, &transaction_id) else {
-        return finish_json(&env, false, "Invalid download session");
-    };
-    let code = read_string(&mut env, &confirmation_code).filter(|c| !c.is_empty());
-    let nickname = read_string(&mut env, &nickname).filter(|c| !c.trim().is_empty());
-    let session = SESSION.with(|s| s.borrow_mut().remove(&handle));
-    let Some(session) = session else {
-        return finish_json(&env, false, "Download session expired — start again");
-    };
+        let Some(handle) = read_string(env, &transaction_id) else {
+            return Ok(finish_json(env, false, "Invalid download session"));
+        };
+        let code = read_string(env, &confirmation_code).filter(|c| !c.is_empty());
+        let nickname = read_string(env, &nickname).filter(|c| !c.trim().is_empty());
+        let session = SESSION.with(|s| s.borrow_mut().remove(&handle));
+        let Some(session) = session else {
+            return Ok(finish_json(env, false, "Download session expired — start again"));
+        };
 
-    let mut progress = JniProgress {
-        callback: env.new_global_ref(&callback).ok(),
-    };
-    let json = match crate::download::finish_download(&mut env, &session, code.as_deref(), &mut progress)
+        let mut progress = JniProgress {
+            callback: env.new_global_ref(&callback).ok(),
+        };
+        let json = match crate::download::finish_download(env, &session, code.as_deref(), &mut progress)
     {
         Ok(result) => {
             // Seed the profile nickname from the carrier preview while the
@@ -164,7 +171,7 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeFinishDownlo
                     let iccid = crate::es10::hex_decode(&result.installed_iccid);
                     if !iccid.is_empty() {
                         let _ = crate::jni::store_data(
-                            &mut env,
+                            env,
                             &crate::es10::build_set_nickname(&iccid, name.trim()),
                         );
                     }
@@ -178,7 +185,9 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeFinishDownlo
         }
         Err(message) => serde_json::json!({ "success": false, "message": message }),
     };
-    new_jstring(&env, &json.to_string())
+    Ok(new_jstring(env, &json.to_string()))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `nativeCancelDownload(transactionId, reason)` — ES10 CancelSession + ES9+
@@ -186,19 +195,22 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeFinishDownlo
 /// always consumes the session and returns true.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeCancelDownload<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     transaction_id: JString<'l>,
     reason: jint,
 ) -> jboolean {
-    let Some(handle) = read_string(&mut env, &transaction_id) else {
-        return 0;
-    };
-    let session = SESSION.with(|s| s.borrow_mut().remove(&handle));
-    if let Some(session) = session {
-        crate::download::cancel_session(&mut env, &session, cancel_reason(reason));
-    }
-    1
+    env.with_env(|env| -> jni::errors::Result<jboolean> {
+        let Some(handle) = read_string(env, &transaction_id) else {
+            return Ok(false);
+        };
+        let session = SESSION.with(|s| s.borrow_mut().remove(&handle));
+        if let Some(session) = session {
+            crate::download::cancel_session(env, &session, cancel_reason(reason));
+        }
+        Ok(true)
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +221,7 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeCancelDownlo
 /// args. Blank TAC hex falls back to [`es10b::DEFAULT_TAC`]; blank IMEI is
 /// dropped; blank confirmation code is dropped.
 fn download_options(
-    env: &mut JNIEnv,
+    env: &mut Env,
     confirmation_code: &JString,
     tac_hex: &JString,
     imei: &JString,
@@ -260,7 +272,7 @@ fn empty_to_null(s: &str) -> serde_json::Value {
 }
 
 /// Authenticate-path error reply.
-fn auth_error(env: &JNIEnv, message: &str) -> jstring {
+fn auth_error(env: &mut Env, message: &str) -> jstring {
     let json = serde_json::json!({
         "error": message,
         "transactionId": serde_json::Value::Null,
@@ -273,7 +285,7 @@ fn auth_error(env: &JNIEnv, message: &str) -> jstring {
 }
 
 /// Finish-path `{success, message}` reply.
-fn finish_json(env: &JNIEnv, success: bool, message: &str) -> jstring {
+fn finish_json(env: &mut Env, success: bool, message: &str) -> jstring {
     let json = serde_json::json!({ "success": success, "message": message });
     new_jstring(env, &json.to_string())
 }
@@ -283,19 +295,19 @@ fn finish_json(env: &JNIEnv, success: bool, message: &str) -> jstring {
 /// callback cannot be retained as a global ref (OOM), progress degrades to a
 /// no-op and the install still proceeds.
 struct JniProgress {
-    callback: Option<jni::objects::GlobalRef>,
+    callback: Option<jni::objects::Global<jni::objects::JObject<'static>>>,
 }
 
 impl download::ProgressCallback for JniProgress {
-    fn on_progress(&mut self, env: &mut JNIEnv, done: usize, total: usize) -> bool {
+    fn on_progress(&mut self, env: &mut Env, done: usize, total: usize) -> bool {
         let Some(callback) = &self.callback else {
             return true;
         };
         let result = env
             .call_method(
                 callback.as_obj(),
-                "onProgress",
-                "(II)Z",
+                jni_str!("onProgress"),
+                jni_sig!("(II)Z"),
                 &[JValue::Int(done as jint), JValue::Int(total as jint)],
             )
             .and_then(|v| v.z());

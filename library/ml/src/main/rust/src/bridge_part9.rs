@@ -28,7 +28,7 @@ fn gemma4_audio_plan(offsets: &Offsets, mode: gemma4_audio::Mode) -> Result<Plan
 /// Called only by the JVM, with a descriptor the caller detached and nothing else holds.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createGemma4Audio<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     fd: jint,
     offset: jlong,
@@ -93,27 +93,30 @@ fn build_gemma4_audio(file: File, offset: jlong, length: jlong) -> Result<Gemma4
 /// Called only by the JVM, with a live handle from `createGemma4Audio`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_encodeAudioGemma4<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     samples: JFloatArray<'l>,
 ) -> jfloatArray {
-    let null = std::ptr::null_mut();
-    if handle == 0 {
-        return null;
-    }
-    // SAFETY: the caller guarantees the handle came from `createGemma4Audio` and is still live.
-    // `&mut` because a new clip length re-records the net, and Kotlin serialises calls.
-    let handle = unsafe { &mut *(handle as *mut Gemma4AudioHandle) };
-    let encoded = read_float_array(&mut env, &samples)
-        .and_then(|waveform| run_gemma4_audio(handle, &waveform));
-    match encoded.and_then(|values| new_float_array(&mut env, &values)) {
-        Ok(array) => array,
-        Err(e) => {
-            log(&format!("the gemma4 audio tower failed: {e}"));
-            null
+    env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+        let null = std::ptr::null_mut();
+        if handle == 0 {
+            return Ok(null);
         }
-    }
+        // SAFETY: the caller guarantees the handle came from `createGemma4Audio` and is still live.
+        // `&mut` because a new clip length re-records the net, and Kotlin serialises calls.
+        let handle = unsafe { &mut *(handle as *mut Gemma4AudioHandle) };
+        let encoded = read_float_array(env, &samples)
+            .and_then(|waveform| run_gemma4_audio(handle, &waveform));
+        Ok(match encoded.and_then(|values| new_float_array(env, &values)) {
+            Ok(array) => array,
+            Err(e) => {
+                log(&format!("the gemma4 audio tower failed: {e}"));
+                null
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 fn run_gemma4_audio(handle: &mut Gemma4AudioHandle, waveform: &[f32]) -> Result<Vec<f32>, String> {
@@ -162,7 +165,7 @@ fn run_gemma4_audio(handle: &mut Gemma4AudioHandle, waveform: &[f32]) -> Result<
 /// Called only by the JVM, once, with a handle from `createGemma4Audio` that nothing else uses.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_destroyGemma4Audio<'l>(
-    _env: JNIEnv<'l>,
+    _env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {

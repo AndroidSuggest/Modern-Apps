@@ -33,7 +33,7 @@ use jni::objects::{
     JByteArray, JClass, JFloatArray, JIntArray, JLongArray, JObjectArray, JShortArray, JString,
 };
 use jni::sys::{jfloatArray, jint, jintArray, jlong, jstring};
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned};
 
 use crate::nets::{
     gemma4, gemma4_audio, gemma4_vision, madlad, madlad_part1, maia, mobilefacenet, modnet, nllb,
@@ -75,11 +75,14 @@ struct Handle {
 /// Called only by the JVM, with a valid `env` and a `weights` array it owns.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createSelfie<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     weights: JByteArray<'l>,
 ) -> jlong {
-    open(&mut env, weights, graph::SELFIE, "selfie")
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        Ok(open(env, weights, graph::SELFIE, "selfie"))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `SubjectSegmenter`'s constructor. Returns 0 on failure, having logged why.
@@ -89,11 +92,14 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createSelfie<'l>
 /// Called only by the JVM, with a valid `env` and a `weights` array it owns.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createU2netp<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     weights: JByteArray<'l>,
 ) -> jlong {
-    open(&mut env, weights, graph::U2NETP, "u2netp")
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        Ok(open(env, weights, graph::U2NETP, "u2netp"))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `FaceDetector`'s constructor: SCRFD 500M at a fixed square. Returns 0 on failure.
@@ -103,11 +109,14 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createU2netp<'l>
 /// Called only by the JVM, with a valid `env` and a `weights` array it owns.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createScrfd<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     weights: JByteArray<'l>,
 ) -> jlong {
-    open(&mut env, weights, graph::SCRFD, "scrfd")
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        Ok(open(env, weights, graph::SCRFD, "scrfd"))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `FaceEmbedder`'s constructor: MobileFaceNet at 112x112. Returns 0 on failure.
@@ -117,11 +126,14 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createScrfd<'l>(
 /// Called only by the JVM, with a valid `env` and a `weights` array it owns.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createMobilefacenet<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     weights: JByteArray<'l>,
 ) -> jlong {
-    open(&mut env, weights, graph::MOBILEFACENET, "mobilefacenet")
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        Ok(open(env, weights, graph::MOBILEFACENET, "mobilefacenet"))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// `ModnetSegmenter`'s constructor: MODNet photographic-portrait matting at a
@@ -132,14 +144,17 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createMobileface
 /// Called only by the JVM, with a valid `env` and a `weights` array it owns.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createModnet<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     weights: JByteArray<'l>,
 ) -> jlong {
-    open(&mut env, weights, graph::MODNET, "modnet")
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        Ok(open(env, weights, graph::MODNET, "modnet"))
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
-fn open<'l>(env: &mut JNIEnv<'l>, weights: JByteArray<'l>, graph_id: u32, name: &str) -> jlong {
+fn open<'l>(env: &Env, weights: JByteArray<'l>, graph_id: u32, name: &str) -> jlong {
     match build(env, weights, graph_id) {
         Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
         Err(e) => {
@@ -150,7 +165,7 @@ fn open<'l>(env: &mut JNIEnv<'l>, weights: JByteArray<'l>, graph_id: u32, name: 
 }
 
 fn build<'l>(
-    env: &mut JNIEnv<'l>,
+    env: &Env,
     weights: JByteArray<'l>,
     graph_id: u32,
 ) -> Result<Handle, String> {
@@ -194,56 +209,59 @@ fn build<'l>(
 /// destroyed.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_segment<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     pixels: JIntArray<'l>,
     width: jint,
     height: jint,
 ) -> jfloatArray {
-    let null = std::ptr::null_mut();
-    if handle == 0 || width <= 0 || height <= 0 {
-        return null;
-    }
-    // SAFETY: the caller guarantees `handle` came from a create function and is live, and
-    // the Kotlin side serialises `segment` against `destroy` with a lock held across the
-    // whole call.
-    let state = unsafe { &mut *(handle as *mut Handle) };
+    env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+        let null = std::ptr::null_mut();
+        if handle == 0 || width <= 0 || height <= 0 {
+            return Ok(null);
+        }
+        // SAFETY: the caller guarantees `handle` came from a create function and is live, and
+        // the Kotlin side serialises `segment` against `destroy` with a lock held across the
+        // whole call.
+        let state = unsafe { &mut *(handle as *mut Handle) };
 
-    let count = match env.get_array_length(&pixels) {
-        Ok(n) if n >= 0 => n as usize,
-        Ok(n) => {
-            log(&format!("a pixel array of length {n}"));
-            return null;
+        let count = match env.get_array_length(&pixels) {
+            Ok(n) if n >= 0 => n as usize,
+            Ok(n) => {
+                log(&format!("a pixel array of length {n}"));
+                return Ok(null);
+            }
+            Err(e) => {
+                log(&format!("cannot size the pixel array: {e}"));
+                return Ok(null);
+            }
+        };
+        if count != (width as usize) * (height as usize) {
+            log(&format!("{count} pixels for a {width}x{height} bitmap"));
+            return Ok(null);
         }
-        Err(e) => {
-            log(&format!("cannot size the pixel array: {e}"));
-            return null;
+        state.pixels.resize(count, 0);
+        if let Err(e) = env.get_int_array_region(&pixels, 0, &mut state.pixels) {
+            log(&format!("cannot read the pixel array: {e}"));
+            return Ok(null);
         }
-    };
-    if count != (width as usize) * (height as usize) {
-        log(&format!("{count} pixels for a {width}x{height} bitmap"));
-        return null;
-    }
-    state.pixels.resize(count, 0);
-    if let Err(e) = env.get_int_array_region(&pixels, 0, &mut state.pixels) {
-        log(&format!("cannot read the pixel array: {e}"));
-        return null;
-    }
-    let mask = match state.net.infer(&state.pixels, width as u32, height as u32) {
-        Ok(m) => m,
-        Err(e) => {
-            log(&format!("inference failed: {e}"));
-            return null;
-        }
-    };
-    match new_float_array(&mut env, &mask) {
-        Ok(array) => array,
-        Err(e) => {
-            log(&format!("cannot return the mask: {e}"));
-            null
-        }
-    }
+        let mask = match state.net.infer(&state.pixels, width as u32, height as u32) {
+            Ok(m) => m,
+            Err(e) => {
+                log(&format!("inference failed: {e}"));
+                return Ok(null);
+            }
+        };
+        Ok(match new_float_array(env, &mask) {
+            Ok(array) => array,
+            Err(e) => {
+                log(&format!("cannot return the mask: {e}"));
+                null
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// Detect faces in `pixels` and return them flattened, nine floats each.
@@ -267,38 +285,41 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_segment<'
 /// [`Java_com_vayunmathur_library_ml_MlNative_createScrfd`] and not yet destroyed.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_detectFaces<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     pixels: JIntArray<'l>,
     width: jint,
     height: jint,
 ) -> jfloatArray {
-    let null = std::ptr::null_mut();
-    if handle == 0 || width <= 0 || height <= 0 {
-        return null;
-    }
-    // SAFETY: as `segment` — the caller guarantees the handle is live and serialises this
-    // against `destroy`.
-    let state = unsafe { &mut *(handle as *mut Handle) };
+    env.with_env(|env| -> jni::errors::Result<jfloatArray> {
+        let null = std::ptr::null_mut();
+        if handle == 0 || width <= 0 || height <= 0 {
+            return Ok(null);
+        }
+        // SAFETY: as `segment` — the caller guarantees the handle is live and serialises this
+        // against `destroy`.
+        let state = unsafe { &mut *(handle as *mut Handle) };
 
-    if let Err(e) = read_pixels(&mut env, &pixels, width, height, &mut state.pixels) {
-        log(&e);
-        return null;
-    }
-    match detect(state, width as u32, height as u32) {
-        Ok(flat) => match new_float_array(&mut env, &flat) {
-            Ok(array) => array,
+        if let Err(e) = read_pixels(env, &pixels, width, height, &mut state.pixels) {
+            log(&e);
+            return Ok(null);
+        }
+        Ok(match detect(state, width as u32, height as u32) {
+            Ok(flat) => match new_float_array(env, &flat) {
+                Ok(array) => array,
+                Err(e) => {
+                    log(&format!("cannot return the detections: {e}"));
+                    null
+                }
+            },
             Err(e) => {
-                log(&format!("cannot return the detections: {e}"));
+                log(&format!("face detection failed: {e}"));
                 null
             }
-        },
-        Err(e) => {
-            log(&format!("face detection failed: {e}"));
-            null
-        }
-    }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 /// Nine floats per detected face. See the entry point above for the order.
@@ -374,23 +395,26 @@ struct OcrHandle {
 /// Called only by the JVM, with a valid `env` and arrays it owns.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createPpocr<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     detection: JByteArray<'l>,
     recognition: JByteArray<'l>,
     keys: JString<'l>,
 ) -> jlong {
-    match build_ocr(&mut env, detection, recognition, keys) {
-        Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
-        Err(e) => {
-            log(&format!("ppocr is unavailable: {e}"));
-            0
-        }
-    }
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        Ok(match build_ocr(env, detection, recognition, keys) {
+            Ok(handle) => Box::into_raw(Box::new(handle)) as jlong,
+            Err(e) => {
+                log(&format!("ppocr is unavailable: {e}"));
+                0
+            }
+        })
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 fn build_ocr<'l>(
-    env: &mut JNIEnv<'l>,
+    env: &Env,
     detection: JByteArray<'l>,
     recognition: JByteArray<'l>,
     keys: JString<'l>,
@@ -401,10 +425,8 @@ fn build_ocr<'l>(
     let rec_bytes = env
         .convert_byte_array(&recognition)
         .map_err(|e| format!("cannot read the recognition weights: {e}"))?;
-    let text: String = env
-        .get_string(&keys)
-        .map_err(|e| format!("cannot read the dictionary: {e}"))?
-        .into();
+    let text: String =
+        keys.try_to_string(env).map_err(|e| format!("cannot read the dictionary: {e}"))?;
     let dictionary = Dictionary::parse(&text)?;
 
     let det_weights = Weights::parse(&det_bytes, graph::PPOCR_DET)?;
