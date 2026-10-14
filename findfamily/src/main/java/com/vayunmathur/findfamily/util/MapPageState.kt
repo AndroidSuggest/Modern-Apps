@@ -47,9 +47,19 @@ class MapPageState(
     private val _waypointCoord = MutableStateFlow(Coord(0.0, 0.0))
     val waypointCoord: StateFlow<Coord> = _waypointCoord.asStateFlow()
 
-    fun setSelectedUserId(id: Long?) { _selectedUserId.value = id }
+    fun setSelectedUserId(id: Long?) {
+        _selectedUserId.value = id
+        // A new person means no historical pin yet: never show whoever was viewed
+        // before as this person's position (GitHub #818 follow-up).
+        _historicalPosition.value = null
+    }
     fun setSelectedWaypointId(id: Long?) { _selectedWaypointId.value = id }
-    fun setShowingPresent(value: Boolean) { _isShowingPresent.value = value }
+    fun setShowingPresent(value: Boolean) {
+        _isShowingPresent.value = value
+        // Leaving history drops the historical pin with it, so it cannot linger as a
+        // ghost marker or a stale camera target once live tracking resumes.
+        if (value) _historicalPosition.value = null
+    }
     fun setHistoricalPosition(position: GeoPoint?) { _historicalPosition.value = position }
     fun setWaypointName(name: String) { _waypointName.value = name }
     fun setWaypointRange(range: String) { _waypointRange.value = range }
@@ -59,11 +69,15 @@ class MapPageState(
         _selectedUserId.value = userId
         _selectedWaypointId.value = null
         _isShowingPresent.value = true
+        // Same reason as setSelectedUserId: the newly selected person starts with no
+        // historical pin of their own.
+        _historicalPosition.value = null
     }
 
     fun clearSelection() {
         _selectedUserId.value = null
         _selectedWaypointId.value = null
+        _historicalPosition.value = null
     }
 
     /**
@@ -74,6 +88,9 @@ class MapPageState(
     fun applyInitialSelection(initialUserId: Long?, initialWaypointId: Long?) {
         _selectedUserId.value = initialUserId
         _selectedWaypointId.value = initialWaypointId
+        // A deep link can swap the person while history mode stays on, so the previous
+        // person's pin must not survive the switch.
+        _historicalPosition.value = null
     }
 
     /** Begin creating a brand-new waypoint with sensible defaults. */

@@ -88,6 +88,10 @@ fun BoxScope.HistoryScrubber(
         if (locs.isNotEmpty()) {
             val closest = locs.minBy { (it.timestamp - state.instant).absoluteValue }
             setHistoricalPosition(closest.coord.toGeoPoint())
+        } else {
+            // Nobody to show a pin for: drop any position left over from whoever was
+            // viewed before, so their track never masquerades as this person's.
+            setHistoricalPosition(null)
         }
     }
 }

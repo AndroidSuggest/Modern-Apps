@@ -78,6 +78,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -280,10 +281,15 @@ fun MainPage(
         actions = mainActions,
         historyScrubber = {
             if (historyMode) {
-                HistoryScrubber(
-                    backStack,
-                    ffViewModel
-                ) { ffViewModel.mapState.setHistoricalPosition(it) }
+                // Scoped to the person: a deep link can swap the selection while history
+                // mode stays on, and the scrubber must restart from now for the new person
+                // rather than inherit the previous one's instant.
+                key(selectedUserId) {
+                    HistoryScrubber(
+                        backStack,
+                        ffViewModel
+                    ) { ffViewModel.mapState.setHistoricalPosition(it) }
+                }
             }
         },
         map = {

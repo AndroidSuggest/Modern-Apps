@@ -2,6 +2,8 @@ package com.vayunmathur.findfamily.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -115,11 +117,20 @@ fun MainPageContent(
     if (expanded) {
         FindFamilyWideLayout(
             map = { map() },
-            panel = {
+            panel = { modifier ->
                 if (state.nothingSelected) {
                     FamilyListSheet(state.familyList, familyActions)
-                } else if (!state.historyMode && state.selectedUserId != null) {
-                    state.person?.let { PersonDetailSheet(it, personActions) }
+                } else if (state.selectedUserId != null) {
+                    Column(modifier) {
+                        state.person?.let { PersonDetailSheet(it, personActions) }
+                        if (state.historyMode) {
+                            // The phone layout floats the scrubber over the map; the side
+                            // panel hosts it instead, under the person's card, so history
+                            // is usable here rather than an empty panel (GitHub #818).
+                            Spacer(Modifier.weight(1f))
+                            Box(Modifier.fillMaxWidth()) { historyScrubber() }
+                        }
+                    }
                 }
             },
         )
