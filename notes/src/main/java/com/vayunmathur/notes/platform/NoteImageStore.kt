@@ -7,6 +7,7 @@ import android.content.Context
 import android.net.Uri
 import com.vayunmathur.library.log.Log
 import java.io.File
+import java.io.IOException
 import java.security.MessageDigest
 
 /**
@@ -78,23 +79,36 @@ object NoteImageStore {
         }
         val renames = mutableMapOf<String, String>()
         for (file in files) {
-            if (!file.isFile || !file.name.startsWith("img_")) continue
-            val hashed = try {
-                contentName(file)
-            } catch (e: Exception) {
-                Log.status(TAG, "hash failed for ${file.name}", e)
-                continue
-            }
-            if (hashed == file.name) continue
-            val dest = File(directory, hashed)
-            try {
-                if (!dest.exists()) file.copyTo(dest)
-                renames[file.name] = hashed
-            } catch (e: Exception) {
-                Log.status(TAG, "copy failed for ${file.name}", e)
-            }
+            val hashed = hashedNameForMigration(directory, file) ?: continue
+            renames[file.name] = hashed
         }
         return renames
+    }
+
+    /**
+     * Copies [file] to its content-addressed name in [directory] and returns that
+     * name, or null when the file is not a legacy image, is already hashed, or
+     * any step failed (failure already logged).
+     */
+    private fun hashedNameForMigration(directory: File, file: File): String? {
+        if (!file.isFile || !file.name.startsWith("img_")) return null
+        // IOException only: readBytes/copyTo throw IOException subtypes, and SHA-256
+        // is guaranteed on Android so NoSuchAlgorithmException cannot fire here.
+        val hashed = try {
+            contentName(file)
+        } catch (e: IOException) {
+            Log.status(TAG, "hash failed for ${file.name}", e)
+            return null
+        }
+        if (hashed == file.name) return null
+        try {
+            val dest = File(directory, hashed)
+            if (!dest.exists()) file.copyTo(dest)
+        } catch (e: IOException) {
+            Log.status(TAG, "copy failed for ${file.name}", e)
+            return null
+        }
+        return hashed
     }
 
     /**
