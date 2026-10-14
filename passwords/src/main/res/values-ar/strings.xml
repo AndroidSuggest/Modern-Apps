@@ -3,4 +3,6 @@
     <string name="hide">إخفاء</string>
     <string name="show">إظهار</string>
     <string name="title_settings">الإعدادات</string>
+    <string name="app_name">كلمات المرور</string>
+    <string name="sync_now">زامن الآن</string>
 </resources>
