@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="theme">السمة</string>
+    <string name="app_name">لوحة المفاتيح</string>
+    <string name="subtype_en">الإنجليزية</string>
 </resources>
