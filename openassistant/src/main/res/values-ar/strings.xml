@@ -1,3 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    </resources>
+    <string name="recording">جارٍ التسجيل…</string>
+    <string name="message_placeholder">رسالة…</string>
+    <string name="voice_message">رسالة صوتية</string>
+    <string name="mic_error_format">خطأ في الميكروفون: <xliff:g id="error" example="Permission denied">%1$s</xliff:g></string>
+    <string name="new_conversation">محادثة جديدة</string>
+    <string name="error_prefix">خطأ: <xliff:g id="error" example="Timeout">%1$s</xliff:g></string>
+    <string name="error_request_expired">انتهت صلاحية الطلب في قائمة الانتظار</string>
+    <string name="error_ai_engine_failed">فشل محرك الذكاء الاصطناعي</string>
+    <string name="error_ai_json_schema_mismatch">فشل الذكاء الاصطناعي في إرجاع JSON صالح يطابق المخطط.</string>
+    <string name="settings_title">الإعدادات</string>
+    <string name="no_memories_yet">لا ذكريات بعد.</string>
+    <string name="reset_to_default">إعادة الضبط إلى الافتراضي</string>
+    <string name="memories">الذكريات</string>
+    <string name="error_inference_timeout">انتهت مهلة الاستنتاج</string>
+    <string name="inference_service">خدمة الاستنتاج</string>
+    <string name="processing_ai_inference">جارٍ معالجة استنتاج الذكاء الاصطناعي…</string>
+    <string name="system_prompt">موجّه النظام</string>
+    <string name="perm_desc_inference">يسمح للتطبيقات الأخرى بالوصول إلى خدمة استنتاج الذكاء الاصطناعي على الجهاز لاستخراج البيانات المنظّمة.</string>
+    <string name="inference_service_label">الوصول إلى خدمة الاستنتاج</string>
+</resources>
