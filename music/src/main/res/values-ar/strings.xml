@@ -1,5 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="nav_home">الصفحة الرئيسية</string>
     <string name="label_albums">الألبومات</string>
+    <string name="app_name">الموسيقى</string>
+    <string name="nav_artists">الفنانون</string>
+    <string name="nav_playlists">قوائم التشغيل</string>
+    <string name="go_to_source">الذهاب إلى <xliff:g id="source" example="All Songs">%1$s</xliff:g></string>
+    <string name="unknown_title">عنوان غير معروف</string>
+    <string name="unknown_artist">فنان غير معروف</string>
+    <string name="no_lyrics_available">لا كلمات متاحة</string>
+    <string name="label_album">الألبوم</string>
+    <string name="album_info_format"><xliff:g id="artist" example="The Beatles">%1$s</xliff:g>\n<xliff:g id="year" example="1970">%2$s</xliff:g> • <xliff:g id="song_count" example="10">%3$d</xliff:g> أغاني • <xliff:g id="duration" example="42:30">%4$s</xliff:g></string>
+    <string name="label_artist">الفنان</string>
+    <string name="artist_info_format"><xliff:g id="song_count" example="25">%1$d</xliff:g> أغاني • <xliff:g id="duration" example="1h 42m">%2$s</xliff:g></string>
+    <string name="label_playlist">قائمة التشغيل</string>
+    <plurals name="num_songs_format">
+        <item quantity="zero">لا أغاني (<xliff:g id="count" example="10">%1$d</xliff:g>)</item>
+        <item quantity="one">(<xliff:g id="count" example="10">%1$d</xliff:g>) أغنية واحدة</item>
+        <item quantity="two">(<xliff:g id="count" example="10">%1$d</xliff:g>) أغنيتان</item>
+        <item quantity="few"><xliff:g id="count" example="10">%1$d</xliff:g> أغاني</item>
+        <item quantity="many"><xliff:g id="count" example="10">%1$d</xliff:g> أغنية</item>
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> أغنية</item>
+    </plurals>
+    <string name="label_songs">الأغاني</string>
+    <string name="dialog_add_to_playlist">إضافة إلى قائمة التشغيل</string>
+    <string name="dialog_rename_playlist">إعادة تسمية قائمة التشغيل</string>
+    <string name="dialog_delete_playlist">حذف قائمة التشغيل</string>
+    <string name="dialog_delete_playlist_confirm">حذف \"<xliff:g id="playlist_name" example="My Mix">%1$s</xliff:g>\"؟ هذا لا يمكن التراجع عنه.</string>
+    <string name="new_playlist">قائمة تشغيل جديدة</string>
+    <string name="dialog_create_playlist">إنشاء قائمة تشغيل</string>
+    <string name="playlist_name_hint">اسم قائمة التشغيل</string>
+    <string name="grant_audio_permissions">منح أذونات الوسائط الصوتية</string>
+    <string name="grant_storage_permissions">منح أذونات التخزين</string>
+    <string name="content_desc_album_art">غلاف الألبوم</string>
+    <string name="content_desc_album_art_grid">شبكة غلاف الألبوم</string>
+    <string name="label_shuffle">تشغيل عشوائي</string>
 </resources>
