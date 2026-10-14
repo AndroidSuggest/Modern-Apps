@@ -19,45 +19,49 @@ import kotlinx.coroutines.launch
 internal fun AppStoreViewModel.checkForUpdatesImpl() {
     if (isCheckingUpdatesFlow.value) return
     viewModelScope.launch {
-        val enabled = enabledSources.value
-        isCheckingUpdatesFlow.value = true
-        statusMessageFlow.value = context.getString(R.string.updates_checking)
+        try {
+            val enabled = enabledSources.value
+            isCheckingUpdatesFlow.value = true
+            statusMessageFlow.value = context.getString(R.string.updates_checking)
 
-        installedRepo.refresh()
-        catalogUpdatesFlow.value = catalog.updatesFor(installedRepo.updatable.value)
+            installedRepo.refresh()
+            catalogUpdatesFlow.value = catalog.updatesFor(installedRepo.updatable.value)
 
-        // Only ask Play about packages neither offline source lists — for the rest the
-        // catalogue already answered, and Play would just re-answer it over the network.
-        val index = catalog.packageIndex.value
-        val installed = installedRepo.updatable.value
-        if (AppSource.PLAYSTORE in enabled) {
-            val playCandidates = installed
-                .filter { it.packageName !in index }
-                .map { it.packageName }
+            // Only ask Play about packages neither offline source lists — for the rest the
+            // catalogue already answered, and Play would just re-answer it over the network.
+            val index = catalog.packageIndex.value
+            val installed = installedRepo.updatable.value
+            if (AppSource.PLAYSTORE in enabled) {
+                val playCandidates = installed
+                    .filter { it.packageName !in index }
+                    .map { it.packageName }
 
-            val remote = play.details(playCandidates).associateBy { it.packageName }
-            playUpdatesFlow.value = installed.mapNotNull { inst ->
-                remote[inst.packageName]?.takeIf { it.versionCode > inst.versionCode }
+                val remote = play.details(playCandidates).associateBy { it.packageName }
+                playUpdatesFlow.value = installed.mapNotNull { inst ->
+                    remote[inst.packageName]?.takeIf { it.versionCode > inst.versionCode }
+                }
+                // The same response tells us which of these packages Play actually hosts, which
+                // the library uses to tell a genuine Play app from a sideloaded one.
+                if (remote.isNotEmpty()) playInstalledPackagesFlow.value = remote.keys.toSet()
             }
-            // The same response tells us which of these packages Play actually hosts, which
-            // the library uses to tell a genuine Play app from a sideloaded one.
-            if (remote.isNotEmpty()) playInstalledPackagesFlow.value = remote.keys.toSet()
-        }
 
-        // Accrescent: refresh the signed allowlist, then ask its API for a newer build of
-        // each installed package it vouches for.
-        if (AppSource.ACCRESCENT in enabled) {
-            accrescent.refreshRepoData()
-            val accrescentIds = accrescent.appIds()
-            if (accrescentIds.isNotEmpty()) accrescentPackagesFlow.value = accrescentIds
-            accrescentUpdatesFlow.value = installed
-                .filter { it.packageName in accrescentIds }
-                .mapNotNull { inst -> accrescentUpdate(inst.packageName, inst.versionCode) }
-        }
+            // Accrescent: refresh the signed allowlist, then ask its API for a newer build of
+            // each installed package it vouches for.
+            if (AppSource.ACCRESCENT in enabled) {
+                accrescent.refreshRepoData()
+                val accrescentIds = accrescent.appIds()
+                if (accrescentIds.isNotEmpty()) accrescentPackagesFlow.value = accrescentIds
+                accrescentUpdatesFlow.value = installed
+                    .filter { it.packageName in accrescentIds }
+                    .mapNotNull { inst -> accrescentUpdate(inst.packageName, inst.versionCode) }
+            }
 
-        lastUpdateCheckFlow.value = System.currentTimeMillis()
-        statusMessageFlow.value = ""
-        isCheckingUpdatesFlow.value = false
+            lastUpdateCheckFlow.value = System.currentTimeMillis()
+            statusMessageFlow.value = ""
+        } finally {
+            // An escaping failure (e.g. gRPC/Room) must not wedge the tab mid-check (#812).
+            isCheckingUpdatesFlow.value = false
+        }
     }
 }
 

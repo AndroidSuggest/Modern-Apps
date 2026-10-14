@@ -74,7 +74,8 @@ class AccrescentRepository(
     suspend fun signerFor(appId: String): String? = trustStore.signerFor(appId)
     suspend fun minVersionFor(appId: String): Long? = trustStore.minVersionFor(appId)
     suspend fun entryFor(appId: String) = trustStore.entryFor(appId)
-    suspend fun appIds(): Set<String> = trustStore.appIds()
+    suspend fun appIds(): Set<String> =
+        runCatching { trustStore.appIds() }.getOrDefault(emptySet())
 
     // --- Browse / search ------------------------------------------------------------
 
@@ -91,6 +92,10 @@ class AccrescentRepository(
             Log.status(TAG, "listApps failed", expected)
             AccrescentPage(emptyList(), "")
         } catch (expected: IllegalStateException) {
+            Log.status(TAG, "listApps failed", expected)
+            AccrescentPage(emptyList(), "")
+        } catch (expected: Exception) {
+            // gRPC failures (StatusRuntimeException) — fail soft like a network blip (issue #812).
             Log.status(TAG, "listApps failed", expected)
             AccrescentPage(emptyList(), "")
         }
@@ -151,6 +156,10 @@ class AccrescentRepository(
         } catch (expected: IllegalStateException) {
             Log.status(TAG, "listAppListings page $pages failed", expected)
             null
+        } catch (expected: Exception) {
+            // gRPC failures (StatusRuntimeException) — fail soft like a network blip (issue #812).
+            Log.status(TAG, "listAppListings page $pages failed", expected)
+            null
         }
     }
 
@@ -171,6 +180,10 @@ class AccrescentRepository(
             Log.status(TAG, "details failed for $appId", expected)
             null
         } catch (expected: IllegalStateException) {
+            Log.status(TAG, "details failed for $appId", expected)
+            null
+        } catch (expected: Exception) {
+            // gRPC failures (StatusRuntimeException) — fail soft like a network blip (issue #812).
             Log.status(TAG, "details failed for $appId", expected)
             null
         }

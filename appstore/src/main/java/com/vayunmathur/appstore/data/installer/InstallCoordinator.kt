@@ -1,6 +1,7 @@
 package com.vayunmathur.appstore.data.installer
 
 import android.content.Context
+import com.aurora.gplayapi.exceptions.GooglePlayException
 import com.vayunmathur.library.log.Log
 import com.vayunmathur.appstore.data.AppDatabase
 import com.vayunmathur.appstore.data.AppSource
@@ -117,6 +118,14 @@ class InstallCoordinator(
         } catch (e: SecurityException) {
             failInstall(app.packageName, e)
         } catch (e: IllegalStateException) {
+            failInstall(app.packageName, e)
+        } catch (e: GooglePlayException) {
+            // Purchase throttled (e.g. 429, issue #797/#812): withApi covers reads,
+            // but purchase() throws — fail the row instead of crashing the tap.
+            failInstall(app.packageName, e)
+        } catch (e: Exception) {
+            // Accrescent gRPC (StatusRuntimeException), dispenser AuthError, Room, etc.
+            // A tap on Update must never crash the store (issue #812).
             failInstall(app.packageName, e)
         }
     }
