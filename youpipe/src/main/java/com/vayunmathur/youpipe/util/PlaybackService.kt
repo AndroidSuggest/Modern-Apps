@@ -313,6 +313,26 @@ class PlaybackService : MediaSessionService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
+    // #810: crash after exiting fullscreen.
+    // Exiting fullscreen (orientation restore, PiP auto-enter, or leaving the video) can
+    // leave a MediaSessionService start intent in flight while the activity is already
+    // backgrounded. On Android 12+ the startForeground() inside Media3's onStartCommand ->
+    // stopSelfSafely then throws ForegroundServiceStartNotAllowedException (an
+    // IllegalStateException) and ActivityThread takes down the whole process. Drop the
+    // start instead of crashing; the session keeps its state for the next foreground start.
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        return try {
+            super.onStartCommand(intent, flags, startId)
+        } catch (e: IllegalStateException) {
+            Log.error("YouPipePlayer", "PlaybackService start suppressed in background", e)
+            try {
+                stopSelf(startId)
+            } catch (_: Exception) {
+            }
+            START_NOT_STICKY
+        }
+    }
+
     override fun onDestroy() {
         mediaSession?.run {
             player.stop()
