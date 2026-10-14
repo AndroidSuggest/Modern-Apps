@@ -7,7 +7,7 @@ _Install: ./install parentalcontrols (dev by default)._
 - Gradle: :parentalcontrols / dir: parentalcontrols/
 - Package roots present: ui, data, domain, platform, service, notifications, auth
 - Entry files: 
-- Deps: :library:room, :library:supervision-stubs
+- Deps: :library:room, :library:aosp-stubs
 - Metadata: metadata_data/parentalcontrols.md (present)
 - Rust: no / screenshotTest: no
 

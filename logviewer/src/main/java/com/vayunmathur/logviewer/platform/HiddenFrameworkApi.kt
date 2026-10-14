@@ -10,9 +10,8 @@ import android.os.UserManager
  * The app this replaces is built with `platform_apis: true` and so links these directly. We build
  * against the public SDK, and the two ways out are not equivalent:
  *
- *  - A **whole hidden class** can get a `compileOnly` stub, the way `:library:euicc-stubs` and
- *    `:library:backup-stubs` do, because the real class is in the boot classpath and the stub is
- *    never packaged.
+ *  - A **whole hidden class** can get a `compileOnly` stub, the way `:library:aosp-stubs` does,
+ *    because the real class is in the boot classpath and the stub is never packaged.
  *  - A **hidden member of a public class** cannot. A stub of `android.os.UserManager` would shadow
  *    the real one for every other caller in the app.
  *

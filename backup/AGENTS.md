@@ -7,7 +7,7 @@ _Install: ./install backup (dev by default)._
 - Gradle: :backup / dir: backup/
 - Package roots present: ui, data, domain, platform, service
 - Entry files: MainActivity.kt, Route.kt, Navigation.kt
-- Deps: :library:backup-stubs, :library:network, :library:work, :library:biometric, :library:e2ee-p2p
+- Deps: :library:aosp-stubs, :library:network, :library:work, :library:biometric, :library:e2ee-p2p
 - Metadata: metadata_data/backup.md (present)
 - Rust: no / screenshotTest: yes
 

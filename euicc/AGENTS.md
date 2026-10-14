@@ -7,7 +7,7 @@ _Install: ./install euicc (dev by default)._
 - Gradle: :euicc / dir: euicc/
 - Package roots present: ui, data, platform, service, telephony
 - Entry files: Route.kt, Navigation.kt
-- Deps: :library:euicc-stubs, :library:network
+- Deps: :library:aosp-stubs, :library:network
 - Metadata: metadata_data/euicc.md (present)
 - Rust: yes / screenshotTest: yes
 

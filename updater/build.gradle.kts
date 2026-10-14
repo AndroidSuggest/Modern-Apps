@@ -21,6 +21,6 @@ dependencies {
 
     // Compile-only stubs for @SystemApi android.os.UpdateEngine / UpdateEngineCallback — the
     // A/B slot writer. Present at runtime on a MAOS image because this app is privileged;
-    // absent from the public SDK, and must NOT be packaged. See :library:updateengine-stubs.
-    compileOnly(project(":library:updateengine-stubs"))
+    // absent from the public SDK, and must NOT be packaged. See :library:aosp-stubs.
+    compileOnly(project(":library:aosp-stubs"))
 }

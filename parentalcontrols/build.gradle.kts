@@ -20,5 +20,5 @@ dependencies {
     // @SystemApi supervision classes: SupervisionAppService (which the platform binds), plus
     // SupervisionManager and the Policy hierarchy used to write enforcement decisions.
     // compileOnly - these exist in the framework at runtime and must not be packaged.
-    compileOnly(project(":library:supervision-stubs"))
+    compileOnly(project(":library:aosp-stubs"))
 }

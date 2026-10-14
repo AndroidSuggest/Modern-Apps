@@ -7,7 +7,7 @@ _Install: ./install cast (dev by default)._
 - Gradle: :cast / dir: cast/
 - Package roots present: ui, domain, platform, network, service
 - Entry files: MainActivity.kt, Route.kt, Navigation.kt, CastApplication.kt
-- Deps: :library:remotedisplay-stubs, :cast:protocol, :sdk:cast
+- Deps: :library:aosp-stubs, :cast:protocol, :sdk:cast
 - Metadata: metadata_data/cast.md (present)
 - Rust: no / screenshotTest: yes
 

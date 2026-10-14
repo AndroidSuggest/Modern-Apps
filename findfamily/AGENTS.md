@@ -7,7 +7,7 @@ _Install: ./install findfamily (dev by default)._
 - Gradle: :findfamily / dir: findfamily/
 - Package roots present: ui, data, domain, platform, intents, service
 - Entry files: MainActivity.kt
-- Deps: :library:network, :library:e2ee-p2p, :library:room, :library:work, :library:image, :library:map, :library:nearby-stubs
+- Deps: :library:network, :library:e2ee-p2p, :library:room, :library:work, :library:image, :library:map, :library:aosp-stubs
 - Metadata: metadata_data/findfamily.md (present)
 - Rust: no / screenshotTest: yes
 

@@ -147,7 +147,7 @@ object PoweredOffBeacon {
     /**
      * The system service, or null if this build cannot have it.
      *
-     * The SDK_INT gate is not belt and braces. `:library:nearby-stubs` is `compileOnly`, so
+     * The SDK_INT gate is not belt and braces. `:library:aosp-stubs` is `compileOnly`, so
      * `android.nearby.NearbyManager` is a compile-time promise about a class that only exists at
      * runtime from API 35 — and findfamily's minSdk is 31. Touching `NearbyManager::class.java`
      * on API 31-34 raises NoClassDefFoundError, which is an [Error] and would sail straight past

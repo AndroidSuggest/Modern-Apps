@@ -27,7 +27,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * Reachability (verified against the SDK jar + AOSP main):
  * - `android.telephony.gba.*` is absent from `android.jar`, so same-FQN
- *   `compileOnly` stubs (`library:rcs-stubs`) provide the compile surface
+ *   `compileOnly` stubs (`library:aosp-stubs`) provide the compile surface
  *   and the framework provides the runtime classes — the same mechanism as
  *   the existing `SipDelegateManager` path. No reflection on the data path.
  * - The request method itself lives on the SDK-visible `TelephonyManager`,

@@ -38,7 +38,7 @@ Monorepo: ~100 Gradle modules + Rust workspace. Do scoped work only.
 | biometric/ink | `library/biometric/`, `library/ink/` | biometric / stylus ink |
 | downloadservice | `library/downloadservice/` | foreground downloads (INTERNET itself) |
 | locationprovider | `library/locationprovider/` | location abstraction |
-| *-stubs | `library/*-stubs/` | compile-only hidden-API stubs |
+| aosp-stubs | `library/aosp-stubs/` | compile-only hidden-API stubs |
 | sdk:games/cast/openassistant | `sdk/games/`, `sdk/cast/`, `sdk/openassistant/` | achievements / casting / assistant tools |
 | build-logic | `build-logic/` | `common-conventions-app`, `launcherIcon`, `rustNativeLib` |
 | lint-rules | `lint-rules/` | ToastUsage + DirectComposeAnimation (fatal) + 6 advisory |

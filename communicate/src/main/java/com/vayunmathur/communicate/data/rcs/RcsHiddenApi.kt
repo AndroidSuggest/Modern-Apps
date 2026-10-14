@@ -14,7 +14,7 @@ import com.vayunmathur.library.log.Log
  * in the public SDK (`ImsManager`, `RcsUceAdapter`), so same-FQN stubs cannot
  * add hidden members. These helpers cross that boundary with reflection; all
  * failures return null / rethrow as documented. Parameter and return *types*
- * come from the `library:rcs-stubs` top-level hidden classes (absent from the
+ * come from the `library:aosp-stubs` top-level hidden classes (absent from the
  * SDK, so the stubs resolve normally).
  */
 internal object RcsHiddenApi {

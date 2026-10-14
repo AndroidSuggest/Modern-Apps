@@ -7,7 +7,7 @@ _Install: ./install updater (dev by default)._
 - Gradle: :updater / dir: updater/
 - Package roots present: ui, domain, platform, service, notifications
 - Entry files: MainActivity.kt, Route.kt, Navigation.kt
-- Deps: :library:work, :library:updateengine-stubs
+- Deps: :library:work, :library:aosp-stubs
 - Metadata: metadata_data/updater.md (present)
 - Rust: no / screenshotTest: no
 

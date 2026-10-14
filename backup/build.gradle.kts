@@ -19,7 +19,7 @@ dependencies {
     // Compile-only stubs for the framework's @SystemApi app-data backup transport
     // classes (android.app.backup.BackupTransport + RestoreDescription/RestoreSet).
     // Provided by the framework at runtime on a system image; must NOT be packaged.
-    compileOnly(project(":library:backup-stubs"))
+    compileOnly(project(":library:aosp-stubs"))
     // WebDAV/Nextcloud remote reaches the server over the platform HTTP stack.
     implementation(project(":library:network"))
     // Scheduled file/media backups.
