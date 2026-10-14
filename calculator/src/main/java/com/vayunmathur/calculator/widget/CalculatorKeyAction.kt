@@ -1,6 +1,7 @@
 package com.vayunmathur.calculator.widget
 
 import android.content.Context
+import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -82,10 +83,12 @@ class CalculatorKeyAction : ActionCallback {
         val command = parameters[CalculatorKeyParam] ?: return
         // Glance has no LocalHapticFeedback, so tick directly — same EFFECT_TICK the
         // keyboard service uses. Fires before the state write so a slow update can't eat it.
-        runCatching {
-            context.getSystemService(VibratorManager::class.java)?.defaultVibrator
-                ?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
-        }
+        // Outside runCatching-style handling: an EFFECT_TICK tick is cosmetic, and the
+        // vibrator service is known to throw (missing feature, dead binder, pre-Q effect)
+        // on exactly the devices whose widgets must still work — a haptics failure must
+        // never swallow the tap. Catch Throwable (not just Exception) and gate the
+        // predefined effect to its Q+ API, with a legacy fallback beneath it.
+        emitKeyTick(context)
         updateAppWidgetState(context, glanceId) { prefs ->
             val input = prefs[CalculatorInputKey].orEmpty()
             when {
@@ -104,5 +107,33 @@ class CalculatorKeyAction : ActionCallback {
         }
         // Writing state alone does not reliably recompose; the explicit update does.
         CalculatorGlanceWidget().update(context, glanceId)
+    }
+
+    companion object {
+        /**
+         * Best-effort key tick. Never throws: every branch is guarded because this runs
+         * before the widget state write, and a haptics failure must not swallow the tap.
+         */
+        @Suppress("TooGenericExceptionCaught", "Deprecation")
+        private fun emitKeyTick(context: Context) {
+            try {
+                val vibrator = runCatching {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        context.getSystemService(VibratorManager::class.java)?.defaultVibrator
+                    } else {
+                        @Suppress("DEPRECATION")
+                        context.getSystemService(Vibrator::class.java)
+                    }
+                }.getOrNull() ?: return
+                if (!vibrator.hasVibrator()) return
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+                } else {
+                    vibrator.vibrate(10L)
+                }
+            } catch (_: Throwable) {
+                // Haptics are cosmetic; the tap has already been queued for handling.
+            }
+        }
     }
 }
