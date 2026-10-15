@@ -241,4 +241,6 @@
     <string name="trust_proprietary_check_hash_and_key">Każdy pobrany plik odpowiada sumie kontrolnej oraz kluczowi podpisującemu, które zostały dla niego wskazane w tym indeksie</string>
     <string name="trust_proprietary_limits">Są to aplikacje o zamkniętym kodzie źródłowym pobierane przez operatora, więc musisz zaufać, że operator pobrał oryginalny plik. Nie ma tu kodu źródłowego do przeprowadzenia audytu ani powtarzalnej kompilacji. Aplikacje nie są przez nikogo skanowane.</string>
     <string name="source_proprietary_pin">Przypięty do klucza podpisującego serwera lustrzanego Play tego sklepu</string>
+    <string name="nav_sources">Źródła</string>
+    <string name="action_browse">Przeglądaj</string>
 </resources>
