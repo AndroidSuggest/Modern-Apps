@@ -156,4 +156,23 @@
     <string name="achievement_secret_description">Jätka mängimist, et see eesmärk avaneks</string>
     <string name="achievement_unlocked">Eesmärk on käes!</string>
     <string name="play">Mängi/esita</string>
+    <string name="share_vault_title">Jaga turvahoidlat</string>
+    <string name="share_vault_members">Liikmed</string>
+    <string name="share_vault_you">sina</string>
+    <string name="share_vault_viewer_note">Sinul on ligipääs. Vaid omanik saab muuta jagamist.</string>
+    <string name="share_vault_link">Jagamislink</string>
+    <string name="share_vault_link_copied">Jagamislink on kopeeritud</string>
+    <string name="share_vault_add_by_device">Lisa teine osapool seadme tunnuse alusel. Ta saab lisamise kinnitada välise kanali kaudu ja siis küsida ligipääsu lingi alusel.</string>
+    <string name="share_vault_recipient">Vastuvõtva seadme tunnus</string>
+    <string name="share_vault_role">Roll</string>
+    <string name="share_vault_role_editor">muutja</string>
+    <string name="share_vault_send_invite">Saada kutse</string>
+    <string name="share_vault_requests">Päringud</string>
+    <string name="share_vault_approve">Nõustu</string>
+    <string name="share_vault_deny">Keeldu</string>
+    <string name="share_vault_show_code">Näita turvakoodi</string>
+    <string name="share_vault_computing">Arvutan…</string>
+    <string name="share_vault_code_hint">Enne kutse saatmist kontrolli saaja õigsust välise suhtluskanali kaudu.</string>
+    <string name="share_vault_your_device">Sinu seadme tunnus</string>
+    <string name="share_vault_device_copied">Seadme tunnus on kopeeritud</string>
 </resources>
