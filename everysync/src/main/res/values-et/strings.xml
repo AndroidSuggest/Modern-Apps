@@ -17,5 +17,23 @@
     <string name="conflict_lww">Kehtima jääb viimatikirjutatu</string>
     <string name="conflict_remote">Eelista serveri andmeid</string>
     <string name="conflict_local">Eelista seadme andmeid</string>
-    <string name="need_permissions">Sünkroonimisrakendus EverySync vajab kasutajakonto andmete sünkroonimiseks ligipääsu kontaktidele ja kalendrile.</string>
+    <string name="need_permissions">Sünkroonimisrakendus EverySync vajab andmehoidlate sünkroonimiseks ligipääsu kontaktidele ja kalendrile.</string>
+    <string name="invite_failed">Kutse saatmine ei õnnestunud</string>
+    <string name="join_request_sent">Liitumiskutse on saadetud</string>
+    <string name="sync_passwords">Sünkrooni salasõnad</string>
+    <string name="sync_notes">Sünkrooni märkmed</string>
+    <string name="sync_todos">Sünkrooni ülesanded</string>
+    <string name="vaults_title">Isiklikud turvahoidlad</string>
+    <string name="vault_new_title">Uue turvahoidla pealkiri</string>
+    <string name="vault_create_contacts">Kontaktide turvahoidla</string>
+    <string name="vault_create_calendar">Kalendri turvahoidla</string>
+    <string name="vaults_empty">Ühtegi turvahoidlat veel pole. Läbivalt krüptitud turvahoidla loomiseks sisesta nimi ja saad sellise luua.</string>
+    <string name="vault_share">Jaga</string>
+    <string name="share_link_chooser">Jaga turvahoidla linki</string>
+    <string name="vault_created">Turvahoidla on loodud</string>
+    <string name="vault_create_failed">Turvahoidla loomine ei õnnestunud</string>
+    <string name="invite_sent">Kutse on saadetud</string>
+    <string name="safety_code_failed">Turvakoodi jaoks vajalike arvutuste tegemine ei õnnestunud</string>
+    <string name="join_request_sending">Saadan liitumiskutset…</string>
+    <string name="join_request_failed">Liitumiskutse saatmine ei õnnestunud</string>
 </resources>
