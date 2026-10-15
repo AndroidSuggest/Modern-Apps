@@ -87,4 +87,6 @@
     <string name="cable_status_registered">Pääsuvõti on loodud</string>
     <string name="cable_status_failed">Päring ei toiminud</string>
     <string name="cable_status_cancelled">Teine seade katkestas päringu</string>
+    <string name="cable_bluetooth_disabled_message">Bluetooth on lülitatud välja. Pääsuvõtme päringu kasutamiseks lülita ta sisse.</string>
+    <string name="cable_bluetooth_unsupported_message">Selles seadmes puudub Bluetoothi tugi ja seega seadmeülene sisselogimine pole saadaval.</string>
 </resources>
