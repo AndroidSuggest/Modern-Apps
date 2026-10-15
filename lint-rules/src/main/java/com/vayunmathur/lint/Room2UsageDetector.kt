@@ -10,6 +10,7 @@ import com.android.tools.lint.detector.api.Location
 import com.android.tools.lint.detector.api.Scope
 import com.android.tools.lint.detector.api.Severity
 import com.android.tools.lint.detector.api.SourceCodeScanner
+import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.uast.UElement
 import org.jetbrains.uast.UFile
 
@@ -27,6 +28,10 @@ import org.jetbrains.uast.UFile
  * because several databases reference Room 2 by fully-qualified name with no import at all
  * (`object : androidx.room.migration.Migration(1, 2)`), which an import-only or
  * `getApplicableMethodNames()` check would miss entirely.
+ *
+ * Matches inside comments (including KDoc) are skipped, so a doc comment that
+ * mentions `androidx.room.` while explaining the Room 2 → Room 3 migration does
+ * not break the build.
  */
 class Room2UsageDetector : Detector(), SourceCodeScanner {
 
@@ -38,18 +43,24 @@ class Room2UsageDetector : Detector(), SourceCodeScanner {
             override fun visitFile(node: UFile) {
                 val source = node.sourcePsi?.text ?: return
                 val file = context.file ?: return
+                // Skip matches inside comments/KDoc: a doc comment explaining the
+                // Room 2 -> Room 3 migration must not break the build.
+                val ktFile = node.sourcePsi as? KtFile
+                val commentRanges = ktFile?.let { CommentOnlyMatcher.commentRangesIn(it) }.orEmpty()
 
                 var from = source.indexOf(ROOM2_PREFIX)
                 while (from >= 0) {
-                    context.report(
-                        ISSUE,
-                        node,
-                        Location.create(file, source, from, from + ROOM2_PREFIX.length),
-                        "Room 2 is not used in this repo. Replace `androidx.room.` with " +
-                            "`androidx.room3.` (`@TypeConverter`/`@TypeConverters` became " +
-                            "`@ColumnTypeConverter`/`@ColumnTypeConverters`, and " +
-                            "`RoomDatabase.withTransaction` became `withWriteTransaction`).",
-                    )
+                    if (!CommentOnlyMatcher.isInRanges(from, commentRanges)) {
+                        context.report(
+                            ISSUE,
+                            node,
+                            Location.create(file, source, from, from + ROOM2_PREFIX.length),
+                            "Room 2 is not used in this repo. Replace `androidx.room.` with " +
+                                "`androidx.room3.` (`@TypeConverter`/`@TypeConverters` became " +
+                                "`@ColumnTypeConverter`/`@ColumnTypeConverters`, and " +
+                                "`RoomDatabase.withTransaction` became `withWriteTransaction`).",
+                        )
+                    }
                     from = source.indexOf(ROOM2_PREFIX, from + ROOM2_PREFIX.length)
                 }
             }

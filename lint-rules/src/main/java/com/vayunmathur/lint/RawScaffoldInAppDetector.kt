@@ -50,8 +50,9 @@ class RawScaffoldInAppDetector : Detector(), SourceCodeScanner {
         if (isLibraryPackage(packageName)) return
 
         // Documented per-file opt-out.
-        val fileText = (context.uastFile?.sourcePsi as? KtFile)?.text
-        if (fileText != null && fileText.contains(EXCEPTION_MARKER)) return
+        // Comment-only: a marker inside a string literal must not opt the file out.
+        val ktFile = context.uastFile?.sourcePsi as? KtFile
+        if (ktFile != null && CommentOnlyMatcher.containsMarkerInComments(ktFile, EXCEPTION_MARKER)) return
 
         context.report(
             ISSUE,

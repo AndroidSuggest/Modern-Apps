@@ -37,6 +37,9 @@ configure<com.android.build.api.dsl.LibraryExtension> {
         // FileLength caps Kotlin file size, same as apps: split first.
         // DirectAndroidLog keeps all logging on the repo facade.
         fatal += listOf("ToastUsage", "FileLength", "DirectAndroidLog")
+        // Lint sweep (warn-then-error): mirror the app warnings so
+        // library modules surface marker-shape drift without failing the build.
+        warning += listOf("ExceptionMarkerFormat", "TodoEvasion", "CommentedOutCode")
     }
 }
 

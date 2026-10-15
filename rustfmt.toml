@@ -1,0 +1,10 @@
+# Rust formatting foundations (Phase 1 — advisory, no bulk reformat yet).
+# `cargo fmt --check` is the warning inventory; bulk reformat deferred to Phase 4.
+edition = "2021"
+max_width = 100
+hard_tabs = false
+use_small_heuristics = "Max"
+comment_width = 100
+wrap_comments = false
+format_code_in_doc_comments = true
+imports_granularity = "Crate"

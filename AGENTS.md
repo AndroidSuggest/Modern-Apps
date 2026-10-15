@@ -41,7 +41,7 @@ Monorepo: ~100 Gradle modules + Rust workspace. Do scoped work only.
 | aosp-stubs | `library/aosp-stubs/` | compile-only hidden-API stubs |
 | sdk:games/cast/openassistant | `sdk/games/`, `sdk/cast/`, `sdk/openassistant/` | achievements / casting / assistant tools |
 | build-logic | `build-logic/` | `common-conventions-app`, `launcherIcon`, `rustNativeLib` |
-| lint-rules | `lint-rules/` | ToastUsage + DirectComposeAnimation (fatal) + 6 advisory |
+| lint-rules | `lint-rules/` | ToastUsage + DirectComposeAnimation + FileLength + DirectAndroidLog (fatal) + 9 advisory |
 
 ### Apps (Gradle key → dir)
 Reference: `backup/` satisfies every rule; `notes/` second + `intents/` demo. `camera` + `games/voxels` hand-commit screenshots.
@@ -102,7 +102,7 @@ Rules: `dev` default, `release` only when asked, `debug` blocked. Never uninstal
 ```
 Never grep repo-wide when a filter will do. Always excluded: `target/ build/ .gradle/ .kotlin/ .git/ .llms/ analysis/ *.log *.onnx metadata_data/photos/`.
 
-`./check` — static verification without building: `:<module>:detekt` (rules in `detekt.yml`) + `cargo check --locked` for Rust modules (workspace members via `-p`, standalone crates in-dir):
+`./check` — static verification without building: `:<module>:detekt` (rules in `detekt.yml`) + `:<module>:lint` + `cargo check/clippy/fmt/doc --locked` for Rust modules (workspace members via `-p`, standalone crates in-dir; fmt is advisory-only until the tree is fmt-clean):
 ```
 ./check <module> [...]   # e.g. ./check notes backup; ./check voxels
 ./check all              # every app + library module (pure-JVM modules excluded)

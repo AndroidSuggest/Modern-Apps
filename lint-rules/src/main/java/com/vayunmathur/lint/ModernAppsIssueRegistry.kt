@@ -19,6 +19,9 @@ class ModernAppsIssueRegistry : IssueRegistry() {
         RawScaffoldInAppDetector.ISSUE,
         Room2UsageDetector.ISSUE,
         WindowInsetsInReusableComponentDetector.ISSUE,
+        ExceptionMarkerFormatDetector.ISSUE,
+        TodoEvasionDetector.ISSUE,
+        CommentedOutCodeDetector.ISSUE,
     )
 
     override val api: Int = CURRENT_API

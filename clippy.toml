@@ -1,0 +1,10 @@
+# Clippy foundations (Phase 1 — advisory, warn-then-error rollout).
+# Public-API posture: docs required on public items only, so breaking-change
+# lints stay off until Phase 3 inheritance rollout is green.
+msrv = "1.85.0"
+avoid-breaking-exported-api = false
+
+# Test modules get scoped allows (not crate-wide) once workspace inheritance
+# rolls out — see plan Phase 3. Documented here so `allow-unwrap-in-tests`
+# stays an explicit per-module decision, not a silent global.
+# allow-unwrap-in-tests = false

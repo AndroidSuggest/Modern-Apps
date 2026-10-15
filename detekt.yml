@@ -1,3 +1,9 @@
+# Lint rollout policy: warn-then-error.
+# New or tightened rules land as `warning` (detekt / Android Lint) / `warn`
+# (Rust) first, are cleaned per module, then promote to error/fatal/deny.
+# Never flip warningsAsErrors / abortOnError globally before the owning
+# slice is green. Base marker ban (FIXME:/STOPSHIP:/TODO:) stays blocking;
+# new marker shapes (HACK:/XXX:, evasions) land warning-first.
 config:
   validation: true
   warningsAsErrors: false
@@ -54,8 +60,14 @@ comments:
     matchDeclarationsOrder: true
     allowParamOnConstructorProperties: false
     exhaustive: true
+  # Lint-sweep trial (warn-then-error): public classes and functions
+  # need KDoc at warning severity. Public-API-only posture: private/internal
+  # stay exempt (detekt only reports public API for these rules), tests stay
+  # excluded below. Promotes to error once the owning slices are green;
+  # UndocumentedPublicProperty stays off until then.
   UndocumentedPublicClass:
-    active: false
+    active: true
+    severity: warning
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**']
     searchInNestedClass: true
     searchInInnerClass: true
@@ -650,6 +662,15 @@ style:
         value: 'STOPSHIP:'
       - reason: 'Forbidden TODO todo marker in comment, please do the changes.'
         value: 'TODO:'
+      # Warn-then-error extension: HACK:/XXX: land as detekt findings
+      # alongside the TodoEvasion lint check, then join the hard ban at promotion.
+      # Evasion shapes (TODO(scope):, bare banners) are covered by the
+      # TodoEvasionDetector lint rule, which sees comment PSI that detekt's
+      # exact-substring match cannot express.
+      - reason: 'Forbidden HACK marker in comment, please fix the problem instead of working around it.'
+        value: 'HACK:'
+      - reason: 'Forbidden XXX marker in comment, please fix the problem instead of marking it.'
+        value: 'XXX:'
     allowedPatterns: ''
   ForbiddenImport:
     active: false

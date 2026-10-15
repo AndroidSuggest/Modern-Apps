@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Static verification without building or installing:
-#   ./gradlew :<mod>:detekt [...] + cargo check --locked -p <crate> [...] (rust modules only)
+#   ./gradlew :<mod>:detekt :<mod>:lint [...] + cargo check/clippy/fmt/doc (rust modules only)
 #
 # Usage:
-#   ./check <module> [module...]     # detekt (detekt.yml) + cargo check
+#   ./check <module> [module...]     # detekt (detekt.yml) + lint + cargo check/clippy/fmt/doc
 #   ./check games/voxels maps        # multi-module, one gradlew invocation
 #   ./check voxels                    # shorthand -> games:voxels (same as ./install)
 #   ./check all                       # every app + library module
@@ -16,7 +16,11 @@
 # --locked`: workspace members together via `-p` from the repo root, standalone
 # crates (own [workspace]) individually in their own dir (host target: fast smoke
 # check; the real aarch64 cross-build runs inside the Gradle build via
-# cargoNdkBuild). No rust modules -> cargo step skipped.
+# cargoNdkBuild). Lint-sweep Phase 4 adds, per in-scope crate: `cargo clippy
+# --locked --all-targets` (blocking on deny/error lints; warnings never fail),
+# `cargo fmt --check` (advisory report only until the tree is fmt-clean, then
+# it promotes to blocking), and `cargo doc --locked --no-deps` (blocking on
+# rustdoc errors). No rust modules -> cargo steps skipped.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -83,7 +87,10 @@ done
 [[ ${#MODS[@]} -gt 0 ]] || { echo "Error: no valid modules." >&2; exit 1; }
 
 TASKS=()
-for mod in "${MODS[@]}"; do TASKS+=(":$(echo "$mod" | tr '/' ':'):detekt"); done
+for mod in "${MODS[@]}"; do
+  gmod="$(echo "$mod" | tr '/' ':')"
+  TASKS+=(":$gmod:detekt" ":$gmod:lint")
+done
 echo "Modules (${#MODS[@]}): ${MODS[*]}"
 echo "Gradle tasks: ${TASKS[*]}"
 echo ""
@@ -91,7 +98,7 @@ echo ""
 DETEKT_RC=0
 "$SCRIPT_DIR/gradlew" "${TASKS[@]}" --continue --console=plain || DETEKT_RC=$?
 echo ""
-[[ $DETEKT_RC -ne 0 ]] && echo "Warning: detekt reported failures (exit $DETEKT_RC)."
+[[ $DETEKT_RC -ne 0 ]] && echo "Warning: detekt/lint reported failures (exit $DETEKT_RC)."
 
 # --- cargo check (rust modules only) ---
 # Workspace members share one root `cargo check -p ...` invocation; standalone
@@ -133,9 +140,73 @@ for rdir in ${STANDALONE_DIRS[@]:-}; do
   ( cd "$rdir" && "$CARGO_BIN" check --locked ) || CARGO_RC=$?
   [[ $CARGO_RC -ne 0 ]] && echo "Warning: cargo check ($rdir) reported failures (exit $CARGO_RC)."
 done
+# --- cargo clippy (rust modules only, lint-sweep Phase 4) ---
+# Same scope as cargo check. Each crate's own `[lints]` table governs severity,
+# so warnings never fail this step; only deny/error lints do. Runs with
+# --all-targets so tests/examples/benches are covered too.
+CLIPPY_RC=0
+if [[ ${#ROOT_CRATES[@]} -gt 0 ]]; then
+  echo ""
+  CLIPPY_ARGS=()
+  for c in "${ROOT_CRATES[@]}"; do CLIPPY_ARGS+=(-p "$c"); done
+  echo "Running: cargo clippy --locked ${CLIPPY_ARGS[*]} --all-targets"
+  ( cd "$ROOT" && "$CARGO_BIN" clippy --locked "${CLIPPY_ARGS[@]}" --all-targets ) || CLIPPY_RC=$?
+  [[ $CLIPPY_RC -ne 0 ]] && echo "Warning: cargo clippy (workspace) reported failures (exit $CLIPPY_RC)."
+fi
+for rdir in ${STANDALONE_DIRS[@]:-}; do
+  echo ""
+  echo "Running: cargo clippy --locked --all-targets (in $rdir)"
+  ( cd "$rdir" && "$CARGO_BIN" clippy --locked --all-targets ) || CLIPPY_RC=$?
+  [[ $CLIPPY_RC -ne 0 ]] && echo "Warning: cargo clippy ($rdir) reported failures (exit $CLIPPY_RC)."
+done
+# --- cargo fmt (advisory only, lint-sweep Phase 4) ---
+# The tree carries fmt drift today, so this step reports but never fails.
+# Promotes to blocking once `cargo fmt --check` is clean on the owning slice.
+if [[ ${#ROOT_CRATES[@]} -gt 0 ]]; then
+  echo ""
+  FMT_ARGS=()
+  for c in "${ROOT_CRATES[@]}"; do FMT_ARGS+=(-p "$c"); done
+  echo "Running: cargo fmt --check ${FMT_ARGS[*]} (advisory)"
+  FMT_OUT="$(cd "$ROOT" && "$CARGO_BIN" fmt --check "${FMT_ARGS[@]}" 2>&1)" || true
+  FMT_COUNT="$(echo "$FMT_OUT" | grep -c '^Diff in' || true)"
+  if [[ "$FMT_COUNT" -gt 0 ]]; then
+    echo "rustfmt drift: $FMT_COUNT hunks in scope (advisory; run cargo fmt -p <crate> to clean)."
+  else
+    echo "rustfmt: clean."
+  fi
+fi
+for rdir in ${STANDALONE_DIRS[@]:-}; do
+  echo ""
+  echo "Running: cargo fmt --check (in $rdir, advisory)"
+  FMT_OUT="$(cd "$rdir" && "$CARGO_BIN" fmt --check 2>&1)" || true
+  FMT_COUNT="$(echo "$FMT_OUT" | grep -c '^Diff in' || true)"
+  if [[ "$FMT_COUNT" -gt 0 ]]; then
+    echo "rustfmt drift: $FMT_COUNT hunks in $rdir (advisory)."
+  else
+    echo "rustfmt: clean ($rdir)."
+  fi
+done
+# --- cargo doc (rust modules only, lint-sweep Phase 4) ---
+# Catches rustdoc::broken_intra_doc_links / invalid_html_tags. Both land as
+# warnings first (warn-then-error), so this fails only on rustdoc errors.
+DOC_RC=0
+if [[ ${#ROOT_CRATES[@]} -gt 0 ]]; then
+  echo ""
+  DOC_ARGS=()
+  for c in "${ROOT_CRATES[@]}"; do DOC_ARGS+=(-p "$c"); done
+  echo "Running: cargo doc --locked --no-deps ${DOC_ARGS[*]}"
+  ( cd "$ROOT" && "$CARGO_BIN" doc --locked --no-deps "${DOC_ARGS[@]}" ) || DOC_RC=$?
+  [[ $DOC_RC -ne 0 ]] && echo "Warning: cargo doc (workspace) reported failures (exit $DOC_RC)."
+fi
+for rdir in ${STANDALONE_DIRS[@]:-}; do
+  echo ""
+  echo "Running: cargo doc --locked --no-deps (in $rdir)"
+  ( cd "$rdir" && "$CARGO_BIN" doc --locked --no-deps ) || DOC_RC=$?
+  [[ $DOC_RC -ne 0 ]] && echo "Warning: cargo doc ($rdir) reported failures (exit $DOC_RC)."
+done
 if [[ ${#ROOT_CRATES[@]} -eq 0 && ${#STANDALONE_DIRS[@]} -eq 0 ]]; then
-  echo "No Rust crates in scope; cargo step skipped."
+  echo "No Rust crates in scope; cargo steps skipped."
 fi
 
-if [[ $DETEKT_RC -ne 0 || $CARGO_RC -ne 0 ]]; then exit 1; fi
+if [[ $DETEKT_RC -ne 0 || $CARGO_RC -ne 0 || $CLIPPY_RC -ne 0 || $DOC_RC -ne 0 ]]; then exit 1; fi
 exit 0

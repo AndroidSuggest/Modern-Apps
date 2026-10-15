@@ -83,12 +83,32 @@ unused_extern_crates = "deny"
 unused_import_braces = "deny"
 unused_results = "deny"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)', 'cfg(rust_analyzer)', 'cfg(blaze)'] }
+# Lint sweep (warn-then-error): rustdoc link/tag hygiene lands as warnings
+# first, promotes to deny with the rest of the comment sweep at promotion.
+# (Table is `workspace.lints.rustdoc`, not dotted keys under `rust` — cargo
+# rejects `lints.rust.rustdoc::X` as an invalid lint name.)
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "warn"
+invalid_html_tags = "warn"
 
 [workspace.lints.clippy]
 expect_used = "deny"
 indexing_slicing = "deny"
 panic = "deny"
 unwrap_used = "deny"
+# Lint sweep (warn-then-error): catches TODO!/unimplemented!/dbg! left in the
+# tree plus doc-comment drift; promotes to deny at promotion.
+todo = "warn"
+dbg_macro = "warn"
+empty_line_after_doc_comments = "warn"
+doc_markdown = "warn"
+# Lint sweep: conservative warn set. missing_panics_doc keeps `# Panics`
+# sections honest on public fns; needless_borrow and len_without_is_empty are
+# mechanical. All promote to deny at promotion once the inheriting slices are
+# green. Existing deny set above is unchanged.
+missing_panics_doc = "warn"
+needless_borrow = "warn"
+len_without_is_empty = "warn"
 
 # Centralized Rust versions – armv8-only (aarch64-linux-android)
 

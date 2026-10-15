@@ -7,6 +7,12 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// Lint-sweep decision (warn-then-error rollout): this convention is
+// intentionally NOT wired to detekt or :lint-rules. No module applies it
+// (settings.gradle.kts has no wear consumers), so there is no slice to keep
+// green. If a wear module lands, wire `dev.detekt` + the app lint block at
+// warning parity with common-conventions-app before its first commit.
+
 val libs = the<org.gradle.accessors.dm.LibrariesForLibs>()
 
 fun readVersionInfo(): Pair<Int, String> {

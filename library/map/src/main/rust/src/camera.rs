@@ -208,5 +208,3 @@ pub fn globe_lonlat(center_lon: f64, center_lat: f64, x: f64, y: f64, z: f64) ->
     let lon = ((lon + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
     (lon, lat.clamp(-90.0, 90.0))
 }
-
-// device-verifier: mtime bump to force cargo recompile (no semantic change)

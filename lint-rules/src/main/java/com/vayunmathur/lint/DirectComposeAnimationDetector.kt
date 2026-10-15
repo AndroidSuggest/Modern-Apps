@@ -44,8 +44,9 @@ class DirectComposeAnimationDetector : Detector(), SourceCodeScanner {
         if (isExemptPackage(packageName)) return null
 
         // Documented per-file opt-out, matching the repo's other escape hatches.
-        val fileText = (context.uastFile?.sourcePsi as? KtFile)?.text
-        if (fileText != null && fileText.contains(EXCEPTION_MARKER)) return null
+        // Comment-only: a marker inside a string literal must not opt the file out.
+        val ktFile = context.uastFile?.sourcePsi as? KtFile
+        if (ktFile != null && CommentOnlyMatcher.containsMarkerInComments(ktFile, EXCEPTION_MARKER)) return null
 
         return object : UElementHandler() {
             override fun visitImportStatement(node: UImportStatement) {

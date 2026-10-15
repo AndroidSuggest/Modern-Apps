@@ -54,7 +54,7 @@ import com.vayunmathur.notes.platform.NotesListUiState
 
 /**
  * The notes list, with no dependency on the ViewModel or the back stack so it can be
- * rendered from a `@Preview` â€” see `src/screenshotTest`, which is where the store listing
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
  * images come from.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)

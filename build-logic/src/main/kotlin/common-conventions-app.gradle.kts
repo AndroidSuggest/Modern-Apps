@@ -143,6 +143,8 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
         disable += listOf("MissingTranslation")
         // Advisory: reported by `./gradlew lint`, never blocking. Each of these is Error
         // (ExtraTranslation is Fatal) by default and has a pre-existing backlog.
+        // Lint sweep (warn-then-error): the three comment detectors land here
+        // as warnings; they promote to fatal with the rest at promotion.
         warning += listOf(
             "HardcodedText",
             // Repo rules from :lint-rules. Only the three gates below are not advisory.
@@ -151,6 +153,9 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
             "PackageStructure",
             "RawScaffoldInApp",
             "Room2Usage",
+            "ExceptionMarkerFormat",
+            "TodoEvasion",
+            "CommentedOutCode",
             // Built-in checks.
             "ContextCastToActivity",
             "ExtraTranslation",

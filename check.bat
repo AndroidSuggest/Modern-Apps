@@ -8,7 +8,7 @@ exit /b %errorlevel%
 : end batch #>
 # check.bat - Static verification without building or installing.
 # (PowerShell twin of ./check.)
-#   check.bat <module> [module...]     # detekt + cargo check
+#   check.bat <module> [module...]     # detekt + lint + cargo check/clippy/fmt/doc
 #   check.bat games/voxels maps        # multi-module, one gradlew invocation
 #   check.bat voxels                    # shorthand -> games:voxels (same as install.bat)
 #   check.bat all                       # every app + library module
@@ -21,7 +21,11 @@ exit /b %errorlevel%
 # --locked`: workspace members together via `-p` from the repo root, standalone
 # crates (own [workspace]) individually in their own dir (host target: fast smoke
 # check; the real aarch64 cross-build runs inside the Gradle build via
-# cargoNdkBuild). No rust modules -> cargo step skipped.
+# cargoNdkBuild). Lint-sweep Phase 4 adds, per in-scope crate: `cargo clippy
+# --locked --all-targets` (blocking on deny/error lints; warnings never fail),
+# `cargo fmt --check` (advisory report only until the tree is fmt-clean), and
+# `cargo doc --locked --no-deps` (blocking on rustdoc errors). No rust modules
+# -> cargo steps skipped.
 $ErrorActionPreference = 'Stop'
 
 $CheckRoot = if ($PSScriptRoot) { $PSScriptRoot } else { $env:_BATROOT.TrimEnd('\') }
@@ -29,7 +33,7 @@ $CheckRoot = if ($PSScriptRoot) { $PSScriptRoot } else { $env:_BATROOT.TrimEnd('
 function Show-CheckHelp {
   @'
 Usage:
-  check.bat <module> [module...]     # detekt (config/detekt/detekt.yml) + cargo check
+  check.bat <module> [module...]     # detekt (detekt.yml) + lint + cargo check/clippy/fmt/doc
   check.bat games/voxels maps        # multi-module, one gradlew invocation
   check.bat voxels                    # shorthand -> games:voxels (same as install.bat)
   check.bat all                       # every app + library module
@@ -42,7 +46,10 @@ Rust: a module with src/main/rust/Cargo.toml is checked with `cargo check
 --locked`: workspace members together via `-p` from the repo root, standalone
 crates (own [workspace]) individually in their own dir (host target: fast smoke
 check; the real aarch64 cross-build runs inside the Gradle build via
-cargoNdkBuild). No rust modules -> cargo step skipped.
+cargoNdkBuild). Lint-sweep Phase 4 adds, per in-scope crate: `cargo clippy
+--locked --all-targets` (blocking on deny/error lints), `cargo fmt --check`
+(advisory until the tree is fmt-clean), `cargo doc --locked --no-deps`.
+No rust modules -> cargo steps skipped.
 '@
 }
 
@@ -136,7 +143,9 @@ if ($CheckMods.Count -eq 0) {
 
 $CheckTasks = @()
 foreach ($CheckMod in $CheckMods) {
-  $CheckTasks += ":$($CheckMod.Replace('/', ':')):detekt"
+  $CheckGmod = $CheckMod.Replace('/', ':')
+  $CheckTasks += ":${CheckGmod}:detekt"
+  $CheckTasks += ":${CheckGmod}:lint"
 }
 Write-Output "Modules ($($CheckMods.Count)): $($CheckMods -join ' ')"
 Write-Output "Gradle tasks: $($CheckTasks -join ' ')"
@@ -166,7 +175,7 @@ else {
   exit 1
 }
 Write-Output ''
-if ($CheckDetektRc -ne 0) { Write-Output "Warning: detekt reported failures (exit $CheckDetektRc)." }
+if ($CheckDetektRc -ne 0) { Write-Output "Warning: detekt/lint reported failures (exit $CheckDetektRc)." }
 
 # --- cargo check (rust modules only) ---
 # Workspace members share one root `cargo check -p ...` invocation; standalone

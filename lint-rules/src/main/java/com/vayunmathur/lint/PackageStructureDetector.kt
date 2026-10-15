@@ -123,7 +123,9 @@ class PackageStructureDetector : Detector(), SourceCodeScanner {
         // below is skipped, so a future JNI file only needs to add the comment.
         // Belt-and-suspenders: an explicit allow-set of the currently-frozen FQNs acts
         // as a fallback in case the marker is ever accidentally dropped.
-        private const val JNI_MARKER = "// PACKAGE STRUCTURE EXCEPTION (JNI)"
+        // Internal (not private) so ExceptionMarkerFormatDetector can validate the
+        // verbatim shape against the same constant instead of a copy.
+        internal const val JNI_MARKER = "// PACKAGE STRUCTURE EXCEPTION (JNI)"
 
         private val JNI_EXEMPT_FQNS = setOf(
             "com.vayunmathur.euicc.EuiccNative",
@@ -136,7 +138,11 @@ class PackageStructureDetector : Detector(), SourceCodeScanner {
         )
 
         fun isJniException(node: UFile): Boolean {
-            val text = (node.sourcePsi as? KtFile)?.text ?: node.sourcePsi?.text
+            val ktFile = node.sourcePsi as? KtFile
+            if (ktFile != null && CommentOnlyMatcher.containsMarkerInComments(ktFile, JNI_MARKER)) return true
+            // Fall back to raw text for non-Kotlin sources, where the marker is
+            // still a comment but there is no KtFile to walk.
+            val text = if (ktFile == null) node.sourcePsi?.text else null
             if (text != null && text.contains(JNI_MARKER)) return true
             val pkg = node.packageName
             return node.classes.any { clazz ->
