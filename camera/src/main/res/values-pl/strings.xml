@@ -64,4 +64,11 @@
     <string name="mode_photosphere">Sfera</string>
     <string name="mode_video">Wideo</string>
     <string name="mode_timelapse">Poklatkowy</string>
+    <string name="settings_noise_reduction">Redukcja szumów</string>
+    <string name="settings_noise_reduction_description">Łagodzi szumy na zdjęciach i filmach (wyłącz, aby zachować surowe detale)</string>
+    <string name="settings_edge_sharpening">Wyostrzanie krawędzi</string>
+    <string name="settings_edge_sharpening_description">Wyostrza krawędzie na zdjęciach i filmach (wyłącz, aby uzyskać naturalny wygląd)</string>
+    <string name="settings_motion_duration">Długość zdjęcia w ruchu</string>
+    <string name="motion_duration_1s">%1$d sekunda</string>
+    <string name="motion_duration_ns">%1$d sekund</string>
 </resources>
