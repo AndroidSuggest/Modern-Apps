@@ -3,8 +3,23 @@
 
 use super::*;
 use rayon::prelude::*;
+use std::time::Instant;
 
+/// Untimed entry, kept for the unit tests in `transit_shapes_extra`.
+#[cfg(test)]
 pub(crate) fn run(out_path: &Path, specs: &[FeedSpec]) -> Result<(), String> {
+    run_with_timer(out_path, specs, None)
+}
+
+/// Timed pipeline entry: ticks `parse-feeds` over the feed loop below, the
+/// corridor stages inside [`expand_corridor_spans`], then `write-output` over
+/// the sort and file write, and emits the `TIMING` line before the human
+/// summary. `None` skips every tick, which is what the tests drive via [`run`].
+pub(crate) fn run_with_timer(
+    out_path: &Path,
+    specs: &[FeedSpec],
+    mut timer: Option<PhaseTimer>,
+) -> Result<(), String> {
     let mut seen: HashSet<(u64, u32)> = HashSet::new();
     let mut lines: Vec<Line> = Vec::new();
     // Track already drawn, per colour and per mode. Two of one colour must never draw as
@@ -34,6 +49,13 @@ pub(crate) fn run(out_path: &Path, specs: &[FeedSpec]) -> Result<(), String> {
     // Chunked rather than read-all-then-fold: a chunk of twice the pool keeps every core busy
     // while capping how many parsed feeds are alive at once, so peak memory follows the pool
     // size and not the number of feeds.
+    //
+    // ONE subphase for the whole feed loop below: thousands of feeds must not
+    // produce thousands of entries. The sequential fold rides along inside it.
+    if let Some(t) = timer.as_mut() {
+        t.switch("parse-feeds");
+    }
+    let parse_start = Instant::now();
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     let chunk_size = threads.saturating_mul(2).max(1);
 
@@ -70,8 +92,7 @@ pub(crate) fn run(out_path: &Path, specs: &[FeedSpec]) -> Result<(), String> {
             shapes_read += feed.shapes_read;
             chunk_lines.extend(feed.lines);
             processed += 1;
-            eprint!("\rtransit_shapes: {processed}/{total} feed(s) parsed");
-            let _ = std::io::stderr().flush();
+            print_feed_meter(processed, total, &parse_start);
         }
 
         // The dedup key is a content hash of the geometry, so it is order-independent and every
@@ -142,7 +163,10 @@ pub(crate) fn run(out_path: &Path, specs: &[FeedSpec]) -> Result<(), String> {
     // to be cut for that lane to change. Once, over the whole set: neither the tiler nor
     // the renderer sees more than one tile, so deciding it there is what puts a jog in every
     // route at every tile seam.
-    let bundled = expand_corridor_spans(&mut lines);
+    let bundled = expand_corridor_spans(&mut lines, timer.as_mut());
+    if let Some(t) = timer.as_mut() {
+        t.switch("write-output");
+    }
 
     // Deterministic output, so a rebuild produces a byte-identical layer and the
     // tile diff is empty when nothing changed. Feed order already fixes which
@@ -185,7 +209,12 @@ pub(crate) fn run(out_path: &Path, specs: &[FeedSpec]) -> Result<(), String> {
     }
     out.flush().map_err(io_err)?;
 
-    eprintln!(
+    // TIMING before the human summary: stdout carries facts + TIMING only.
+    if let Some(t) = timer {
+        t.finish();
+    }
+
+    println!(
         "transit_shapes: wrote {} ({} feed(s), {kept} rail route(s) kept, \
          {without_shape} with no usable shape, {shapes_read} shape(s) read, \
          {deduped} republished byte-for-byte, {merged} already drawn in their colour, \
@@ -197,4 +226,35 @@ pub(crate) fn run(out_path: &Path, specs: &[FeedSpec]) -> Result<(), String> {
         lines.len(),
     );
     Ok(())
+}
+
+/// One stderr redraw of the feed-parse meter in the standard shape:
+/// `\r{label:<28} [{pct:>3}%] {done}/{total}  {elapsed} elapsed, ETA {eta}`.
+fn print_feed_meter(done: usize, total: usize, start: &Instant) {
+    let elapsed = start.elapsed().as_secs_f64();
+    let pct = if total == 0 { 100 } else { (done * 100 / total.max(1)).min(100) };
+    let eta = if done == 0 {
+        "--".to_string()
+    } else {
+        fmt_dur(elapsed / done as f64 * (total - done) as f64)
+    };
+    eprint!(
+        "\r{:<28} [{:>3}%] {done}/{total}  {} elapsed, ETA {eta}",
+        "Parse feeds",
+        pct,
+        fmt_dur(elapsed),
+    );
+    let _ = std::io::stderr().flush();
+}
+
+/// Short stable durations for the meter: `12s`, `2m05s`, `1h02m`.
+fn fmt_dur(secs: f64) -> String {
+    let s = secs.max(0.0).round() as u64;
+    if s < 60 {
+        format!("{s}s")
+    } else if s < 3600 {
+        format!("{}m{:02}s", s / 60, s % 60)
+    } else {
+        format!("{}h{:02}m", s / 3600, (s % 3600) / 60)
+    }
 }

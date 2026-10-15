@@ -40,6 +40,7 @@ mod extra;
 use gtfs_ingest::bundle;
 use gtfs_ingest::gtfs::{self, Csv};
 use gtfs_ingest::manifest::{parse_feed_spec, read_manifest, FeedSpec};
+use gtfs_ingest::timing::PhaseTimer;
 
 /// How many distinct services may draw over one stretch of track before the rest are dropped.
 ///
@@ -87,15 +88,18 @@ fn main() -> ExitCode {
     }
     let out = PathBuf::from(&args[1]);
 
+    let mut timer = PhaseTimer::start("transit");
+    timer.switch("manifest-resolve");
+
     let specs: Vec<FeedSpec> = if args[2] == "--manifest" {
         let Some(file) = args.get(3) else {
-            eprintln!("transit_shapes: --manifest requires a file path");
+            eprintln!("ERROR: transit_shapes: --manifest requires a file path");
             return ExitCode::from(2);
         };
         match read_manifest(Path::new(file)) {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("transit_shapes: {e}");
+                eprintln!("ERROR: transit_shapes: {e}");
                 return ExitCode::FAILURE;
             }
         }
@@ -104,15 +108,15 @@ fn main() -> ExitCode {
     };
 
     if specs.is_empty() {
-        eprintln!("transit_shapes: no feeds given");
+        eprintln!("ERROR: transit_shapes: no feeds given");
         usage();
         return ExitCode::from(2);
     }
 
-    match extra2::run(&out, &specs) {
+    match extra2::run_with_timer(&out, &specs, Some(timer)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("transit_shapes: {e}");
+            eprintln!("ERROR: transit_shapes: {e}");
             ExitCode::FAILURE
         }
     }
@@ -259,7 +263,7 @@ fn read_feed(spec: &FeedSpec) -> Result<FeedLines, String> {
         // Optional in GTFS, and a feed without it can still route — it just draws
         // nothing. Not an error, or one bus-only agency would fail a whole region.
         eprintln!(
-            "transit_shapes: warning: feed '{name}' has no usable shapes.txt, so it draws no lines"
+            "WARN: transit_shapes: feed '{name}' has no usable shapes.txt, so it draws no lines"
         );
         return Ok(FeedLines::default());
     };
@@ -368,7 +372,10 @@ fn shape_ids_by_route(
 /// becomes several out — the stretch before a corridor on its own geometry, the stretch
 /// inside it on the corridor's reference geometry at its lane, and a taper between. Returns
 /// how many pieces came out offset into a corridor.
-fn expand_corridor_spans(lines: &mut Vec<Line>) -> usize {
+fn expand_corridor_spans(
+    lines: &mut Vec<Line>,
+    timer: Option<&mut PhaseTimer>,
+) -> usize {
     // A route is a route across every branch and short-turn it publishes, so all of
     // them take one lane. `BTreeMap` and first-seen ids, because a `HashMap`'s order
     // would decide the lanes and the output has to be byte-identical between runs.
@@ -389,7 +396,7 @@ fn expand_corridor_spans(lines: &mut Vec<Line>) -> usize {
                 name: &line.route,
             })
             .collect();
-        bundle::assign(&candidates)
+        bundle::assign_with_timer(&candidates, timer)
     };
     let mut bundled = 0usize;
     let mut out: Vec<Line> = Vec::with_capacity(lines.len());

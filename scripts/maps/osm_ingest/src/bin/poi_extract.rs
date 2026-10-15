@@ -13,7 +13,7 @@ fn main() -> ExitCode {
     let args = match osm_ingest::poi_build::parse_args(&argv) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("error: {e}\n{USAGE}");
+            eprintln!("ERROR: {e}\n{USAGE}");
             return ExitCode::FAILURE;
         }
     };
@@ -22,7 +22,6 @@ fn main() -> ExitCode {
         osm_ingest::par::set_threads(n);
     }
 
-    let started = std::time::Instant::now();
     match osm_ingest::poi_build::build_with(
         &args.input,
         &args.geojson,
@@ -36,14 +35,13 @@ fn main() -> ExitCode {
         Ok(stats) => {
             println!(
                 "{} POI(s) ({} node, {} closed-way, {} relation), {} unique name(s) \
-                 ({} bytes) in {:.1}s",
+                 ({} bytes)",
                 stats.records,
                 stats.from_nodes,
                 stats.from_ways,
                 stats.from_relations,
                 stats.unique_names,
                 stats.name_bytes,
-                started.elapsed().as_secs_f64()
             );
             println!(
                 "{} POI(s) with attributes, {} unique record(s), {} sidecar byte(s)",
@@ -65,7 +63,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("ERROR: {e}");
             ExitCode::FAILURE
         }
     }

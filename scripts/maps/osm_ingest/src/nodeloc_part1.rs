@@ -1,31 +1,3 @@
-/// Where the node pass's CPU goes, split between decoding blocks and writing coordinates.
-///
-/// Nanoseconds. `SCAN_NANOS` covers **both** the protobuf decode of a block and the id lookups for
-/// its nodes, because it brackets the whole `visit_block` call -- timing the lookups alone would need
-/// a clock read per node, and there are 2.3 billion of them on a north-america extract. An earlier
-/// version of this comment called it "searching" and a conclusion was drawn from it about the id
-/// index; that was wrong, and the number cannot tell those two apart. What it does bound is the
-/// write side, which is the part that is serialised: `run_pass_sink` calls its sink under a lock.
-///
-/// Timed per CHUNK rather than per node -- a chunk is eight blobs, tens of thousands of nodes -- so
-/// two `Instant::now()` calls and one atomic add cost nothing measurable. Off unless `MAPS_TIMING`
-/// is set regardless, for the reason `mamaps_build`'s encode counters are: an instrument hit once per
-/// item across 64 workers changes what it measures.
-static SCAN_NANOS: atomic::AtomicU64 = atomic::AtomicU64::new(0);
-static WRITE_NANOS: atomic::AtomicU64 = atomic::AtomicU64::new(0);
-
-fn timing() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var_os("MAPS_TIMING").is_some())
-}
-
-/// The node pass's split in seconds of CPU: `(decode and look up, write)`. Zero without
-/// `MAPS_TIMING`.
-pub fn resolve_seconds() -> (f64, f64) {
-    let s = |c: &atomic::AtomicU64| c.load(atomic::Ordering::Relaxed) as f64 / 1e9;
-    (s(&SCAN_NANOS), s(&WRITE_NANOS))
-}
-
 /// The node pass: fill in every coordinate the earlier passes asked for.
 ///
 /// Uses [`pbf::run_pass_sink`] rather than [`pbf::run_pass`], because `run_pass`'s contract is to
@@ -87,7 +59,6 @@ where
     C: Fn(&NodeView) -> Option<L> + Sync,
     D: FnMut(Vec<L>) -> Result<()> + Send,
 {
-    let on = timing();
     // Moved out so the workers can search it while the sink writes coordinates; put back below.
     let ids = std::mem::take(&mut table.ids);
     let locs = &mut table.locs;
@@ -99,7 +70,6 @@ where
         label,
         || (Vec::<(u64, i32, i32)>::new(), Vec::<L>::new()),
         |state: &mut (Vec<(u64, i32, i32)>, Vec<L>), block| {
-            let at = on.then(std::time::Instant::now);
             let mut kinds = 0u8;
             // One cursor per block, because that is the run of ascending ids: a PBF block's dense
             // nodes are delta-encoded and therefore sorted, so this pays one binary search here and
@@ -116,13 +86,9 @@ where
                 }
                 Ok(())
             })?;
-            if let Some(at) = at {
-                SCAN_NANOS.fetch_add(at.elapsed().as_nanos() as u64, atomic::Ordering::Relaxed);
-            }
             Ok(kinds)
         },
         |(coords, items)| {
-            let at = on.then(std::time::Instant::now);
             // Sorted by table index before the stores, so the mmap writes walk forward
             // instead of scattering: a chunk's ids arrive in block order (ascending within
             // a block, but blocks interleave across the chunk), and 8-byte stores to
@@ -135,9 +101,6 @@ where
             coords.sort_unstable_by_key(|c| c.0);
             for (idx, lat, lon) in coords {
                 locs.set(idx as usize, lat, lon);
-            }
-            if let Some(at) = at {
-                WRITE_NANOS.fetch_add(at.elapsed().as_nanos() as u64, atomic::Ordering::Relaxed);
             }
             // After the coordinate writes, so a caller that both resolves and classifies sees the
             // two in the order this pass names them.

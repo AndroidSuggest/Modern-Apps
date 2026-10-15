@@ -13,9 +13,12 @@ fn collapse_within_ways<W: std::io::Write + Send>(
     slots: u32,
     filter: RegionFilter,
     pool: &mut NamePool<W>,
+    timer: &mut crate::timing::PhaseTimer,
 ) -> Result<Collapsed> {
+    timer.switch("collapse-degrees");
     let degree = chains::count_degrees(input, blobs, blob_kinds, index, slots, filter)?;
     let spill = chains::Spill::split(spill_dir, spill_pts_dir);
+    timer.switch("collapse-chains");
     let built = chains::build(
         input, blobs, blob_kinds, index, coords, &degree, stop, slots, filter, pool, &spill,
     )?;
@@ -147,7 +150,12 @@ struct Synth {
     dist_mm: u32,
 }
 
-fn build_csr(spill: &chains::Spill, kept_count: u32, ids: &FinalIds) -> Result<Csr> {
+fn build_csr(
+    spill: &chains::Spill,
+    kept_count: u32,
+    ids: &FinalIds,
+    timer: &mut crate::timing::PhaseTimer,
+) -> Result<Csr> {
     println!("Building the edge index over {kept_count} node(s)...");
     let chain_total = spill.chain_count()?;
     let mut edge_ptr = vec![0u64; kept_count as usize + 2];
@@ -166,6 +174,7 @@ fn build_csr(spill: &chains::Spill, kept_count: u32, ids: &FinalIds) -> Result<C
     }
 
     let total = edge_ptr[kept_count as usize];
+    timer.switch("edge-index-scatter");
     let mut targets = vec![0u32; total as usize];
     let mut cursor: Vec<u64> = edge_ptr[..=kept_count as usize].to_vec();
     let mut hdr = spill.headers()?;
@@ -209,6 +218,7 @@ fn build_csr(spill: &chains::Spill, kept_count: u32, ids: &FinalIds) -> Result<C
         consumed = end;
     }
     let ptr = &edge_ptr;
+    timer.switch("edge-index-sort");
     eprintln!("Sorting edge groups across {workers} worker(s)...");
     par::install(|| {
         pieces.par_iter_mut().for_each(|(lo, hi, buf)| {

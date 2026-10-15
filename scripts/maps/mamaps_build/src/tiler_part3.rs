@@ -198,40 +198,9 @@ fn remap_names(into_names: &mut Vec<String>, from: &ChunkEntry) -> Vec<u16> {
 /// ~900 MB through one core while sixty-three sat idle. That is why a 64-thread build was *slower*
 /// than the sequential one it replaced.
 ///
-/// Returns the raw length alongside the compressed frame, because the per-zoom `bytes` column has
+/// returns the raw length alongside the compressed frame, because the per-zoom `bytes` column has
 /// always reported *uncompressed* body size and moving compression must not silently change what a
 /// build report means.
-/// Where the encode pass's CPU actually goes, accumulated across workers.
-///
-/// Nanoseconds, summed per tile. Split three ways because the three steps have nothing to do with
-/// each other and the totals cannot say which is which: stage C is geometry with a quadratic
-/// hole-versus-hole test in it, serialisation is a memcpy, and DEFLATE at level nine is a
-/// throughput-bound compressor. This exists for the same reason
-/// [`tile_build::pyramid`]'s `MVT_NANOS` and `GZIP_NANOS` do -- four rounds of plausible-sounding
-/// optimisation there bought 3% between them, and splitting the measurement is what found the real
-/// cost. Here it found a `clone` of every tile's coordinate arena.
-///
-/// **Off unless `MAPS_TIMING` is set**, and that is not tidiness. `pyramid`'s counters are hit once
-/// per gzip probe, a handful per tile; these are hit three times per tile, and at 943,401 tiles
-/// across 64 workers three contended atomics per tile is itself a scalability problem. Leaving them
-/// always-on would mean the instrument changed what it measured.
-static STAGE_C_NANOS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-static SERIALIZE_NANOS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-static DEFLATE_NANOS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-/// Whether to time the encode split at all. Read once; an `Instant::now()` pair and an atomic per
-/// step per tile is not free at this tile count.
-fn timing() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var_os("MAPS_TIMING").is_some())
-}
-
-/// The encode split in seconds of CPU: `(stage C, serialise, deflate)`. All zero without
-/// `MAPS_TIMING`.
-pub fn encode_seconds() -> (f64, f64, f64) {
-    let s = |c: &std::sync::atomic::AtomicU64| c.load(Ordering::Relaxed) as f64 / 1e9;
-    (s(&STAGE_C_NANOS), s(&SERIALIZE_NANOS), s(&DEFLATE_NANOS))
-}
 
 /// The most features any one tile has carried in each layer.
 ///
@@ -259,18 +228,6 @@ pub fn widest_layers() -> Vec<(u8, u64)> {
             n => Some((id as u8, n)),
         })
         .collect()
-}
-
-/// Time `f` into `counter`, or just run it when timing is off.
-#[inline]
-fn timed<R>(on: bool, counter: &std::sync::atomic::AtomicU64, f: impl FnOnce() -> R) -> R {
-    if !on {
-        return f();
-    }
-    let at = std::time::Instant::now();
-    let out = f();
-    counter.fetch_add(at.elapsed().as_nanos() as u64, Ordering::Relaxed);
-    out
 }
 
 /// One encoded tile on its way back from [`encode_batch`]: its id, the compressed body with its raw

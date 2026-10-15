@@ -70,7 +70,7 @@ fn env_threads(raw: Option<&str>) -> Option<usize> {
         Ok(n) if n > 0 => Some(n),
         _ => {
             WARNED.call_once(|| {
-                eprintln!("WARNING: ignoring MAPS_THREADS='{trimmed}' (wants a positive count)");
+                eprintln!("WARN: ignoring MAPS_THREADS='{trimmed}' (wants a positive count)");
             });
             None
         }
@@ -108,7 +108,7 @@ fn pool() -> Arc<rayon::ThreadPool> {
         }
     }
     let built = Arc::new(build_pool(want).unwrap_or_else(|e| {
-        eprintln!("WARNING: cannot start a {want}-thread pool ({e}); continuing on one thread");
+        eprintln!("WARN: cannot start a {want}-thread pool ({e}); continuing on one thread");
         build_pool(1).expect("a one-thread pool")
     }));
     *cached = Some((want, Arc::clone(&built)));

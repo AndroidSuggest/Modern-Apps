@@ -320,7 +320,7 @@ impl WaySink {
                 WayOut::Anon(tile_build::anon::AnonStore::new())
             }
             osm_ingest::mem::SpillPlan::File => {
-                println!("  [stage A] ways spill -> {} (file backend: commit budget)", path.display());
+                eprintln!("  [stage A] ways spill -> {} (file backend: commit budget)", path.display());
                 let file = File::create(path)
                     .map_err(|e| Error(format!("cannot create {}: {e}", path.display())))?;
                 // A megabyte, because the writes are a few dozen bytes each and there are millions.

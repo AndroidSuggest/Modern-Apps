@@ -157,7 +157,7 @@ fn build_resolved_table(
     region: Option<&osm_ingest::bbox::BBox>,
     sink: &mut Sink,
     stats: &mut Stats,
-    mark: &dyn Fn(&str),
+    timer: &mut crate::timing::PhaseTimer,
 ) -> Result<NodeLocations> {
     // --- pass 3: the coordinates those two asked for, plus the label nodes ----------------
     //
@@ -170,11 +170,11 @@ fn build_resolved_table(
         .flat_map(|refs| refs.iter().copied())
         .fold(way_max_ref, i64::max);
     let table = if refs_total <= REFS_IN_MEMORY {
-        collect_needed_in_memory(&ways_path, ways_anon, &members, refs_total, &mark)?
+        collect_needed_in_memory(&ways_path, ways_anon, &members, refs_total, timer)?
     } else {
-        collect_needed_by_bitset(&ways_path, ways_anon, &members, max_ref, &mark)?
+        collect_needed_by_bitset(&ways_path, ways_anon, &members, max_ref, timer)?
     };
-    mark("id index built, refs freed");
+    timer.switch("coords-resolve");
     stats.nodes_needed = table.len() as u64;
     // The node region is the bulk of a planet PBF, so it is inflated once: the coordinate resolve
     // and the label-node classification share this pass. `classify` runs in the block visitor across
@@ -219,17 +219,6 @@ fn build_resolved_table(
         Ok(())
     };
     let table = resolve_nodes_with(input, &blobs, &blob_kinds, "Pass 3: nodes", table, classify, drain)?;
-    mark("coordinates resolved");
-    // The split, when asked for. Note what it does and does not separate: the first number is the
-    // protobuf decode of each block *plus* the id lookups inside it, because bracketing the lookups
-    // alone would need a clock read per node and there are billions. The second is the write, which
-    // is the half that is serialised behind `run_pass_sink`'s lock.
-    let (scan, write) = osm_ingest::nodeloc::resolve_seconds();
-    if scan + write > 0.0 {
-        println!(
-            "  [stage A] node pass CPU: decode+lookup {scan:.1}s  write {write:.1}s (serialised)",
-        );
-    }
 
     Ok(table)
 }

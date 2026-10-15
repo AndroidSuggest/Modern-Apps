@@ -15,15 +15,12 @@ pub fn extract(
     graph: &Path,
     spill_path: &Path,
     region: Option<osm_ingest::bbox::BBox>,
+    timer: &mut crate::timing::PhaseTimer,
 ) -> Result<(Store, Stats, HashMap<u64, u64>, HashMap<u64, u64>)> {
-    // Stage A's boundaries are printed with their elapsed time so an external RSS sampler can say
-    // which of them the peak belongs to. Three candidates sit within seconds of each other -- the ref
-    // vector, the id index built beside it, and the node pass's per-chunk accumulators -- and
-    // guessing between them has already cost more than printing them does.
-    let started = std::time::Instant::now();
-    let mark = |what: &str| {
-        println!("  [stage A] {what} at {:.1}s", started.elapsed().as_secs_f64());
-    };
+    // Stage A's boundaries are subphase switches on the run's `PhaseTimer`, so an external RSS
+    // sampler can say which of them the peak belongs to. Three candidates sit within seconds of
+    // each other -- the ref vector, the id index built beside it, and the node pass's per-chunk
+    // accumulators -- and guessing between them has already cost more than naming them does.
     let blobs = pbf::scan_blobs(input)?;
     let select = Select::parse(&schema::filters())?;
     let mut stats = Stats::default();
@@ -43,10 +40,8 @@ pub fn extract(
     // vice versa) would silently mismatch layers. A missing sidecar here only
     // warns — the blob mask itself is optional — but a region build still
     // validates the graph's own coverage below in `append_external_and_finish`.
+    timer.switch("blob-kinds");
     let graph_kinds = pbf::load_blob_kinds(graph, input, &blobs);
-    if graph_kinds.is_some() {
-        mark("blob kinds loaded from graph sidecar");
-    }
     if let Some(b) = region.as_ref() {
         println!(
             "region filter: keeping roads/pois/buildings touching {:.3},{:.3} .. {:.3},{:.3}",
@@ -55,7 +50,9 @@ pub fn extract(
     }
 
     let ways_plan = plan_ways_spill(input, &blobs, &ways_path)?;
-    let pass1 = run_pass1(input, &blobs, graph_kinds.as_deref(), &select, layers, &ways_path, ways_plan, &mut stats, &mark)?;
+    timer.switch("pass1");
+    let pass1 = run_pass1(input, &blobs, graph_kinds.as_deref(), &select, layers, &ways_path, ways_plan, &mut stats, timer)?;
+    timer.switch("member-ways");
     let members = load_member_ways(input, &blobs, &pass1.blob_kinds, &pass1.relations)?;
     // --- budget gate (phase 1: real counts) ------------------------------------------
     //
@@ -66,6 +63,7 @@ pub fn extract(
     // graph files stat to theirs -- so the feature spill's backend is decided HERE, from those
     // counts, failing fast with the numbers when neither backend fits. Same records either way;
     // the backend never changes a hash.
+    timer.switch("spill-budget");
     let spill_plan = plan_feature_spill(&pass1, &members, graph, spill_path)?;
     // Created before the fused node pass below, which spills `places`/`poi` label nodes straight
     // into it. This sits where pass 4's `Sink::create` used to, moved earlier so those labels reach
@@ -88,6 +86,7 @@ pub fn extract(
     } = pass1;
     // The ways spill, shared by refcount with every reader below (collectors,
     // lanefill scan, materialise). Last use is `materialise_ways`; freed there.
+    timer.switch("refs-collect");
     let table = build_resolved_table(
         input,
         &blobs,
@@ -102,12 +101,13 @@ pub fn extract(
         region.as_ref(),
         &mut sink,
         &mut stats,
-        &mark,
+        timer,
     )?;
     // The node pass was the last reader of the blob-kinds mask. Freed before lanefill so the
     // mask (one byte per blob, small) does not pin anything beside it -- and, more importantly,
     // so the next large allocation cannot sit beside a dead one.
     drop(blob_kinds);
+    timer.switch("lane-inherit");
     let inherited_lanes = inherit_lane_counts(
         spill_path,
         &ways_path,
@@ -117,14 +117,13 @@ pub fn extract(
         region.as_ref(),
     )?;
     stats.lanes_inherited = inherited_lanes.len() as u64;
-    mark("lane counts inherited");
 
     // --- materialise ----------------------------------------------------------------------
     //
     // Ways in **id order**, which is the order the spill file is already in. The label nodes were
     // already spilled into `sink` during the fused node pass above, so this only *adds* ways and
     // relations after them -- the order the tiler groups by layer id from.
-    mark("materialising");
+    timer.switch("materialise-ways");
     materialise_ways(
         &ways_path,
         &ways_anon,
@@ -142,7 +141,7 @@ pub fn extract(
     drop(ways_anon);
     drop(promoted);
     drop(inherited_lanes);
-    mark("ways spill freed");
+    timer.switch("materialise-relations");
     let conventions = materialise_relations(
         &relations,
         &members,
@@ -171,7 +170,7 @@ pub fn extract(
     drop(relations);
     drop(members);
     drop(table);
-    mark("OSM tables freed");
+    timer.switch("land-polygons");
     let store = append_external_and_finish(
         coastline,
         transit_routes,
@@ -180,7 +179,7 @@ pub fn extract(
         &mut stats,
         conventions,
         spill_path,
-        &mark,
+        timer,
     )?;
     // The place-label -> boundary link, tagged into the id space the archive uses (a place carries
     // its node id tagged as a node; the mask keys on the boundary's relation id tagged as a
@@ -294,26 +293,9 @@ fn plan_feature_spill(
     // fits. Files are the safe side -- same records, removed on success -- and a volume that
     // truly is too small still fails naturally, with its path in the error.
     match osm_ingest::mem::SpillPlan::decide(&budget, spill_path, &context) {
-        Ok(plan) => {
-            println!(
-                "  [stage A] budget: rank {} + ways spill {} + {} expected features x {} B => {:?} backend",
-                osm_ingest::mem::fmt_gb(budget.rank_bytes()),
-                osm_ingest::mem::fmt_gb(budget.ways_spill_bytes),
-                budget.features_expected,
-                budget.bytes_per_feature,
-                plan,
-            );
-            Ok(plan)
-        }
+        Ok(plan) => Ok(plan),
         Err(e) => {
-            eprintln!("WARNING: {e}; continuing with file staging");
-            println!(
-                "  [stage A] budget: rank {} + ways spill {} + {} expected features x {} B => File backend (over budget)",
-                osm_ingest::mem::fmt_gb(budget.rank_bytes()),
-                osm_ingest::mem::fmt_gb(budget.ways_spill_bytes),
-                budget.features_expected,
-                budget.bytes_per_feature,
-            );
+            eprintln!("WARN: {e}; continuing with file staging");
             Ok(osm_ingest::mem::SpillPlan::File)
         }
     }
@@ -389,7 +371,7 @@ fn run_pass1(
     ways_path: &Path,
     spill_plan: osm_ingest::mem::SpillPlan,
     stats: &mut Stats,
-    mark: &dyn Fn(&str),
+    timer: &mut crate::timing::PhaseTimer,
 ) -> Result<Pass1Out> {
     // --- pass 1: ways and relations -------------------------------------------------------
     //
@@ -617,10 +599,10 @@ fn run_pass1(
     // a corridor into stubs at the zooms where only its motorway parts survive. Promote
     // each connected same-`ref` run to the shallowest zoom any of its ways asks for, then
     // drop the segments: only the (way id, zoom) overrides are needed from here.
+    timer.switch("corridors");
     let promoted = crate::corridor::promote(&corridors);
     stats.corridor_promotions = promoted.len() as u64;
     drop(corridors);
-    mark("corridors promoted");
 
     Ok(Pass1Out {
         relations,

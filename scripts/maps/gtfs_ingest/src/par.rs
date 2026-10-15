@@ -62,7 +62,7 @@ fn env_threads(raw: Option<&str>) -> Option<usize> {
         Ok(n) if n > 0 => Some(n),
         _ => {
             WARNED.call_once(|| {
-                eprintln!("WARNING: ignoring MAPS_THREADS='{trimmed}' (wants a positive count)");
+                eprintln!("WARN: ignoring MAPS_THREADS='{trimmed}' (wants a positive count)");
             });
             None
         }

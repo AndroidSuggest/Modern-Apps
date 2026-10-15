@@ -51,6 +51,7 @@ mod schema;
 mod store;
 mod tiler;
 mod tilespill;
+mod timing;
 
 /// The allocator, replaced because the default one was three quarters of the build.
 ///
@@ -58,7 +59,7 @@ mod tilespill;
 /// encode pass was measured against the machine it runs on: **1358 s of worker CPU against 180 s of
 /// wall on a 32-core, 64-thread box** — a speed-up of 7.5 where the pool can give 64. Nothing in
 /// that pass is shared. [`rings::normalise`], `body::serialize_into` and DEFLATE each read one tile
-/// and write one tile, there is no lock and no atomic in the path with `MAPS_TIMING` off, and the
+/// and write one tile, there is no lock and no atomic in the path, and the
 /// memory traffic works out at a few hundred MB/s against eight channels of DDR5. The only thing
 /// all sixty-four threads still contend on is the heap.
 ///

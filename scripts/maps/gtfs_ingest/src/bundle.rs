@@ -71,6 +71,7 @@
 //! vector or a `BTreeMap`.
 
 use crate::shapes::{distance_m, project, resample};
+use crate::timing::PhaseTimer;
 use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -200,9 +201,24 @@ pub struct Span {
 /// Cut every candidate into spans and give each one its lane. One list out per candidate in,
 /// in the same order, never empty.
 pub fn assign(candidates: &[Candidate]) -> Vec<Vec<Span>> {
+    assign_with_timer(candidates, None)
+}
+
+/// [`assign`], ticking the gapless timer through the corridor stages — one
+/// switch per stage (`corridor-probe`, `corridor-spans`, `corridor-order`,
+/// `corridor-cut`), never one entry per sample. `None` skips the ticks, which
+/// is what [`assign`] and the unit tests drive.
+pub fn assign_with_timer(
+    candidates: &[Candidate],
+    mut timer: Option<&mut PhaseTimer>,
+) -> Vec<Vec<Span>> {
     if candidates.is_empty() {
         return Vec::new();
     }
+    // One switch per corridor stage, matching the four stderr meters below.
+    // The timer ticks here on the orchestrating thread only; the worker
+    // threads inside never touch it.
+    tick(&mut timer, "corridor-probe");
     let route_count = candidates.iter().map(|c| c.route as usize + 1).max().unwrap_or(0);
     let (samples, blocks) = sample_all(candidates);
     let grid = Grid::build(&samples);
@@ -273,6 +289,8 @@ pub fn assign(candidates: &[Candidate]) -> Vec<Vec<Span>> {
         });
     }
     eprintln!("\r{:<28} [100%] {} sample(s)", "Corridor probe", samples.len());
+    // The runs cutting below is spans work, not probe work.
+    tick(&mut timer, "corridor-spans");
 
     // Back in sample order, then interned sequentially: first-seen order is what fixes the ids.
     let mut parts = parts.into_inner().expect("probe pool");
@@ -328,6 +346,7 @@ pub fn assign(candidates: &[Candidate]) -> Vec<Vec<Span>> {
     // Named too: on a large set the work after the probe loop is still minutes, and without a
     // line here the run goes silent again the moment the bar reaches 100%.
     eprintln!("{:<28} {} candidate(s)", "Corridor spans", candidates.len());
+    tick(&mut timer, "corridor-order");
     let corridors = corridors_of(candidates, &sets, &runs, &named, &own_cum, &probe_cum);
 
     if std::env::var_os("TRANSIT_BUNDLE_DEBUG").is_some() {
@@ -359,6 +378,8 @@ pub fn assign(candidates: &[Candidate]) -> Vec<Vec<Span>> {
     // long-distance rail all the work and left the rest idle: a world set sat at 98% on one
     // core for ten minutes with sixty-three threads finished. Sample probes are uniform enough
     // for a range split; candidates are not.
+    // The cut below is its own stage: close the order subphase first.
+    tick(&mut timer, "corridor-cut");
     let total = candidates.len();
     // Largest-first dispatch (longest-processing-time scheduling): hand out the heaviest
     // candidates first so the one transcontinental line overlaps with all the small work
@@ -424,6 +445,17 @@ pub fn assign(candidates: &[Candidate]) -> Vec<Vec<Span>> {
     let mut cut_parts = cut_parts.into_inner().expect("cut pool");
     cut_parts.sort_unstable_by_key(|(at, _)| *at);
     cut_parts.into_iter().map(|(_, spans)| spans).collect()
+}
+
+/// One gapless tick, skipped when the caller passed `None`.
+///
+/// The timer lives on the orchestrating thread only, and every call site is
+/// sequential code between the parallel loops, so worker threads never touch
+/// it — the coarse loop/pass boundaries are the ticks.
+fn tick(timer: &mut Option<&mut PhaseTimer>, name: &str) {
+    if let Some(t) = timer {
+        t.switch(name);
+    }
 }
 
 /// A maximal stretch of one candidate's samples holding the same membership, as inclusive

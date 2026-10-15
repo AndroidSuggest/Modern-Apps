@@ -84,6 +84,98 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# --- cohesive timing ----------------------------------------------------
+# Two nested gapless chains plus machine lines from the tools.
+#
+# Outer chain (this script): $TotalSw runs from here to the final report;
+# $PhaseSw is restarted at each phase boundary and its elapsed is booked to
+# the phase just finished, so TOTAL WALL always equals the sum of the phase
+# rows (within ms). No step owns its own Stopwatch anymore.
+#
+# Inner chain (PS1-owned subphases): $SubSw mirrors the same stop==start
+# contract one level down. Switch-Phase first closes the open subphase into
+# the old phase, so a subphase never spans a phase boundary. Used for phases
+# with no Rust timer (tools' per-crate cargo builds, verify's steps) and for
+# PS1-side work inside a Rust-timed phase (transit's manifest resolution).
+#
+# Rust-timed phases (graph, transit, tiles, poi, pack) report their own
+# subphases as `TIMING {"phase":...,"wall_s":...,"subphases":[...]}` lines on
+# stdout (see timing.rs, one copy per crate). Each binary's stdout is Tee'd
+# to a per-phase log; the report parses those lines back out. Per-zoom
+# `TIMING {"zoom":...}` machine rows ride the same channel.
+#
+# Closure rule, applied uniformly per phase at report time:
+#   other = phase_wall - sum(named subphases), clamped at zero.
+# PS1 phase walls are ground truth; Rust subphases are the measured detail;
+# `other` absorbs spawn/pipe overhead (and the microseconds of boundary skew
+# between the two clocks), so subphases always sum to the phase wall.
+#
+# To time a new step: one Switch-Phase/Switch-Subphase call at its boundary
+# (Rust side: one timer.switch), and it appears in TIME + timing.json.
+$script:PhaseTimes = [ordered]@{}
+$script:SubTimes = [ordered]@{}   # "phase/sub" -> seconds, PS1-owned subphases only
+$script:TotalSw = [System.Diagnostics.Stopwatch]::StartNew()
+$script:PhaseSw = [System.Diagnostics.Stopwatch]::StartNew()
+$script:SubSw = [System.Diagnostics.Stopwatch]::StartNew()
+$script:PhaseCurrent = "preflight"
+$script:SubCurrent = "other"
+function Switch-Subphase([string] $Next) {
+    # Read first, restart second: the boundary instant belongs to neither
+    # subphase twice and to no gap. Bookkeeping happens after the restart so
+    # it never leaks into either subphase.
+    $elapsed = $script:SubSw.Elapsed.TotalSeconds
+    $script:SubSw.Restart()
+    $key = "$($script:PhaseCurrent)/$($script:SubCurrent)"
+    if ($script:SubTimes.Contains($key)) { $script:SubTimes[$key] += $elapsed } else { $script:SubTimes[$key] = $elapsed }
+    $script:SubCurrent = $Next
+}
+function Switch-Phase([string] $Next) {
+    # Close the open subphase into the OLD phase first, so no subphase ever
+    # spans a phase boundary; then the phase switch itself, as before.
+    Switch-Subphase "other" | Out-Null
+    $elapsed = $script:PhaseSw.Elapsed.TotalSeconds
+    $script:PhaseSw.Restart()
+    if ($script:PhaseTimes.Contains($script:PhaseCurrent)) { $script:PhaseTimes[$script:PhaseCurrent] += $elapsed } else { $script:PhaseTimes[$script:PhaseCurrent] = $elapsed }
+    $script:PhaseCurrent = $Next
+}
+function Stop-Phases() {
+    Switch-Subphase "other" | Out-Null
+    $elapsed = $script:PhaseSw.Elapsed.TotalSeconds
+    $script:PhaseSw.Stop()
+    $script:TotalSw.Stop()
+    $script:SubSw.Stop()
+    if ($script:PhaseTimes.Contains($script:PhaseCurrent)) { $script:PhaseTimes[$script:PhaseCurrent] += $elapsed } else { $script:PhaseTimes[$script:PhaseCurrent] = $elapsed }
+}
+# Parse one phase log's `TIMING {...}` machine lines. Returns
+# @{ wall = <phase wall_s>; subs = [ordered]@{ name = seconds } } for the
+# last "phase" line found ($null when the tool never emitted one, e.g. a
+# skipped -NoTransit step), plus any per-zoom rows in @{ zooms = @() }.
+function Read-TimingLog([string] $Path) {
+    $phase = $null
+    $zooms = @()
+    if (-not (Test-Path $Path)) { return @{ phase = $phase; zooms = $zooms } }
+    foreach ($line in (Get-Content $Path)) {
+        if ($line -notmatch '^TIMING (.*)$') { continue }
+        try { $o = $Matches[1] | ConvertFrom-Json } catch { continue }
+        $names = @($o.PSObject.Properties.Name)
+        if ($names -contains 'phase') {
+            $subs = [ordered]@{}
+            foreach ($s in $o.subphases) {
+                if ($subs.Contains($s.name)) { $subs[$s.name] += [double]$s.s } else { $subs[$s.name] = [double]$s.s }
+            }
+            $phase = @{ wall = [double]$o.wall_s; subs = $subs }
+        } elseif ($names -contains 'zoom') {
+            $zooms += [pscustomobject]@{
+                zoom = [int]$o.zoom; tiles = [long]$o.tiles; features = [long]$o.features
+                points = [long]$o.points; dropped = [long]$o.dropped; bytes = [long]$o.bytes
+                map_ms = [long]$o.map_ms; merge_ms = [long]$o.merge_ms
+                encode_ms = [long]$o.encode_ms; append_ms = [long]$o.append_ms
+            }
+        }
+    }
+    return @{ phase = $phase; zooms = $zooms }
+}
+
 # Fixed inputs -- no file-location options. ALWAYS the planet: a california
 # build keeps only CA roads/POIs/buildings but renders borders, coastlines
 # and country names everywhere, so it needs the whole world as input.
@@ -202,21 +294,25 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
 # silently shrink a build someone asked for at full width.
 if ($Threads -gt 0) { $env:MAPS_THREADS = "$Threads" } else { Remove-Item Env:MAPS_THREADS -ErrorAction SilentlyContinue }
 Remove-Item Env:RAYON_NUM_THREADS -ErrorAction SilentlyContinue
-Remove-Item Env:MAPS_TIMING -ErrorAction SilentlyContinue
 Remove-Item Env:MAPS_PREFETCH_LANES -ErrorAction SilentlyContinue
 
 # --- [1/7] build the host tools ------------------------------------------
 # One crate builds all three PBF consumers now: road_graph, poi_extract and
 # mamaps_build share osm_ingest, one pool, and one blob scan via the graph's
 # sidecar. transit_shapes stays separate (it reads GTFS, not the PBF).
+$null = Switch-Phase "tools"
 Write-Host "[1/7] Building the host tools ($Region)"
+# PS1-owned subphases: no Rust timer covers cargo itself, so each crate build
+# is one subphase named for the binary it produces.
 $crates = @(@("osm_ingest", "road_graph"), @("osm_ingest", "poi_extract"), @("mamaps_build", "mamaps_build"))
 if (-not $NoTransit) { $crates += ,@("gtfs_ingest", "transit_shapes") }
 foreach ($crate in $crates) {
+    Switch-Subphase $crate[1] | Out-Null
     cargo build --release --manifest-path (Join-Path $PSScriptRoot "$($crate[0])\Cargo.toml") --bin $($crate[1])
     if ($LASTEXITCODE -ne 0) { throw "cargo build $($crate[0])/$($crate[1]) failed with exit code $LASTEXITCODE" }
 }
 foreach ($bin in @("mamaps_dump", "mamaps_pack")) {
+    Switch-Subphase $bin | Out-Null
     cargo build --release --manifest-path (Join-Path $PSScriptRoot "tile_build\Cargo.toml") --bin $bin
     if ($LASTEXITCODE -ne 0) { throw "cargo build tile_build/$bin failed with exit code $LASTEXITCODE" }
 }
@@ -232,9 +328,13 @@ $pack       = Find-Built "tile_build" "mamaps_pack"
 # touching the state bbox, so the traffic/junction layers and the pack agree
 # with the tiles. mamaps_build re-validates the dir before stage A — an empty
 # or stale graph used to cost 43 minutes of stage A before failing.
+$null = Switch-Phase "graph"
 Write-Host "[2/7] Building the routing graph ($Region) -> $graphDir"
 # caonly/naonly pass world: the extract IS the region, so no bbox filtering.
-& $roadGraph $Pbf --out $graphDir --region $BuildRegion
+# Stdout is Tee'd to the phase log so the report can parse the TIMING line
+# back out; bars stay live because Tee-Object does not redirect.
+$graphLog = Join-Path $tmp "graph.log"
+& $roadGraph $Pbf --out $graphDir --region $BuildRegion | Tee-Object -FilePath $graphLog
 if ($LASTEXITCODE -ne 0) { throw "road_graph failed with exit code $LASTEXITCODE" }
 # Fail HERE, not 43 minutes into stage A: the world build died on a missing
 # metadata.bin after paying the whole of stage A first.
@@ -244,6 +344,8 @@ if (-not (Test-Path (Join-Path $graphDir "metadata.bin"))) {
 
 # --- [3/7] transit routes from the world-transit feeds --------------------
 # -NoTransit skips every feed: an empty routes file, as if 0 feeds existed.
+$null = Switch-Phase "transit"
+$transitLog = Join-Path $tmp "transit.log"
 if ($NoTransit) {
     Write-Host "[3/7] NoTransit: skipping all GTFS feeds (empty transit-routes)"
     [System.IO.File]::WriteAllText($routes, "")
@@ -276,7 +378,10 @@ $resolvedLines = foreach ($line in (Get-Content $TransitManifest)) {
 }
 if (-not $resolvedLines -or $resolvedLines.Count -eq 0) { throw "no usable feeds in $TransitManifest" }
 [System.IO.File]::WriteAllLines((Join-Path $tmp "feeds.resolved.manifest"), $resolvedLines)
-& $shapes $routes --manifest (Join-Path $tmp "feeds.resolved.manifest")
+# PS1-side subphase: manifest resolution above is orchestration, not tool
+# work; the TIMING line below covers transit_shapes itself.
+Switch-Subphase "resolve-manifest" | Out-Null
+& $shapes $routes --manifest (Join-Path $tmp "feeds.resolved.manifest") | Tee-Object -FilePath $transitLog
 if ($LASTEXITCODE -ne 0) { throw "transit_shapes failed with exit code $LASTEXITCODE" }
 }
 
@@ -284,6 +389,7 @@ if ($LASTEXITCODE -ne 0) { throw "transit_shapes failed with exit code $LASTEXIT
 # Started before the build, so the first spike cannot be missed. Under
 # MAPS_ANON_SPILL the feature spill has no file: the sampler then tracks only
 # the process high-water (commit charge is visible in the OS, not in a path).
+$null = Switch-Phase "tiles"
 $spill = [System.IO.Path]::ChangeExtension($tilesTmp, "features.tmp")
 $sampler = Start-Job -ArgumentList "mamaps_build", $spill, $anon -ScriptBlock {
     param($name, $spill, $anon)
@@ -306,7 +412,8 @@ Write-Host "[4/7] Building $(Split-Path $tilesTmp -Leaf) (tiles only)   z0..z14$
 Write-Host ""
 # Tee-Object keeps the bars live on the console AND captures stdout to the log,
 # which the summary below parses. No redirect: the bars need the console to redraw on.
-$sw = [System.Diagnostics.Stopwatch]::StartNew()
+# No Stopwatch here: the phase chain above already covers this step, from this
+# boundary to the next Switch-Phase. (The old $sw made TOTAL WALL tiles-only.)
 & $build --input $Pbf --out $tilesTmp `
     --coastline $Coastline `
     --graph $graphDir `
@@ -314,7 +421,6 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
     --dem $Dem `
     --region $BuildRegion | Tee-Object -FilePath $log
 $exit = $LASTEXITCODE
-$sw.Stop()
 
 Start-Sleep -Milliseconds 400
 $s = Receive-Job $sampler
@@ -322,9 +428,14 @@ Stop-Job $sampler; Remove-Job $sampler -Force
 $peakWs    = ($s | Measure-Object Ws    -Maximum).Maximum
 $peakSpill = ($s | Measure-Object Spill -Maximum).Maximum
 
+# Sampler teardown (job stop + 400 ms settle above) is booked to tiles so the
+# POI clock starts exactly when [5/7] prints.
+$null = Switch-Phase "poi"
 Write-Host ""
 if ($exit -ne 0) {
-    Write-Host ("FAILED, exit {0}, after {1:N1} s (temp kept at {2})" -f $exit, $sw.Elapsed.TotalSeconds, $tmp)
+    Stop-Phases
+    $failedSecs = $script:TotalSw.Elapsed.TotalSeconds
+    Write-Host ("FAILED, exit {0}, after {1:N1} s (temp kept at {2})" -f $exit, $failedSecs, $tmp)
     exit $exit
 }
 
@@ -336,22 +447,25 @@ if ($exit -ne 0) {
 # baked-vector feed and is not consumed by the pack, but poi_extract requires it.
 Write-Host "[5/7] Extracting POI sidecars ($Region) -> $poiDir"
 New-Item -ItemType Directory -Force -Path $poiDir | Out-Null
+$poiLog = Join-Path $tmp "poi.log"
 & $poiExtract $Pbf `
     --geojson (Join-Path $poiDir "poi.geojsonseq") `
     --names (Join-Path $poiDir "poi_names.bin") `
     --index (Join-Path $poiDir "poi_index.bin") `
-    --region $BuildRegion
+    --region $BuildRegion | Tee-Object -FilePath $poiLog
 if ($LASTEXITCODE -ne 0) { throw "poi_extract failed with exit code $LASTEXITCODE" }
 
 # --- [6/7] pack the sidecars onto the tiles archive -> FINAL $Out ----------
 # mamaps_build emits tiles only (no MAMA8 footer); the graph / transit / POI
 # sections the app's router, departure boards and POI tags need are appended
 # here. This is the step that turns a tiles-only archive into a complete pack.
+$null = Switch-Phase "pack"
 Write-Host "[6/7] Packing graph + POI + transit sidecars -> $(Split-Path $Out -Leaf)"
+$packLog = Join-Path $tmp "pack.log"
 if ($NoTransit) {
-    & $pack --tiles $tilesTmp --graph $graphDir --poi $poiDir --out $Out
+    & $pack --tiles $tilesTmp --graph $graphDir --poi $poiDir --out $Out | Tee-Object -FilePath $packLog
 } else {
-    & $pack --tiles $tilesTmp --graph $graphDir --poi $poiDir --transit $WorldTransit --out $Out
+    & $pack --tiles $tilesTmp --graph $graphDir --poi $poiDir --transit $WorldTransit --out $Out | Tee-Object -FilePath $packLog
 }
 if ($LASTEXITCODE -ne 0) { throw "mamaps_pack failed with exit code $LASTEXITCODE" }
 
@@ -359,6 +473,9 @@ if ($LASTEXITCODE -ne 0) { throw "mamaps_pack failed with exit code $LASTEXITCOD
 # The binary prints its own per-zoom table (`z0 ...`, `z1 ...`) plus the
 # `classified ...` and `wrote ... build_id ...` lines. Parsed here rather than
 # re-derived.
+$null = Switch-Phase "verify"
+# PS1-owned subphases: header dump, hash, and (under -Verify) the rebuild.
+Switch-Subphase "header" | Out-Null
 $logLines = Get-Content $log
 $zooms = @()
 foreach ($line in $logLines) {
@@ -387,12 +504,14 @@ $prefix = [long]$h["prefix_bytes"]
 if ($prefix -gt 16384) { throw "prefix is $prefix bytes of 16384 -- a cold open costs two requests" }
 Write-Host "[7/7] Header ok: rings_validated true, prefix $prefix/16384 B, build_id $($h["build_id"])"
 
+Switch-Subphase "hash" | Out-Null
 $sha = (Get-FileHash $Out -Algorithm SHA256).Hash
 if ($Verify) {
     # harden_mamaps.sh's full 1/3/32-thread matrix, folded in cheaply: one
     # single-threaded rebuild must be byte-identical. A differing hash means an
     # emit path whose order comes from a pool (e.g. a HashMap iterated on emit).
     Write-Host "Verifying determinism: rebuilding at 1 thread + repacking"
+    Switch-Subphase "rebuild" | Out-Null
     $verifyTiles = Join-Path $tmp "verify-tiles.mamaps"
     $verifyOut = Join-Path $tmp "verify.mamaps"
     $env:RAYON_NUM_THREADS = "1"
@@ -418,23 +537,61 @@ if ($Verify) {
 }
 
 $archive = (Get-Item $Out).Length
-$map = ($zooms | Measure-Object map_ms    -Sum).Sum
-$mrg = ($zooms | Measure-Object merge_ms  -Sum).Sum
-$enc = ($zooms | Measure-Object encode_ms -Sum).Sum
-$app = ($zooms | Measure-Object append_ms -Sum).Sum
-$tiling = ($map + $mrg + $enc + $app) / 1000.0
-$stageA = $sw.Elapsed.TotalSeconds - $tiling
+# Stop the chain: this instant ends "verify" and freezes TOTAL WALL. From
+# here on the report only reads $script:PhaseTimes -- no more timing.
+Stop-Phases
+$total = $script:TotalSw.Elapsed.TotalSeconds
+
+# --- merge phase walls with Rust subphases --------------------------------
+# $rustSubs["phase"] = [ordered]@{ sub = seconds } from the last TIMING line
+# in each phase log. The `other` row per phase is PS1 wall minus the named
+# subphases (clamped at zero): it absorbs spawn/pipe overhead and the
+# microseconds of skew between the two clocks, so rows always sum to the wall.
+$rustSubs = @{}
+foreach ($pair in @(@("graph", $graphLog), @("transit", $transitLog), @("tiles", $log), @("poi", $poiLog), @("pack", $packLog))) {
+    $parsed = Read-TimingLog $pair[1]
+    if ($null -ne $parsed.phase) { $rustSubs[$pair[0]] = $parsed.phase.subs }
+    if ($pair[0] -eq "tiles" -and $parsed.zooms.Count -gt 0) { $zooms = $parsed.zooms }
+}
+function Get-PhaseSubs([string] $phase) {
+    # Merged view: Rust subphases in emission order, PS1-owned subphases
+    # (tools builds, transit resolve-manifest, verify steps) in capture order,
+    # then the closing `other` bucket. Every row sums to the phase wall.
+    $merged = [ordered]@{}
+    if ($rustSubs.Contains($phase)) {
+        foreach ($k in $rustSubs[$phase].Keys) { $merged[$k] = $rustSubs[$phase][$k] }
+    }
+    foreach ($k in $script:SubTimes.Keys) {
+        if ($k.StartsWith("$phase/")) {
+            $sub = $k.Substring($phase.Length + 1)
+            if ($merged.Contains($sub)) { $merged[$sub] += $script:SubTimes[$k] } else { $merged[$sub] = $script:SubTimes[$k] }
+        }
+    }
+    $wall = $script:PhaseTimes[$phase]
+    if ($null -eq $wall) { $wall = 0.0 }
+    $named = 0.0
+    foreach ($v in $merged.Values) { $named += $v }
+    $merged["other"] = [Math]::Max(0.0, $wall - $named)
+    return @{ wall = $wall; subs = $merged }
+}
+$phaseOrder = @("preflight", "tools", "graph", "transit", "tiles", "poi", "pack", "verify")
+$phaseViews = [ordered]@{}
+foreach ($name in $phaseOrder) { $phaseViews[$name] = Get-PhaseSubs $name }
+
 Write-Host ""
 Write-Host "======================== RESULT ========================"
 Write-Host ""
 Write-Host "TIME"
-Write-Host ("  {0,-24} {1,8:N1} s  {2,5:N1}%   {3}" -f `
-    "stage A", $stageA, (100.0 * $stageA / $sw.Elapsed.TotalSeconds), "parse, resolve, materialise, spill")
-foreach ($p in @(@("map (clip)", $map), @("merge", $mrg), @("encode", $enc), @("append", $app))) {
-    Write-Host ("  {0,-24} {1,8:N1} s  {2,5:N1}%" -f `
-        $p[0], ($p[1] / 1000.0), (100.0 * $p[1] / 1000.0 / $sw.Elapsed.TotalSeconds))
+foreach ($name in $phaseOrder) {
+    $view = $phaseViews[$name]
+    Write-Host ("  {0,-24} {1,8:N1} s  {2,5:N1}%" -f $name, $view.wall, (100.0 * $view.wall / $total))
+    foreach ($k in $view.subs.Keys) {
+        $t = $view.subs[$k]
+        if ($t -lt 0.05 -and $k -ne "other") { continue }
+        Write-Host ("  {0,-24} {1,8:N1} s  {2,5:N1}%" -f "  $k", $t, (100.0 * $t / $total))
+    }
 }
-Write-Host ("  {0,-24} {1,8:N1} s" -f "TOTAL WALL", $sw.Elapsed.TotalSeconds)
+Write-Host ("  {0,-24} {1,8:N1} s" -f "TOTAL WALL", $total)
 Write-Host ""
 Write-Host "PER ZOOM"
 Write-Host ("  {0,-5}{1,12}{2,14}{3,16}{4,10}{5,9}{6,9}{7,9}" -f `
@@ -456,6 +613,40 @@ Write-Host ""
 Write-Host ("  archive           {0}   {1}" -f (Size $archive), $Out)
 Write-Host ("  build id          {0,14}" -f $h["build_id"])
 Write-Host ("  sha256            {0}" -f $sha)
+
+# timing.json beside the archive, before $tmp (and the phase logs) are
+# deleted: the machine-readable twin of the TIME table above. Schema:
+# { build_id, sha256, archive_bytes, total_wall_s, peak_rss_bytes,
+#   peak_spill_bytes, phases: [{ name, wall_s, subphases: [{name, s}] }],
+#   per_zoom: [{ zoom, tiles, features, points, dropped, bytes,
+#                map_s, merge_s, encode_s, append_s }] }.
+$timingJson = [ordered]@{
+    build_id = $h["build_id"]; sha256 = $sha; archive_bytes = $archive
+    total_wall_s = [Math]::Round($total, 3)
+    peak_rss_bytes = $peakWs; peak_spill_bytes = $peakSpill
+    region = $Region
+    phases = @()
+    per_zoom = @()
+}
+foreach ($name in $phaseOrder) {
+    $view = $phaseViews[$name]
+    $subs = @()
+    foreach ($k in $view.subs.Keys) {
+        $subs += [ordered]@{ name = $k; s = [Math]::Round($view.subs[$k], 3) }
+    }
+    $timingJson.phases += [ordered]@{ name = $name; wall_s = [Math]::Round($view.wall, 3); subphases = $subs }
+}
+foreach ($z in ($zooms | Sort-Object zoom)) {
+    $timingJson.per_zoom += [ordered]@{
+        zoom = $z.zoom; tiles = $z.tiles; features = $z.features
+        points = $z.points; dropped = $z.dropped; bytes = $z.bytes
+        map_s = [Math]::Round($z.map_ms / 1000.0, 1); merge_s = [Math]::Round($z.merge_ms / 1000.0, 1)
+        encode_s = [Math]::Round($z.encode_ms / 1000.0, 1); append_s = [Math]::Round($z.append_ms / 1000.0, 1)
+    }
+}
+$timingPath = [System.IO.Path]::ChangeExtension($Out, "timing.json")
+($timingJson | ConvertTo-Json -Depth 6).Replace("`r`n", "`n") | Set-Content -Path $timingPath -NoNewline
+Write-Host ("  timing            {0}" -f $timingPath)
 
 # Temp is always removed on success now (no -Keep): the graph/POI/routes/tiles
 # intermediates are reproducible from the inputs, and anon spills vanish with

@@ -33,6 +33,7 @@ use tile_build::mamaps::archive::{
     ARCHIVE_KIND_POI_SPATIAL, ARCHIVE_KIND_POI_WORDS, ARCHIVE_KIND_TRANSIT,
 };
 use tile_build::mamaps::header::Header;
+use tile_build::timing::PhaseTimer;
 
 fn read_file(path: &Path) -> Result<Vec<u8>, String> {
     std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))
@@ -65,7 +66,22 @@ struct Validated {
     osm_id: [u8; 8],
 }
 
+/// Untimed entry point, kept for the unit tests below: identical staging and
+/// validation, timed against a sink that is never finished so tests emit no
+/// TIMING lines. Production `main` calls `load_sidecars_impl` with the real
+/// phase timer for per-directory subphases.
+#[cfg(test)]
 fn load_sidecars(graph: &Path, poi: &Path, transit: Option<&Path>) -> Result<Validated, String> {
+    let mut sink = PhaseTimer::start("pack-test");
+    load_sidecars_impl(graph, poi, transit, &mut sink)
+}
+
+fn load_sidecars_impl(
+    graph: &Path,
+    poi: &Path,
+    transit: Option<&Path>,
+    timer: &mut PhaseTimer,
+) -> Result<Validated, String> {
     let mut staged: Vec<Staged> = Vec::new();
     // Canonical order = kind order (ArchiveView requires ascending kinds).
     let mut push = |kind: u8, path: PathBuf, required: bool| -> Result<(), String> {
@@ -80,6 +96,7 @@ fn load_sidecars(graph: &Path, poi: &Path, transit: Option<&Path>) -> Result<Val
             Err(e) => Err(format!("cannot stat {}: {e}", path.display())),
         }
     };
+    timer.switch("read-graph");
     push(ARCHIVE_KIND_GRAPH_META, graph.join("metadata.bin"), true)?;
     push(ARCHIVE_KIND_GRAPH_NODES, graph.join("nodes.bin"), true)?;
     push(ARCHIVE_KIND_GRAPH_EDGES, graph.join("edges.bin"), true)?;
@@ -88,6 +105,7 @@ fn load_sidecars(graph: &Path, poi: &Path, transit: Option<&Path>) -> Result<Val
     push(ARCHIVE_KIND_GRAPH_NAMES, graph.join("road_names.bin"), false)?;
     push(ARCHIVE_KIND_GRAPH_LANES, graph.join("lanes.bin"), false)?;
     push(ARCHIVE_KIND_GRAPH_ELEVATION, graph.join("elevation.bin"), false)?;
+    timer.switch("read-poi");
     push(ARCHIVE_KIND_POI_INDEX, poi.join("poi_index.bin"), true)?;
     push(ARCHIVE_KIND_POI_NAMES, poi.join("poi_names.bin"), true)?;
     push(ARCHIVE_KIND_POI_ATTRS, poi.join("poi_attrs.bin"), false)?;
@@ -96,6 +114,7 @@ fn load_sidecars(graph: &Path, poi: &Path, transit: Option<&Path>) -> Result<Val
     // Transit is optional like the other sidecars: omitted when no pack is
     // staged (a tiles+graph+POI archive still exercises every loader's
     // degrade path on device). Callers that need it pass --transit.
+    timer.switch("read-transit");
     let mut transit_prefix = Vec::new();
     if let Some(t) = transit {
         let len = std::fs::metadata(t)
@@ -114,7 +133,7 @@ fn load_sidecars(graph: &Path, poi: &Path, transit: Option<&Path>) -> Result<Val
     // check is the same one its loader runs, and a mismatch fails closed with a non-zero exit
     // and no partial output. Only the small files are read whole; the large graph payloads
     // validate by streaming their heads (lengths come from the metadata counts).
-    validate_sidecars(graph, poi, &staged)?;
+    validate_sidecars(graph, poi, &staged, timer)?;
     // The tile header's own build-id bytes are read by the caller (it holds the tiles prefix);
     // placeholder filled in `main` after the tiles prefix is parsed.
     Ok(Validated { staged, transit_prefix, osm_id: [0u8; 8] })
@@ -127,7 +146,15 @@ fn load_sidecars(graph: &Path, poi: &Path, transit: Option<&Path>) -> Result<Val
 /// `intermediate.bin`) are checked by length against the metadata counts, plus a streaming
 /// magic spot-check is unnecessary: their first bytes are fixed strides the length check
 /// already covers, and the packed archive is re-validated by `ArchiveView` below.
-fn validate_sidecars(graph: &Path, poi: &Path, staged: &[Staged]) -> Result<(), String> {
+fn validate_sidecars(
+    graph: &Path,
+    poi: &Path,
+    staged: &[Staged],
+    timer: &mut PhaseTimer,
+) -> Result<(), String> {
+    // Repeat visits: `finish` merges these with the staging switches above, so
+    // each directory's staging + validation report as one subphase.
+    timer.switch("read-graph");
     let g = |name: &str| read_file(&graph.join(name));
     let p = |name: &str| read_file(&poi.join(name));
     // Graph meta first: it carries the counts every other graph check is sized from.
@@ -252,6 +279,7 @@ fn validate_sidecars(graph: &Path, poi: &Path, staged: &[Staged]) -> Result<(), 
         }
     }
     // POI index/names/attrs/spatial/words: small, read whole and cross-check counts.
+    timer.switch("read-poi");
     let poi_index = p("poi_index.bin")?;
     if poi_index.len() as u64 % 14 != 0 {
         return Err("poi_index.bin is not whole 14-byte records".to_string());
@@ -536,7 +564,7 @@ fn value(args: &[String], i: usize, name: &str) -> PathBuf {
     match args.get(i + 1) {
         Some(v) => PathBuf::from(v),
         None => {
-            eprintln!("mamaps_pack: {name} needs a value");
+            eprintln!("ERROR: mamaps_pack: {name} needs a value");
             std::process::exit(2);
         }
     }
@@ -558,7 +586,7 @@ fn main() -> ExitCode {
             "--transit" => transit = Some(value(&args, i, "--transit")),
             "--out" => out = Some(value(&args, i, "--out")),
             other => {
-                eprintln!("mamaps_pack: unknown flag {other}");
+                eprintln!("ERROR: mamaps_pack: unknown flag {other}");
                 return ExitCode::from(2);
             }
         }
@@ -568,6 +596,13 @@ fn main() -> ExitCode {
         eprintln!("usage: mamaps_pack --tiles IN.mamaps --graph GRAPH_DIR --poi POI_DIR [--transit WORLD.transit] --out OUT.mamaps");
         return ExitCode::from(2);
     };
+    // One phase clock for the run; subphases tile its wall gaplessly (`other`
+    // absorbs arg parsing/setup before the first switch). TIMING prints on the
+    // success path only, after the last write, before the summary line.
+    // (`tile_build::`, not `crate::`: this binary addresses the lib by name,
+    // like every other import in this file.)
+    let mut timer = PhaseTimer::start("pack");
+    timer.switch("read-tiles");
     let tile_bytes_prefix = (|| -> Result<[u8; 128], String> {
         use std::io::Read;
         let mut f = std::fs::File::open(&tiles)
@@ -580,25 +615,29 @@ fn main() -> ExitCode {
     let tile_bytes_prefix = match tile_bytes_prefix {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("mamaps_pack: {e}");
+            eprintln!("ERROR: mamaps_pack: {e}");
             return ExitCode::from(1);
         }
     };
-    let mut validated = match load_sidecars(&graph, &poi, transit.as_deref()) {
+    let mut validated = match load_sidecars_impl(&graph, &poi, transit.as_deref(), &mut timer) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("mamaps_pack: {e}");
+            eprintln!("ERROR: mamaps_pack: {e}");
             return ExitCode::from(1);
         }
     };
     if tile_bytes_prefix.len() < 24 {
-        eprintln!("mamaps_pack: tile header too short");
+        eprintln!("ERROR: mamaps_pack: tile header too short");
         return ExitCode::from(1);
     }
     validated.osm_id.copy_from_slice(&tile_bytes_prefix[16..24]);
     let id = derive_build_id(&validated.osm_id, &validated.transit_prefix);
+    // Build-id derivation is a 1 KiB hash (microseconds); it books here with the
+    // streaming copy, directory/footer, header rewrite, re-verify and rename.
+    timer.switch("write-output");
     match pack_streaming(&tiles, &validated, id, &out) {
         Ok(final_len) => {
+            timer.finish();
             println!(
                 "packed {} ({} bytes, build_id {:#018x}, {} sidecar sections)",
                 out.display(),
@@ -609,7 +648,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("mamaps_pack: {e}");
+            eprintln!("ERROR: mamaps_pack: {e}");
             ExitCode::from(1)
         }
     }

@@ -168,7 +168,7 @@ fn reconnect_isolated_stops(coords: &[geom::Pt], stops: &Bitset, csr: &Csr) -> R
         // within that window stays unreachable. Say so rather than dropping it
         // silently: an unreachable stop is exactly what this pass exists to
         // prevent. A large count here means MIN_ROUTABLE_COMPONENT is too high.
-        println!("WARNING: {unreachable} isolated stop(s) had no routable road nearby");
+        eprintln!("WARN: {unreachable} isolated stop(s) had no routable road nearby");
     }
     synth.sort_by_key(|s| (s.source, s.target));
     Reconnected {
@@ -224,6 +224,7 @@ fn write_graph(
     ids: &FinalIds,
     rounds: u32,
     dem: Option<&crate::dem::Dem>,
+    timer: &mut crate::timing::PhaseTimer,
 ) -> Result<Written> {
     let kept = node_coords.len() as u32;
     let edge_count = csr.edge_count() + synth.len() as u64;
@@ -265,6 +266,7 @@ fn write_graph(
         let hi = (u64::from(kept) * u64::from(round + 1) / u64::from(rounds)) as u32;
 
         buffer.clear();
+        timer.switch("write-scan");
         let mut hdr = spill.headers()?;
         let mut ci = 0u32;
         let mut prog = crate::progress::Progress::new(
@@ -324,6 +326,7 @@ fn write_graph(
         buffer.sort_by_key(|e| (e.source, e.target, e.chain));
 
         let mut cursor = 0usize;
+        timer.switch("write-write");
         let mut wprog = crate::progress::Progress::new(
             format!("Round {}/{rounds}: write", round + 1),
             u64::from(hi - lo),

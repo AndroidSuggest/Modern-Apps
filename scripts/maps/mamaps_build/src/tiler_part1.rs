@@ -7,7 +7,10 @@
 pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomStats>)> {
     adopt_thread_budget();
     let mut writer = writer_for(store, settings)?;
-    let per_zoom = tile_zooms(store, settings, &mut writer)?;
+    // Tests share the zoom loop but report no phase: the timer is dropped without `finish`,
+    // so no `TIMING` line ever reaches test output.
+    let mut timer = crate::timing::PhaseTimer::start("tiles");
+    let per_zoom = tile_zooms(store, settings, &mut writer, &mut timer)?;
     let bytes = writer.finish()?;
     Ok((bytes, per_zoom))
 }
@@ -26,10 +29,11 @@ pub fn build_to_path(
     store: &Store,
     settings: &Settings,
     out: &std::path::Path,
+    timer: &mut crate::timing::PhaseTimer,
 ) -> Result<Vec<ZoomStats>> {
     adopt_thread_budget();
     let mut writer = writer_for(store, settings)?;
-    let per_zoom = tile_zooms(store, settings, &mut writer)?;
+    let per_zoom = tile_zooms(store, settings, &mut writer, timer)?;
     writer.finish_to_path(out)?;
     Ok(per_zoom)
 }
@@ -71,6 +75,7 @@ fn tile_zooms(
     store: &Store,
     settings: &Settings,
     writer: &mut StreamWriter,
+    timer: &mut crate::timing::PhaseTimer,
 ) -> Result<Vec<ZoomStats>> {
 
     let mut per_zoom = Vec::new();
@@ -86,7 +91,7 @@ fn tile_zooms(
     let chunk_plan = if settings.force_chunk_spill_file
         && chunk_plan == osm_ingest::mem::SpillPlan::Anon
     {
-        println!(
+        eprintln!(
             "  [tiler] chunk spill -> {} (file backend: MAPS_ANON_SPILL)",
             settings.scratch.display(),
         );
@@ -105,6 +110,8 @@ fn tile_zooms(
         // pagefile-backed memory (no file) when commit allows, else the scratch file; the merge
         // reads through the same ChunkReader either way.
         let spill = ChunkSpill::create_planned(&settings.scratch, chunk_plan)?;
+        // Per-zoom `map`: repeat visits merge into one total at `finish`.
+        timer.switch("map");
         let mapped = std::time::Instant::now();
         let (chunks, tally) = map_zoom(store, settings, z, tolerance, buffer, &spill)?;
         stats.map_ms = mapped.elapsed().as_millis() as u64;
@@ -121,7 +128,9 @@ fn tile_zooms(
         // the merge has produced it -- so the merge bar counts tiles merged and the encode line below
         // counts tiles written. Two numbers that converge at the end of the zoom. Still the difference
         // between forty silent minutes and a number that moves: the merge is single-threaded and is
-        // where a zoom's wall clock goes.
+        // where a zoom's wall clock goes. Count shape (no percent: the total is unknowable until the
+        // merge ends), with elapsed so a stalled merge is visible.
+        let zoom_start = std::time::Instant::now();
         let mut merged_tiles = 0usize;
         let mut merge_shown = 0usize;
         let mut written = 0usize;
@@ -145,6 +154,8 @@ fn tile_zooms(
             //
             // The merge is timed around `collect` because that is where it happens: `merge` returns
             // a lazy iterator, so pulling a batch out of it is the k-way merge doing its work.
+            // Per-zoom `merge`: repeat visits merge into one total at `finish`.
+            timer.switch("merge");
             let merging = std::time::Instant::now();
             // `collect` into a `Result`, because a truncated scratch file must fail the build rather
             // than end the zoom early and publish a short archive.
@@ -159,9 +170,15 @@ fn tile_zooms(
             merged_tiles += batch.len();
             if merged_tiles - merge_shown >= 25_000 {
                 merge_shown = merged_tiles;
-                eprint!("\r{:<28} [{merged_tiles:>10} tile(s)]", format!("Merge z{z}"));
+                eprint!(
+                    "\r{:<28} [{merged_tiles:>10} tile(s)]  {} elapsed   ",
+                    format!("Merge z{z}"),
+                    tile_build::progress::hms(zoom_start.elapsed().as_secs_f64()),
+                );
                 let _ = std::io::Write::flush(&mut std::io::stderr());
             }
+            // Per-zoom `encode`: repeat visits merge into one total at `finish`.
+            timer.switch("encode");
             let encoding = std::time::Instant::now();
             let mut done = encode_batch(batch, &settings.dem, store.conventions(), &settings.region_links)?;
             stats.encode_ms += encoding.elapsed().as_millis() as u64;
@@ -174,6 +191,8 @@ fn tile_zooms(
             // are present-and-empty in this batch — never across batch boundaries, so
             // the archive stays independent of batching and thread count.
             prune_barren_subtree(z, &mut done);
+            // Per-zoom `append`: repeat visits merge into one total at `finish`.
+            timer.switch("append");
             let appending = std::time::Instant::now();
             for (id, encoded, rings, lines) in done {
                 stats.rings.add(rings);
@@ -189,17 +208,29 @@ fn tile_zooms(
                 // write itself is never the cost.
                 if written - shown >= 25_000 {
                     shown = written;
-                    eprint!("\r{:<28} [{written:>10} tile(s)]", format!("Encode z{z}"));
+                    eprint!(
+                        "\r{:<28} [{written:>10} tile(s)]  {} elapsed   ",
+                        format!("Encode z{z}"),
+                        tile_build::progress::hms(zoom_start.elapsed().as_secs_f64()),
+                    );
                     let _ = std::io::Write::flush(&mut std::io::stderr());
                 }
             }
             stats.append_ms += appending.elapsed().as_millis() as u64;
         }
         if merged_tiles > 0 {
-            eprintln!("\r{:<28} [{merged_tiles:>10} tile(s)]", format!("Merge z{z}"));
+            eprintln!(
+                "\r{:<28} [{merged_tiles:>10} tile(s)]  {} elapsed   ",
+                format!("Merge z{z}"),
+                tile_build::progress::hms(zoom_start.elapsed().as_secs_f64()),
+            );
         }
         if written > 0 {
-            eprintln!("\r{:<28} [{written:>10} tile(s)]", format!("Encode z{z}"));
+            eprintln!(
+                "\r{:<28} [{written:>10} tile(s)]  {} elapsed   ",
+                format!("Encode z{z}"),
+                tile_build::progress::hms(zoom_start.elapsed().as_secs_f64()),
+            );
         }
         // Reserved, written, on disk and read back must agree. A chunk that quietly lost entries
         // would produce an archive with holes in it and nothing downstream could tell.
@@ -349,7 +380,7 @@ fn plan_chunk_spill(store: &Store, scratch: &std::path::Path) -> osm_ingest::mem
     match osm_ingest::mem::SpillPlan::decide(&budget, scratch, "tiler chunk spill") {
         Ok(plan) => {
             if plan != osm_ingest::mem::SpillPlan::Anon {
-                println!(
+                eprintln!(
                     "  [tiler] chunk spill -> {} (file backend: commit budget)",
                     scratch.display(),
                 );
@@ -360,7 +391,7 @@ fn plan_chunk_spill(store: &Store, scratch: &std::path::Path) -> osm_ingest::mem
             // A zoom that fits neither backend is not a hard failure here: later zooms are
             // smaller, and each zoom re-creates the spill. Warn and take files -- the operator
             // sees the message and the build still has a chance.
-            eprintln!("WARNING: {e}; continuing with file staging");
+            eprintln!("WARN: {e}; continuing with file staging");
             osm_ingest::mem::SpillPlan::File
         }
     }
@@ -422,7 +453,7 @@ fn map_zoom(
             match worker {
                 Ok(handle) => spawned.push(handle),
                 Err(e) => {
-                    eprintln!("WARNING: cannot start tiling thread {i} ({e}); continuing without");
+                    eprintln!("WARN: cannot start tiling thread {i} ({e}); continuing without");
                     break;
                 }
             }
@@ -466,19 +497,6 @@ fn map_zoom(
 /// A feature below the zoom's own floor never arrives: [`crate::store::ZoomReader`] drops it in one
 /// of its prefetch lanes. That filter used to be right here, and here it was one thread discarding
 /// most of a billion features — see the reader's own docs for what that cost.
-/// Nanoseconds spent deserialising the spill, summed across every zoom.
-///
-/// Measured because `map_ms` covers the whole of [`map_zoom`], reader included, so it reports the
-/// single-threaded reader as though it were parallel work. This is the number that says how much of
-/// the map phase cannot be spread over the pool: time inside `reader.next()` alone, excluding any
-/// blocking on the bounded channel, which is the workers being slow rather than the reader being the
-/// bottleneck.
-static READ_NANOS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-/// Take the accumulated reader time and reset it.
-pub fn read_seconds() -> f64 {
-    READ_NANOS.swap(0, Ordering::Relaxed) as f64 / 1e9
-}
 
 #[cfg(test)]
 mod tests_part1 {

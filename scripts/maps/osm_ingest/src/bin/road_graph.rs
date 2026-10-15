@@ -89,24 +89,22 @@ fn main() -> ExitCode {
     let (input, out_dir, opts) = match osm_ingest::graph_build::parse_args(&args) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("error: {e}\n{USAGE}");
+            eprintln!("ERROR: {e}\n{USAGE}");
             return ExitCode::FAILURE;
         }
     };
 
-    let started = std::time::Instant::now();
     let want_stats = opts.stats;
     match osm_ingest::graph_build::build_with(&input, &out_dir, opts) {
         Ok(stats) => {
             println!(
                 "{} node(s), {} edge(s), {} unique name(s) ({} bytes), largest component \
-                 {} node(s) in {:.1}s",
+                 {} node(s)",
                 stats.node_count,
                 stats.edge_count,
                 stats.unique_names,
                 stats.name_bytes,
                 stats.lcc_size,
-                started.elapsed().as_secs_f64()
             );
             // The three counters that make MIN_ROUTABLE_COMPONENT auditable. A
             // large "found nothing" is the signal that the threshold is too high.
@@ -148,7 +146,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("ERROR: {e}");
             ExitCode::FAILURE
         }
     }

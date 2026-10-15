@@ -19,14 +19,11 @@ fn read_chunks(
         let mut chunk: Vec<Feature> = Vec::new();
         let mut vertices = 0usize;
         let mut index = 0usize;
-        let mut read_nanos = 0u64;
         let (_, total) = reader.chunks();
         let mut bar = Progress::new(format!("Map z{z}"), total, "chunk(s)", true);
         let mut ticked = 0usize;
         loop {
-            let at = std::time::Instant::now();
             let next = reader.next().map_err(|e| tile_build::proto::Error(e.to_string()))?;
-            read_nanos += at.elapsed().as_nanos() as u64;
             let (done, _) = reader.chunks();
             while ticked < done {
                 bar.tick("chunk(s)");
@@ -37,7 +34,6 @@ fn read_chunks(
             chunk.push(feature);
             if vertices >= want {
                 if send.send((index, std::mem::take(&mut chunk))).is_err() {
-                    READ_NANOS.fetch_add(read_nanos, Ordering::Relaxed);
                     return Ok(());
                 }
                 index += 1;
@@ -48,7 +44,6 @@ fn read_chunks(
             let _ = send.send((index, chunk));
         }
         bar.finish("chunk(s)");
-        READ_NANOS.fetch_add(read_nanos, Ordering::Relaxed);
         return Ok(());
     }
     // Bounded k-way merge: 4 dedicated decode lanes stream per-feature in
@@ -169,7 +164,6 @@ fn read_chunks(
                 break;
             }
         }
-        let start = std::time::Instant::now();
         let mut lane_done = vec![false; lanes];
         let mut lane_buffers: Vec<std::collections::VecDeque<Feature>> =
             (0..lanes).map(|_| std::collections::VecDeque::new()).collect();
@@ -201,7 +195,6 @@ fn read_chunks(
                     tiler_chunk.push(feature);
                     if vertices >= want {
                         if send.send((index, std::mem::take(&mut tiler_chunk))).is_err() {
-                            READ_NANOS.fetch_add(start.elapsed().as_nanos() as u64, Ordering::Relaxed);
                             // Unblock lanes by draining
                             for (li, done) in lane_done.iter().enumerate() {
                                 if !*done {
@@ -231,7 +224,6 @@ fn read_chunks(
             let _ = send.send((index, tiler_chunk));
         }
         bar.finish("chunk(s)");
-        READ_NANOS.fetch_add(start.elapsed().as_nanos() as u64, Ordering::Relaxed);
         if let Some(e) = first_err.lock().unwrap().take() {
             // Surface decode errors after draining so downstream sees failure rather than short archive.
             // Error already logged; return Err to fail this zoom rather than publish short archive.

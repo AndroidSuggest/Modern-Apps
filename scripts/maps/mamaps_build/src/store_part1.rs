@@ -19,7 +19,7 @@ impl Sink {
                     .map_err(|e| osm_ingest::proto::Error(e.to_string()))?
             }
             osm_ingest::mem::SpillPlan::File => {
-                println!("  [stage A] feature spill -> {} (file backend: commit budget)", path.display());
+                eprintln!("  [stage A] feature spill -> {} (file backend: commit budget)", path.display());
                 NormalizedWriter::create(path)
                     .map_err(|e| osm_ingest::proto::Error(e.to_string()))?
             }

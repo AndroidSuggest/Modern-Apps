@@ -15,7 +15,7 @@ fn main() -> ExitCode {
     let args = match osm_ingest::extract::parse_args(&argv) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("error: {e}\n{USAGE}");
+            eprintln!("ERROR: {e}\n{USAGE}");
             eprintln!(
                 "Layers: {}",
                 osm_ingest::extract::Layer::names().join(", ")
@@ -50,16 +50,16 @@ fn main() -> ExitCode {
                 // empty layer is nearly always a wrong --bbox or a wrong PBF, and
                 // the tiler downstream only warns about it.
                 eprintln!(
-                    "WARNING: 0 features. Check --bbox and that the PBF covers the area."
+                    "WARN: 0 features. Check --bbox and that the PBF covers the area."
                 );
             }
             if let Some(why) = stats.missing_half(args.layer) {
-                eprintln!("WARNING: {}: {why}", args.layer.name());
+                eprintln!("WARN: {}: {why}", args.layer.name());
             }
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("ERROR: {e}");
             ExitCode::FAILURE
         }
     }

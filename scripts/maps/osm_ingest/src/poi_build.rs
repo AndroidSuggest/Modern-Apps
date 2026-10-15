@@ -159,9 +159,11 @@ pub fn build_with(
         }
     }
 
+    let mut timer = crate::timing::PhaseTimer::start("poi");
     let blobs = pbf::scan_blobs(input)?;
-    println!("Scanned {} data blob(s) in {}", blobs.len(), input.display());
+    println!("[poi] Scanned {} data blob(s) in {}", blobs.len(), input.display());
 
+    timer.switch("relations");
     // --- Pass 1: area relations ---------------------------------------------
     let (chunks, blob_kinds) = pbf::run_pass(
         input,
@@ -184,6 +186,7 @@ pub fn build_with(
     outer_wanted.dedup();
     println!("{} POI relation(s)", rel_areas.len());
 
+    timer.switch("ways");
     // --- Pass 2: closed-way areas + the relations' outer ways ----------------
     let (chunks, _) = pbf::run_pass(
         input,
@@ -215,6 +218,7 @@ pub fn build_with(
         needed.len()
     );
 
+    timer.switch("nodes");
     // --- Pass 3: node POIs + the node locations areas need -------------------
     let (chunks, _) = pbf::run_pass(
         input,
@@ -252,6 +256,7 @@ pub fn build_with(
         ids.filter_map(&location).any(|(lat, lon)| b.contains_e7(lat, lon))
     };
 
+    timer.switch("centroids");
     // --- Area centroids ------------------------------------------------------
     for area in &way_areas {
         if !touches(&mut area.refs.iter().copied()) {
@@ -294,9 +299,12 @@ pub fn build_with(
 
     // Morton order, ties broken by osm_id, so both poi_index.bin and the geojson
     // are stable across runs.
+    timer.switch("sort");
     pois.sort_by_key(|p| (p.morton, p.osm_id));
 
+    timer.switch("write");
     let written = write_outputs(&pois, geojson, names, index, attrs, spatial, name_index)?;
+    timer.finish();
     Ok(Stats {
         records: written.records,
         unique_names: written.unique_names,

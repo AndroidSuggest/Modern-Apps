@@ -48,6 +48,7 @@ pub mod pyramid;
 pub mod simplify;
 pub mod spill;
 pub mod subdivide;
+pub mod timing;
 
 // The formats themselves live in `tilecodec`, shared with the Android renderer in
 // `:library:map` — it has to read exactly what this crate writes, and one codec is

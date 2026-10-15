@@ -118,8 +118,9 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     std::fs::create_dir_all(out_dir)
         .map_err(|e| Error(format!("cannot create {}: {e}", out_dir.display())))?;
 
+    let mut timer = crate::timing::PhaseTimer::start("graph");
     let blobs = pbf::scan_blobs(input)?;
-    println!("Scanned {} data blob(s) in {}", blobs.len(), input.display());
+    println!("[graph] Scanned {} data blob(s) in {}", blobs.len(), input.display());
     pbf::probe_compression(input, &blobs)?;
 
     let mut pool = NamePool::new(BufWriter::new(create(&out_dir.join("road_names.bin"))?));
@@ -128,6 +129,7 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     let mut marked: u64 = 0;
     let mut max_id: u64 = 0;
 
+    timer.switch("refs-stops");
     // --- Pass 1: which nodes the graph needs ---------------------------------
     // Folded through a sink rather than collected, so a chunk's ref list is
     // consumed and freed while later chunks are still decoding. Nothing about a
@@ -169,7 +171,7 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     // mask is complete. Best-effort: a write failure must not fail the graph build, which never
     // reads the sidecar itself.
     if let Err(e) = pbf::write_blob_kinds(out_dir, input, &blob_kinds) {
-        eprintln!("warning: could not write blob-kinds sidecar: {e}");
+        eprintln!("WARN: could not write blob-kinds sidecar: {e}");
     }
     let slots = cap_u32("marked graph node", marked)?;
 
@@ -177,6 +179,7 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     // From here on a node's address is the number of marked ids below its own, so
     // the node array is implicitly ordered by OSM id and needs to store neither
     // the id nor a sorted side table to look it up by.
+    timer.switch("rank-index");
     let counted = mask.build_rank(max_id);
     if counted != marked {
         // The mask and the running count are maintained in the same loop, so a
@@ -195,6 +198,7 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     let mut stop = Bitset::new(u64::from(slots));
     let mut stop_codes: Vec<(u32, Vec<u8>)> = Vec::new();
     let mut node_count: u64 = 0;
+    timer.switch("node-scan");
     let _ = pbf::run_pass_sink(
         input,
         &blobs,
@@ -230,15 +234,16 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     // --- Collapse ------------------------------------------------------------
     let spill_dir = opts.spill_dir.clone().unwrap_or_else(|| out_dir.to_path_buf());
     let spill_pts_dir = opts.spill_pts_dir.clone().unwrap_or_else(|| spill_dir.clone());
+    timer.switch("collapse");
     let mut collapsed = if opts.within_way_chains {
         collapse_within_ways(
             input, &spill_dir, &spill_pts_dir, &blobs, &blob_kinds, &index, &coords, &stop,
-            slots, filter, &mut pool,
+            slots, filter, &mut pool, &mut timer,
         )?
     } else {
         collapse_segments(
             input, &spill_dir, &spill_pts_dir, &blobs, &blob_kinds, &index, &coords, &stop,
-            slots, filter, &mut pool,
+            slots, filter, &mut pool, &mut timer,
         )?
     };
 
@@ -249,6 +254,7 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     }
     prog.finish();
     drop(stop_codes);
+    timer.switch("rank-survivors");
 
     // `saturating_sub` because a file with no routable ways and no stop nodes
     // marks nothing, and there is then no largest id to index up to.
@@ -270,6 +276,7 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     // only set the device ever binary-searches. Sorting before the collapse would
     // have meant carrying a 64-bit spatial key through every node that was about
     // to be collapsed away.
+    timer.switch("morton-sort");
     println!("Sorting {kept_count} surviving node(s) by spatial key...");
     let mut keys: Vec<(u64, u32)> = Vec::with_capacity(kept_count as usize);
     let mut prog = crate::progress::Progress::new("Morton keys", u64::from(slots));
@@ -317,9 +324,11 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     };
 
     // --- The edge index -----------------------------------------------------
-    let csr = build_csr(&collapsed.spill, kept_count, &ids)?;
+    timer.switch("edge-index");
+    let csr = build_csr(&collapsed.spill, kept_count, &ids, &mut timer)?;
 
     // --- Reconnect isolated transit stops -----------------------------------
+    timer.switch("components");
     let rec = reconnect_isolated_stops(&node_coords, &stops_final, &csr);
     let synth = rec.synth;
     drop(stops_final);
@@ -331,6 +340,7 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
         Some(path) => Some(crate::dem::Dem::load(path)?),
         None => None,
     };
+    timer.switch("write");
     let written = write_graph(
         out_dir,
         &node_coords,
@@ -341,12 +351,14 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
         &ids,
         opts.round_count(),
         dem.as_ref(),
+        &mut timer,
     )?;
     collapsed.spill.remove();
     let unique_names = pool.unique_count();
     let name_bytes = pool.byte_len();
     pool.finish().map_err(io_err)?;
 
+    timer.finish();
     println!(
         "Done. Nodes: {}  Edges: {}  intermediate.bin: {} byte(s)",
         kept_count, written.edge_count, written.intermediate_bytes
@@ -412,7 +424,9 @@ fn collapse_segments<W: std::io::Write + Send>(
     slots: u32,
     filter: RegionFilter,
     pool: &mut NamePool<W>,
+    timer: &mut crate::timing::PhaseTimer,
 ) -> Result<Collapsed> {
+    timer.switch("collapse-segments");
     // One record per consecutive way-node pair, still carrying both directions'
     // lane data. Splitting into directed edges is deferred until after
     // compaction, because pairing a `u -> v` edge with its `v -> u` twin is only
@@ -458,6 +472,7 @@ fn collapse_segments<W: std::io::Write + Send>(
         segs.len()
     );
 
+    timer.switch("collapse-compact");
     let comp = compact::compact(slots, &segs, &lane_pool, |n| coords[n as usize], |n| {
         stop.get(u64::from(n))
     });

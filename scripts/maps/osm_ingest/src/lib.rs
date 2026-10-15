@@ -35,6 +35,7 @@ pub mod pbf;
 pub(crate) mod progress;
 pub mod pbf_extra;
 pub mod poi_attrs;
+pub mod timing;
 pub mod poi_build;
 pub mod poi_side;
 pub mod proto;

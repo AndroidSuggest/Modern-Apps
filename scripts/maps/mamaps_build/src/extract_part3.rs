@@ -192,7 +192,7 @@ fn append_external_and_finish(
     stats: &mut Stats,
     conventions: schema::boundaries::Conventions,
     spill_path: &Path,
-    mark: &dyn Fn(&str),
+    timer: &mut crate::timing::PhaseTimer,
 ) -> Result<Store> {
     // The mainland, last, because clipping it needs the extract's own bounding box and that is
     // only known once every OSM feature has been through the sink. Order in the file does not
@@ -214,6 +214,7 @@ fn append_external_and_finish(
     // The `transit` layer, for the same reason and against the same bounding box: its geometry is
     // GTFS rather than OSM (see [`schema::transit`]), so it is read here rather than classified in
     // any of the passes above.
+    timer.switch("transit-routes");
     match sink.bbox_degrees() {
         Some(bbox) => {
             println!(
@@ -240,6 +241,7 @@ fn append_external_and_finish(
     // node's own incident edges, so there is nothing to read that the traffic pass did not
     // already need. `conventions` decides which side of a road the direction of travel sits
     // on, and is borrowed here because it is moved into the store below.
+    timer.switch("junctions");
     println!("building lane connectors from the v6 routing graph for the junction layer");
     stats.junction_connectors = schema::junction::stream_junctions(graph, &conventions, &mut sink)?;
     stats.features += stats.junction_connectors;
@@ -250,7 +252,8 @@ fn append_external_and_finish(
     // order is the archive's, so that write stays serial by construction — there is nothing here to
     // parallelise. The bar makes the finalise step visible rather than a silent tail of the ~25 s
     // this phase costs; `stats.features` is the count the sink is closing over.
-    let bar = Progress::new(
+    timer.switch("finalise");
+    let mut bar = Progress::new(
         "Finalise: features".to_string(),
         stats.features as usize,
         "feature(s)",
@@ -259,10 +262,6 @@ fn append_external_and_finish(
     let store = sink.finish(spill_path)?;
     bar.finish("feature(s)");
     let store = store.with_conventions(conventions);
-    // The one phase that had no mark after it, and it turned out to be the largest single item in the
-    // build outside tiling: ~25 s of a 136 s California run. It is 170 M coordinate lookups through
-    // the mapped node table plus 3.3 GB of spill written, all on one thread.
-    mark("materialised and spilled");
 
     Ok(store)
 }
@@ -293,7 +292,7 @@ fn collect_needed_in_memory(
     ways_anon: &Option<std::sync::Arc<tile_build::anon::AnonStore>>,
     members: &MemberWays,
     refs_total: usize,
-    mark: &dyn Fn(&str),
+    timer: &mut crate::timing::PhaseTimer,
 ) -> Result<NodeLocations> {
     let mut needed: Vec<i64> = Vec::with_capacity(refs_total);
     {
@@ -309,7 +308,7 @@ fn collect_needed_in_memory(
     for refs in members.values() {
         needed.extend_from_slice(refs);
     }
-    mark("refs collected");
+    timer.switch("id-index");
     NodeLocations::new(needed)
 }
 
@@ -334,7 +333,7 @@ fn collect_needed_by_bitset(
     ways_anon: &Option<std::sync::Arc<tile_build::anon::AnonStore>>,
     members: &MemberWays,
     max_ref: i64,
-    mark: &dyn Fn(&str),
+    timer: &mut crate::timing::PhaseTimer,
 ) -> Result<NodeLocations> {
     let mut bits = NeededBits::new(max_ref)?;
     {
@@ -351,7 +350,7 @@ fn collect_needed_by_bitset(
             bits.set(id)?;
         }
     }
-    mark("refs collected");
+    timer.switch("id-index");
     // The bitset's words move into the rank index directly (`from_bitset`), not through `ids()`:
     // walking them out as ids and re-setting them would hold two ~1.5 GB words arrays at once.
     let (words, count) = bits.into_words();

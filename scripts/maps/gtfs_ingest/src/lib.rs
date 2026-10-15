@@ -22,3 +22,4 @@ pub mod reader;
 pub mod reader_extra;
 pub mod registry;
 pub mod shapes;
+pub mod timing;

@@ -4,7 +4,6 @@ fn encode_batch(
     conventions: &crate::schema::boundaries::Conventions,
     region_links: &std::collections::HashMap<u64, u64>,
 ) -> Result<Vec<Encoded>> {
-    let on = timing();
     // Split the batch into tasks by cumulative geometry cost rather than by tile count. A dense
     // city tile is orders of magnitude more work than a rural one, and `with_min_len` — which forces
     // contiguous runs of a fixed *count* — cannot give that tile a task of its own: it stays welded
@@ -30,7 +29,7 @@ fn encode_batch(
                     group
                         .into_iter()
                         .map(|(id, layers)| {
-                            encode_tile(id, layers, dem, conventions, region_links, deflate, scratch, on)
+                            encode_tile(id, layers, dem, conventions, region_links, deflate, scratch)
                         })
                         .collect::<Result<Vec<Encoded>>>()
                 },
@@ -56,7 +55,6 @@ fn encode_tile(
     region_links: &std::collections::HashMap<u64, u64>,
     deflate: &mut tilecodec::gz::Compressor,
     scratch: &mut tilecodec::mamaps::body::Scratch,
-    on: bool,
 ) -> Result<Encoded> {
     // **Coalesce first.** An OSM way is an editing unit, not a rendering one, so a road arrives as
     // hundreds of two-point fragments each carrying its own 28 bytes of header -- see
@@ -90,20 +88,18 @@ fn encode_tile(
     // dropped. Once, here, in `f64` with no frame budget, instead of every frame on device in `i32`
     // under one. This is what makes `FLAG_RINGS_VALIDATED` true.
     let mut rings = crate::rings::Stats::default();
-    timed(on, &STAGE_C_NANOS, || {
-        for entry in &mut layers {
-            rings.add(crate::rings::normalise_with_ids(
-                &mut entry.layer,
-                Some(&mut entry.ids),
-                Some(&mut entry.turn_lanes),
-                Some(&mut entry.buildings),
-            ));
-        }
-        // A layer that ended up empty - every feature in it fell below the minimum area after
-        // clipping, or lost its exterior to stage C - costs bytes in the archive and a draw call on
-        // device for nothing.
-        layers.retain(|entry| !entry.layer.features.is_empty());
-    });
+    for entry in &mut layers {
+        rings.add(crate::rings::normalise_with_ids(
+            &mut entry.layer,
+            Some(&mut entry.ids),
+            Some(&mut entry.turn_lanes),
+            Some(&mut entry.buildings),
+        ));
+    }
+    // A layer that ended up empty - every feature in it fell below the minimum area after
+    // clipping, or lost its exterior to stage C - costs bytes in the archive and a draw call on
+    // device for nothing.
+    layers.retain(|entry| !entry.layer.features.is_empty());
     if layers.is_empty() {
         return Ok((id, None, rings, lines));
     }
@@ -293,21 +289,17 @@ fn encode_tile(
         convention,
         region_links: region_links_table,
     };
-    let encoded_body = timed(on, &SERIALIZE_NANOS, || {
-        // v10 narrowed records + sparse side tables are the default: same
-        // geometry either way — only the fixed records shrink — so this
-        // changes bytes, never shapes. `MAMAPS_V8=1` opts back out to the
-        // dense v8 bodies (escape hatch for bisecting a suspect build).
-        if std::env::var("MAMAPS_V8").is_ok() {
-            tilecodec::mamaps::body::serialize_into(&body, scratch)
-        } else {
-            tilecodec::mamaps::body::serialize_into_v10(&body, scratch)
-        }
-    })?;
+    // v10 narrowed records + sparse side tables are the default: same
+    // geometry either way — only the fixed records shrink — so this
+    // changes bytes, never shapes. `MAMAPS_V8=1` opts back out to the
+    // dense v8 bodies (escape hatch for bisecting a suspect build).
+    let encoded_body = if std::env::var("MAMAPS_V8").is_ok() {
+        tilecodec::mamaps::body::serialize_into(&body, scratch)
+    } else {
+        tilecodec::mamaps::body::serialize_into_v10(&body, scratch)
+    }?;
     let raw_len = encoded_body.len();
-    let stored = timed(on, &DEFLATE_NANOS, || {
-        tilecodec::mamaps::write::compress_body_with(deflate, encoded_body)
-    });
+    let stored = tilecodec::mamaps::write::compress_body_with(deflate, encoded_body);
     // Compute the dedup key here, in the parallel worker, rather than on the serial append thread.
     // It is a pure function of the stored bytes, so the key — and every dedup decision the writer
     // makes from it — is unchanged; it just no longer walks the whole body downstream of this phase.

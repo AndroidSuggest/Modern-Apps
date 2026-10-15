@@ -232,13 +232,15 @@ mod tests {
             .flat_map(|refs| refs.iter().copied())
             .fold(counts.max_ref, i64::max);
 
-        let quiet = |_: &str| {};
+        // A throwaway clock: the collectors take the run's timer, and this test has
+        // no run. Dropped without `finish`, so no `TIMING` line reaches test output.
+        let mut timer = crate::timing::PhaseTimer::start("tiles");
         let anon = Some(std::sync::Arc::new(store));
         let in_memory =
-            collect_needed_in_memory(&path, &anon, &members, counts.refs as usize + member_refs, &quiet)
+            collect_needed_in_memory(&path, &anon, &members, counts.refs as usize + member_refs, &mut timer)
                 .expect("the in-memory path");
         let by_bitset =
-            collect_needed_by_bitset(&path, &anon, &members, max_ref, &quiet).expect("the bitset path");
+            collect_needed_by_bitset(&path, &anon, &members, max_ref, &mut timer).expect("the bitset path");
 
         assert_eq!(
             in_memory.len(),

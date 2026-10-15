@@ -134,7 +134,7 @@ pub fn build(input: &Path, out: &Path, opts: &Options) -> Result<Stats> {
     }
 
     let blobs = pbf::scan_blobs(input)?;
-    println!("Scanned {} data blob(s) in {}", blobs.len(), input.display());
+    println!("[extract] Scanned {} data blob(s) in {}", blobs.len(), input.display());
 
     match opts.layer {
         Layer::Safety => build_safety(input, &blobs, out, opts),

@@ -322,6 +322,9 @@ where
     let next_chunk = AtomicUsize::new(0);
     let done_blobs = AtomicUsize::new(0);
     let last_pct = AtomicUsize::new(usize::MAX);
+    // Owns the meter's clock: `report` draws the progress.rs standard shape
+    // (`label [pct%] done/total  elapsed, ETA`) from it on every redraw.
+    let pass_start = std::time::Instant::now();
     let n_threads = crate::par::threads().min(n_chunks);
     let mut first_err: Option<Error> = None;
     // How far ahead of the sink the workers may run.
@@ -379,7 +382,7 @@ where
                                 kinds[idx].store(seen, Ordering::Relaxed);
                             }
                         }
-                        report(label, &done_blobs, &last_pct, blobs.len());
+                        report(label, &done_blobs, &last_pct, blobs.len(), &pass_start);
                     }
                     drain.lock().expect("chunk slot mutex").deposit(chunk, state);
                     progressed.notify_all();
@@ -413,7 +416,15 @@ where
     // Every chunk was deposited, and deposits drain in order, so nothing can be
     // left behind unless a sink call failed above.
     debug_assert_eq!(d.next, n_chunks, "chunks left undrained");
-    eprintln!("\r{label:<28} [100%]");
+    // Snap to 100% in the same standard shape, then a fresh line so the next
+    // stage starts clean instead of on top of the meter.
+    {
+        let n = blobs.len();
+        eprintln!(
+            "\r{label:<28} [100%] {n}/{n}  {} elapsed, ETA 0s   ",
+            crate::progress::hms(pass_start.elapsed().as_secs_f64()),
+        );
+    }
     Ok(kinds.iter().map(|k| k.load(Ordering::Relaxed)).collect())
 }
 
@@ -481,7 +492,15 @@ pub(crate) fn read_exact_at(file: &mut File, loc: &BlobLoc, out: &mut Vec<u8>) -
         .map_err(|e| Error(format!("short read at {}: {e}", loc.offset)))
 }
 
-fn report(label: &str, done: &AtomicUsize, last_pct: &AtomicUsize, total: usize) {
+/// One redraw of the pass meter, in the single standard shape (`progress.rs`):
+/// `label [pct%] done/total  elapsed, ETA` on one stderr line.
+fn report(
+    label: &str,
+    done: &AtomicUsize,
+    last_pct: &AtomicUsize,
+    total: usize,
+    start: &std::time::Instant,
+) {
     let n = done.fetch_add(1, Ordering::Relaxed) + 1;
     if total == 0 {
         return;
@@ -493,7 +512,19 @@ fn report(label: &str, done: &AtomicUsize, last_pct: &AtomicUsize, total: usize)
             .compare_exchange(prev, pct, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
     {
-        eprint!("\r{label:<28} [{pct}%] ");
+        let elapsed = start.elapsed().as_secs_f64();
+        // ETA extrapolates the average rate so far; meaningless until something is
+        // done, so hold it at zero for the opening frame.
+        let eta = if n == 0 {
+            0.0
+        } else {
+            elapsed * (total - n) as f64 / n as f64
+        };
+        eprint!(
+            "\r{label:<28} [{pct:>3}%] {n}/{total}  {} elapsed, ETA {}   ",
+            crate::progress::hms(elapsed),
+            crate::progress::hms(eta),
+        );
         let _ = std::io::stderr().flush();
     }
 }

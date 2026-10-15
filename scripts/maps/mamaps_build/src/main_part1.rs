@@ -5,7 +5,6 @@ fn run(
 ) -> Result<(), String> {
     let (layers, min_zoom, max_zoom, simplification) =
         (schema::Layers::all(), 0u8, DEFAULT_MAX_ZOOM, tiler::DEFAULT_SIMPLIFICATION);
-    let started = std::time::Instant::now();
     println!("reading {}", input.display());
     println!("region: {}", run.region.name());
     // Features are spilled here rather than held: it was 4.9 GB of a measured 10.03 GB California
@@ -55,6 +54,10 @@ fn run(
     // an empty graph dir with no `metadata.bin`, paid for in full.
     check_graph_dir(&graph_dir, run.region)?;
 
+    // The run's gapless phase clock. Opens in `"other"`, so the setup above (graph/POI builds,
+    // validation) books as overhead; every major stage below switches it, and `finish` emits the
+    // single `TIMING` line before the summary prints.
+    let mut timer = crate::timing::PhaseTimer::start("tiles");
     let (store, stats, mut region_links, country_populations) = extract::extract(
         input,
         layers,
@@ -63,6 +66,7 @@ fn run(
         &graph_dir,
         &spill,
         run.region.bbox(),
+        &mut timer,
     )
     .map_err(|e| format!("{}: {e}", input.display()))?;
     // The containment fallback: member-less place labels gain links from the whole-polygon
@@ -71,6 +75,7 @@ fn run(
     // It also assigns country label start zooms from footprint × headcount (same pass,
     // footprints in hand).
     let mut country_zooms: std::collections::HashMap<u64, u8> = std::collections::HashMap::new();
+    timer.switch("region-fallback");
     match crate::extract_fallback::extend_region_links_with(
         &store,
         &mut region_links,
@@ -161,6 +166,7 @@ fn run(
 
     // The DEM heightmap dataset. Loaded here (this is where I/O belongs) and
     // handed to the tiler, which samples one grid per output tile into the body's heightmap section.
+    timer.switch("dem-load");
     let dem = dem::Dem::load(&run.dem).map_err(|e| e.to_string())?;
     println!("loaded the DEM dataset at {}", run.dem.display());
 
@@ -191,10 +197,12 @@ fn run(
     // holding it in a `Vec<u8>` beside the merge's own peak is the OOM after z14 merges.
     // `build_to_path` runs the identical zoom loop and assembles the identical
     // header/dictionary/root/leaves/data layout through `finish_to_path`.
-    let per_zoom = tiler::build_to_path(&store, &settings, out).map_err(|e| e.to_string())?;
+    let per_zoom = tiler::build_to_path(&store, &settings, out, &mut timer).map_err(|e| e.to_string())?;
     tiler::check_not_empty(&per_zoom).map_err(|e| e.to_string())?;
     // The spill is scratch. Removed on success; left behind on failure, where it is evidence.
     let _ = std::fs::remove_file(&spill);
+    // After the last work, before the summary prints: closes the final subphase and emits `TIMING`.
+    timer.finish();
 
     println!(
         "\n{:<6}{:>10}{:>12}{:>12}{:>10}{:>12}{:>8}{:>8}{:>8}{:>8}",
@@ -214,6 +222,12 @@ fn run(
             z.merge_ms as f64 / 1000.0,
             z.encode_ms as f64 / 1000.0,
             z.append_ms as f64 / 1000.0,
+        );
+        // The machine-readable twin of the text row above: integer milliseconds, so the
+        // columns close exactly where the 0.1 s-rounded text does not.
+        crate::timing::emit_zoom_row(
+            z.zoom, z.tiles, z.features, z.points, z.dropped, z.bytes, z.map_ms, z.merge_ms,
+            z.encode_ms, z.append_ms,
         );
     }
     // The four phase columns summed, because which of them dominates is the only thing that says
@@ -242,7 +256,6 @@ fn run(
             lines.parts_before as f64 / lines.parts_after.max(1) as f64,
         );
     }
-    let (stage_c, serialize, deflate) = tiler::encode_seconds();
     // How close the archive came to the 65,535-feature cap on one tile-layer. Printed rather than
     // asserted because the answer is what decides whether the field has to widen, and widening it is
     // a `FORMAT_VERSION` bump and a matching renderer change.
@@ -265,34 +278,21 @@ fn run(
         );
     }
     println!(
-        "total  map {:.1}s (of which {:.1}s deserialising the spill, on one thread)  merge {:.1}s  encode {:.1}s  append {:.1}s   ({:.0}% of tiling is serial)",
+        "total  map {:.1}s  merge {:.1}s  encode {:.1}s  append {:.1}s   ({:.0}% of tiling is serial)",
         map as f64 / 1000.0,
-        tiler::read_seconds(),
         merge as f64 / 1000.0,
         encode as f64 / 1000.0,
         append as f64 / 1000.0,
         serial / total * 100.0,
     );
-    // CPU, not wall, and summed across workers: compared against the encode wall above it says
-    // whether that phase is short of work or short of parallelism. Only under `MAPS_TIMING`,
-    // because three atomics per tile is not free at a million tiles.
-    if stage_c + serialize + deflate > 0.0 {
-        println!(
-            "       encode CPU: stage C {stage_c:.1}s  serialise {serialize:.1}s  deflate {deflate:.1}s  \
-             (={:.1}s of CPU against {:.1}s of wall)",
-            stage_c + serialize + deflate,
-            encode as f64 / 1000.0,
-        );
-    }
     // The archive was streamed straight to `out` (`build_to_path`), so its length is read
     // back from the file rather than from a buffer that no longer exists.
     let archive_len = std::fs::metadata(out)
         .map(|m| m.len())
         .map_err(|e| format!("cannot stat {}: {e}", out.display()))?;
     println!(
-        "\nwrote {} ({archive_len} bytes, build_id {build_id:#018x}) in {:.1}s",
+        "\nwrote {} ({archive_len} bytes, build_id {build_id:#018x})",
         out.display(),
-        started.elapsed().as_secs_f64(),
     );
     Ok(())
 }

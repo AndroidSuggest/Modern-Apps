@@ -87,7 +87,8 @@ impl Progress {
 }
 
 /// Whole seconds as `HhMMmSSs`, dropping units above the largest non-zero one.
-fn hms(secs: f64) -> String {
+/// Shared with `pbf.rs` so every live meter draws the one standard shape.
+pub(crate) fn hms(secs: f64) -> String {
     let s = secs.max(0.0) as u64;
     let (h, m, s) = (s / 3600, (s % 3600) / 60, s % 60);
     if h > 0 {
