@@ -64,4 +64,11 @@
     <string name="mode_photosphere">Sfääriline vaade</string>
     <string name="mode_video">Video</string>
     <string name="mode_timelapse">Stoppkaader</string>
+    <string name="settings_noise_reduction">Müravähendamine</string>
+    <string name="settings_noise_reduction_description">Vähenda müra fotodel ja videotes (lülita välja, kui soovid säilitada algseid üksikasju)</string>
+    <string name="settings_edge_sharpening">Äärte teravdamine</string>
+    <string name="settings_edge_sharpening_description">Teravda fotode ja videote servi (lülita välja, kui soovid loomulikku välimust)</string>
+    <string name="settings_motion_duration">Foto+Video tüüpi sisu esituse kestus</string>
+    <string name="motion_duration_1s">%1$d sekund</string>
+    <string name="motion_duration_ns">%1$d sekundit</string>
 </resources>
