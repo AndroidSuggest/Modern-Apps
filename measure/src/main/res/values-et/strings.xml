@@ -41,4 +41,8 @@
     <string name="level_orientation_landscape_right">Rõhtloodis, parem serv all</string>
     <string name="level_clear_calibration">Eemalda kalibreerimine</string>
     <string name="ar_unavailable_camera">Liitreaalsuses mõõtmiseks on vajalik õigus kasutada kaamerat.</string>
+    <string name="diagnostics_title">Diagnostika</string>
+    <string name="settings_open_diagnostics">Ava diagnostika</string>
+    <string name="diagnostics_loaded">laaditud</string>
+    <string name="diagnostics_unavailable">pole saadaval</string>
 </resources>
