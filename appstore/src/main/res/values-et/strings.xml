@@ -88,7 +88,7 @@
     <string name="detail_tap_for_trust">Klõpsa, kui tahad näha, kuidas andmeallikas oli kontrollitud</string>
     <string name="store_rule_modern_android_title">Vaid moodne Android</string>
     <string name="store_rule_signed_title">Vaid allkirjastatud rakendused</string>
-    <string name="store_rule_signed_detail">Iga allalaadimise puhul kontrollitakse selle allkirja. Faili, millel puudub kehtiv allkiri, ei alati paigaldamata.</string>
+    <string name="store_rule_signed_detail">Iga allalaadimise puhul kontrollitakse selle allkirja. Faili, millel puudub kehtiv allkiri, jääb alati paigaldamata.</string>
     <string name="trust_heading_we_check">Mida see rakendus kontrollib</string>
     <string name="trust_bullet">• %1$s</string>
     <string name="trust_own_key_title">Selle rakendustepoe allkirjastamisvõti</string>
@@ -131,4 +131,21 @@
     <string name="library_empty_message">Siin on kirjas sinu paigaldatavad rakendused, grupeeritud tarkvarahoidla alusel, kust nad on leitud.</string>
     <string name="library_empty_title">Mite midagi ei vasta sellele filtrile</string>
     <string name="setting_auto_install_updates_title">Paigalda uuendused automaatselt</string>
+    <string name="store_rule_identity_title">Rakendus peab olema see, mida oled soovinud</string>
+    <string name="store_rule_identity_detail">Allalaaditud failis olev nimi peab vastama sellele nimele, mida paigaldamisel klõpsisid.</string>
+    <string name="store_rule_same_key_title">Uuenduste puhul on kasutusel sama võti</string>
+    <string name="store_rule_same_key_detail">Uuendus peab olema allkirjastatud sama võtmega, mis on juba sinu kasutuses oleval koopial või võtmega, milleks see on asendatud. Kõik muud variandid lükatakse tagasi.</string>
+    <string name="store_rule_precheck_title">Kontrollitud enne, kui Android seda näeb</string>
+    <string name="store_rule_precheck_detail">Kõike kontrollitakse enne, kui allalaaditu jõuab süsteemi paigaldusliideseni. Tagasilükatud failid kustutatakse.</string>
+    <plurals name="updates_batch_installed">
+        <item quantity="one">%1$d rakendus on uuendatud</item>
+        <item quantity="other">%1$d rakendust on uuendatud</item>
+    </plurals>
+    <string name="version_update">%1$s → %2$s</string>
+    <string name="detail_rating_count">Hinnangud</string>
+    <string name="fact_rated">Hinnang on olemas</string>
+    <string name="fact_rating">Hinnang</string>
+    <string name="install_started_unverified">„%1$s“ on paigaldamisel, aga ta on verifitseerimata</string>
+    <string name="updates_batch_partial">Uuendatud rakendusi: %1$d / %2$d. Muude uuendamine ei õnnestunud ja esimene viga oli: %3$s</string>
+    <string name="updates_progress">%1$s on uuendamisel - üldine tööjärg %2$d / %3$d</string>
 </resources>
