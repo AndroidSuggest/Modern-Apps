@@ -61,4 +61,11 @@
     <string name="no_app_to_add_esim">لا تطبيق يمكنه إضافة هذه eSIM</string>
     <string name="lens_wide">1x</string>
     <string name="settings_save_location_default">DCIM/Camera</string>
+    <string name="settings_noise_reduction">تقليل التشويش</string>
+    <string name="settings_noise_reduction_description">تخفيف التشويش في الصور ومقاطع الفيديو (إيقاف التشغيل للتفاصيل الخام)</string>
+    <string name="settings_edge_sharpening_description">زِد حدّة الحواف في الصور ومقاطع الفيديو (إيقاف التشغيل لمظهر طبيعي)</string>
+    <string name="motion_duration_1s">%1$d ثانية</string>
+    <string name="motion_duration_ns">%1$d ثواني</string>
+    <string name="settings_edge_sharpening">زيادة حدّة الحواف</string>
+    <string name="settings_motion_duration">طول الصورة المتحركة</string>
 </resources>
