@@ -1,10 +1,6 @@
 package com.vayunmathur.calculator
 
 import android.content.Intent
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -18,12 +14,12 @@ import com.vayunmathur.calculator.util.CalculatorViewModel
 import com.vayunmathur.calculator.widget.CalculatorGlanceWidgetReceiver
 import com.vayunmathur.calculator.widget.UnitsGlanceWidget
 import com.vayunmathur.calculator.widget.UnitsGlanceWidgetReceiver
-import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.ui.IconCalculate
 import com.vayunmathur.library.ui.IconFunctions
 import com.vayunmathur.library.ui.IconRuler
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.BottomBarItem
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.MainNavigation
@@ -33,7 +29,7 @@ import com.vayunmathur.library.util.rememberNavBackStack
 import com.vayunmathur.library.widgets.updateWidgetPreviews
 import kotlinx.serialization.Serializable
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val viewModel: CalculatorViewModel by viewModels()
 
     /**
@@ -42,19 +38,17 @@ class MainActivity : ComponentActivity() {
      */
     private var unitsRequest by mutableIntStateOf(0)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         // FIRST_PARTY covers api.vayunmathur.com, where the currency-rate proxy lives.
         NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         updateWidgetPreviews(CalculatorGlanceWidgetReceiver::class)
         updateWidgetPreviews(UnitsGlanceWidgetReceiver::class)
-        enableEdgeToEdge()
         if (intent.opensUnits()) unitsRequest++
-        setContent {
-            DynamicTheme {
-                Navigation(viewModel, unitsRequest)
-            }
-        }
+    }
+
+    @Composable
+    override fun Content() {
+        Navigation(viewModel, unitsRequest)
     }
 
     /**

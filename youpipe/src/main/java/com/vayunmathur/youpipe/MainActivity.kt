@@ -4,10 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.res.Configuration
-import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -20,7 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.core.util.Consumer
 import com.vayunmathur.library.util.NavKey
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.ui.IconHistory
 import com.vayunmathur.library.ui.IconHome
@@ -91,26 +88,26 @@ fun rememberIsInPipMode(): Boolean {
 
 
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val youPipeViewModel: YouPipeViewModel by viewModels {
         YouPipeViewModelFactory(
             application,
             SubscriptionRepository.get(application),
         )
     }
+    private lateinit var initialBackStack: List<Route>
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+    override fun onCreateBeforeContent() {
         // Touch the VM so its init { setupHourlyTask(...) } runs at startup
         // (replaces the previous LaunchedEffect(Unit) in setContent).
         youPipeViewModel
-        setContent {
-            DynamicTheme {
-                OfflineAware {
-                    Navigation(resolveInitialBackStack(intent), youPipeViewModel)
-                }
-            }
+        initialBackStack = resolveInitialBackStack(intent)
+    }
+
+    @Composable
+    override fun Content() {
+        OfflineAware {
+            Navigation(initialBackStack, youPipeViewModel)
         }
     }
 

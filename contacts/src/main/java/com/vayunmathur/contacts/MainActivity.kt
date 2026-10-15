@@ -6,14 +6,10 @@ import android.content.Intent
 import android.content.ClipData
 import android.content.ContentUris
 import android.net.Uri
-import android.os.Bundle
 import android.provider.ContactsContract
 import android.provider.ContactsContract.Intents.Insert
 import androidx.core.content.IntentCompat
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
@@ -21,7 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.rememberPagerState
 import com.vayunmathur.library.ui.AppPermissionsGate
 import com.vayunmathur.library.ui.AppPermissionsSpec
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.PagerTab
 import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.ui.R as UiR
@@ -81,7 +77,7 @@ import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.Serializable
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val importUris = mutableStateOf<List<String>>(emptyList())
     private val externalRoute = mutableStateOf<Route?>(null)
 
@@ -90,31 +86,29 @@ class MainActivity : ComponentActivity() {
         private const val GROUPS_PATH_SEGMENT = "/groups"
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+    override fun onCreateBeforeContent() {
         handleIntent(intent)
-        setContent {
-            DynamicTheme {
-                AppPermissionsGate(
-                    spec = AppPermissionsSpec(
-                        title = stringResource(R.string.grant_contacts_permission),
-                        requirements = listOf(
-                            PermissionRequirement.Runtime(
-                                arrayOf(
-                                    Manifest.permission.READ_CONTACTS,
-                                    Manifest.permission.WRITE_CONTACTS,
-                                    Manifest.permission.CALL_PHONE,
-                                    Manifest.permission.READ_PHONE_STATE
-                                )
-                            )
+    }
+
+    @Composable
+    override fun Content() {
+        AppPermissionsGate(
+            spec = AppPermissionsSpec(
+                title = stringResource(R.string.grant_contacts_permission),
+                requirements = listOf(
+                    PermissionRequirement.Runtime(
+                        arrayOf(
+                            Manifest.permission.READ_CONTACTS,
+                            Manifest.permission.WRITE_CONTACTS,
+                            Manifest.permission.CALL_PHONE,
+                            Manifest.permission.READ_PHONE_STATE
                         )
                     )
-                ) {
-                    val viewModel: ContactViewModel = viewModel()
-                    MainContent(viewModel, intent, onFinishPick = { finishPick(it) })
-                }
-            }
+                )
+            )
+        ) {
+            val viewModel: ContactViewModel = viewModel()
+            MainContent(viewModel, intent, onFinishPick = { finishPick(it) })
         }
     }
 

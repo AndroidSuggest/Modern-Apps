@@ -12,11 +12,9 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import com.vayunmathur.launcher.platform.ActivityBridge
 import com.vayunmathur.launcher.platform.LauncherPrivilege
@@ -25,7 +23,7 @@ import com.vayunmathur.launcher.platform.onStartImpl
 import com.vayunmathur.launcher.platform.reconcileNowImpl
 import com.vayunmathur.launcher.platform.onStopImpl
 import com.vayunmathur.launcher.platform.refreshDefaultHomeImpl
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -38,7 +36,7 @@ import com.vayunmathur.library.util.rememberNavBackStack
  * copy, and the system may kill it without saving state because the workspace is in the
  * database, not in a `Bundle`.
  */
-class MainActivity : ComponentActivity(), ActivityBridge {
+class MainActivity : MaActivity(), ActivityBridge {
 
     private val viewModel: LauncherViewModel by viewModels()
     private var backStack: NavBackStack<Route>? = null
@@ -63,17 +61,15 @@ class MainActivity : ComponentActivity(), ActivityBridge {
             callback?.invoke(result.resultCode == Activity.RESULT_OK)
         }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+    override fun onCreateBeforeContent() {
         viewModel.bridge = this
-        setContent {
-            DynamicTheme {
-                val stack = rememberNavBackStack<Route>(Route.Home)
-                SideEffect { backStack = stack }
-                Navigation(viewModel, this, stack)
-            }
-        }
+    }
+
+    @Composable
+    override fun Content() {
+        val stack = rememberNavBackStack<Route>(Route.Home)
+        SideEffect { backStack = stack }
+        Navigation(viewModel, this, stack)
     }
 
     override fun onStart() {

@@ -2,26 +2,23 @@ package com.vayunmathur.screentime.widget
 
 import android.content.Context
 import androidx.glance.appwidget.GlanceAppWidgetManager
-import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.state.PreferencesGlanceStateDefinition
-import com.vayunmathur.library.widgets.updateWidgetPreviews
+import com.vayunmathur.library.widgets.MaWidgetReceiver
 import com.vayunmathur.screentime.platform.AppTimers
 import com.vayunmathur.screentime.platform.UsageAccess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-class ScreenTimeGlanceWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: ScreenTimeGlanceWidget = ScreenTimeGlanceWidget()
-
-    // No periodic refresh: content changes only when usage accrues, and the coordinator
-    // pushes an update on every reconcile that matters (see WidgetRefresh).
-    override fun onEnabled(context: Context) {
-        super.onEnabled(context)
-        context.updateWidgetPreviews(ScreenTimeGlanceWidgetReceiver::class)
-    }
-}
+// No periodic refresh: content changes only when usage accrues, and the coordinator
+// pushes an update on every reconcile that matters (see WidgetRefresh).
+class ScreenTimeGlanceWidgetReceiver : MaWidgetReceiver<ScreenTimeGlanceWidget>(
+    widgetClass = ScreenTimeGlanceWidget::class,
+    receiverClass = ScreenTimeGlanceWidgetReceiver::class,
+    hourly = false,
+    widgetFactory = ::ScreenTimeGlanceWidget,
+)
 
 /**
  * Pushes fresh totals into the widget.

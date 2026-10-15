@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- No components or permissions: pure-Kotlin logging facade over android.util.Log. -->
+    <!-- Merged into every app: auto-wires Log.init without a per-app Application subclass. -->
+    <application>
+        <provider
+            android:name=".MaInitProvider"
+            android:authorities="${applicationId}.mainit"
+            android:exported="false" />
+    </application>
 </manifest>

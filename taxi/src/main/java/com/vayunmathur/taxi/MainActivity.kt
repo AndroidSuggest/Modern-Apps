@@ -4,22 +4,19 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.ContextCompat
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.IntentLauncher
 import com.vayunmathur.taxi.data.BookingTrip
 import com.vayunmathur.taxi.ipc.RideHandoffContract
 import com.vayunmathur.taxi.notifications.RideLiveUpdate
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     companion object {
         // Hosts the cross-app AssistantIntent client for taxi (mirrors
         // openassistant MainActivity.intentLauncher). WS-B's DirectionsClient and
@@ -39,21 +36,18 @@ class MainActivity : ComponentActivity() {
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         NetworkClient.init(this, TrustBundle.STANDARD)
-        enableEdgeToEdge()
         intentLauncher = IntentLauncher(this)
 
         trackRideId.value = intent.trackRideIdOrNull()
         bookingTrip.value = intent.bookingTripOrNull()
         requestNotificationPermissionIfNeeded()
+    }
 
-        setContent {
-            DynamicTheme {
-                Navigation(trackRideId, bookingTrip)
-            }
-        }
+    @Composable
+    override fun Content() {
+        Navigation(trackRideId, bookingTrip)
     }
 
     override fun onNewIntent(intent: Intent) {

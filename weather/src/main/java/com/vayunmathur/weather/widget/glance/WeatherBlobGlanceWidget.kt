@@ -2,7 +2,6 @@ package com.vayunmathur.weather.widget.glance
 
 import android.content.Context
 import android.content.Intent
-import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
@@ -16,9 +15,8 @@ import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.clickable
-import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.action.actionStartActivity
-import androidx.glance.appwidget.provideContent
+import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
@@ -30,14 +28,10 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.vayunmathur.library.ui.MaterialShapes
-import com.vayunmathur.library.widgets.DynamicThemeGlance
+import com.vayunmathur.library.widgets.MaWidget
 import com.vayunmathur.library.widgets.toWidgetBitmap
 import com.vayunmathur.weather.MainActivity
 import com.vayunmathur.weather.R
-import com.vayunmathur.weather.data.WeatherRepository
-import com.vayunmathur.weather.data.weatherJson
-import com.vayunmathur.weather.network.ForecastResponse
-import com.vayunmathur.weather.domain.roundCoord
 import com.vayunmathur.weather.domain.weatherConditionForCode
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -48,54 +42,21 @@ import kotlin.math.roundToInt
  * edges — carrying a large mint temperature and a white condition icon.
  * 2x2 — floats over the wallpaper, not full-bleed rect.
  */
-class WeatherBlobGlanceWidget : GlanceAppWidget() {
+class WeatherBlobGlanceWidget : MaWidget<WidgetWeather?>() {
 
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val weather = loadWeatherSnapshot(context)
-        provideContent {
-            DynamicThemeGlance(context) {
-                BlobContent(weather)
-            }
-        }
+    override suspend fun loadData(context: Context, id: GlanceId): WidgetWeather? =
+        loadWeatherSnapshot(context)
+
+    override fun previewData(context: Context): WidgetWeather? = null
+
+    @Composable
+    override fun Content(data: WidgetWeather?) {
+        BlobContent(data)
     }
 
-    // Broad catch is deliberate: a widget preview must never throw into the host,
-    // and Glance throws undocumented RuntimeExceptions.
-    @Suppress("TooGenericExceptionCaught")
-    override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        try {
-            provideContent {
-                DynamicThemeGlance(context) {
-                    BlobPreviewContent()
-                }
-            }
-        } catch (e: Exception) {
-            Log.error("WeatherBlobWidget", "providePreview failed", e)
-        }
-    }
-
-    private suspend fun loadWeatherSnapshot(context: Context): WidgetWeather? {
-        return try {
-            val repo = WeatherRepository.get(context)
-            val location = repo.getCurrentDeviceLocation()
-                ?: repo.getLocations().firstOrNull()
-                ?: return null
-            val cache = repo.getCache(
-                roundCoord(location.latitude),
-                roundCoord(location.longitude),
-            ) ?: return null
-            val forecast = runCatching {
-                weatherJson.decodeFromString<ForecastResponse>(cache.forecastJson)
-            }.getOrNull() ?: return null
-            val current = forecast.current ?: return null
-            WidgetWeather(
-                temperatureCelsius = current.temperature,
-                weatherCode = current.weatherCode,
-                isDay = current.isDay != 0,
-            )
-        } catch (_: Exception) {
-            null
-        }
+    @Composable
+    override fun PreviewContent() {
+        BlobPreviewContent()
     }
 }
 

@@ -1,11 +1,7 @@
 package com.vayunmathur.pdf
 
 import android.net.Uri
-import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
@@ -14,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Surface
@@ -29,62 +26,58 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.pdf.R
 import androidx.compose.ui.unit.dp
-import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.pdf.ui.CapturePdfScreen
 import com.vayunmathur.pdf.ui.CutGlueScreen
 import com.vayunmathur.pdf.ui.SafePdfViewerScreen
 import com.vayunmathur.pdf.util.PdfViewModel
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val pdfViewModel: PdfViewModel by viewModels()
+    private var intentData: Uri? = null
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+    override fun onCreateBeforeContent() {
+        intentData = intent.data
+    }
 
-        val intentData: Uri? = intent.data
+    @Composable
+    override fun Content() {
+        val startedWithIntent = remember { intentData != null }
+        var data: Uri? by rememberSaveable { mutableStateOf(intentData) }
+        var isCapturing by rememberSaveable { mutableStateOf(false) }
+        var isCutGlue by rememberSaveable { mutableStateOf(false) }
 
-        setContent {
-            val startedWithIntent = remember { intentData != null }
-            var data: Uri? by rememberSaveable { mutableStateOf(intentData) }
-            var isCapturing by rememberSaveable { mutableStateOf(false) }
-            var isCutGlue by rememberSaveable { mutableStateOf(false) }
+        val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let { data = it }
+        }
 
-            val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-                uri?.let { data = it }
-            }
-
-            DynamicTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    if (isCutGlue) {
-                        CutGlueScreen(onBack = { isCutGlue = false })
-                    } else if (isCapturing) {
-                        CapturePdfScreen(
-                            viewModel = pdfViewModel,
-                            onBack = { isCapturing = false },
-                            onPdfCreated = { uri ->
-                                data = uri
-                                isCapturing = false
-                            }
-                        )
-                    } else if (data != null) {
-                        SafePdfViewerScreen(
-                            uri = data!!,
-                            onBack = {
-                                if (startedWithIntent) finish() else data = null
-                            }
-                        )
-                    } else {
-                        InitialScreen(
-                            onOpenPdf = { filePickerLauncher.launch(arrayOf("application/pdf")) },
-                            onCapturePdf = { isCapturing = true },
-                            onCutGlue = { isCutGlue = true }
-                        )
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            if (isCutGlue) {
+                CutGlueScreen(onBack = { isCutGlue = false })
+            } else if (isCapturing) {
+                CapturePdfScreen(
+                    viewModel = pdfViewModel,
+                    onBack = { isCapturing = false },
+                    onPdfCreated = { uri ->
+                        data = uri
+                        isCapturing = false
                     }
-                }
+                )
+            } else if (data != null) {
+                SafePdfViewerScreen(
+                    uri = data!!,
+                    onBack = {
+                        if (startedWithIntent) finish() else data = null
+                    }
+                )
+            } else {
+                InitialScreen(
+                    onOpenPdf = { filePickerLauncher.launch(arrayOf("application/pdf")) },
+                    onCapturePdf = { isCapturing = true },
+                    onCutGlue = { isCutGlue = true }
+                )
             }
         }
     }

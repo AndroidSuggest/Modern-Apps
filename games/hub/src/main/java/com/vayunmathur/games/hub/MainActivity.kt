@@ -1,19 +1,10 @@
 package com.vayunmathur.games.hub
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.games.hub.ui.components.AvatarIcon
 import com.vayunmathur.library.ui.IconDashboard
@@ -32,7 +23,7 @@ import com.vayunmathur.games.hub.ui.screens.ProfilePage
 import com.vayunmathur.games.hub.ui.screens.SettingsScreen
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModel
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModelFactory
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.ListDetailPage
 import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
@@ -43,29 +34,15 @@ import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+    private val vm: GameHubViewModel by viewModels {
+        GameHubViewModelFactory(application, GamesHubRepository.get(application))
+    }
 
-        var ready by mutableStateOf(false)
-
-        val repository = GamesHubRepository.get(application)
-        val factory = GameHubViewModelFactory(application, repository)
-        val vm: GameHubViewModel by viewModels { factory }
-
-        ready = true
-
-        setContent {
-            DynamicTheme {
-                if (ready) {
-                    HubNavigation(vm)
-                } else {
-                    Box(Modifier.fillMaxSize())
-                }
-            }
-        }
+    @Composable
+    override fun Content() {
+        HubNavigation(vm)
     }
 }
 

@@ -1,22 +1,14 @@
 package com.vayunmathur.games.sudoku
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.Composable
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.games.sudoku.platform.SudokuViewModel
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            DynamicTheme {
-                val viewModel: SudokuViewModel = viewModel()
-                Navigation(viewModel)
-            }
-        }
+class MainActivity : MaActivity() {
+    @Composable
+    override fun Content() {
+        val viewModel: SudokuViewModel = viewModel()
+        Navigation(viewModel)
     }
 }

@@ -17,7 +17,6 @@ import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
-import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.components.Scaffold
@@ -25,7 +24,6 @@ import androidx.glance.appwidget.components.TitleBar
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
-import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.state.getAppWidgetState
 import androidx.glance.background
 import androidx.glance.layout.Alignment
@@ -49,10 +47,13 @@ import com.vayunmathur.calculator.util.formatResult
 import com.vayunmathur.calculator.util.unitsFromKey
 import com.vayunmathur.calculator.util.unitsToKey
 import com.vayunmathur.library.util.DataStoreUtils
-import com.vayunmathur.library.widgets.DynamicThemeGlance
+import com.vayunmathur.library.widgets.MaWidget
 
 /** What the widget draws: the category it is on and the conversion for that category's unit pair. */
 internal data class UnitsWidgetState(val categoryName: String, val conversion: String)
+
+/** What the widget draws: the converter state plus whether the category list is showing. */
+internal data class UnitsWidgetData(val state: UnitsWidgetState, val expanded: Boolean)
 
 /**
  * Home-screen converter for the units tab. Shows the unit pair the user last picked in the app
@@ -63,13 +64,13 @@ internal data class UnitsWidgetState(val categoryName: String, val conversion: S
  * to be here. The selected category lives in the same preference the app reads on launch, so
  * picking one from either side keeps both in step.
  */
-class UnitsGlanceWidget : GlanceAppWidget() {
+class UnitsGlanceWidget : MaWidget<UnitsWidgetData>() {
 
     // Broad catches are deliberate: a widget update runs unattended in a cold process where the
     // store or Glance state may be unreadable, and every failure mode below degrades to fallback
     // UI (logged) rather than taking down the widget host.
     @Suppress("TooGenericExceptionCaught")
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
+    override suspend fun loadData(context: Context, id: GlanceId): UnitsWidgetData {
         val state = try {
             loadState(context)
         } catch (t: Throwable) {
@@ -82,43 +83,17 @@ class UnitsGlanceWidget : GlanceAppWidget() {
             Log.error(TAG, "Failed to read widget state", t)
             false
         }
-
-        try {
-            provideContent {
-                DynamicThemeGlance(context) {
-                    UnitsWidgetContent(state, expanded)
-                }
-            }
-        } catch (t: Throwable) {
-            Log.error(TAG, "provideContent failed", t)
-        }
+        return UnitsWidgetData(state, expanded)
     }
 
-    // Broad catches are deliberate: a throwing providePreview takes down the widget picker on
-    // API 35+, so every failure mode here falls back to simpler UI (logged) instead.
-    @Suppress("TooGenericExceptionCaught")
-    override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        try {
-            provideContent {
-                DynamicThemeGlance(context) {
-                    UnitsWidgetContent(SAMPLE, expanded = false)
-                }
-            }
-        } catch (t: Throwable) {
-            Log.error(TAG, "providePreview failed", t)
-            try {
-                provideContent {
-                    Box(
-                        modifier = GlanceModifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(context.getString(R.string.units))
-                    }
-                }
-            } catch (_: Throwable) {
-            }
-        }
+    override fun previewData(context: Context): UnitsWidgetData =
+        UnitsWidgetData(SAMPLE, expanded = false)
+
+    @Composable
+    override fun Content(data: UnitsWidgetData) {
+        UnitsWidgetContent(data.state, data.expanded)
     }
+}
 
     @SuppressLint("RestrictedApi")
     @Composable

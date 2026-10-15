@@ -39,7 +39,6 @@
         android:protectionLevel="signature" />
 
     <application
-        android:name=".FindfamilyApplication"
         android:allowBackup="true"
         android:backupAgent=".util.AppBackupAgent"
         android:dataExtractionRules="@xml/data_extraction_rules"

@@ -1,42 +1,34 @@
 package com.vayunmathur.tuner
 
 import android.Manifest
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.ui.AppPermissionsGate
 import com.vayunmathur.library.ui.AppPermissionsSpec
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.tuner.platform.TunerViewModel
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val viewModel: TunerViewModel by viewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            DynamicTheme {
-                // In front of the navigation graph rather than around the tabs: the microphone
-                // opens by itself as soon as the tabs compose, so the grant has to be settled
-                // before any of the app is on screen.
-                AppPermissionsGate(
-                    spec = AppPermissionsSpec(
-                        title = stringResource(R.string.permission_title),
-                        requirements = listOf(
-                            PermissionRequirement.Runtime(
-                                arrayOf(Manifest.permission.RECORD_AUDIO)
-                            )
-                        )
+    @Composable
+    override fun Content() {
+        // In front of the navigation graph rather than around the tabs: the microphone
+        // opens by itself as soon as the tabs compose, so the grant has to be settled
+        // before any of the app is on screen.
+        AppPermissionsGate(
+            spec = AppPermissionsSpec(
+                title = stringResource(R.string.permission_title),
+                requirements = listOf(
+                    PermissionRequirement.Runtime(
+                        arrayOf(Manifest.permission.RECORD_AUDIO)
                     )
-                ) {
-                    Navigation(viewModel)
-                }
-            }
+                )
+            )
+        ) {
+            Navigation(viewModel)
         }
     }
 

@@ -1,18 +1,15 @@
 package com.vayunmathur.weather.widget.glance
 
 import android.content.Context
-import androidx.glance.appwidget.GlanceAppWidgetReceiver
-import com.vayunmathur.library.widgets.scheduleHourlyUpdate
-import com.vayunmathur.library.widgets.updateWidgetPreviews
+import com.vayunmathur.library.widgets.MaWidgetReceiver
 import com.vayunmathur.weather.data.WeatherRefreshWorker
 
-class WeatherBlobGlanceWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: WeatherBlobGlanceWidget = WeatherBlobGlanceWidget()
-
-    override fun onEnabled(context: Context) {
-        super.onEnabled(context)
-        context.scheduleHourlyUpdate(WeatherBlobGlanceWidget::class)
+class WeatherBlobGlanceWidgetReceiver : MaWidgetReceiver<WeatherBlobGlanceWidget>(
+    widgetClass = WeatherBlobGlanceWidget::class,
+    receiverClass = WeatherBlobGlanceWidgetReceiver::class,
+    widgetFactory = ::WeatherBlobGlanceWidget,
+) {
+    override fun onEnabledExtra(context: Context) {
         WeatherRefreshWorker.scheduleHourlyRefresh(context)
-        context.updateWidgetPreviews(WeatherBlobGlanceWidgetReceiver::class)
     }
 }

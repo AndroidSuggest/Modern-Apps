@@ -1,18 +1,15 @@
 package com.vayunmathur.travel
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.ListDetailPage
 import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
@@ -50,31 +47,28 @@ import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 import kotlinx.serialization.Serializable
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private lateinit var repository: TravelRepository
 
     private val viewModel: TravelViewModel by viewModels {
         TravelViewModelFactory(application, repository)
     }
+    private var ready by mutableStateOf(false)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         // Hardened trust: api.vayunmathur.com + data.vayunmathur.com + findfamily.cc are Cloudflare
         // fronted, covered by ISRG X1/X2 + GTS R1-R4 in FIRST_PARTY bundle.
         NetworkClient.init(this, TrustBundle.FIRST_PARTY)
-        enableEdgeToEdge()
 
-        val ready = mutableStateOf(false)
         lifecycleScope.launch(Dispatchers.IO) {
             repository = TravelRepository.get(this@MainActivity)
-            withContext(Dispatchers.Main) { ready.value = true }
+            withContext(Dispatchers.Main) { ready = true }
         }
+    }
 
-        setContent {
-            DynamicTheme {
-                if (ready.value) MainGraph(viewModel)
-            }
-        }
+    @Composable
+    override fun Content() {
+        if (ready) MainGraph(viewModel)
     }
 }
 

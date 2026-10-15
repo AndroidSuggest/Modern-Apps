@@ -1,15 +1,11 @@
 package com.vayunmathur.calculator.widget
 
-import android.content.Context
-import androidx.glance.appwidget.GlanceAppWidgetReceiver
-import com.vayunmathur.library.widgets.updateWidgetPreviews
+import com.vayunmathur.library.widgets.MaWidgetReceiver
 
-class CalculatorGlanceWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: CalculatorGlanceWidget = CalculatorGlanceWidget()
-
+class CalculatorGlanceWidgetReceiver : MaWidgetReceiver<CalculatorGlanceWidget>(
+    widgetClass = CalculatorGlanceWidget::class,
+    receiverClass = CalculatorGlanceWidgetReceiver::class,
     // No periodic refresh: the keypad's content only changes when the user taps a key.
-    override fun onEnabled(context: Context) {
-        super.onEnabled(context)
-        context.updateWidgetPreviews(CalculatorGlanceWidgetReceiver::class)
-    }
-}
+    hourly = false,
+    widgetFactory = ::CalculatorGlanceWidget,
+)

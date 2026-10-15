@@ -1,30 +1,24 @@
 package com.vayunmathur.todo
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import com.vayunmathur.library.ui.DynamicTheme
+import androidx.compose.runtime.Composable
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.todo.data.TodoRepository
 import com.vayunmathur.todo.platform.TodoViewModel
 import com.vayunmathur.todo.platform.TodoViewModelFactory
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private lateinit var todoRepository: TodoRepository
     private val todoViewModel: TodoViewModel by viewModels {
         TodoViewModelFactory(application, todoRepository)
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+    override fun onCreateBeforeContent() {
         todoRepository = TodoRepository.get(applicationContext)
+    }
 
-        setContent {
-            DynamicTheme {
-                Navigation(todoViewModel)
-            }
-        }
+    @Composable
+    override fun Content() {
+        Navigation(todoViewModel)
     }
 }

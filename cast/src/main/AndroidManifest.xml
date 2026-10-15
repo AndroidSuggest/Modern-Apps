@@ -65,7 +65,6 @@
         android:protectionLevel="signature" />
 
     <application
-        android:name=".CastApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"

@@ -1,7 +1,6 @@
 package com.vayunmathur.email.platform
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -11,6 +10,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.vayunmathur.email.MainActivity
 import com.vayunmathur.email.R
 import com.vayunmathur.email.data.EmailMessage
+import com.vayunmathur.library.util.ensureNotificationChannel
 
 object EmailNotifications {
 
@@ -27,15 +27,14 @@ object EmailNotifications {
 
     /** Idempotent — creates a per-account notification channel. */
     fun ensureChannel(context: Context, accountEmail: String) {
-        val nm = context.getSystemService(NotificationManager::class.java) ?: return
-        val id = channelId(accountEmail)
-        if (nm.getNotificationChannel(id) != null) return
-        nm.createNotificationChannel(
-            NotificationChannel(id, accountEmail, NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "New mail for $accountEmail"
-                setShowBadge(true)
-            }
-        )
+        context.ensureNotificationChannel(
+            channelId(accountEmail),
+            accountEmail,
+            NotificationManager.IMPORTANCE_DEFAULT,
+            "New mail for $accountEmail",
+        ) {
+            setShowBadge(true)
+        }
     }
 
     /**

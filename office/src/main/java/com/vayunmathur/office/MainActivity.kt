@@ -2,11 +2,8 @@ package com.vayunmathur.office
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
@@ -37,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.IntentCompat
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.DrawerValue
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -131,25 +129,30 @@ sealed interface OfficeRoute : NavKey {
     @Serializable data class OnlineEditor(val docId: String) : OfficeRoute
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val viewModel: OfficeViewModel by viewModels()
+    private var intentDocumentUri: Uri? = null
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         // FIRST_PARTY: api.vayunmathur.com + data.vayunmathur.com -> ISRG+GTS
         NetworkClient.init(this, TrustBundle.FIRST_PARTY)
-        enableEdgeToEdge()
         viewModel.loadSettings(this)
 
         // office://join links request access to someone else's doc — handle them here and keep
         // them out of the document-loading path (their scheme isn't content/file).
         val joinLink = parseJoinLink(intent)
         if (joinLink != null) handleJoinLink(joinLink)
-        val intentUri: Uri? = if (joinLink == null) extractDocumentUri(intent) else null
+        intentDocumentUri = if (joinLink == null) extractDocumentUri(intent) else null
+    }
 
-        setContent {
-            OfficeRoot(intentUri)
-        }
+    @Composable
+    override fun AppTheme(content: @Composable () -> Unit) {
+        OfficeAppTheme(content = content)
+    }
+
+    @Composable
+    override fun Content() {
+        OfficeRoot(intentDocumentUri)
     }
 
     /** Root content: nav graph over home + editor routes. */

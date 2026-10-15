@@ -2,7 +2,6 @@ package com.vayunmathur.calculator.widget
 
 import android.content.Context
 import android.content.Intent
-import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -13,11 +12,9 @@ import androidx.glance.GlanceTheme
 import androidx.glance.LocalContext
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
-import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
-import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.currentState
 import androidx.glance.layout.Alignment
@@ -35,11 +32,8 @@ import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.vayunmathur.calculator.MainActivity
-import com.vayunmathur.calculator.R
 import com.vayunmathur.calculator.util.renderInputForDisplay
-import com.vayunmathur.library.widgets.DynamicThemeGlance
-
-private const val TAG = "CalculatorWidget"
+import com.vayunmathur.library.widgets.MaWidget
 
 /** How a key is coloured: digits recede, operators sit forward, `=` is the primary action. */
 private enum class KeyEmphasis { Digit, Operator, Primary }
@@ -77,56 +71,28 @@ private val KEYPAD: List<List<WidgetKey>> = listOf(
  * so the in-progress input lives in the widget's own Glance preferences and every tap goes
  * through [CalculatorKeyAction], which rewrites that state and asks for a re-render.
  */
-class CalculatorGlanceWidget : GlanceAppWidget() {
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent {
-            val prefs = currentState<Preferences>()
-            val input = prefs[CalculatorInputKey].orEmpty()
-            val result = evaluateForWidget(input, prefs[CalculatorAnswerKey] ?: 0.0)
-            DynamicThemeGlance(context) {
-                CalculatorWidgetContent(
-                    input = input,
-                    result = result?.display.orEmpty(),
-                    transparent = prefs[CalculatorTransparentKey] == true,
-                )
-            }
-        }
+class CalculatorGlanceWidget : MaWidget<Unit>() {
+    override suspend fun loadData(context: Context, id: GlanceId): Unit = Unit
+
+    override fun previewData(context: Context): Unit = Unit
+
+    @Composable
+    override fun Content(data: Unit) {
+        val prefs = currentState<Preferences>()
+        val input = prefs[CalculatorInputKey].orEmpty()
+        val result = evaluateForWidget(input, prefs[CalculatorAnswerKey] ?: 0.0)
+        CalculatorWidgetContent(
+            input = input,
+            result = result?.display.orEmpty(),
+            transparent = prefs[CalculatorTransparentKey] == true,
+        )
     }
 
-    // Broad catches are deliberate: a throwing providePreview takes down the widget picker on
-    // API 35+, so every failure mode here falls back to simpler UI (logged) instead.
-    @Suppress("TooGenericExceptionCaught")
-    override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        try {
-            provideContent {
-                DynamicThemeGlance(context) {
-                    // Opaque: the picker draws previews on its own background, and a
-                    // transparent one there reads as a broken widget.
-                    CalculatorWidgetContent("12*8", "96", transparent = false)
-                }
-            }
-        } catch (t: Throwable) {
-            Log.error(TAG, "providePreview failed", t)
-            try {
-                provideContent {
-                    DynamicThemeGlance(context) {
-                        Box(
-                            modifier = GlanceModifier.fillMaxSize()
-                                .background(GlanceTheme.colors.surface)
-                                .cornerRadius(20.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = context.getString(R.string.calculator_widget_label),
-                                style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 18.sp),
-                            )
-                        }
-                    }
-                }
-            } catch (_: Throwable) {
-                // A throwing providePreview takes down the widget picker on API 35+.
-            }
-        }
+    @Composable
+    override fun PreviewContent() {
+        // Opaque: the picker draws previews on its own background, and a
+        // transparent one there reads as a broken widget.
+        CalculatorWidgetContent("12*8", "96", transparent = false)
     }
 }
 

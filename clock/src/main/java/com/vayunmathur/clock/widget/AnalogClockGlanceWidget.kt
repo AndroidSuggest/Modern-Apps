@@ -9,14 +9,12 @@ import androidx.glance.GlanceModifier
 import androidx.glance.LocalContext
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.AndroidRemoteViews
-import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.action.actionStartActivity
-import androidx.glance.appwidget.provideContent
 import androidx.glance.layout.Box
 import androidx.glance.layout.fillMaxSize
 import com.vayunmathur.clock.MainActivity
 import com.vayunmathur.clock.R
-import com.vayunmathur.library.widgets.DynamicThemeGlance
+import com.vayunmathur.library.widgets.MaWidget
 
 /**
  * Material You analog clock widget. The dial, the hands and the orbiting second-hand dot are
@@ -26,19 +24,21 @@ import com.vayunmathur.library.widgets.DynamicThemeGlance
  * exactly what widget-update throttling exists to stop. Glance's job here is the layout wrapper
  * and the tap-to-open-clock action.
  */
-class AnalogClockGlanceWidget : GlanceAppWidget() {
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent {
-            DynamicThemeGlance(context) {
-                AnalogClockContent()
-            }
-        }
-    }
-
-    // No providePreview: the widget picker preview comes from `previewLayout` in
+class AnalogClockGlanceWidget : MaWidget<Unit>() {
+    // No composed picker preview: the preview comes from `previewLayout` in
     // analog_clock_widget_info.xml. Composing AndroidRemoteViews inside setWidgetPreviews
     // crashes the preview host on API 35+, and a preview without ticking hands would be a
     // downgrade from the real layout the launcher already renders.
+    override val composePreview: Boolean = false
+
+    override suspend fun loadData(context: Context, id: GlanceId): Unit = Unit
+
+    override fun previewData(context: Context): Unit = Unit
+
+    @Composable
+    override fun Content(data: Unit) {
+        AnalogClockContent()
+    }
 }
 
 @Composable

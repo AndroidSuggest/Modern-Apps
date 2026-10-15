@@ -2,7 +2,6 @@ package com.vayunmathur.screentime.widget
 
 import android.content.Context
 import android.content.Intent
-import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -14,10 +13,8 @@ import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.LocalContext
 import androidx.glance.action.clickable
-import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
-import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.currentState
 import androidx.glance.layout.Alignment
@@ -29,11 +26,9 @@ import androidx.glance.layout.padding
 import androidx.glance.text.Text
 import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
-import com.vayunmathur.library.widgets.DynamicThemeGlance
+import com.vayunmathur.library.widgets.MaWidget
 import com.vayunmathur.screentime.R
 import com.vayunmathur.screentime.ui.DashboardActivity
-
-private const val TAG = "ScreenTimeWidget"
 
 internal val TotalMinutesKey = longPreferencesKey("screentime_total_minutes")
 internal val TopLabelKey = stringPreferencesKey("screentime_top_label")
@@ -47,42 +42,34 @@ internal val TopMinutesKey = longPreferencesKey("screentime_top_minutes")
  * dashboard. State is written by the app process into Glance preferences; the widget itself
  * never queries UsageStats (no cross-process permission story to maintain).
  */
-class ScreenTimeGlanceWidget : GlanceAppWidget() {
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent {
-            val prefs = currentState<Preferences>()
-            val total = prefs[TotalMinutesKey] ?: 0L
-            val topLabel = prefs[TopLabelKey]
-            val topMinutes = prefs[TopMinutesKey] ?: 0L
-            DynamicThemeGlance(context) {
-                ScreenTimeWidgetContent(
-                    context = context,
-                    total = total,
-                    topLabel = topLabel,
-                    topMinutes = topMinutes,
-                )
-            }
-        }
+class ScreenTimeGlanceWidget : MaWidget<Unit>() {
+    override suspend fun loadData(context: Context, id: GlanceId): Unit = Unit
+
+    override fun previewData(context: Context): Unit = Unit
+
+    @Composable
+    override fun Content(data: Unit) {
+        val context = LocalContext.current
+        val prefs = currentState<Preferences>()
+        val total = prefs[TotalMinutesKey] ?: 0L
+        val topLabel = prefs[TopLabelKey]
+        val topMinutes = prefs[TopMinutesKey] ?: 0L
+        ScreenTimeWidgetContent(
+            context = context,
+            total = total,
+            topLabel = topLabel,
+            topMinutes = topMinutes,
+        )
     }
 
-    // Broad catch is deliberate: a widget preview must never throw into the host,
-    // and Glance throws undocumented RuntimeExceptions.
-    @Suppress("TooGenericExceptionCaught")
-    override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        try {
-            provideContent {
-                DynamicThemeGlance(context) {
-                    ScreenTimeWidgetContent(
-                        context = context,
-                        total = 187,
-                        topLabel = "Example",
-                        topMinutes = 64,
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            Log.error(TAG, "providePreview failed", e)
-        }
+    @Composable
+    override fun PreviewContent() {
+        ScreenTimeWidgetContent(
+            context = LocalContext.current,
+            total = 187,
+            topLabel = "Example",
+            topMinutes = 64,
+        )
     }
 }
 

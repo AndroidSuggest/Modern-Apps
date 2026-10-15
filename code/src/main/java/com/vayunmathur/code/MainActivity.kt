@@ -1,10 +1,6 @@
 package com.vayunmathur.code
 
 import android.content.Intent
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
@@ -25,6 +21,7 @@ import com.vayunmathur.library.ui.AppPermissionsGate
 import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconFolderOpen
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavKey
@@ -32,31 +29,34 @@ import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.serialization.Serializable
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val viewModel: EditorViewModel by viewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+    override fun onCreateBeforeContent() {
         handleIntent(intent)
-        setContent {
-            val darkTheme = when (viewModel.themeMode) {
-                EditorPrefs.THEME_LIGHT -> false
-                EditorPrefs.THEME_DARK -> true
-                else -> null
-            }
-            DynamicTheme(darkTheme = darkTheme) {
-                AppPermissionsGate(
-                    spec = AppPermissionsSpec(
-                        title = stringResource(R.string.storage_permission_title),
-                        subtitle = stringResource(R.string.storage_permission_rationale),
-                        icon = { IconFolderOpen() },
-                        requirements = listOf(PermissionRequirement.AllFiles)
-                    )
-                ) {
-                    Navigation(viewModel)
-                }
-            }
+    }
+
+    @Composable
+    override fun AppTheme(content: @Composable () -> Unit) {
+        val darkTheme = when (viewModel.themeMode) {
+            EditorPrefs.THEME_LIGHT -> false
+            EditorPrefs.THEME_DARK -> true
+            else -> null
+        }
+        DynamicTheme(darkTheme = darkTheme, content = content)
+    }
+
+    @Composable
+    override fun Content() {
+        AppPermissionsGate(
+            spec = AppPermissionsSpec(
+                title = stringResource(R.string.storage_permission_title),
+                subtitle = stringResource(R.string.storage_permission_rationale),
+                icon = { IconFolderOpen() },
+                requirements = listOf(PermissionRequirement.AllFiles)
+            )
+        ) {
+            Navigation(viewModel)
         }
     }
 

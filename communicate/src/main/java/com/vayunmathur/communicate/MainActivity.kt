@@ -5,11 +5,7 @@ import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Bundle
 import android.util.Rational
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,7 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.IconCall
 import com.vayunmathur.library.ui.IconHistory
 import com.vayunmathur.library.ui.IconSms
@@ -97,13 +93,11 @@ sealed interface Route : NavKey {
     ) : Route
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     /** The deep link the app was opened with, or the most recent one delivered to a running instance. */
     private var pendingDeepLink by mutableStateOf<DeepLink?>(null)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+    override fun onCreateBeforeContent() {
         pendingDeepLink = DeepLinks.parse(intent)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -111,12 +105,11 @@ class MainActivity : ComponentActivity() {
         ) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_POST_NOTIFICATIONS)
         }
+    }
 
-        setContent {
-            DynamicTheme {
-                CommunicateApp(initialDeepLink = pendingDeepLink)
-            }
-        }
+    @Composable
+    override fun Content() {
+        CommunicateApp(initialDeepLink = pendingDeepLink)
     }
 
     /**

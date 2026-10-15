@@ -7,106 +7,60 @@ import android.net.Uri
 import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
-import androidx.glance.GlanceTheme
 import androidx.glance.Image
 import androidx.glance.ImageProvider
+import androidx.glance.LocalContext
 import androidx.glance.action.clickable
-import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.provideContent
-import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.ContentScale
 import androidx.glance.layout.fillMaxSize
-import androidx.glance.layout.padding
-import androidx.glance.text.FontWeight
-import androidx.glance.text.Text
-import androidx.glance.text.TextStyle
-import com.vayunmathur.library.widgets.DynamicThemeGlance
+import com.vayunmathur.library.widgets.MaWidget
 import com.vayunmathur.photos.R
 import com.vayunmathur.photos.data.PhotoScanRepository
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class PhotoGlanceWidget : GlanceAppWidget() {
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
+class PhotoGlanceWidget : MaWidget<List<String>>() {
+    override suspend fun loadData(context: Context, id: GlanceId): List<String> =
+        PhotoScanRepository.get(context.applicationContext).getStillPhotoUris().map { it.toString() }
 
-        val uris = PhotoScanRepository.get(context.applicationContext).getStillPhotoUris()
+    override fun previewData(context: Context): List<String> = emptyList()
 
-        provideContent {
-            var uri by remember(uris) { mutableStateOf(uris.randomOrNull()) }
-            val bitmap by produceState<Bitmap?>(initialValue = null, uri) {
-                value = withContext(Dispatchers.IO) {
-                    uri?.let { getResizedBitmap(context, it.toUri(), 600) }
-                }
+    @Composable
+    override fun Content(data: List<String>) {
+        val uris = data.map { it.toUri() }
+        var uri by remember(uris) { mutableStateOf(uris.randomOrNull()) }
+        val context = LocalContext.current
+        val bitmap by produceState<Bitmap?>(initialValue = null, uri) {
+            value = withContext(Dispatchers.IO) {
+                uri?.let { getResizedBitmap(context, it, 600) }
             }
-            DynamicThemeGlance(context) {
-                bitmap?.let {
-                    Content(it) { uri = uris.randomOrNull() }
-                }
-            }
+        }
+        bitmap?.let {
+            Content(it) { uri = uris.randomOrNull() }
         }
     }
 
-    override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        try {
-            provideContent {
-                DynamicThemeGlance(context) {
-                    Box(
-                        modifier = GlanceModifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Image(
-                            provider = ImageProvider(R.drawable.widget_preview_photo),
-                            contentDescription = null,
-                            modifier = GlanceModifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
-                }
-            }
-        } catch (e: IllegalStateException) {
-            Log.error("PhotoWidget", "providePreview failed", e)
-            providePreviewFallback(context)
-        } catch (e: IllegalArgumentException) {
-            Log.error("PhotoWidget", "providePreview failed", e)
-            providePreviewFallback(context)
-        }
-    }
-
-    private suspend fun providePreviewFallback(context: Context) {
-        // Fallback: avoid system_accent colors that may not resolve in preview host on API 37
-        try {
-            provideContent {
-                DynamicThemeGlance(context) {
-                    Box(
-                        modifier = GlanceModifier.fillMaxSize()
-                            .background(GlanceTheme.colors.surfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Photos",
-                            style = TextStyle(
-                                color = GlanceTheme.colors.onSurface,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        )
-                    }
-                }
-            }
-        } catch (_: Throwable) {
-            // last resort – don't crash setWidgetPreviews
+    @Composable
+    override fun PreviewContent() {
+        Box(
+            modifier = GlanceModifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                provider = ImageProvider(R.drawable.widget_preview_photo),
+                contentDescription = null,
+                modifier = GlanceModifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
         }
     }
 }

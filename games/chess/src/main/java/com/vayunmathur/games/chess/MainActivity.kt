@@ -1,9 +1,5 @@
 package com.vayunmathur.games.chess
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -21,10 +17,10 @@ import com.vayunmathur.games.chess.util.ChessViewModel
 import com.vayunmathur.games.chess.util.LearnViewModel
 import com.vayunmathur.games.chess.util.PuzzleViewModel
 import com.vayunmathur.library.ui.AchievementNotification
-import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.GameCenterScreen
 import com.vayunmathur.library.ui.Icon
 import com.vayunmathur.library.ui.IconPlay
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.BottomBarItem
 import com.vayunmathur.library.util.BottomNavBar
@@ -33,23 +29,17 @@ import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.SiblingPage
 import com.vayunmathur.library.util.rememberNavBackStack
 
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-
-        setContent {
-            DynamicTheme {
-                val backStack = rememberNavBackStack<Route>(Route.Game)
-                val achievementsManager = rememberAchievementsManager()
-                GameHubComposeHook("chess", achievementsManager)
-                if (achievementsManager == null) {
-                    Box(Modifier.fillMaxSize())
-                    return@DynamicTheme
-                }
-                ChessNavHost(backStack, achievementsManager)
-            }
+class MainActivity : MaActivity() {
+    @Composable
+    override fun Content() {
+        val backStack = rememberNavBackStack<Route>(Route.Game)
+        val achievementsManager = rememberAchievementsManager()
+        GameHubComposeHook("chess", achievementsManager)
+        if (achievementsManager == null) {
+            Box(Modifier.fillMaxSize())
+            return
         }
+        ChessNavHost(backStack, achievementsManager)
     }
 
     @Composable

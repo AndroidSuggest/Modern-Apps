@@ -3,7 +3,6 @@ package com.vayunmathur.weather.widget.glance
 import com.vayunmathur.library.util.DateNameStyle
 import android.content.Context
 import android.content.Intent
-import com.vayunmathur.library.log.Log
 import android.widget.RemoteViews
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
@@ -16,10 +15,8 @@ import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.AndroidRemoteViews
-import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
-import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
@@ -34,13 +31,9 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextDefaults.defaultTextStyle
 import androidx.glance.text.TextStyle
 import com.vayunmathur.library.util.localizedMonthNames
-import com.vayunmathur.library.widgets.DynamicThemeGlance
+import com.vayunmathur.library.widgets.MaWidget
 import com.vayunmathur.weather.MainActivity
 import com.vayunmathur.weather.R
-import com.vayunmathur.weather.data.WeatherRepository
-import com.vayunmathur.weather.data.weatherJson
-import com.vayunmathur.weather.network.ForecastResponse
-import com.vayunmathur.weather.domain.roundCoord
 import com.vayunmathur.weather.domain.weatherConditionForCode
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -52,100 +45,25 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.math.roundToInt
 import kotlin.time.Clock
 
-/**
- * Snapshot of cached weather used by the 4x1 widget. Populated from the
- * most-recent [com.vayunmathur.weather.data.WeatherCache] row for the
- * user's primary saved location (preferring the device-location row).
- * `null` while no forecast has been cached yet — the widget renders a
- * dash in that case rather than failing to load.
- */
-data class WidgetWeather(
-    val temperatureCelsius: Double,
-    val weatherCode: Int,
-    val isDay: Boolean,
-)
+class WeatherGlanceWidget : MaWidget<WidgetWeather?>() {
+    override suspend fun loadData(context: Context, id: GlanceId): WidgetWeather? =
+        loadWeatherSnapshot(context)
 
-class WeatherGlanceWidget : GlanceAppWidget() {
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val weather = loadWeatherSnapshot(context)
+    override fun previewData(context: Context): WidgetWeather? = null
 
-        provideContent {
-            DynamicThemeGlance(context) {
-                Content(weather)
-            }
-        }
+    @Composable
+    override fun Content(data: WidgetWeather?) {
+        WeatherContent(data)
     }
 
-    // Broad catch is deliberate: a widget preview must never throw into the host,
-    // and Glance plus Room throw undocumented RuntimeExceptions.
-    @Suppress("TooGenericExceptionCaught", "SwallowedException")
-    override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        try {
-            provideContent {
-                DynamicThemeGlance(context) {
-                    WeatherPreviewContent()
-                }
-            }
-        } catch (e: Exception) {
-            Log.error("WeatherWidget", "providePreview failed", e)
-            try {
-                provideContent {
-                    DynamicThemeGlance(context) {
-                        Box(
-                            modifier = GlanceModifier.fillMaxSize().background(GlanceTheme.colors.surface)
-                                .cornerRadius(20.dp).padding(horizontal = 12.dp, vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "22°",
-                                style = TextStyle(
-                                    color = GlanceTheme.colors.onSurface,
-                                    fontSize = 36.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            )
-                        }
-                    }
-                }
-            } catch (ignored: Exception) {
-                // prevent crash of preview host on API 35+
-            }
-        }
+    @Composable
+    override fun PreviewContent() {
+        WeatherPreviewContent()
     }
-
-    // Broad catch is deliberate: a snapshot miss renders as a dash, and Room plus
-    // kotlinx.serialization throw undocumented RuntimeExceptions (not just IOException).
-    @Suppress("TooGenericExceptionCaught")
-    private suspend fun loadWeatherSnapshot(context: Context): WidgetWeather? {
-        return try {
-            val repo = WeatherRepository.get(context)
-            // Prefer the device-current row, fall back to the first pinned location.
-            val location = repo.getCurrentDeviceLocation()
-                ?: repo.getLocations().firstOrNull()
-                ?: return null
-            val cache = repo.getCache(
-                roundCoord(location.latitude),
-                roundCoord(location.longitude),
-            ) ?: return null
-            val forecast = runCatching {
-                weatherJson.decodeFromString<ForecastResponse>(cache.forecastJson)
-            }.getOrNull() ?: return null
-            val current = forecast.current ?: return null
-            WidgetWeather(
-                temperatureCelsius = current.temperature,
-                weatherCode = current.weatherCode,
-                isDay = current.isDay != 0,
-            )
-        } catch (e: Exception) {
-            Log.dev("WeatherWidget", "no cached snapshot yet", e)
-            null
-        }
-    }
-
 }
 
 @Composable
-private fun Content(weather: WidgetWeather?) {
+private fun WeatherContent(weather: WidgetWeather?) {
     val context = LocalContext.current
     val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
     Row(

@@ -1,16 +1,15 @@
 package com.vayunmathur.vpn
 
 import android.content.Intent
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.vpn.data.ConnectionLogDao
 import com.vayunmathur.vpn.data.VpnConfigDao
@@ -22,37 +21,34 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private lateinit var configDao: VpnConfigDao
     private lateinit var logDao: ConnectionLogDao
     private val vm: VpnViewModel by viewModels {
         VpnViewModelFactory(application, configDao, logDao)
     }
+    private var ready by mutableStateOf(false)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         // SYSTEM: user-supplied VPN endpoint dynamic host, cannot pin
         NetworkClient.init(this, TrustBundle.SYSTEM)
-        enableEdgeToEdge()
 
-        val ready = mutableStateOf(false)
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { VpnNative.init() }
             val db = VpnDatabase.get(this@MainActivity)
             configDao = db.vpnConfigDao()
             logDao = db.connectionLogDao()
             withContext(Dispatchers.Main) {
-                ready.value = true
+                ready = true
                 handleIntent(intent)
             }
         }
+    }
 
-        setContent {
-            DynamicTheme {
-                OfflineAware {
-                    if (ready.value) Navigation(vm)
-                }
-            }
+    @Composable
+    override fun Content() {
+        OfflineAware {
+            if (ready) Navigation(vm)
         }
     }
 

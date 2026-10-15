@@ -21,7 +21,6 @@
         android:required="false" />
 
     <application
-        android:name=".CastTvApplication"
         android:allowBackup="true"
         android:banner="@drawable/banner"
         android:dataExtractionRules="@xml/data_extraction_rules"

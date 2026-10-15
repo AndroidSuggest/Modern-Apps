@@ -12,9 +12,6 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +37,7 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.DropdownMenu
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Scaffold
@@ -47,7 +45,6 @@ import com.vayunmathur.library.ui.SelectableDropdownMenuItem
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.AppPermissionsGate
 import com.vayunmathur.library.ui.AppPermissionsSpec
-import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconArrowDropDown
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconMic
@@ -62,26 +59,21 @@ import com.vayunmathur.speech.util.TtsVoiceUiState
 import com.vayunmathur.speech.util.WhisperModel
 import java.util.Locale
 
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            DynamicTheme {
-                AppPermissionsGate(
-                    spec = AppPermissionsSpec(
-                        title = stringResource(R.string.grant_microphone),
-                        icon = { IconMic() },
-                        requirements = listOf(
-                            PermissionRequirement.Runtime(
-                                arrayOf(Manifest.permission.RECORD_AUDIO)
-                            )
-                        )
+class MainActivity : MaActivity() {
+    @Composable
+    override fun Content() {
+        AppPermissionsGate(
+            spec = AppPermissionsSpec(
+                title = stringResource(R.string.grant_microphone),
+                icon = { IconMic() },
+                requirements = listOf(
+                    PermissionRequirement.Runtime(
+                        arrayOf(Manifest.permission.RECORD_AUDIO)
                     )
-                ) {
-                    SetupScreen()
-                }
-            }
+                )
+            )
+        ) {
+            SetupScreen()
         }
     }
 }

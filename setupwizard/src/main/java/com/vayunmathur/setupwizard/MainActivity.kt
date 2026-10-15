@@ -1,11 +1,11 @@
 package com.vayunmathur.setupwizard
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import com.vayunmathur.library.ui.DynamicTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.setupwizard.platform.DebugFlags
 import com.vayunmathur.setupwizard.platform.SetupViewModel
 
@@ -17,13 +17,12 @@ import com.vayunmathur.setupwizard.platform.SetupViewModel
  * unprovisioned, and the other eight were reachable only from it. The steps are destinations
  * in [Navigation] now.
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
 
     private val viewModel: SetupViewModel by viewModels()
+    private var showWizard: Boolean = true
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
+    override fun onCreateBeforeContent() {
         // HOME resolution does not stop pointing here the moment setup is done - the package is
         // disabled for that, and until it is, or if it is ever re-enabled, launching lands
         // back on step one. Bail straight to completion instead of running the flow again.
@@ -31,10 +30,12 @@ class MainActivity : ComponentActivity() {
             DebugFlags.getBool(this, "allowLaunchAfterSetupCompleted") != true
         ) {
             viewModel.finishSetup(this, disableOemUnlocking = false)
-            return
+            showWizard = false
         }
+    }
 
-        enableEdgeToEdge()
-        setContent { DynamicTheme { Navigation(viewModel) } }
+    @Composable
+    override fun Content() {
+        if (showWizard) Navigation(viewModel) else Box(Modifier.fillMaxSize())
     }
 }

@@ -9,7 +9,6 @@
         android:protectionLevel="signature" />
 
     <application
-        android:name=".TodoApplication"
         android:allowBackup="true"
         android:backupAgent=".platform.AppBackupAgent"
         android:dataExtractionRules="@xml/data_extraction_rules"

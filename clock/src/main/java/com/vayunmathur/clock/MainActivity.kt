@@ -1,10 +1,7 @@
 package com.vayunmathur.clock
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.clock.data.ClockRepository
 import com.vayunmathur.clock.platform.ClockViewModel
@@ -12,38 +9,36 @@ import com.vayunmathur.clock.platform.ClockViewModelFactory
 import com.vayunmathur.clock.platform.createNotificationChannels
 import com.vayunmathur.library.ui.AppPermissionsGate
 import com.vayunmathur.library.ui.AppPermissionsSpec
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.util.DataStoreUtils
-class MainActivity : ComponentActivity() {
+
+class MainActivity : MaActivity() {
     private val clockViewModel: ClockViewModel by viewModels {
         ClockViewModelFactory(application, ClockRepository.get(application))
     }
+    private lateinit var ds: DataStoreUtils
+    private lateinit var initialRoute: Route
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-
+    override fun onCreateBeforeContent() {
         createNotificationChannels(this)
-        val ds = DataStoreUtils.getInstance(this)
+        ds = DataStoreUtils.getInstance(this)
+        initialRoute = clockViewModel.handleIncomingIntent(intent)
+    }
 
-        val initialRoute = clockViewModel.handleIncomingIntent(intent)
-
-        setContent {
-            DynamicTheme {
-                AppPermissionsGate(
-                    spec = AppPermissionsSpec(
-                        title = stringResource(R.string.grant_notifications_permission),
-                        requirements = listOf(
-                            PermissionRequirement.notifications(),
-                            PermissionRequirement.ExactAlarms,
-                            PermissionRequirement.FullScreenIntent,
-                        )
-                    )
-                ) {
-                    Navigation(ds, clockViewModel, initialRoute)
-                }
-            }
+    @Composable
+    override fun Content() {
+        AppPermissionsGate(
+            spec = AppPermissionsSpec(
+                title = stringResource(R.string.grant_notifications_permission),
+                requirements = listOf(
+                    PermissionRequirement.notifications(),
+                    PermissionRequirement.ExactAlarms,
+                    PermissionRequirement.FullScreenIntent,
+                )
+            )
+        ) {
+            Navigation(ds, clockViewModel, initialRoute)
         }
     }
 }

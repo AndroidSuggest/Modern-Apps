@@ -1,6 +1,5 @@
 package com.vayunmathur.email.widget
 
-import androidx.compose.ui.res.stringResource
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -15,8 +14,6 @@ import androidx.glance.GlanceTheme
 import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.action.clickable
-import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.components.CircleIconButton
 import androidx.glance.appwidget.components.Scaffold
@@ -42,22 +39,22 @@ import com.vayunmathur.email.data.EmailPreview
 import com.vayunmathur.email.data.accountColor
 import com.vayunmathur.email.data.senderDisplayName
 import com.vayunmathur.email.data.EmailRepository
-import com.vayunmathur.library.widgets.DynamicThemeGlance
+import com.vayunmathur.library.widgets.MaWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.vayunmathur.email.R
 
-class EmailWidget : GlanceAppWidget() {
+class EmailWidget : MaWidget<List<EmailPreview>>() {
 
     companion object {
         private const val WIDGET_MESSAGE_COUNT = 100
         private const val WIDGET_PEEK_LEN = 50
     }
 
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
+    override suspend fun loadData(context: Context, id: GlanceId): List<EmailPreview> {
         // Query the database directly for recent messages.
         // No read status indicators, so widget doesn't need to refresh on read changes.
-        val messages = withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             try {
                 EmailRepository.get(context).getDatabase().queryDao().getRecentUnifiedPreview()
             } catch (ignored: Exception) {
@@ -65,52 +62,29 @@ class EmailWidget : GlanceAppWidget() {
                 emptyList()
             }
         }
-
-        try {
-            provideContent {
-                DynamicThemeGlance(context) {
-                    EmailWidgetContent(messages)
-                }
-            }
-        } catch (ignored: Exception) {
-            Log.error("EmailWidget", "provideContent failed", ignored)
-        }
     }
 
-    override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        try {
-            val sample = listOf(
-                EmailPreview(
-                    accountEmail = "alex@example.com", folderName = "INBOX", id = 1,
-                    subject = "Lunch tomorrow?", from = "Alex Johnson <alex@example.com>",
-                    date = "Jul 6", peekContent = "Are we still on for noon at the usual place?",
-                ),
-                EmailPreview(
-                    accountEmail = "priya@work.com", folderName = "INBOX", id = 2,
-                    subject = "Q3 report is ready", from = "Priya Patel <priya@work.com>",
-                    date = "Jul 5", peekContent = "I've attached the final numbers for review.",
-                ),
-                EmailPreview(
-                    accountEmail = "news@digest.com", folderName = "INBOX", id = 3,
-                    subject = "Your weekly digest", from = "Tech Weekly <news@digest.com>",
-                    date = "Jul 5", peekContent = "Top stories and updates from this week.",
-                ),
-            )
-            provideContent {
-                DynamicThemeGlance(context) {
-                    EmailWidgetContent(sample)
-                }
-            }
-        } catch (ignored: Exception) {
-            Log.error("EmailWidget", "providePreview failed", ignored)
-            try {
-                provideContent {
-                    Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(stringResource(R.string.app_name))
-                    }
-                }
-            } catch (_: Throwable) {}
-        }
+    override fun previewData(context: Context): List<EmailPreview> = listOf(
+        EmailPreview(
+            accountEmail = "alex@example.com", folderName = "INBOX", id = 1,
+            subject = "Lunch tomorrow?", from = "Alex Johnson <alex@example.com>",
+            date = "Jul 6", peekContent = "Are we still on for noon at the usual place?",
+        ),
+        EmailPreview(
+            accountEmail = "priya@work.com", folderName = "INBOX", id = 2,
+            subject = "Q3 report is ready", from = "Priya Patel <priya@work.com>",
+            date = "Jul 5", peekContent = "I've attached the final numbers for review.",
+        ),
+        EmailPreview(
+            accountEmail = "news@digest.com", folderName = "INBOX", id = 3,
+            subject = "Your weekly digest", from = "Tech Weekly <news@digest.com>",
+            date = "Jul 5", peekContent = "Top stories and updates from this week.",
+        ),
+    )
+
+    @Composable
+    override fun Content(data: List<EmailPreview>) {
+        EmailWidgetContent(data)
     }
 
     @SuppressLint("RestrictedApi")

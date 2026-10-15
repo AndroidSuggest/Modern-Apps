@@ -1,15 +1,12 @@
 package com.vayunmathur.health
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.vayunmathur.library.ui.IconBodySystem
 import com.vayunmathur.library.ui.IconFavorite
 import com.vayunmathur.library.ui.IconFire
+import com.vayunmathur.library.ui.MaActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.res.stringResource
@@ -75,7 +72,6 @@ import com.vayunmathur.health.util.HealthViewModel
 import com.vayunmathur.health.util.HealthViewModelFactory
 import com.vayunmathur.library.ui.AppPermissionsGate
 import com.vayunmathur.library.ui.AppPermissionsSpec
-import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconFavorite
 import com.vayunmathur.library.ui.IconMedicalServices
 import com.vayunmathur.library.ui.PermissionRequirement
@@ -147,18 +143,17 @@ val PERMISSIONS = CLASSES.map { HealthPermission.getReadPermission(it) }.toSet()
     )
 
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val healthViewModel: HealthViewModel by viewModels {
         HealthViewModelFactory(application, HealthRepository.get(this))
     }
     private val medicalViewModel: MedicalViewModel by viewModels {
         MedicalViewModelFactory(application, HealthRepository.get(this))
     }
+    private lateinit var healthConnectClient: HealthConnectClient
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        val healthConnectClient = HealthConnectClient.getOrCreate(this)
+    override fun onCreateBeforeContent() {
+        healthConnectClient = HealthConnectClient.getOrCreate(this)
         val repository = HealthRepository.get(this)
         HealthAPI.init(healthConnectClient, this, repository)
         FoodDatabase.init(this)
@@ -167,39 +162,39 @@ class MainActivity : ComponentActivity() {
         // rather than the first time the user opens a picker and waits for it.
         ReferenceCatalog.warmUp(lifecycleScope)
         PersonalHealthRecords.init(this, healthConnectClient)
-        setContent {
-            DynamicTheme {
-                val requestMedicalPermissions = rememberLauncherForActivityResult(
-                    contract = PermissionController.createRequestPermissionResultContract(),
-                    onResult = { /* Refusal is fine — the medical screens fall back to local data. */ }
-                )
+    }
 
-                AppPermissionsGate(
-                    spec = AppPermissionsSpec(
-                        title = stringResource(R.string.grant_permissions),
-                        subtitle = stringResource(R.string.grant_permissions_rationale),
-                        icon = { IconFavorite() },
-                        requirements = listOf(PermissionRequirement.HealthConnect(PERMISSIONS))
-                    )
+    @Composable
+    override fun Content() {
+        val requestMedicalPermissions = rememberLauncherForActivityResult(
+            contract = PermissionController.createRequestPermissionResultContract(),
+            onResult = { /* Refusal is fine — the medical screens fall back to local data. */ }
+        )
+
+        AppPermissionsGate(
+            spec = AppPermissionsSpec(
+                title = stringResource(R.string.grant_permissions),
+                subtitle = stringResource(R.string.grant_permissions_rationale),
+                icon = { IconFavorite() },
+                requirements = listOf(PermissionRequirement.HealthConnect(PERMISSIONS))
+            )
+        ) {
+            LaunchedEffect(Unit) {
+                HealthSyncWorker.enqueue(this@MainActivity)
+            }
+            // FHIR record access is requested separately and is allowed to fail. It only
+            // exists on Android 15 with an updated Health Connect module, so folding it
+            // into PERMISSIONS above would gate the whole app on something most supported
+            // devices cannot grant; the medical screens work from Room without it.
+            LaunchedEffect(Unit) {
+                if (PersonalHealthRecords.isAvailable() &&
+                    !healthConnectClient.permissionController.getGrantedPermissions()
+                        .containsAll(PersonalHealthRecords.PERMISSIONS)
                 ) {
-                    LaunchedEffect(Unit) {
-                        HealthSyncWorker.enqueue(this@MainActivity)
-                    }
-                    // FHIR record access is requested separately and is allowed to fail. It only
-                    // exists on Android 15 with an updated Health Connect module, so folding it
-                    // into PERMISSIONS above would gate the whole app on something most supported
-                    // devices cannot grant; the medical screens work from Room without it.
-                    LaunchedEffect(Unit) {
-                        if (PersonalHealthRecords.isAvailable() &&
-                            !healthConnectClient.permissionController.getGrantedPermissions()
-                                .containsAll(PersonalHealthRecords.PERMISSIONS)
-                        ) {
-                            requestMedicalPermissions.launch(PersonalHealthRecords.PERMISSIONS)
-                        }
-                    }
-                    Navigation(healthViewModel, medicalViewModel)
+                    requestMedicalPermissions.launch(PersonalHealthRecords.PERMISSIONS)
                 }
             }
+            Navigation(healthViewModel, medicalViewModel)
         }
     }
 }

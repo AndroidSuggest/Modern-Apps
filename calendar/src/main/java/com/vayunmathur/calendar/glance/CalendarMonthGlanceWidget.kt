@@ -2,7 +2,6 @@ package com.vayunmathur.calendar.glance
 
 import android.annotation.SuppressLint
 import android.content.Context
-import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -17,12 +16,10 @@ import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
-import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.components.Scaffold
 import androidx.glance.appwidget.components.TitleBar
-import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
@@ -45,7 +42,7 @@ import com.vayunmathur.library.util.DateNameStyle
 import com.vayunmathur.library.util.localeFirstDayOfWeek
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.library.util.localizedMonthNames
-import com.vayunmathur.library.widgets.DynamicThemeGlance
+import com.vayunmathur.library.widgets.MaWidget
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -61,14 +58,24 @@ import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
 
-class CalendarMonthGlanceWidget : GlanceAppWidget() {
+/** Month-grid data for the month widget, real or sample. */
+internal data class MonthWidgetData(
+    val monthLabel: String,
+    val weeks: List<List<LocalDate>>,
+    val eventsByDay: Map<LocalDate, List<Instance>>,
+    val today: LocalDate,
+    val month: Month,
+    val weekdayNames: List<String>,
+)
+
+class CalendarMonthGlanceWidget : MaWidget<MonthWidgetData>() {
     /**
      * Exact size mode so [LocalSize] reports the widget's real dimensions and each day
      * cell can show as many titled chips as fit (see [maxChipsForSize]).
      */
     override val sizeMode: SizeMode = SizeMode.Exact
 
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
+    override suspend fun loadData(context: Context, id: GlanceId): MonthWidgetData {
         val zone = TimeZone.currentSystemDefault()
         val today = Clock.System.now().toLocalDateTime(zone).date
 
@@ -92,48 +99,24 @@ class CalendarMonthGlanceWidget : GlanceAppWidget() {
         val dayNames = localizedDayOfWeekNames(DateNameStyle.SHORT, locale)
         val weekdayNames = weeks.first().map { day -> dayNames[day.dayOfWeek.isoDayNumber - 1] }
 
-        provideContent {
-            DynamicThemeGlance(context) {
-                MonthContent(monthLabel, weeks, eventsByDay, today, today.month, weekdayNames)
-            }
-        }
+        return MonthWidgetData(monthLabel, weeks, eventsByDay, today, today.month, weekdayNames)
     }
 
-    override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        try {
-            val zone = TimeZone.currentSystemDefault()
-            val today = Clock.System.now().toLocalDateTime(zone).date
-            val weeks = computeMonthGrid(today.year, today.month, localeFirstDayOfWeek())
-            val monthName = localizedMonthNames(DateNameStyle.SHORT)[today.month.number - 1]
-            val monthLabel = context.getString(R.string.month_year_format, monthName, today.year)
-            val dayNames = localizedDayOfWeekNames(DateNameStyle.SHORT)
-            val weekdayNames = weeks.first().map { day -> dayNames[day.dayOfWeek.isoDayNumber - 1] }
-            val previewEvents = previewEventsByDay(context, weeks, zone)
-            provideContent {
-                DynamicThemeGlance(context) {
-                    MonthContent(monthLabel, weeks, previewEvents, today, today.month, weekdayNames)
-                }
-            }
-        } catch (expected: Throwable) {
-            Log.error("CalendarMonthWidget", "providePreview failed", expected)
-            try {
-                provideContent {
-                    DynamicThemeGlance(context) {
-                        Box(
-                            modifier = GlanceModifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "Calendar",
-                                style = defaultTextStyle.copy(color = GlanceTheme.colors.onBackground),
-                            )
-                        }
-                    }
-                }
-            } catch (_: Throwable) {
-                // last resort: avoid crashing the preview host
-            }
-        }
+    override fun previewData(context: Context): MonthWidgetData {
+        val zone = TimeZone.currentSystemDefault()
+        val today = Clock.System.now().toLocalDateTime(zone).date
+        val weeks = computeMonthGrid(today.year, today.month, localeFirstDayOfWeek())
+        val monthName = localizedMonthNames(DateNameStyle.SHORT)[today.month.number - 1]
+        val monthLabel = context.getString(R.string.month_year_format, monthName, today.year)
+        val dayNames = localizedDayOfWeekNames(DateNameStyle.SHORT)
+        val weekdayNames = weeks.first().map { day -> dayNames[day.dayOfWeek.isoDayNumber - 1] }
+        val previewEvents = previewEventsByDay(context, weeks, zone)
+        return MonthWidgetData(monthLabel, weeks, previewEvents, today, today.month, weekdayNames)
+    }
+
+    @Composable
+    override fun Content(data: MonthWidgetData) {
+        MonthContent(data.monthLabel, data.weeks, data.eventsByDay, data.today, data.month, data.weekdayNames)
     }
 }
 

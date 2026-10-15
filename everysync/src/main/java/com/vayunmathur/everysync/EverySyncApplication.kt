@@ -4,7 +4,6 @@ import android.app.Application
 import com.vayunmathur.everysync.data.VaultStore
 import com.vayunmathur.everysync.sync.SnapshotWorker
 import com.vayunmathur.everysync.sync.SyncScheduler
-import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +18,6 @@ import kotlinx.coroutines.launch
 class EverySyncApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        Log.init(BuildConfig.DEV_BUILD)
         // FIRST_PARTY covers the relay host (same bundle the office twin uses).
         NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         SyncScheduler.schedulePeriodic(this)

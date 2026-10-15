@@ -1,10 +1,6 @@
 package com.vayunmathur.appstore
 
 import android.content.Intent
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.rememberPagerState
@@ -34,7 +30,7 @@ import com.vayunmathur.appstore.util.selectApp
 import com.vayunmathur.appstore.util.selectPackage
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.ui.IconDownload
 import com.vayunmathur.library.ui.IconHome
@@ -51,7 +47,7 @@ import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.serialization.Serializable
 import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
 
     private var factoryState by mutableStateOf<AppStoreViewModelFactory?>(null)
 
@@ -60,30 +56,27 @@ class MainActivity : ComponentActivity() {
 
     private var vmRef: AppStoreViewModel? = null
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         // STANDARD includes GTS R1-R4 (needed for Play Store -> play.google.com / android.clients.google.com)
         // + ISRG X1/X2 (F-Droid) + DigiCert G2/G3 (GitHub). Covers all appstore hosts without full system ~140 roots.
         NetworkClient.init(this, TrustBundle.STANDARD)
-        enableEdgeToEdge()
         UpdateCheckWorker.schedule(this)
 
         val repository = AppStoreDatabaseRepository.get(this)
         factoryState = AppStoreViewModelFactory(applicationContext, repository.database)
         handleIntentUrl(intent)
+    }
 
-        setContent {
-            DynamicTheme {
-                OfflineAware {
-                    val factory = factoryState
-                    if (factory == null) {
-                        Box(Modifier.fillMaxSize())
-                    } else {
-                        val vm: AppStoreViewModel = viewModel(factory = factory)
-                        vmRef = vm
-                        AppRoot(vm, externalPkg) { externalPkg = null }
-                    }
-                }
+    @Composable
+    override fun Content() {
+        OfflineAware {
+            val factory = factoryState
+            if (factory == null) {
+                Box(Modifier.fillMaxSize())
+            } else {
+                val vm: AppStoreViewModel = viewModel(factory = factory)
+                vmRef = vm
+                AppRoot(vm, externalPkg) { externalPkg = null }
             }
         }
     }

@@ -4,21 +4,19 @@ import android.Manifest
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
-import android.os.Bundle
 import android.provider.MediaStore
 import android.view.KeyEvent
-import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
-import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.Composable
 import androidx.core.content.IntentCompat
 import com.vayunmathur.camera.ui.CameraScreen
 import com.vayunmathur.camera.ui.SettingsPage
 import com.vayunmathur.camera.util.CameraViewModel
 import com.vayunmathur.library.ui.AppPermissionsGate
 import com.vayunmathur.library.ui.AppPermissionsSpec
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.FullscreenPage
@@ -35,22 +33,24 @@ sealed interface Route : NavKey {
     data object Settings : Route
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val viewModel: CameraViewModel by viewModels()
+    private var captureForResult: Boolean = false
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun applyEdgeToEdge() {
         // Force a black three-button navigation bar even in light mode (the
         // camera UI is always dark), instead of the default light/transparent
         // scrim a bare enableEdgeToEdge() gives in light mode.
         enableEdgeToEdge(
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.BLACK)
         )
+    }
 
+    override fun onCreateBeforeContent() {
         // Honor the system "take a photo" intent (MediaStore.ACTION_IMAGE_CAPTURE) so other apps
         // can request a photo via startActivityForResult. Default to CANCELED so back/cancel
         // returns the right result to the caller.
-        val captureForResult = intent?.action == MediaStore.ACTION_IMAGE_CAPTURE
+        captureForResult = intent?.action == MediaStore.ACTION_IMAGE_CAPTURE
         if (captureForResult) {
             setResult(RESULT_CANCELED)
             val outputUri = IntentCompat.getParcelableExtra(
@@ -58,37 +58,36 @@ class MainActivity : ComponentActivity() {
             )
             viewModel.enableCaptureForResult(outputUri)
         }
+    }
 
-        setContent {
-            DynamicTheme {
-                AppPermissionsGate(
-                    spec = AppPermissionsSpec(
-                        title = getString(R.string.grant_camera_permission),
-                        requirements = listOf(
-                            PermissionRequirement.Runtime(
-                                arrayOf(
-                                    Manifest.permission.CAMERA,
-                                    Manifest.permission.RECORD_AUDIO
-                                )
-                            )
+    @Composable
+    override fun Content() {
+        AppPermissionsGate(
+            spec = AppPermissionsSpec(
+                title = getString(R.string.grant_camera_permission),
+                requirements = listOf(
+                    PermissionRequirement.Runtime(
+                        arrayOf(
+                            Manifest.permission.CAMERA,
+                            Manifest.permission.RECORD_AUDIO
                         )
                     )
-                ) {
-                    val backStack = rememberNavBackStack<Route>(Route.Camera)
-                    // Land on settings when opened from the system App Info page.
-                    backStack.openSettingsIfRequested(Route.Settings)
-                    MainNavigation(backStack) {
-                        entry<Route.Camera>(metadata = FullscreenPage()) {
-                            CameraScreen(
-                                backStack,
-                                viewModel,
-                                onCaptureResult = if (captureForResult) ::finishWithCaptureResult else null
-                            )
-                        }
-                        entry<Route.Settings> {
-                            SettingsPage(backStack, viewModel)
-                        }
-                    }
+                )
+            )
+        ) {
+            val backStack = rememberNavBackStack<Route>(Route.Camera)
+            // Land on settings when opened from the system App Info page.
+            backStack.openSettingsIfRequested(Route.Settings)
+            MainNavigation(backStack) {
+                entry<Route.Camera>(metadata = FullscreenPage()) {
+                    CameraScreen(
+                        backStack,
+                        viewModel,
+                        onCaptureResult = if (captureForResult) ::finishWithCaptureResult else null
+                    )
+                }
+                entry<Route.Settings> {
+                    SettingsPage(backStack, viewModel)
                 }
             }
         }

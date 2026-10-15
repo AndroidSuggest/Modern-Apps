@@ -2,10 +2,6 @@ package com.vayunmathur.findfamily
 
 import android.Manifest
 import android.content.Intent
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,6 +14,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ConfirmDialog
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
@@ -39,7 +36,6 @@ import com.vayunmathur.findfamily.ui.dialogs.AddTrackerDialog
 import com.vayunmathur.findfamily.ui.dialogs.decodeBase26
 import com.vayunmathur.library.ui.AppPermissionsGate
 import com.vayunmathur.library.ui.AppPermissionsSpec
-import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconBluetooth
 import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
@@ -58,7 +54,7 @@ import com.vayunmathur.findfamily.util.Platform
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     companion object {
         /** Extra key for launching directly into [Route.UwbRangingPage] via notification tap. */
         const val EXTRA_UWB_PEER_ID = "com.vayunmathur.findfamily.EXTRA_UWB_PEER_ID"
@@ -75,53 +71,51 @@ class MainActivity : ComponentActivity() {
      */
     private val deepLinkAddInvite = mutableStateOf<AddInvite?>(null)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         deepLinkAddInvite.value = parseAddDeepLink(intent)
         // FIRST_PARTY: api.vayunmathur.com + data.vayunmathur.com + findfamily.cc (Cloudflare ISRG+GTS)
         NetworkClient.init(this, TrustBundle.FIRST_PARTY)
-        enableEdgeToEdge()
+    }
+
+    @Composable
+    override fun Content() {
         val platform = Platform(this)
-        setContent {
-            DynamicTheme {
-                val hasForeground by ffViewModel.hasForeground.collectAsState()
-                val hasCoarse by ffViewModel.hasCoarse.collectAsState()
-                // Approximate-only needs the upgrade prompt even though the gate
-                // itself only blocks on the missing set.
-                val coarseOnly = hasCoarse && !hasForeground
-                var showUpgradeDialog by remember { mutableStateOf(false) }
-                LaunchedEffect(coarseOnly) {
-                    if (coarseOnly) showUpgradeDialog = true
-                }
+        val hasForeground by ffViewModel.hasForeground.collectAsState()
+        val hasCoarse by ffViewModel.hasCoarse.collectAsState()
+        // Approximate-only needs the upgrade prompt even though the gate
+        // itself only blocks on the missing set.
+        val coarseOnly = hasCoarse && !hasForeground
+        var showUpgradeDialog by remember { mutableStateOf(false) }
+        LaunchedEffect(coarseOnly) {
+            if (coarseOnly) showUpgradeDialog = true
+        }
 
-                AppPermissionsGate(spec = findFamilyPermissionsSpec()) {
-                    val deepLinkPeerId = remember {
-                        intent?.takeIf { it.hasExtra(EXTRA_UWB_PEER_ID) }
-                            ?.getLongExtra(EXTRA_UWB_PEER_ID, -1L)
-                            ?.takeIf { it != -1L }
-                    }
-                    Navigation(
-                        platform,
-                        ffViewModel,
-                        ffViewModel.missingFeatures,
-                        deepLinkPeerId,
-                        deepLinkAddInvite.value,
-                        onDeepLinkAddConsumed = { deepLinkAddInvite.value = null },
-                    )
+        AppPermissionsGate(spec = findFamilyPermissionsSpec()) {
+            val deepLinkPeerId = remember {
+                intent?.takeIf { it.hasExtra(EXTRA_UWB_PEER_ID) }
+                    ?.getLongExtra(EXTRA_UWB_PEER_ID, -1L)
+                    ?.takeIf { it != -1L }
+            }
+            Navigation(
+                platform,
+                ffViewModel,
+                ffViewModel.missingFeatures,
+                deepLinkPeerId,
+                deepLinkAddInvite.value,
+                onDeepLinkAddConsumed = { deepLinkAddInvite.value = null },
+            )
 
-                    // Approximate-only: explain and offer a reliable way to
-                    // re-open the upgrade prompt after it has been dismissed.
-                    if (coarseOnly && showUpgradeDialog) {
-                        ConfirmDialog(
-                            title = stringResource(R.string.permission_upgrade_dialog_title),
-                            message = stringResource(R.string.permission_upgrade_dialog_message),
-                            confirmLabel = stringResource(R.string.permission_upgrade_dialog_confirm),
-                            dismissLabel = stringResource(R.string.permission_upgrade_dialog_dismiss),
-                            onConfirm = { showUpgradeDialog = false },
-                            onDismiss = { showUpgradeDialog = false },
-                        )
-                    }
-                }
+            // Approximate-only: explain and offer a reliable way to
+            // re-open the upgrade prompt after it has been dismissed.
+            if (coarseOnly && showUpgradeDialog) {
+                ConfirmDialog(
+                    title = stringResource(R.string.permission_upgrade_dialog_title),
+                    message = stringResource(R.string.permission_upgrade_dialog_message),
+                    confirmLabel = stringResource(R.string.permission_upgrade_dialog_confirm),
+                    dismissLabel = stringResource(R.string.permission_upgrade_dialog_dismiss),
+                    onConfirm = { showUpgradeDialog = false },
+                    onDismiss = { showUpgradeDialog = false },
+                )
             }
         }
     }

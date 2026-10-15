@@ -1,9 +1,5 @@
 package com.vayunmathur.education
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +7,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -34,8 +32,7 @@ import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.education.util.EducationViewModelFactory
 import com.vayunmathur.education.util.LocalNarrator
 import com.vayunmathur.education.util.rememberNarrator
-import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.ui.AchievementNotification
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.DialogPage
 import com.vayunmathur.library.util.FullscreenPage
 import com.vayunmathur.library.util.ListDetailPage
@@ -50,33 +47,29 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private lateinit var content: ContentRepository
     private lateinit var repository: EducationRepository
 
     private val viewModel: EducationViewModel by viewModels {
         EducationViewModelFactory(application, content, repository)
     }
+    private var ready by mutableStateOf(false)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-
-        val ready = mutableStateOf(false)
+    override fun onCreateBeforeContent() {
         lifecycleScope.launch(Dispatchers.IO) {
             content = ContentRepository.load(this@MainActivity)
             repository = EducationRepository.get(this@MainActivity)
             // Seed the single learner row so onboarding can observe it.
             if (repository.getLearner() == null) repository.upsertLearner(Learner())
-            withContext(Dispatchers.Main) { ready.value = true }
+            withContext(Dispatchers.Main) { ready = true }
         }
+    }
 
-        setContent {
-            DynamicTheme {
-                CompositionLocalProvider(LocalNarrator provides rememberNarrator()) {
-                    if (ready.value) RootNavigation(viewModel)
-                }
-            }
+    @Composable
+    override fun Content() {
+        CompositionLocalProvider(LocalNarrator provides rememberNarrator()) {
+            if (ready) RootNavigation(viewModel)
         }
     }
 }

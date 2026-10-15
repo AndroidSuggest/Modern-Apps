@@ -3,7 +3,6 @@
 package com.vayunmathur.email.data
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
@@ -28,6 +27,7 @@ import com.vayunmathur.email.platform.loginUser
 import com.vayunmathur.email.platform.AppLifecycleTracker
 import com.vayunmathur.email.platform.EmailNotifications
 import com.vayunmathur.email.widget.EmailWidget
+import com.vayunmathur.library.util.ensureNotificationChannel
 import androidx.glance.appwidget.updateAll
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
@@ -452,18 +452,14 @@ class ImapIdleService : Service() {
         private const val NO_LAST_SEEN_UID = -1L
 
         private fun ensureChannel(context: Context) {
-            val nm = context.getSystemService(NotificationManager::class.java) ?: return
-            if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-            nm.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_ID,
-                    context.getString(R.string.email_sync_channel_name),
-                    NotificationManager.IMPORTANCE_LOW,
-                ).apply {
-                    description = context.getString(R.string.email_sync_channel_desc)
-                    setShowBadge(false)
-                }
-            )
+            context.ensureNotificationChannel(
+                CHANNEL_ID,
+                context.getString(R.string.email_sync_channel_name),
+                NotificationManager.IMPORTANCE_LOW,
+                context.getString(R.string.email_sync_channel_desc),
+            ) {
+                setShowBadge(false)
+            }
         }
 
         fun start(context: Context): Boolean {

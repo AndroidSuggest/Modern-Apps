@@ -1,10 +1,6 @@
 package com.vayunmathur.web
 
 import android.content.Intent
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
@@ -18,7 +14,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.web.data.FaviconStore
 import com.vayunmathur.web.data.TabThumbnailStore
@@ -34,17 +30,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
 
     private val readyState = mutableStateOf(false)
     private var factoryState by mutableStateOf<WebViewModelFactory?>(null)
     private val externalUrlState = mutableStateOf<String?>(null)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         // SYSTEM permissive browser: any host + user CAs for MITM debug/corp proxies (per user exception)
         NetworkClient.init(this, TrustBundle.SYSTEM)
-        enableEdgeToEdge()
         // Parses ~8 MB of filter lists off the main thread. Shields fail open until it lands.
         lifecycleScope.launch { ShieldsEngine.load(applicationContext) }
         // Before any WebView exists: service-worker fetches bypass the WebViewClient entirely.
@@ -75,18 +69,17 @@ class MainActivity : ComponentActivity() {
                 handleIntentUrl(intent)
             }
         }
+    }
 
-        setContent {
-            DynamicTheme {
-                OfflineAware {
-                    Box(Modifier.fillMaxSize()) {
-                        if (!readyState.value || factoryState == null) {
-                            Box(Modifier.fillMaxSize())
-                        } else {
-                            AppRoot(factoryState!!, externalUrlState.value) {
-                                externalUrlState.value = null
-                            }
-                        }
+    @Composable
+    override fun Content() {
+        OfflineAware {
+            Box(Modifier.fillMaxSize()) {
+                if (!readyState.value || factoryState == null) {
+                    Box(Modifier.fillMaxSize())
+                } else {
+                    AppRoot(factoryState!!, externalUrlState.value) {
+                        externalUrlState.value = null
                     }
                 }
             }

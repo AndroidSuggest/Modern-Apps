@@ -3,11 +3,6 @@ package com.vayunmathur.maps
 import android.Manifest
 import android.content.Intent
 import android.os.Build
-import android.os.Bundle
-import com.vayunmathur.library.log.Log
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -15,9 +10,11 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.library.downloadservice.InitialDownloadChecker
+import com.vayunmathur.library.log.Log
 import com.vayunmathur.library.ui.AppPermissionsGate
 import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.util.ListDetailPage
 import com.vayunmathur.library.util.ListPage
@@ -54,7 +51,7 @@ import kotlinx.serialization.Serializable
 import com.vayunmathur.library.map.GeoPoint
 import java.io.File
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
 
     companion object {
         private const val TAG = "MapsIntent"
@@ -76,70 +73,73 @@ class MainActivity : ComponentActivity() {
     private val selectedVm: SelectedFeatureViewModel by viewModels()
     private val searchVm: MapsSearchViewModel by viewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         // FIRST_PARTY: data.vayunmathur.com tiles + amenities + api.vayunmathur.com -> ISRG+GTS
         NetworkClient.init(this, TrustBundle.FIRST_PARTY)
-        enableEdgeToEdge()
         intentLauncher = IntentLauncher(this)
         // Reclaim the ~44 MB bundled basemap copied into filesDir by older
         // builds; the basemap now streams live and is cached on demand.
         File(filesDir, "world_z0-6.pmtiles").delete()
-        val ds = DataStoreUtils.getInstance(this)
 
         // Deep link that launched us cold (geo:/google.navigation:/maps URL).
         handleIntent(intent)
+    }
 
-        setContent {
-            val themeMode by ds.stringFlow(MapPreferences.KEY_THEME_MODE)
-                .collectAsState(initial = ds.getString(MapPreferences.KEY_THEME_MODE))
-            DynamicTheme(darkTheme = ThemeMode.from(themeMode).darkOverride) {
-                // One download: the single-archive `.mamaps` carries the tiles
-                // plus every former side file as sections (graph metadata /
-                // nodes / edges / intermediate / names / lanes / elevation,
-                // POI index / names / attrs / spatial / words, transit),
-                // appended 8-aligned with a section directory + MAMA8 footer
-                // by `mamaps_pack`. Each loader maps the one file once and
-                // falls back to its legacy side files when the archive is
-                // absent or lacks its sections, so a tiles-only archive
-                // degrades exactly as missing side files do today — but the
-                // published archive packs all thirteen, and this gate lists
-                // only it.
-                //
-                // Hosting hazard (unchanged): this entry gates app start, so
-                // the URL must be live before the version ships. An `adb push`
-                // to the same filename satisfies the gate, which is how a
-                // locally built archive is sideloaded.
-                InitialDownloadChecker(ds, listOf(
-                    Triple(
-                        MapTileCache.BASEMAP_ARCHIVE_URL,
-                        MapTileCache.BASEMAP_ARCHIVE_FILE,
-                        getString(R.string.downloading_basemap),
-                    )
-                )) {
-                    val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        // POST_NOTIFICATIONS is runtime-grantable on API 33+
-                        // and required for the navigation foreground-service
-                        // notification to actually display (otherwise the
-                        // service runs invisibly and the user can't End Trip
-                        // from outside the app).
-                        arrayOf(
-                            Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.POST_NOTIFICATIONS,
-                        )
-                    } else {
-                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-                    }
-                    AppPermissionsGate(
-                        spec = AppPermissionsSpec(
-                            title = getString(R.string.grant_location_permission),
-                            requirements = listOf(PermissionRequirement.Runtime(perms))
-                        )
-                    ) {
-                        OfflineAware {
-                            Navigation()
-                        }
-                    }
+    @Composable
+    override fun AppTheme(content: @Composable () -> Unit) {
+        val ds = DataStoreUtils.getInstance(this)
+        val themeMode by ds.stringFlow(MapPreferences.KEY_THEME_MODE)
+            .collectAsState(initial = ds.getString(MapPreferences.KEY_THEME_MODE))
+        DynamicTheme(darkTheme = ThemeMode.from(themeMode).darkOverride, content = content)
+    }
+
+    @Composable
+    override fun Content() {
+        val ds = DataStoreUtils.getInstance(this)
+        // One download: the single-archive `.mamaps` carries the tiles
+        // plus every former side file as sections (graph metadata /
+        // nodes / edges / intermediate / names / lanes / elevation,
+        // POI index / names / attrs / spatial / words, transit),
+        // appended 8-aligned with a section directory + MAMA8 footer
+        // by `mamaps_pack`. Each loader maps the one file once and
+        // falls back to its legacy side files when the archive is
+        // absent or lacks its sections, so a tiles-only archive
+        // degrades exactly as missing side files do today — but the
+        // published archive packs all thirteen, and this gate lists
+        // only it.
+        //
+        // Hosting hazard (unchanged): this entry gates app start, so
+        // the URL must be live before the version ships. An `adb push`
+        // to the same filename satisfies the gate, which is how a
+        // locally built archive is sideloaded.
+        InitialDownloadChecker(ds, listOf(
+            Triple(
+                MapTileCache.BASEMAP_ARCHIVE_URL,
+                MapTileCache.BASEMAP_ARCHIVE_FILE,
+                getString(R.string.downloading_basemap),
+            )
+        )) {
+            val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // POST_NOTIFICATIONS is runtime-grantable on API 33+
+                // and required for the navigation foreground-service
+                // notification to actually display (otherwise the
+                // service runs invisibly and the user can't End Trip
+                // from outside the app).
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.POST_NOTIFICATIONS,
+                )
+            } else {
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+            AppPermissionsGate(
+                spec = AppPermissionsSpec(
+                    title = getString(R.string.grant_location_permission),
+                    requirements = listOf(PermissionRequirement.Runtime(perms))
+                )
+            ) {
+                OfflineAware {
+                    Navigation()
                 }
             }
         }

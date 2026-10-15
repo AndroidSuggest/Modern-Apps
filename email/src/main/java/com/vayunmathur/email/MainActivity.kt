@@ -1,10 +1,7 @@
 package com.vayunmathur.email
 
 import android.content.Intent
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.Composable
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.email.data.DateMillisBackfill
@@ -19,17 +16,16 @@ import com.vayunmathur.email.ui.MainContent
 import com.vayunmathur.email.widget.EmailWidgetReceiver
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.widgets.updateWidgetPreviews
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
 
     companion object {
         private const val REQUEST_POST_NOTIFICATIONS = 7331
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         NetworkClient.init(this, TrustBundle.SYSTEM)
         updateWidgetPreviews(EmailWidgetReceiver::class)
         handleIntent(intent)
@@ -48,13 +44,12 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-        enableEdgeToEdge()
-        setContent {
-            val viewModel: EmailViewModel = viewModel()
-            DynamicTheme {
-                MainContent(viewModel = viewModel)
-            }
-        }
+    }
+
+    @Composable
+    override fun Content() {
+        val viewModel: EmailViewModel = viewModel()
+        MainContent(viewModel = viewModel)
     }
 
     override fun onStart() {

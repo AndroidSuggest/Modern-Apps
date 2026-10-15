@@ -4,10 +4,6 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -19,7 +15,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.stripe.android.PaymentConfiguration
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.fooddelivery.platform.AppInit
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.IconHome
 import com.vayunmathur.library.ui.IconLocalOffer
 import com.vayunmathur.library.ui.IconPackage
@@ -67,7 +64,7 @@ sealed interface Route : NavKey {
     @Serializable data class OrderTracking(val orderId: Int) : Route
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     // The order to open on the tracking screen, set from a notification tap. Held as
     // Compose state so onNewIntent can push a new deep link into the running UI.
     private val trackOrderId = mutableStateOf<Int?>(null)
@@ -85,26 +82,25 @@ class MainActivity : ComponentActivity() {
             "pk_live_51NQy7lFJFBMK4hv9KubgZcyH2Wy0MsXn9BtrtM7moEi762WE7pcmZ1JL9BrCKPRKw6ZJdGo9YJSA1pidb0KUthlJ00Wr4bcpVD"
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
+    override fun onCreateBeforeContent() {
+        // Process-wide warm-up (trust bundle + saved auth token) used to live in
+        // FoodDeliveryApplication; the cold-process intent path warms itself via AppInit.
+        AppInit.start(this)
         trackOrderId.value = intent.trackOrderIdOrNull()
         openRestaurantId.value = intent.restaurantIdOrNull()
         requestNotificationPermissionIfNeeded()
         // The TLS trust bundle and the saved auth token are warmed up off the main thread by
-        // FoodDeliveryApplication / AppInit, so nothing here touches the network or disk.
-        enableEdgeToEdge()
+        // AppInit, so nothing here touches the network or disk.
 
         PaymentConfiguration.init(
             applicationContext,
             STRIPE_PUBLISHABLE_KEY,
         )
+    }
 
-        setContent {
-            DynamicTheme {
-                FoodDeliveryApp(trackOrderId, openRestaurantId)
-            }
-        }
+    @Composable
+    override fun Content() {
+        FoodDeliveryApp(trackOrderId, openRestaurantId)
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -1,18 +1,17 @@
 package com.vayunmathur.cast.tv
 
 import android.content.Intent
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.lifecycleScope
 import com.vayunmathur.cast.tv.platform.MirrorActivity
 import com.vayunmathur.cast.tv.platform.ReceiverController
 import com.vayunmathur.cast.tv.platform.ReceiverPhase
 import com.vayunmathur.cast.tv.service.ReceiverService
 import com.vayunmathur.cast.tv.ui.CastTvTheme
 import com.vayunmathur.cast.tv.ui.ReceiverContent
-import androidx.lifecycle.lifecycleScope
+import com.vayunmathur.library.ui.MaActivity
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.launch
 
@@ -26,17 +25,11 @@ import kotlinx.coroutines.launch
  * No `Route.kt` or `Navigation.kt`: there is one screen, and a nav graph over a single destination
  * would be scaffolding around nothing.
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
+    override val edgeToEdge: Boolean = false
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         ReceiverService.start(this)
-        setContent {
-            CastTvTheme {
-                val state by ReceiverController.state.collectAsState()
-                ReceiverContent(state)
-            }
-        }
         // The picture gets its own full-screen Activity, launched the moment frames start arriving.
         // distinctUntilChangedBy so a stream that reports its size again does not relaunch it.
         lifecycleScope.launch {
@@ -48,5 +41,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
         }
+    }
+
+    @Composable
+    override fun AppTheme(content: @Composable () -> Unit) {
+        CastTvTheme(content = content)
+    }
+
+    @Composable
+    override fun Content() {
+        val state by ReceiverController.state.collectAsState()
+        ReceiverContent(state)
     }
 }

@@ -2,14 +2,11 @@ package com.vayunmathur.music
 
 import android.Manifest
 import android.os.Build
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.Composable
 import com.vayunmathur.library.ui.AppPermissionsGate
 import com.vayunmathur.library.ui.AppPermissionsSpec
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.music.R
 import com.vayunmathur.music.data.MusicRepository
@@ -17,29 +14,24 @@ import com.vayunmathur.music.platform.MusicViewModel
 import com.vayunmathur.music.platform.MusicViewModelFactory
 import com.vayunmathur.music.platform.PlaybackManager
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val musicViewModel: MusicViewModel by viewModels {
         MusicViewModelFactory(application, MusicRepository.get(application), PlaybackManager.getInstance(this))
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            DynamicTheme {
-                val (permissions, message) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                    arrayOf(Manifest.permission.READ_MEDIA_AUDIO) to getString(R.string.grant_audio_permissions)
-                else
-                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE) to getString(R.string.grant_storage_permissions)
-                AppPermissionsGate(
-                    spec = AppPermissionsSpec(
-                        title = message,
-                        requirements = listOf(PermissionRequirement.Runtime(permissions))
-                    )
-                ) {
-                    Navigation(musicViewModel)
-                }
-            }
+    @Composable
+    override fun Content() {
+        val (permissions, message) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            arrayOf(Manifest.permission.READ_MEDIA_AUDIO) to getString(R.string.grant_audio_permissions)
+        else
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE) to getString(R.string.grant_storage_permissions)
+        AppPermissionsGate(
+            spec = AppPermissionsSpec(
+                title = message,
+                requirements = listOf(PermissionRequirement.Runtime(permissions))
+            )
+        ) {
+            Navigation(musicViewModel)
         }
     }
 }

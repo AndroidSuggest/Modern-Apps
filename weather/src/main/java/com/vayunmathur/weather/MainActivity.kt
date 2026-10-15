@@ -1,14 +1,11 @@
 package com.vayunmathur.weather
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.Composable
 import androidx.lifecycle.lifecycleScope
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.widgets.updateWidgetPreviews
 import com.vayunmathur.weather.data.GeoDatabase
@@ -17,13 +14,12 @@ import com.vayunmathur.weather.platform.WeatherViewModel
 import com.vayunmathur.weather.platform.WeatherViewModelFactory
 import com.vayunmathur.weather.widget.glance.WeatherGlanceWidgetReceiver
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val viewModel: WeatherViewModel by viewModels {
         WeatherViewModelFactory(application, WeatherRepository.get(application))
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         // FIRST_PARTY covers api.vayunmathur.com (self-hosted weather bundle
         // and tiles proxy — place search is on-device, no hosts remain).
         NetworkClient.init(this, TrustBundle.FIRST_PARTY)
@@ -32,13 +28,12 @@ class MainActivity : ComponentActivity() {
         // in the background, rather than the first time the user opens search.
         GeoDatabase.warmUp(lifecycleScope)
         updateWidgetPreviews(WeatherGlanceWidgetReceiver::class)
-        enableEdgeToEdge()
-        setContent {
-            DynamicTheme {
-                OfflineAware {
-                    Navigation(viewModel)
-                }
-            }
+    }
+
+    @Composable
+    override fun Content() {
+        OfflineAware {
+            Navigation(viewModel)
         }
     }
 }

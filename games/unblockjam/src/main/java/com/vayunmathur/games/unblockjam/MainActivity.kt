@@ -1,25 +1,25 @@
 package com.vayunmathur.games.unblockjam
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.Composable
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.games.unblockjam.data.LevelPack
 import com.vayunmathur.games.unblockjam.platform.UnblockJamViewModel
 import com.vayunmathur.games.unblockjam.ui.UnblockJamTheme
+import com.vayunmathur.library.ui.MaActivity
 
-class MainActivity : ComponentActivity() {
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+class MainActivity : MaActivity() {
+    override fun onCreateBeforeContent() {
         LevelPack.init(this)
-        setContent {
-            UnblockJamTheme {
-                val viewModel: UnblockJamViewModel = viewModel()
-                Navigation(viewModel)
-            }
-        }
+    }
+
+    @Composable
+    override fun AppTheme(content: @Composable () -> Unit) {
+        UnblockJamTheme(content = content)
+    }
+
+    @Composable
+    override fun Content() {
+        val viewModel: UnblockJamViewModel = viewModel()
+        Navigation(viewModel)
     }
 }

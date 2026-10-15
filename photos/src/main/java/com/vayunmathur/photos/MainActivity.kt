@@ -4,10 +4,7 @@ import android.Manifest
 import android.content.ContentUris
 import android.content.Intent
 import android.net.Uri
-import android.os.Bundle
 import androidx.activity.compose.LocalActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.annotation.StringRes
 import androidx.core.net.toUri
@@ -38,7 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.FragmentActivity
 import com.vayunmathur.library.ui.AppPermissionsGate
 import com.vayunmathur.library.ui.AppPermissionsSpec
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaFragmentActivity
 import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.util.DataStoreUtils
@@ -85,7 +82,7 @@ val LocalColumnCount = staticCompositionLocalOf<MutableFloatState> {
     error("No LocalColumnCount provided")
 }
 
-class MainActivity : FragmentActivity() {
+class MainActivity : MaFragmentActivity() {
     private val galleryViewModel: GalleryViewModel by viewModels {
         GalleryViewModelFactory(application, PhotosRepository.get(application))
     }
@@ -96,27 +93,25 @@ class MainActivity : FragmentActivity() {
         SecureFolderViewModelFactory(application)
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         updateWidgetPreviews(PhotoGlanceWidgetReceiver::class)
-        enableEdgeToEdge()
         ImageLoader.init(this)
+    }
+
+    @Composable
+    override fun Content() {
         val dataStore = DataStoreUtils.getInstance(applicationContext)
-        setContent {
-            DynamicTheme {
-                val columnCount = rememberSaveable {
-                    mutableFloatStateOf(dataStore.getLong(COLUMN_COUNT_KEY)?.toFloat() ?: 3f)
-                }
-                LaunchedEffect(Unit) {
-                    snapshotFlow { columnCount.floatValue.roundToInt().coerceIn(MIN_COLUMN_COUNT, MAX_COLUMN_COUNT) }
-                        .distinctUntilChanged()
-                        .collect { dataStore.setLong(COLUMN_COUNT_KEY, it.toLong()) }
-                }
-                OfflineAware {
-                    CompositionLocalProvider(LocalColumnCount provides columnCount) {
-                        PermissionsWrapper(viewUri = if (intent?.action == Intent.ACTION_VIEW) intent?.data else null)
-                    }
-                }
+        val columnCount = rememberSaveable {
+            mutableFloatStateOf(dataStore.getLong(COLUMN_COUNT_KEY)?.toFloat() ?: 3f)
+        }
+        LaunchedEffect(Unit) {
+            snapshotFlow { columnCount.floatValue.roundToInt().coerceIn(MIN_COLUMN_COUNT, MAX_COLUMN_COUNT) }
+                .distinctUntilChanged()
+                .collect { dataStore.setLong(COLUMN_COUNT_KEY, it.toLong()) }
+        }
+        OfflineAware {
+            CompositionLocalProvider(LocalColumnCount provides columnCount) {
+                PermissionsWrapper(viewUri = if (intent?.action == Intent.ACTION_VIEW) intent?.data else null)
             }
         }
     }

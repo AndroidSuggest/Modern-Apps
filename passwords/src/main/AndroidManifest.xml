@@ -21,7 +21,6 @@
         android:required="false" />
 
     <application
-        android:name=".PasswordsApplication"
         android:allowBackup="true"
         android:backupAgent=".platform.AppBackupAgent"
         android:dataExtractionRules="@xml/data_extraction_rules"

@@ -2,7 +2,6 @@ package com.vayunmathur.calendar.glance
 
 import android.annotation.SuppressLint
 import android.content.Context
-import com.vayunmathur.library.log.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -16,12 +15,10 @@ import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.action.toParametersKey
-import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.components.Scaffold
 import androidx.glance.appwidget.components.TitleBar
 import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
-import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
@@ -44,7 +41,7 @@ import com.vayunmathur.calendar.ui.atEndOfDayIn
 import com.vayunmathur.calendar.ui.dateRangeString
 import com.vayunmathur.library.ui.DateString
 import com.vayunmathur.library.ui.R as UiR
-import com.vayunmathur.library.widgets.DynamicThemeGlance
+import com.vayunmathur.library.widgets.MaWidget
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -55,8 +52,13 @@ import kotlinx.serialization.json.Json
 import androidx.glance.LocalContext
 import kotlin.time.Clock
 
-class CalendarGlanceWidget : GlanceAppWidget() {
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
+/** Positioned events for the agenda widget, keyed by day. */
+internal data class CalendarWidgetData(
+    val positionedEvents: Map<LocalDate, List<Instance>>,
+)
+
+class CalendarGlanceWidget : MaWidget<CalendarWidgetData>() {
+    override suspend fun loadData(context: Context, id: GlanceId): CalendarWidgetData {
         val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
         val today = now.date
 
@@ -78,41 +80,19 @@ class CalendarGlanceWidget : GlanceAppWidget() {
             (notAllDay.filter { day in it.spanDays }.sortedBy { it.startDateTime }
                 + allDay.filter { day in it.spanDays })
         }
-
-        provideContent {
-            DynamicThemeGlance(context) {
-                Content(context, positionedEvents)
-            }
-        }
+        return CalendarWidgetData(positionedEvents)
     }
 
-    override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        try {
-            provideContent {
-                DynamicThemeGlance(context) {
-                    CalendarPreviewContent()
-                }
-            }
-        } catch (expected: Throwable) {
-            Log.error("CalendarWidget", "providePreview failed", expected)
-            try {
-                provideContent {
-                    DynamicThemeGlance(context) {
-                        androidx.glance.layout.Box(
-                            modifier = GlanceModifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Calendar",
-                                style = defaultTextStyle.copy(color = GlanceTheme.colors.onBackground)
-                            )
-                        }
-                    }
-                }
-            } catch (_: Throwable) {
-                // last resort: avoid crashing the preview host
-            }
-        }
+    override fun previewData(context: Context): CalendarWidgetData = CalendarWidgetData(emptyMap())
+
+    @Composable
+    override fun Content(data: CalendarWidgetData) {
+        Content(LocalContext.current, data.positionedEvents)
+    }
+
+    @Composable
+    override fun PreviewContent() {
+        CalendarPreviewContent()
     }
 }
 

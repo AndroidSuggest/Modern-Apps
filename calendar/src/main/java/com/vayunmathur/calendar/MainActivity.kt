@@ -3,12 +3,8 @@ package com.vayunmathur.calendar
 import android.Manifest
 import android.content.Intent
 import android.os.Build
-import android.os.Bundle
 import android.provider.CalendarContract
 import com.vayunmathur.library.log.Log
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -51,6 +47,7 @@ import com.vayunmathur.calendar.util.RecurrenceParams
 import com.vayunmathur.library.ui.AppPermissionsGate
 import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
 import com.vayunmathur.library.ui.dialog.TimePickerDialogContent
@@ -76,25 +73,45 @@ import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val importUris = mutableStateOf<List<String>>(emptyList())
     private val pendingRoute = mutableStateOf<Route?>(null)
     private val pendingDate = mutableStateOf<LocalDate?>(null)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreateBeforeContent() {
         updateWidgetPreviews(CalendarGlanceWidgetReceiver::class)
-        enableEdgeToEdge()
-
         handleIntent(intent)
-        setContent {
-            CalendarAppContent(
-                activityIntent = intent,
-                importUris = importUris,
-                pendingRoute = pendingRoute,
-                pendingDate = pendingDate,
-            )
+    }
+
+    /**
+     * Calendar lets the user pin light/dark in settings; that choice wraps the
+     * whole activity theme rather than just the screens.
+     */
+    @Composable
+    override fun AppTheme(content: @Composable () -> Unit) {
+        val dataStore = remember { DataStoreUtils.getInstance(this) }
+        val themeName by dataStore.stringFlow("theme_mode")
+            .collectAsState(initial = dataStore.getString("theme_mode"))
+        val darkTheme = when (
+            themeName?.let {
+                runCatching { CalendarViewModel.ThemeMode.valueOf(it) }.getOrNull()
+            }
+        ) {
+            CalendarViewModel.ThemeMode.Light -> false
+            CalendarViewModel.ThemeMode.Dark -> true
+            else -> null
         }
+        DynamicTheme(darkTheme, content = content)
+    }
+
+    @Composable
+    override fun Content() {
+        CalendarAppContent(
+            activityIntent = intent,
+            importUris = importUris,
+            pendingRoute = pendingRoute,
+            pendingDate = pendingDate,
+        )
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -224,37 +241,24 @@ private fun MainActivity.CalendarAppContent(
     pendingRoute: MutableState<Route?>,
     pendingDate: MutableState<LocalDate?>,
 ) {
-    val dataStore = remember { DataStoreUtils.getInstance(this) }
-    val themeName by dataStore.stringFlow("theme_mode")
-        .collectAsState(initial = dataStore.getString("theme_mode"))
-    val darkTheme = when (
-        themeName?.let {
-            runCatching { CalendarViewModel.ThemeMode.valueOf(it) }.getOrNull()
-        }
-    ) {
-        CalendarViewModel.ThemeMode.Light -> false
-        CalendarViewModel.ThemeMode.Dark -> true
-        else -> null
-    }
-    DynamicTheme(darkTheme) {
-        AppPermissionsGate(
-            spec = AppPermissionsSpec(
-                title = stringResource(R.string.please_grant_calendar_permission),
-                requirements = listOf(
-                    PermissionRequirement.Runtime(
-                        arrayOf(
-                            Manifest.permission.READ_CALENDAR,
-                            Manifest.permission.WRITE_CALENDAR,
-                        ),
+    AppPermissionsGate(
+        spec = AppPermissionsSpec(
+            title = stringResource(R.string.please_grant_calendar_permission),
+            requirements = listOf(
+                PermissionRequirement.Runtime(
+                    arrayOf(
+                        Manifest.permission.READ_CALENDAR,
+                        Manifest.permission.WRITE_CALENDAR,
                     ),
-                    // Reminder notifications rely on exact alarms.
-                    PermissionRequirement.ExactAlarms,
-                    // Reminder notifications need POST_NOTIFICATIONS on
-                    // Android 13+; now blocking like everything else.
-                    PermissionRequirement.notifications(),
                 ),
+                // Reminder notifications rely on exact alarms.
+                PermissionRequirement.ExactAlarms,
+                // Reminder notifications need POST_NOTIFICATIONS on
+                // Android 13+; now blocking like everything else.
+                PermissionRequirement.notifications(),
             ),
-        ) {
+        ),
+    ) {
             val viewModel: CalendarViewModel = viewModel()
             DateJumpEffect(activityIntent, pendingDate, viewModel)
 
@@ -269,7 +273,6 @@ private fun MainActivity.CalendarAppContent(
                 Navigation(viewModel, initialRoute) { importUris.value = emptyList() }
             }
         }
-    }
 }
 
 /**

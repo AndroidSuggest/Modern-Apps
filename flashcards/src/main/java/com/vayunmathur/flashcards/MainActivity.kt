@@ -1,9 +1,5 @@
 package com.vayunmathur.flashcards
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -26,6 +22,7 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconDashboard
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.ui.IconStyle
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.ui.PagerTab
 import com.vayunmathur.library.ui.TabStyle
 import com.vayunmathur.library.ui.TabbedPagerScaffold
@@ -39,24 +36,25 @@ import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.serialization.Serializable
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val viewModel: FlashcardsViewModel by viewModels {
         FlashcardsViewModelFactory(application, FlashcardsRepository.get(application))
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-
-        setContent {
-            val settings by viewModel.settings.collectAsStateWithLifecycle()
-            val darkTheme = when (settings.themeMode) {
-                ThemeMode.LIGHT -> false
-                ThemeMode.DARK -> true
-                else -> null
-            }
-            DynamicTheme(darkTheme = darkTheme) { Navigation(viewModel) }
+    @Composable
+    override fun AppTheme(content: @Composable () -> Unit) {
+        val settings by viewModel.settings.collectAsStateWithLifecycle()
+        val darkTheme = when (settings.themeMode) {
+            ThemeMode.LIGHT -> false
+            ThemeMode.DARK -> true
+            else -> null
         }
+        DynamicTheme(darkTheme = darkTheme, content = content)
+    }
+
+    @Composable
+    override fun Content() {
+        Navigation(viewModel)
     }
 }
 

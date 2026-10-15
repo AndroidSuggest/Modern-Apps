@@ -1,41 +1,36 @@
 package com.vayunmathur.everysync
 
 import android.content.Intent
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.vayunmathur.everysync.network.remote.RelayLinks
 import com.vayunmathur.everysync.platform.EverySyncViewModel
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.OfflineAware
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private val viewModel: EverySyncViewModel by viewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+    override fun onCreateBeforeContent() {
         // everysync://join links request access to someone else's vault — fire a
         // sealed join request (public ids only) and confirm on the snackbar.
         parseJoinLink(intent)?.let { handleJoinLink(it) }
-        setContent {
-            DynamicTheme {
-                // Paint the theme background behind everything (incl. the status bar strip the
-                // offline banner leaves transparent) so no white window background shows through
-                // when offline. See issue #488.
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                    OfflineAware {
-                        Navigation(viewModel)
-                    }
-                }
+    }
+
+    @Composable
+    override fun Content() {
+        // Paint the theme background behind everything (incl. the status bar strip the
+        // offline banner leaves transparent) so no white window background shows through
+        // when offline. See issue #488.
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            OfflineAware {
+                Navigation(viewModel)
             }
         }
     }

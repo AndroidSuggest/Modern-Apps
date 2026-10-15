@@ -1,18 +1,13 @@
 package com.vayunmathur.notes
 
 import android.content.Intent
-import android.os.Bundle
-import com.vayunmathur.library.log.Log
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
-import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.MaActivity
 import com.vayunmathur.library.util.IntentHelper
 import com.vayunmathur.library.util.onFileDrop
 import com.vayunmathur.notes.data.NotesRepository
@@ -22,18 +17,18 @@ import com.vayunmathur.notes.platform.NotesViewModelFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 
-class MainActivity : ComponentActivity() {
+class MainActivity : MaActivity() {
     private lateinit var notesRepository: NotesRepository
     private val notesViewModel: NotesViewModel by viewModels {
         NotesViewModelFactory(application, notesRepository)
     }
+    private var ready by mutableStateOf(false)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-
-        val ready = mutableStateOf(false)
+    override fun onCreateBeforeContent() {
         lifecycleScope.launch(Dispatchers.IO) {
             notesRepository = NotesRepository.get(applicationContext)
             val legacyNotes = notesRepository.readAndClearLegacyNotes()
@@ -47,18 +42,17 @@ class MainActivity : ComponentActivity() {
             }
             withContext(Dispatchers.Main) {
                 handleIntent(intent)
-                ready.value = true
+                ready = true
             }
         }
+    }
 
-        setContent {
-            DynamicTheme {
-                Box(Modifier.fillMaxSize().onFileDrop { uris ->
-                    notesViewModel.importFiles(uris)
-                }) {
-                    if (ready.value) Navigation(notesViewModel)
-                }
-            }
+    @Composable
+    override fun Content() {
+        Box(Modifier.fillMaxSize().onFileDrop { uris ->
+            notesViewModel.importFiles(uris)
+        }) {
+            if (ready) Navigation(notesViewModel)
         }
     }
 
@@ -75,9 +69,5 @@ class MainActivity : ComponentActivity() {
         intent ?: return
         val uris = IntentHelper.getUrisFromIntent(intent).ifEmpty { listOfNotNull(intent.data) }
         notesViewModel.openExternal(uris)
-    }
-
-    companion object {
-        private const val TAG = "NotesMainActivity"
     }
 }
