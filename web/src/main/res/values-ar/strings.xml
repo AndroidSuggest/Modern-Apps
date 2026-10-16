@@ -53,7 +53,7 @@
     <string name="delete_bookmark">حذف الإشارة المرجعية؟</string>
     <string name="delete_folder_2">حذف المجلد؟</string>
     <string name="no_history_yet">لا سجل بعد</string>
-    <string name="clear_history">هل تريد مسح السجل؟</string>
+    <string name="clear_history">مسح السجل؟</string>
     <string name="this_will_permanently_delete_your_browsi">سيؤدي هذا إلى حذف سجل التصفح الخاص بك نهائيًا.</string>
     <string name="icon">الأيقونة: %1$s</string>
     <string name="theme">السمة: %1$s</string>
