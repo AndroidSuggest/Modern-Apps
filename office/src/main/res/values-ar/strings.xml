@@ -104,7 +104,7 @@
     <string name="deny">رفض</string>
     <string name="request_wants_to_join">%1$s يريد الانضمام إلى \"%2$s\"</string>
     <string name="join_request_sending">جارٍ طلب الوصول…</string>
-    <string name="join_request_sent">تم إرسال الطلب — ستتمكن من الوصول بمجرد موافقة المالك.</string>
+    <string name="join_request_sent">تم إرسال الطلب — ستحصل على حق الوصول بمجرد موافقة المالك.</string>
     <string name="join_request_failed">تعذّر إرسال الطلب — تحقق من اتصالك وحاول مرة أخرى.</string>
     <string name="image_1">صورة…</string>
     <string name="time_field">الوقت (خانة)</string>
@@ -286,4 +286,8 @@
     <string name="percent">نسبة مئوية</string>
     <string name="words_chars_min"><xliff:g id="words" example="120">%1$s</xliff:g> كلمة · <xliff:g id="chars" example="650">%2$s</xliff:g> حرفًا · ~<xliff:g id="minutes" example="1">%3$s</xliff:g> دقيقة</string>
     <string name="you_have_access_only_the_owner_can_chang">لديك صلاحية وصول <xliff:g id="role" example="editor">%1$s</xliff:g>. فقط المالك يستطيع تغيير المشاركة.</string>
+    <string name="demote_list_item">تخفيض مستوى عنصر القائمة</string>
+    <string name="promote_list_item">ترفيع مستوى عنصر القائمة</string>
+    <string name="ellipse">بيضاوي</string>
+    <string name="tracked_changes">التغييرات المتعقبة (<xliff:g id="count" example="3">%1$s</xliff:g>)</string>
 </resources>
