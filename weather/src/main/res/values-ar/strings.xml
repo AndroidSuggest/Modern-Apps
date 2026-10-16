@@ -2,4 +2,93 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="use_current_location">استخدام الموقع الحالي</string>
     <string name="app_name">الطقس</string>
+    <string name="weather_widget_description">الوقت الحالي، التاريخ والطقس في لمحة - اضغط للتوقعات</string>
+    <string name="no_locations_yet">لا مواقع بعد</string>
+    <string name="add_a_city_or_use_your_current_location">أضف مدينة أو استخدم موقعك الحالي للاطلاع على التوقعات.</string>
+    <string name="add_location">إضافة موقع</string>
+    <string name="locating">جارٍ تحديد الموقع…</string>
+    <string name="detect_your_device_s_current_location_au">اكتشاف الموقع الحالي لجهازك تلقائيًا وإضافته إلى قائمتك</string>
+    <string name="current_location">الموقع الحالي</string>
+    <string name="locations">المواقع</string>
+    <string name="set_units">الوحدات</string>
+    <string name="search_location">البحث عن موقع</string>
+    <string name="city_name_hint">اسم المدينة</string>
+    <string name="no_matches">لا يطابق</string>
+    <string name="confirm_delete">تأكيد الحذف</string>
+    <string name="couldn_t_determine_location">تعذّر تحديد الموقع</string>
+    <string name="location_permission_denied">رُفض إذن الموقع</string>
+    <string name="max_min">الأقصى <xliff:g id="max" example="28°C">%1$s</xliff:g> الأدنى <xliff:g id="min" example="14°C">%2$s</xliff:g></string>
+    <string name="feels_like">يشعر كأن <xliff:g id="temp" example="26°C">%1$s</xliff:g></string>
+    <string name="dew_point">نقطة الندى</string>
+    <string name="from_gusts">من <xliff:g id="direction" example="NW">%1$s</xliff:g> · الرياح العاصفة <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
+    <string name="not_enough_data_to_plot">لا بيانات كافية للرسم.</string>
+    <string name="condition_mostly_clear">صافٍ غالبًا</string>
+    <string name="condition_partly_cloudy">غائم جزئيًا</string>
+    <string name="condition_cloudy">سحابي</string>
+    <string name="condition_fog">ضبابي</string>
+    <string name="condition_rain">مطر</string>
+    <string name="condition_snow">ثلجي</string>
+    <string name="condition_thunderstorm">عاصفة رعدية</string>
+    <string name="metric_temperature">درجة الحرارة</string>
+    <string name="metric_feels_like">تشعر كأن</string>
+    <string name="metric_humidity">الرطوبة</string>
+    <string name="metric_precipitation">الهطول</string>
+    <string name="metric_wind_speed">سرعة الرياح</string>
+    <string name="metric_wind_gusts">هبات الرياح</string>
+    <string name="metric_pressure">الضغط</string>
+    <string name="metric_visibility">الرؤية</string>
+    <string name="metric_cloud_cover">الغطاء السحابي</string>
+    <string name="metric_uv_index">مؤشر الأشعة فوق البنفسجية</string>
+    <string name="block_sun">الأحد</string>
+    <string name="block_pollen">حبوب اللقاح</string>
+    <string name="block_wind">الرياح</string>
+    <string name="block_air_quality">جودة الهواء</string>
+    <string name="block_moon">القمر</string>
+    <string name="moon_phase_new">القمر الجديد</string>
+    <string name="moon_phase_waxing_crescent">هلال الأول</string>
+    <string name="moon_phase_first_quarter">الربع الأول</string>
+    <string name="moon_phase_waxing_gibbous">المتزايد المحدّب</string>
+    <string name="moon_phase_full">البدر</string>
+    <string name="moon_phase_waning_gibbous">الأحدب المتناقص</string>
+    <string name="moon_phase_last_quarter">الربع الأخير</string>
+    <string name="moon_phase_waning_crescent">الهلال المتناقص</string>
+    <string name="hourly_forecast">توقعات كل ساعة</string>
+    <string name="daily_forecast">التوقعات اليومية</string>
+    <string name="now">الآن</string>
+    <string name="tomorrow_short">غدًا</string>
+    <string name="level_low">منخفض</string>
+    <string name="level_moderate">متوسط</string>
+    <string name="level_high">مرتفع</string>
+    <string name="level_very_high">مرتفع جدًا</string>
+    <string name="level_extreme">قاسي</string>
+    <string name="level_severe">شديد</string>
+    <string name="cloud_mostly_cloudy">غائم غالبًا</string>
+    <string name="cloud_overcast">غائم</string>
+    <string name="aqi_good">جيد</string>
+    <string name="aqi_unhealthy_sensitive">غير صحي (حساس)</string>
+    <string name="aqi_unhealthy">غير صحي</string>
+    <string name="aqi_very_unhealthy">غير صحي جدًا</string>
+    <string name="aqi_hazardous">خطير</string>
+    <string name="precip_raining_now">تمطر الآن</string>
+    <string name="precip_no_rain_next_2h">لن تمطر لساعتين</string>
+    <string name="gusts">الرياح العاصفة <xliff:g id="gusts" example="18 km/h">%1$s</xliff:g></string>
+    <string name="precip_rain_starting_now">بدأ المطر الآن</string>
+    <string name="precip_rain_in_min">المطر في خلال ~<xliff:g id="minutes" example="15">%1$d</xliff:g> دقيقة</string>
+    <string name="last_updated">آخر تحديث <xliff:g id="time_ago" example="2h ago">%1$s</xliff:g></string>
+    <string name="no_data_yet">لا بيانات بعد</string>
+    <string name="just_now">فقط الآن</string>
+    <string name="minutes_ago">منذ <xliff:g id="minutes" example="5">%1$d</xliff:g>د</string>
+    <string name="hours_ago">منذ <xliff:g id="hours" example="2">%1$d</xliff:g>س</string>
+    <string name="days_ago">منذ <xliff:g id="hours" example="2">%1$d</xliff:g>ي</string>
+    <string name="duration_h_m"><xliff:g id="hours" example="11">%1$d</xliff:g>س <xliff:g id="minutes" example="30">%2$d</xliff:g>د</string>
+    <string name="summary_title">الملخص</string>
+    <string name="summary_mixed_conditions">ظروف مختلطة</string>
+    <string name="summary_expect_conditions">توقع <xliff:g id="conditions" example="light rain">%1$s</xliff:g> طوال اليوم.</string>
+    <string name="summary_high_low">العليا <xliff:g id="high" example="24°C">%1$s</xliff:g>، الأدنى <xliff:g id="low" example="12°C">%2$s</xliff:g>.</string>
+    <string name="summary_rain_likely">من المحتمل أن تمطر — أحضر مظلة.</string>
+    <string name="summary_showers_possible">من المحتمل هطول أمطار غزيرة لاحقًا.</string>
+    <string name="summary_slight_chance_rain">احتمال طفيف لهطول الأمطار.</string>
+    <string name="summary_winds_noticeable">ستكون الرياح ملحوظة اليوم.</string>
+    <string name="weather_no_data">—</string>
+    <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
 </resources>
